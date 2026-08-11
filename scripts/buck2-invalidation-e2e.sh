@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="${1:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN}"
-buck2_bin="${2:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN}"
+repo_root="${1:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN [BUCK_ARGS...]}"
+buck2_bin="${2:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN [BUCK_ARGS...]}"
+shift 2
+buck_args=("$@")
 target="//buck2/evidence:package_evidence"
 source_path="$repo_root/buck2/evidence/source.txt"
 isolation="invalidation-e2e-$$-$RANDOM"
@@ -44,7 +46,7 @@ build_and_observe() {
   phase="$1"
   output="$($buck2_bin \
     --isolation-dir "$isolation" \
-    build "$target" \
+    build "${buck_args[@]}" "$target" \
     --show-full-output \
     --local-only \
     --no-remote-cache)"

@@ -50,6 +50,9 @@ const parseArgs = (argv) => {
     isolationDir: 'effect-utils-benchmark',
     relevantPath: defaultRelevantPath,
     irrelevantPath: defaultIrrelevantPath,
+    relevantMutation: 'append-js',
+    relevantReplaceFrom: null,
+    relevantReplaceToTemplate: null,
     output: null,
     buckBin: process.env.BUCK2_BENCH_BUCK_BIN ?? null,
     buckConfigs: [],
@@ -76,6 +79,9 @@ const parseArgs = (argv) => {
     else if (arg === '--isolation-dir') options.isolationDir = take()
     else if (arg === '--relevant-path') options.relevantPath = take()
     else if (arg === '--irrelevant-path') options.irrelevantPath = take()
+    else if (arg === '--relevant-mutation') options.relevantMutation = take()
+    else if (arg === '--relevant-replace-from') options.relevantReplaceFrom = take()
+    else if (arg === '--relevant-replace-to-template') options.relevantReplaceToTemplate = take()
     else if (arg === '--output') options.output = take()
     else if (arg === '--buck-bin') options.buckBin = take()
     else if (arg === '--buck-config') {
@@ -102,6 +108,9 @@ Defaults to a non-executing dry run. Use --execute to run commands.
   --isolation-dir NAME      Buck daemon/cache namespace
   --relevant-path PATH      source mutation path
   --irrelevant-path PATH    non-input mutation path
+  --relevant-mutation MODE  append-js (default) or replace-literal
+  --relevant-replace-from S exact source literal for replace-literal
+  --relevant-replace-to-template S replacement containing {probe}
   --output PATH             raw JSONL output
   --host-label LABEL        non-sensitive operator-supplied host label`)
       process.exit(0)
@@ -112,6 +121,19 @@ Defaults to a non-executing dry run. Use --execute to run commands.
     fail('--execute requires --buck-target; there is no comparable default')
   if (options.execute === true && options.workContract === null)
     fail('--execute requires --work-contract; the workload relationship must be named')
+  if (!['append-js', 'replace-literal'].includes(options.relevantMutation))
+    fail('--relevant-mutation must be append-js or replace-literal')
+  if (options.relevantMutation === 'replace-literal') {
+    if (options.relevantReplaceFrom === null || options.relevantReplaceFrom.length === 0)
+      fail('replace-literal requires --relevant-replace-from')
+    if (
+      options.relevantReplaceToTemplate === null ||
+      !options.relevantReplaceToTemplate.includes('{probe}')
+    )
+      fail('replace-literal requires --relevant-replace-to-template containing {probe}')
+    if (options.relevantReplaceFrom === options.relevantReplaceToTemplate)
+      fail('replace-literal source and replacement must differ')
+  }
   return options
 }
 
@@ -421,6 +443,10 @@ const main = () => {
     mutationPaths: {
       relevant: options.relevantPath,
       irrelevant: options.irrelevantPath,
+    },
+    relevantMutation: {
+      mode: options.relevantMutation,
+      replacementConfigured: options.relevantMutation === 'replace-literal',
     },
   })
 
@@ -917,6 +943,23 @@ const main = () => {
       }
     }
 
+    const mutateRelevantSource = (path, index) => {
+      if (options.relevantMutation === 'append-js') {
+        appendFileSync(path, `\nconsole.error('buck2-benchmark-probe-${runId}-${index}')\n`)
+        return
+      }
+      const source = readFileSync(path, 'utf8')
+      const from = options.relevantReplaceFrom
+      const occurrences = source.split(from).length - 1
+      if (occurrences !== 1)
+        throw new Error(
+          `replace-literal expected exactly one source occurrence, found ${occurrences}`,
+        )
+      const probe = `${runId}-${index}`
+      const replacement = options.relevantReplaceToTemplate.replaceAll('{probe}', probe)
+      writeFileSync(path, source.replace(from, replacement))
+    }
+
     if (
       options.buckIncrementalOnly === false &&
       commandAvailable('devenv', worktree) &&
@@ -939,8 +982,7 @@ const main = () => {
         phase: 'relevant-edit',
         mutation: 'relevant',
         path: options.relevantPath,
-        mutate: (path, index) =>
-          appendFileSync(path, `\nconsole.error('buck2-benchmark-probe-${runId}-${index}')\n`),
+        mutate: mutateRelevantSource,
         command: 'devenv',
         args: computeOnly,
       })
@@ -1084,8 +1126,7 @@ const main = () => {
         phase: 'relevant-edit',
         mutation: 'relevant',
         path: options.relevantPath,
-        mutate: (path, index) =>
-          appendFileSync(path, `\nconsole.error('buck2-benchmark-probe-${runId}-${index}')\n`),
+        mutate: mutateRelevantSource,
         command: buckBin,
         args: (stem) => makeBuckArgs(stem),
         requireArtifactChange: true,

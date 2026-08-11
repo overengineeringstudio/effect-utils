@@ -1,6 +1,30 @@
-load("@prelude//toolchains:demo.bzl", "system_demo_toolchains")
+load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
+load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
+load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
+load("@root//buck2/toolchains:nix_local.bzl", "nix_local_rust_cxx_python_toolchains")
 
-# BOOTSTRAP ONLY. Prelude's pinned demo toolchains may build the verifier that
-# admits a portable Nix-exported toolchain. Real package actions must consume a
-# reviewed portable_toolchain RunInfo and may not use these demo targets.
-system_demo_toolchains()
+# Repo-local Rust actions are owned by Buck2, while Nix supplies immutable
+# compiler artifacts. Raw store paths deliberately keep this lane local-only;
+# portable remote execution is a separate admission boundary. Prelude's Python
+# rules also select the conventional C++ provider, so devenv supplies this one
+# canonical toolchain configuration to every repository Buck invocation.
+nix_local_rust_cxx_python_toolchains()
+
+# Prelude build scripts and `buck2 test` require these generic providers. They
+# do not select compilers from PATH.
+system_genrule_toolchain(
+    name = "genrule",
+    visibility = ["PUBLIC"],
+)
+
+noop_test_toolchain(
+    name = "test",
+    visibility = ["PUBLIC"],
+)
+
+# The local test runner requires this provider even when no remote profiles are
+# configured. An empty profile map preserves local/default execution.
+remote_test_execution_toolchain(
+    name = "remote_test_execution",
+    visibility = ["PUBLIC"],
+)

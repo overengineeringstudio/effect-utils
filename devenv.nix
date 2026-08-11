@@ -99,6 +99,28 @@ let
   };
   buck2Launcher = repoFlake.packages.${currentSystem}.buck2-launcher;
   buck2Task = "${buck2Launcher}/bin/buck2-task";
+  otelScrapeBuckConfigs = [
+    "buck2_rust.rustc_root=${pkgs.rustc}"
+    "buck2_rust.clippy_root=${pkgs.clippy}"
+    "buck2_rust.clang_root=${pkgs.clang}"
+    "buck2_rust.binutils_root=${pkgs.binutils}"
+    "buck2_rust.bash_root=${pkgs.bashInteractive}"
+    "buck2_rust.coreutils_root=${pkgs.coreutils}"
+    "buck2_rust.python_root=${pkgs.python3}"
+    "buck2_rust.python=${pkgs.python3}/bin/python3"
+    "buck2_rust.patchelf=${pkgs.patchelf}/bin/patchelf"
+    "buck2_rust.strip=${pkgs.binutils}/bin/strip"
+    "buck2_nix.otel_scrape_sh=${pkgs.bashInteractive}/bin/sh"
+    "buck2_nix.otel_scrape_true=${pkgs.coreutils}/bin/true"
+    "buck2_nix.otel_scrape_node=${pkgs.nodejs_24}/bin/node"
+    "buck2_nix.otel_scrape_rustc=${pkgs.rustc}/bin/rustc"
+  ];
+  otelScrapeBuckArgs = lib.concatMapStringsSep " " (
+    value: "-c ${lib.escapeShellArg value}"
+  ) otelScrapeBuckConfigs;
+  otelScrapeBenchmarkArgs = lib.concatMapStringsSep " " (
+    value: "--buck-config ${lib.escapeShellArg value}"
+  ) otelScrapeBuckConfigs;
   megarepoPnpmDeps = repoFlake.packages.${currentSystem}."megarepo-pnpm-deps";
   opentuiCoreNative = import ./nix/opentui-core-native.nix { inherit pkgs; };
   opentuiCorePrimary = opentuiCoreNative.package;
@@ -439,6 +461,12 @@ in
         "context/otel-scrape/telemetry-registry.json"
         "genie/buck2/*.ts"
         "packages/@overeng/buck2-tools/src/**/*.ts"
+        "packages/@overeng/otel-scrape/Cargo.lock"
+        "packages/@overeng/otel-scrape/Cargo.toml"
+        "packages/@overeng/otel-scrape/rust-toolchain.toml"
+        "packages/@overeng/otel-scrape/src/**/*.rs"
+        "packages/@overeng/otel-scrape/tests/**/*.rs"
+        "packages/@overeng/otel-scrape/buck2/**"
         "packages/@overeng/tui-core/buck2/target.ts"
         "packages/@overeng/tui-core/src/**/*.ts"
         "packages/@overeng/tui-core/src/**/*.tsx"
@@ -502,6 +530,12 @@ in
     "context/otel-scrape/telemetry-registry.json"
     "genie/buck2/*.ts"
     "packages/@overeng/buck2-tools/src/**/*.ts"
+    "packages/@overeng/otel-scrape/Cargo.lock"
+    "packages/@overeng/otel-scrape/Cargo.toml"
+    "packages/@overeng/otel-scrape/rust-toolchain.toml"
+    "packages/@overeng/otel-scrape/src/**/*.rs"
+    "packages/@overeng/otel-scrape/tests/**/*.rs"
+    "packages/@overeng/otel-scrape/buck2/**"
     "packages/@overeng/tui-core/buck2/target.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.tsx"
@@ -542,6 +576,10 @@ in
     pkgs.clippy
     pkgs.rustfmt
     pkgs.rust-analyzer
+    # Native Buck Rust dependency-graph regeneration tools. Normal builds use
+    # only the committed Reindeer graph and local-registry archives.
+    pkgs.reindeer
+    pkgs.cargo-local-registry
   ];
 
   # actionlint binary path for genie's workflow validation (also used by tests)
@@ -740,7 +778,8 @@ in
       exec ${buck2Task} \
         --evidence-dir "$root/tmp/buck2-evidence" \
         --print-command \
-        -- build //:buck2_foundation //:portable_toolchain_evidence --local-only --no-remote-cache
+        -- build ${otelScrapeBuckArgs} \
+          //:buck2_foundation //:portable_toolchain_evidence --local-only --no-remote-cache
     '';
   };
 
@@ -753,7 +792,9 @@ in
         --evidence-dir "$root/tmp/buck2-evidence" \
         --print-command \
         -- test \
+          ${otelScrapeBuckArgs} \
           //buck2/tools:closure_tool_test \
+          //buck2/tools:native_binary_artifact_builder_test \
           //buck2/tools:package_evidence_tool_test \
           //buck2/tools:portable_toolchain_test \
           --local-only --no-remote-cache
@@ -774,6 +815,7 @@ in
         --evidence-dir "$root/tmp/buck2-evidence" \
         --print-command \
         -- build \
+          ${otelScrapeBuckArgs} \
           -c buck2_nix.bun=${pkgs.bun}/bin/bun \
           -c buck2_nix.python=${pkgs.python3}/bin/python3 \
           -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
@@ -795,8 +837,144 @@ in
       exec ${buck2Task} \
         --evidence-dir "$PWD/tmp/buck2-evidence" \
         --print-command \
-        -- test //buck2/tools:typescript_cli_builder_test \
+        -- test ${otelScrapeBuckArgs} //buck2/tools:typescript_cli_builder_test \
           --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:reindeer:check:otel-scrape" = {
+    description = "Regenerate the native otel-scrape Reindeer graph and require byte identity";
+    exec = trace.exec "buck2:reindeer:check:otel-scrape" ''
+      set -euo pipefail
+      generated=packages/@overeng/otel-scrape/buck2/third-party/BUCK
+      backup="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/otel-scrape-reindeer.XXXXXX")"
+      cleanup() {
+        ${pkgs.coreutils}/bin/cp "$backup" "$generated"
+        ${pkgs.coreutils}/bin/rm -f "$backup"
+      }
+      trap cleanup EXIT
+      ${pkgs.coreutils}/bin/cp "$generated" "$backup"
+      ${pkgs.reindeer}/bin/reindeer \
+        --config packages/@overeng/otel-scrape/buck2/reindeer.toml \
+        buckify
+      ${pkgs.diffutils}/bin/cmp "$backup" "$generated" || {
+        echo "buck2:reindeer:check:otel-scrape: generated third-party BUCK is stale" >&2
+        exit 1
+      }
+    '';
+  };
+
+  tasks."buck2:build:otel-scrape" = {
+    description = "Build the native otel-scrape Rust binary and store-independent artifact through Buck";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:build:otel-scrape" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      dirty=false
+      if [ -n "$(${pkgs.git}/bin/git -C "$root" status --porcelain)" ]; then dirty=true; fi
+      exec ${buck2Task} \
+        --evidence-dir "$root/tmp/buck2-evidence" \
+        --print-command \
+        -- build \
+        ${otelScrapeBuckArgs} \
+        -c buck2_build.revision="$revision" \
+        -c buck2_build.commit_timestamp="$commit_timestamp" \
+        -c buck2_build.dirty="$dirty" \
+        //packages/@overeng/otel-scrape:otel-scrape \
+        //packages/@overeng/otel-scrape:otel-scrape-artifact \
+        --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:test:otel-scrape" = {
+    description = "Run otel-scrape's native Buck unit and CLI integration tests";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:test:otel-scrape" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      dirty=false
+      if [ -n "$(${pkgs.git}/bin/git -C "$root" status --porcelain)" ]; then dirty=true; fi
+      exec ${buck2Task} \
+        --evidence-dir "$root/tmp/buck2-evidence" \
+        --print-command \
+        -- test \
+        ${otelScrapeBuckArgs} \
+        -c buck2_build.revision="$revision" \
+        -c buck2_build.commit_timestamp="$commit_timestamp" \
+        -c buck2_build.dirty="$dirty" \
+        //packages/@overeng/otel-scrape:unit \
+        //packages/@overeng/otel-scrape:cli \
+        --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:toolchain:check:rust" = {
+    description = "Compile focused Rust and C++ controls with the Nix-local Buck toolchains";
+    exec = trace.exec "buck2:toolchain:check:rust" ''
+      set -euo pipefail
+      exec ${buck2Task} \
+        --evidence-dir "$PWD/tmp/buck2-evidence" \
+        --print-command \
+        -- build \
+          ${otelScrapeBuckArgs} \
+          //buck2/toolchains:nix_rust_toolchain_smoke \
+          //buck2/toolchains:nix_cxx_toolchain_smoke \
+          --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:e2e:otel-scrape" = {
+    description = "Build otel-scrape natively, import its artifact through Nix, and run it in an empty environment";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:e2e:otel-scrape" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      dirty=false
+      if [ -n "$(${pkgs.git}/bin/git -C "$root" status --porcelain)" ]; then dirty=true; fi
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      export HEAD_BIN=${pkgs.coreutils}/bin/head
+      export OD_BIN=${pkgs.coreutils}/bin/od
+      export TR_BIN=${pkgs.coreutils}/bin/tr
+      export BUCK2_E2E_NIXPKGS=${repoFlake.inputs.nixpkgs}
+      export BUCK2_E2E_IMPORTER_ROOT=${./nix/workspace-tools/lib}
+      export BUCK2_E2E_ENTRYPOINT=otel-scrape
+      export BUCK2_E2E_RUNTIME_ABI=glibc-dynamic
+      export BUCK2_E2E_RUNTIME_ARGUMENT=--version
+      export BUCK2_E2E_EXPECTED_SUBSTRING="otel-scrape 0.0.0+$revision$([ "$dirty" = true ] && printf '%s' -dirty)"
+      exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
+        "$root" ${buck2Task} //packages/@overeng/otel-scrape:otel-scrape-artifact \
+        ${otelScrapeBuckArgs} \
+        -c buck2_build.revision="$revision" \
+        -c buck2_build.commit_timestamp="$commit_timestamp" \
+        -c buck2_build.dirty="$dirty"
+    '';
+  };
+
+  tasks."buck2:invalidation:e2e:otel-scrape" = {
+    description = "Prove fine-grained native Rust source, mtime, and excluded-test invalidation boundaries";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:invalidation:e2e:otel-scrape" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
+      exec ${pkgs.bash}/bin/bash scripts/buck2-otel-scrape-invalidation-e2e.sh \
+        "$root" ${pkgs.buck2}/bin/buck2 \
+        ${otelScrapeBuckArgs} \
+        -c buck2_build.revision="$revision" \
+        -c buck2_build.commit_timestamp="$commit_timestamp" \
+        -c buck2_build.dirty=true
     '';
   };
 
@@ -814,13 +992,18 @@ in
       export JQ_BIN=${pkgs.jq}/bin/jq
       export NIX_BIN=${pkgs.nix}/bin/nix
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      export HEAD_BIN=${pkgs.coreutils}/bin/head
+      export OD_BIN=${pkgs.coreutils}/bin/od
+      export TR_BIN=${pkgs.coreutils}/bin/tr
       export BUCK2_E2E_NIXPKGS=${repoFlake.inputs.nixpkgs}
       export BUCK2_E2E_IMPORTER_ROOT=${./nix/workspace-tools/lib}
       export BUCK2_E2E_ENTRYPOINT=mr
+      export BUCK2_E2E_RUNTIME_ABI=glibc-dynamic
       export BUCK2_E2E_RUNTIME_ARGUMENT=--version
       export BUCK2_E2E_EXPECTED_SUBSTRING="0.1.0+$revision$([ "$dirty" = true ] && printf '%s' -dirty)"
       exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
         "$root" ${buck2Task} //packages/@overeng/megarepo:mr \
+        ${otelScrapeBuckArgs} \
         -c buck2_nix.bun=${pkgs.bun}/bin/bun \
         -c buck2_nix.python=${pkgs.python3}/bin/python3 \
         -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
@@ -846,6 +1029,7 @@ in
       export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
       exec ${pkgs.bash}/bin/bash scripts/buck2-megarepo-invalidation-e2e.sh \
         "$root" ${pkgs.buck2}/bin/buck2 \
+        ${otelScrapeBuckArgs} \
         -c buck2_nix.bun=${pkgs.bun}/bin/bun \
         -c buck2_nix.python=${pkgs.python3}/bin/python3 \
         -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
@@ -869,10 +1053,14 @@ in
       export JQ_BIN=${pkgs.jq}/bin/jq
       export NIX_BIN=${pkgs.nix}/bin/nix
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      export HEAD_BIN=${pkgs.coreutils}/bin/head
+      export OD_BIN=${pkgs.coreutils}/bin/od
+      export TR_BIN=${pkgs.coreutils}/bin/tr
       export BUCK2_E2E_NIXPKGS=${repoFlake.inputs.nixpkgs}
       export BUCK2_E2E_IMPORTER_ROOT=${./nix/workspace-tools/lib}
       exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
-        "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan
+        "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan \
+        ${otelScrapeBuckArgs}
     '';
   };
 
@@ -909,6 +1097,7 @@ in
         --execute --in-place --buck-incremental-only \
         --buck-bin ${pkgs.buck2}/bin/buck2 \
         --buck-target //packages/@overeng/megarepo:mr \
+        ${otelScrapeBenchmarkArgs} \
         --buck-config buck2_nix.bun=${pkgs.bun}/bin/bun \
         --buck-config buck2_nix.python=${pkgs.python3}/bin/python3 \
         --buck-config buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
@@ -927,6 +1116,33 @@ in
     '';
   };
 
+  tasks."buck2:benchmark:otel-scrape" = {
+    description = "Measure native Rust warm and controlled invalidation phases with action and binary-digest evidence";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:benchmark:otel-scrape" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      exec ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
+        --execute --in-place --buck-incremental-only \
+        --buck-bin ${pkgs.buck2}/bin/buck2 \
+        --buck-target //packages/@overeng/otel-scrape:otel-scrape \
+        ${otelScrapeBenchmarkArgs} \
+        --buck-config buck2_build.revision="$revision" \
+        --buck-config buck2_build.commit_timestamp="$commit_timestamp" \
+        --buck-config buck2_build.dirty=true \
+        --work-contract otel-scrape-native-binary/no-equivalent-devenv-lane/v1 \
+        --relevant-path packages/@overeng/otel-scrape/src/lib.rs \
+        --irrelevant-path packages/@overeng/otel-scrape/tests/cli.rs \
+        --relevant-mutation replace-literal \
+        --relevant-replace-from https://opentelemetry.io/schemas/1.37.0 \
+        --relevant-replace-to-template https://opentelemetry.io/schemas/1.37.0-buck2-benchmark-{probe} \
+        --runs 7 --warmups 2 --isolation-dir otel-scrape-benchmark \
+        --output "$root/tmp/buck2-benchmark/otel-scrape.jsonl"
+    '';
+  };
+
   tasks."buck2:invalidation:e2e" = {
     description = "Prove canonical source mutation invalidates Buck2 through the configured file watcher";
     exec = trace.exec "buck2:invalidation:e2e" ''
@@ -935,7 +1151,8 @@ in
       export AWK_BIN=${pkgs.gawk}/bin/awk
       export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
       exec ${pkgs.bash}/bin/bash scripts/buck2-invalidation-e2e.sh \
-        "$root" ${pkgs.buck2}/bin/buck2
+        "$root" ${pkgs.buck2}/bin/buck2 \
+        ${otelScrapeBuckArgs}
     '';
   };
 
@@ -955,6 +1172,7 @@ in
       if ${pkgs.buck2}/bin/buck2 \
         --isolation-dir "$isolation" \
         build --fake-arch aarch64 \
+        ${otelScrapeBuckArgs} \
         //packages/@overeng/tui-core:typescript_input_plan \
         --local-only --no-remote-cache \
         >/dev/null 2>"$stderr_file"; then
@@ -977,6 +1195,7 @@ in
       if ${pkgs.buck2}/bin/buck2 \
         --isolation-dir "$isolation" \
         build --fake-arch aarch64 \
+        ${otelScrapeBuckArgs} \
         -c buck2_nix.bun=${pkgs.bun}/bin/bun \
         -c buck2_nix.python=${pkgs.python3}/bin/python3 \
         -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
@@ -1008,6 +1227,7 @@ in
       if ${pkgs.buck2}/bin/buck2 \
         --isolation-dir "$isolation" \
         build \
+        ${otelScrapeBuckArgs} \
         -c buck2_nix.bun=/nix/store/../tmp/buck2-path-escape \
         -c buck2_nix.python=${pkgs.python3}/bin/python3 \
         -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
@@ -1040,11 +1260,17 @@ in
     after = [
       "buck2:build:foundation"
       "buck2:build:megarepo"
+      "buck2:build:otel-scrape"
       "buck2:test:foundation"
       "buck2:test:typescript"
+      "buck2:test:otel-scrape"
+      "buck2:toolchain:check:rust"
       "buck2:e2e:megarepo"
+      "buck2:e2e:otel-scrape"
       "buck2:invalidation:e2e:megarepo"
+      "buck2:invalidation:e2e:otel-scrape"
       "buck2:e2e:tui-core"
+      "buck2:reindeer:check:otel-scrape"
       "buck2:nix-bridge:check"
       "buck2:benchmark:check"
       "buck2:invalidation:e2e"

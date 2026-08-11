@@ -22,12 +22,16 @@ in
   entrypoints,
   provenance,
   platform ? pkgs.stdenv.hostPlatform.system,
+  runtimeAbi ? "portable",
 }:
 
 assert lib.assertMsg (validName name)
   "buck2-toolchain-export: name must be a portable artifact name";
 assert lib.assertMsg (validName platform)
   "buck2-toolchain-export: platform must be a portable platform identifier";
+assert lib.assertMsg (
+  runtimeAbi == "portable"
+) "buck2-toolchain-export: runtimeAbi must be portable";
 assert lib.assertMsg (
   builtins.isList entrypoints && entrypoints != [ ]
 ) "buck2-toolchain-export: entrypoints must be a non-empty list";
@@ -66,7 +70,7 @@ pkgs.runCommand "${name}-${platform}-buck2-toolchain"
     passthru = {
       archivePath = "artifact.tar";
       descriptorPath = "descriptor.json";
-      inherit entrypoints platform;
+      inherit entrypoints platform runtimeAbi;
     };
   }
   ''
@@ -119,6 +123,7 @@ pkgs.runCommand "${name}-${platform}-buck2-toolchain"
     ${pkgs.jq}/bin/jq --null-input --sort-keys \
       --arg name ${lib.escapeShellArg name} \
       --arg platform ${lib.escapeShellArg platform} \
+      --arg runtimeAbi ${lib.escapeShellArg runtimeAbi} \
       --arg digest "$digest" \
       --argjson sizeBytes "$size" \
       --slurpfile entrypoints ${entrypointsFile} \
@@ -128,6 +133,7 @@ pkgs.runCommand "${name}-${platform}-buck2-toolchain"
         kind: "buck2-portable-toolchain-artifact",
         name: $name,
         platform: $platform,
+        runtimeAbi: $runtimeAbi,
         artifact: {
           file: "artifact.tar",
           format: "tar",

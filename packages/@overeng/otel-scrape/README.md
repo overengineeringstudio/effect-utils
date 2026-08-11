@@ -3,6 +3,27 @@
 `otel-scrape` wraps a command, preserves passthrough stdout/stderr/exit status,
 and provides the Rust package boundary for command-wrapper telemetry.
 
+## Buck2 development
+
+The repo-local build is a native Buck/Reindeer graph; it does not wrap
+`cargo build`. Nix and devenv remain the toolchain and system-integration
+authority, while Buck owns crate compilation, tests, linking, and the
+store-independent artifact. On import, Nix verifies those exact bytes first and
+then relocates the ELF to the generation's pinned loader and runtime libraries;
+Home Manager or NixOS can therefore compose it without relying on host `nix-ld`.
+
+```bash
+devenv tasks run buck2:build:otel-scrape
+devenv tasks run buck2:test:otel-scrape
+devenv tasks run buck2:e2e:otel-scrape
+devenv tasks run buck2:invalidation:e2e:otel-scrape
+devenv tasks run buck2:benchmark:otel-scrape
+```
+
+The first lane is deliberately local-only because its immutable compiler paths
+refer directly to the Nix store. Remote cache and remote execution stay disabled
+until those tools are packaged into a portable execution image.
+
 The wrapper is deliberately transparent by default: without `--summary-out`,
 `OTEL_SCRAPE_SUMMARY_OUT`, `--otlp-endpoint`,
 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, or `OTEL_EXPORTER_OTLP_ENDPOINT`, it runs

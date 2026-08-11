@@ -313,6 +313,7 @@ def bundle(args: argparse.Namespace) -> None:
         "kind": "buck2-build-artifact",
         "name": args.binary_name,
         "platform": args.platform,
+        "runtimeAbi": "glibc-dynamic",
         "entrypoints": [f"bin/{args.binary_name}"],
         "artifact": {
             "file": "artifact.tar",

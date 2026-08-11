@@ -1,0 +1,18 @@
+[package]
+name = "otel-scrape-buck-dependencies"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "empty.rs"
+
+# Keep test-only dependencies here as ordinary dependencies. Reindeer omits a
+# root package's dev-dependencies when it generates the third-party graph.
+[dependencies]
+getrandom = "0.4"
+libc = "=0.2.186"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+tempfile = "3"

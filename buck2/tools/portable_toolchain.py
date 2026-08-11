@@ -23,6 +23,7 @@ DESCRIPTOR_KEYS = {
     "normalization",
     "platform",
     "provenance",
+    "runtimeAbi",
     "schemaVersion",
 }
 
@@ -73,6 +74,8 @@ def read_descriptor(path: Path, expected_entrypoint: str) -> dict[str, object]:
         fail("portable toolchain descriptor has an unexpected top-level shape")
     if descriptor["schemaVersion"] != 1 or descriptor["kind"] != "buck2-portable-toolchain-artifact":
         fail("unsupported portable toolchain descriptor contract")
+    if descriptor["runtimeAbi"] != "portable":
+        fail("portable toolchain descriptor runtimeAbi must be portable")
     entrypoints = descriptor["entrypoints"]
     if not isinstance(entrypoints, list) or not entrypoints:
         fail("portable toolchain descriptor entrypoints must be a non-empty list")
@@ -278,6 +281,7 @@ def fixture(args: argparse.Namespace) -> None:
             "schemaVersion": 1,
         },
         "platform": "x86_64-linux",
+        "runtimeAbi": "portable",
         "provenance": {
             "producer": "effect-utils.buck2.synthetic-portable-toolchain-fixture",
             "recipeId": "synthetic-portable-tool-v1",

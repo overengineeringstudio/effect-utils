@@ -15,7 +15,18 @@ in
   url ? null,
   artifact ? null,
   expectedPlatform ? pkgs.stdenv.hostPlatform.system,
+  expectedRuntimeAbi,
+  runtimeLibraries ? [
+    pkgs.stdenv.cc.cc.lib
+    pkgs.stdenv.cc.libc
+  ],
+  runtimeInterpreter ? pkgs.stdenv.cc.bintools.dynamicLinker,
 }:
+
+assert lib.assertMsg (builtins.elem expectedRuntimeAbi [
+  "portable"
+  "glibc-dynamic"
+]) "buck2-artifact-import: expectedRuntimeAbi must be portable or glibc-dynamic";
 
 assert lib.assertMsg (builtins.isAttrs descriptor)
   "buck2-artifact-import: descriptor must be an attribute set";
@@ -34,6 +45,14 @@ assert lib.assertMsg (validName (
 assert lib.assertMsg (descriptor.platform == expectedPlatform)
   "buck2-artifact-import: platform mismatch: expected ${expectedPlatform}, got ${
     descriptor.platform or "<missing>"
+  }";
+assert lib.assertMsg (builtins.elem (descriptor.runtimeAbi or null) [
+  "portable"
+  "glibc-dynamic"
+]) "buck2-artifact-import: descriptor runtimeAbi must be portable or glibc-dynamic";
+assert lib.assertMsg (descriptor.runtimeAbi == expectedRuntimeAbi)
+  "buck2-artifact-import: runtime ABI mismatch: expected ${expectedRuntimeAbi}, got ${
+    descriptor.runtimeAbi or "<missing>"
   }";
 assert lib.assertMsg (
   descriptor ? artifact
@@ -76,6 +95,7 @@ assert lib.assertMsg (
 ) "buck2-artifact-import: a published URL or declared artifact path is required";
 
 let
+  relocateElf = descriptor.runtimeAbi == "glibc-dynamic";
   effectiveUrl = if url != null then url else descriptor.artifact.url;
   descriptorFile = pkgs.writeText "${descriptor.name}-buck2-artifact-descriptor.json" (
     builtins.toJSON descriptor
@@ -103,8 +123,9 @@ pkgs.runCommand "${descriptor.name}-${descriptor.platform}-buck2-import"
     nativeBuildInputs = [
       pkgs.jq
       pkgs.openssl
-    ];
-    allowedReferences = [ ];
+    ]
+    ++ lib.optionals relocateElf [ pkgs.patchelf ];
+    allowedReferences = lib.optionals relocateElf runtimeLibraries;
     passthru = {
       buck2ArtifactDescriptor = descriptor;
       inherit archive;
@@ -150,10 +171,36 @@ pkgs.runCommand "${descriptor.name}-${descriptor.platform}-buck2-import"
       }
     done < <(${pkgs.jq}/bin/jq -r '.entrypoints[]' ${descriptorFile})
 
+    # Buck's verified archive stays independent of a particular Nix store. A
+    # caller that declares glibc-dynamic owns the system integration step: Nix
+    # relocates ELF entrypoints to this generation's exact loader and runtime
+    # closure only after archive and raw-store-reference verification succeeds.
+    ${lib.optionalString relocateElf ''
+      runtime_rpath=${lib.escapeShellArg (lib.makeLibraryPath runtimeLibraries)}
+      while IFS= read -r entrypoint; do
+        executable="$out/$entrypoint"
+        magic="$(${pkgs.coreutils}/bin/head -c 4 "$executable" \
+          | ${pkgs.coreutils}/bin/od -An -tx1 \
+          | ${pkgs.coreutils}/bin/tr -d ' \n')"
+        if [ "$magic" = 7f454c46 ]; then
+          chmod u+w "$executable"
+          ${pkgs.patchelf}/bin/patchelf \
+            --set-interpreter ${lib.escapeShellArg runtimeInterpreter} \
+            --set-rpath "$runtime_rpath" \
+            "$executable"
+          chmod 0555 "$executable"
+          [ "$(${pkgs.patchelf}/bin/patchelf --print-interpreter "$executable")" = \
+            ${lib.escapeShellArg runtimeInterpreter} ] || {
+            echo "buck2-artifact-import: ELF runtime relocation failed: $entrypoint" >&2
+            exit 1
+          }
+        fi
+      done < <(${pkgs.jq}/bin/jq -r '.entrypoints[]' ${descriptorFile})
+    ''}
+
     chmod u+w "$out" "$out/share" 2>/dev/null || true
     mkdir -p "$out/share/buck2-artifact"
     cp ${descriptorFile} "$out/share/buck2-artifact/descriptor.json"
     chmod 0444 "$out/share/buck2-artifact/descriptor.json"
     ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
-    ${scan} tree "$out"
   ''

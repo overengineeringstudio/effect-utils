@@ -79,3 +79,28 @@ python_test(
     srcs = ["typescript_cli_test.py"],
     deps = [":typescript_cli_builder_lib"],
 )
+
+python_library(
+    name = "native_binary_artifact_builder_lib",
+    srcs = ["native_binary_artifact.py"],
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "native_binary_artifact_builder_source",
+    src = "native_binary_artifact.py",
+    visibility = ["PUBLIC"],
+)
+
+python_binary(
+    name = "native_binary_artifact_builder",
+    main_module = "buck2.tools.native_binary_artifact",
+    deps = [":native_binary_artifact_builder_lib"],
+    visibility = ["PUBLIC"],
+)
+
+python_test(
+    name = "native_binary_artifact_builder_test",
+    srcs = ["native_binary_artifact_test.py"],
+    deps = [":native_binary_artifact_builder_lib"],
+)

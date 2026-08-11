@@ -14,6 +14,7 @@ jq_bin="${JQ_BIN:-jq}"
 entrypoint="${BUCK2_E2E_ENTRYPOINT:-package-evidence}"
 runtime_argument="${BUCK2_E2E_RUNTIME_ARGUMENT:-}"
 expected_substring="${BUCK2_E2E_EXPECTED_SUBSTRING:-}"
+runtime_abi="${BUCK2_E2E_RUNTIME_ABI:-portable}"
 nixpkgs_path="${BUCK2_E2E_NIXPKGS:?BUCK2_E2E_NIXPKGS must name the pinned nixpkgs store path}"
 importer_root="${BUCK2_E2E_IMPORTER_ROOT:?BUCK2_E2E_IMPORTER_ROOT must name the Buck artifact importer directory store path}"
 runtime_args=()
@@ -77,6 +78,7 @@ export BUCK2_E2E_IMPORTER_ROOT="$importer_root"
 # independently verify the descriptor's digest, size, platform, and archive.
 export BUCK2_E2E_ARTIFACT="$($nix_bin store add --mode flat --name artifact.tar "$artifact")"
 export BUCK2_E2E_DESCRIPTOR="$($nix_bin store add --mode flat --name descriptor.json "$descriptor")"
+export BUCK2_E2E_RUNTIME_ABI="$runtime_abi"
 imported="$("$nix_bin" build --impure --no-link --print-out-paths --expr '
   let
     nixpkgs = builtins.storePath (builtins.getEnv "BUCK2_E2E_NIXPKGS");
@@ -86,8 +88,9 @@ imported="$("$nix_bin" build --impure --no-link --print-out-paths --expr '
     artifact = builtins.storePath (builtins.getEnv "BUCK2_E2E_ARTIFACT");
     descriptorPath = builtins.storePath (builtins.getEnv "BUCK2_E2E_DESCRIPTOR");
     descriptor = builtins.fromJSON (builtins.readFile descriptorPath);
+    expectedRuntimeAbi = builtins.getEnv "BUCK2_E2E_RUNTIME_ABI";
   in importArtifact {
-    inherit descriptor;
+    inherit descriptor expectedRuntimeAbi;
     inherit artifact;
   }
 ')"
@@ -100,9 +103,20 @@ case "$runtime_stdout" in
     exit 1
     ;;
 esac
-[ -z "$("$nix_store_bin" --query --references "$imported")" ] || {
-  echo "buck2-package-e2e: imported artifact retained Nix references" >&2
-  exit 1
-}
+runtime_references="$("$nix_store_bin" --query --references "$imported")"
+runtime_magic="$(${HEAD_BIN:-head} -c 4 "$imported/bin/$entrypoint" \
+  | ${OD_BIN:-od} -An -tx1 \
+  | ${TR_BIN:-tr} -d ' \n')"
+if [ "$runtime_magic" = 7f454c46 ]; then
+  [ -n "$runtime_references" ] || {
+    echo "buck2-package-e2e: imported ELF lacks its Nix-owned runtime closure" >&2
+    exit 1
+  }
+else
+  [ -z "$runtime_references" ] || {
+    echo "buck2-package-e2e: non-ELF artifact acquired unexpected Nix references" >&2
+    exit 1
+  }
+fi
 
-echo "buck2-package-e2e: PASS target=$target entrypoint=$entrypoint imported=$imported"
+echo "buck2-package-e2e: PASS target=$target entrypoint=$entrypoint imported=$imported runtime_relocated=$([ "$runtime_magic" = 7f454c46 ] && printf true || printf false)"

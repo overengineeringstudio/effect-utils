@@ -40,7 +40,7 @@ artifacts or delegates a command; it does not merge authorities.
 | Repo-local target graph, action inputs, compilation and bundling     | Buck2                                     | Consume explicit source, configuration, closure, toolchain, policy, and platform inputs.                          |
 | Package graph and target-local closure generation                    | Genie plus the canonical closure compiler | Generate deterministic, checked-in, package-local `BUCK` and closure shards.                                      |
 | Build execution evidence                                             | Buck event log and build report           | Remain the execution authority; the launcher retains and indexes them.                                            |
-| Deployable repo artifact                                             | Buck2, after admission                    | Produce one normalized per-platform artifact and provenance descriptor.                                           |
+| Deployable repo artifact                                             | Buck2, after admission                    | Produce one normalized per-platform artifact and descriptor with provenance plus runtime ABI.                     |
 | Artifact verification and immutable import                           | Nix                                       | Verify digest, platform, archive safety, relocatability, and provenance; fail closed on mismatch or absence.      |
 | Runtime dependencies, wrappers, user/system convergence and rollback | Nix, Home Manager, NixOS or nix-darwin    | Compose an imported artifact into an independently reversible generation.                                         |
 | Fleet aliases, endpoints, activation policy and private topology     | Downstream system repository              | Stay outside this public reusable repository and outside cache identities unless result-affecting.                |
@@ -164,10 +164,12 @@ Genie is the repository authoring boundary for generated graph data:
 - a whole-repository graph export is derived evidence, never a common analysis
   input loaded by every package.
 
-Generated files carry the repository's standard provenance and semantic
-fingerprint and are protected by the existing Genie freshness check. Package
-moves update old and new ownership, stable labels or intentional aliases, and
-closure references atomically.
+Generated files carry the repository's standard provenance and are protected by
+the existing Genie freshness check. Their deterministic graph content is the
+freshness boundary; unrelated source bytes are not hashed into a `BUCK` file,
+because doing so would invalidate analysis without changing its semantics.
+Package moves update old and new ownership, stable labels or intentional
+aliases, and closure references atomically.
 
 The implemented pnpm lockfile-v9 APIs handle peer contexts, workspace links,
 aliases, optional/platform selection, and patches fail-closed. Input discovery
@@ -314,19 +316,25 @@ paths into public artifacts.
 Devenv provides compatibility and lifecycle tasks, not the performance-critical
 transport. The implemented task family is:
 
-| Task                              | Purpose                                                                                                            |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `buck2:build:foundation`          | Build the strict synthetic closure foundation locally with remote cache disabled.                                  |
-| `buck2:test:foundation`           | Run the closure-tool tests under the same local-only policy.                                                       |
-| `buck2:e2e:tui-core`              | Regenerate, build, observe, Nix-import, and execute the non-authoritative `tui-core` input-plan evidence artifact. |
-| `buck2:build:megarepo`            | Typecheck `mr` and compile/package its generated first-party runtime graph.                                        |
-| `buck2:test:typescript`           | Test deterministic TypeScript CLI staging, packaging, and descriptor generation.                                   |
-| `buck2:e2e:megarepo`              | Retain Buck evidence, import the exact `mr` artifact through Nix, and execute it with an empty `PATH`.             |
-| `buck2:invalidation:e2e:megarepo` | Assert warm, mtime, relevant-source, restoration, and excluded-test invalidation behavior.                         |
-| `buck2:benchmark:megarepo`        | Measure `mr` warm and controlled mutation phases with native Buck evidence.                                        |
-| `buck2:nix-bridge:check`          | Exercise portable tool export and verified artifact import, including negative controls.                           |
-| `buck2:benchmark:check`           | Validate the benchmark parser and dry-run matrix.                                                                  |
-| `buck2:check`                     | Aggregate the Buck2 foundation and admitted local `mr` checks.                                                     |
+| Task                                 | Purpose                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `buck2:build:foundation`             | Build the strict synthetic closure foundation locally with remote cache disabled.                                  |
+| `buck2:test:foundation`              | Run the closure-tool tests under the same local-only policy.                                                       |
+| `buck2:e2e:tui-core`                 | Regenerate, build, observe, Nix-import, and execute the non-authoritative `tui-core` input-plan evidence artifact. |
+| `buck2:build:megarepo`               | Typecheck `mr` and compile/package its generated first-party runtime graph.                                        |
+| `buck2:test:typescript`              | Test deterministic TypeScript CLI staging, packaging, and descriptor generation.                                   |
+| `buck2:e2e:megarepo`                 | Retain Buck evidence, import the exact `mr` artifact through Nix, and execute it with an empty `PATH`.             |
+| `buck2:invalidation:e2e:megarepo`    | Assert warm, mtime, relevant-source, restoration, and excluded-test invalidation behavior.                         |
+| `buck2:benchmark:megarepo`           | Measure `mr` warm and controlled mutation phases with native Buck evidence.                                        |
+| `buck2:build:otel-scrape`            | Compile the native Reindeer Rust graph and deterministic store-independent ELF artifact.                           |
+| `buck2:test:otel-scrape`             | Run the native unit and CLI integration targets without delegating to Cargo.                                       |
+| `buck2:e2e:otel-scrape`              | Verify/import the exact Buck bytes, relocate their runtime through Nix, and run with an empty environment.         |
+| `buck2:invalidation:e2e:otel-scrape` | Prove warm, mtime, source, provenance-only, restoration, and integration-only invalidation boundaries.             |
+| `buck2:benchmark:otel-scrape`        | Measure native Rust warm and controlled mutation phases with action and binary-digest evidence.                    |
+| `buck2:reindeer:check:otel-scrape`   | Regenerate the committed third-party target graph and require byte identity.                                       |
+| `buck2:nix-bridge:check`             | Exercise portable tool export and verified artifact import, including negative controls.                           |
+| `buck2:benchmark:check`              | Validate the benchmark parser and dry-run matrix.                                                                  |
+| `buck2:check`                        | Aggregate the Buck2 foundation plus admitted local `mr` and `otel-scrape` checks.                                  |
 
 These tasks are setup/CI compatibility surfaces. Interactive and performance
 measurements use the already-realized launcher directly so fresh Nix/devenv
@@ -354,12 +362,18 @@ store. Buck runs use local execution with remote cache disabled. A timing is not
 hermeticity evidence: every invalidation conclusion also requires native action
 and materialization evidence plus RED/GREEN controls.
 
-The declared-source control must assert both execution count and artifact
-digest. The admitted local pattern is: baseline digest, content mutation with
-exactly one affected action and a different digest, then byte restoration with
-exactly one affected action and the original digest restored. A watcher that
-returns a warm zero-action result for the mutation fails this gate regardless
-of its latency.
+The declared-source control must assert the target-specific minimal action set,
+its exact execution count, and artifact digest. A single-action target therefore
+expects exactly one action; a compiled library plus binary link expects exactly
+those two named actions and no others. The admitted local pattern is: baseline
+digest, content mutation with the declared minimal action set and a different
+digest, then byte restoration with the same action set and the original digest
+again. Revision-varying build identity belongs on the executable leaf: changing
+only the revision must relink the binary exactly once without recompiling its
+library. Restoring the revision must reproduce the baseline binary digest. A
+watcher that returns a warm zero-action result for the mutation, or
+a graph that executes undeclared extra actions, fails this gate regardless of
+its latency.
 
 ## Rollout and Admission
 

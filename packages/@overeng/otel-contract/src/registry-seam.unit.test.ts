@@ -11,7 +11,16 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 // rather than importing the aggregator/composition modules. The reusable `orphanSeamPaths`
 // helper itself is unit-tested (pure, with a planted orphan) inside genie's composition tests.
 
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'tmp', '.git', '.devenv', 'repos', 'result'])
+const SKIP_DIRS = new Set([
+  'node_modules',
+  'dist',
+  'tmp',
+  '.git',
+  '.devenv',
+  'buck-out',
+  'repos',
+  'result',
+])
 
 /** Every telemetry seam file (`*.contract.ts`) in the repo, repo-relative (fs walk — robust to git state). */
 const seamFilesOnDisk = (dir: string = repoRoot): string[] => {

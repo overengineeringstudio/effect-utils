@@ -28,6 +28,8 @@ mod content_address;
 #[path = "telemetry_registry.gen.rs"]
 pub mod telemetry_registry;
 
+use std::sync::OnceLock;
+
 use content_address::{
     canonical_manifest_json, cas_uri_for_digest, descriptor_for_bytes, write_bytes_atomic,
     write_object, write_pin, ManifestEntry, CANONICAL_JSON_CODEC, MANIFEST_MEDIA_TYPE,
@@ -39,11 +41,10 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 // Emitted as schemaUrl on the OTLP resource and instrumentation scope so a
 // consumer can resolve attribute semantics deterministically.
 const SEMCONV_SCHEMA_URL: &str = "https://opentelemetry.io/schemas/1.37.0";
-// Build stamp baked at compile time by Nix (decision 0019): a NixStamp JSON in
-// the shared build-versioning contract. `None` for a plain `cargo build`; in a
-// devenv shell `option_env!` instead captures the exported LocalStamp, which is
-// deliberately NOT honored as the binary's own identity (see resolve_machine_version).
-pub const BUILD_STAMP: Option<&str> = option_env!("CLI_BUILD_STAMP");
+// The binary leaf installs its compile-time NixStamp before invoking library
+// behavior. Keeping the revision-varying value out of this library crate avoids
+// invalidating the reusable library for a provenance-only change.
+static COMPILED_BUILD_STAMP: OnceLock<&'static str> = OnceLock::new();
 const EX_USAGE: u8 = 64;
 const TRACE_FLAGS_SAMPLED: &str = "01";
 const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
@@ -927,10 +928,23 @@ pub fn print_version() {
     println!("otel-scrape {}", build_machine_version());
 }
 
+/// Install the binary leaf's compile-time build identity exactly once.
+///
+/// This is public only because Cargo and Buck compile `main.rs` as a separate
+/// crate from the library. Embedders should normally rely on the runtime
+/// `CLI_BUILD_STAMP` fallback instead.
+#[doc(hidden)]
+pub fn install_compiled_build_stamp(stamp: &'static str) {
+    assert!(
+        COMPILED_BUILD_STAMP.set(stamp).is_ok(),
+        "compiled build stamp must be installed exactly once"
+    );
+}
+
 /// Resolve the machine-readable build version for telemetry (decision 0019),
 /// mirroring the shared build-versioning contract
 /// (`@overeng/utils/node/cli-version` `resolveCliMachineVersion`). Precedence:
-///   1. a compile-time Nix build stamp (`option_env!`) — the binary's own build;
+///   1. a compile-time Nix build stamp installed by the binary leaf;
 ///   2. else a runtime `CLI_BUILD_STAMP` (a devenv-shell LocalStamp or a NixStamp);
 ///   3. else `<baseVersion>+dev`.
 ///
@@ -940,20 +954,9 @@ pub fn print_version() {
 /// build, and a bare `0.0.0` discriminates no build — the exact gap H5 closes.
 fn build_machine_version() -> String {
     resolve_machine_version(
-        BUILD_STAMP,
+        COMPILED_BUILD_STAMP.get().copied(),
         std::env::var("CLI_BUILD_STAMP").ok().as_deref(),
         VERSION,
-    )
-}
-
-/// Whether this binary was compiled with a baked NixStamp (decision 0019) — the
-/// case where a runtime `CLI_BUILD_STAMP` is overridden by the binary's own
-/// build identity. Lets an integration test skip the runtime-stamp/fallback
-/// assertions that only hold for a stampless (plain `cargo`/devenv) build.
-pub fn compiled_with_nix_stamp() -> bool {
-    matches!(
-        BUILD_STAMP.and_then(parse_build_stamp),
-        Some(BuildStamp::Nix { .. })
     )
 }
 

@@ -1,4 +1,5 @@
 load(":portable.bzl", "portable_toolchain", "portable_toolchain_fixture", "portable_toolchain_probe")
+load("@prelude//:prelude.bzl", "native")
 
 # Synthetic evidence only: the fixture emits the same archive/descriptor shape
 # as nix/workspace-tools/lib/buck2-toolchain-export.nix. Production consumers
@@ -12,7 +13,7 @@ portable_toolchain(
     archive = ":synthetic_nix_export",
     archive_sha256 = "ae7f5f1a251007314f07579a1ecbee680c50b2df56d7463300326dfea35f0f5d",
     descriptor = ":synthetic_nix_export[descriptor]",
-    descriptor_sha256 = "2ad1bb618b97b9ad9aa9558acca99d95ecf58a8c4a228b7dffcb9aadc44da1ab",
+    descriptor_sha256 = "bfe39a3795f5dc05b1602cd3b94962e4453ad04ac6567862ed0fdb4896d396ee",
     entrypoint = "bin/fixture-tool",
 )
 
@@ -20,4 +21,18 @@ portable_toolchain_probe(
     name = "synthetic_portable_toolchain_evidence",
     tool = ":synthetic_portable_toolchain",
     visibility = ["PUBLIC"],
+)
+
+# Focused native controls prove that the configured provider graph performs
+# real compilation and linking without an ambient compiler lookup.
+native.rust_binary(
+    name = "nix_rust_toolchain_smoke",
+    crate_root = "fixtures/hello.rs",
+    edition = "2021",
+    srcs = ["fixtures/hello.rs"],
+)
+
+native.cxx_binary(
+    name = "nix_cxx_toolchain_smoke",
+    srcs = ["fixtures/hello.cc"],
 )

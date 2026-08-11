@@ -184,6 +184,7 @@ def package(args: argparse.Namespace) -> None:
         "kind": "buck2-build-artifact",
         "name": name,
         "platform": platform,
+        "runtimeAbi": "portable",
         "provenance": {
             "actionDigest": "sha256:" + action_digest,
             "producer": "effect-utils/buck2/package-evidence@1",

@@ -6,9 +6,20 @@
 
 use std::process::ExitCode;
 
-use otel_scrape::{parse_args, print_help, print_version, run, usage_exit_code, CommandRequest};
+use otel_scrape::{
+    install_compiled_build_stamp, parse_args, print_help, print_version, run, usage_exit_code,
+    CommandRequest,
+};
+
+// Keep revision-varying build identity on this binary leaf. The reusable
+// library is independent of the repository revision and therefore remains a
+// cache hit when only provenance changes.
+const BUILD_STAMP: Option<&str> = option_env!("CLI_BUILD_STAMP");
 
 fn main() -> ExitCode {
+    if let Some(stamp) = BUILD_STAMP {
+        install_compiled_build_stamp(stamp);
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse_args(&args) {
         Ok(CommandRequest::Help) => {

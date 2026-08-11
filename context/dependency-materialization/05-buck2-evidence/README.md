@@ -47,6 +47,18 @@ executes that exact artifact through the normal Nix bridge. This pilot is a
 real shadow build artifact, not yet production release authority, and remains
 local-only: raw Nix store inputs are not a portable execution image.
 
+The second pilot is the native Rust `//packages/@overeng/otel-scrape:otel-scrape`
+graph. Reindeer generates one target per exact Cargo lock entry and separate
+build-script actions from 32 committed local-registry archives; Buck never
+delegates compilation to Cargo. Nix/devenv pins rustc, clang, binutils, Python,
+Bash, coreutils, Node, patchelf, and strip, while Buck owns compilation, tests,
+linking, deterministic packaging, and the receipt/build-report/event-log
+evidence. The packaged ELF has a portable interpreter, no RPATH or Nix store
+bytes, imports through the same digest/platform-verifying Nix bridge, and runs
+with an empty environment. Unit and CLI integration targets preserve the
+package's 31 and 66-test boundaries. The raw Nix tool paths intentionally keep
+this pilot local-only until a portable execution image replaces them.
+
 The package-evidence rule and portable verifier currently use the bundled
 Prelude Python demo toolchain as a local bootstrap. The portable-provider
 fixture proves the provider shape, not a real Nix-exported production
@@ -101,9 +113,10 @@ artifact-import, activation, and rollback gates pass.
 devenv tasks run buck2:check
 ```
 
-The aggregate covers the synthetic Buck closure build and tests, the `mr`
-compile/invalidation/Nix-import proof, Nix bridge negative controls, the
-`tui-core` input-plan E2E, and benchmark harness checks.
+The aggregate covers the synthetic Buck closure build and tests, the `mr` and
+`otel-scrape` compile/test/invalidation/Nix-import proofs, Nix bridge negative
+controls, the `tui-core` input-plan E2E, Reindeer freshness, and benchmark
+harness checks.
 Individual tasks are listed in [spec.md](./spec.md#devenv-integration).
 
 Passing the foundation suite does not admit remote caching, remote execution,

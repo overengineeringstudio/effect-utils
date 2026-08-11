@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path, PurePosixPath
+import tempfile
 import unittest
-
-from pathlib import PurePosixPath
 
 from buck2.tools.portable_toolchain import (
     normalized_relative_path,
+    read_descriptor,
     validate_descriptor_platform,
     validate_symlink_target,
 )
@@ -40,6 +42,29 @@ class PortableToolchainPathTest(unittest.TestCase):
     def test_rejects_wrong_platform(self) -> None:
         with self.assertRaisesRegex(SystemExit, "platform mismatch"):
             validate_descriptor_platform({"platform": "x86_64-linux"}, "aarch64-darwin")
+
+    def test_rejects_dynamic_runtime_abi(self) -> None:
+        descriptor = {
+            "schemaVersion": 1,
+            "kind": "buck2-portable-toolchain-artifact",
+            "name": "fixture",
+            "platform": "x86_64-linux",
+            "runtimeAbi": "glibc-dynamic",
+            "artifact": {
+                "file": "artifact.tar",
+                "format": "tar",
+                "digest": {"algorithm": "sha256", "sri": "sha256-fixture"},
+                "sizeBytes": 1,
+            },
+            "entrypoints": ["bin/tool"],
+            "normalization": {},
+            "provenance": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "descriptor.json")
+            path.write_text(json.dumps(descriptor), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "runtimeAbi must be portable"):
+                read_descriptor(path, "bin/tool")
 
 
 if __name__ == "__main__":

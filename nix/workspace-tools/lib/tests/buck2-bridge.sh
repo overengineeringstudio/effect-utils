@@ -84,6 +84,7 @@ jq -e '
   .schemaVersion == 1 and
   .kind == "buck2-portable-toolchain-artifact" and
   .name == "fixture-tool" and
+  .runtimeAbi == "portable" and
   .artifact.format == "tar" and
   .artifact.digest.algorithm == "sha256" and
   .entrypoints == ["bin/fixture-tool"] and
@@ -98,11 +99,12 @@ export BUCK2_BRIDGE_EXPORT_OUT="$export_out"
 import_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    descriptor = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
+  descriptor = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+in test.mkImport {
+  inherit descriptor;
+  artifact = exported + \"/artifact.tar\";
+  expectedRuntimeAbi = \"portable\";
+}"
 import_out="$(build_expr "$import_expr")"
 
 [ "$(env -i PATH=/nonexistent "$import_out/bin/fixture-tool")" = "buck2-bridge-ok" ]
@@ -124,9 +126,15 @@ declared_import_expr="let
 in test.mkImport {
   inherit descriptor;
   artifact = exported + \"/artifact.tar\";
+  expectedRuntimeAbi = \"portable\";
 }"
 declared_import_out="$(build_expr "$declared_import_expr")"
 [ "$(env -i PATH=/nonexistent "$declared_import_out/bin/fixture-tool")" = "buck2-bridge-ok" ]
+
+expect_build_failure \
+  "dynamic-runtime portable export" \
+  "runtimeAbi must be portable" \
+  "($base_expr).glibcDynamicExport"
 
 expect_build_failure \
   "store-reference export" \
@@ -141,43 +149,88 @@ expect_build_failure \
 wrong_digest_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-    descriptor = original // {
-      artifact = original.artifact // {
-        digest = original.artifact.digest // {
-          sri = \"sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\";
-        };
+  original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+  descriptor = original // {
+    artifact = original.artifact // {
+      digest = original.artifact.digest // {
+        sri = \"sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\";
       };
     };
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
+  };
+in test.mkImport {
+  inherit descriptor;
+  artifact = exported + \"/artifact.tar\";
+  expectedRuntimeAbi = \"portable\";
+}"
 expect_build_failure "wrong digest import" "hash mismatch" "$wrong_digest_expr"
 
 wrong_size_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-    descriptor = original // {
-      artifact = original.artifact // { sizeBytes = original.artifact.sizeBytes + 1; };
-    };
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
+  original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+  descriptor = original // {
+    artifact = original.artifact // { sizeBytes = original.artifact.sizeBytes + 1; };
+  };
+in test.mkImport {
+  inherit descriptor;
+  artifact = exported + \"/artifact.tar\";
+  expectedRuntimeAbi = \"portable\";
+}"
 expect_build_failure "wrong size import" "size mismatch" "$wrong_size_expr"
 
 wrong_platform_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-    descriptor = original // { platform = \"definitely-not-${system:-current}-platform\"; };
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
+  original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+  descriptor = original // { platform = \"definitely-not-${system:-current}-platform\"; };
+in test.mkImport {
+  inherit descriptor;
+  artifact = exported + \"/artifact.tar\";
+  expectedRuntimeAbi = \"portable\";
+}"
 expect_build_failure "wrong platform import" "platform mismatch" "$wrong_platform_expr"
+
+missing_runtime_descriptor_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+  original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+  descriptor = builtins.removeAttrs original [ \"runtimeAbi\" ];
+in test.mkImport {
+  inherit descriptor;
+  artifact = exported + \"/artifact.tar\";
+  expectedRuntimeAbi = \"portable\";
+}"
+expect_build_failure \
+  "missing descriptor runtime ABI" \
+  "descriptor runtimeAbi must be portable or glibc-dynamic" \
+  "$missing_runtime_descriptor_expr"
+
+wrong_runtime_expectation_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+  descriptor = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+in test.mkImport {
+  inherit descriptor;
+  artifact = exported + \"/artifact.tar\";
+  expectedRuntimeAbi = \"glibc-dynamic\";
+}"
+expect_build_failure \
+  "runtime ABI mismatch" \
+  "runtime ABI mismatch: expected glibc-dynamic, got portable" \
+  "$wrong_runtime_expectation_expr"
+
+missing_runtime_expectation_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+  descriptor = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+in test.mkImport {
+  inherit descriptor;
+  artifact = exported + \"/artifact.tar\";
+}"
+expect_build_failure \
+  "missing runtime ABI expectation" \
+  "called without required argument 'expectedRuntimeAbi'" \
+  "$missing_runtime_expectation_expr"
 
 scan_expr="let
   $common_let

@@ -43,6 +43,7 @@ const runFakeArtifactBenchmark = ({
   directory,
   constantArtifactDigest = false,
   failRelevantBaseline = false,
+  mutationArgs = [],
 }) => {
   const buck2 = join(directory, 'buck2')
   writeFakeBuck({ path: buck2, constantArtifactDigest, failRelevantBaseline })
@@ -65,6 +66,7 @@ const runFakeArtifactBenchmark = ({
       'packages/@overeng/tui-core/src/mod.ts',
       '--irrelevant-path',
       'context/dependency-materialization/intuition.md',
+      ...mutationArgs,
       '--runs',
       '1',
       '--warmups',
@@ -235,6 +237,50 @@ esac
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
+  })
+
+  it('supports an exact reversible literal mutation for non-JavaScript sources', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-literal-test-'))
+    try {
+      const records = runFakeArtifactBenchmark({
+        directory,
+        mutationArgs: [
+          '--relevant-mutation',
+          'replace-literal',
+          '--relevant-replace-from',
+          'Low-level terminal rendering utilities',
+          '--relevant-replace-to-template',
+          'Low-level terminal rendering utilities {probe}',
+        ],
+      })
+      const relevant = records.find(
+        (record) =>
+          record.kind === 'sample' && record.engine === 'buck2' && record.phase === 'relevant-edit',
+      )
+      assert.equal(relevant.status, 'ok', JSON.stringify(relevant))
+      assert.equal(relevant.artifactEvidence.changed, true)
+      assert.equal(relevant.artifactEvidence.restored, true)
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects an incomplete literal mutation contract', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(import.meta.dirname, 'benchmark.mjs'),
+        '--relevant-mutation',
+        'replace-literal',
+        '--relevant-replace-from',
+        'source',
+        '--relevant-replace-to-template',
+        'replacement-without-probe',
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    )
+    assert.equal(result.status, 2)
+    assert.match(result.stderr, /containing \{probe\}/u)
   })
 
   it('records a failed mutation baseline as no-verdict and does not measure the mutation', () => {

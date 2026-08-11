@@ -52,6 +52,7 @@ class PackageEvidenceTest(unittest.TestCase):
         self.assertEqual(descriptor["artifact"]["file"], "artifact.tar")
         self.assertEqual(descriptor["artifact"]["sizeBytes"], first_archive.stat().st_size)
         self.assertEqual(descriptor["entrypoints"], ["bin/package-evidence"])
+        self.assertEqual(descriptor["runtimeAbi"], "portable")
         self.assertTrue(descriptor["artifact"]["digest"]["sri"].startswith("sha256-"))
 
     def test_archive_contains_only_sanitized_evidence(self) -> None:

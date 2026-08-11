@@ -121,6 +121,7 @@ class TypescriptCliBuilderTest(unittest.TestCase):
             self.assertNotIn(b"__CLI_BUILD_STAMP__", output.read_bytes())
             payload = json.loads(descriptor.read_text(encoding="utf-8"))
             self.assertEqual(payload["provenance"]["target"], "//pkg:mr")
+            self.assertEqual(payload["runtimeAbi"], "glibc-dynamic")
             self.assertEqual(payload["artifact"]["file"], "artifact.tar")
             self.assertEqual(payload["artifact"]["format"], "tar")
             self.assertTrue(payload["artifact"]["digest"]["sri"].startswith("sha256-"))

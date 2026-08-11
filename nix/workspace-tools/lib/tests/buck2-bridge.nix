@@ -42,6 +42,13 @@ let
 in
 {
   portableExport = mkExport portableSource;
+  glibcDynamicExport = exportToolchain {
+    name = "fixture-tool";
+    src = portableSource;
+    inherit provenance;
+    entrypoints = [ "bin/fixture-tool" ];
+    runtimeAbi = "glibc-dynamic";
+  };
   storeReferenceExport = mkExport storeReferenceSource;
   escapingSymlinkExport = mkExport escapingSymlinkSource;
 
@@ -51,12 +58,14 @@ in
       url ? null,
       artifact ? null,
       expectedPlatform ? pkgs.stdenv.hostPlatform.system,
+      expectedRuntimeAbi,
     }:
     importArtifact {
       inherit
         artifact
         descriptor
         expectedPlatform
+        expectedRuntimeAbi
         url
         ;
     };

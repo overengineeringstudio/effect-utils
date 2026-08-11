@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/otel-scrape / Buck2**: add a native Reindeer-generated Rust graph
+  with crate- and build-script-level actions, Nix-pinned Rust/C++ toolchains,
+  unit and CLI integration targets, deterministic ELF packaging, verified Nix
+  import with a producer-declared/caller-checked runtime ABI and Nix-owned
+  relocation, controlled invalidation proofs, and
+  action/digest benchmarks. Revision-varying build identity is confined to the
+  binary leaf so provenance-only changes retain the reusable library action. The
+  initial toolchain consumes immutable Nix store paths and therefore remains a
+  local-only lane with remote cache and execution disabled.
 - **@overeng/megarepo / Buck2**: make Buck own a generated project-reference
   typecheck and exact first-party runtime graph for standalone `mr` compilation,
   with a flake-pinned Bun analyzer and semantic graph fingerprint. Emit a
