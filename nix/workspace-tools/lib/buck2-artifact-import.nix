@@ -57,8 +57,16 @@ assert lib.assertMsg (
   && descriptor.provenance.target != ""
   && builtins.isString (descriptor.provenance.sourceRevision or null)
   && descriptor.provenance.sourceRevision != ""
-  && builtins.isString (descriptor.provenance.actionDigest or null)
-  && descriptor.provenance.actionDigest != ""
+  && (
+    (
+      builtins.isString (descriptor.provenance.actionDigest or null)
+      && descriptor.provenance.actionDigest != ""
+    )
+    || (
+      builtins.isString (descriptor.provenance.declaredInputDigest or null)
+      && descriptor.provenance.declaredInputDigest != ""
+    )
+  )
 ) "buck2-artifact-import: descriptor provenance is incomplete";
 assert lib.assertMsg (
   !((url != null || descriptor.artifact ? url) && artifact != null)

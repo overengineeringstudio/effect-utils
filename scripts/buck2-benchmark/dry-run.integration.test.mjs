@@ -7,6 +7,81 @@ import { describe, it } from 'node:test'
 
 import { parseJsonl } from './lib.mjs'
 
+const writeFakeBuck = ({ path, constantArtifactDigest = false, failRelevantBaseline = false }) => {
+  const baselineFailure =
+    failRelevantBaseline === true
+      ? 'case "$report" in\n  *base-relevant-edit*) exit 23 ;;\nesac\n'
+      : ''
+  const artifactDigest =
+    constantArtifactDigest === true
+      ? "digest='constant-artifact:1'"
+      : 'digest="$(cksum packages/@overeng/tui-core/src/mod.ts | awk \'{ print $1 ":" $2 }\')"'
+  writeFileSync(
+    path,
+    `#!/bin/sh
+case " $* " in
+  *" --version "*) echo 'buck2 fake-artifact-test'; exit 0 ;;
+  *" log "*) exit 0 ;;
+esac
+report=''
+previous=''
+for argument in "$@"; do
+  if [ "$previous" = '--build-report' ]; then report="$argument"; fi
+  previous="$argument"
+done
+[ -n "$report" ] || exit 0
+${baselineFailure}${artifactDigest}
+mkdir -p "$(dirname "$report")"
+printf '{"success":true,"truncated":false,"results":{"root//packages/@overeng/tui-core:typescript_input_plan":{"success":"SUCCESS","configured":{"fake":{"artifact_info":{"DEFAULT":{"digest":"%s"}}}}}}}\\n' "$digest" > "$report"
+exit 0
+`,
+  )
+  chmodSync(path, 0o755)
+}
+
+const runFakeArtifactBenchmark = ({
+  directory,
+  constantArtifactDigest = false,
+  failRelevantBaseline = false,
+}) => {
+  const buck2 = join(directory, 'buck2')
+  writeFakeBuck({ path: buck2, constantArtifactDigest, failRelevantBaseline })
+  const output = join(directory, 'raw.jsonl')
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(import.meta.dirname, 'benchmark.mjs'),
+      '--execute',
+      '--buck-incremental-only',
+      '--buck-bin',
+      buck2,
+      '--buck-target',
+      '//packages/@overeng/tui-core:typescript_input_plan',
+      '--buck-config',
+      'buck2_nix.fake=/nix/store/fake-sensitive-value',
+      '--work-contract',
+      'package-artifact/fake-test',
+      '--relevant-path',
+      'packages/@overeng/tui-core/src/mod.ts',
+      '--irrelevant-path',
+      'context/dependency-materialization/intuition.md',
+      '--runs',
+      '1',
+      '--warmups',
+      '0',
+      '--output',
+      output,
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: 30_000,
+    },
+  )
+  assert.equal(result.status, 0, result.stderr)
+  return parseJsonl(readFileSync(output, 'utf8'))
+}
+
 describe('buck2 benchmark dry run', () => {
   it('emits a complete no-verdict plan without creating a worktree', () => {
     const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-dry-run-test-'))
@@ -128,6 +203,71 @@ esac
       assert.equal(kill.verdict, 'no-verdict')
       assert.equal(kill.reason, 'buck2-kill-control-failed')
       assert.equal(kill.control.exitCode, 19)
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('verifies relevant artifact mutation and restoration without exposing Buck config values', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-artifact-test-'))
+    try {
+      const records = runFakeArtifactBenchmark({ directory })
+      const relevant = records.find(
+        (record) =>
+          record.kind === 'sample' && record.engine === 'buck2' && record.phase === 'relevant-edit',
+      )
+      assert.equal(relevant.status, 'ok', JSON.stringify(relevant))
+      assert.equal(relevant.verdict, 'measured')
+      assert.equal(relevant.control.baseline.verdict, 'passed')
+      assert.equal(relevant.artifactEvidence.verdict, 'verified')
+      assert.equal(relevant.artifactEvidence.changed, true)
+      assert.equal(relevant.artifactEvidence.restored, true)
+      assert.notEqual(
+        relevant.artifactEvidence.baselineDigest,
+        relevant.artifactEvidence.mutatedDigest,
+      )
+      assert.equal(
+        relevant.artifactEvidence.baselineDigest,
+        relevant.artifactEvidence.restoredDigest,
+      )
+      assert.ok(relevant.command.includes('buck2_nix.fake=<redacted>'))
+      assert.equal(JSON.stringify(relevant).includes('fake-sensitive-value'), false)
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('records a failed mutation baseline as no-verdict and does not measure the mutation', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-baseline-test-'))
+    try {
+      const records = runFakeArtifactBenchmark({ directory, failRelevantBaseline: true })
+      const relevant = records.find(
+        (record) =>
+          record.kind === 'sample' && record.engine === 'buck2' && record.phase === 'relevant-edit',
+      )
+      assert.equal(relevant.status, 'skipped')
+      assert.equal(relevant.verdict, 'no-verdict')
+      assert.equal(relevant.reason, 'mutation-baseline-failed')
+      assert.equal(relevant.control.exitCode, 23)
+      assert.equal(relevant.durationMs, null)
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a relevant mutation whose artifact digest does not change', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-unchanged-test-'))
+    try {
+      const records = runFakeArtifactBenchmark({ directory, constantArtifactDigest: true })
+      const relevant = records.find(
+        (record) =>
+          record.kind === 'sample' && record.engine === 'buck2' && record.phase === 'relevant-edit',
+      )
+      assert.equal(relevant.status, 'failed')
+      assert.equal(relevant.verdict, 'no-verdict')
+      assert.equal(relevant.reason, 'artifact-digest-unchanged')
+      assert.equal(relevant.artifactEvidence.verdict, 'no-verdict')
+      assert.equal(relevant.artifactEvidence.changed, false)
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }

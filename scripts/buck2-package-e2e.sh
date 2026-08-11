@@ -4,11 +4,18 @@ set -euo pipefail
 repo_root="${1:?usage: buck2-package-e2e.sh REPO_ROOT LAUNCHER TARGET}"
 launcher="${2:?usage: buck2-package-e2e.sh REPO_ROOT LAUNCHER TARGET}"
 target="${3:?usage: buck2-package-e2e.sh REPO_ROOT LAUNCHER TARGET}"
+shift 3
+buck_args=("$@")
 evidence_dir="$repo_root/tmp/buck2-evidence"
 awk_bin="${AWK_BIN:-awk}"
 nix_bin="${NIX_BIN:-nix}"
 nix_store_bin="${NIX_STORE_BIN:-nix-store}"
 jq_bin="${JQ_BIN:-jq}"
+entrypoint="${BUCK2_E2E_ENTRYPOINT:-package-evidence}"
+runtime_argument="${BUCK2_E2E_RUNTIME_ARGUMENT:-}"
+expected_substring="${BUCK2_E2E_EXPECTED_SUBSTRING:-}"
+runtime_args=()
+if [ -n "$runtime_argument" ]; then runtime_args=("$runtime_argument"); fi
 run_id="package-e2e-$$-$RANDOM"
 receipt="$evidence_dir/$run_id/receipt.json"
 
@@ -22,6 +29,7 @@ build_output="$("$launcher" \
   --run-id "$run_id" \
   --print-command \
   -- build "$target" "$target[descriptor]" \
+    "${buck_args[@]}" \
     --show-full-output --local-only --no-remote-cache)"
 
 [ -f "$receipt" ] || {
@@ -81,10 +89,17 @@ imported="$("$nix_bin" build --impure --no-link --print-out-paths --expr '
   }
 ')"
 
-env -i PATH=/nonexistent "$imported/bin/package-evidence" >/dev/null
+runtime_stdout="$(env -i PATH=/nonexistent "$imported/bin/$entrypoint" "${runtime_args[@]}")"
+case "$runtime_stdout" in
+  *"$expected_substring"*) ;;
+  *)
+    echo "buck2-package-e2e: runtime output lacks expected marker '$expected_substring': $runtime_stdout" >&2
+    exit 1
+    ;;
+esac
 [ -z "$("$nix_store_bin" --query --references "$imported")" ] || {
   echo "buck2-package-e2e: imported artifact retained Nix references" >&2
   exit 1
 }
 
-echo "buck2-package-e2e: PASS target=$target imported=$imported"
+echo "buck2-package-e2e: PASS target=$target entrypoint=$entrypoint imported=$imported"

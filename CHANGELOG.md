@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/megarepo / Buck2**: make Buck own a generated project-reference
+  typecheck and exact first-party runtime graph for standalone `mr` compilation,
+  with a flake-pinned Bun analyzer and semantic graph fingerprint. Emit a
+  normalized deterministic artifact plus declared-input provenance and prove the
+  immutable artifact imports through the Nix bridge without Nix invoking Buck.
+  Nix/devenv remains the system toolchain authority while the initial Buck action
+  stays local-only.
 - **Buck2 build foundation**: add generated package-local Buck targets, an exact
   pnpm closure compiler with content/context/task identities, deterministic
   package evidence archives, a Nix-exported portable-toolchain boundary, and a

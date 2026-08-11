@@ -1,0 +1,387 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Megarepo runtime closure analyzer: bun 1.3.13, pinned by flake.lock
+# Megarepo runtime closure semantic fingerprint: sha256:ee8cd376b3afd0a5f54a48265aeb4f953805e0c31c49101a9b42e496910028f1
+filegroup(
+    name = "content-address_production_sources",
+    srcs = glob(
+        [
+        "content-address/package.json",
+        "content-address/tsconfig.json",
+        "content-address/src/**/*.cts",
+        "content-address/src/**/*.mts",
+        "content-address/src/**/*.ts",
+        "content-address/src/**/*.tsx",
+        ],
+        exclude = [
+        "content-address/src/**/*.test.ts",
+        "content-address/src/**/*.test.tsx",
+        "content-address/src/**/*.stories.ts",
+        "content-address/src/**/*.stories.tsx",
+        "content-address/src/**/stories/**",
+        "content-address/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "effect-distributed-lock_production_sources",
+    srcs = glob(
+        [
+        "effect-distributed-lock/package.json",
+        "effect-distributed-lock/tsconfig.json",
+        "effect-distributed-lock/src/**/*.cts",
+        "effect-distributed-lock/src/**/*.mts",
+        "effect-distributed-lock/src/**/*.ts",
+        "effect-distributed-lock/src/**/*.tsx",
+        ],
+        exclude = [
+        "effect-distributed-lock/src/**/*.test.ts",
+        "effect-distributed-lock/src/**/*.test.tsx",
+        "effect-distributed-lock/src/**/*.stories.ts",
+        "effect-distributed-lock/src/**/*.stories.tsx",
+        "effect-distributed-lock/src/**/stories/**",
+        "effect-distributed-lock/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "effect-path_production_sources",
+    srcs = glob(
+        [
+        "effect-path/package.json",
+        "effect-path/tsconfig.json",
+        "effect-path/src/**/*.cts",
+        "effect-path/src/**/*.mts",
+        "effect-path/src/**/*.ts",
+        "effect-path/src/**/*.tsx",
+        ],
+        exclude = [
+        "effect-path/src/**/*.test.ts",
+        "effect-path/src/**/*.test.tsx",
+        "effect-path/src/**/*.stories.ts",
+        "effect-path/src/**/*.stories.tsx",
+        "effect-path/src/**/stories/**",
+        "effect-path/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "kdl_production_sources",
+    srcs = glob(
+        [
+        "kdl/package.json",
+        "kdl/tsconfig.json",
+        "kdl/src/**/*.cts",
+        "kdl/src/**/*.mts",
+        "kdl/src/**/*.ts",
+        "kdl/src/**/*.tsx",
+        ],
+        exclude = [
+        "kdl/src/**/*.test.ts",
+        "kdl/src/**/*.test.tsx",
+        "kdl/src/**/*.stories.ts",
+        "kdl/src/**/*.stories.tsx",
+        "kdl/src/**/stories/**",
+        "kdl/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "kdl-effect_production_sources",
+    srcs = glob(
+        [
+        "kdl-effect/package.json",
+        "kdl-effect/tsconfig.json",
+        "kdl-effect/src/**/*.cts",
+        "kdl-effect/src/**/*.mts",
+        "kdl-effect/src/**/*.ts",
+        "kdl-effect/src/**/*.tsx",
+        ],
+        exclude = [
+        "kdl-effect/src/**/*.test.ts",
+        "kdl-effect/src/**/*.test.tsx",
+        "kdl-effect/src/**/*.stories.ts",
+        "kdl-effect/src/**/*.stories.tsx",
+        "kdl-effect/src/**/stories/**",
+        "kdl-effect/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "otel-contract_production_sources",
+    srcs = glob(
+        [
+        "otel-contract/package.json",
+        "otel-contract/tsconfig.json",
+        "otel-contract/src/**/*.cts",
+        "otel-contract/src/**/*.mts",
+        "otel-contract/src/**/*.ts",
+        "otel-contract/src/**/*.tsx",
+        ],
+        exclude = [
+        "otel-contract/src/**/*.test.ts",
+        "otel-contract/src/**/*.test.tsx",
+        "otel-contract/src/**/*.stories.ts",
+        "otel-contract/src/**/*.stories.tsx",
+        "otel-contract/src/**/stories/**",
+        "otel-contract/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "tui-react_production_sources",
+    srcs = glob(
+        [
+        "tui-react/package.json",
+        "tui-react/tsconfig.json",
+        "tui-react/src/**/*.cts",
+        "tui-react/src/**/*.mts",
+        "tui-react/src/**/*.ts",
+        "tui-react/src/**/*.tsx",
+        ],
+        exclude = [
+        "tui-react/src/**/*.test.ts",
+        "tui-react/src/**/*.test.tsx",
+        "tui-react/src/**/*.stories.ts",
+        "tui-react/src/**/*.stories.tsx",
+        "tui-react/src/**/stories/**",
+        "tui-react/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "utils_production_sources",
+    srcs = glob(
+        [
+        "utils/package.json",
+        "utils/tsconfig.json",
+        "utils/src/**/*.cts",
+        "utils/src/**/*.mts",
+        "utils/src/**/*.ts",
+        "utils/src/**/*.tsx",
+        ],
+        exclude = [
+        "utils/src/**/*.test.ts",
+        "utils/src/**/*.test.tsx",
+        "utils/src/**/*.stories.ts",
+        "utils/src/**/*.stories.tsx",
+        "utils/src/**/stories/**",
+        "utils/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "utils-dev_production_sources",
+    srcs = glob(
+        [
+        "utils-dev/package.json",
+        "utils-dev/tsconfig.json",
+        "utils-dev/src/**/*.cts",
+        "utils-dev/src/**/*.mts",
+        "utils-dev/src/**/*.ts",
+        "utils-dev/src/**/*.tsx",
+        ],
+        exclude = [
+        "utils-dev/src/**/*.test.ts",
+        "utils-dev/src/**/*.test.tsx",
+        "utils-dev/src/**/*.stories.ts",
+        "utils-dev/src/**/*.stories.tsx",
+        "utils-dev/src/**/stories/**",
+        "utils-dev/src/test-utils/**",
+        ],
+    ),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "content-address_megarepo_runtime_sources",
+    srcs = [
+        "content-address/package.json",
+        "content-address/src/mod.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "effect-distributed-lock_megarepo_runtime_sources",
+    srcs = [
+        "effect-distributed-lock/package.json",
+        "effect-distributed-lock/src/Backing.ts",
+        "effect-distributed-lock/src/DistributedSemaphore.ts",
+        "effect-distributed-lock/src/Errors.ts",
+        "effect-distributed-lock/src/mod.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "effect-path_megarepo_runtime_sources",
+    srcs = [
+        "effect-path/package.json",
+        "effect-path/src/Sandbox.ts",
+        "effect-path/src/convention.ts",
+        "effect-path/src/errors.ts",
+        "effect-path/src/internal/utils.ts",
+        "effect-path/src/mod.ts",
+        "effect-path/src/normalize.ts",
+        "effect-path/src/ops.ts",
+        "effect-path/src/schema.ts",
+        "effect-path/src/symlink.ts",
+        "effect-path/src/unsafe.ts",
+        "effect-path/src/verified.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "kdl_megarepo_runtime_sources",
+    srcs = [
+        "kdl/package.json",
+        "kdl/src/clear-format.ts",
+        "kdl/src/error.ts",
+        "kdl/src/flags.ts",
+        "kdl/src/format.ts",
+        "kdl/src/locations.ts",
+        "kdl/src/mod.ts",
+        "kdl/src/model/document.ts",
+        "kdl/src/model/entry.ts",
+        "kdl/src/model/identifier.ts",
+        "kdl/src/model/node.ts",
+        "kdl/src/model/tag.ts",
+        "kdl/src/model/utils.ts",
+        "kdl/src/model/value.ts",
+        "kdl/src/parse.ts",
+        "kdl/src/parser/internal-error.ts",
+        "kdl/src/parser/parse-whitespace.ts",
+        "kdl/src/parser/parse.ts",
+        "kdl/src/parser/tokenize/context.ts",
+        "kdl/src/parser/tokenize/mod.ts",
+        "kdl/src/parser/tokenize/tokenize.ts",
+        "kdl/src/parser/tokenize/types.ts",
+        "kdl/src/string-utils.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "kdl-effect_megarepo_runtime_sources",
+    srcs = [
+        "kdl-effect/package.json",
+        "kdl-effect/src/decode.ts",
+        "kdl-effect/src/encode.ts",
+        "kdl-effect/src/mod.ts",
+        "kdl-effect/src/parse.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "otel-contract_megarepo_runtime_sources",
+    srcs = [
+        "otel-contract/package.json",
+        "otel-contract/src/mod.ts",
+        "otel-contract/src/otel-scrape/profile-link.ts",
+        "otel-contract/src/otel-scrape/registry.gen.ts",
+        "otel-contract/src/registry.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "tui-react_megarepo_runtime_sources",
+    srcs = [
+        "tui-react/package.json",
+        "tui-react/src/components/Box.tsx",
+        "tui-react/src/components/Spinner.tsx",
+        "tui-react/src/components/Static.tsx",
+        "tui-react/src/components/TaskList.tsx",
+        "tui-react/src/components/Text.tsx",
+        "tui-react/src/components/Tree.tsx",
+        "tui-react/src/effect/LogCapture.ts",
+        "tui-react/src/effect/OpenTuiRenderer.ts",
+        "tui-react/src/effect/OutputMode.node.ts",
+        "tui-react/src/effect/OutputMode.tsx",
+        "tui-react/src/effect/TerminalInput.ts",
+        "tui-react/src/effect/TestRenderer.ts",
+        "tui-react/src/effect/TuiApp.tsx",
+        "tui-react/src/effect/TuiLogger.ts",
+        "tui-react/src/effect/TuiRenderer.ts",
+        "tui-react/src/effect/cli.tsx",
+        "tui-react/src/effect/errors.tsx",
+        "tui-react/src/effect/events.ts",
+        "tui-react/src/effect/hooks.tsx",
+        "tui-react/src/effect/testing.tsx",
+        "tui-react/src/hooks/useSymbols.tsx",
+        "tui-react/src/hooks/useViewport.tsx",
+        "tui-react/src/mod.tsx",
+        "tui-react/src/node/mod.ts",
+        "tui-react/src/reconciler/host-config.ts",
+        "tui-react/src/reconciler/output.ts",
+        "tui-react/src/reconciler/reconciler.ts",
+        "tui-react/src/reconciler/types.ts",
+        "tui-react/src/reconciler/yoga-utils.ts",
+        "tui-react/src/renderToString.ts",
+        "tui-react/src/root.tsx",
+        "tui-react/src/truncate.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "utils_megarepo_runtime_sources",
+    srcs = [
+        "utils/package.json",
+        "utils/src/isomorphic/ScopeDebugger.ts",
+        "utils/src/isomorphic/binary.ts",
+        "utils/src/isomorphic/core.ts",
+        "utils/src/isomorphic/get-env.ts",
+        "utils/src/isomorphic/hash.ts",
+        "utils/src/isomorphic/humanized-date.ts",
+        "utils/src/isomorphic/in-memory-backing.ts",
+        "utils/src/isomorphic/lineage/mod.ts",
+        "utils/src/isomorphic/misc.ts",
+        "utils/src/isomorphic/mod.ts",
+        "utils/src/isomorphic/object/mod.ts",
+        "utils/src/isomorphic/object/omit.ts",
+        "utils/src/isomorphic/object/pick.ts",
+        "utils/src/isomorphic/single-item.ts",
+        "utils/src/isomorphic/string.ts",
+        "utils/src/isomorphic/time.ts",
+        "utils/src/isomorphic/timestamp.ts",
+        "utils/src/isomorphic/types/json.ts",
+        "utils/src/isomorphic/types/mod.ts",
+        "utils/src/lock/mod.ts",
+        "utils/src/node/ActiveHandlesDebugger.ts",
+        "utils/src/node/FileLogger.ts",
+        "utils/src/node/cli-help-rewrite.ts",
+        "utils/src/node/cli-version.ts",
+        "utils/src/node/cmd-log.ts",
+        "utils/src/node/cmd.contract.ts",
+        "utils/src/node/cmd.ts",
+        "utils/src/node/file-system-backing.ts",
+        "utils/src/node/mod.ts",
+        "utils/src/node/net.ts",
+        "utils/src/node/otel-attrs.ts",
+        "utils/src/node/otel.ts",
+        "utils/src/node/semaphore.contract.ts",
+        "utils/src/node/workspace.ts",
+    ],
+    visibility = ["PUBLIC"],
+)

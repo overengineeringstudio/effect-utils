@@ -16,6 +16,15 @@ common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
       sourceRevision = "0123456789abcdef0123456789abcdef01234567";
       actionDigest = original.artifact.digest.sri;
     };
+  };
+  asBuckDeclaredInputDescriptor = original: original // {
+    kind = "buck2-build-artifact";
+    provenance = {
+      producer = "buck2-test-fixture";
+      target = "//fixtures:portable-tool";
+      sourceRevision = "0123456789abcdef0123456789abcdef01234567";
+      declaredInputDigest = original.artifact.digest.sri;
+    };
   };'
 base_expr="let
   $common_let
@@ -107,6 +116,17 @@ if grep -a -R -F '/nix/store/' "$import_out" >/dev/null; then
   exit 1
 fi
 [ -z "$(nix-store --query --references "$import_out")" ]
+
+declared_import_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+  descriptor = asBuckDeclaredInputDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+in test.mkImport {
+  inherit descriptor;
+  artifact = exported + \"/artifact.tar\";
+}"
+declared_import_out="$(build_expr "$declared_import_expr")"
+[ "$(env -i PATH=/nonexistent "$declared_import_out/bin/fixture-tool")" = "buck2-bridge-ok" ]
 
 expect_build_failure \
   "store-reference export" \

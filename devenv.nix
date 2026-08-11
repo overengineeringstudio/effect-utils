@@ -99,6 +99,14 @@ let
   };
   buck2Launcher = repoFlake.packages.${currentSystem}.buck2-launcher;
   buck2Task = "${buck2Launcher}/bin/buck2-task";
+  megarepoPnpmDeps = repoFlake.packages.${currentSystem}."megarepo-pnpm-deps";
+  opentuiCoreNative = import ./nix/opentui-core-native.nix { inherit pkgs; };
+  opentuiCorePrimary = opentuiCoreNative.package;
+  opentuiCoreMusl =
+    if builtins.length opentuiCoreNative.packages > 1 then
+      (builtins.elemAt opentuiCoreNative.packages 1).package
+    else
+      opentuiCorePrimary;
 
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -538,6 +546,9 @@ in
 
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
+  # Genie derives the checked-in Buck runtime source census with this exact,
+  # flake-pinned analyzer rather than whichever Bun happens to be on PATH.
+  env.BUCK2_RUNTIME_ANALYZER_BUN = "${pkgs.bun}/bin/bun";
 
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
@@ -749,6 +760,103 @@ in
     '';
   };
 
+  tasks."buck2:build:megarepo" = {
+    description = "Compile and package the megarepo CLI through its Buck-owned TypeScript graph";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:build:megarepo" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse --short=12 HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      dirty=false
+      if [ -n "$(${pkgs.git}/bin/git -C "$root" status --porcelain)" ]; then dirty=true; fi
+      exec ${buck2Task} \
+        --evidence-dir "$root/tmp/buck2-evidence" \
+        --print-command \
+        -- build \
+          -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+          -c buck2_nix.python=${pkgs.python3}/bin/python3 \
+          -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+          -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+          -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+          -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+          -c buck2_nix.opentui_musl=${opentuiCoreMusl} \
+          -c buck2_build.revision="$revision" \
+          -c buck2_build.commit_timestamp="$commit_timestamp" \
+          -c buck2_build.dirty="$dirty" \
+          //packages/@overeng/megarepo:mr \
+          --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:test:typescript" = {
+    description = "Test the deterministic Buck TypeScript CLI artifact builder";
+    exec = trace.exec "buck2:test:typescript" ''
+      exec ${buck2Task} \
+        --evidence-dir "$PWD/tmp/buck2-evidence" \
+        --print-command \
+        -- test //buck2/tools:typescript_cli_builder_test \
+          --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:e2e:megarepo" = {
+    description = "Build the Buck-owned mr archive, retain action evidence, import it through Nix, and run it";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:e2e:megarepo" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse --short=12 HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      dirty=false
+      if [ -n "$(${pkgs.git}/bin/git -C "$root" status --porcelain)" ]; then dirty=true; fi
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      export BUCK2_E2E_ENTRYPOINT=mr
+      export BUCK2_E2E_RUNTIME_ARGUMENT=--version
+      export BUCK2_E2E_EXPECTED_SUBSTRING="0.1.0+$revision$([ "$dirty" = true ] && printf '%s' -dirty)"
+      exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
+        "$root" ${buck2Task} //packages/@overeng/megarepo:mr \
+        -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+        -c buck2_nix.python=${pkgs.python3}/bin/python3 \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        -c buck2_build.revision="$revision" \
+        -c buck2_build.commit_timestamp="$commit_timestamp" \
+        -c buck2_build.dirty="$dirty"
+    '';
+  };
+
+  tasks."buck2:invalidation:e2e:megarepo" = {
+    description = "Prove fine-grained mr source, mtime, and excluded-test invalidation boundaries";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:invalidation:e2e:megarepo" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse --short=12 HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
+      exec ${pkgs.bash}/bin/bash scripts/buck2-megarepo-invalidation-e2e.sh \
+        "$root" ${pkgs.buck2}/bin/buck2 \
+        -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+        -c buck2_nix.python=${pkgs.python3}/bin/python3 \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        -c buck2_build.revision="$revision" \
+        -c buck2_build.commit_timestamp="$commit_timestamp" \
+        -c buck2_build.dirty=true
+    '';
+  };
+
   tasks."buck2:e2e:tui-core" = {
     description = "Generate, build, observe, and Nix-import the tui-core Buck input-plan artifact";
     after = [ "genie:run" ];
@@ -785,6 +893,36 @@ in
     '';
   };
 
+  tasks."buck2:benchmark:megarepo" = {
+    description = "Measure Buck mr warm and controlled invalidation phases with action evidence";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:benchmark:megarepo" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      revision="$(${pkgs.git}/bin/git -C "$root" rev-parse --short=12 HEAD)"
+      commit_timestamp="$(${pkgs.git}/bin/git -C "$root" show -s --format=%ct HEAD)"
+      exec ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
+        --execute --in-place --buck-incremental-only \
+        --buck-bin ${pkgs.buck2}/bin/buck2 \
+        --buck-target //packages/@overeng/megarepo:mr \
+        --buck-config buck2_nix.bun=${pkgs.bun}/bin/bun \
+        --buck-config buck2_nix.python=${pkgs.python3}/bin/python3 \
+        --buck-config buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        --buck-config buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        --buck-config buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        --buck-config buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        --buck-config buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        --buck-config buck2_build.revision="$revision" \
+        --buck-config buck2_build.commit_timestamp="$commit_timestamp" \
+        --buck-config buck2_build.dirty=true \
+        --work-contract megarepo-cli-bundle/no-equivalent-devenv-lane/v1 \
+        --relevant-path packages/@overeng/megarepo/src/lib/version.ts \
+        --irrelevant-path packages/@overeng/megarepo/src/lib/ref.unit.test.ts \
+        --runs 7 --warmups 2 --isolation-dir megarepo-mr-benchmark \
+        --output "$root/tmp/buck2-benchmark/megarepo-mr.jsonl"
+    '';
+  };
+
   tasks."buck2:invalidation:e2e" = {
     description = "Prove canonical source mutation invalidates Buck2 through the configured file watcher";
     exec = trace.exec "buck2:invalidation:e2e" ''
@@ -798,7 +936,7 @@ in
   };
 
   tasks."buck2:platform:check" = {
-    description = "Reject a Buck2 package target whose declared platform differs from the local-only host";
+    description = "Reject mismatched local platforms and non-canonical Nix store tool paths";
     exec = trace.exec "buck2:platform:check" ''
       set -euo pipefail
       isolation="platform-check-$$-$RANDOM"
@@ -831,15 +969,77 @@ in
         echo "buck2:platform:check: unexpected diagnostic: $actual" >&2
         exit 1
       fi
-      echo "buck2:platform:check: PASS diagnostic=$actual"
+      : > "$stderr_file"
+      if ${pkgs.buck2}/bin/buck2 \
+        --isolation-dir "$isolation" \
+        build --fake-arch aarch64 \
+        -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+        -c buck2_nix.python=${pkgs.python3}/bin/python3 \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        -c buck2_build.revision=platform-check \
+        -c buck2_build.commit_timestamp=1 \
+        -c buck2_build.dirty=true \
+        //packages/@overeng/megarepo:mr \
+        --local-only --no-remote-cache \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:platform:check: mismatched mr platform unexpectedly built" >&2
+        exit 1
+      fi
+      mr_actual="$(${pkgs.gawk}/bin/awk '
+        /error: fail: typescript_(cli|project_check) platform mismatch:/ {
+          sub(/^.*error: fail: /, "")
+          print
+          exit
+        }
+      ' "$stderr_file")"
+      case "$mr_actual" in
+        *"target requires x86_64-linux, local-only execution host is aarch64-linux") ;;
+        *) echo "buck2:platform:check: unexpected mr diagnostic: $mr_actual" >&2; exit 1 ;;
+      esac
+      : > "$stderr_file"
+      if ${pkgs.buck2}/bin/buck2 \
+        --isolation-dir "$isolation" \
+        build \
+        -c buck2_nix.bun=/nix/store/../tmp/buck2-path-escape \
+        -c buck2_nix.python=${pkgs.python3}/bin/python3 \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        -c buck2_build.revision=path-check \
+        -c buck2_build.commit_timestamp=1 \
+        -c buck2_build.dirty=true \
+        //packages/@overeng/megarepo:mr \
+        --local-only --no-remote-cache \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:platform:check: traversing Nix store path unexpectedly analyzed" >&2
+        exit 1
+      fi
+      path_actual="$(${pkgs.gnugrep}/bin/grep -F \
+        'buck2_nix.bun must be an immutable absolute /nix/store path' \
+        "$stderr_file" || true)"
+      [ -n "$path_actual" ] || {
+        echo "buck2:platform:check: Nix store traversal lacked the expected diagnostic" >&2
+        exit 1
+      }
+      echo "buck2:platform:check: PASS tui_core=$actual mr=$mr_actual path_traversal=rejected"
     '';
   };
 
   tasks."buck2:check" = {
-    description = "Run Buck2 foundation, invalidation, platform, Nix bridge, and benchmark gates";
+    description = "Run Buck2 foundation, megarepo authority, invalidation, platform, Nix bridge, and benchmark gates";
     after = [
       "buck2:build:foundation"
+      "buck2:build:megarepo"
       "buck2:test:foundation"
+      "buck2:test:typescript"
+      "buck2:e2e:megarepo"
+      "buck2:invalidation:e2e:megarepo"
       "buck2:e2e:tui-core"
       "buck2:nix-bridge:check"
       "buck2:benchmark:check"

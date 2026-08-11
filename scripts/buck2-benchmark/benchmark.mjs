@@ -52,6 +52,7 @@ const parseArgs = (argv) => {
     irrelevantPath: defaultIrrelevantPath,
     output: null,
     buckBin: process.env.BUCK2_BENCH_BUCK_BIN ?? null,
+    buckConfigs: [],
     hostLabel: process.env.BUCK2_BENCH_HOST_LABEL ?? 'redacted-local',
   }
 
@@ -77,7 +78,11 @@ const parseArgs = (argv) => {
     else if (arg === '--irrelevant-path') options.irrelevantPath = take()
     else if (arg === '--output') options.output = take()
     else if (arg === '--buck-bin') options.buckBin = take()
-    else if (arg === '--host-label') options.hostLabel = take()
+    else if (arg === '--buck-config') {
+      const value = take()
+      if (!/^[A-Za-z0-9_.-]+=[^\r\n]+$/u.test(value)) fail(`${arg} expects SECTION.KEY=VALUE`)
+      options.buckConfigs.push(value)
+    } else if (arg === '--host-label') options.hostLabel = take()
     else if (arg === '--help') {
       console.log(`usage: node benchmark.mjs [options]
 
@@ -93,6 +98,7 @@ Defaults to a non-executing dry run. Use --execute to run commands.
   --declare-equivalent-work assert the contract covers equivalent work (off by default)
   --buck-incremental-only   skip Devenv and destructive cold/restart Buck phases
   --buck-bin PATH           pinned Buck2 executable
+  --buck-config KEY=VALUE   Buck root config override; repeatable
   --isolation-dir NAME      Buck daemon/cache namespace
   --relevant-path PATH      source mutation path
   --irrelevant-path PATH    non-input mutation path
@@ -132,6 +138,43 @@ const git = (root, args) => {
 }
 
 const hashText = (text) => createHash('sha256').update(text).digest('hex')
+
+const redactBuckConfigValues = (args) =>
+  args.map((arg, index) => {
+    if (args[index - 1] !== '-c') return arg
+    const equals = arg.indexOf('=')
+    return equals < 0 ? '<redacted-buck-config>' : `${arg.slice(0, equals)}=<redacted>`
+  })
+
+const buckArtifactDigest = ({ args, target }) => {
+  const reportFlag = args.lastIndexOf('--build-report')
+  if (reportFlag < 0 || typeof args[reportFlag + 1] !== 'string')
+    return { digest: null, reason: 'build-report-not-configured' }
+
+  try {
+    const report = JSON.parse(readFileSync(args[reportFlag + 1], 'utf8'))
+    if (report.success !== true || report.truncated === true)
+      return { digest: null, reason: 'build-report-incomplete' }
+    const canonicalTarget = target.startsWith('//') ? `root${target}` : target
+    const result = report.results?.[canonicalTarget] ?? report.results?.[target]
+    if (result?.success !== 'SUCCESS')
+      return { digest: null, reason: 'build-report-target-unsuccessful' }
+    const digests = new Set(
+      Object.values(result.configured ?? {})
+        .map((configured) => configured?.artifact_info?.DEFAULT?.digest)
+        .filter((digest) => typeof digest === 'string' && digest.length > 0),
+    )
+    if (digests.size !== 1)
+      return {
+        digest: null,
+        reason:
+          digests.size === 0 ? 'build-report-artifact-digest-missing' : 'build-report-ambiguous',
+      }
+    return { digest: [...digests][0], reason: null }
+  } catch {
+    return { digest: null, reason: 'build-report-unreadable' }
+  }
+}
 
 const firstLine = (value) => value.split(/\r?\n/u).find((line) => line.trim() !== '') ?? ''
 
@@ -238,6 +281,7 @@ const main = () => {
   let worktreeAdded = false
   let cleanupComplete = false
   let buckBin = options.buckBin
+  let restoreActiveMutation = null
   let sequence = 0
 
   const baseRecord = {
@@ -286,6 +330,15 @@ const main = () => {
     cleanupComplete = true
     let status = 'ok'
     let reason = null
+    if (restoreActiveMutation !== null) {
+      try {
+        restoreActiveMutation()
+        restoreActiveMutation = null
+      } catch {
+        status = 'failed'
+        reason = 'mutation-source-restore-failed'
+      }
+    }
     if (buckBin !== null && commandAvailable(buckBin, worktree)) {
       run(buckBin, ['--isolation-dir', options.isolationDir, 'kill'], { cwd: worktree, env })
     }
@@ -352,6 +405,7 @@ const main = () => {
       git: toolVersion('git', ['--version'], invocationRoot),
       nix: toolVersion('nix', ['--version'], invocationRoot),
       buck2Requested: options.buckBin,
+      buckConfigKeys: options.buckConfigs.map((value) => value.slice(0, value.indexOf('='))),
     },
     target: options.target,
     comparison: {
@@ -423,6 +477,8 @@ const main = () => {
       warmup,
       command,
       args,
+      control = null,
+      validate = null,
     }) => {
       const started = performance.now()
       const result = run(command, args, { cwd: worktree, env })
@@ -458,6 +514,22 @@ const main = () => {
         }
       }
 
+      let validation = { artifactEvidence: null, reason: null, status: 'ok' }
+      if (validate !== null) {
+        try {
+          validation = { ...validation, ...validate({ args, result }) }
+        } catch {
+          validation = {
+            artifactEvidence: null,
+            reason: 'sample-evidence-validation-error',
+            status: 'failed',
+          }
+        }
+      }
+      const status = result.status !== 0 ? 'failed' : validation.status
+      const reason =
+        result.status !== 0 ? `command-exit-${result.status ?? 'signal'}` : validation.reason
+
       writer.write({
         ...baseRecord,
         kind: 'sample',
@@ -467,15 +539,15 @@ const main = () => {
         mutation,
         sampleIndex,
         warmup,
-        status: result.status === 0 ? 'ok' : 'failed',
-        verdict: result.status === 0 ? 'measured' : 'no-verdict',
-        reason: result.status === 0 ? null : `command-exit-${result.status ?? 'signal'}`,
+        status,
+        verdict: status === 'ok' ? 'measured' : 'no-verdict',
+        reason,
         durationMs,
         exitCode: result.status,
         signal: result.signal,
         command: [
           basename(command),
-          ...args.map((arg) =>
+          ...redactBuckConfigValues(args).map((arg) =>
             typeof arg === 'string' && arg.startsWith(artifactRoot)
               ? `<artifact-root>/${basename(arg)}`
               : arg,
@@ -486,8 +558,10 @@ const main = () => {
         materializationBytes,
         materializationFiles,
         buckLogStatus,
+        control,
+        artifactEvidence: validation.artifactEvidence,
         evidenceVerdicts: {
-          timing: result.status === 0 ? 'measured' : 'no-verdict',
+          timing: status === 'ok' ? 'measured' : 'no-verdict',
           actions:
             engine !== 'buck2'
               ? 'not-applicable'
@@ -499,6 +573,12 @@ const main = () => {
               ? 'not-applicable'
               : buckLogStatus === 'ok'
                 ? 'measured'
+                : 'no-verdict',
+          artifact:
+            validation.artifactEvidence === null
+              ? 'not-applicable'
+              : validation.artifactEvidence.verdict === 'verified'
+                ? 'verified'
                 : 'no-verdict',
         },
         output: {
@@ -521,7 +601,7 @@ const main = () => {
                 ? 'daemon-killed-action-cache-retained'
                 : 'isolation-and-daemon-retained',
       })
-      return result.status === 0
+      return status === 'ok'
     }
 
     const repeat = (definition, count, warmup) => {
@@ -686,6 +766,7 @@ const main = () => {
       '--isolation-dir',
       options.isolationDir,
       'build',
+      ...options.buckConfigs.flatMap((value) => ['-c', value]),
       options.target,
       '--local-only',
       '--no-remote-cache',
@@ -695,7 +776,17 @@ const main = () => {
       'include-artifact-hash-information',
     ]
 
-    const mutationSeries = ({ engine, surface, phase, mutation, path, mutate, command, args }) => {
+    const mutationSeries = ({
+      engine,
+      surface,
+      phase,
+      mutation,
+      path,
+      mutate,
+      command,
+      args,
+      requireArtifactChange = false,
+    }) => {
       const absolute = join(worktree, path)
       if (!existsSync(absolute)) {
         emitSkip({
@@ -709,15 +800,56 @@ const main = () => {
       }
       const original = readFileSync(absolute)
       const originalStat = statSync(absolute)
+      const restoreSource = () => {
+        writeFileSync(absolute, original)
+        chmodSync(absolute, originalStat.mode)
+        utimesSync(absolute, originalStat.atime, originalStat.mtime)
+      }
+      restoreActiveMutation = restoreSource
       try {
         for (let index = 0; index < options.runs; index += 1) {
-          writeFileSync(absolute, original)
-          chmodSync(absolute, originalStat.mode)
-          run(command, typeof args === 'function' ? args(`base-${phase}-${index}`) : args, {
+          restoreSource()
+          const baselineArgs = typeof args === 'function' ? args(`base-${phase}-${index}`) : args
+          const baseline = run(command, baselineArgs, {
             cwd: worktree,
             env,
           })
+          const baselineControl = {
+            exitCode: baseline.status,
+            signal: baseline.signal,
+            verdict: baseline.status === 0 ? 'passed' : 'no-verdict',
+          }
+          if (baseline.status !== 0) {
+            emitSkip({
+              engine,
+              surface,
+              phase,
+              mutation,
+              sampleIndex: index,
+              reason: 'mutation-baseline-failed',
+              control: baselineControl,
+            })
+            continue
+          }
+          const baselineArtifact =
+            requireArtifactChange === true
+              ? buckArtifactDigest({ args: baselineArgs, target: options.target })
+              : null
+          if (requireArtifactChange === true && baselineArtifact.digest === null) {
+            emitSkip({
+              engine,
+              surface,
+              phase,
+              mutation,
+              sampleIndex: index,
+              reason: baselineArtifact.reason,
+              control: baselineControl,
+            })
+            continue
+          }
+
           mutate(absolute, index, originalStat)
+          const measuredArgs = typeof args === 'function' ? args(`${phase}-${index}`) : args
           measure({
             engine,
             surface,
@@ -726,13 +858,62 @@ const main = () => {
             sampleIndex: index,
             warmup: false,
             command,
-            args: typeof args === 'function' ? args(`${phase}-${index}`) : args,
+            args: measuredArgs,
+            control: { baseline: baselineControl },
+            validate:
+              requireArtifactChange === false
+                ? null
+                : ({ result }) => {
+                    const mutatedArtifact =
+                      result.status === 0
+                        ? buckArtifactDigest({ args: measuredArgs, target: options.target })
+                        : { digest: null, reason: 'mutated-build-failed' }
+                    restoreSource()
+                    const restorationArgs =
+                      typeof args === 'function' ? args(`restore-${phase}-${index}`) : args
+                    const restoration = run(command, restorationArgs, { cwd: worktree, env })
+                    const restoredArtifact =
+                      restoration.status === 0
+                        ? buckArtifactDigest({ args: restorationArgs, target: options.target })
+                        : { digest: null, reason: 'artifact-restoration-build-failed' }
+                    const artifactEvidence = {
+                      baselineDigest: baselineArtifact.digest,
+                      mutatedDigest: mutatedArtifact.digest,
+                      restoredDigest: restoredArtifact.digest,
+                      changed:
+                        mutatedArtifact.digest === null
+                          ? null
+                          : mutatedArtifact.digest !== baselineArtifact.digest,
+                      restored:
+                        restoredArtifact.digest === null
+                          ? null
+                          : restoredArtifact.digest === baselineArtifact.digest,
+                      restorationExitCode: restoration.status,
+                      restorationSignal: restoration.signal,
+                      verdict: 'no-verdict',
+                    }
+                    let reason = null
+                    if (result.status !== 0) reason = 'mutated-build-failed'
+                    else if (mutatedArtifact.digest === null) reason = mutatedArtifact.reason
+                    else if (mutatedArtifact.digest === baselineArtifact.digest)
+                      reason = 'artifact-digest-unchanged'
+                    else if (restoration.status !== 0) reason = 'artifact-restoration-build-failed'
+                    else if (restoredArtifact.digest === null) reason = restoredArtifact.reason
+                    else if (restoredArtifact.digest !== baselineArtifact.digest)
+                      reason = 'artifact-digest-not-restored'
+                    else artifactEvidence.verdict = 'verified'
+                    return {
+                      artifactEvidence,
+                      reason,
+                      status: reason === null ? 'ok' : 'failed',
+                    }
+                  },
           })
+          restoreSource()
         }
       } finally {
-        writeFileSync(absolute, original)
-        chmodSync(absolute, originalStat.mode)
-        utimesSync(absolute, originalStat.atime, originalStat.mtime)
+        restoreSource()
+        restoreActiveMutation = null
       }
     }
 
@@ -759,7 +940,7 @@ const main = () => {
         mutation: 'relevant',
         path: options.relevantPath,
         mutate: (path, index) =>
-          appendFileSync(path, `\nexport type Buck2BenchmarkProbe${index} = '${runId}'\n`),
+          appendFileSync(path, `\nconsole.error('buck2-benchmark-probe-${runId}-${index}')\n`),
         command: 'devenv',
         args: computeOnly,
       })
@@ -770,7 +951,7 @@ const main = () => {
         mutation: 'irrelevant',
         path: options.irrelevantPath,
         mutate: (path, index) =>
-          appendFileSync(path, `\n<!-- buck2-benchmark-irrelevant-${runId}-${index} -->\n`),
+          appendFileSync(path, `\n// buck2-benchmark-irrelevant-${runId}-${index}\n`),
         command: 'devenv',
         args: computeOnly,
       })
@@ -904,9 +1085,10 @@ const main = () => {
         mutation: 'relevant',
         path: options.relevantPath,
         mutate: (path, index) =>
-          appendFileSync(path, `\nexport type Buck2BenchmarkProbe${index} = '${runId}'\n`),
+          appendFileSync(path, `\nconsole.error('buck2-benchmark-probe-${runId}-${index}')\n`),
         command: buckBin,
         args: (stem) => makeBuckArgs(stem),
+        requireArtifactChange: true,
       })
       mutationSeries({
         engine: 'buck2',
@@ -915,7 +1097,7 @@ const main = () => {
         mutation: 'irrelevant',
         path: options.irrelevantPath,
         mutate: (path, index) =>
-          appendFileSync(path, `\n<!-- buck2-benchmark-irrelevant-${runId}-${index} -->\n`),
+          appendFileSync(path, `\n// buck2-benchmark-irrelevant-${runId}-${index}\n`),
         command: buckBin,
         args: (stem) => makeBuckArgs(stem),
       })

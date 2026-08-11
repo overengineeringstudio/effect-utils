@@ -314,14 +314,19 @@ paths into public artifacts.
 Devenv provides compatibility and lifecycle tasks, not the performance-critical
 transport. The implemented task family is:
 
-| Task                     | Purpose                                                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `buck2:build:foundation` | Build the strict synthetic closure foundation locally with remote cache disabled.                                  |
-| `buck2:test:foundation`  | Run the closure-tool tests under the same local-only policy.                                                       |
-| `buck2:e2e:tui-core`     | Regenerate, build, observe, Nix-import, and execute the non-authoritative `tui-core` input-plan evidence artifact. |
-| `buck2:nix-bridge:check` | Exercise portable tool export and verified artifact import, including negative controls.                           |
-| `buck2:benchmark:check`  | Validate the benchmark parser and dry-run matrix.                                                                  |
-| `buck2:check`            | Aggregate the Buck2 foundation checks.                                                                             |
+| Task                              | Purpose                                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `buck2:build:foundation`          | Build the strict synthetic closure foundation locally with remote cache disabled.                                  |
+| `buck2:test:foundation`           | Run the closure-tool tests under the same local-only policy.                                                       |
+| `buck2:e2e:tui-core`              | Regenerate, build, observe, Nix-import, and execute the non-authoritative `tui-core` input-plan evidence artifact. |
+| `buck2:build:megarepo`            | Typecheck `mr` and compile/package its generated first-party runtime graph.                                        |
+| `buck2:test:typescript`           | Test deterministic TypeScript CLI staging, packaging, and descriptor generation.                                   |
+| `buck2:e2e:megarepo`              | Retain Buck evidence, import the exact `mr` artifact through Nix, and execute it with an empty `PATH`.             |
+| `buck2:invalidation:e2e:megarepo` | Assert warm, mtime, relevant-source, restoration, and excluded-test invalidation behavior.                         |
+| `buck2:benchmark:megarepo`        | Measure `mr` warm and controlled mutation phases with native Buck evidence.                                        |
+| `buck2:nix-bridge:check`          | Exercise portable tool export and verified artifact import, including negative controls.                           |
+| `buck2:benchmark:check`           | Validate the benchmark parser and dry-run matrix.                                                                  |
+| `buck2:check`                     | Aggregate the Buck2 foundation and admitted local `mr` checks.                                                     |
 
 These tasks are setup/CI compatibility surfaces. Interactive and performance
 measurements use the already-realized launcher directly so fresh Nix/devenv

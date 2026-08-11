@@ -54,3 +54,28 @@ python_test(
     srcs = ["package_evidence_test.py"],
     deps = [":package_evidence_tool_lib"],
 )
+
+python_library(
+    name = "typescript_cli_builder_lib",
+    srcs = ["typescript_cli.py"],
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "typescript_cli_builder_source",
+    src = "typescript_cli.py",
+    visibility = ["PUBLIC"],
+)
+
+python_binary(
+    name = "typescript_cli_builder",
+    main_module = "buck2.tools.typescript_cli",
+    deps = [":typescript_cli_builder_lib"],
+    visibility = ["PUBLIC"],
+)
+
+python_test(
+    name = "typescript_cli_builder_test",
+    srcs = ["typescript_cli_test.py"],
+    deps = [":typescript_cli_builder_lib"],
+)

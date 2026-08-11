@@ -31,3 +31,32 @@ package_task(
     ],
     closure_descriptor = "buck2/typescript-input-plan.json",
 )
+
+# Megarepo runtime closure analyzer: bun 1.3.13, pinned by flake.lock
+# Megarepo runtime closure semantic fingerprint: sha256:ee8cd376b3afd0a5f54a48265aeb4f953805e0c31c49101a9b42e496910028f1
+filegroup(
+    name = "production_sources",
+    srcs = [
+        "src/ansi.ts",
+        "src/mod.ts",
+        "src/renderer.ts",
+        "src/symbols.ts",
+        "src/terminal.ts",
+        "package.json",
+        "tsconfig.json",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "megarepo_runtime_sources",
+    srcs = [
+        "package.json",
+        "src/ansi.ts",
+        "src/mod.ts",
+        "src/renderer.ts",
+        "src/symbols.ts",
+        "src/terminal.ts",
+    ],
+    visibility = ["PUBLIC"],
+)

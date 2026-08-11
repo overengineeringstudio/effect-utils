@@ -32,10 +32,27 @@ receipt, verifies and imports the artifact through Nix, and executes it with an
 empty `PATH`. It does not materialize normalized dependency payloads, compile
 TypeScript, or mint authoritative closure IDs.
 
+The first repo-local compilation pilot is `//packages/@overeng/megarepo:mr`.
+Buck owns a generated project-reference typecheck and a separate Bun
+compile/package action. Genie derives the latter's exact first-party runtime
+source closure from a flake-pinned Bun metafile, emits its analyzer identity and
+semantic-input fingerprint in every affected generated shard, and rejects
+unclassified first-party inputs. Tests, stories, and unreachable production
+modules remain outside the bundle action. Nix supplies pinned local
+tools and one immutable target-specific pnpm dependency tree; this is still a
+coarser external boundary than the final package-content/context/task closure.
+The action embeds build identity, removes Nix-specific ELF paths, emits a
+deterministic tar plus declared-input provenance, and the E2E imports and
+executes that exact artifact through the normal Nix bridge. This pilot is a
+real shadow build artifact, not yet production release authority, and remains
+local-only: raw Nix store inputs are not a portable execution image.
+
 The package-evidence rule and portable verifier currently use the bundled
 Prelude Python demo toolchain as a local bootstrap. The portable-provider
 fixture proves the provider shape, not a real Nix-exported production
-toolchain. The launcher has a registered OTEL contract but does not export OTLP
+toolchain. The `mr` action instead executes its declared builder source with an
+immutable Nix Python path, avoiding isolation-specific Buck Python wrappers.
+The launcher has a registered OTEL contract but does not export OTLP
 at runtime; current runtime observability is the receipt plus retained Buck
 event logs and build reports.
 
@@ -48,7 +65,8 @@ through an ignored alias and leave DICE stale. The hash crawler was also
 rejected because concurrent deletion can fail its whole-tree initialization
 scan. The generated `tui-core` evidence target is explicitly
 `x86_64-linux`; mismatched local analysis fails closed, while configured remote
-execution-platform binding remains deferred.
+execution-platform binding remains deferred. The `mr` rules apply the same
+fail-closed local host/platform comparison before analysis.
 
 This is not yet production dependency-materialization authority. Remote cache
 reads, remote cache writes, and remote execution remain disabled. The current
@@ -83,8 +101,9 @@ artifact-import, activation, and rollback gates pass.
 devenv tasks run buck2:check
 ```
 
-The aggregate covers the synthetic Buck closure build and tests, Nix bridge
-negative controls, the `tui-core` input-plan E2E, and benchmark harness checks.
+The aggregate covers the synthetic Buck closure build and tests, the `mr`
+compile/invalidation/Nix-import proof, Nix bridge negative controls, the
+`tui-core` input-plan E2E, and benchmark harness checks.
 Individual tasks are listed in [spec.md](./spec.md#devenv-integration).
 
 Passing the foundation suite does not admit remote caching, remote execution,
