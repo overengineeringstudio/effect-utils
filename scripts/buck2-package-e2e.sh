@@ -14,6 +14,8 @@ jq_bin="${JQ_BIN:-jq}"
 entrypoint="${BUCK2_E2E_ENTRYPOINT:-package-evidence}"
 runtime_argument="${BUCK2_E2E_RUNTIME_ARGUMENT:-}"
 expected_substring="${BUCK2_E2E_EXPECTED_SUBSTRING:-}"
+nixpkgs_path="${BUCK2_E2E_NIXPKGS:?BUCK2_E2E_NIXPKGS must name the pinned nixpkgs store path}"
+importer_root="${BUCK2_E2E_IMPORTER_ROOT:?BUCK2_E2E_IMPORTER_ROOT must name the Buck artifact importer directory store path}"
 runtime_args=()
 if [ -n "$runtime_argument" ]; then runtime_args=("$runtime_argument"); fi
 run_id="package-e2e-$$-$RANDOM"
@@ -68,7 +70,8 @@ descriptor="$(printf '%s\n' "$build_output" | "$awk_bin" -v label="$output_label
   exit 1
 }
 
-export BUCK2_E2E_REPO="$repo_root"
+export BUCK2_E2E_NIXPKGS="$nixpkgs_path"
+export BUCK2_E2E_IMPORTER_ROOT="$importer_root"
 # A sandboxed Nix build cannot read Buck's mutable output tree directly. Admit
 # the two immutable files to the local store first, then make the importer
 # independently verify the descriptor's digest, size, platform, and archive.
@@ -76,10 +79,10 @@ export BUCK2_E2E_ARTIFACT="$($nix_bin store add --mode flat --name artifact.tar 
 export BUCK2_E2E_DESCRIPTOR="$($nix_bin store add --mode flat --name descriptor.json "$descriptor")"
 imported="$("$nix_bin" build --impure --no-link --print-out-paths --expr '
   let
-    repo = builtins.toPath (builtins.getEnv "BUCK2_E2E_REPO");
-    flake = builtins.getFlake (toString repo);
-    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    importArtifact = import (repo + "/nix/workspace-tools/lib/buck2-artifact-import.nix") { inherit pkgs; };
+    nixpkgs = builtins.storePath (builtins.getEnv "BUCK2_E2E_NIXPKGS");
+    importerRoot = builtins.storePath (builtins.getEnv "BUCK2_E2E_IMPORTER_ROOT");
+    pkgs = import nixpkgs { system = builtins.currentSystem; };
+    importArtifact = import (importerRoot + "/buck2-artifact-import.nix") { inherit pkgs; };
     artifact = builtins.storePath (builtins.getEnv "BUCK2_E2E_ARTIFACT");
     descriptorPath = builtins.storePath (builtins.getEnv "BUCK2_E2E_DESCRIPTOR");
     descriptor = builtins.fromJSON (builtins.readFile descriptorPath);

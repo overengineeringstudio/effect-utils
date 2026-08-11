@@ -814,6 +814,8 @@ in
       export JQ_BIN=${pkgs.jq}/bin/jq
       export NIX_BIN=${pkgs.nix}/bin/nix
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      export BUCK2_E2E_NIXPKGS=${repoFlake.inputs.nixpkgs}
+      export BUCK2_E2E_IMPORTER_ROOT=${./nix/workspace-tools/lib}
       export BUCK2_E2E_ENTRYPOINT=mr
       export BUCK2_E2E_RUNTIME_ARGUMENT=--version
       export BUCK2_E2E_EXPECTED_SUBSTRING="0.1.0+$revision$([ "$dirty" = true ] && printf '%s' -dirty)"
@@ -867,6 +869,8 @@ in
       export JQ_BIN=${pkgs.jq}/bin/jq
       export NIX_BIN=${pkgs.nix}/bin/nix
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      export BUCK2_E2E_NIXPKGS=${repoFlake.inputs.nixpkgs}
+      export BUCK2_E2E_IMPORTER_ROOT=${./nix/workspace-tools/lib}
       exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
         "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan
     '';

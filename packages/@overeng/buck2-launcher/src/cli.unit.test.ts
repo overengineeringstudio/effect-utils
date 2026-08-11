@@ -81,7 +81,14 @@ fs.writeFileSync(receiptDir + '/receipt.json', JSON.stringify({
     const result = spawnSync(
       'bash',
       [script, root, fakeLauncher, '//packages/@overeng/tui-core:typescript_input_plan'],
-      { encoding: 'utf8', env: process.env },
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BUCK2_E2E_IMPORTER_ROOT: root,
+          BUCK2_E2E_NIXPKGS: root,
+        },
+      },
     )
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('observationally incomplete')
