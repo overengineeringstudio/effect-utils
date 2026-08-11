@@ -19,6 +19,7 @@
 import { createHash } from 'node:crypto'
 
 import ciToolsContract from '../../packages/@overeng/ci-tools/src/deploy-domain.contract.ts'
+import buck2LauncherContract from '../../packages/@overeng/buck2-launcher/src/buck2-launcher.contract.ts'
 import cliContract from '../../packages/@overeng/genie/src/core/cli.contract.ts'
 import genieContract from '../../packages/@overeng/genie/src/core/genie.contract.ts'
 import { registryFromMembers } from '../../packages/@overeng/genie/src/runtime/composition/mod.ts'
@@ -54,6 +55,7 @@ export const GENERATOR_VERSION = '1'
  * guarantee the path-based lint structurally cannot provide (decision 0005).
  */
 export const memberSeamPaths = [
+  'packages/@overeng/buck2-launcher/src/buck2-launcher.contract.ts',
   'packages/@overeng/ci-tools/src/deploy-domain.contract.ts',
   'packages/@overeng/genie/src/core/cli.contract.ts',
   'packages/@overeng/genie/src/core/genie.contract.ts',
@@ -73,6 +75,7 @@ export const memberSeamPaths = [
 ] as const
 
 const contracts = [
+  buck2LauncherContract,
   ciToolsContract,
   cliContract,
   genieContract,

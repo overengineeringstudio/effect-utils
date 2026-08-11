@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Buck2 build foundation**: add generated package-local Buck targets, an exact
+  pnpm closure compiler with content/context/task identities, deterministic
+  package evidence archives, a Nix-exported portable-toolchain boundary, and a
+  hardened Buck-artifact-to-Nix import bridge. A thin Nix-built launcher retains
+  Buck reports and emits fail-closed receipts; devenv exposes local-only E2E and
+  benchmark gates. Remote cache access and remote execution stay disabled until
+  authoritative package materialization, trust, and cross-platform gates pass.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema

@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
+export BUCK2_BRIDGE_REPO="$repo_root"
+
+common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
+  flake = builtins.getFlake (toString repo);
+  pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+  test = import (repo + "/nix/workspace-tools/lib/tests/buck2-bridge.nix") { inherit pkgs; };
+  asBuckDescriptor = original: original // {
+    kind = "buck2-build-artifact";
+    provenance = {
+      producer = "buck2-test-fixture";
+      target = "//fixtures:portable-tool";
+      sourceRevision = "0123456789abcdef0123456789abcdef01234567";
+      actionDigest = original.artifact.digest.sri;
+    };
+  };'
+base_expr="let
+  $common_let
+in test"
+
+build_expr() {
+  nix build --impure --no-link --print-out-paths --expr "$1"
+}
+
+expect_build_failure() {
+  local label="$1"
+  local expected="$2"
+  local expression="$3"
+  local log
+  log="$(mktemp)"
+  if nix build --impure --no-link --expr "$expression" >"$log" 2>&1; then
+    echo "buck2-bridge-test: expected $label to fail" >&2
+    rm -f "$log"
+    exit 1
+  fi
+  if ! grep -F "$expected" "$log" >/dev/null; then
+    echo "buck2-bridge-test: $label failed without expected diagnostic: $expected" >&2
+    sed -n '1,160p' "$log" >&2
+    rm -f "$log"
+    exit 1
+  fi
+  rm -f "$log"
+  echo "buck2-bridge-test: RED $label"
+}
+
+expect_command_failure() {
+  local label="$1"
+  local expected="$2"
+  shift 2
+  local log
+  log="$(mktemp)"
+  if "$@" >"$log" 2>&1; then
+    echo "buck2-bridge-test: expected $label to fail" >&2
+    rm -f "$log"
+    exit 1
+  fi
+  if ! grep -F "$expected" "$log" >/dev/null; then
+    echo "buck2-bridge-test: $label failed without expected diagnostic: $expected" >&2
+    sed -n '1,160p' "$log" >&2
+    rm -f "$log"
+    exit 1
+  fi
+  rm -f "$log"
+  echo "buck2-bridge-test: RED $label"
+}
+
+export_out="$(build_expr "($base_expr).portableExport")"
+descriptor="$export_out/descriptor.json"
+archive="$export_out/artifact.tar"
+
+jq -e '
+  .schemaVersion == 1 and
+  .kind == "buck2-portable-toolchain-artifact" and
+  .name == "fixture-tool" and
+  .artifact.format == "tar" and
+  .artifact.digest.algorithm == "sha256" and
+  .entrypoints == ["bin/fixture-tool"] and
+  .provenance.producer == "effect-utils.buck2-toolchain-export"
+' "$descriptor" >/dev/null
+
+declared_digest="$(jq -r '.artifact.digest.sri' "$descriptor")"
+actual_digest="$(nix hash file --type sha256 --sri "$archive")"
+[ "$declared_digest" = "$actual_digest" ]
+
+export BUCK2_BRIDGE_EXPORT_OUT="$export_out"
+import_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+    descriptor = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+  in test.mkImport {
+    inherit descriptor;
+    artifact = exported + \"/artifact.tar\";
+  }"
+import_out="$(build_expr "$import_expr")"
+
+[ "$(env -i PATH=/nonexistent "$import_out/bin/fixture-tool")" = "buck2-bridge-ok" ]
+[ -f "$import_out/share/buck2-artifact/descriptor.json" ]
+jq -e '
+  .kind == "buck2-build-artifact" and
+  .provenance.target == "//fixtures:portable-tool"
+' "$import_out/share/buck2-artifact/descriptor.json" >/dev/null
+if grep -a -R -F '/nix/store/' "$import_out" >/dev/null; then
+  echo "buck2-bridge-test: imported artifact contains a Nix store reference" >&2
+  exit 1
+fi
+[ -z "$(nix-store --query --references "$import_out")" ]
+
+expect_build_failure \
+  "store-reference export" \
+  "forbidden Nix store reference" \
+  "($base_expr).storeReferenceExport"
+
+expect_build_failure \
+  "escaping-symlink export" \
+  "symlink escapes artifact root" \
+  "($base_expr).escapingSymlinkExport"
+
+wrong_digest_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+    descriptor = original // {
+      artifact = original.artifact // {
+        digest = original.artifact.digest // {
+          sri = \"sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\";
+        };
+      };
+    };
+  in test.mkImport {
+    inherit descriptor;
+    artifact = exported + \"/artifact.tar\";
+  }"
+expect_build_failure "wrong digest import" "hash mismatch" "$wrong_digest_expr"
+
+wrong_size_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+    descriptor = original // {
+      artifact = original.artifact // { sizeBytes = original.artifact.sizeBytes + 1; };
+    };
+  in test.mkImport {
+    inherit descriptor;
+    artifact = exported + \"/artifact.tar\";
+  }"
+expect_build_failure "wrong size import" "size mismatch" "$wrong_size_expr"
+
+wrong_platform_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+    descriptor = original // { platform = \"definitely-not-${system:-current}-platform\"; };
+  in test.mkImport {
+    inherit descriptor;
+    artifact = exported + \"/artifact.tar\";
+  }"
+expect_build_failure "wrong platform import" "platform mismatch" "$wrong_platform_expr"
+
+scan_expr="let
+  $common_let
+in import (repo + \"/nix/workspace-tools/lib/buck2-artifact-scan.nix\") { inherit pkgs; }"
+scan_out="$(build_expr "$scan_expr")"
+special_root="$(mktemp -d)"
+trap 'rm -rf "$special_root"' EXIT
+mkfifo "$special_root/fixture.fifo"
+expect_command_failure \
+  "special tree node" \
+  "unsupported tree node type" \
+  "$scan_out" tree "$special_root"
+tar --create --file "$special_root.tar" --directory "$special_root" .
+expect_command_failure \
+  "special archive member" \
+  "unsupported archive member type" \
+  "$scan_out" archive "$special_root.tar"
+rm -f "$special_root.tar"
+
+echo "buck2-bridge-test: PASS export=$export_out import=$import_out"

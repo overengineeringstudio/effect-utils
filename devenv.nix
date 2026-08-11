@@ -97,6 +97,8 @@ let
     name = "ci-tools";
     entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
   };
+  buck2Launcher = repoFlake.packages.${currentSystem}.buck2-launcher;
+  buck2Task = "${buck2Launcher}/bin/buck2-task";
 
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -149,6 +151,8 @@ let
   # See: context/workarounds/bun-issues.md
   allPackages = [
     "packages/@overeng/agent-session-ingest"
+    "packages/@overeng/buck2-launcher"
+    "packages/@overeng/buck2-tools"
     "packages/@overeng/content-address"
     "packages/@overeng/utils"
     "packages/@overeng/utils-dev"
@@ -419,11 +423,21 @@ in
       # (its `execIfModified`) — kept in sync with `_module.args.genieInputGlobs`.
       geniePatterns = [
         "packages/@overeng/*/*.genie.ts"
+        "packages/@overeng/*/buck2/*.genie.ts"
         "packages/@overeng/*/examples/*/*.genie.ts"
         "scripts/*.genie.ts"
         "context/effect/socket/*.genie.ts"
         "context/opentui/*.genie.ts"
         "context/otel-scrape/telemetry-registry.json"
+        "genie/buck2/*.ts"
+        "packages/@overeng/buck2-tools/src/**/*.ts"
+        "packages/@overeng/tui-core/buck2/target.ts"
+        "packages/@overeng/tui-core/src/**/*.ts"
+        "packages/@overeng/tui-core/src/**/*.tsx"
+        "packages/@overeng/tui-core/test/**/*.ts"
+        "packages/@overeng/tui-core/test/**/*.tsx"
+        "pnpm-lock.yaml"
+        "pnpm-workspace.yaml"
         ".oxfmtrc.json.genie.ts"
         ".oxlintrc.json.genie.ts"
       ];
@@ -478,6 +492,15 @@ in
   # `lint:check:genie` gate's `execIfModified`).
   effectUtils.genie.extraInputGlobs = [
     "context/otel-scrape/telemetry-registry.json"
+    "genie/buck2/*.ts"
+    "packages/@overeng/buck2-tools/src/**/*.ts"
+    "packages/@overeng/tui-core/buck2/target.ts"
+    "packages/@overeng/tui-core/src/**/*.ts"
+    "packages/@overeng/tui-core/src/**/*.tsx"
+    "packages/@overeng/tui-core/test/**/*.ts"
+    "packages/@overeng/tui-core/test/**/*.tsx"
+    "pnpm-lock.yaml"
+    "pnpm-workspace.yaml"
   ];
 
   packages = [
@@ -485,6 +508,9 @@ in
     pkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
+    # Buck's admitted event backend; avoids pnpm alias staleness and whole-tree
+    # crawler races under concurrent repository tools.
+    pkgs.watchman
     # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
@@ -492,6 +518,8 @@ in
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
     repoFlake.packages.${currentSystem}.otelite
     repoFlake.packages.${currentSystem}.otel-scrape
+    # Nix-distributed direct Buck launcher; its wrapper pins the Buck binary.
+    buck2Launcher
     cliBuildStamp.package
     ciToolsSourceCli
     (mkSourceCli {
@@ -693,7 +721,135 @@ in
     '';
   };
 
+  tasks."buck2:build:foundation" = {
+    description = "Build exact-closure and portable-toolchain Buck2 evidence with remote execution/cache disabled";
+    exec = trace.exec "buck2:build:foundation" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${buck2Task} \
+        --evidence-dir "$root/tmp/buck2-evidence" \
+        --print-command \
+        -- build //:buck2_foundation //:portable_toolchain_evidence --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:test:foundation" = {
+    description = "Run strict Buck2 closure, package-evidence, and portable-toolchain tests locally";
+    exec = trace.exec "buck2:test:foundation" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${buck2Task} \
+        --evidence-dir "$root/tmp/buck2-evidence" \
+        --print-command \
+        -- test \
+          //buck2/tools:closure_tool_test \
+          //buck2/tools:package_evidence_tool_test \
+          //buck2/tools:portable_toolchain_test \
+          --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:e2e:tui-core" = {
+    description = "Generate, build, observe, and Nix-import the tui-core Buck input-plan artifact";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:e2e:tui-core" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
+        "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan
+    '';
+  };
+
+  tasks."buck2:nix-bridge:check" = {
+    description = "Prove portable Nix tool export and digest/platform-verified Buck artifact import";
+    exec = trace.exec "buck2:nix-bridge:check" ''
+      set -euo pipefail
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
+    '';
+  };
+
+  tasks."buck2:benchmark:check" = {
+    description = "Validate the Buck2 benchmark parser and non-mutating dry-run contract";
+    exec = trace.exec "buck2:benchmark:check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      ${pkgs.nodejs}/bin/node --test \
+        scripts/buck2-benchmark/lib.unit.test.mjs \
+        scripts/buck2-benchmark/dry-run.integration.test.mjs
+      ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
+        --output "$root/tmp/buck2-benchmark/dry-run.jsonl"
+    '';
+  };
+
+  tasks."buck2:invalidation:e2e" = {
+    description = "Prove canonical source mutation invalidates Buck2 through the configured file watcher";
+    exec = trace.exec "buck2:invalidation:e2e" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
+      exec ${pkgs.bash}/bin/bash scripts/buck2-invalidation-e2e.sh \
+        "$root" ${pkgs.buck2}/bin/buck2
+    '';
+  };
+
+  tasks."buck2:platform:check" = {
+    description = "Reject a Buck2 package target whose declared platform differs from the local-only host";
+    exec = trace.exec "buck2:platform:check" ''
+      set -euo pipefail
+      isolation="platform-check-$$-$RANDOM"
+      stderr_file="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/buck2-platform-check.XXXXXX")"
+      cleanup() {
+        ${pkgs.buck2}/bin/buck2 --isolation-dir "$isolation" kill >/dev/null 2>&1 || true
+        ${pkgs.coreutils}/bin/rm -f "$stderr_file"
+      }
+      trap cleanup EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+      if ${pkgs.buck2}/bin/buck2 \
+        --isolation-dir "$isolation" \
+        build --fake-arch aarch64 \
+        //packages/@overeng/tui-core:typescript_input_plan \
+        --local-only --no-remote-cache \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:platform:check: mismatched platform unexpectedly built" >&2
+        exit 1
+      fi
+      actual="$(${pkgs.gawk}/bin/awk '
+        /error: fail: package_task platform mismatch:/ {
+          sub(/^.*error: fail: package_task platform mismatch: /, "")
+          print
+          exit
+        }
+      ' "$stderr_file")"
+      expected="target requires x86_64-linux, local-only execution host is aarch64-linux"
+      if [ "$actual" != "$expected" ]; then
+        echo "buck2:platform:check: unexpected diagnostic: $actual" >&2
+        exit 1
+      fi
+      echo "buck2:platform:check: PASS diagnostic=$actual"
+    '';
+  };
+
+  tasks."buck2:check" = {
+    description = "Run Buck2 foundation, invalidation, platform, Nix bridge, and benchmark gates";
+    after = [
+      "buck2:build:foundation"
+      "buck2:test:foundation"
+      "buck2:e2e:tui-core"
+      "buck2:nix-bridge:check"
+      "buck2:benchmark:check"
+      "buck2:invalidation:e2e"
+      "buck2:platform:check"
+    ];
+  };
+
   tasks."check:all".after = [
+    "buck2:check"
     "cargo:check"
     "dependency-materialization:evidence:check"
   ];

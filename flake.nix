@@ -66,6 +66,13 @@
             dirty
             ;
         };
+        buck2-launcher = import (rootPath + "/packages/@overeng/buck2-launcher/nix/build.nix") {
+          inherit pkgs;
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = ./. + "/packages/@overeng/buck2-launcher/src";
+          };
+        };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -187,7 +194,7 @@
           cliPackages
           // providerCliPackages
           // {
-            inherit otelite otel-scrape;
+            inherit otelite otel-scrape buck2-launcher;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
@@ -243,6 +250,7 @@
         };
         apps.otelite = flake-utils.lib.mkApp { drv = otelite; };
         apps.otel-scrape = flake-utils.lib.mkApp { drv = otel-scrape; };
+        apps.buck2-launcher = flake-utils.lib.mkApp { drv = buck2-launcher; };
       }
     )
     // {
@@ -295,6 +303,17 @@
 
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
+
+      # Export a Nix-authored tree as a normalized, relocatable Buck toolchain
+      # artifact. The helper validates relocation; native closures that retain
+      # store references belong in an execution image instead.
+      lib.mkBuck2ToolchainExport =
+        { pkgs }: import ./nix/workspace-tools/lib/buck2-toolchain-export.nix { inherit pkgs; };
+
+      # Verify and import a published Buck artifact into a normal Nix output for
+      # wrapping and later Home Manager/system activation.
+      lib.mkBuck2ArtifactImport =
+        { pkgs }: import ./nix/workspace-tools/lib/buck2-artifact-import.nix { inherit pkgs; };
 
       # Shell helper for runtime CLI build stamps.
       lib.cliBuildStamp =

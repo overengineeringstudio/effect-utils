@@ -1,0 +1,6 @@
+load("@prelude//toolchains:demo.bzl", "system_demo_toolchains")
+
+# BOOTSTRAP ONLY. Prelude's pinned demo toolchains may build the verifier that
+# admits a portable Nix-exported toolchain. Real package actions must consume a
+# reviewed portable_toolchain RunInfo and may not use these demo targets.
+system_demo_toolchains()

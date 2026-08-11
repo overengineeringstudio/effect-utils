@@ -14,7 +14,10 @@
 assert oxlintNpm.pluginPath != null;
 pkgs.writeShellApplication {
   name = "oxlint";
-  runtimeInputs = [ pkgs.jq ];
+  runtimeInputs = [
+    pkgs.jq
+    pkgs.util-linux
+  ];
   text = ''
     pluginPath="${oxlintNpm.pluginPath}"
 
@@ -44,9 +47,18 @@ pkgs.writeShellApplication {
       # .oxlintrc.json), keeping it an ancestor of the lint targets so plugin rules
       # apply. Cleaned up on EXIT via trap.
       config_dir=$(dirname "$config_file")
-      tmpconfig=$(mktemp "$config_dir/.oxlint-with-plugins.XXXXXX.json")
-      trap 'rm -f "$tmpconfig"' EXIT
-      jq --argjson plugins "[\"$pluginPath\"]" '.jsPlugins = $plugins' "$config_file" > "$tmpconfig"
+
+      # Publish a persistent, git-ignored root cache atomically, and serialize
+      # concurrent wrappers by locking the source config itself (without
+      # creating another repository-local lock file). Keeping the complete file
+      # avoids a hash-crawler stat/open race with an EXIT-time deletion.
+      exec 9<"$config_file"
+      flock --exclusive 9
+      tmpconfig="$config_dir/.oxlint-with-plugins.json"
+      staged_config=$(mktemp "''${TMPDIR:-/tmp}/oxlint-with-plugins.XXXXXX.json")
+      trap 'rm -f "$staged_config"' EXIT
+      jq --argjson plugins "[\"$pluginPath\"]" '.jsPlugins = $plugins' "$config_file" > "$staged_config"
+      mv "$staged_config" "$tmpconfig"
 
       # Replace the config arg, or prepend -c if using default
       new_args=()
@@ -67,10 +79,7 @@ pkgs.writeShellApplication {
         new_args=("-c" "$tmpconfig" "''${new_args[@]}")
       fi
 
-      # NOTE: do NOT `exec` here. The injected config lives inside the repo tree
-      # and must be removed by the EXIT trap above; `exec` would replace this
-      # shell and the trap would never fire, leaking the temp config at repo root.
-      # Run as a child, capture status, and exit (trap cleans up).
+      # Run as a child so the staged-file cleanup trap remains effective.
       status=0
       ${oxlintNpm}/bin/oxlint "''${new_args[@]}" || status=$?
       exit "$status"

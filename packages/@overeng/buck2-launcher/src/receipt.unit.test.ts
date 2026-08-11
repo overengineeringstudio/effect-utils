@@ -1,0 +1,159 @@
+import { createHash } from 'node:crypto'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+import {
+  countOutcomes,
+  decodeReceipt,
+  descriptorForClosureManifest,
+  explainClosures,
+  normalizeActions,
+  normalizeMaterialization,
+  parseJsonLines,
+  sanitizeEvidenceText,
+  type EvidenceDescriptor,
+} from './receipt.ts'
+
+const descriptor = (hex: string): EvidenceDescriptor => ({
+  digest: `sha256:${hex.repeat(64)}`,
+  byteLength: 1,
+  mediaType: 'application/json',
+})
+
+describe('Buck receipt normalization', () => {
+  it('keeps DICE reuse distinct from cache hits and execution', () => {
+    const actions = normalizeActions([
+      {
+        identity: 'root//:local',
+        reproducer: { executor: 'Local', details: { env: { TOKEN: 'no' } } },
+      },
+      { identity: 'root//:remote', reproducer: { executor: 'RE' } },
+      { identity: 'root//:cached', result: 'remote_cache_hit' },
+    ])
+    expect(actions.map((action) => action.outcome)).toEqual([
+      'local_execution',
+      'remote_execution',
+      'remote_cache_hit',
+    ])
+    expect(
+      normalizeActions([
+        { identity: 'root//:x', reproducer: { executor: 'Local' }, duration: '1.5s' },
+      ]),
+    ).toMatchObject([{ durationMs: 1500 }])
+    expect(countOutcomes([], 'dice_reuse')).toEqual({ dice_reuse: 1 })
+  })
+
+  it('parses only JSON rows and aggregates materialization without retaining paths', () => {
+    const rows = parseJsonLines(
+      'Showing commands\n{"path":"/private/x","file_count":2,"total_bytes":42}\n',
+    )
+    expect(normalizeMaterialization(rows)).toEqual({ records: 1, files: 2, bytes: 42 })
+  })
+
+  it('redacts paths, credentials, and secret assignments', () => {
+    const result = sanitizeEvidenceText(
+      'build /home/alice/private token=hunter2 https://alice:hunter2@example.invalid/x',
+    )
+    expect(result).toContain('<path>')
+    expect(result).not.toContain('alice')
+    expect(result).not.toContain('hunter2')
+  })
+
+  it('explains exact closure changes but does not invent another input cause', () => {
+    const before = [{ label: 'root//:x', descriptor: descriptor('a') }]
+    const after = [{ label: 'root//:x', descriptor: descriptor('b') }]
+    expect(explainClosures(after, before, 1)).toMatchObject({
+      status: 'exact',
+      changedDimensions: [{ dimension: 'externalClosure', label: 'root//:x' }],
+    })
+    expect(explainClosures(after, after, 1)).toMatchObject({
+      status: 'partial',
+      changedDimensions: [],
+    })
+  })
+
+  it('canonicalizes validated closure manifests before hashing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck-closure-canonical-'))
+    const one = join(root, 'one.json')
+    const two = join(root, 'two.json')
+    const unsorted = join(root, 'unsorted.json')
+    const semantic = {
+      packagePath: 'packages/example',
+      target: {
+        name: 'check',
+        kind: 'typescript_check',
+        sources: [],
+        configs: [],
+        deps: [],
+        closureDescriptor: 'buck2/check.json',
+      },
+      closure: { task: { label: 'root//:check' } },
+    }
+    const isRecord = (input: unknown): input is Record<string, unknown> =>
+      typeof input === 'object' && input !== null
+    const canonical = (input: unknown): unknown =>
+      Array.isArray(input) === true
+        ? input.map(canonical)
+        : isRecord(input) === true
+          ? Object.fromEntries(
+              Object.entries(input)
+                .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+                .map(([key, child]) => [key, canonical(child)]),
+            )
+          : input
+    const value = {
+      schemaVersion: 1,
+      ...semantic,
+      provenance: {
+        generator: 'effect-utils/genie/buck2',
+        regenerationCommand: 'genie',
+        semanticFingerprint: `sha256:${createHash('sha256')
+          .update(JSON.stringify(canonical(semantic)))
+          .digest('hex')}`,
+        semanticInputs: [],
+      },
+    }
+    await writeFile(one, JSON.stringify(value))
+    await writeFile(two, JSON.stringify({ ...value, schemaVersion: 1 }, null, 4))
+    expect(await descriptorForClosureManifest(one, 'root//:check')).toEqual(
+      await descriptorForClosureManifest(two, 'root//:check'),
+    )
+    await expect(descriptorForClosureManifest(one, 'root//:other')).rejects.toThrow(
+      'label mismatch',
+    )
+    const unsortedSemantic = {
+      ...semantic,
+      target: { ...semantic.target, sources: ['z.ts', 'a.ts'] },
+    }
+    await writeFile(
+      unsorted,
+      JSON.stringify({
+        schemaVersion: 1,
+        ...unsortedSemantic,
+        provenance: {
+          ...value.provenance,
+          semanticFingerprint: `sha256:${createHash('sha256')
+            .update(JSON.stringify(canonical(unsortedSemantic)))
+            .digest('hex')}`,
+        },
+      }),
+    )
+    await expect(descriptorForClosureManifest(unsorted, 'root//:check')).rejects.toThrow(
+      'sorted and unique',
+    )
+  })
+
+  it('rejects malformed nested receipt evidence', () => {
+    expect(() =>
+      decodeReceipt({
+        schema: 'buck-run-receipt/v1',
+        launcherRunId: 'x',
+        closures: [],
+        actions: [],
+      }),
+    ).toThrow('$.command')
+  })
+})

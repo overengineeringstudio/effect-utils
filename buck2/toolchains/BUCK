@@ -1,0 +1,23 @@
+load(":portable.bzl", "portable_toolchain", "portable_toolchain_fixture", "portable_toolchain_probe")
+
+# Synthetic evidence only: the fixture emits the same archive/descriptor shape
+# as nix/workspace-tools/lib/buck2-toolchain-export.nix. Production consumers
+# must supply reviewed Nix-exported artifacts and their exact byte identities.
+portable_toolchain_fixture(
+    name = "synthetic_nix_export",
+)
+
+portable_toolchain(
+    name = "synthetic_portable_toolchain",
+    archive = ":synthetic_nix_export",
+    archive_sha256 = "ae7f5f1a251007314f07579a1ecbee680c50b2df56d7463300326dfea35f0f5d",
+    descriptor = ":synthetic_nix_export[descriptor]",
+    descriptor_sha256 = "2ad1bb618b97b9ad9aa9558acca99d95ecf58a8c4a228b7dffcb9aadc44da1ab",
+    entrypoint = "bin/fixture-tool",
+)
+
+portable_toolchain_probe(
+    name = "synthetic_portable_toolchain_evidence",
+    tool = ":synthetic_portable_toolchain",
+    visibility = ["PUBLIC"],
+)

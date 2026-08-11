@@ -408,10 +408,7 @@ const nativeDepPolicyAuditStep = {
 } as const
 
 // Core product jobs keyed by the shared Genie CI source of truth.
-const jobs: Record<
-  CoreCIJobName,
-  ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>
-> = {
+const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
   typecheck: job({
     step: {
       name: 'Type check',
@@ -481,6 +478,12 @@ const jobs: Record<
     step: {
       name: 'Bundle smoke tests',
       run: runDevenvTasksBefore('bundle:smoke'),
+    },
+  }),
+  buck2: job({
+    step: {
+      name: 'Buck2 local evidence and Nix bridge',
+      run: runDevenvTasksBefore('buck2:check'),
     },
   }),
   cargo: job({
