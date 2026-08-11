@@ -20,13 +20,14 @@ check. Consequently this experiment makes no Buck-versus-Devenv speedup claim.
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Notify snapshot             | synthetic clean snapshot `f3276df82c1207767845fe03bb49da8433644f45` (tree `0844af08cab5823c15ad61c8dc188114d28c84b6`) over base `a155f7554def68e0862f2942f10525a53f226f21` |
 | Hash-crawler snapshot       | synthetic clean snapshot `a4ce14e155a6169ccd3cddf66dba865b626fc80c` (tree `36eac6d9463f6f231a0084b198519160fea012a7`) over the same base                                   |
+| Watchman snapshot           | committed foundation `fa52bb9b4603bbef6cf3011c4ac0dd6b1a16cf32`                                                                                                            |
 | Buck work                   | build `//packages/@overeng/tui-core:typescript_input_plan`                                                                                                                 |
 | Devenv end-user context     | `devenv tasks run ts:check --show-output --no-tui`                                                                                                                         |
 | Devenv compute-only context | `devenv tasks run ts:check --mode single --show-output --no-tui`                                                                                                           |
 | Equivalence declaration     | none; contract ID `tui-core-typescript-input-plan/no-equivalent-devenv-lane/v1`                                                                                            |
 | Buck binary                 | Nix-pinned Buck2 `2026-04-14-7600cb80070a88b88be67aa5d20d6a93cffa0223`                                                                                                     |
 | Execution/cache             | local execution only; remote cache and remote execution disabled                                                                                                           |
-| Sampling                    | 1 unreported warmup, 5 measured runs; nearest-rank percentiles; filesystem page cache uncontrolled. The crawler rerun was incremental-only.                                |
+| Sampling                    | 1 unreported warmup, 5 measured runs; nearest-rank percentiles; filesystem page cache uncontrolled. Crawler and Watchman reruns were incremental-only.                     |
 | Host class                  | Linux 6.18.33, Ryzen 9 7950X3D, 32 logical CPUs, 128 GiB RAM                                                                                                               |
 
 The snapshot commit was created from the reviewed staged/worktree state solely
@@ -101,8 +102,19 @@ baseline/mutate/restore contract to `//buck2/evidence:package_evidence` in an
 isolated daemon and restores the fixture bytes through an exit trap.
 The same full `check:all` run exercised Watchman concurrently with oxlint,
 Cargo, Genie, Buck tests, platform rejection, and the TUI Buck-to-Nix E2E lane.
-Cross-platform and Watchman-specific latency/resource admission remains tracked
-in issue #1055.
+The committed-tree incremental benchmark produced:
+
+| Buck phase                   |       min |       p50 |       p95 | actions p50 | materializations p50 | Verdict            |
+| ---------------------------- | --------: | --------: | --------: | ----------: | -------------------: | ------------------ |
+| same-daemon warm no-op       | 14.501 ms | 15.767 ms | 16.654 ms |           0 |                    0 | measured           |
+| mtime-only source change     | 15.425 ms | 15.813 ms | 17.353 ms |           0 |                    0 | measured           |
+| declared-source content edit | 59.930 ms | 64.324 ms | 66.081 ms |           1 |                    0 | GREEN; invalidated |
+| unrelated Markdown edit      | 15.079 ms | 16.189 ms | 17.469 ms |           0 |                    0 | measured           |
+
+Watchman's warm p50 is 0.979 ms lower than the rejected notify snapshot and
+26.641 ms lower than the crawler snapshot on this host. These are
+within-workload measurements from separate snapshots, not a general performance
+claim. Cross-platform admission remains tracked in issue #1055.
 
 The generated `tui-core` target also now carries an explicit
 `x86_64-linux` requirement. A fake `aarch64-linux` target control on the x86_64
@@ -134,7 +146,9 @@ The retained machine-readable summary is
 `2026-08-11-tui-core-input-plan-benchmark.summary.jsonl` with SHA-256
 `965e54d17483f8f3dd1fe58b6ddfab41d04c04473e1becf603afcc3a06e0a7b5`.
 Its 26 records retain both runs and tag each record with `buckFileWatcher` and
-`benchmarkScope`.
+`benchmarkScope`. The 13-record committed-tree Watchman summary is
+`2026-08-11-tui-core-input-plan-watchman.summary.jsonl` with SHA-256
+`b0f6e899f42cec700935a0fe413b4b5b156e1aed04fef1c2320d1d8b328dac0d`.
 
 ## Conclusion
 
@@ -144,9 +158,9 @@ for this pnpm workspace because the declared-source control was stale. Watchman
 plus ignored `node_modules` resolves the local correctness seam with exactly one
 mutation action, a changed artifact digest, exactly one restoration action,
 restoration of the baseline digest, and a GREEN concurrent repository gate. The
-rejected hash crawler cost roughly 26 ms more than notify on a warm no-op for
-this repository snapshot. Watchman-specific performance and remote configured
-platforms remain follow-up experiments.
+rejected hash crawler cost roughly 27 ms more than Watchman on a warm no-op for
+these repository snapshots. Cross-platform Watchman admission and remote
+configured platforms remain follow-up experiments.
 
 ## VRS Impact
 
