@@ -70,6 +70,9 @@ in
   nonCanonicalEntrypointExport = mkEntrypointExport "bin/./fixture-tool";
   repeatedSeparatorEntrypointExport = mkEntrypointExport "bin//fixture-tool";
   backslashEntrypointExport = mkEntrypointExport "bin\\fixture-tool";
+  controlCharacterEntrypointExport = mkEntrypointExport ''
+    bin/fixture-tool
+    bin/fixture-tool'';
   duplicateEntrypointExport = exportToolchain {
     name = "fixture-tool";
     src = portableSource;

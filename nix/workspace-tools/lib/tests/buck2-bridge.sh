@@ -134,6 +134,11 @@ expect_build_failure \
   "($base_expr).backslashEntrypointExport"
 
 expect_build_failure \
+  "control-character entrypoint export" \
+  "entrypoints must be safe relative paths" \
+  "($base_expr).controlCharacterEntrypointExport"
+
+expect_build_failure \
   "duplicate entrypoint export" \
   "entrypoints must be unique" \
   "($base_expr).duplicateEntrypointExport"

@@ -595,6 +595,8 @@ export const descriptorForClosureManifest = async (
 
 const secretAssignmentOrHeader =
   /(^|[^A-Za-z0-9])["']?(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*["']?(?:\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
+const secretCamelCaseAssignmentOrHeader =
+  /(^|[^A-Za-z0-9])["']?[A-Za-z0-9]*(?:Token|Password|Secret|Authorization|Cookie|ApiKey)["']?(?:\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gm
 const secretCliAuthorizationArgument =
   /(^|[\s"'])--(?:[A-Za-z0-9]+[_-])*authorization(?:[_-][A-Za-z0-9]+)*\s+(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const secretCliArgument =
@@ -608,6 +610,7 @@ export const sanitizeEvidenceText = (value: unknown): string => {
   const source = typeof value === 'string' ? value : 'unknown'
   const sanitized = source
     .replace(secretAssignmentOrHeader, '$1<redacted>')
+    .replace(secretCamelCaseAssignmentOrHeader, '$1<redacted>')
     .replace(secretCliAuthorizationArgument, '$1<redacted>')
     .replace(secretCliArgument, '$1<redacted>')
     .replace(urlUserInfo, '$1<redacted>@')
@@ -622,7 +625,7 @@ const numberAt = (value: unknown, keys: ReadonlyArray<string>): number | undefin
   const record = value as Record<string, unknown>
   for (const key of keys) {
     const candidate = record[key]
-    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0)
+    if (typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0)
       return candidate
   }
   return undefined

@@ -28,6 +28,8 @@ DESCRIPTOR_KEYS = {
 }
 MAX_ARCHIVE_MEMBER_BYTES = 1024 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
+TAR_BLOCK_BYTES = 512
+TAR_END_MARKER_BYTES = 2 * TAR_BLOCK_BYTES
 
 
 def fail(message: str) -> NoReturn:
@@ -190,6 +192,21 @@ def validate_archive(archive: tarfile.TarFile) -> list[tuple[tarfile.TarInfo, Pu
     return members
 
 
+def validate_archive_end(archive_path: Path, logical_end: int) -> None:
+    if logical_end % TAR_BLOCK_BYTES != 0:
+        fail("portable toolchain archive has an invalid physical end marker offset")
+    remaining = archive_path.stat().st_size - logical_end
+    if remaining < TAR_END_MARKER_BYTES:
+        fail("portable toolchain archive is missing its physical end marker")
+    with archive_path.open("rb") as source:
+        source.seek(logical_end)
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            if any(chunk):
+                fail(
+                    "portable toolchain archive contains nonzero bytes after its physical end marker"
+                )
+
+
 def stage(args: argparse.Namespace) -> None:
     expected_archive = parse_sha256(args.archive_sha256, "archive_sha256")
     expected_descriptor = parse_sha256(args.descriptor_sha256, "descriptor_sha256")
@@ -218,6 +235,7 @@ def stage(args: argparse.Namespace) -> None:
     out.mkdir(parents=True, exist_ok=False)
     with tarfile.open(archive_path, "r:") as archive:
         members = validate_archive(archive)
+        validate_archive_end(archive_path, archive.offset)
         for member, path in sorted(members, key=lambda item: (len(item[1].parts), str(item[1]))):
             destination = out.joinpath(*path.parts)
             if member.isdir():

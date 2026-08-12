@@ -11,6 +11,7 @@ import {
   descriptorForClosureManifest,
   descriptorForFile,
   explainClosures,
+  materializationsSemanticallyComplete,
   normalizeActions,
   normalizeMaterialization,
   parseJsonLines,
@@ -91,6 +92,31 @@ describe('Buck receipt normalization', () => {
     )
     expect(result).not.toContain('json-token-secret')
     expect(result).not.toContain('json-header-secret')
+  })
+
+  it('redacts camelCase credential keys from normalized action identities', () => {
+    const actions = normalizeActions([
+      { identity: '{"githubToken":"github-camel-secret"}' },
+      { identity: 'accessToken=access-camel-secret' },
+      { identity: 'apiKey: api-camel-secret' },
+    ])
+    const serialized = JSON.stringify(actions)
+    expect(serialized).not.toContain('github-camel-secret')
+    expect(serialized).not.toContain('access-camel-secret')
+    expect(serialized).not.toContain('api-camel-secret')
+  })
+
+  it('requires materialization counters to be nonnegative safe integers', () => {
+    const valid = { path: 'buck-out/x', method: 'copy', file_count: 1, total_bytes: 2 }
+    for (const invalid of [
+      { ...valid, file_count: 1.5 },
+      { ...valid, total_bytes: 2.5 },
+      { ...valid, file_count: Number.MAX_SAFE_INTEGER + 1 },
+      { ...valid, total_bytes: Number.MAX_SAFE_INTEGER + 1 },
+    ]) {
+      expect(materializationsSemanticallyComplete([invalid])).toBe(false)
+    }
+    expect(materializationsSemanticallyComplete([valid])).toBe(true)
   })
 
   it('describes retained evidence by its exact streamed bytes', async () => {

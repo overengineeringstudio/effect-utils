@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import unittest
+import io
 import tarfile
+import tempfile
+import unittest
 
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from buck2.tools.portable_toolchain import (
     normalized_relative_path,
+    validate_archive_end,
     validate_archive,
     validate_descriptor_platform,
     validate_symlink_target,
@@ -64,6 +67,33 @@ class PortableToolchainPathTest(unittest.TestCase):
             members.append(member)
         with self.assertRaisesRegex(SystemExit, "aggregate extracted-size limit"):
             validate_archive(type("Archive", (), {"getmembers": lambda self: members})())
+
+    def test_rejects_nonzero_bytes_after_physical_tar_end_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive_path = Path(directory, "artifact.tar")
+            with tarfile.open(archive_path, "w", format=tarfile.GNU_FORMAT) as archive:
+                member = tarfile.TarInfo("bin/tool")
+                member.size = 1
+                archive.addfile(member, io.BytesIO(b"x"))
+            with archive_path.open("ab") as archive:
+                archive.write(b"EVIL")
+            with tarfile.open(archive_path, "r:") as archive:
+                archive.getmembers()
+                logical_end = archive.offset
+            with self.assertRaisesRegex(SystemExit, "physical end marker"):
+                validate_archive_end(archive_path, logical_end)
+
+    def test_accepts_zero_filled_physical_tar_end_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive_path = Path(directory, "artifact.tar")
+            with tarfile.open(archive_path, "w", format=tarfile.GNU_FORMAT) as archive:
+                member = tarfile.TarInfo("bin/tool")
+                member.size = 1
+                archive.addfile(member, io.BytesIO(b"x"))
+            with tarfile.open(archive_path, "r:") as archive:
+                archive.getmembers()
+                logical_end = archive.offset
+            validate_archive_end(archive_path, logical_end)
 
 
 if __name__ == "__main__":
