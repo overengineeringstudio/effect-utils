@@ -95,6 +95,8 @@ overlay may reference Cargo declarations without copying them.
   authority.
 - **BUCK.GRAPH.BIND.RUST-R12 Nix locality gate:** Moving packages into a shared
   Cargo resolution domain must not broaden each Nix package source to the whole
-  repository or make an unrelated member's reachable closure part of that
-  package's build identity. The migration requires a workspace-aware,
-  narrowly-filtered source and closure bridge with an unrelated-change control.
+  repository. The workspace-aware bridge must narrowly include required root
+  files, manifests, selected member sources, and first-party path closures.
+  Shared-lock vendoring may remain a measured coarse packaging boundary while
+  Buck owns fine-grained repository action identity; it must not be disguised
+  by a handwritten projected-lock resolver.

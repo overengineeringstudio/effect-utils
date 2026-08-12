@@ -71,11 +71,19 @@ every Buck action key. The resolver join derives a normalized reachable
 closure for the operation, platform, dependency kind, and effective features;
 that closure is the invalidation boundary.
 
-`otelite` and `otel-scrape` form one effect-utils Cargo resolution domain. The
-shared workspace and lockfile are admitted only together with a Nix bridge that
-filters the workspace root, selected member sources, and first-party path
-closure without including the whole repository. An unrelated member change
-must leave the unaffected package closure identity stable.
+`otelite` and `otel-scrape` form one effect-utils Cargo resolution domain rooted
+at `rust/Cargo.toml`, with exact members and explicit member workspace links.
+The repository-root `rust-toolchain.toml` remains the toolchain authority. The
+shared workspace and lockfile land with a Nix bridge that filters the workspace
+root, required member manifests, selected member sources, and first-party path
+closure without including the whole repository.
+
+Stock Nix Cargo vendoring consumes the complete lock and is therefore an
+explicitly coarse system-packaging boundary. It does not define Buck action
+identity. A custom projected lock is forbidden until measured Nix cost and a
+Cargo-parity corpus justify its resolver complexity. The preferred convergence
+path is a digest-pinned Buck product imported by Nix after platform portability
+or native-realization contracts are admitted.
 
 A narrow Rust validator may require catalog-eligible member dependencies to use
 `workspace = true`, reject ignored or bypassing request keys, admit explicit

@@ -35,16 +35,20 @@ Treat `otelite` and `otel-scrape` as one Cargo resolution and compatibility
 domain. Use one native virtual workspace and one lockfile. Buck action identity
 is the normalized reachable operation closure, not whole-lock bytes.
 
-Do not land the shared lock migration until a workspace-aware Nix bridge proves
-that each package source remains narrowly filtered and that an unrelated member
-change does not alter the unaffected package closure identity.
+Land the shared lock through stock workspace-aware `buildRustPackage`, with each
+package's source code narrowly filtered. Accept complete-lock vendoring as a
+temporary coarse Nix system-packaging boundary: experiments proved stock Nix
+cannot preserve package-local vendor identity after an unrelated lock change.
+Do not build a handwritten projected-lock resolver. Buck retains normalized
+reachable closures as its fine-grained action identity, and digest-pinned Buck
+products are the intended long-term Nix input after portability admission.
 
 ## Consequences
 
-- Cargo workspace composition and the Nix bridge migrate atomically.
+- Cargo workspace composition and the stock Nix bridge migrate atomically.
 - The repository gains one selected Rust topology without a generated manifest
   authority.
-- Nix may consume workspace-level files but must not consume unrelated member
-  sources or use whole-repository source filtering.
-- A failed locality control blocks the migration and triggers bridge redesign;
-  it does not silently weaken the cache boundary.
+- Nix consumes the shared lock and required member manifests but must not use
+  whole-repository source filtering.
+- Coarse Nix invalidation is visible and benchmarked; it does not weaken Buck's
+  closure-local identity or trigger a second resolver implementation.
