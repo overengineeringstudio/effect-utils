@@ -4,7 +4,9 @@ This document specifies the verified Buck-to-Nix build-product boundary and
 the handoff into Nix-managed system generations. It builds on
 [requirements.md](./requirements.md).
 
-Status: **Draft**
+Status: **Draft**. The generic archive and import seam has prototype evidence.
+No TypeScript or Rust executable, publication flow, or system generation is
+admitted through the bridge yet.
 
 ## Scope
 
@@ -63,6 +65,24 @@ buck-build-product/v1
   result-affecting provenance
 ```
 
+The descriptor carries a required runtime tagged union. Runtime behavior is a
+product property rather than a source-language property:
+
+```text
+RuntimeContract =
+  | Interpreter { runtimeId, runtimeContract, program }
+  | ElfDynamic { machine, loaderClass, neededLibraries,
+                 symbolVersionFloors, runpathPolicy }
+  | MachODynamic { architecture, minimumOs, dylibs,
+                   installNamePolicy, rpathPolicy, signingPolicy }
+  | SelfContained { inspectionContract }
+```
+
+The shared importer has no TypeScript or Rust branches. It strictly validates
+the common envelope and dispatches runtime inspection and realization to the
+selected tagged backend. A product with multiple runtime kinds is split rather
+than represented by a universal optional-field record.
+
 Canonical encoding and archive normalization are versioned parts of the
 contract. Paths are safe repository-relative paths. Archives have stable member
 order, ownership, timestamps, modes, and explicit resource limits. Verification
@@ -70,9 +90,11 @@ rejects digest or size mismatch, unknown fields, duplicate or escaping paths,
 file/ancestor collisions, unsupported node types, undeclared entrypoints,
 trailing data, and platform or ABI mismatch.
 
-Implementation provenance such as helper language, source checkout location,
-or generator binary identity belongs in evidence. It enters product identity
-only when it changes the declared product contract or bytes.
+Semantic provenance that changes the declared product contract or bytes enters
+descriptor identity. Implementation provenance such as helper language,
+checkout location, native Buck invocation/action identity, or generator binary
+identity belongs in the evidence envelope. It must not perturb product identity
+when the normalized payload and semantic contract are equal.
 
 ## Verified Import
 
@@ -98,6 +120,11 @@ Import is fail closed:
 7. Emit an evidence record through the evidence subsystem and expose only the
    verified realized output to system composition.
 
+The caller supplies the digest of the canonical descriptor bytes independently
+of the descriptor. Unknown fields and runtime variants fail strict decoding.
+`portable` is not a synonym for a script or source archive: an interpreter-based
+product names the exact runtime contract that Nix supplies and wraps.
+
 For Linux dynamic artifacts, realization supplies declared loaders and
 libraries, then rechecks interpreter, runtime paths, dependencies,
 architecture, and symbol-version floors. For Darwin artifacts, realization
@@ -105,6 +132,30 @@ normalizes install names and runtime paths, applies declared signing policy,
 then rechecks architecture, minimum OS, dependencies, runtime paths, and
 signature state. Portable artifacts remain unmodified and contain no
 undeclared host or Nix-store dependencies.
+
+## Admission Sequence
+
+```text
+strict shared contract
+  -> real execution platforms and toolchains
+  -> one real Rust CLI on one Linux target tuple
+  -> immutable publication and reviewed Nix pin
+  -> import, composition, rollback, and health proof
+  -> second Rust CLI and remaining target tuples
+  -> real TypeScript executable through the same envelope
+  -> second-repository conformance
+```
+
+Rust is the first implementation sequence because it exercises the harder
+native-runtime boundary. This does not create a Rust-specific terminal bridge.
+TypeScript and Rust converge on the same envelope and importer after their
+language adapters produce exact closures and normalized products.
+
+Nix source builds remain explicit stage-0 or reference producers until a
+package/platform cell is admitted. After authority switches, the covered source
+builder, dependency-preparation route, and implicit fallback are deleted. Buck,
+Genie/projection bootstrap, and the launcher retain narrow stage-0 exceptions
+until separate replacement evidence avoids a bootstrap cycle.
 
 ## System Handoff
 
@@ -142,3 +193,14 @@ and store records remain import and composition authority; system and service
 manager records remain activation and health authority. This subsystem emits
 references to those records through the evidence contract. It does not define a
 second receipt or verdict schema.
+
+One evidence envelope joins native records by canonical descriptor digest from
+Buck build through Nix import and system composition, then by generation and
+predecessor-generation identity through activation, health, and rollback. It
+records references and phase dispositions, not duplicate Buck, Nix, or service
+facts. Trace and span IDs are query conveniences rather than durable identity.
+
+The minimum phase vocabulary is `buck.build`, `artifact.import`,
+`system.compose`, `system.activate`, `service.health`, and `system.rollback`.
+High-cardinality digests, invocation IDs, derivation/store paths, generation
+IDs, and private target names stay out of metric labels.
