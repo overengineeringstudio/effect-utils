@@ -56,7 +56,9 @@ const reservedEvidenceFlags = new Set([
 ])
 
 export const assertNoReservedEvidenceFlags = (args: ReadonlyArray<string>): void => {
-  const collision = args.find((arg) => reservedEvidenceFlags.has(arg.split('=')[0]!))
+  const passthrough = args.indexOf('--')
+  const buckOwnedArgs = passthrough === -1 ? args : args.slice(0, passthrough)
+  const collision = buckOwnedArgs.find((arg) => reservedEvidenceFlags.has(arg.split('=')[0]!))
   if (collision !== undefined) {
     throw new Error(
       `${collision} is owned by buck2-launcher; use --evidence-dir or bypass the launcher and invoke Buck directly`,

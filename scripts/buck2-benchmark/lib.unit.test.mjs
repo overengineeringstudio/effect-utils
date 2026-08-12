@@ -33,6 +33,23 @@ describe('buck2 benchmark parsers', () => {
     )
   })
 
+  it('rejects materialization rows without finite supported counters', () => {
+    assert.deepEqual(
+      parseMaterializations(
+        [
+          '{}',
+          'null',
+          '[]',
+          JSON.stringify({ total_bytes: 10 }),
+          JSON.stringify({ file_count: 2 }),
+          JSON.stringify({ total_bytes: 'not-a-number', file_count: 1 }),
+          JSON.stringify({ total_bytes: 7, file_count: 3 }),
+        ].join('\n'),
+      ),
+      { count: 1, bytes: 7, files: 3, malformed: 6 },
+    )
+  })
+
   it('rejects malformed JSONL with its line number', () => {
     assert.throws(() => parseJsonl('{"ok":true}\nnope\n'), /line 2/u)
   })

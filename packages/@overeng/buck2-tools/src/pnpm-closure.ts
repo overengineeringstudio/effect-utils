@@ -155,7 +155,12 @@ const normalizeImporterId = (value: string): string => {
 }
 
 const assertCanonicalImporterId = (importerId: string): void => {
-  if (normalizeImporterId(importerId) !== importerId || importerId.startsWith('../')) {
+  if (
+    normalizeImporterId(importerId) !== importerId ||
+    path.posix.isAbsolute(importerId) ||
+    importerId === '..' ||
+    importerId.startsWith('../')
+  ) {
     throw new PnpmClosureCompileError({
       code: 'NON_CANONICAL_PATH_OR_LABEL',
       message: `Importer ID ${importerId} is not a canonical repository-relative path`,
@@ -550,6 +555,40 @@ export const compilePnpmTaskClosure = (
             requiredBy: `snapshots/${current.depPath}/${field}/${alias}`,
           },
         })
+      }
+    }
+  }
+
+  // An optional package is usable only when all of its ordinary dependencies
+  // are usable. Propagate an incompatible required child back through the
+  // optional branch instead of silently constructing a parent context with the
+  // required edge omitted. Repeat to cover arbitrarily deep optional branches.
+  let prunedOptionalParent = true
+  while (prunedOptionalParent) {
+    prunedOptionalParent = false
+    for (const [depPath, reachability] of selected) {
+      if (reachability.required) continue
+      const snapshot = options.lockfile.snapshots[depPath]
+      if (snapshot === undefined) continue
+      for (const [field, alias, reference] of dependencyEntries(snapshot)) {
+        if (field === 'optionalDependencies') continue
+        const resolved = resolveReference({
+          alias,
+          importerId: '.',
+          lockfile: options.lockfile,
+          reference,
+        })
+        if (resolved.kind !== 'external' || selected.has(resolved.depPath)) continue
+        const childExclusion = excluded.get(resolved.depPath)
+        if (childExclusion === undefined) continue
+        selected.delete(depPath)
+        excluded.set(depPath, {
+          depPath,
+          reason: childExclusion.reason,
+          requiredBy: `snapshots/${depPath}/${field}/${alias}`,
+        })
+        prunedOptionalParent = true
+        break
       }
     }
   }

@@ -434,8 +434,12 @@ in
         "packages/@overeng/tui-core/buck2/target.ts"
         "packages/@overeng/tui-core/src/**/*.ts"
         "packages/@overeng/tui-core/src/**/*.tsx"
+        "packages/@overeng/tui-core/src/**/*.cts"
+        "packages/@overeng/tui-core/src/**/*.mts"
         "packages/@overeng/tui-core/test/**/*.ts"
         "packages/@overeng/tui-core/test/**/*.tsx"
+        "packages/@overeng/tui-core/test/**/*.cts"
+        "packages/@overeng/tui-core/test/**/*.mts"
         "pnpm-lock.yaml"
         "pnpm-workspace.yaml"
         ".oxfmtrc.json.genie.ts"
@@ -497,8 +501,12 @@ in
     "packages/@overeng/tui-core/buck2/target.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.tsx"
+    "packages/@overeng/tui-core/src/**/*.cts"
+    "packages/@overeng/tui-core/src/**/*.mts"
     "packages/@overeng/tui-core/test/**/*.ts"
     "packages/@overeng/tui-core/test/**/*.tsx"
+    "packages/@overeng/tui-core/test/**/*.cts"
+    "packages/@overeng/tui-core/test/**/*.mts"
     "pnpm-lock.yaml"
     "pnpm-workspace.yaml"
   ];
@@ -848,8 +856,9 @@ in
     ];
   };
 
-  tasks."check:all".after = [
+  tasks."check:all".after = lib.optionals (currentSystem == "x86_64-linux") [
     "buck2:check"
+  ] ++ [
     "cargo:check"
     "dependency-materialization:evidence:check"
   ];

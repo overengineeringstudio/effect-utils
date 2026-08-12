@@ -9,6 +9,7 @@ import io
 import json
 import os
 from pathlib import Path, PurePosixPath
+import shutil
 import stat
 import tarfile
 from typing import NoReturn, Sequence
@@ -216,7 +217,8 @@ def stage(args: argparse.Namespace) -> None:
                 source = archive.extractfile(member)
                 if source is None:
                     fail(f"could not read archive member: {member.name}")
-                destination.write_bytes(source.read())
+                with destination.open("wb") as target:
+                    shutil.copyfileobj(source, target, length=1024 * 1024)
                 destination.chmod(0o555 if member.mode & stat.S_IXUSR else 0o444)
             else:
                 destination.parent.mkdir(parents=True, exist_ok=True)

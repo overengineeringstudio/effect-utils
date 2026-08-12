@@ -532,6 +532,15 @@ const main = () => {
       return allPassed
     }
 
+    const repeatAfterWarmups = (warmupDefinition, measuredDefinition = warmupDefinition) => {
+      const warmupsPassed = repeat(warmupDefinition, options.warmups, true)
+      if (warmupsPassed) return repeat(measuredDefinition, options.runs, false)
+      for (let index = 0; index < options.runs; index += 1) {
+        emitSkip({ ...measuredDefinition, sampleIndex: index, reason: 'warmup-failed' })
+      }
+      return false
+    }
+
     const endUser = ['tasks', 'run', 'ts:check', '--show-output', '--no-tui']
     const computeOnly = [
       'tasks',
@@ -571,28 +580,13 @@ const main = () => {
         args: endUser,
       })
       if (prepared) {
-        repeat(
-          {
-            engine: 'devenv',
-            surface: 'end-user',
-            phase: 'warm-noop',
-            command: 'devenv',
-            args: endUser,
-          },
-          options.warmups,
-          true,
-        )
-        repeat(
-          {
-            engine: 'devenv',
-            surface: 'end-user',
-            phase: 'warm-noop',
-            command: 'devenv',
-            args: endUser,
-          },
-          options.runs,
-          false,
-        )
+        repeatAfterWarmups({
+          engine: 'devenv',
+          surface: 'end-user',
+          phase: 'warm-noop',
+          command: 'devenv',
+          args: endUser,
+        })
         for (let index = 0; index < options.runs; index += 1) {
           const cleaned = cleanCompiler()
           if (cleaned.status !== 0) {
@@ -614,28 +608,13 @@ const main = () => {
             args: computeOnly,
           })
         }
-        repeat(
-          {
-            engine: 'devenv',
-            surface: 'compute-only',
-            phase: 'warm-noop',
-            command: 'devenv',
-            args: computeOnly,
-          },
-          options.warmups,
-          true,
-        )
-        repeat(
-          {
-            engine: 'devenv',
-            surface: 'compute-only',
-            phase: 'warm-noop',
-            command: 'devenv',
-            args: computeOnly,
-          },
-          options.runs,
-          false,
-        )
+        repeatAfterWarmups({
+          engine: 'devenv',
+          surface: 'compute-only',
+          phase: 'warm-noop',
+          command: 'devenv',
+          args: computeOnly,
+        })
       } else {
         for (const [, surface, phase, mutation] of plan.filter(
           ([engine, , phase]) => engine === 'devenv' && phase !== 'profile-cold-store-warm',
@@ -810,7 +789,7 @@ const main = () => {
           cwd: worktree,
           env,
         })
-        if (prepared.status !== 0) fail('Buck incremental baseline preparation failed')
+        if (prepared.status !== 0) throw new Error('Buck incremental baseline preparation failed')
       } else
         for (let index = 0; index < options.runs; index += 1) {
           const cleanControl = run(buckBin, ['--isolation-dir', options.isolationDir, 'clean'], {
@@ -843,7 +822,7 @@ const main = () => {
             args: makeBuckArgs(`action-cold-${index}`),
           })
         }
-      repeat(
+      repeatAfterWarmups(
         {
           engine: 'buck2',
           surface: 'workspace-check',
@@ -851,10 +830,6 @@ const main = () => {
           command: buckBin,
           args: makeBuckArgs('warmup'),
         },
-        options.warmups,
-        true,
-      )
-      repeat(
         {
           engine: 'buck2',
           surface: 'workspace-check',
@@ -862,8 +837,6 @@ const main = () => {
           command: buckBin,
           args: makeBuckArgs('warm-noop'),
         },
-        options.runs,
-        false,
       )
       if (options.buckIncrementalOnly === true) {
         emitSkip({

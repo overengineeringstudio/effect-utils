@@ -39,11 +39,23 @@ let
       inherit src provenance;
       entrypoints = [ "bin/fixture-tool" ];
     };
+
+  mkEntrypointExport =
+    entrypoint:
+    exportToolchain {
+      name = "fixture-tool";
+      src = portableSource;
+      inherit provenance;
+      entrypoints = [ entrypoint ];
+    };
 in
 {
   portableExport = mkExport portableSource;
   storeReferenceExport = mkExport storeReferenceSource;
   escapingSymlinkExport = mkExport escapingSymlinkSource;
+  nonCanonicalEntrypointExport = mkEntrypointExport "bin/./fixture-tool";
+  repeatedSeparatorEntrypointExport = mkEntrypointExport "bin//fixture-tool";
+  backslashEntrypointExport = mkEntrypointExport "bin\\fixture-tool";
 
   mkImport =
     {

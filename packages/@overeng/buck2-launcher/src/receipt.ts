@@ -584,8 +584,10 @@ export const descriptorForClosureManifest = async (
   }
 }
 
-const secretAssignment =
-  /(^|[^A-Za-z0-9])(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*=\S+/gim
+const secretAssignmentOrHeader =
+  /(^|[^A-Za-z0-9])(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*(?:\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
+const secretCliArgument =
+  /(^|[\s"'])--(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*\s+(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const unixAbsolutePath = /(^|[\s"'=])(\/(?!\/)[^\s"']+)/g
 const windowsAbsolutePath = /\b[A-Za-z]:\\[^\s"']+/g
 const urlUserInfo = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi
@@ -594,7 +596,8 @@ const urlUserInfo = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi
 export const sanitizeEvidenceText = (value: unknown): string => {
   const source = typeof value === 'string' ? value : 'unknown'
   const sanitized = source
-    .replace(secretAssignment, '$1<redacted>')
+    .replace(secretAssignmentOrHeader, '$1<redacted>')
+    .replace(secretCliArgument, '$1<redacted>')
     .replace(urlUserInfo, '$1<redacted>@')
     .replace(windowsAbsolutePath, '<path>')
     .replace(unixAbsolutePath, '$1<path>')
@@ -620,14 +623,14 @@ const outcomeForRow = (row: Record<string, unknown>): ActionOutcome => {
       ? (row.reproducer as Record<string, unknown>)
       : {}
   const executor = String(row.executor ?? reproducer.executor ?? '').toLowerCase()
+  if (result.includes('cancel')) return 'cancelled'
+  if (result.includes('fail')) return 'failed'
   if (result.includes('local') && result.includes('hit')) return 'local_cache_hit'
   if (result.includes('local') && result.includes('miss')) return 'local_cache_miss'
   if (result.includes('hit')) return 'remote_cache_hit'
   if (result.includes('miss')) return 'remote_cache_miss'
   if (executor === 're' || executor.includes('remote')) return 'remote_execution'
   if (executor.includes('local')) return 'local_execution'
-  if (result.includes('cancel')) return 'cancelled'
-  if (result.includes('fail')) return 'failed'
   return 'unknown'
 }
 

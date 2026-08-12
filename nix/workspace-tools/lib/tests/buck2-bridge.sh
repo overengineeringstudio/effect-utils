@@ -118,6 +118,21 @@ expect_build_failure \
   "symlink escapes artifact root" \
   "($base_expr).escapingSymlinkExport"
 
+expect_build_failure \
+  "non-canonical entrypoint export" \
+  "entrypoints must be safe relative paths" \
+  "($base_expr).nonCanonicalEntrypointExport"
+
+expect_build_failure \
+  "repeated-separator entrypoint export" \
+  "entrypoints must be safe relative paths" \
+  "($base_expr).repeatedSeparatorEntrypointExport"
+
+expect_build_failure \
+  "backslash entrypoint export" \
+  "entrypoints must be safe relative paths" \
+  "($base_expr).backslashEntrypointExport"
+
 wrong_digest_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
@@ -188,5 +203,48 @@ expect_command_failure \
   "duplicate archive member: bin/tool" \
   "$scan_out" archive "$duplicate_root.tar"
 rm -rf "$duplicate_root" "$duplicate_root.tar"
+
+backslash_root="$(mktemp -d)"
+mkdir -p "$backslash_root/share"
+tar --create --file "$backslash_root.tar" --directory "$backslash_root" \
+  --transform='s|share|share\\bad|' share
+expect_command_failure \
+  "backslash archive member" \
+  "archive member must use portable POSIX separators" \
+  "$scan_out" archive "$backslash_root.tar"
+rm -rf "$backslash_root" "$backslash_root.tar"
+
+collision_root="$(mktemp -d)"
+mkdir -p "$collision_root/inside"
+printf '%s\n' collision >"$collision_root/inside/file"
+ln -s inside "$collision_root/link"
+tar --create --file "$collision_root.tar" --directory "$collision_root" link
+tar --append --file "$collision_root.tar" --directory "$collision_root" \
+  --transform='s|inside|link|' inside/file
+expect_command_failure \
+  "symlink ancestor archive member" \
+  "archive member is beneath symlink ancestor" \
+  "$scan_out" archive "$collision_root.tar"
+rm -rf "$collision_root" "$collision_root.tar"
+
+sparse_root="$(mktemp -d)"
+truncate --size=5G "$sparse_root/oversized"
+tar --sparse --create --file "$sparse_root.tar" --directory "$sparse_root" oversized
+expect_command_failure \
+  "oversized sparse archive member" \
+  "archive member exceeds extracted-size limit" \
+  "$scan_out" archive "$sparse_root.tar"
+rm -rf "$sparse_root" "$sparse_root.tar"
+
+aggregate_root="$(mktemp -d)"
+for index in 1 2 3 4 5; do
+  truncate --size=900M "$aggregate_root/part-$index"
+done
+tar --sparse --create --file "$aggregate_root.tar" --directory "$aggregate_root" .
+expect_command_failure \
+  "aggregate sparse archive size" \
+  "archive exceeds aggregate extracted-size limit" \
+  "$scan_out" archive "$aggregate_root.tar"
+rm -rf "$aggregate_root" "$aggregate_root.tar"
 
 echo "buck2-bridge-test: PASS export=$export_out import=$import_out"

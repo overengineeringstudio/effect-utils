@@ -262,6 +262,30 @@ describe('pnpm closure compiler', () => {
     expect(darwin.task.id).not.toBe(linux.task.id)
   })
 
+  it('excludes an optional parent whose required child is platform-incompatible', () => {
+    const lockfile = fixtureLockfile()
+    lockfile.snapshots['native@1.0.0'] = { dependencies: { child: '1.0.0' } }
+    lockfile.packages['child@1.0.0'] = {
+      resolution: { integrity: integrity('c') },
+      os: ['darwin'],
+    }
+    lockfile.snapshots['child@1.0.0'] = {}
+
+    const result = compile({
+      lockfile,
+      request: baseRequest([
+        { alias: 'native', field: 'optionalDependencies', reason: 'optional native tool' },
+      ]),
+    })
+
+    expect(result.task.contexts).toEqual([])
+    expect(result.task.roots).toMatchObject([{ kind: 'excluded-optional', reason: 'os' }])
+    expect(result.task.excludedOptionalContexts).toEqual([
+      { depPath: 'child@1.0.0', reason: 'os' },
+      { depPath: 'native@1.0.0', reason: 'os' },
+    ])
+  })
+
   it('resolves importer-relative workspace links to Buck providers', () => {
     const result = compile({
       request: baseRequest([{ alias: 'local', field: 'dependencies', reason: 'workspace import' }]),
@@ -357,6 +381,15 @@ describe('pnpm closure compiler', () => {
         }),
       ),
     ).toBe('NON_CANONICAL_PATH_OR_LABEL')
+    for (const importerId of ['/outside', '..']) {
+      expect(
+        errorCode(() =>
+          compile({
+            request: { ...baseRequest([]), importerId },
+          }),
+        ),
+      ).toBe('NON_CANONICAL_PATH_OR_LABEL')
+    }
     expect(
       errorCode(() =>
         compile({

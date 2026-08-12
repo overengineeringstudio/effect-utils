@@ -186,4 +186,107 @@ esac
       rmSync(directory, { recursive: true, force: true })
     }
   })
+
+  it('does not measure a Buck warm no-op series when its warmup fails', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-warmup-test-'))
+    try {
+      const buck2 = join(directory, 'buck2')
+      writeFileSync(
+        buck2,
+        `#!/bin/sh
+case " $* " in
+  *" --version "*) echo 'buck2 fake-warmup-test'; exit 0 ;;
+  *"warmup.build-report.json"*) exit 31 ;;
+  *) exit 0 ;;
+esac
+`,
+      )
+      chmodSync(buck2, 0o755)
+      const output = join(directory, 'raw.jsonl')
+      const result = spawnSync(
+        process.execPath,
+        [
+          join(import.meta.dirname, 'benchmark.mjs'),
+          '--execute',
+          '--buck-incremental-only',
+          '--buck-bin',
+          buck2,
+          '--buck-target',
+          '//:check',
+          '--work-contract',
+          'workspace-typecheck/fake-warmup-test',
+          '--runs',
+          '1',
+          '--warmups',
+          '1',
+          '--output',
+          output,
+        ],
+        { cwd: process.cwd(), encoding: 'utf8', timeout: 30_000 },
+      )
+      assert.equal(result.status, 0, result.stderr)
+      const records = parseJsonl(readFileSync(output, 'utf8'))
+      const warmNoop = records.filter(
+        (record) =>
+          record.kind === 'sample' && record.engine === 'buck2' && record.phase === 'warm-noop',
+      )
+      assert.equal(warmNoop.length, 2)
+      assert.equal(warmNoop.find((record) => record.warmup === true)?.status, 'failed')
+      const measured = warmNoop.filter((record) => record.warmup === false)
+      assert.equal(measured.length, 1)
+      assert.equal(measured[0]?.status, 'skipped')
+      assert.equal(measured[0]?.verdict, 'no-verdict')
+      assert.equal(measured[0]?.reason, 'warmup-failed')
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('unwinds through cleanup when Buck incremental baseline preparation fails', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-preparation-test-'))
+    try {
+      const buck2 = join(directory, 'buck2')
+      writeFileSync(
+        buck2,
+        `#!/bin/sh
+case " $* " in
+  *" --version "*) echo 'buck2 fake-preparation-test'; exit 0 ;;
+  *"incremental-baseline.build-report.json"*) exit 29 ;;
+  *) exit 0 ;;
+esac
+`,
+      )
+      chmodSync(buck2, 0o755)
+      const output = join(directory, 'raw.jsonl')
+      const result = spawnSync(
+        process.execPath,
+        [
+          join(import.meta.dirname, 'benchmark.mjs'),
+          '--execute',
+          '--buck-incremental-only',
+          '--buck-bin',
+          buck2,
+          '--buck-target',
+          '//:check',
+          '--work-contract',
+          'workspace-typecheck/fake-preparation-test',
+          '--runs',
+          '1',
+          '--warmups',
+          '0',
+          '--output',
+          output,
+        ],
+        { cwd: process.cwd(), encoding: 'utf8', timeout: 30_000 },
+      )
+      assert.notEqual(result.status, 0)
+      const records = parseJsonl(readFileSync(output, 'utf8'))
+      const cleanup = records.find((record) => record.kind === 'cleanup')
+      assert.equal(cleanup?.status, 'ok')
+      assert.equal(cleanup?.scratchWorktreeRemoved, true)
+      parseJsonl(readFileSync(output.replace(/\.jsonl$/u, '.summary.jsonl'), 'utf8'))
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
 })

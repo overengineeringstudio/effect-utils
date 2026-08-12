@@ -65,6 +65,24 @@ describe('Buck receipt normalization', () => {
     expect(result).not.toContain('aws-secret')
   })
 
+  it('redacts header and space-delimited credential forms', () => {
+    const result = sanitizeEvidenceText(
+      'authorization: Bearer header-secret token: token-secret --api-key cli-secret',
+    )
+    expect(result).not.toContain('header-secret')
+    expect(result).not.toContain('token-secret')
+    expect(result).not.toContain('cli-secret')
+  })
+
+  it('classifies explicit failure and cancellation before executor provenance', () => {
+    expect(
+      normalizeActions([
+        { identity: 'root//:failed', result: 'failed', executor: 'Local' },
+        { identity: 'root//:cancelled', result: 'cancelled', executor: 'RE' },
+      ]).map((action) => action.outcome),
+    ).toEqual(['failed', 'cancelled'])
+  })
+
   it('explains exact closure changes but does not invent another input cause', () => {
     const before = [{ label: 'root//:x', descriptor: descriptor('a') }]
     const after = [{ label: 'root//:x', descriptor: descriptor('b') }]

@@ -40,6 +40,18 @@ describe('buck2-launcher CLI boundary', () => {
     )
   })
 
+  it('allows reserved-looking flags owned by a launched program after passthrough', () => {
+    expect(() =>
+      assertNoReservedEvidenceFlags([
+        'run',
+        '//:tool',
+        '--',
+        '--event-log=program.log',
+        '--build-report',
+      ]),
+    ).not.toThrow()
+  })
+
   it('renders a shell-copyable underlying command only when requested', () => {
     expect(quoteCommand('/nix/store/a/buck2', ['build', '//:x', 'space value'])).toBe(
       "/nix/store/a/buck2 build //:x 'space value'",

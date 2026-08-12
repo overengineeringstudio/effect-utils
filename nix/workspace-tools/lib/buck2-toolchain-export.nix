@@ -11,10 +11,14 @@ let
   validName = value: builtins.isString value && builtins.match "[A-Za-z0-9._+-]+" value != null;
   safeRelativePath =
     value:
+    let
+      components = lib.splitString "/" value;
+    in
     builtins.isString value
     && value != ""
     && !(lib.hasPrefix "/" value)
-    && !(lib.elem ".." (lib.splitString "/" value));
+    && !(lib.hasInfix "\\" value)
+    && lib.all (component: component != "" && component != "." && component != "..") components;
 in
 {
   name,

@@ -23,12 +23,20 @@ export const parseMaterializations = (text) => {
     if (line.trim().length === 0) continue
     try {
       const value = JSON.parse(line)
-      count += 1
+      if (typeof value !== 'object' || value === null || Array.isArray(value) === true) {
+        malformed += 1
+        continue
+      }
       const byteCandidate =
-        value.total_bytes ?? value.totalBytes ?? value.bytes ?? value.decompressed_size ?? 0
-      const fileCandidate = value.file_count ?? value.fileCount ?? value.files ?? 0
-      if (Number.isFinite(Number(byteCandidate)) === true) bytes += Number(byteCandidate)
-      if (Number.isFinite(Number(fileCandidate)) === true) files += Number(fileCandidate)
+        value.total_bytes ?? value.totalBytes ?? value.bytes ?? value.decompressed_size
+      const fileCandidate = value.file_count ?? value.fileCount ?? value.files
+      if (Number.isFinite(byteCandidate) === false || Number.isFinite(fileCandidate) === false) {
+        malformed += 1
+        continue
+      }
+      count += 1
+      bytes += byteCandidate
+      files += fileCandidate
     } catch {
       malformed += 1
     }
