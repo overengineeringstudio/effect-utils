@@ -55,6 +55,8 @@ shared Cargo authority
   -> delete Python sources, tests, and Prelude Python targets
   -> prove no CPython fetch or ambient interpreter dependency
   -> remove obsolete bootstrap/archive machinery
+  -> derive a minimal stage-0 vendor closure from the root Cargo authority
+  -> expose a minimal foundation task closure outside the full development shell
 ```
 
 TypeScript remains the repository authoring, Genie, and external orchestration
@@ -63,6 +65,11 @@ support executors. Nix owns system composition and stage-0 tool realization.
 The launcher and product importer remain independent, bypassable boundaries:
 the launcher retains Buck-native evidence, while the importer validates only
 real build-product envelopes.
+
+The next platform slice generates one explicit product identity per admitted
+target tuple. Synthetic foundation fixtures may select a host-keyed member of
+an explicit pinned identity matrix; real product identity must never silently
+become host-derived.
 
 Unresolved VRS design questions block only the slices whose implementation they
 change. Research, prototypes, benchmark results, and rejected paths belong

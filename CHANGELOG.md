@@ -60,6 +60,13 @@ All notable changes to this project will be documented in this file.
   E2E documentation match their current receipt-only and
   `admission=not-attempted` behavior, and record the shared-workspace Rust
   helper contraction gates without claiming a premature admission verdict.
+- **Buck2 Rust stage-0 tools**: replace repository-owned Python action helpers
+  with fine-grained Rust workspace members, independently realize them through
+  Nix, inject immutable executables into Buck action keys, and prove the real
+  Nix-to-Buck staging path under a hostile ambient `PATH`. Cargo's native
+  workspace inventory now drives build, test, clippy, and formatting gates;
+  scratch benchmarks ignore ambient Git hooks while retaining exact detached
+  revision isolation.
 - **genie/weaver**: wrap long generated TypeScript constant declarations so
   generated registry projections remain formatter-clean without hand edits.
 - **Buck2 evidence safety**: accept generated v2 closure projections, redact

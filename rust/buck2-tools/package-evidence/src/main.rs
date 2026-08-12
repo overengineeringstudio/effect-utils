@@ -43,11 +43,11 @@ struct PackageArgs {
     closure_descriptor: PathBuf,
     #[arg(long = "source-label")]
     source_labels: Vec<String>,
-    #[arg(long)]
+    #[arg(long = "source")]
     sources: Vec<PathBuf>,
     #[arg(long = "config-label")]
     config_labels: Vec<String>,
-    #[arg(long)]
+    #[arg(long = "config")]
     configs: Vec<PathBuf>,
     #[arg(long = "dep-label")]
     dep_labels: Vec<String>,
@@ -354,6 +354,47 @@ mod tests {
         fs::write(d.path().join("tsconfig.json"), "{}\n").unwrap();
         fs::write(d.path().join("closure.json"), "{\"schemaVersion\":1}\n").unwrap();
         d
+    }
+    #[test]
+    fn accepts_repeatable_buck_rule_flags() {
+        let cli = Cli::try_parse_from([
+            "buck2-package-evidence",
+            "package",
+            "--name",
+            "example",
+            "--package-path",
+            "packages/example",
+            "--kind",
+            "example",
+            "--target",
+            "root//packages/example:example",
+            "--platform",
+            "x86_64-linux",
+            "--closure-label",
+            "closure.json",
+            "--closure-descriptor",
+            "closure.json",
+            "--source-label",
+            "src/a.ts",
+            "--source",
+            "a.ts",
+            "--source-label",
+            "src/b.ts",
+            "--source",
+            "b.ts",
+            "--config-label",
+            "tsconfig.json",
+            "--config",
+            "tsconfig.json",
+            "--archive",
+            "artifact.tar",
+            "--descriptor",
+            "descriptor.json",
+        ])
+        .unwrap();
+        let Command::Package(args) = cli.command;
+        assert_eq!(args.sources, [PathBuf::from("a.ts"), PathBuf::from("b.ts")]);
+        assert_eq!(args.configs, [PathBuf::from("tsconfig.json")]);
     }
     #[test]
     fn deterministic_and_shaped() {

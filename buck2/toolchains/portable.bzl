@@ -64,7 +64,10 @@ def _portable_toolchain_impl(ctx):
     _validate_entrypoint(ctx.attrs.entrypoint)
     _validate_platform(ctx.attrs._local_host_platform)
     _validate_sha256(ctx.attrs.archive_sha256, "archive_sha256")
-    _validate_sha256(ctx.attrs.descriptor_sha256, "descriptor_sha256")
+    descriptor_sha256 = ctx.attrs.descriptor_sha256_by_platform.get(ctx.attrs._local_host_platform)
+    if descriptor_sha256 == None:
+        fail("descriptor_sha256_by_platform has no identity for {}".format(ctx.attrs._local_host_platform))
+    _validate_sha256(descriptor_sha256, "descriptor_sha256")
     out = ctx.actions.declare_output("toolchain", dir = True)
     ctx.actions.run(
         cmd_args([
@@ -77,7 +80,7 @@ def _portable_toolchain_impl(ctx):
             "--archive-sha256",
             ctx.attrs.archive_sha256,
             "--descriptor-sha256",
-            ctx.attrs.descriptor_sha256,
+            descriptor_sha256,
             "--entrypoint",
             ctx.attrs.entrypoint,
             "--expected-platform",
@@ -98,7 +101,7 @@ def _portable_toolchain_impl(ctx):
             archive = ctx.attrs.archive,
             archive_sha256 = ctx.attrs.archive_sha256,
             descriptor = ctx.attrs.descriptor,
-            descriptor_sha256 = ctx.attrs.descriptor_sha256,
+            descriptor_sha256 = descriptor_sha256,
             entrypoint = ctx.attrs.entrypoint,
             expected_platform = ctx.attrs._local_host_platform,
             tree = out,
@@ -111,7 +114,7 @@ portable_toolchain = rule(
         "archive": attrs.source(),
         "archive_sha256": attrs.string(),
         "descriptor": attrs.source(),
-        "descriptor_sha256": attrs.string(),
+        "descriptor_sha256_by_platform": attrs.dict(key = attrs.string(), value = attrs.string()),
         "entrypoint": attrs.string(),
         # Local-only host binding. This is deliberately not a claim about a
         # configured remote execution platform; that binding is deferred.
@@ -192,6 +195,8 @@ def _portable_toolchain_fixture_impl(ctx):
             archive.as_output(),
             "--descriptor",
             descriptor.as_output(),
+            "--platform",
+            ctx.attrs._local_host_platform,
         ]),
         env = {"PATH": "/nonexistent"},
         category = "buck2_portable_toolchain_fixture",
@@ -209,6 +214,7 @@ def _portable_toolchain_fixture_impl(ctx):
 portable_toolchain_fixture = rule(
     impl = _portable_toolchain_fixture_impl,
     attrs = {
+        "_local_host_platform": attrs.default_only(attrs.string(default = _local_host_platform())),
         "_bootstrap": attrs.default_only(attrs.exec_dep(
             default = "toolchains//:portable_toolchain_fixture",
             providers = [RunInfo],

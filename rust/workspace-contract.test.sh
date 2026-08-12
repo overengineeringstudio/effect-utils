@@ -34,8 +34,9 @@ cargo metadata \
   --no-deps \
   --format-version 1 >"$metadata"
 
-jq -e '
-  (.packages | map(.name) | sort) == ["otel-scrape", "otelite"] and
+expected_packages='["buck2-closure-tool","buck2-package-evidence","buck2-portable-toolchain","buck2-portable-toolchain-fixture","buck2-tool-core","otel-scrape","otelite"]'
+jq -e --argjson expected "$expected_packages" '
+  (.packages | map(.name) | sort) == $expected and
   all(.packages[]; .version == "0.0.0" and .edition == "2021" and .license == "MIT") and
   ([.packages[] | select(.name == "otel-scrape") | .dependencies[] |
       select(.name == "libc") | {req, target}] == [{req: "=0.2.186", target: null}]) and
@@ -44,7 +45,8 @@ jq -e '
 ' "$metadata" >/dev/null || fail "metadata did not preserve inherited fields and local libc exceptions"
 
 mapfile -t workspace_members < <(jq -r '.workspace_members[]' "$metadata" | sort)
-[ "${#workspace_members[@]}" -eq 2 ] || fail "workspace must have exactly two members"
+[ "${#workspace_members[@]}" -eq "$(jq 'length' <<<"$expected_packages")" ] ||
+  fail "workspace metadata omitted a declared member"
 
 mkdir -p "$fixture_root/inheritance/packages/@overeng/otel-scrape/src"
 mkdir -p "$fixture_root/inheritance/rust"

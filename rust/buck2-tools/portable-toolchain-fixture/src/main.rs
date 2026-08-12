@@ -21,6 +21,8 @@ struct FixtureArgs {
     archive: PathBuf,
     #[arg(long)]
     descriptor: PathBuf,
+    #[arg(long)]
+    platform: String,
 }
 
 fn add(
@@ -76,7 +78,7 @@ fn fixture(args: FixtureArgs) -> ToolResult<()> {
         "kind":"buck2-portable-toolchain-artifact",
         "name":"synthetic-portable-tool",
         "normalization":{"dataMode":"0444","directoryMode":"0555","executableMode":"0555","groupId":0,"mtimeSeconds":1,"ownerId":0,"schemaVersion":1},
-        "platform":"x86_64-linux",
+        "platform":args.platform,
         "provenance":{"producer":"effect-utils.buck2.synthetic-portable-toolchain-fixture","recipeId":"synthetic-portable-tool-v1","sourceDigest":"sha256:synthetic-portable-tool-v1"},
         "schemaVersion":1
     });

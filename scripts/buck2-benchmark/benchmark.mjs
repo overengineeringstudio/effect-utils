@@ -404,9 +404,11 @@ const main = async () => {
     if (!options.inPlace) {
       scratchRoot = mkdtempSync(join(tmpdir(), 'effect-utils-buck2-benchmark-'))
       worktree = join(scratchRoot, 'repo')
-      const add = run('git', ['worktree', 'add', '--detach', worktree, sha], {
-        cwd: invocationRoot,
-      })
+      const add = run(
+        'git',
+        ['-c', 'core.hooksPath=/dev/null', 'worktree', 'add', '--detach', worktree, sha],
+        { cwd: invocationRoot },
+      )
       if (add.status !== 0) fail('failed to create detached benchmark worktree')
       worktreeAdded = true
     } else if (git(invocationRoot, ['status', '--porcelain']).length > 0) {

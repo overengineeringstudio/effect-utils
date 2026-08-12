@@ -60,8 +60,9 @@ build_and_observe() {
   phase="$1"
   output="$($buck2_bin \
     --isolation-dir "$isolation" \
+    build \
     --config-file "$stage0_config" \
-    build "$target" \
+    "$target" \
     --show-full-output \
     --local-only \
     --no-remote-cache)"

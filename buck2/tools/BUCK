@@ -1,2 +1,0 @@
-# Repo-owned action helpers are Nix-realized Rust binaries configured in the
-# toolchains cell. This package intentionally contains no language rules.

@@ -722,17 +722,13 @@ in
     exec = trace.exec "cargo:check" ''
       set -euo pipefail
       ${pkgs.bash}/bin/bash rust/workspace-contract.test.sh "$PWD"
-      ${lib.concatMapStringsSep "\n" (crate: ''
-        echo "::group::${crate.name}"
-        (
-          cd "${crate.path}"
-          cargo build --release --locked --package "${crate.name}"
-          cargo test --locked --package "${crate.name}"
-          cargo clippy --locked --package "${crate.name}" -- -D warnings
-          cargo fmt --package "${crate.name}" --check
-        )
-        echo "::endgroup::"
-      '') rustCrates}
+      (
+        cd rust
+        cargo build --release --locked --workspace
+        cargo test --locked --workspace
+        cargo clippy --locked --workspace --all-targets -- -D warnings
+        cargo fmt --all --check
+      )
     '';
   };
 
