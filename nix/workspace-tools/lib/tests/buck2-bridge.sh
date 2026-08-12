@@ -133,6 +133,11 @@ expect_build_failure \
   "entrypoints must be safe relative paths" \
   "($base_expr).backslashEntrypointExport"
 
+expect_build_failure \
+  "duplicate entrypoint export" \
+  "entrypoints must be unique" \
+  "($base_expr).duplicateEntrypointExport"
+
 wrong_digest_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");

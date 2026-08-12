@@ -76,6 +76,22 @@ describe('buck2-launcher CLI boundary', () => {
     ).not.toThrow()
   })
 
+  it.each(['-v2', '-v+2', '-v-1', '-v02'])(
+    'recognizes Buck attached numeric verbosity %s before a supported command',
+    (verbosity) => {
+      expect(() => assertSupportedCommand([verbosity, 'build', '//:x'])).not.toThrow()
+    },
+  )
+
+  it.each(['-vfoo', '-v1.0', '-v0x2', '-v_2'])(
+    'rejects malformed attached verbosity %s instead of skipping it',
+    (verbosity) => {
+      expect(() => assertSupportedCommand([verbosity, 'build', '//:x'])).toThrow(
+        `Buck command ${verbosity}`,
+      )
+    },
+  )
+
   it('does not mistake a global option value for a supported command', () => {
     expect(() => assertSupportedCommand(['--isolation-dir', 'build', 'cquery', '//...'])).toThrow(
       'bypass the launcher',

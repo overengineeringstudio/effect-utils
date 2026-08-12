@@ -32,15 +32,18 @@ let
         ln -s ../../outside "$out/share/escape"
       '';
 
-  reservedMetadataSource = pkgs.runCommand "buck2-bridge-reserved-metadata-source" {
-    allowedReferences = [ ];
-  } ''
-    mkdir -p "$out/bin" "$out/share/buck2-artifact"
-    printf '%s\n' '#!/bin/sh' 'exit 0' > "$out/bin/fixture-tool"
-    printf '%s\n' payload-owned > "$out/share/buck2-artifact/descriptor.json"
-    chmod 0555 "$out/bin/fixture-tool"
-    chmod 0444 "$out/share/buck2-artifact/descriptor.json"
-  '';
+  reservedMetadataSource =
+    pkgs.runCommand "buck2-bridge-reserved-metadata-source"
+      {
+        allowedReferences = [ ];
+      }
+      ''
+        mkdir -p "$out/bin" "$out/share/buck2-artifact"
+        printf '%s\n' '#!/bin/sh' 'exit 0' > "$out/bin/fixture-tool"
+        printf '%s\n' payload-owned > "$out/share/buck2-artifact/descriptor.json"
+        chmod 0555 "$out/bin/fixture-tool"
+        chmod 0444 "$out/share/buck2-artifact/descriptor.json"
+      '';
 
   mkExport =
     src:
@@ -67,6 +70,15 @@ in
   nonCanonicalEntrypointExport = mkEntrypointExport "bin/./fixture-tool";
   repeatedSeparatorEntrypointExport = mkEntrypointExport "bin//fixture-tool";
   backslashEntrypointExport = mkEntrypointExport "bin\\fixture-tool";
+  duplicateEntrypointExport = exportToolchain {
+    name = "fixture-tool";
+    src = portableSource;
+    inherit provenance;
+    entrypoints = [
+      "bin/fixture-tool"
+      "bin/fixture-tool"
+    ];
+  };
 
   mkImport =
     {

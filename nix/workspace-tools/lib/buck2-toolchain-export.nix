@@ -38,6 +38,9 @@ assert lib.assertMsg (
 assert lib.assertMsg (lib.all safeRelativePath entrypoints)
   "buck2-toolchain-export: entrypoints must be safe relative paths";
 assert lib.assertMsg (
+  builtins.length entrypoints == builtins.length (lib.unique entrypoints)
+) "buck2-toolchain-export: entrypoints must be unique";
+assert lib.assertMsg (
   builtins.isAttrs provenance
   && provenance ? recipeId
   && builtins.isString provenance.recipeId

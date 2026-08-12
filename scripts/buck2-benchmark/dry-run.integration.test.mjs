@@ -364,7 +364,7 @@ esac
         })
         let signalSent = false
         const poll = setInterval(() => {
-          if (signalSent === false && existsSync(mutationStarted)) {
+          if (signalSent === false && existsSync(mutationStarted) === true) {
             signalSent = true
             child.kill('SIGTERM')
           }

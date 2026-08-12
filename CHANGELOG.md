@@ -42,9 +42,10 @@ All notable changes to this project will be documented in this file.
   reject reused receipt run IDs, and make failed mutation baselines produce
   no-verdict samples. Prune optional-branch orphans, stream retained-log
   descriptors, restore in-place mutations across signals, recognize Buck global
-  options, keep host-stamped package actions local, and reject unknown descriptor
-  fields, non-canonical entrypoints, reserved importer metadata, oversized or
-  sparse portable-tool archives, and bytes after the tar end marker.
+  options including attached numeric verbosity, keep host-stamped package actions
+  local, and reject unknown descriptor fields, duplicate or non-canonical
+  entrypoints, reserved importer metadata, oversized or sparse portable-tool
+  archives, and bytes after the tar end marker.
 - **devenv pnpm installs**: refresh nixpkgs so pnpm runs on Node 24.18.1,
   avoiding the Darwin Node 24.15 teardown hang after a completed workspace
   materialization.

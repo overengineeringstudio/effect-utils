@@ -74,11 +74,13 @@ const globalOptionsWithValues = new Set([
   '--oncall',
   '--client-metadata',
 ])
+const attachedShortVerbosity = /^-v[+-]?\d+$/
 
 const buckCommand = (args: ReadonlyArray<string>): string | undefined => {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!
     if (arg === '--') return undefined
+    if (attachedShortVerbosity.test(arg)) continue
     const equals = arg.indexOf('=')
     const option = equals === -1 ? arg : arg.slice(0, equals)
     if (globalOptionsWithValues.has(option)) {

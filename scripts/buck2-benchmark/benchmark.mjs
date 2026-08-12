@@ -720,6 +720,8 @@ const main = async () => {
             cwd: worktree,
             env,
           })
+          // Samples mutate one shared worktree in order; signal observation belongs between them.
+          // oxlint-disable-next-line eslint/no-await-in-loop
           await yieldToSignals()
           if (baseline.status !== 0) {
             emitSkip({
@@ -749,6 +751,8 @@ const main = async () => {
             command,
             args: typeof args === 'function' ? args(`${phase}-${index}`) : args,
           })
+          // Samples mutate one shared worktree in order; signal observation belongs between them.
+          // oxlint-disable-next-line eslint/no-await-in-loop
           await yieldToSignals()
         }
       } finally {

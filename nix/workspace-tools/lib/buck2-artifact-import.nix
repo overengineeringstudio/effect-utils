@@ -9,7 +9,8 @@ let
   lib = pkgs.lib;
   scan = import ./buck2-artifact-scan.nix { inherit pkgs; };
   validName = value: builtins.isString value && builtins.match "[A-Za-z0-9._+-]+" value != null;
-  safeRelativePath = value:
+  safeRelativePath =
+    value:
     let
       components = lib.splitString "/" value;
     in
@@ -18,9 +19,9 @@ let
     && !(lib.hasPrefix "/" value)
     && !(lib.hasInfix "\\" value)
     && lib.all (component: component != "" && component != "." && component != "..") components;
-  hasOnlyFields = allowed: value:
-    builtins.isAttrs value
-    && lib.all (field: lib.elem field allowed) (builtins.attrNames value);
+  hasOnlyFields =
+    allowed: value:
+    builtins.isAttrs value && lib.all (field: lib.elem field allowed) (builtins.attrNames value);
 in
 {
   descriptor,
