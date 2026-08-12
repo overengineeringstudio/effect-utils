@@ -19,7 +19,7 @@ owns external dependency selection.
 
 | Section                  | Requirements                                                                           |
 | ------------------------ | -------------------------------------------------------------------------------------- |
-| Projection boundary      | BUCK.GRAPH.GENIE-R01, BUCK.GRAPH.GENIE-R02, BUCK.GRAPH.GENIE-R03                       |
+| Projection boundary      | BUCK.GRAPH.GENIE-R01, BUCK.GRAPH.GENIE-R02, BUCK.GRAPH.GENIE-R03, BUCK.GRAPH.GENIE-R12 |
 | Package-local shard      | BUCK.GRAPH.GENIE-R04, BUCK.GRAPH.GENIE-R05, BUCK.GRAPH.GENIE-R06, BUCK.GRAPH.GENIE-R07 |
 | Freshness and provenance | BUCK.GRAPH.GENIE-R08, BUCK.GRAPH.GENIE-R09, BUCK.GRAPH.GENIE-R10                       |
 | Verification             | BUCK.GRAPH.GENIE-R11                                                                   |
@@ -49,6 +49,26 @@ projectPackage(
 has no process runner, compiler API, environment-derived tool path, network
 access, compiler metafile input, or callback that can perform those operations.
 The implementation is dependency-light and can be tested as a pure function.
+
+For TypeScript package dependencies, the existing package composition creates
+field-qualified branded handles in `GenieOutput.meta` before emitted manifest
+maps widen. The package manifest remains the default projection. BUCK and other
+projections import the narrow metadata facet and never parse rendered JSON or
+reconstruct provenance from `GenieOutput.data`.
+
+```text
+catalog and pure helpers
+          |
+package dependency composition
+       /        |        \
+package JSON   BUCK    tsconfig
+```
+
+No projection imports another projection or registers semantic values through
+global mutable state. Handle identity is stable value data rather than object
+identity or module initialization order, so repeated Genie module evaluation is
+observationally equivalent. Full Genie generation and freshness checking are
+authoritative; watch mode is not evidence of transitive projection freshness.
 
 ## Package-Local Shard
 

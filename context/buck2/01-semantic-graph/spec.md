@@ -17,13 +17,13 @@ specs, the parent Buck spec, and the dependency-materialization VRS.
 
 ## Requirement Trace
 
-| Section                       | Requirements                                                   |
-| ----------------------------- | -------------------------------------------------------------- |
-| Composition and ownership     | BUCK.GRAPH-R01, BUCK.GRAPH-R04                                 |
-| Runtime-neutral IR            | BUCK.GRAPH-R02, BUCK.GRAPH-R03, BUCK.GRAPH-R05, BUCK.GRAPH-R06 |
-| Normalization and evolution   | BUCK.GRAPH-R07, BUCK.GRAPH-R08                                 |
-| Adapter boundary              | BUCK.GRAPH-R09, BUCK.GRAPH-R10, BUCK.GRAPH-R11                 |
-| Completeness and invalidation | BUCK.GRAPH-R12, BUCK.GRAPH-R13, BUCK.GRAPH-R14, BUCK.GRAPH-R15 |
+| Section                       | Requirements                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| Composition and ownership     | BUCK.GRAPH-R01, BUCK.GRAPH-R04                                                 |
+| Runtime-neutral IR            | BUCK.GRAPH-R02, BUCK.GRAPH-R03, BUCK.GRAPH-R05, BUCK.GRAPH-R06                 |
+| Normalization and evolution   | BUCK.GRAPH-R07, BUCK.GRAPH-R08                                                 |
+| Adapter boundary              | BUCK.GRAPH-R09, BUCK.GRAPH-R10, BUCK.GRAPH-R11                                 |
+| Completeness and invalidation | BUCK.GRAPH-R12, BUCK.GRAPH-R13, BUCK.GRAPH-R14, BUCK.GRAPH-R15, BUCK.GRAPH-R16 |
 
 ## Composition and Ownership
 
@@ -79,10 +79,18 @@ Project {
 }
 
 Target =
-  | { tag: "check", id, project, checkKind, fileSets, capabilities }
-  | { tag: "test", id, project, suiteKind, config, fileSets, capabilities }
+  | { tag: "check", id, project, checkKind, fileSets, dependencyRoots,
+      capabilities }
+  | { tag: "test", id, project, suiteKind, config, fileSets,
+      dependencyRoots, capabilities }
   | { tag: "artifact", id, project, artifactKind, entry, outputFormat,
-      validations, fileSets, capabilities }
+      validations, fileSets, dependencyRoots, capabilities }
+
+DependencyRootRef {
+  package: LogicalPackageId
+  field: DependencyField
+  alias: DependencyAlias
+}
 
 Edge {
   from: LogicalTargetId
@@ -100,6 +108,12 @@ CapabilityRequirement {
 shared entities. It cannot contain executable paths, action arguments, detected
 host properties, or opaque callbacks. A schema registry validates it by
 `language` and schema version.
+
+`dependencyRoots` are sorted, duplicate-free references to canonical package
+dependency declarations. Language adapters validate field/scope legality,
+project workspace requests into first-party edges, and pass external roots to
+the dependency-materialization contract. They never embed requested or
+selected versions, resolver contexts, transitive edges, or physical paths.
 
 Logical IDs are repository-stable names. `location` is resolver input and may
 change independently. A target split preserves any target whose semantics stay

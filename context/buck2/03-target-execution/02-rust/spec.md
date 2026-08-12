@@ -46,7 +46,7 @@ interface RustCompileIntent {
   readonly edition: RustEdition
   readonly sources: readonly RepoRelativePath[]
   readonly firstPartyDeps: readonly TargetLabel[]
-  readonly externalDeps: readonly RustDependencyUse[]
+  readonly externalDeps: RustDependencyRootPolicy
   readonly env: Readonly<Record<string, string>>
 }
 
@@ -54,6 +54,10 @@ type RustDependencyUse = {
   readonly alias: string
   readonly scope: 'normal' | 'dev' | 'build'
 }
+
+type RustDependencyRootPolicy =
+  | { readonly kind: 'exact'; readonly uses: readonly RustDependencyUse[] }
+  | { readonly kind: 'cargo-scope'; readonly scope: 'normal' | 'dev' | 'build' }
 
 interface RustTest extends RustCompileIntent {
   readonly kind: 'test'
@@ -64,17 +68,19 @@ interface RustTest extends RustCompileIntent {
 ```
 
 Package metadata supplies defaults for crate name, version, edition, and
-profiles. Each target remains explicit about roots, sources, dependency uses,
-environment, and resources. Validation rejects an external alias absent from
-the requested scope, a build dependency used by ordinary compilation, an
-integration resource without a declared first-party target, conflicting crate
-identities, and unsupported target predicates.
+profiles. Each target remains explicit about roots or an admitted conservative
+Cargo scope, sources, environment, and resources. Validation rejects an exact
+external alias absent from the requested scope, a build dependency used by
+ordinary compilation, an integration resource without a declared first-party
+target, conflicting crate identities, and unsupported target predicates. The
+Cargo/Reindeer experiments determine how canonical exact references are exposed
+and where a conservative scope remains justified.
 
 ## Cargo and Reindeer Boundary
 
 ```text
-first-party Rust intent
-  |-- canonical Cargo request manifest
+canonical Cargo request authority
+  |-- authored or canonically projected Cargo manifest
   |-- resolver-root request projection, when required
   `-- first-party package-local BUCK
 
@@ -84,10 +90,11 @@ Cargo lock + Reindeer config + fixups + vendored sources
 first-party BUCK --alias references--> selected third-party graph
 ```
 
-The first-party intent owns requested dependency aliases, ranges, features,
-default-feature policy, scopes, and target predicates. Its Cargo manifest and
-any synthetic Reindeer root manifest are deterministic projections of that one
-intent.
+One declared authority owns requested dependency aliases, ranges, features,
+default-feature policy, scopes, and target predicates. That authority may be an
+authored Cargo manifest or a canonical model that projects it; this VRS does not
+preselect the mechanism. Any synthetic Reindeer root manifest is a deterministic
+projection of the same requests rather than a parallel handwritten map.
 
 Cargo owns lock selection semantics. Reindeer consumes the manifest and lock,
 applies its configuration and fixups, verifies or vendors source archives, and

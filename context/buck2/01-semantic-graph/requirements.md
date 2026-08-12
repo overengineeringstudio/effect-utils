@@ -99,3 +99,9 @@ select build tools, or execute repository work.
 - **BUCK.GRAPH-R15 Causal verification:** Verification must include negative and
   positive controls for undeclared files, unrelated package changes, package
   moves, target splits, adapter changes, and tool implementation changes.
+- **BUCK.GRAPH-R16 Operation dependency-root model:** The graph must support
+  operation-local references to canonical direct dependency declarations and
+  preserve admitted normalized roots in semantic identity without copying
+  versions, selected topology, resolver context, or physical paths. Each
+  language binding must define its request authority, legality rules, and any
+  explicitly conservative root policy before admission.

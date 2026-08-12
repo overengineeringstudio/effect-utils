@@ -69,3 +69,8 @@ its complete semantic input.
 - **BUCK.GRAPH.GENIE-R11 Causal projection tests:** Tests must prove stable
   ordering, equivalent-renderer bytes, unrelated-shard stability, package move
   behavior, target split locality, and refusal of compile/process capabilities.
+- **BUCK.GRAPH.GENIE-R12 Composed dependency facet:** Genie package composition
+  must preserve exact typed dependency references in non-emitted metadata before
+  manifest maps widen. Projection modules must consume that facet through a
+  one-way, side-effect-free import graph; generated or rendered output is not an
+  authority for reconstructing it.
