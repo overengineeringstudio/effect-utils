@@ -21,17 +21,17 @@ Cargo closure with Nix derivation plans.
 
 ## Result
 
-| Control | Result |
-| --- | --- |
-| Member metadata, check, and package in both layouts | Passed |
-| Unlisted in-repo path dependency with root workspace | Silently became a workspace member |
-| Same dependency with dedicated `rust/` workspace | Remained outside until explicitly linked |
-| Member without explicit link to dedicated workspace | Failed inheritance |
-| Repository-root toolchain discovered from member | Passed |
-| Toolchain only under `rust/` discovered from external member | Failed |
-| Stock Nix build of selected shared-workspace member | Passed in 13.93 s |
-| Unrelated member dependency change | Unaffected Cargo closure digest stayed identical |
-| Nix vendor derivation after that change | Changed; 69 derivations built and 63 paths fetched in the plan |
+| Control                                                      | Result                                                         |
+| ------------------------------------------------------------ | -------------------------------------------------------------- |
+| Member metadata, check, and package in both layouts          | Passed                                                         |
+| Unlisted in-repo path dependency with root workspace         | Silently became a workspace member                             |
+| Same dependency with dedicated `rust/` workspace             | Remained outside until explicitly linked                       |
+| Member without explicit link to dedicated workspace          | Failed inheritance                                             |
+| Repository-root toolchain discovered from member             | Passed                                                         |
+| Toolchain only under `rust/` discovered from external member | Failed                                                         |
+| Stock Nix build of selected shared-workspace member          | Passed in 13.93 s                                              |
+| Unrelated member dependency change                           | Unaffected Cargo closure digest stayed identical               |
+| Nix vendor derivation after that change                      | Changed; 69 derivations built and 63 paths fetched in the plan |
 
 nixpkgs `importCargoLock` vendors every sourced package in the lock and its
 setup hook compares the source and vendor lock bytes. Neither Cargo nor

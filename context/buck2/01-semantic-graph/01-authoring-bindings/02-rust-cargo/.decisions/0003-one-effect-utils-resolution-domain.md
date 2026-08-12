@@ -24,10 +24,10 @@ atomic part of the migration rather than follow-up cleanup.
 
 ## Options
 
-| Option | Result | Tradeoff |
-| --- | --- | --- |
-| One effect-utils workspace and lock, gated by a closure-local Nix bridge | Selected | Maximizes native reuse while requiring a proved packaging bridge |
-| Separate locks with shared validation policy | Rejected | Preserves current isolation but retains duplicate selected topology |
+| Option                                                                   | Result   | Tradeoff                                                            |
+| ------------------------------------------------------------------------ | -------- | ------------------------------------------------------------------- |
+| One effect-utils workspace and lock, gated by a closure-local Nix bridge | Selected | Maximizes native reuse while requiring a proved packaging bridge    |
+| Separate locks with shared validation policy                             | Rejected | Preserves current isolation but retains duplicate selected topology |
 
 ## Decision
 
