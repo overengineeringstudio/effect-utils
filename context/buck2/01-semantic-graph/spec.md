@@ -166,19 +166,33 @@ the real graph/projection/analysis seam.
 - [Dependency-materialization Buck closures](../../dependency-materialization/05-buck2-evidence/spec.md)
   own the target-specific join to external resolver and materialization facts.
 
-## Design Questions
+## Owned File Sets
 
-### BUCK.GRAPH-DQ1 File-set representation (interview q13)
+Semantic targets declare typed, role-specific file-set patterns. Genie
+validates their syntax, role compatibility, explicit sharing rules, and stable
+rendering, then emits package-local Buck file-set expressions without listing
+every matched path.
 
-Which representation should connect declared semantic file ownership to Buck?
+```text
+typed semantic file-set declarations
+              |
+              +--> stable generated Buck expressions
+              |            |
+              |            `--> Buck observes matching membership
+              |
+              `--> independent repository census
+                             |
+                             `--> missing or ambiguous ownership fails
+```
 
-| Option                          | Shape                                                              | Locality                                                                                 | Completeness                                    | Cost                                                         |
-| ------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------ |
-| `owned-file-sets` (recommended) | Typed Buck-owned file sets plus an independent completeness census | Matching additions leave generated shard bytes stable and invalidate only owning actions | Exact, when the independent census is mandatory | Requires a file-set type and separate census gate            |
-| `enumerated-shards`             | Genie enumerates every matched path into each generated shard      | Every matching add rewrites the owning shard                                             | Exact within generator discovery                | Large generated diffs and generator-coupled source discovery |
-| `broad-package-glob`            | One coarse package glob feeds all package targets                  | Simple but broad target invalidation                                                     | Cannot by itself prove target ownership         | Lowest authoring cost, weakest incremental behavior          |
+A matching add, delete, or rename changes Buck's file-set membership and only
+the consuming action closures; it does not rewrite generated BUCK bytes. A
+pattern or semantic-role change rewrites only the owning package shard. Broad
+package-wide globs are invalid when roles have different consumers. An exact
+enumerated set is permitted only for a target with a distinct invariant that
+cannot be expressed safely as a typed pattern; it is not the repository
+default.
 
-This remains unresolved. Resolution requires causal RED/GREEN evidence for a
-matching source addition, unmatched supported source, unrelated package edit,
-target split, and measured Buck action-key fanout. The recommendation is not a
-decision until those controls are accepted.
+Admission requires causal RED/GREEN controls for matching additions, unmatched
+supported files, ambiguous overlaps, unrelated package edits, target splits,
+and measured action-key fanout.

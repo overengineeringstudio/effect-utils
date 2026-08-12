@@ -71,10 +71,9 @@ The shard contains only normalized semantic data and the facade call. The
 facade owns logical-label resolution and lowering to Buck rules. Registered
 toolchains and providers own executable and platform selection.
 
-File sets render according to the eventual resolution of
-BUCK.GRAPH-DQ1. The renderer exposes one `FileSet` projection boundary so that
-choosing owned file sets, enumeration, or a broad glob does not change the
-package/project/test/artifact entity schema.
+File sets render as typed Buck-owned pattern expressions behind one `FileSet`
+projection boundary. The independent census, rather than generated path lists,
+proves complete and non-ambiguous ownership.
 
 Stable logical IDs are rendered; physical locations are emitted only where the
 facade needs a package-local path. Moving a package therefore changes its
