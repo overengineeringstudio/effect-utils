@@ -148,7 +148,7 @@ The graph verifier exercises the following matrix:
 
 | Change                            | Semantic projection                    | Required downstream effect                            |
 | --------------------------------- | -------------------------------------- | ----------------------------------------------------- |
-| File added inside an owned set    | Governed by DQ1                        | Owning target input/action changes                    |
+| File added inside an owned set    | Generated shard remains byte-identical | Only consumers of the owned set change                |
 | Supported file outside every set  | No accepted graph                      | Completeness check fails                              |
 | Unrelated package edit            | Unrelated shard remains byte-identical | No unrelated action invalidation                      |
 | Equivalent normalizer or renderer | All semantic bytes remain identical    | No semantic invalidation                              |
