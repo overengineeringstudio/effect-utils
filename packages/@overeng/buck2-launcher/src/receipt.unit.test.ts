@@ -55,11 +55,14 @@ describe('Buck receipt normalization', () => {
 
   it('redacts paths, credentials, and secret assignments', () => {
     const result = sanitizeEvidenceText(
-      'build /home/alice/private token=hunter2 https://alice:hunter2@example.invalid/x',
+      'build /home/alice/private token=hunter2 GITHUB_TOKEN=github-secret PRIVATE_TOKEN=private-secret AWS_SECRET_ACCESS_KEY=aws-secret https://alice:hunter2@example.invalid/x',
     )
     expect(result).toContain('<path>')
     expect(result).not.toContain('alice')
     expect(result).not.toContain('hunter2')
+    expect(result).not.toContain('github-secret')
+    expect(result).not.toContain('private-secret')
+    expect(result).not.toContain('aws-secret')
   })
 
   it('explains exact closure changes but does not invent another input cause', () => {
@@ -144,6 +147,28 @@ describe('Buck receipt normalization', () => {
     await expect(descriptorForClosureManifest(unsorted, 'root//:check')).rejects.toThrow(
       'sorted and unique',
     )
+
+    const generated = join(root, 'generated-v2.json')
+    const generatedSemantic = {
+      ...semantic,
+      closure: { request: { label: 'root//:check' } },
+    }
+    await writeFile(
+      generated,
+      JSON.stringify({
+        schemaVersion: 2,
+        ...generatedSemantic,
+        provenance: {
+          ...value.provenance,
+          semanticFingerprint: `sha256:${createHash('sha256')
+            .update(JSON.stringify(canonical(generatedSemantic)))
+            .digest('hex')}`,
+        },
+      }),
+    )
+    await expect(descriptorForClosureManifest(generated, 'root//:check')).resolves.toMatchObject({
+      mediaType: 'application/json',
+    })
   })
 
   it('rejects malformed nested receipt evidence', () => {

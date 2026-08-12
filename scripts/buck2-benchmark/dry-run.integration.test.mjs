@@ -132,4 +132,58 @@ esac
       rmSync(directory, { recursive: true, force: true })
     }
   })
+
+  it('does not measure a mutation when its baseline fails', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-baseline-test-'))
+    try {
+      const buck2 = join(directory, 'buck2')
+      writeFileSync(
+        buck2,
+        `#!/bin/sh
+case " $* " in
+  *" --version "*) echo 'buck2 fake-baseline-test'; exit 0 ;;
+  *"base-relevant-edit-"*) exit 23 ;;
+  *) exit 0 ;;
+esac
+`,
+      )
+      chmodSync(buck2, 0o755)
+      const output = join(directory, 'raw.jsonl')
+      const result = spawnSync(
+        process.execPath,
+        [
+          join(import.meta.dirname, 'benchmark.mjs'),
+          '--execute',
+          '--buck-incremental-only',
+          '--buck-bin',
+          buck2,
+          '--buck-target',
+          '//:check',
+          '--work-contract',
+          'workspace-typecheck/fake-baseline-test',
+          '--runs',
+          '1',
+          '--warmups',
+          '0',
+          '--output',
+          output,
+        ],
+        { cwd: process.cwd(), encoding: 'utf8', timeout: 30_000 },
+      )
+      assert.equal(result.status, 0, result.stderr)
+      const records = parseJsonl(readFileSync(output, 'utf8'))
+      const relevantSamples = records.filter(
+        (record) =>
+          record.kind === 'sample' && record.engine === 'buck2' && record.phase === 'relevant-edit',
+      )
+      assert.equal(relevantSamples.length, 1)
+      const [relevant] = relevantSamples
+      assert.equal(relevant.status, 'skipped')
+      assert.equal(relevant.verdict, 'no-verdict')
+      assert.equal(relevant.reason, 'mutation-baseline-failed')
+      assert.equal(relevant.control.exitCode, 23)
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
 })

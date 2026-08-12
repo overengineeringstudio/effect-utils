@@ -53,12 +53,24 @@ pkgs.writeShellScript "buck2-artifact-scan" ''
     local archive="$1"
     [ -f "$archive" ] || fail "archive does not exist: $archive"
 
+    declare -A seen_members=()
     while IFS= read -r member; do
       case "$member" in
         ""|"."|"./") continue ;;
         /*|../*|*/../*|*/..) fail "unsafe archive member: $member" ;;
         *$'\r'*) fail "archive member contains a carriage return" ;;
       esac
+
+      local normalized="$member"
+      while [[ "$normalized" == ./* ]]; do normalized="''${normalized#./}"; done
+      normalized="''${normalized%/}"
+      case "$normalized" in
+        *//*|*/./*|*/.) fail "non-canonical archive member: $member" ;;
+      esac
+      if [ "''${seen_members[$normalized]+present}" = present ]; then
+        fail "duplicate archive member: $normalized"
+      fi
+      seen_members["$normalized"]=1
     done < <(${pkgs.gnutar}/bin/tar --list --file "$archive")
 
     # The first verbose-list character is tar's member type. Hard links are

@@ -56,11 +56,12 @@ receipt. `--compare-receipt` proves changes in that external-closure dimension;
 other causes remain `partial` or `unknown` until their own canonical manifests
 are supplied.
 
-Closure inputs must be generated `schemaVersion: 1` Buck projection descriptors
-whose `closure.task.label` matches `LABEL` and whose provenance names
-`effect-utils/genie/buck2`. Duplicate labels, malformed descriptors, and label
-mismatches fail before Buck executes. The receipt hashes validated canonical
-JSON, so whitespace and object-key order do not change closure identity.
+Closure inputs must be generated Buck projection descriptors using schema v1
+(`closure.task.label`) or v2 (`closure.request.label`). The versioned label must
+match `LABEL`, and provenance must name `effect-utils/genie/buck2`. Duplicate
+labels, malformed descriptors, and label mismatches fail before Buck executes.
+The receipt hashes validated canonical JSON, so whitespace and object-key order
+do not change closure identity.
 
 `observation.verdict` is `complete` only when the build report and event log are
 present, both `buck2 log` queries exit successfully, and every nonblank query

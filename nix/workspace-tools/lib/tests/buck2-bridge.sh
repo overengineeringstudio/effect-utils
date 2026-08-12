@@ -177,4 +177,16 @@ expect_command_failure \
   "$scan_out" archive "$special_root.tar"
 rm -f "$special_root.tar"
 
+duplicate_root="$(mktemp -d)"
+mkdir -p "$duplicate_root/bin"
+printf '%s\n' first >"$duplicate_root/bin/tool"
+tar --create --file "$duplicate_root.tar" --directory "$duplicate_root" bin/tool
+printf '%s\n' second >"$duplicate_root/bin/tool"
+tar --append --file "$duplicate_root.tar" --directory "$duplicate_root" bin/tool
+expect_command_failure \
+  "duplicate archive member" \
+  "duplicate archive member: bin/tool" \
+  "$scan_out" archive "$duplicate_root.tar"
+rm -rf "$duplicate_root" "$duplicate_root.tar"
+
 echo "buck2-bridge-test: PASS export=$export_out import=$import_out"

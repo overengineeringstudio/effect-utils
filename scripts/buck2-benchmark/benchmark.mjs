@@ -713,10 +713,28 @@ const main = () => {
         for (let index = 0; index < options.runs; index += 1) {
           writeFileSync(absolute, original)
           chmodSync(absolute, originalStat.mode)
-          run(command, typeof args === 'function' ? args(`base-${phase}-${index}`) : args, {
+          const baselineArgs = typeof args === 'function' ? args(`base-${phase}-${index}`) : args
+          const baseline = run(command, baselineArgs, {
             cwd: worktree,
             env,
           })
+          if (baseline.status !== 0) {
+            emitSkip({
+              engine,
+              surface,
+              phase,
+              mutation,
+              sampleIndex: index,
+              reason: 'mutation-baseline-failed',
+              control: {
+                command: [basename(command), ...baselineArgs],
+                exitCode: baseline.status,
+                signal: baseline.signal,
+                verdict: 'no-verdict',
+              },
+            })
+            continue
+          }
           mutate(absolute, index, originalStat)
           measure({
             engine,

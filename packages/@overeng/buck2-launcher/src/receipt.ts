@@ -526,7 +526,9 @@ export const descriptorForClosureManifest = async (
     throw new Error(`closure manifest ${expectedLabel} is not valid JSON`, { cause: error })
   }
   const root = objectAt(parsed, '$')
-  if (root.schemaVersion !== 1) throw new Error('closure manifest $.schemaVersion must be 1')
+  if (root.schemaVersion !== 1 && root.schemaVersion !== 2) {
+    throw new Error('closure manifest $.schemaVersion must be 1 or 2')
+  }
   stringAt(root.packagePath, '$.packagePath')
   const target = objectAt(root.target, '$.target')
   stringAt(target.name, '$.target.name')
@@ -536,8 +538,12 @@ export const descriptorForClosureManifest = async (
   stringArrayAt(target.configs, '$.target.configs')
   stringArrayAt(target.deps, '$.target.deps')
   const closure = objectAt(root.closure, '$.closure')
-  const task = objectAt(closure.task, '$.closure.task')
-  const actualLabel = stringAt(task.label, '$.closure.task.label')
+  const labelOwner =
+    root.schemaVersion === 1
+      ? objectAt(closure.task, '$.closure.task')
+      : objectAt(closure.request, '$.closure.request')
+  const labelPath = root.schemaVersion === 1 ? '$.closure.task.label' : '$.closure.request.label'
+  const actualLabel = stringAt(labelOwner.label, labelPath)
   if (actualLabel !== expectedLabel) {
     throw new Error(
       `closure manifest label mismatch: expected ${expectedLabel}, received ${actualLabel}`,
@@ -578,7 +584,8 @@ export const descriptorForClosureManifest = async (
   }
 }
 
-const secretAssignment = /\b(?:token|password|secret|authorization|cookie|api[_-]?key)=\S+/gi
+const secretAssignment =
+  /(^|[^A-Za-z0-9])(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*=\S+/gim
 const unixAbsolutePath = /(^|[\s"'=])(\/(?!\/)[^\s"']+)/g
 const windowsAbsolutePath = /\b[A-Za-z]:\\[^\s"']+/g
 const urlUserInfo = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi
@@ -587,7 +594,7 @@ const urlUserInfo = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi
 export const sanitizeEvidenceText = (value: unknown): string => {
   const source = typeof value === 'string' ? value : 'unknown'
   const sanitized = source
-    .replace(secretAssignment, '<redacted>')
+    .replace(secretAssignment, '$1<redacted>')
     .replace(urlUserInfo, '$1<redacted>@')
     .replace(windowsAbsolutePath, '<path>')
     .replace(unixAbsolutePath, '$1<path>')
