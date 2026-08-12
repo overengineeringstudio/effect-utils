@@ -111,7 +111,7 @@ const runChild = async ({
       child.stderr?.resume()
     }
     child.once('error', reject)
-    child.once('exit', (code, signal) => {
+    child.once('close', (code, signal) => {
       const signalNumber = signal === null ? undefined : osConstants.signals[signal]
       resolvePromise({
         exitCode: code ?? (signalNumber === undefined ? 1 : 128 + signalNumber),

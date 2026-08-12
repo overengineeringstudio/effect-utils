@@ -16,7 +16,7 @@ pkgs.writeShellApplication {
   name = "oxlint";
   runtimeInputs = [
     pkgs.jq
-    pkgs.util-linux
+    pkgs.flock
   ];
   text = ''
     pluginPath="${oxlintNpm.pluginPath}"

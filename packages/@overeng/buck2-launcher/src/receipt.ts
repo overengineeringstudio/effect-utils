@@ -585,7 +585,7 @@ export const descriptorForClosureManifest = async (
 }
 
 const secretAssignmentOrHeader =
-  /(^|[^A-Za-z0-9])(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*(?:\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
+  /(^|[^A-Za-z0-9])["']?(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*["']?(?:\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const secretCliArgument =
   /(^|[\s"'])--(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*\s+(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const unixAbsolutePath = /(^|[\s"'=])(\/(?!\/)[^\s"']+)/g

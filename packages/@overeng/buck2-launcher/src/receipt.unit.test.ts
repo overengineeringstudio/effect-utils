@@ -74,6 +74,14 @@ describe('Buck receipt normalization', () => {
     expect(result).not.toContain('cli-secret')
   })
 
+  it('redacts quoted credential keys', () => {
+    const result = sanitizeEvidenceText(
+      '{"token":"json-token-secret","authorization":"Bearer json-header-secret"}',
+    )
+    expect(result).not.toContain('json-token-secret')
+    expect(result).not.toContain('json-header-secret')
+  })
+
   it('classifies explicit failure and cancellation before executor provenance', () => {
     expect(
       normalizeActions([

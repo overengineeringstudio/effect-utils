@@ -15,6 +15,13 @@ if (args[0] === 'log' && args[1] === 'what-ran') {
   if (mode === 'exit') process.exit(9)
   if (mode === 'malformed') { process.stdout.write('not-json\\n'); process.exit(0) }
   if (mode === 'unsupported') { process.stdout.write('{"unexpected":true}\\n'); process.exit(0) }
+  if (mode === 'delayed-drain') {
+    process.stdout.write(JSON.stringify({ reason: 'build', identity: 'root//:first', executor: 'Local' }) + '\\n')
+    require('node:child_process').spawn(process.execPath, ['-e',
+      "setTimeout(() => process.stdout.write(JSON.stringify({ reason: 'build', identity: 'root//:second', executor: 'Local' }) + '\\\\n'), 100)"
+    ], { stdio: ['ignore', 1, 2] }).unref()
+    process.exit(0)
+  }
   process.stdout.write(JSON.stringify({
     reason: 'build',
     identity: 'root//:check /home/private token=hunter2',
@@ -153,6 +160,26 @@ describe('launchBuck process boundary', () => {
       expect(result.receipt?.outcomes).not.toHaveProperty('dice_reuse')
     },
   )
+
+  it('waits for captured log output to drain before constructing the receipt', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck2-launcher-drain-'))
+    const binary = join(root, 'fake-buck2')
+    await writeFile(binary, fakeBuckSource)
+    await chmod(binary, 0o700)
+    await writeFile(join(root, 'log-mode'), 'delayed-drain')
+    const result = await launchBuck({
+      buckBinary: binary,
+      buckArgs: ['build', 'root//:check'],
+      cwd: root,
+      evidenceRoot: join(root, 'evidence'),
+      launcherRunId: 'delayed-drain',
+    })
+    expect(result.receipt?.actions.map(({ identity }) => identity)).toEqual([
+      'root//:first',
+      'root//:second',
+    ])
+    expect(result.receipt?.outcomes).toEqual({ local_execution: 2 })
+  })
 
   it('rejects duplicate closure labels before executing Buck', async () => {
     const root = await mkdtemp(join(tmpdir(), 'buck2-launcher-duplicate-'))
