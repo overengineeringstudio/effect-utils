@@ -8,7 +8,8 @@ They build on the repository's dependency-materialization contract when a
 target consumes package-manager dependency data, but do not make dependency
 materialization the owner of the broader build system.
 
-Subsystems refine this root contract in dependency order:
+Subsystems are listed in reading order and refine this root contract in
+dependency order only where a semantic dependency exists:
 
 - [01-semantic-graph](./01-semantic-graph/requirements.md)
   - [01-authoring-bindings](./01-semantic-graph/01-authoring-bindings/requirements.md)
@@ -122,3 +123,8 @@ Subsystems refine this root contract in dependency order:
   bindings, artifact contracts, and evidence contracts must be versioned and
   testable in independently owned repositories without embedding private
   topology or centralizing their first-party graphs.
+- **BUCK-R16 Explicit integration joins:** Independently useful foundation
+  slices must remain siblings unless one consumes the other's semantic output.
+  A product that needs several slices must declare an explicit integration
+  join and prove that exact composition rather than imposing a false global
+  sequence on unrelated foundations.

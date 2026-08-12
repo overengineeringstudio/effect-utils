@@ -38,12 +38,34 @@ it is not an ambient fallback.
 tuple whose producer can transfer independently from a legacy authority to
 Buck.
 
+**Product Integration Join** is a product-owned declaration that composes only
+the semantic graph, dependency closure, execution platform, toolchain, and
+contract slices a concrete product consumes. It prevents independent foundation
+slices from acquiring a false linear dependency.
+
 **Execution Tool Descriptor** identifies an immutable executable provider,
 protocol, execution platform, runtime contract, entrypoint, and bytes.
 
 **Build Product Descriptor** is the canonical description of normalized
 Buck-produced bytes, entrypoints, target-platform/runtime contract, and
 result-affecting provenance crossing into Nix.
+
+**OCI Transport Graph** is the digest-addressed manifests and blobs used to
+transfer and retain a product. It is untrusted storage: tags, indexes, endpoints,
+and registry availability do not establish expected product identity.
+
+**Sealed Admission Bundle** is one immutable completeness root that binds the
+exact product descriptor, payload, OCI child manifest, SBOM, provenance,
+signature, and required evidence identities used for admission.
+
+**Reviewed Nix Pin** is the independently reviewed expected-value input that
+selects an exact OCI child manifest and sealed admission bundle for import. It,
+not registry discovery, grants deployment authority.
+
+**Reuse Plane** is one independently governed distribution mechanism: Buck
+REAPI action/cache records, OCI final-product transport, or Nix binary-cache and
+store objects. Reuse planes have distinct identities, credentials, retention,
+and admission verdicts.
 
 **Import Receipt** describes independent verification and any system-specific
 composition applied after the normalized artifact crossed into Nix.
@@ -75,6 +97,16 @@ Semantic Package Model
               -> Import Receipt
                  -> managed generation
 
+Semantic graph + platform + closure + contract siblings
+  -> Product Integration Join
+     -> product target execution
+
+Build Product Descriptor + payload + evidence
+  -> Sealed Admission Bundle
+     -> OCI Transport Graph
+        -> Reviewed Nix Pin
+           -> verified import
+
 Execution Platform + Target Platform + tool identity
   -> action identity
 
@@ -95,3 +127,7 @@ Native Evidence + semantic identities
   write, remote execution, artifact publication, import, or activation.
 - Distinguish artifact **normalization** in Buck from system **composition** in
   Nix.
+- Distinguish an OCI **index** used for discovery from the exact **child
+  manifest** selected for deployment.
+- Qualify **cache** as Buck REAPI, OCI product transport, or Nix binary cache;
+  these are separate reuse planes.

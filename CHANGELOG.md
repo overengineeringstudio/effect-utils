@@ -13,6 +13,11 @@ All notable changes to this project will be documented in this file.
   Buck reports and emits fail-closed receipts; devenv exposes local-only E2E and
   benchmark gates. Remote cache access and remote execution stay disabled until
   authoritative package materialization, trust, and cross-platform gates pass.
+- **Buck2 system design**: specify sibling foundation slices with explicit
+  product joins, OCI as untrusted product transport, reviewed exact-child Nix
+  pins, sealed admission bundles, independent durability and restore proof,
+  zero-network activation, conservative collection, separate reuse planes, and
+  an admitted Prelude CPython live-origin bootstrap boundary.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema

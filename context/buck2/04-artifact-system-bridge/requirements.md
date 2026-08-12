@@ -93,3 +93,31 @@ identity, build on the
 - **BUCK.BRIDGE-R16 Separate health:** A generation becoming active and its
   process or service being observed healthy are distinct states with distinct
   evidence.
+
+### Must publish through an untrusted transport
+
+- **BUCK.BRIDGE-R17 Transport is not authority:** OCI distribution and storage
+  may retain and transfer immutable products, descriptors, and evidence, but a
+  registry, repository name, mutable tag, endpoint, or index must not establish
+  expected product identity or deployment authority.
+- **BUCK.BRIDGE-R18 Exact child selection:** A deployment input must pin the
+  exact OCI child-manifest digest for its target platform and runtime ABI in
+  reviewed Nix configuration. It must not rely on first-match or host-selected
+  resolution from an OCI index.
+- **BUCK.BRIDGE-R19 Sealed admission bundle:** Published admission evidence must
+  have one immutable root that binds the exact product descriptor, payload,
+  child manifest, SBOM, provenance, signatures, and required evidence digests.
+  Referrer discovery alone must not establish bundle completeness.
+- **BUCK.BRIDGE-R20 Independent durability proof:** Before a published product
+  is production-admitted, its complete OCI graph must be independently fetched
+  and verified from two storage instances and restored and reverified from a
+  third encrypted failure-domain archive. Replication success without
+  independent reads and a restore does not satisfy this requirement.
+- **BUCK.BRIDGE-R21 Zero-network lifecycle:** System composition may fetch only
+  during the fixed-output import boundary. Activation, rollback, and runtime
+  startup must use already imported store objects and perform no registry or
+  network access.
+- **BUCK.BRIDGE-R22 Conservative collection:** Published graphs and admission
+  bundles must remain undeletable until collection derives a complete live set
+  from reviewed pins and retained rollback states, previews the sweep, preserves
+  a restorable snapshot, and proves restoration after collection.

@@ -6,7 +6,9 @@ their Nix-managed system boundary.
 - [vision.md](./vision.md) defines why the system exists.
 - [requirements.md](./requirements.md) defines its stable constraints.
 - [spec.md](./spec.md) defines the global authority model.
-- Numbered subsystem directories refine the contract in dependency order.
+- Numbered subsystem directories refine the contract in reading order and in
+  dependency order where a dependency exists; independent foundations remain
+  siblings and meet at explicit product integration joins.
 - Semantic authoring bindings translate ecosystem-owned facts before the Buck
   projection; target execution consumes the resulting graph and closures.
 - [roadmap.md](./roadmap.md) is the non-normative execution bridge to GitHub.

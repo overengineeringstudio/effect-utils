@@ -157,6 +157,20 @@ Build evidence MUST make the following queryable per action:
 Admission MUST include cold, warm, metadata-only, relevant-source,
 irrelevant-source, tool-identity, and wrong-platform controls.
 
+### BUCK.PLAT-R013: admitted live-origin bootstrap
+
+Every live-origin file or executable required to load Buck rules, including the
+Prelude CPython closure, MUST cross an immutable, digest-pinned Nix realization
+before Buck analysis. Nix MAY retrieve pinned source bytes through untrusted OCI
+transport, but the reviewed source expectation, recipe, runtime closure, and
+realized tool descriptor remain authoritative in this subsystem. Analysis and
+actions MUST NOT fetch from a mutable upstream, registry tag, ambient
+interpreter, or developer checkout. Its descriptor, bytes, execution platform,
+runtime closure, and producer evidence MUST be independently verified, and
+changing that origin MUST invalidate only the rule-loading or actions that
+consume it. The Buck-product importer in `04-artifact-system-bridge` MUST NOT
+mediate this Nix-to-Buck stage-0 flow.
+
 ## Non-goals
 
 - Reimplementing Nix package management inside Buck.

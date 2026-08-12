@@ -4,9 +4,9 @@ This document specifies the verified Buck-to-Nix build-product boundary and
 the handoff into Nix-managed system generations. It builds on
 [requirements.md](./requirements.md).
 
-Status: **Draft**. The generic archive and import seam has prototype evidence.
-No TypeScript or Rust executable, publication flow, or system generation is
-admitted through the bridge yet.
+Status: **Draft**. The generic archive and import seam and OCI protocol have
+prototype evidence. No TypeScript or Rust executable, publication flow, or
+system generation is admitted through the bridge yet.
 
 ## Scope
 
@@ -17,8 +17,8 @@ nix-darwin. Nix-to-Buck execution tools belong exclusively to
 belong to [05-evidence-verification](../05-evidence-verification/spec.md), and
 admission belongs to [06-admission-reuse](../06-admission-reuse/spec.md).
 
-It does not define repository graphs, tool descriptors, cache services, fleet
-configuration, credentials, evidence verdicts, or admission records.
+It does not define repository graphs, tool descriptors, registry deployment,
+fleet configuration, credentials, evidence verdicts, or admission records.
 
 ## Requirement Trace
 
@@ -27,6 +27,7 @@ configuration, credentials, evidence verdicts, or admission records.
 | Authorities and flow   | BUCK.BRIDGE-R01-R04 |
 | Build-product contract | BUCK.BRIDGE-R05-R13 |
 | System handoff         | BUCK.BRIDGE-R14-R16 |
+| Publication boundary   | BUCK.BRIDGE-R17-R22 |
 
 ## Authorities and Flow
 
@@ -132,6 +133,123 @@ normalizes install names and runtime paths, applies declared signing policy,
 then rechecks architecture, minimum OS, dependencies, runtime paths, and
 signature state. Portable artifacts remain unmodified and contain no
 undeclared host or Nix-store dependencies.
+
+## OCI Publication Boundary
+
+```text
+Buck product + descriptor + evidence
+                 |
+                 v
+       sealed admission bundle
+                 |
+       +---------+---------+
+       |                   |
+       v                   v
+ OCI storage A       OCI storage B
+ independent pull    independent pull
+       +---------+---------+
+                 |
+                 v
+ third encrypted archive -> restore proof
+                 |
+                 v
+ reviewed Nix exact child-manifest pin
+                 |
+                 v
+ fixed-output fetch -> verified import -> offline activation/rollback
+```
+
+OCI is the transport and retention protocol, not an identity oracle. A product
+may publish a multi-platform OCI index for discovery, but deployment review
+selects and pins the exact child manifest. OCI's platform fields do not encode
+the complete runtime ABI contract, so a consumer must verify the child against
+the product descriptor rather than auto-selecting the first matching platform.
+Tags are convenience aliases only and never enter an expected-value contract.
+
+The relevant identities remain distinct:
+
+| Identity                      | Meaning                                      | Authority                    |
+| ----------------------------- | -------------------------------------------- | ---------------------------- |
+| Buck action digest            | Declared execution result                    | Buck native evidence         |
+| Product descriptor digest     | Canonical semantic product contract          | Buck producer + caller check |
+| Payload digest                | Normalized product bytes                     | Product descriptor           |
+| OCI child-manifest digest     | Exact transport graph for one product tuple  | Reviewed Nix pin             |
+| OCI index digest              | Optional multi-platform discovery aggregate  | Discovery only               |
+| Sealed-bundle digest          | Complete admission evidence membership       | Admission publication        |
+| Nix derivation/store identity | Imported and system-composed realization     | Nix                          |
+| System generation identity    | Activatable configuration and rollback point | System manager               |
+
+### Sealed admission bundle
+
+Referrers may aid discovery but do not prove that all required evidence was
+present when admission was evaluated. The publisher first creates a canonical
+unsigned `buck-admission-subject/v1`:
+
+```json
+{
+  "schema": "buck-admission-subject/v1",
+  "productDescriptorDigest": "sha256:...",
+  "payloadDigest": "sha256:...",
+  "ociChildManifestDigest": "sha256:...",
+  "targetPlatform": "x86_64-linux",
+  "runtimeAbi": "glibc-dynamic",
+  "members": {
+    "sbom": "sha256:...",
+    "provenance": "sha256:...",
+    "evidenceEnvelope": "sha256:..."
+  }
+}
+```
+
+The detached signature signs the canonical subject digest. A second canonical
+root then seals the subject and signature without a digest cycle:
+
+```json
+{
+  "schema": "buck-admission-bundle/v1",
+  "subjectDigest": "sha256:...",
+  "signatureDigest": "sha256:...",
+  "signatureContract": "sigstore-bundle/v1"
+}
+```
+
+Every subject member is mandatory according to the named admission policy. The
+canonical outer bundle digest is the completeness root pinned by the consumer;
+the signature proves the inner subject digest, and the outer bundle binds that
+exact signature to that exact subject. Adding or replacing a member, subject,
+or signature creates a new outer root. Mutable referrer listings cannot
+silently widen the admitted bundle.
+
+### Publication and durability sequence
+
+1. Push the complete digest-addressed OCI graph to the primary storage
+   instance.
+2. Copy the complete graph to an independently readable storage instance.
+3. Pull by digest from each instance using separate read paths and verify every
+   manifest, blob, descriptor, bundle member, and signature.
+4. Export the complete graph into a third encrypted failure-domain archive,
+   restore it into an empty verifier, and repeat the same digest checks.
+5. Advance reviewed Nix configuration to the exact child-manifest and sealed
+   bundle digests only after all three observations pass.
+
+Replication completion, tag listing, registry health, and blob existence are
+insufficient substitutes for independent full-graph reads. Storage endpoints,
+credentials, hostnames, and physical placement remain downstream private
+configuration and never enter public product identity.
+
+Deletion and registry garbage collection remain disabled initially. Later
+collection derives its live set from reviewed Nix pins, retained system
+generations, and their complete sealed bundles; emits a dry-run plan; snapshots
+the candidate sweep; deletes only unreachable objects; and proves restore from
+that snapshot before collection is admitted. A replica is not a backup.
+
+### Offline system lifecycle
+
+Registry access is permitted only in the fixed-output fetch/import derivation.
+After that derivation enters the Nix store, system composition, activation,
+rollback, and runtime startup consume store objects only. A network-disabled
+activation and rollback control is mandatory; an unavailable registry must not
+change the result for an already imported generation.
 
 ## Admission Sequence
 

@@ -22,6 +22,7 @@ fallback.
 | Authority switch      | BUCK.ADM-R05-R08 |
 | Capability trust      | BUCK.ADM-R09-R10 |
 | Reuse and contraction | BUCK.ADM-R11-R14 |
+| Reuse planes          | BUCK.ADM-R15-R18 |
 
 ## Admission Predicate
 
@@ -83,7 +84,8 @@ local execution
   +-- remote-cache write
   +-- remote execution
   +-- verified Nix import
-  `-- system activation
+  +-- system activation
+  `-- artifact collection
 ```
 
 The branches are separately admitted; indentation does not imply authority.
@@ -92,6 +94,38 @@ Public, private, and sensitive artifacts have explicit classifications.
 Negative controls cover forged provenance, cross-namespace writes,
 path-dependent replay, poisoned entries, secret leakage, and wrong-platform
 execution.
+
+### Independent reuse planes
+
+```text
+Buck REAPI cache     OCI product transport     Nix binary cache/store
+ action results       final products + bundle   imported realizations
+      |                       |                         |
+      +--------- separate identities and verdicts -----+
+```
+
+These planes may share observability joins, but not authority. Buck REAPI is an
+execution optimization, OCI is untrusted product distribution, and the Nix
+store/binary cache serves verified Nix realizations. Each has distinct writer
+credentials, readers, retention policy, availability evidence, and poisoning
+controls. A hit, upload, signature, or health signal in one plane says nothing
+about the others.
+
+### Publication admission
+
+Artifact publication and production import are admitted only when the exact
+child manifest and sealed admission bundle named by reviewed Nix configuration
+pass the artifact-system bridge checks. The gate requires independent complete
+pulls from two storage instances, restore and verification from a third
+encrypted failure-domain archive, and network-disabled activation and rollback
+of the already imported generation. A registry tag, OCI index match,
+replication success, referrer listing, or healthy endpoint cannot satisfy any
+of those gates.
+
+Deletion and garbage collection are separate destructive capabilities. They
+remain rejected until a pin- and rollback-derived live-set computation, dry-run
+comparison, snapshot, bounded sweep, and post-sweep restore proof are all
+independently observed.
 
 ## Second-Consumer Conformance
 

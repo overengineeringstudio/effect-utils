@@ -80,3 +80,22 @@ contracts.
 - **BUCK.ADM-R14 Complexity contraction:** Admission must prove that the
   admitted domain has one producer and one primary developer interface, adds no
   permanent duplicate abstraction, and removes migration-only mechanisms.
+
+### Must keep reuse planes and publication gates distinct
+
+- **BUCK.ADM-R15 Separate reuse planes:** Buck REAPI action/cache records, OCI
+  product graphs, and Nix binary-cache/store objects must have independent
+  identities, credentials, retention policies, health, and admission verdicts.
+  Availability or trust in one plane must not imply either for another.
+- **BUCK.ADM-R16 Reviewed publication authority:** Production artifact import
+  must be admitted only for the exact OCI child manifest and sealed admission
+  bundle selected by reviewed Nix configuration. Mutable tags, index selection,
+  registry state, and referrer discovery must not advance authority.
+- **BUCK.ADM-R17 Durability and offline gates:** Production publication must
+  require two independent full-graph fetch-and-verification passes, a verified
+  restore from a third encrypted failure-domain archive, and network-disabled
+  activation and rollback evidence for the imported generation.
+- **BUCK.ADM-R18 Collection capability:** Artifact deletion and garbage
+  collection are separate destructive capabilities and remain unadmitted until
+  live-set completeness, dry-run accuracy, rollback retention, snapshot, and
+  restore controls all pass.

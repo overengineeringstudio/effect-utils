@@ -3,18 +3,37 @@
 This file is non-normative. The [VRS](./vision.md) defines the intended system;
 GitHub issues own executable work, dependencies, exact revisions, and status.
 
-The current dependency shape is:
+The current dependency shape preserves sibling foundations and makes product
+composition explicit:
 
 ```text
-VRS and semantic graph foundation
-  -> dependency and platform authority
-  -> TypeScript and Rust target execution
-  -> artifact/system bridge
-  -> evidence and deterministic admission
-  -> authority transfer and immediate legacy deletion per slice
-  -> reusable contract proof in a second megarepo
-  -> linked dotfiles and remaining-repository adoption
+shared base
+  +-- semantic graph and language bindings --------+
+  +-- dependency authority ------------------------+
+  +-- execution-platform and bootstrap authority --+--> product integration join
+  +-- strict product/artifact contract ------------+          |
+                                                               v
+                                            TypeScript or Rust target execution
+                                                               |
+                                                               v
+                                 OCI publication + reviewed Nix exact-child pin
+                                                               |
+                                                               v
+                                  import, offline activation, rollback, health
+                                                               |
+                                                               v
+                                deterministic admission + immediate contraction
+                                                               |
+                                                               v
+                             second-repository and system-consumer conformance
 ```
+
+Prelude's CPython live-origin closure is contracted as an admitted stage-0
+execution-platform input rather than hidden ambient state. Production OCI
+publication is not complete until two independent storage reads, a third
+failure-domain archive restore, and network-disabled activation and rollback
+have evidence. Registry deployment details remain in the private system
+repository; this public roadmap owns only the generic contract.
 
 The comprehensive refactor epic must reuse existing capability issues, express
 real execution boundaries through GitHub parent/sub-issue and dependency

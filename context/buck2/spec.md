@@ -23,23 +23,21 @@ inventories. Those belong to subsystem specs or the non-normative roadmap.
 first-party intent + ecosystem metadata
                  |
                  v
-        01 Semantic Graph
-  authoring bindings -> normalized IR
-                 |
-        deterministic Buck projection
-                 |
-      declared target operations
-                 |
-       +---------+----------+
-       |                    |
-       v                    v
-02 Execution Platforms  03 Target Execution
-       |                    |
-       +---------+----------+
-                 |
-          normalized result
-                 v
-    04 Artifact/System Bridge
+       +--------------------+--------------------+
+       |                    |                    |
+       v                    v                    v
+01 Semantic Graph   02 Execution Platforms   shared contracts
+       |                    |                    |
+       +------------+-------+--------------------+
+                    |
+             product integration join
+                    |
+                    v
+            03 Target Execution
+                    |
+             normalized result
+                    v
+       04 Artifact/System Bridge
                  |
       verified Nix realization
 
@@ -47,9 +45,13 @@ first-party intent + ecosystem metadata
 06 Admission/Reuse controls authority expansion and contraction
 ```
 
-The numbered directories encode dependency direction. A later subsystem may
-refine an earlier contract; an earlier subsystem must not depend on a later
-realization.
+The numbered directories encode documentation and dependency direction where a
+dependency exists; they do not require every earlier sibling to depend on the
+preceding one. Semantic graph, execution-platform, dependency-materialization,
+and shared-contract slices remain independently reviewable foundations. A real
+product declares an integration join over only the slices it consumes. A later
+subsystem may refine an earlier contract; an earlier subsystem must not depend
+on a later realization.
 
 ## Authority Matrix
 
@@ -61,7 +63,8 @@ realization.
 | Repository-local analysis and actions               | Buck                                            | Declared labels, providers, configured platforms, and action keys        |
 | Tool recipes, versions, patches, system libraries   | Nix                                             | Current immutable local per-platform tool binding                        |
 | Deployable repository artifact                      | Buck after admission                            | Normalized artifact envelope and native evidence                         |
-| Artifact verification and system composition        | Nix                                             | Caller-pinned expectations and import receipt                            |
+| Artifact transport and retention                    | Untrusted OCI distribution/storage              | Exact digest-addressed OCI graph and sealed admission bundle             |
+| Artifact verification and system composition        | Reviewed Nix configuration                      | Exact child-manifest pin, caller expectations, and import receipt        |
 | User/system activation and rollback                 | Home Manager, NixOS, or nix-darwin              | Managed generation and activation receipt                                |
 | Private aliases, endpoints, secrets, fleet topology | Downstream system repository                    | Runtime-only configuration outside public artifacts and cache identities |
 
@@ -76,12 +79,18 @@ semantic graph + dependency projections ------> Buck actions
                                       normalized Buck artifact
                                                 |
                                                 v
-caller expectations -> Nix verify/import -> runtime composition -> activation
+                                  untrusted OCI transport
+                                                |
+                                                v
+reviewed exact child pin -> Nix verify/import -> runtime composition -> activation
 ```
 
 No arrow grants authority backward. Normal Nix evaluation, import, or
 activation must not start a Buck daemon or inspect a mutable source checkout.
 Buck actions must not invoke Nix evaluation or live dependency repair.
+Registry location, tags, indexes, and availability do not grant product or
+deployment authority. Activation and rollback use already imported Nix store
+objects and perform no registry or network access.
 
 ## Developer Interface
 
@@ -136,10 +145,18 @@ runtime health.
 - An authoritative action must not discover tools through ambient `PATH`, run a
   live package-manager install, or access undeclared workspace state.
 - Nix import and system activation must not fall back to a source build.
+- Nix-to-Buck stage-0 materialization must not route through the Buck-to-Nix
+  product importer; shared transport principles do not reverse subsystem
+  authority.
 - Evidence aggregation must not replace Buck's native execution authority or
   infer a cause that native and semantic evidence cannot establish.
 - Cross-repository reuse must not copy private topology into a public semantic
   graph, artifact, receipt, or cache key.
+- A deployment consumer must not infer a platform artifact from an OCI index or
+  mutable tag; it consumes the exact reviewed child-manifest digest.
+- Buck action-cache records, published OCI products, and Nix binary-cache/store
+  objects must not be treated as interchangeable identities or one shared
+  cache authority.
 
 ## Requirement Trace
 
@@ -150,10 +167,12 @@ runtime health.
 | BUCK-R02, BUCK-R03        | 04 Artifact/System Bridge                     |
 | BUCK-R10 through BUCK-R12 | 05 Evidence/Verification                      |
 | BUCK-R13 through BUCK-R15 | 06 Admission/Reuse                            |
+| BUCK-R16                  | Root composition and product integration joins |
 
 ## Open Design Questions
 
-- **BUCK-DQ1 Contract publication:** Which repository and release mechanism
-  publish the shared schemas and conformance tools without creating a bootstrap
-  cycle? Resolve by proving the same pinned contract in a second megarepo and a
+- **BUCK-DQ1 Contract ownership:** Which repository and package boundary own the
+  shared schemas and conformance tools without creating a bootstrap cycle? OCI
+  is the selected artifact transport, not the answer to source ownership.
+  Resolve by proving the same pinned contract in a second megarepo and a
   system-configuration consumer.
