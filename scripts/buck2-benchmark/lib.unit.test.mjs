@@ -43,10 +43,15 @@ describe('buck2 benchmark parsers', () => {
           JSON.stringify({ total_bytes: 10 }),
           JSON.stringify({ file_count: 2 }),
           JSON.stringify({ total_bytes: 'not-a-number', file_count: 1 }),
+          JSON.stringify({ total_bytes: -1, file_count: 1 }),
+          JSON.stringify({ total_bytes: 1, file_count: -1 }),
+          JSON.stringify({ total_bytes: 1.5, file_count: 1 }),
+          JSON.stringify({ total_bytes: 1, file_count: 1.5 }),
+          JSON.stringify({ total_bytes: Number.MAX_SAFE_INTEGER + 1, file_count: 1 }),
           JSON.stringify({ total_bytes: 7, file_count: 3 }),
         ].join('\n'),
       ),
-      { count: 1, bytes: 7, files: 3, malformed: 6 },
+      { count: 1, bytes: 7, files: 3, malformed: 11 },
     )
   })
 

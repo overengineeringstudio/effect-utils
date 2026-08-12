@@ -76,6 +76,9 @@ assert lib.assertMsg (
 assert lib.assertMsg (lib.all safeRelativePath descriptor.entrypoints)
   "buck2-artifact-import: descriptor entrypoints must be canonical safe relative paths";
 assert lib.assertMsg (
+  builtins.length descriptor.entrypoints == builtins.length (lib.unique descriptor.entrypoints)
+) "buck2-artifact-import: descriptor entrypoints must be unique";
+assert lib.assertMsg (
   descriptor ? provenance
   && hasOnlyFields [ "actionDigest" "producer" "sourceRevision" "target" ] descriptor.provenance
   && builtins.isString (descriptor.provenance.producer or null)

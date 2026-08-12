@@ -595,6 +595,8 @@ export const descriptorForClosureManifest = async (
 
 const secretAssignmentOrHeader =
   /(^|[^A-Za-z0-9])["']?(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*["']?(?:\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
+const secretCliAuthorizationArgument =
+  /(^|[\s"'])--(?:[A-Za-z0-9]+[_-])*authorization(?:[_-][A-Za-z0-9]+)*\s+(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const secretCliArgument =
   /(^|[\s"'])--(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*\s+(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const unixAbsolutePath = /(^|[\s"'=])(\/(?!\/)[^\s"']+)/g
@@ -606,6 +608,7 @@ export const sanitizeEvidenceText = (value: unknown): string => {
   const source = typeof value === 'string' ? value : 'unknown'
   const sanitized = source
     .replace(secretAssignmentOrHeader, '$1<redacted>')
+    .replace(secretCliAuthorizationArgument, '$1<redacted>')
     .replace(secretCliArgument, '$1<redacted>')
     .replace(urlUserInfo, '$1<redacted>@')
     .replace(windowsAbsolutePath, '<path>')

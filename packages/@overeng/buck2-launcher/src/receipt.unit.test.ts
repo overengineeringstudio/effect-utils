@@ -75,6 +75,16 @@ describe('Buck receipt normalization', () => {
     expect(result).not.toContain('cli-secret')
   })
 
+  it('redacts authorization schemes and credentials from normalized action identities', () => {
+    const actions = normalizeActions([
+      { identity: 'root//:bearer --authorization Bearer bearer-secret' },
+      { identity: 'root//:basic --authorization Basic basic-secret' },
+    ])
+    const serialized = JSON.stringify(actions)
+    expect(serialized).not.toContain('bearer-secret')
+    expect(serialized).not.toContain('basic-secret')
+  })
+
   it('redacts quoted credential keys', () => {
     const result = sanitizeEvidenceText(
       '{"token":"json-token-secret","authorization":"Bearer json-header-secret"}',

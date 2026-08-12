@@ -1,4 +1,5 @@
 const finiteNumbers = (values) => values.filter((value) => Number.isFinite(value))
+const isNonnegativeSafeInteger = (value) => Number.isSafeInteger(value) === true && value >= 0
 
 /** Calculate a nearest-rank percentile over finite numeric values. */
 export const percentile = ({ values, fraction }) => {
@@ -30,7 +31,10 @@ export const parseMaterializations = (text) => {
       const byteCandidate =
         value.total_bytes ?? value.totalBytes ?? value.bytes ?? value.decompressed_size
       const fileCandidate = value.file_count ?? value.fileCount ?? value.files
-      if (Number.isFinite(byteCandidate) === false || Number.isFinite(fileCandidate) === false) {
+      if (
+        isNonnegativeSafeInteger(byteCandidate) === false ||
+        isNonnegativeSafeInteger(fileCandidate) === false
+      ) {
         malformed += 1
         continue
       }
