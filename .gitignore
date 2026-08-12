@@ -19,6 +19,9 @@ dist
 __pycache__/
 *.pyc
 
+# Rust workspace build state
+/rust/target/
+
 # Buck2 daemon and materialized build state
 buck-out/
 

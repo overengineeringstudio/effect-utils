@@ -1,9 +1,10 @@
 [package]
 name = "otel-scrape"
-version = "0.0.0"
-edition = "2021"
+workspace = "../../../rust"
+version.workspace = true
+edition.workspace = true
 description = "Process wrapper for command telemetry and profile artifact links"
-license = "MIT"
+license.workspace = true
 
 [lib]
 name = "otel_scrape"
@@ -15,15 +16,12 @@ path = "src/main.rs"
 
 [dependencies]
 getrandom = "0.4"
+# Exact pin is intentionally package-local; otelite's target-conditioned libc
+# request uses Cargo's compatible range and therefore has different semantics.
 libc = "=0.2.186"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde.workspace = true
+serde_json.workspace = true
 sha2 = "0.11"
 
 [dev-dependencies]
-tempfile = "3"
-
-[profile.release]
-opt-level = 3
-lto = "thin"
-strip = "symbols"
+tempfile.workspace = true

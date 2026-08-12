@@ -1,29 +1,37 @@
 # Nix build for the otelite Rust crate — effect-utils' first Rust package.
-# Hermetic source via fileset.toSource (stable across unrelated repo edits);
-# cargoLock.lockFile vendors deps from the committed Cargo.lock.
+# Hermetic workspace-aware source remains stable across unrelated repo edits.
+# cargoLock.lockFile vendors deps from the shared committed workspace lock.
 { pkgs }:
 let
   lib = pkgs.lib;
+  repositoryRoot = ../../../..;
+  workspaceRoot = repositoryRoot + "/rust";
   crateRoot = ../.;
-  src = lib.fileset.toSource {
-    root = crateRoot;
-    fileset = lib.fileset.unions [
-      (crateRoot + "/Cargo.toml")
-      (crateRoot + "/Cargo.lock")
-      (crateRoot + "/rust-toolchain.toml")
-      (lib.fileset.fileFilter (f: f.hasExt "rs") (crateRoot + "/src"))
-      # Whole test tree (added in M4): integration `.rs` plus conformance
-      # goldens/fixtures (`.json`/`.ndjson`/`.snap`). maybeMissing keeps this a
-      # no-op until `tests/` exists, so `doCheck` finds fixtures, not a void.
-      (lib.fileset.maybeMissing (crateRoot + "/tests"))
-    ];
+  mkRustWorkspaceSource = import ../../../../nix/workspace-tools/lib/mk-rust-workspace-source.nix {
+    inherit lib;
+  };
+  src = mkRustWorkspaceSource {
+    inherit repositoryRoot workspaceRoot;
+    packageRoot = crateRoot;
+    # The whole test tree contains integration sources plus conformance
+    # goldens/fixtures (`.json`/`.ndjson`/`.snap`).
   };
 in
 pkgs.rustPlatform.buildRustPackage {
   pname = "otelite";
   version = "0.0.0";
   inherit src;
-  cargoLock.lockFile = crateRoot + "/Cargo.lock";
+  cargoRoot = "rust";
+  buildAndTestSubdir = "rust";
+  cargoLock.lockFile = workspaceRoot + "/Cargo.lock";
+  cargoBuildFlags = [
+    "--package"
+    "otelite"
+  ];
+  cargoTestFlags = [
+    "--package"
+    "otelite"
+  ];
   doCheck = true;
   meta = {
     description = "Local OTLP capture tool for E2E and instrumentation tests";

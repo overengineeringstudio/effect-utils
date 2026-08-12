@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
   masquerading as a build product. Descriptor paths reject CR/LF bytes, fixed
   canonical conformance vectors guard identity, and archive scanning rejects
   non-padding bytes or concatenated archives after the first end marker.
+- **Rust workspace authority**: compose `otelite` and `otel-scrape` under one
+  native Cargo workspace, shared lockfile, and repository toolchain declaration.
+  Member manifests inherit only semantically identical requests; the Nix bridge
+  keeps each package's source local while including the exact workspace contract.
 - **Buck2 build foundation**: add generated package-local Buck targets, an exact
   pnpm closure compiler with content/context/task identities, deterministic
   package evidence archives, a Nix-exported portable-toolchain boundary, and a
