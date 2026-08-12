@@ -36,6 +36,7 @@ let
       cargoRoot = "rust";
       buildAndTestSubdir = "rust";
       cargoLock.lockFile = workspaceRoot + "/Cargo.lock";
+      nativeBuildInputs = [ pkgs.gawk ];
       cargoBuildFlags = [
         "--package"
         package
@@ -44,9 +45,12 @@ let
       # this derivation to the shared core and one leaf, preserving fine-grained
       # source invalidation while keeping the root lock as dependency authority.
       postPatch = ''
-        perl -0pi -e \
-          's/members = \[.*?\n\]/members = ["buck2-tools\/core", "${workspaceMember}"]\n/s' \
-          rust/Cargo.toml
+        awk '
+          /^members = \[/ { print "members = [\"buck2-tools/core\", \"${workspaceMember}\"]"; skipping = 1; next }
+          skipping && /^\]/ { skipping = 0; next }
+          !skipping { print }
+        ' rust/Cargo.toml > rust/Cargo.toml.narrow
+        mv rust/Cargo.toml.narrow rust/Cargo.toml
       '';
       doCheck = false;
       meta = {
