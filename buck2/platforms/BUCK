@@ -1,0 +1,50 @@
+load("@prelude//platforms:defs.bzl", "execution_platform")
+
+constraint_setting(
+    name = "runtime_linkage",
+    visibility = ["PUBLIC"],
+)
+
+constraint_value(
+    name = "dynamic",
+    constraint_setting = ":runtime_linkage",
+    visibility = ["PUBLIC"],
+)
+
+constraint_value(
+    name = "static",
+    constraint_setting = ":runtime_linkage",
+    visibility = ["PUBLIC"],
+)
+
+platform(
+    name = "target_x86_64_linux_glibc_dynamic",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+        ":dynamic",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+platform(
+    name = "target_x86_64_linux_musl_static",
+    constraint_values = [
+        "prelude//abi/constraints:musl",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+        ":static",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+# Current delivery is an exact Nix store path and therefore local-only. The
+# compiler executes for the host platform even when it emits a musl target.
+execution_platform(
+    name = "exec_x86_64_linux_local_store",
+    cpu_configuration = "prelude//cpu:x86_64",
+    os_configuration = "prelude//os:linux",
+    use_windows_path_separators = False,
+    visibility = ["PUBLIC"],
+)

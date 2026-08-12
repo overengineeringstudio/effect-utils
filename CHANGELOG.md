@@ -32,6 +32,9 @@ All notable changes to this project will be documented in this file.
   pins, sealed admission bundles, independent durability and restore proof,
   zero-network activation, conservative collection, separate reuse planes, and
   an admitted on-demand Prelude CPython action-toolchain bootstrap boundary.
+- **Buck2 Rust platform prototype**: add explicit x86_64 Linux glibc-dynamic and
+  musl-static target boundaries plus a local-only, Nix-store Rust toolchain
+  probe that produces and inspects a self-contained static PIE.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema

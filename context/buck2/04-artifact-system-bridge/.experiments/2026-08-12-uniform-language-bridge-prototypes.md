@@ -32,18 +32,19 @@ hardening and real-product gates required before authority transfer.
 
 ## Current Reality
 
-| Surface                                              | Result |
-| ---------------------------------------------------- | -----: |
-| Generated package-local BUCK files                   |      1 |
-| Real TypeScript compile/test/executable Buck targets |      0 |
-| Real Rust Buck targets                               |      0 |
-| TypeScript Nix source builders                       |      7 |
-| Rust Nix source builders                             |      2 |
-| Production/system artifact-import consumers          |      0 |
+| Surface                                              |                              Result |
+| ---------------------------------------------------- | ----------------------------------: |
+| Generated package-local BUCK files                   |                                   1 |
+| Real TypeScript compile/test/executable Buck targets |                                   0 |
+| Real Rust Buck targets                               | 1 platform probe; 0 product targets |
+| TypeScript Nix source builders                       |                                   7 |
+| Rust Nix source builders                             |                                   2 |
+| Production/system artifact-import consumers          |                                   0 |
 
 The existing `tui-core` target packages a non-authoritative TypeScript input
-plan. The existing bridge imports a synthetic portable fixture. These are
-working prototypes, not production TS/Rust convergence.
+plan. The Rust target is a dependency-free static-musl platform probe, not a
+Cargo/Reindeer product. The existing bridge imports a synthetic portable
+fixture. These are working prototypes, not production TS/Rust convergence.
 
 ## TypeScript Closure Controls
 
@@ -73,9 +74,10 @@ control proves packager hermeticity, not TypeScript compiler hermeticity.
 | Nix-built Rust binary                    | 1.34 MB; store-bound; 49.35 MB runtime closure     |
 | Preserved Buck Rust binary               | 2.10 MB; no store bytes; local CLI behavior passed |
 | Preserved Buck Rust ABI                  | Dynamic glibc through 2.39; not fleet-portable     |
-| Static-musl Rust product                 | No-verdict; toolchain/build blocked by disk freeze |
+| Static-musl Rust hello probe             | 488 KB static PIE; no loader, Nix refs, or deps    |
 
-The preserved real Buck descriptor also does not satisfy the current importer's
+The static probe proves the target/toolchain boundary, not the shared product
+descriptor or importer. The preserved real Buck descriptor also does not satisfy the current importer's
 provenance shape, so a genuine Rust product round trip is unproved. Two equal
 preserved archives may be cache copies and do not prove independent rebuild
 reproducibility.
