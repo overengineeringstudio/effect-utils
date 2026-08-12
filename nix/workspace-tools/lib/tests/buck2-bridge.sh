@@ -116,7 +116,7 @@ buck_evidence="$(printf '%s\n' "$buck_output" | awk \
   echo "buck2-bridge-test: Buck did not materialize configured Nix export evidence" >&2
   exit 1
 }
-grep -Fx 'portable-toolchain-ok' "$buck_evidence" >/dev/null || {
+grep -Fx 'buck2-bridge-ok' "$buck_evidence" >/dev/null || {
   echo "buck2-bridge-test: configured Nix export did not execute through Buck RunInfo" >&2
   exit 1
 }

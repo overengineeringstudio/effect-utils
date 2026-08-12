@@ -11,7 +11,7 @@ let
 
   portableSource = pkgs.runCommand "buck2-bridge-portable-source" { allowedReferences = [ ]; } ''
     mkdir -p "$out/bin" "$out/share/fixture"
-    printf '%s\n' '#!/bin/sh' 'printf "%s\\n" buck2-bridge-ok' > "$out/bin/fixture-tool"
+    printf '%s\n' '#!/bin/sh' 'set -eu' 'printf "%s\\n" buck2-bridge-ok > "$1"' > "$out/bin/fixture-tool"
     printf '%s\n' 'portable fixture data' > "$out/share/fixture/data.txt"
     chmod 0555 "$out/bin/fixture-tool"
     chmod 0444 "$out/share/fixture/data.txt"
