@@ -6,10 +6,10 @@ This document specifies the bounded Rust Cargo authoring binding. It builds on
 
 ## Status
 
-Draft. The authority, normalization, and default-feature boundaries are
-selected. Resolution-domain scope, supported `cfg` breadth, and Cargo-profile
-equivalence remain open; build-script and cross-platform proc-macro execution
-remain unadmitted.
+Draft. The authority, normalization, default-feature, and repository
+resolution-domain boundaries are selected. The Nix locality bridge, supported
+`cfg` breadth, and Cargo-profile equivalence remain open; build-script and
+cross-platform proc-macro execution remain unadmitted.
 
 ## Scope
 
@@ -26,7 +26,7 @@ target execution.
 | Authority boundary      | BUCK.GRAPH.BIND.RUST-R01, BUCK.GRAPH.BIND.RUST-R02, BUCK.GRAPH.BIND.RUST-R03 |
 | Repository overlay      | BUCK.GRAPH.BIND.RUST-R04, BUCK.GRAPH.BIND.RUST-R05, BUCK.GRAPH.BIND.RUST-R06 |
 | Compatibility admission | BUCK.GRAPH.BIND.RUST-R07, BUCK.GRAPH.BIND.RUST-R08, BUCK.GRAPH.BIND.RUST-R09 |
-| Workspace composition   | BUCK.GRAPH.BIND.RUST-R10, BUCK.GRAPH.BIND.RUST-R11                         |
+| Workspace composition   | BUCK.GRAPH.BIND.RUST-R10, BUCK.GRAPH.BIND.RUST-R11, BUCK.GRAPH.BIND.RUST-R12 |
 
 ## Authority Boundary
 
@@ -70,6 +70,12 @@ It owns selected topology for that domain, but its whole bytes do not enter
 every Buck action key. The resolver join derives a normalized reachable
 closure for the operation, platform, dependency kind, and effective features;
 that closure is the invalidation boundary.
+
+`otelite` and `otel-scrape` form one effect-utils Cargo resolution domain. The
+shared workspace and lockfile are admitted only together with a Nix bridge that
+filters the workspace root, selected member sources, and first-party path
+closure without including the whole repository. An unrelated member change
+must leave the unaffected package closure identity stable.
 
 A narrow Rust validator may require catalog-eligible member dependencies to use
 `workspace = true`, reject ignored or bypassing request keys, admit explicit
@@ -223,4 +229,5 @@ before build-script or cross-platform proc-macro support is admitted.
   `otel-scrape` intentionally share one compatibility/update domain and root
   lockfile, conditional on a Nix bridge that preserves package-local closure
   identity, or do they remain separate Cargo resolution domains while sharing
-  only validation and authoring policy?
+  only validation and authoring policy? **Resolved:** one effect-utils domain,
+  conditional on the Nix locality gate. See decision 0003.

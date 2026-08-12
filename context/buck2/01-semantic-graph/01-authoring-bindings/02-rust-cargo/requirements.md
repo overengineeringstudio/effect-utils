@@ -93,3 +93,8 @@ overlay may reference Cargo declarations without copying them.
   may reject misleading or bypassing declarations and compare Cargo's
   observation, but it must not become another manifest schema or generator
   authority.
+- **BUCK.GRAPH.BIND.RUST-R12 Nix locality gate:** Moving packages into a shared
+  Cargo resolution domain must not broaden each Nix package source to the whole
+  repository or make an unrelated member's reachable closure part of that
+  package's build identity. The migration requires a workspace-aware,
+  narrowly-filtered source and closure bridge with an unrelated-change control.
