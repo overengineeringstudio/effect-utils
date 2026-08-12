@@ -38,6 +38,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **otel-scrape build identity**: move revision-varying product identity from
+  Rust compile inputs into an adjacent packaged `build-info.json`, allowing a
+  Buck product graph to keep compile and link actions stable when only build
+  attribution changes.
 - **genie/weaver**: wrap long generated TypeScript constant declarations so
   generated registry projections remain formatter-clean without hand edits.
 - **Buck2 evidence safety**: accept generated v2 closure projections, redact

@@ -2,11 +2,11 @@
 # Hermetic workspace-aware source remains stable across unrelated repo edits.
 # cargoLock.lockFile vendors deps from the shared committed workspace lock.
 #
-# Build-id correlation (H5, decision 0019): the flake git rev is injected as a
-# NixStamp `CLI_BUILD_STAMP` env var so the binary reflects its build without
-# breaking purity (the rev is a flake input, not an impure read). Rust reads it
-# at compile time via `option_env!` and derives `machineVersion` per the shared
-# build-versioning contract. The shape matches the fleet's TS/Nix stamp
+# Build-id correlation (H5, decision 0019): the flake git rev is written as an
+# adjacent NixStamp build-info file during packaging. Rust compilation stays
+# independent of revision metadata while the installed product still derives
+# `machineVersion` from the shared build-versioning contract. The shape matches
+# the fleet's TS/Nix stamp
 # (`@overeng/utils/node/cli-version` NixStamp: type/version/rev/commitTs/dirty);
 # it is constructed inline via `builtins.toJSON` exactly like the notion-cli
 # build, because the shared shell `cliBuildStamp` helper only produces LocalStamps.
@@ -33,6 +33,9 @@ let
     rev = gitRev;
     inherit commitTs dirty;
   };
+  expectedMachineVersion = "0.0.0+${gitRev}${
+    lib.optionalString (dirty && !(lib.hasSuffix "-dirty" gitRev)) "-dirty"
+  }";
   src = mkRustWorkspaceSource {
     inherit repositoryRoot workspaceRoot;
     packageRoot = crateRoot;
@@ -54,12 +57,20 @@ pkgs.rustPlatform.buildRustPackage {
     "--package"
     "otel-scrape"
   ];
-  # Reaches rustc as a plain env var; `option_env!("CLI_BUILD_STAMP")` captures
-  # it at compile time (decision 0019). Because it is a derivation env var, a new
-  # rev changes the derivation hash so Nix rebuilds the crate — the binary tracks
-  # its build. (The cargo `rerun-if-env-changed` incremental path is not relied on;
-  # each `nix build` is a fresh sandbox.)
-  CLI_BUILD_STAMP = buildStamp;
+  postInstall = ''
+    printf '%s\n' ${lib.escapeShellArg buildStamp} > "$out/bin/otel-scrape.build-info.json"
+  '';
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    actual="$($out/bin/otel-scrape --version)"
+    expected=${lib.escapeShellArg "otel-scrape ${expectedMachineVersion}"}
+    if [ "$actual" != "$expected" ]; then
+      echo "installed build-info mismatch: expected '$expected', got '$actual'" >&2
+      exit 1
+    fi
+    runHook postInstallCheck
+  '';
   doCheck = true;
   nativeCheckInputs = [
     pkgs.nodejs

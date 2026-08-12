@@ -34,16 +34,17 @@ use content_address::{
     PROFILE_MEDIA_TYPE,
 };
 
+use std::sync::OnceLock;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 // OTel semantic-conventions schema this instrumentation targets (decision 0019).
 // Emitted as schemaUrl on the OTLP resource and instrumentation scope so a
 // consumer can resolve attribute semantics deterministically.
 const SEMCONV_SCHEMA_URL: &str = "https://opentelemetry.io/schemas/1.37.0";
-// Build stamp baked at compile time by Nix (decision 0019): a NixStamp JSON in
-// the shared build-versioning contract. `None` for a plain `cargo build`; in a
-// devenv shell `option_env!` instead captures the exported LocalStamp, which is
-// deliberately NOT honored as the binary's own identity (see resolve_machine_version).
-pub const BUILD_STAMP: Option<&str> = option_env!("CLI_BUILD_STAMP");
+// Product identity belongs to the packaging leaf, not the Rust compilation
+// graph. The binary entrypoint loads the adjacent build-info file once before
+// invoking library behavior. Plain development binaries leave this unset.
+static PRODUCT_BUILD_INFO: OnceLock<String> = OnceLock::new();
 const EX_USAGE: u8 = 64;
 const TRACE_FLAGS_SAMPLED: &str = "01";
 const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
@@ -927,10 +928,22 @@ pub fn print_version() {
     println!("otel-scrape {}", build_machine_version());
 }
 
+/// Install the product's packaged build-info record exactly once.
+///
+/// This is public only because Cargo and Buck compile `main.rs` as a separate
+/// crate from the library. Embedders normally rely on the runtime build stamp.
+#[doc(hidden)]
+pub fn install_product_build_info(raw: String) {
+    assert!(
+        PRODUCT_BUILD_INFO.set(raw).is_ok(),
+        "product build info must be installed exactly once"
+    );
+}
+
 /// Resolve the machine-readable build version for telemetry (decision 0019),
 /// mirroring the shared build-versioning contract
 /// (`@overeng/utils/node/cli-version` `resolveCliMachineVersion`). Precedence:
-///   1. a compile-time Nix build stamp (`option_env!`) — the binary's own build;
+///   1. the adjacent product build-info record — the packaged product's build;
 ///   2. else a runtime `CLI_BUILD_STAMP` (a devenv-shell LocalStamp or a NixStamp);
 ///   3. else `<baseVersion>+dev`.
 ///
@@ -940,40 +953,28 @@ pub fn print_version() {
 /// build, and a bare `0.0.0` discriminates no build — the exact gap H5 closes.
 fn build_machine_version() -> String {
     resolve_machine_version(
-        BUILD_STAMP,
+        PRODUCT_BUILD_INFO.get().map(String::as_str),
         std::env::var("CLI_BUILD_STAMP").ok().as_deref(),
         VERSION,
     )
 }
 
-/// Whether this binary was compiled with a baked NixStamp (decision 0019) — the
-/// case where a runtime `CLI_BUILD_STAMP` is overridden by the binary's own
-/// build identity. Lets an integration test skip the runtime-stamp/fallback
-/// assertions that only hold for a stampless (plain `cargo`/devenv) build.
-pub fn compiled_with_nix_stamp() -> bool {
-    matches!(
-        BUILD_STAMP.and_then(parse_build_stamp),
-        Some(BuildStamp::Nix { .. })
-    )
-}
-
-/// Pure resolution of the machine version from the compile-time and runtime
+/// Pure resolution of the machine version from the product and runtime
 /// stamps (decision 0019). Kept side-effect-free so every precedence branch is
 /// unit-testable without touching the process environment.
 fn resolve_machine_version(
-    compile_stamp: Option<&str>,
+    product_build_info: Option<&str>,
     runtime_stamp: Option<&str>,
     base: &str,
 ) -> String {
-    // A compile-time stamp is honored ONLY when it is a NixStamp: in a devenv
-    // shell `option_env!` also captures the exported LocalStamp, which describes
-    // the shell, not this binary, and must not masquerade as its build identity.
-    // The Nix build path always bakes a NixStamp.
+    // A packaged product record is honored only when it is a NixStamp. A
+    // malformed or misplaced record degrades to the explicit runtime/dev
+    // identity instead of claiming an unverified product identity.
     if let Some(BuildStamp::Nix {
         version,
         rev,
         dirty,
-    }) = compile_stamp.and_then(parse_build_stamp)
+    }) = product_build_info.and_then(parse_build_stamp)
     {
         return nix_machine_version(&version, &rev, dirty);
     }
@@ -2556,10 +2557,10 @@ fn export_command_span(
         .map(|(key, value)| json!({ "key": key, "value": { "stringValue": value } }))
         .collect();
     // Instrumentation-scope version = otel-scrape's build machineVersion
-    // (decision 0019): the git rev is baked in at build time, so a trace is
-    // tied to a specific build/commit — not the bare crate `0.0.0`, which
-    // discriminated no build. schemaUrl pins the semconv version on both the
-    // resource and the scope so attribute semantics resolve deterministically.
+    // (decision 0019): an installed product reads the revision from its
+    // packaging-leaf build-info record, tying traces to a specific product
+    // without invalidating Rust compilation. schemaUrl pins the semconv version
+    // on both the resource and scope.
     let scope_version = build_machine_version();
     let body = json!({
         "resourceSpans": [{
@@ -3742,16 +3743,16 @@ mod tests {
 
     // Build-id correlation (H5, decision 0019): the pure precedence resolver is
     // exercised branch-by-branch so it is independent of the process environment
-    // and of whether the crate was compiled with a baked NixStamp.
+    // and filesystem.
     #[test]
-    fn machine_version_prefers_compile_time_nix_stamp() {
-        // A compile-time NixStamp is the binary's own build and wins over any
+    fn machine_version_prefers_product_nix_stamp() {
+        // A packaged NixStamp is the product's own identity and wins over any
         // runtime stamp.
-        let compile =
+        let product =
             r#"{"type":"nix","version":"0.0.0","rev":"abc1234","commitTs":42,"dirty":false}"#;
         let runtime = r#"{"type":"local","rev":"ffff","ts":1,"dirty":true}"#;
         assert_eq!(
-            resolve_machine_version(Some(compile), Some(runtime), "0.0.0"),
+            resolve_machine_version(Some(product), Some(runtime), "0.0.0"),
             "0.0.0+abc1234"
         );
     }
@@ -3774,10 +3775,10 @@ mod tests {
     }
 
     #[test]
-    fn machine_version_uses_runtime_local_stamp_when_no_compile_stamp() {
-        // In a devenv shell option_env! captures a LocalStamp — it describes the
-        // shell, not the binary, so a compile-time LocalStamp is NOT honored and
-        // resolution falls through to the runtime path.
+    fn machine_version_uses_runtime_local_stamp_without_product_stamp() {
+        // A LocalStamp describes a development shell, not a packaged product,
+        // so it is not authoritative in the product slot and resolution falls
+        // through to the runtime path.
         let local = r#"{"type":"local","rev":"deadbee","ts":1,"dirty":false}"#;
         assert_eq!(
             resolve_machine_version(Some(local), Some(local), "0.0.0"),
