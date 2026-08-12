@@ -4,6 +4,7 @@
 
 pkgs.writeShellScript "buck2-artifact-scan" ''
   set -euo pipefail
+  export LC_ALL=C
 
   fail() {
     echo "buck2-artifact-scan: FATAL - $*" >&2
@@ -59,6 +60,22 @@ pkgs.writeShellScript "buck2-artifact-scan" ''
     local max_member_bytes=$((1024 * 1024 * 1024))
     local max_archive_bytes=$((4 * 1024 * 1024 * 1024))
     local archive_bytes=0
+
+    local physical_size end_block end_offset
+    physical_size="$(${pkgs.coreutils}/bin/stat --format=%s "$archive")"
+    [ $((physical_size % 512)) -eq 0 ] \
+      || fail "archive size is not aligned to a complete tar block"
+    end_block="$(${pkgs.gnutar}/bin/tar --block-number --list --file "$archive" \
+      | ${pkgs.gawk}/bin/awk '/\\*\\* Block of NULs \\*\\*/ { gsub(":", "", $2); print $2; exit }')"
+    [[ "$end_block" =~ ^[0-9]+$ ]] || fail "archive has no physical end marker"
+    end_offset=$((end_block * 512))
+    [ "$physical_size" -ge $((end_offset + 1024)) ] \
+      || fail "archive end marker is incomplete"
+    ${pkgs.coreutils}/bin/od -An -tu1 -v -j "$end_offset" "$archive" \
+      | ${pkgs.gawk}/bin/awk '
+          { for (field = 1; field <= NF; field += 1) if ($field != 0) exit 1 }
+        ' \
+      || fail "non-zero data after archive end marker"
 
     declare -A seen_members=()
     declare -a archive_members=()

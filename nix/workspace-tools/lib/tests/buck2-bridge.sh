@@ -8,7 +8,7 @@ common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
   flake = builtins.getFlake (toString repo);
   pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
   test = import (repo + "/nix/workspace-tools/lib/tests/buck2-bridge.nix") { inherit pkgs; };
-  asBuckDescriptor = original: original // {
+  asBuckDescriptor = original: (builtins.removeAttrs original [ "normalization" ]) // {
     kind = "buck2-build-artifact";
     provenance = {
       producer = "buck2-test-fixture";
@@ -163,6 +163,44 @@ wrong_size_expr="let
   }"
 expect_build_failure "wrong size import" "size mismatch" "$wrong_size_expr"
 
+unknown_descriptor_field_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+  descriptor = (asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"))) // {
+    unexpected = true;
+  });
+  in test.mkImport {
+    inherit descriptor;
+    artifact = exported + \"/artifact.tar\";
+  }"
+expect_build_failure \
+  "unknown descriptor field" \
+  "descriptor contains unknown fields" \
+  "$unknown_descriptor_field_expr"
+
+for entrypoint_case in \
+  "repeated-separator|bin//fixture-tool" \
+  "dot-component|bin/./fixture-tool" \
+  'backslash|bin\fixture-tool'
+do
+  entrypoint_label="${entrypoint_case%%|*}"
+  entrypoint_value="${entrypoint_case#*|}"
+  export BUCK2_BRIDGE_ENTRYPOINT="$entrypoint_value"
+  non_canonical_import_entrypoint_expr="let
+    $common_let
+    exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+    descriptor = original // { entrypoints = [ (builtins.getEnv \"BUCK2_BRIDGE_ENTRYPOINT\") ]; };
+    in test.mkImport {
+      inherit descriptor;
+      artifact = exported + \"/artifact.tar\";
+    }"
+  expect_build_failure \
+    "$entrypoint_label import entrypoint" \
+    "descriptor entrypoints must be canonical safe relative paths" \
+    "$non_canonical_import_entrypoint_expr"
+done
+
 wrong_platform_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
@@ -203,6 +241,17 @@ expect_command_failure \
   "duplicate archive member: bin/tool" \
   "$scan_out" archive "$duplicate_root.tar"
 rm -rf "$duplicate_root" "$duplicate_root.tar"
+
+trailing_root="$(mktemp -d)"
+printf '%s\n' canonical >"$trailing_root/file"
+tar --create --file "$trailing_root.tar" --directory "$trailing_root" file
+printf 'x' >>"$trailing_root.tar"
+dd if=/dev/zero bs=511 count=1 status=none >>"$trailing_root.tar"
+expect_command_failure \
+  "non-zero bytes after archive end marker" \
+  "non-zero data after archive end marker" \
+  "$scan_out" archive "$trailing_root.tar"
+rm -rf "$trailing_root" "$trailing_root.tar"
 
 backslash_root="$(mktemp -d)"
 mkdir -p "$backslash_root/share"

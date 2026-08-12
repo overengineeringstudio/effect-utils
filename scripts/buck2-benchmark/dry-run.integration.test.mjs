@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -285,6 +293,99 @@ esac
       assert.equal(cleanup?.status, 'ok')
       assert.equal(cleanup?.scratchWorktreeRemoved, true)
       parseJsonl(readFileSync(output.replace(/\.jsonl$/u, '.summary.jsonl'), 'utf8'))
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('restores an in-place mutation before terminating on SIGTERM', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'buck2-benchmark-signal-test-'))
+    const repository = join(directory, 'repo')
+    const relevant = 'src/relevant.ts'
+    const original = 'export const value = 1\n'
+    try {
+      mkdirSync(join(repository, 'src'), { recursive: true })
+      writeFileSync(join(repository, relevant), original)
+      for (const args of [
+        ['init', '--quiet'],
+        ['config', 'user.email', 'test@example.invalid'],
+        ['config', 'user.name', 'Buck benchmark test'],
+        ['add', relevant],
+        ['commit', '--quiet', '-m', 'fixture'],
+      ]) {
+        const result = spawnSync('git', args, { cwd: repository, encoding: 'utf8' })
+        assert.equal(result.status, 0, result.stderr)
+      }
+      const buck2 = join(directory, 'buck2')
+      const mutationStarted = join(directory, 'mutation-started')
+      writeFileSync(
+        buck2,
+        `#!/bin/sh
+case " $* " in
+  *" --version "*) echo 'buck2 fake-signal-test'; exit 0 ;;
+  *"/relevant-edit-0.build-report.json"*) touch ${JSON.stringify(mutationStarted)}; sleep 5; exit 0 ;;
+  *) exit 0 ;;
+esac
+`,
+      )
+      chmodSync(buck2, 0o755)
+      const output = join(directory, 'raw.jsonl')
+      const result = await new Promise((resolvePromise, reject) => {
+        const child = spawn(
+          process.execPath,
+          [
+            join(import.meta.dirname, 'benchmark.mjs'),
+            '--execute',
+            '--in-place',
+            '--buck-incremental-only',
+            '--buck-bin',
+            buck2,
+            '--buck-target',
+            '//:check',
+            '--work-contract',
+            'workspace-typecheck/fake-signal-test',
+            '--relevant-path',
+            relevant,
+            '--irrelevant-path',
+            'missing.md',
+            '--runs',
+            '1',
+            '--warmups',
+            '0',
+            '--output',
+            output,
+          ],
+          { cwd: repository, stdio: 'pipe' },
+        )
+        let stderr = ''
+        child.stderr.setEncoding('utf8')
+        child.stderr.on('data', (chunk) => {
+          stderr += chunk
+        })
+        let signalSent = false
+        const poll = setInterval(() => {
+          if (signalSent === false && existsSync(mutationStarted)) {
+            signalSent = true
+            child.kill('SIGTERM')
+          }
+        }, 10)
+        child.once('error', (error) => {
+          clearInterval(poll)
+          reject(error)
+        })
+        child.once('close', (code, signal) => {
+          clearInterval(poll)
+          resolvePromise({ code, signal, stderr })
+        })
+      })
+
+      assert.equal(result.signal, null, result.stderr)
+      assert.equal(result.code, 143, result.stderr)
+      assert.equal(readFileSync(join(repository, relevant), 'utf8'), original)
+      assert.equal(
+        spawnSync('git', ['status', '--porcelain'], { cwd: repository, encoding: 'utf8' }).stdout,
+        '',
+      )
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }

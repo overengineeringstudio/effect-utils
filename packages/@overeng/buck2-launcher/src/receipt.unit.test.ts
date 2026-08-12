@@ -9,6 +9,7 @@ import {
   countOutcomes,
   decodeReceipt,
   descriptorForClosureManifest,
+  descriptorForFile,
   explainClosures,
   normalizeActions,
   normalizeMaterialization,
@@ -80,6 +81,19 @@ describe('Buck receipt normalization', () => {
     )
     expect(result).not.toContain('json-token-secret')
     expect(result).not.toContain('json-header-secret')
+  })
+
+  it('describes retained evidence by its exact streamed bytes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck-evidence-descriptor-'))
+    const evidence = join(root, 'large.jsonl')
+    const bytes = Buffer.alloc(2 * 1024 * 1024 + 17, 'e')
+    await writeFile(evidence, bytes)
+
+    await expect(descriptorForFile(evidence, 'application/x-ndjson')).resolves.toEqual({
+      digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+      byteLength: bytes.byteLength,
+      mediaType: 'application/x-ndjson',
+    })
   })
 
   it('classifies explicit failure and cancellation before executor provenance', () => {

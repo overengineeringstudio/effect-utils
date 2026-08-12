@@ -413,6 +413,7 @@ export const compilePnpmTaskClosure = (
 
   const roots: CompiledTaskRoot[] = []
   const queue: Array<{ readonly depPath: string; readonly reachability: Reachability }> = []
+  const selectionRoots = new Set<string>()
   const injectedWorkspaceSnapshots: string[] = []
   for (const root of [...options.request.roots].sort(
     (left, right) =>
@@ -445,6 +446,7 @@ export const compilePnpmTaskClosure = (
       if (resolved.snapshotDepPath !== undefined)
         injectedWorkspaceSnapshots.push(resolved.snapshotDepPath)
     } else {
+      selectionRoots.add(resolved.depPath)
       queue.push({
         depPath: resolved.depPath,
         reachability: {
@@ -478,6 +480,7 @@ export const compilePnpmTaskClosure = (
         reference,
       })
       if (resolved.kind === 'external') {
+        selectionRoots.add(resolved.depPath)
         queue.push({
           depPath: resolved.depPath,
           reachability: {
@@ -591,6 +594,38 @@ export const compilePnpmTaskClosure = (
         break
       }
     }
+  }
+
+  // Selection initially walks every candidate branch so an optional parent's
+  // required-child failure can be propagated precisely. Once those parents
+  // are pruned, retain only contexts reachable from surviving task/workspace
+  // roots; compatible siblings beneath a rejected branch are not part of the
+  // exact closure.
+  const reachable = new Set<string>()
+  const reachabilityQueue = [...selectionRoots].filter((depPath) => selected.has(depPath))
+  while (reachabilityQueue.length > 0) {
+    const depPath = reachabilityQueue.shift()
+    if (depPath === undefined || reachable.has(depPath)) continue
+    reachable.add(depPath)
+    const snapshot = options.lockfile.snapshots[depPath]
+    if (snapshot === undefined) continue
+    for (const [, alias, reference] of dependencyEntries(snapshot)) {
+      const resolved = resolveReference({
+        alias,
+        importerId: '.',
+        lockfile: options.lockfile,
+        reference,
+      })
+      if (
+        resolved.kind === 'external' &&
+        selected.has(resolved.depPath) &&
+        !reachable.has(resolved.depPath)
+      )
+        reachabilityQueue.push(resolved.depPath)
+    }
+  }
+  for (const depPath of selected.keys()) {
+    if (!reachable.has(depPath)) selected.delete(depPath)
   }
 
   const knownPatchHashes = new Set(Object.values(options.lockfile.patchedDependencies ?? {}))

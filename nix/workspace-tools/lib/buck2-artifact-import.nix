@@ -9,6 +9,18 @@ let
   lib = pkgs.lib;
   scan = import ./buck2-artifact-scan.nix { inherit pkgs; };
   validName = value: builtins.isString value && builtins.match "[A-Za-z0-9._+-]+" value != null;
+  safeRelativePath = value:
+    let
+      components = lib.splitString "/" value;
+    in
+    builtins.isString value
+    && value != ""
+    && !(lib.hasPrefix "/" value)
+    && !(lib.hasInfix "\\" value)
+    && lib.all (component: component != "" && component != "." && component != "..") components;
+  hasOnlyFields = allowed: value:
+    builtins.isAttrs value
+    && lib.all (field: lib.elem field allowed) (builtins.attrNames value);
 in
 {
   descriptor,
@@ -19,6 +31,15 @@ in
 
 assert lib.assertMsg (builtins.isAttrs descriptor)
   "buck2-artifact-import: descriptor must be an attribute set";
+assert lib.assertMsg (hasOnlyFields [
+  "artifact"
+  "entrypoints"
+  "kind"
+  "name"
+  "platform"
+  "provenance"
+  "schemaVersion"
+] descriptor) "buck2-artifact-import: descriptor contains unknown fields";
 assert lib.assertMsg (
   (descriptor.schemaVersion or null) == 1
 ) "buck2-artifact-import: unsupported descriptor schemaVersion";
@@ -37,9 +58,11 @@ assert lib.assertMsg (descriptor.platform == expectedPlatform)
   }";
 assert lib.assertMsg (
   descriptor ? artifact
+  && hasOnlyFields [ "digest" "file" "format" "sizeBytes" "url" ] descriptor.artifact
   && (descriptor.artifact.format or null) == "tar"
   && (descriptor.artifact.file or null) == "artifact.tar"
   && descriptor.artifact ? digest
+  && hasOnlyFields [ "algorithm" "sri" ] descriptor.artifact.digest
   && (descriptor.artifact.digest.algorithm or null) == "sha256"
   && builtins.isString (descriptor.artifact.digest.sri or null)
   && builtins.match "sha256-[A-Za-z0-9+/]+={0,2}" descriptor.artifact.digest.sri != null
@@ -49,8 +72,11 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   descriptor ? entrypoints && builtins.isList descriptor.entrypoints && descriptor.entrypoints != [ ]
 ) "buck2-artifact-import: descriptor entrypoints must be a non-empty list";
+assert lib.assertMsg (lib.all safeRelativePath descriptor.entrypoints)
+  "buck2-artifact-import: descriptor entrypoints must be canonical safe relative paths";
 assert lib.assertMsg (
   descriptor ? provenance
+  && hasOnlyFields [ "actionDigest" "producer" "sourceRevision" "target" ] descriptor.provenance
   && builtins.isString (descriptor.provenance.producer or null)
   && descriptor.provenance.producer != ""
   && builtins.isString (descriptor.provenance.target or null)

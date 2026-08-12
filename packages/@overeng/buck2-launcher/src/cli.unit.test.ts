@@ -62,6 +62,26 @@ describe('buck2-launcher CLI boundary', () => {
     expect(() => assertSupportedCommand(['cquery', '//...'])).toThrow('bypass the launcher')
   })
 
+  it('recognizes supported commands after Buck global options', () => {
+    expect(() =>
+      assertSupportedCommand([
+        '--isolation-dir',
+        'review-test',
+        '--client-metadata=source=review',
+        '-v',
+        '2',
+        'build',
+        '//:x',
+      ]),
+    ).not.toThrow()
+  })
+
+  it('does not mistake a global option value for a supported command', () => {
+    expect(() => assertSupportedCommand(['--isolation-dir', 'build', 'cquery', '//...'])).toThrow(
+      'bypass the launcher',
+    )
+  })
+
   it('makes package E2E reject an incomplete launcher receipt before Nix import', async () => {
     const root = await mkdtemp(join(tmpdir(), 'buck2-package-e2e-incomplete-'))
     const fakeLauncher = join(root, 'fake-launcher')

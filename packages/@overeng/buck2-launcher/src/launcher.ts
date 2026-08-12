@@ -67,9 +67,31 @@ export const assertNoReservedEvidenceFlags = (args: ReadonlyArray<string>): void
 }
 
 const supportedCommands = new Set(['build', 'test', 'run', 'install'])
+const globalOptionsWithValues = new Set([
+  '--isolation-dir',
+  '--verbose',
+  '-v',
+  '--oncall',
+  '--client-metadata',
+])
+
+const buckCommand = (args: ReadonlyArray<string>): string | undefined => {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!
+    if (arg === '--') return undefined
+    const equals = arg.indexOf('=')
+    const option = equals === -1 ? arg : arg.slice(0, equals)
+    if (globalOptionsWithValues.has(option)) {
+      if (equals === -1) index += 1
+      continue
+    }
+    return arg
+  }
+  return undefined
+}
 
 export const assertSupportedCommand = (args: ReadonlyArray<string>): void => {
-  const command = args[0]
+  const command = buckCommand(args)
   if (command === undefined || !supportedCommands.has(command)) {
     throw new Error(
       `Buck command ${command ?? '<missing>'} does not support build reports; bypass the launcher for non-build commands`,
@@ -363,7 +385,7 @@ export const launchBuck = async (options: LaunchOptions): Promise<LaunchResult> 
       launcherRunId,
       ...(buckInvocationId === undefined ? {} : { buckInvocationId }),
       command: {
-        kind: sanitizeEvidenceText(options.buckArgs[0] ?? 'unknown'),
+        kind: sanitizeEvidenceText(buckCommand(options.buckArgs) ?? 'unknown'),
         requestedTargets: requestedTargetsFromReport(report),
       },
       status: {

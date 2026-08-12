@@ -1,7 +1,8 @@
 /* oxlint-disable overeng/jsdoc-require-exports, overeng/named-args, overeng/explicit-boolean-compare -- Dense receipt validation uses value/path pairs and schema declarations as its public documentation. */
 /* oxlint-disable unicorn/no-array-sort -- Receipt normalization deliberately targets ES2022; Array.prototype.toSorted requires ES2023. */
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
 
 export type Sha256Digest = `sha256:${string}`
 export type ActionOutcome =
@@ -452,10 +453,18 @@ export const descriptorForFile = async (
   mediaType: string,
 ): Promise<EvidenceDescriptor | undefined> => {
   try {
-    const bytes = await readFile(path)
+    const metadata = await stat(path)
+    const digest = createHash('sha256')
+    let observedBytes = 0
+    for await (const chunk of createReadStream(path)) {
+      digest.update(chunk)
+      observedBytes += chunk.byteLength
+    }
+    if (observedBytes !== metadata.size)
+      throw new Error(`evidence file changed while it was being described: ${path}`)
     return {
-      digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
-      byteLength: bytes.byteLength,
+      digest: `sha256:${digest.digest('hex')}`,
+      byteLength: metadata.size,
       mediaType,
     }
   } catch (error) {

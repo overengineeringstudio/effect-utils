@@ -286,6 +286,32 @@ describe('pnpm closure compiler', () => {
     ])
   })
 
+  it('removes compatible descendants orphaned by an excluded optional parent', () => {
+    const lockfile = fixtureLockfile()
+    lockfile.snapshots['native@1.0.0'] = {
+      dependencies: { incompatible: '1.0.0', sibling: '1.0.0' },
+    }
+    lockfile.packages['incompatible@1.0.0'] = {
+      resolution: { integrity: integrity('i') },
+      os: ['darwin'],
+    }
+    lockfile.snapshots['incompatible@1.0.0'] = {}
+    lockfile.packages['sibling@1.0.0'] = { resolution: { integrity: integrity('s') } }
+    lockfile.snapshots['sibling@1.0.0'] = {}
+
+    const result = compile({
+      lockfile,
+      request: baseRequest([
+        { alias: 'native', field: 'optionalDependencies', reason: 'optional native tool' },
+      ]),
+    })
+
+    expect(result.task.contexts).toEqual([])
+    expect(Object.values(result.contexts).map((context) => context.depPath)).not.toContain(
+      'sibling@1.0.0',
+    )
+  })
+
   it('resolves importer-relative workspace links to Buck providers', () => {
     const result = compile({
       request: baseRequest([{ alias: 'local', field: 'dependencies', reason: 'workspace import' }]),

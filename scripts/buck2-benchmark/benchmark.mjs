@@ -218,7 +218,14 @@ const plan = [
   ['buck2', 'workspace-check', 'irrelevant-edit', 'irrelevant'],
 ]
 
-const main = () => {
+class BenchmarkInterruption extends Error {
+  constructor(exitCode) {
+    super(`benchmark interrupted with exit code ${exitCode}`)
+    this.exitCode = exitCode
+  }
+}
+
+const main = async () => {
   const options = parseArgs(process.argv.slice(2))
   const invocationRoot = realpathSync(git(process.cwd(), ['rev-parse', '--show-toplevel']))
   const sha = git(invocationRoot, ['rev-parse', 'HEAD'])
@@ -239,6 +246,15 @@ const main = () => {
   let cleanupComplete = false
   let buckBin = options.buckBin
   let sequence = 0
+  let requestedExitCode = null
+
+  const throwIfInterrupted = () => {
+    if (requestedExitCode !== null) throw new BenchmarkInterruption(requestedExitCode)
+  }
+  const yieldToSignals = async () => {
+    await new Promise((resolvePromise) => setImmediate(resolvePromise))
+    throwIfInterrupted()
+  }
 
   const baseRecord = {
     runId,
@@ -317,13 +333,11 @@ const main = () => {
     )
   }
 
-  process.on('SIGINT', () => {
-    cleanup()
-    process.exit(130)
+  process.once('SIGINT', () => {
+    requestedExitCode ??= 130
   })
-  process.on('SIGTERM', () => {
-    cleanup()
-    process.exit(143)
+  process.once('SIGTERM', () => {
+    requestedExitCode ??= 143
   })
 
   writer.write({
@@ -674,7 +688,16 @@ const main = () => {
       'include-artifact-hash-information',
     ]
 
-    const mutationSeries = ({ engine, surface, phase, mutation, path, mutate, command, args }) => {
+    const mutationSeries = async ({
+      engine,
+      surface,
+      phase,
+      mutation,
+      path,
+      mutate,
+      command,
+      args,
+    }) => {
       const absolute = join(worktree, path)
       if (!existsSync(absolute)) {
         emitSkip({
@@ -697,6 +720,7 @@ const main = () => {
             cwd: worktree,
             env,
           })
+          await yieldToSignals()
           if (baseline.status !== 0) {
             emitSkip({
               engine,
@@ -725,6 +749,7 @@ const main = () => {
             command,
             args: typeof args === 'function' ? args(`${phase}-${index}`) : args,
           })
+          await yieldToSignals()
         }
       } finally {
         writeFileSync(absolute, original)
@@ -738,7 +763,7 @@ const main = () => {
       commandAvailable('devenv', worktree) &&
       existsSync(join(worktree, 'node_modules'))
     ) {
-      mutationSeries({
+      await mutationSeries({
         engine: 'devenv',
         surface: 'compute-only',
         phase: 'mtime-only',
@@ -749,7 +774,7 @@ const main = () => {
         command: 'devenv',
         args: computeOnly,
       })
-      mutationSeries({
+      await mutationSeries({
         engine: 'devenv',
         surface: 'compute-only',
         phase: 'relevant-edit',
@@ -760,7 +785,7 @@ const main = () => {
         command: 'devenv',
         args: computeOnly,
       })
-      mutationSeries({
+      await mutationSeries({
         engine: 'devenv',
         surface: 'compute-only',
         phase: 'irrelevant-edit',
@@ -877,7 +902,7 @@ const main = () => {
             args: makeBuckArgs(`daemon-restart-${index}`),
           })
         }
-      mutationSeries({
+      await mutationSeries({
         engine: 'buck2',
         surface: 'workspace-check',
         phase: 'mtime-only',
@@ -888,7 +913,7 @@ const main = () => {
         command: buckBin,
         args: (stem) => makeBuckArgs(stem),
       })
-      mutationSeries({
+      await mutationSeries({
         engine: 'buck2',
         surface: 'workspace-check',
         phase: 'relevant-edit',
@@ -899,7 +924,7 @@ const main = () => {
         command: buckBin,
         args: (stem) => makeBuckArgs(stem),
       })
-      mutationSeries({
+      await mutationSeries({
         engine: 'buck2',
         surface: 'workspace-check',
         phase: 'irrelevant-edit',
@@ -912,6 +937,7 @@ const main = () => {
       })
     }
 
+    await yieldToSignals()
     writer.write({
       ...baseRecord,
       kind: 'cache-state',
@@ -926,4 +952,9 @@ const main = () => {
   console.log(`summary: ${summaryOutput}`)
 }
 
-main()
+try {
+  await main()
+} catch (error) {
+  if (error instanceof BenchmarkInterruption) process.exitCode = error.exitCode
+  else throw error
+}

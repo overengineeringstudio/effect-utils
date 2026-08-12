@@ -94,6 +94,7 @@ def _package_task_impl(ctx):
         env = {"PATH": "/nonexistent"},
         category = "buck2_package_evidence",
         identifier = ctx.attrs.name,
+        local_only = True,
     )
     return [
         DefaultInfo(
