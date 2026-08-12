@@ -31,7 +31,6 @@ metadata="$fixture_root/workspace-metadata.json"
 cargo metadata \
   --manifest-path "$workspace_manifest" \
   --locked \
-  --offline \
   --no-deps \
   --format-version 1 >"$metadata"
 
@@ -54,7 +53,10 @@ cp "$repo_root/packages/@overeng/otel-scrape/Cargo.toml" \
   "$fixture_root/inheritance/packages/@overeng/otel-scrape/Cargo.toml"
 cp "$repo_root/packages/@overeng/otel-scrape/src/lib.rs" \
   "$fixture_root/inheritance/packages/@overeng/otel-scrape/src/lib.rs"
-sed -i '/^workspace = /d' "$fixture_root/inheritance/packages/@overeng/otel-scrape/Cargo.toml"
+inheritance_manifest="$fixture_root/inheritance/packages/@overeng/otel-scrape/Cargo.toml"
+inheritance_manifest_rewritten="$fixture_root/inheritance/Cargo.toml.rewritten"
+grep -v '^workspace = ' "$inheritance_manifest" >"$inheritance_manifest_rewritten"
+mv "$inheritance_manifest_rewritten" "$inheritance_manifest"
 expect_failure \
   "missing-explicit-workspace-link" \
   "failed to find a workspace root" \
@@ -111,7 +113,6 @@ check_source() {
   cargo metadata \
     --manifest-path "$source_path/rust/Cargo.toml" \
     --locked \
-    --offline \
     --no-deps \
     --format-version 1 >/dev/null
   echo "rust-workspace-contract: GREEN $package workspace-aware narrow source"
