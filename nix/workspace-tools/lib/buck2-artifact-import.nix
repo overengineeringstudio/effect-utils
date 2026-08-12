@@ -18,6 +18,7 @@ let
     && value != ""
     && !(lib.hasPrefix "/" value)
     && !(lib.hasInfix "\\" value)
+    && builtins.match ".*[[:cntrl:]].*" value == null
     && lib.all (component: component != "" && component != "." && component != "..") components;
   hasOnlyFields =
     allowed: value:

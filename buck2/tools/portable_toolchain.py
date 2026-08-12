@@ -193,6 +193,8 @@ def validate_archive(archive: tarfile.TarFile) -> list[tuple[tarfile.TarInfo, Pu
 
 
 def validate_archive_end(archive_path: Path, logical_end: int) -> None:
+    if archive_path.stat().st_size % TAR_BLOCK_BYTES != 0:
+        fail("portable toolchain archive size must be block-aligned")
     if logical_end % TAR_BLOCK_BYTES != 0:
         fail("portable toolchain archive has an invalid physical end marker offset")
     remaining = archive_path.stat().st_size - logical_end

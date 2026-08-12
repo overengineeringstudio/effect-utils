@@ -593,26 +593,57 @@ export const descriptorForClosureManifest = async (
   }
 }
 
+const sensitiveKeyWords = new Set(['authorization', 'cookie', 'key', 'password', 'secret', 'token'])
+const keyWords = (key: string): ReadonlyArray<string> =>
+  key
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter((word) => word.length > 0)
+const isSensitiveKey = (key: string): boolean =>
+  keyWords(key).some((word) => sensitiveKeyWords.has(word))
+
+const redactJsonCredentialValues = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(redactJsonCredentialValues)
+  if (typeof value !== 'object' || value === null) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [
+      key,
+      isSensitiveKey(key) ? '<redacted>' : redactJsonCredentialValues(nested),
+    ]),
+  )
+}
+
+const structurallyRedactJson = (source: string): string => {
+  try {
+    const parsed: unknown = JSON.parse(source)
+    return typeof parsed === 'object' && parsed !== null
+      ? JSON.stringify(redactJsonCredentialValues(parsed))
+      : source
+  } catch {
+    return source
+  }
+}
+
 const secretAssignmentOrHeader =
-  /(^|[^A-Za-z0-9])["']?(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*["']?(?:\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
-const secretCamelCaseAssignmentOrHeader =
-  /(^|[^A-Za-z0-9])["']?[A-Za-z0-9]*(?:Token|Password|Secret|Authorization|Cookie|ApiKey)["']?(?:\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gm
-const secretCliAuthorizationArgument =
-  /(^|[\s"'])--(?:[A-Za-z0-9]+[_-])*authorization(?:[_-][A-Za-z0-9]+)*\s+(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
+  /(^|[^A-Za-z0-9])(["']?)([A-Za-z][A-Za-z0-9_-]*)(\2)(\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const secretCliArgument =
-  /(^|[\s"'])--(?:[A-Za-z0-9]+[_-])*(?:token|password|secret|authorization|cookie|api[_-]?key)(?:[_-][A-Za-z0-9]+)*\s+(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
+  /(^|[\s"'])--([A-Za-z][A-Za-z0-9_-]*)\s+(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const unixAbsolutePath = /(^|[\s"'=])(\/(?!\/)[^\s"']+)/g
 const windowsAbsolutePath = /\b[A-Za-z]:\\[^\s"']+/g
 const urlUserInfo = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi
 
 /** Receipt-safe text. Raw argv, command, environment, and reproducer fields are never copied. */
 export const sanitizeEvidenceText = (value: unknown): string => {
-  const source = typeof value === 'string' ? value : 'unknown'
+  const source = structurallyRedactJson(typeof value === 'string' ? value : 'unknown')
   const sanitized = source
-    .replace(secretAssignmentOrHeader, '$1<redacted>')
-    .replace(secretCamelCaseAssignmentOrHeader, '$1<redacted>')
-    .replace(secretCliAuthorizationArgument, '$1<redacted>')
-    .replace(secretCliArgument, '$1<redacted>')
+    .replace(secretAssignmentOrHeader, (match, prefix, _quote, key) =>
+      isSensitiveKey(key) ? `${prefix}<redacted>` : match,
+    )
+    .replace(secretCliArgument, (match, prefix, key) =>
+      isSensitiveKey(key) ? `${prefix}<redacted>` : match,
+    )
     .replace(urlUserInfo, '$1<redacted>@')
     .replace(windowsAbsolutePath, '<path>')
     .replace(unixAbsolutePath, '$1<path>')

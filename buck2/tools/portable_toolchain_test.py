@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path, PurePosixPath
 
 from buck2.tools.portable_toolchain import (
+    TAR_BLOCK_BYTES,
     normalized_relative_path,
     validate_archive_end,
     validate_archive,
@@ -76,7 +77,7 @@ class PortableToolchainPathTest(unittest.TestCase):
                 member.size = 1
                 archive.addfile(member, io.BytesIO(b"x"))
             with archive_path.open("ab") as archive:
-                archive.write(b"EVIL")
+                archive.write(b"EVIL" + bytes(TAR_BLOCK_BYTES - 4))
             with tarfile.open(archive_path, "r:") as archive:
                 archive.getmembers()
                 logical_end = archive.offset
@@ -94,6 +95,21 @@ class PortableToolchainPathTest(unittest.TestCase):
                 archive.getmembers()
                 logical_end = archive.offset
             validate_archive_end(archive_path, logical_end)
+
+    def test_rejects_non_block_aligned_zero_filled_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive_path = Path(directory, "artifact.tar")
+            with tarfile.open(archive_path, "w", format=tarfile.GNU_FORMAT) as archive:
+                member = tarfile.TarInfo("bin/tool")
+                member.size = 1
+                archive.addfile(member, io.BytesIO(b"x"))
+            with archive_path.open("ab") as archive:
+                archive.write(b"\0")
+            with tarfile.open(archive_path, "r:") as archive:
+                archive.getmembers()
+                logical_end = archive.offset
+            with self.assertRaisesRegex(SystemExit, "block-aligned"):
+                validate_archive_end(archive_path, logical_end)
 
 
 if __name__ == "__main__":

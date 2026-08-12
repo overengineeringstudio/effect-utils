@@ -106,6 +106,27 @@ describe('Buck receipt normalization', () => {
     expect(serialized).not.toContain('api-camel-secret')
   })
 
+  it('redacts sensitive camelCase segments structurally without matching word fragments', () => {
+    const result = sanitizeEvidenceText(
+      JSON.stringify({
+        awsSecretAccessKey: 'aws-embedded-secret',
+        clientSecretValue: 'client-embedded-secret',
+        nested: { refreshTokenValue: 'refresh-embedded-secret' },
+        keyboardLayout: 'dvorak',
+        monkeyBusiness: 'retained-monkey',
+        secretary: 'retained-secretary',
+        tokenizerMode: 'retained-tokenizer',
+      }),
+    )
+    expect(result).not.toContain('aws-embedded-secret')
+    expect(result).not.toContain('client-embedded-secret')
+    expect(result).not.toContain('refresh-embedded-secret')
+    expect(result).toContain('dvorak')
+    expect(result).toContain('retained-monkey')
+    expect(result).toContain('retained-secretary')
+    expect(result).toContain('retained-tokenizer')
+  })
+
   it('requires materialization counters to be nonnegative safe integers', () => {
     const valid = { path: 'buck-out/x', method: 'copy', file_count: 1, total_bytes: 2 }
     for (const invalid of [

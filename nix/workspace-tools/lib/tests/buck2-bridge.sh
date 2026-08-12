@@ -202,6 +202,20 @@ expect_build_failure \
   "descriptor entrypoints must be unique" \
   "$duplicate_import_entrypoint_expr"
 
+control_character_import_entrypoint_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+  original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+  descriptor = original // { entrypoints = [ \"bin/fixture-tool\\nbin/fixture-tool\" ]; };
+  in test.mkImport {
+    inherit descriptor;
+    artifact = exported + \"/artifact.tar\";
+  }"
+expect_build_failure \
+  "control-character import entrypoint" \
+  "descriptor entrypoints must be canonical safe relative paths" \
+  "$control_character_import_entrypoint_expr"
+
 reserved_metadata_out="$(build_expr "($base_expr).reservedMetadataExport")"
 export BUCK2_BRIDGE_RESERVED_METADATA_OUT="$reserved_metadata_out"
 reserved_metadata_expr="let

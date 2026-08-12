@@ -43,11 +43,11 @@ All notable changes to this project will be documented in this file.
   no-verdict samples. Prune optional-branch orphans, stream retained-log
   descriptors, restore in-place mutations across signals, recognize Buck global
   options including attached numeric verbosity, keep host-stamped package actions
-  local, redact camelCase credentials and authorization schemes with their CLI
-  credentials, reject invalid materialization counters, and reject unknown
-  descriptor fields, duplicate, control-bearing, or non-canonical entrypoints,
-  reserved importer metadata, oversized or sparse portable-tool archives, and
-  bytes after the tar end marker.
+  local, structurally redact credential-key values and authorization schemes with
+  their CLI credentials, reject invalid materialization counters, and reject
+  unknown descriptor fields, duplicate, control-bearing, or non-canonical
+  entrypoints, reserved importer metadata, oversized, non-block-aligned, or sparse
+  portable-tool archives, and bytes after the tar end marker.
 - **devenv pnpm installs**: refresh nixpkgs so pnpm runs on Node 24.18.1,
   avoiding the Darwin Node 24.15 teardown hang after a completed workspace
   materialization.
