@@ -116,8 +116,8 @@ portable_toolchain = rule(
         # Local-only host binding. This is deliberately not a claim about a
         # configured remote execution platform; that binding is deferred.
         "_local_host_platform": attrs.default_only(attrs.string(default = _local_host_platform())),
-        # Prelude Python is intentionally limited to verifying and unpacking
-        # the portable archive. Consumer actions execute the archive entrypoint.
+        # Nix realizes the stage-0 verifier. Consumer actions execute only the
+        # independently verified archive entrypoint.
         "_bootstrap": attrs.default_only(attrs.exec_dep(
             default = "toolchains//:portable_toolchain",
             providers = [RunInfo],

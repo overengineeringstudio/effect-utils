@@ -10,9 +10,9 @@ portable_toolchain_fixture(
 portable_toolchain(
     name = "synthetic_portable_toolchain",
     archive = ":synthetic_nix_export",
-    archive_sha256 = "ae7f5f1a251007314f07579a1ecbee680c50b2df56d7463300326dfea35f0f5d",
+    archive_sha256 = "e093dbb98f838e82082fc28a5c204dbb1ed758c7dd21d3ddf454d4c71d2d9f0b",
     descriptor = ":synthetic_nix_export[descriptor]",
-    descriptor_sha256 = "2ad1bb618b97b9ad9aa9558acca99d95ecf58a8c4a228b7dffcb9aadc44da1ab",
+    descriptor_sha256 = "d8092ec6f82b460b8d19d5f02e504bfd718191851fa33a15b53118f1f34b0244",
     entrypoint = "bin/fixture-tool",
 )
 
