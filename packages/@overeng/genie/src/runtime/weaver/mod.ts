@@ -446,6 +446,13 @@ const screamingSnake = (key: string): string => key.replace(/[.\-:/]/g, '_').toU
 /** Single-quoted string literal (matches the repo's oxfmt style, so no reformat is needed). */
 const sq = (k: string): string => `'${k}'`
 
+const tsConstDeclaration = ({ identifier, value }: { identifier: string; value: string }) => {
+  const declaration = `export const ${identifier} = ${sq(value)} as const`
+  return declaration.length <= 100
+    ? [declaration]
+    : [`export const ${identifier} =`, `  ${sq(value)} as const`]
+}
+
 const ownKeys = (r: Registry): ReadonlyArray<string> =>
   byId(r.groups.flatMap((g) => g.attributes)).map((a) => a.id)
 
@@ -546,7 +553,9 @@ const tsConstLines = ({
   prefix: 'METRIC' | 'SPAN'
   names: ReadonlyArray<string>
 }): ReadonlyArray<string> => {
-  return names.map((name) => `export const ${prefix}_${namePascal(name)} = ${sq(name)} as const`)
+  return names.flatMap((name) =>
+    tsConstDeclaration({ identifier: `${prefix}_${namePascal(name)}`, value: name }),
+  )
 }
 
 const unionLines = ({
@@ -575,7 +584,9 @@ export const renderTsConstants = ({
   const { spanNames, metricNames } = signalNames(registry)
   assertUniqueTsConstIdentifiers({ attributeKeys, spanNames, metricNames })
   const lines: string[] = [provenanceComment({ provenance, prefix: '//' }).trimEnd(), '']
-  for (const k of attributeKeys) lines.push(`export const ${pascal(k)} = ${sq(k)} as const`)
+  for (const k of attributeKeys) {
+    lines.push(...tsConstDeclaration({ identifier: pascal(k), value: k }))
+  }
   lines.push(...tsConstLines({ prefix: 'SPAN', names: spanNames }))
   lines.push(...tsConstLines({ prefix: 'METRIC', names: metricNames }))
   lines.push(

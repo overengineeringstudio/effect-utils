@@ -34,6 +34,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **genie/weaver**: wrap long generated TypeScript constant declarations so
+  generated registry projections remain formatter-clean without hand edits.
 - **Buck2 evidence safety**: accept generated v2 closure projections, redact
   prefixed credential assignments, reject duplicate archive members before
   extraction, insert launcher evidence flags before Buck argument passthrough,
