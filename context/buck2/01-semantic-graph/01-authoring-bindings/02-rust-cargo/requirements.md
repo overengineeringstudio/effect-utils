@@ -82,3 +82,14 @@ overlay may reference Cargo declarations without copying them.
   canonical direct declarations to Reindeer aliases must preserve normal,
   development, build, target, host, build-script, and proc-macro distinctions or
   reject the unsupported case before first-party projection.
+- **BUCK.GRAPH.BIND.RUST-R10 Closure-local identity:** A shared Cargo workspace
+  or lockfile may own resolution, but whole-workspace manifest, metadata, or
+  lockfile bytes must not become every Rust operation's action identity. The
+  resolver join must derive a normalized reachable closure for the operation,
+  feature context, and platform, and unrelated workspace changes must leave
+  that identity unchanged.
+- **BUCK.GRAPH.BIND.RUST-R11 Native workspace composition:** Reusable Cargo
+  request policy should use native workspace inheritance. A small validator
+  may reject misleading or bypassing declarations and compare Cargo's
+  observation, but it must not become another manifest schema or generator
+  authority.

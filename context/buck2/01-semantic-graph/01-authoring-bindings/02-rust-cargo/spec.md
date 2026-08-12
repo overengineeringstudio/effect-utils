@@ -6,9 +6,10 @@ This document specifies the bounded Rust Cargo authoring binding. It builds on
 
 ## Status
 
-Draft. The authority and normalization boundaries are selected. Default-feature
-policy, supported `cfg` breadth, and Cargo-profile equivalence remain open;
-build-script and cross-platform proc-macro execution remain unadmitted.
+Draft. The authority, normalization, and default-feature boundaries are
+selected. Resolution-domain scope, supported `cfg` breadth, and Cargo-profile
+equivalence remain open; build-script and cross-platform proc-macro execution
+remain unadmitted.
 
 ## Scope
 
@@ -25,6 +26,7 @@ target execution.
 | Authority boundary      | BUCK.GRAPH.BIND.RUST-R01, BUCK.GRAPH.BIND.RUST-R02, BUCK.GRAPH.BIND.RUST-R03 |
 | Repository overlay      | BUCK.GRAPH.BIND.RUST-R04, BUCK.GRAPH.BIND.RUST-R05, BUCK.GRAPH.BIND.RUST-R06 |
 | Compatibility admission | BUCK.GRAPH.BIND.RUST-R07, BUCK.GRAPH.BIND.RUST-R08, BUCK.GRAPH.BIND.RUST-R09 |
+| Workspace composition   | BUCK.GRAPH.BIND.RUST-R10, BUCK.GRAPH.BIND.RUST-R11                         |
 
 ## Authority Boundary
 
@@ -41,6 +43,11 @@ Cargo.lock + Reindeer config/fixups ------------+--> resolver join validation
 dependency aliases and requests, dependency kind, features,
 default-feature policy, target predicates, and Cargo-native feature relations.
 An ancestor workspace manifest owns inherited facts where Cargo says it does.
+Native `[workspace.dependencies]` entries are reusable request templates, not
+evidence that every member uses the dependency. Member manifests own the use
+site, dependency kind, target predicate, optionality, and additive features.
+Package-local declarations remain permitted as explicit exceptions when Cargo
+inheritance cannot express a genuinely different request policy.
 
 `Cargo.lock`, Reindeer configuration and fixups, and vendored sources own
 selected third-party identity. They validate that a normalized external root
@@ -57,6 +64,17 @@ physical paths, and includes selected feature unions.
 Workspace-root Cargo profiles are execution policy. They do not enter package,
 target, dependency-root, or contribution identity. Target execution owns any
 equivalence between Cargo profiles and Buck profiles.
+
+One `Cargo.lock` belongs to each deliberately selected Cargo resolution domain.
+It owns selected topology for that domain, but its whole bytes do not enter
+every Buck action key. The resolver join derives a normalized reachable
+closure for the operation, platform, dependency kind, and effective features;
+that closure is the invalidation boundary.
+
+A narrow Rust validator may require catalog-eligible member dependencies to use
+`workspace = true`, reject ignored or bypassing request keys, admit explicit
+exceptions, and compare normalized declarations with `cargo metadata
+--no-deps`. It validates native Cargo authoring and does not generate manifests.
 
 ## Normalized Cargo Contribution
 
@@ -189,8 +207,9 @@ before build-script or cross-platform proc-macro support is admitted.
 
 - **BUCK.GRAPH.BIND.RUST-DQ1 Default-feature selection:** Does each operation
   inherit Cargo's default features unless it opts out, or must the overlay name
-  the complete feature activation set? Resolve by comparing authoring cost and
-  invalidation locality on the first admitted crates.
+  the complete feature activation set? **Resolved:** inherit Cargo defaults
+  unless the authoritative request disables or replaces them, and normalize
+  the effective selection into operation identity. See decision 0002.
 - **BUCK.GRAPH.BIND.RUST-DQ2 Supported `cfg` breadth:** Which initial Cargo
   predicate grammar is worth supporting beyond the current repository corpus?
   Resolve with Linux and Darwin fixtures for the proposed subset; all other
@@ -200,3 +219,8 @@ before build-script or cross-platform proc-macro support is admitted.
   arbitrary Cargo profiles? This is owned by
   [Rust target execution](../../../03-target-execution/02-rust/spec.md) and
   must not change dependency-root identity.
+- **BUCK.GRAPH.BIND.RUST-DQ4 Resolution-domain scope:** Do `otelite` and
+  `otel-scrape` intentionally share one compatibility/update domain and root
+  lockfile, conditional on a Nix bridge that preserves package-local closure
+  identity, or do they remain separate Cargo resolution domains while sharing
+  only validation and authoring policy?
