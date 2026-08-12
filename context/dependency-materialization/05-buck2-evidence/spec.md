@@ -126,6 +126,53 @@ satisfy exact, remote-cache-write, remote-execution, or release admission.
 6. The consumer runs without ambient package-manager state and fails on any
    missing or extra undeclared dependency access.
 
+### pnpm package materialization
+
+```text
+Genie-owned operation roots + pnpm lock
+                    |
+                    v
+          exact contextual input plan
+                    |
+          +---------+---------+
+          v                   v
+  immutable tarball      package-local policy
+  + lockfile SHA-512     + materializer ABI
+          |                   |
+          +---------+---------+
+                    v
+       verified normalized file payload
+                    |
+                    v
+  PackageContentId -> PackageContextId -> TaskClosureId
+```
+
+For registry packages, the package-local materialization request contains the
+contextual dependency path, the resolver-selected source resolution, and the
+package-specific materializer identity. The producer fetches the immutable
+archive as its own content-addressed action, verifies the exact lockfile SRI
+before parsing, and normalizes the package tree without reading a pnpm store or
+any `node_modules` projection. Download and normalization remain separate
+actions so equal source archives can be reused independently of target
+closures, and a policy change invalidates only packages to which it applies.
+
+The initial pnpm normalizer accepts one canonical SHA-512 SRI value, a gzip tar
+archive rooted at `package/`, regular files, directories, and local PAX path
+records. It removes archive ownership and timestamps, maps non-executable file
+modes to `0644` and executable modes to `0755`, sorts paths by code unit, and
+commits to each path, normalized mode, size, and file SHA-256. Absolute,
+non-canonical, escaping, duplicate, linked, special, or unsupported members
+fail closed. Links or non-registry source forms gain support only after corpus
+evidence defines their normalized semantics.
+
+The closure compiler requires exactly one verified payload for every selected
+external contextual path and rejects extra payloads. The aggregate input-plan
+projection is human-review evidence and selection input only; authoritative
+identities are minted after package actions produce verified payload receipts.
+The current `tui-core` projection remains non-authoritative until those
+package actions and the isolated TypeScript consumer action are connected in
+the Buck graph.
+
 ## Verification
 
 The proof corpus must cover resolver-specific peer or feature contexts,

@@ -12,6 +12,7 @@ import {
   discoverPackageSources,
   materializerPolicyDigest,
   materializerPolicyProjection,
+  materializationPoliciesForPlan,
   packagePath,
   regenerationCommand,
   relevantPackageNamesForPlan,
@@ -77,6 +78,10 @@ export default buck2Projection.closureDescriptor({
     compilerAbi: closureCompilerAbi,
     request,
     inputPlan,
+    materializationPolicyByDepPath: materializationPoliciesForPlan({
+      plan: inputPlan,
+      workspaceValue: workspacePolicy,
+    }),
     relevantPackageNames,
     materializerPolicy,
     materializerPolicyDigest: materializerPolicyDigest({

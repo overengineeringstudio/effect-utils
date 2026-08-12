@@ -6,9 +6,12 @@ import type { Buck2TargetProjection } from '../../../../genie/buck2/mod.ts'
 import {
   canonicalSha256,
   type DependencyField,
+  type MaterializerIdentity,
   type PnpmImporterSnapshot,
   type PnpmLockfileV9,
+  type PnpmTaskClosureInputPlan,
   type TaskClosureRequest,
+  pnpmPackageMaterializerAbi,
 } from '../../buck2-tools/src/mod.ts'
 
 /** Repo-relative package path shared by the generated Buck projections. */
@@ -83,6 +86,7 @@ export const semanticInputs = [
   'packages/@overeng/buck2-tools/src/canonical.ts',
   'packages/@overeng/buck2-tools/src/model.ts',
   'packages/@overeng/buck2-tools/src/pnpm-closure.ts',
+  'packages/@overeng/buck2-tools/src/pnpm-materializer.ts',
   'packages/@overeng/tui-core/buck2/target.ts',
   'packages/@overeng/tui-core/package.json.genie.ts',
   'packages/@overeng/tui-core/src/**/*.cts',
@@ -101,7 +105,7 @@ export const semanticInputs = [
 /** Repository freshness command recorded in generated-file provenance. */
 export const regenerationCommand = 'devenv tasks run genie:run' as const
 /** Global materialization semantics shared by package-specific policy projections. */
-export const materializerBaseAbi = 'effect-utils.pnpm-package-files.v1' as const
+export const materializerBaseAbi = pnpmPackageMaterializerAbi
 
 const dependencyFields = [
   'dependencies',
@@ -227,6 +231,42 @@ export const materializerPolicyDigest = (args: {
   workspaceValue: unknown
   relevantPackageNames: readonly string[]
 }): `sha256:${string}` => `sha256:${canonicalSha256(materializerPolicyProjection(args))}`
+
+/**
+ * Derive the package-local build policy used to normalize one selected
+ * package. This is deliberately narrower than the human-readable aggregate
+ * policy in an input plan: another reachable package's allowBuilds entry must
+ * not change this package's content identity.
+ */
+export const packageMaterializerPolicyDigest = (args: {
+  workspaceValue: unknown
+  packageName: string | undefined
+}): `sha256:${string}` =>
+  materializerPolicyDigest({
+    workspaceValue: args.workspaceValue,
+    relevantPackageNames: args.packageName === undefined ? [] : [args.packageName],
+  })
+
+/** Per-package policy supplement; source identity stays in inputPlan exactly once. */
+export const materializationPoliciesForPlan = ({
+  plan,
+  workspaceValue,
+}: {
+  plan: PnpmTaskClosureInputPlan
+  workspaceValue: unknown
+}): Readonly<Record<string, MaterializerIdentity>> =>
+  Object.fromEntries(
+    plan.packages.map((pkg) => [
+      pkg.depPath,
+      {
+        abi: materializerBaseAbi,
+        buildPolicyDigest: packageMaterializerPolicyDigest({
+          workspaceValue,
+          packageName: pkg.packageName,
+        }),
+      },
+    ]),
+  )
 
 /**
  * Derive the exact allowBuilds relevance set from a provisional closure. The

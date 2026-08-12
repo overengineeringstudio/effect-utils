@@ -743,8 +743,246 @@
         }
       ]
     },
+    "materializationPolicyByDepPath": {
+      "@esbuild/linux-x64@0.27.7": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@jridgewell/sourcemap-codec@1.5.5": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@opentelemetry/api@1.9.1": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@oxc-project/types@0.133.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@rolldown/binding-linux-x64-gnu@1.0.3": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@rolldown/pluginutils@1.0.1": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@standard-schema/spec@1.1.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@types/chai@5.2.3": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@types/deep-eql@4.0.2": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@types/estree@1.0.8": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@types/node@26.0.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@types/whatwg-mimetype@3.0.2": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@types/ws@8.18.1": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@vitest/expect@4.1.9": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@vitest/mocker@4.1.9(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@vitest/pretty-format@4.1.9": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@vitest/runner@4.1.9": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@vitest/snapshot@4.1.9": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@vitest/spy@4.1.9": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "@vitest/utils@4.1.9": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "assertion-error@2.0.1": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "buffer-image-size@0.6.4": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "chai@6.2.2": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "convert-source-map@2.0.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "detect-libc@2.1.2": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "entities@7.0.1": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "es-module-lexer@2.1.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "esbuild@0.27.7": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:2c21ead4d4532d629b9fad1cd1852f4f7e6f96af2f1c949952d7910645e5a32e"
+      },
+      "estree-walker@3.0.3": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "expect-type@1.3.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "fdir@6.5.0(picomatch@4.0.4)": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "happy-dom@20.10.6": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "jiti@2.7.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "lightningcss-linux-x64-gnu@1.32.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "lightningcss@1.32.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "magic-string@0.30.21": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "nanoid@3.3.13": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "obug@2.1.3": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "pathe@2.0.3": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "picocolors@1.1.1": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "picomatch@4.0.4": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "postcss@8.5.15": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "rolldown@1.0.3": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "siginfo@2.0.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "source-map-js@1.2.1": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "stackback@0.0.2": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "std-env@4.1.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "tinybench@2.9.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "tinyexec@1.2.4": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "tinyglobby@0.2.17": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "tinyrainbow@3.1.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "typescript@6.0.3": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "undici-types@8.3.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0)": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "whatwg-mimetype@3.0.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "why-is-node-running@2.3.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "ws@8.21.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      },
+      "yaml@2.9.0": {
+        "abi": "effect-utils.pnpm-package-tar.v1",
+        "buildPolicyDigest": "sha256:a3421ec66f01a56110e9e6b07c53a09ae7021121de4d79e08a8151cddd5129bd"
+      }
+    },
     "materializerPolicy": {
-      "abi": "effect-utils.pnpm-package-files.v1",
+      "abi": "effect-utils.pnpm-package-tar.v1",
       "allowBuilds": {
         "esbuild": false
       },
@@ -755,7 +993,7 @@
       "strictStorePkgContentCheck": true,
       "verifyStoreIntegrity": true
     },
-    "materializerPolicyDigest": "sha256:f427192699bc6ffca00aa6bde788715cc24a10b82c90376df2a98eefdb0ac613",
+    "materializerPolicyDigest": "sha256:2c21ead4d4532d629b9fad1cd1852f4f7e6f96af2f1c949952d7910645e5a32e",
     "relevantPackageNames": [
       "@esbuild/linux-x64",
       "@jridgewell/sourcemap-codec",
@@ -851,12 +1089,13 @@
   "provenance": {
     "generator": "effect-utils/genie/buck2",
     "regenerationCommand": "devenv tasks run genie:run",
-    "semanticFingerprint": "sha256:9851a62fa6b874f8bd91f422e9faef59217e8807ae85d593b4284a42cff13736",
+    "semanticFingerprint": "sha256:77f808ccdf77c784ec109cc5691cccb94cbf14b2fd63095d6633684c25eb1dfd",
     "semanticInputs": [
       "genie/buck2/mod.ts",
       "packages/@overeng/buck2-tools/src/canonical.ts",
       "packages/@overeng/buck2-tools/src/model.ts",
       "packages/@overeng/buck2-tools/src/pnpm-closure.ts",
+      "packages/@overeng/buck2-tools/src/pnpm-materializer.ts",
       "packages/@overeng/tui-core/buck2/target.ts",
       "packages/@overeng/tui-core/package.json.genie.ts",
       "packages/@overeng/tui-core/src/**/*.cts",
