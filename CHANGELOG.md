@@ -36,7 +36,9 @@ All notable changes to this project will be documented in this file.
 
 - **Buck2 evidence safety**: accept generated v2 closure projections, redact
   prefixed credential assignments, reject duplicate archive members before
-  extraction, and make failed mutation baselines produce no-verdict samples.
+  extraction, insert launcher evidence flags before Buck argument passthrough,
+  reject reused receipt run IDs, and make failed mutation baselines produce
+  no-verdict samples.
 - **devenv pnpm installs**: refresh nixpkgs so pnpm runs on Node 24.18.1,
   avoiding the Darwin Node 24.15 teardown hang after a completed workspace
   materialization.

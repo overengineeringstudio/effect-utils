@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -23,7 +23,9 @@ if (args[0] === 'log' && args[1] === 'what-ran') {
   process.exit(0)
 }
 if (args[0] === 'log' && args[1] === 'what-materialized') process.exit(0)
-const value = (flag) => args[args.indexOf(flag) + 1]
+const delimiter = args.indexOf('--')
+const buckArgs = delimiter === -1 ? args : args.slice(0, delimiter)
+const value = (flag) => buckArgs[buckArgs.indexOf(flag) + 1]
 const buildMode = fs.existsSync('build-mode') ? fs.readFileSync('build-mode', 'utf8').trim() : 'ok'
 if (buildMode !== 'missing-event') fs.writeFileSync(value('--event-log'), '{"Event":{}}\\n')
 fs.writeFileSync(value('--write-build-id'), '11111111-1111-4111-8111-111111111111\\n')
@@ -167,6 +169,37 @@ describe('launchBuck process boundary', () => {
         ],
       }),
     ).rejects.toThrow('duplicate closure manifest label')
+  })
+
+  it('instruments Buck before the run argument delimiter', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck2-launcher-passthrough-'))
+    const binary = join(root, 'fake-buck2')
+    await writeFile(binary, fakeBuckSource)
+    await chmod(binary, 0o700)
+    const result = await launchBuck({
+      buckBinary: binary,
+      buckArgs: ['run', 'root//:tool', '--', '--user-flag'],
+      cwd: root,
+      evidenceRoot: join(root, 'evidence'),
+      launcherRunId: 'passthrough',
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.receipt?.observation.complete).toBe(true)
+  })
+
+  it('rejects a reused launcher run ID before executing Buck', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck2-launcher-reused-run-id-'))
+    const evidenceRoot = join(root, 'evidence')
+    await mkdir(join(evidenceRoot, 'reused'), { recursive: true })
+    await expect(
+      launchBuck({
+        buckBinary: join(root, 'does-not-exist'),
+        buckArgs: ['build', 'root//:check'],
+        cwd: root,
+        evidenceRoot,
+        launcherRunId: 'reused',
+      }),
+    ).rejects.toThrow('launcher run ID already exists')
   })
 
   it.each(['../escape', '/absolute', 'nested/path', '.', '', 'x'.repeat(129)])(

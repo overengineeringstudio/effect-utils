@@ -63,6 +63,9 @@ labels, malformed descriptors, and label mismatches fail before Buck executes.
 The receipt hashes validated canonical JSON, so whitespace and object-key order
 do not change closure identity.
 
+Explicit run IDs are single-use. The launcher creates each receipt directory
+exclusively and fails before invoking Buck if that directory already exists.
+
 `observation.verdict` is `complete` only when the build report and event log are
 present, both `buck2 log` queries exit successfully, and every nonblank query
 record parses against the supported shape. Missing, malformed, failed, or

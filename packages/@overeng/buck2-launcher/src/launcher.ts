@@ -204,6 +204,15 @@ const writeJsonAtomic = async (path: string, value: unknown): Promise<void> => {
   await rename(temporary, path)
 }
 
+const withEvidenceFlags = (
+  buckArgs: ReadonlyArray<string>,
+  evidenceFlags: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  const passthrough = buckArgs.indexOf('--')
+  if (passthrough === -1) return [...buckArgs, ...evidenceFlags]
+  return [...buckArgs.slice(0, passthrough), ...evidenceFlags, ...buckArgs.slice(passthrough)]
+}
+
 const prepareClosures = async (
   manifests: ReadonlyArray<ClosureManifestInput>,
 ): Promise<Array<ClosureDigest>> => {
@@ -231,14 +240,22 @@ export const launchBuck = async (options: LaunchOptions): Promise<LaunchResult> 
   if (isSafePathComponent(launcherRunId) === false) {
     throw new Error('launcher run ID must be a safe path component')
   }
-  const runDir = resolve(options.evidenceRoot ?? defaultEvidenceRoot(), launcherRunId)
-  await mkdir(runDir, { recursive: true, mode: 0o700 })
+  const evidenceRoot = resolve(options.evidenceRoot ?? defaultEvidenceRoot())
+  const runDir = resolve(evidenceRoot, launcherRunId)
+  await mkdir(evidenceRoot, { recursive: true, mode: 0o700 })
+  try {
+    await mkdir(runDir, { mode: 0o700 })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(`launcher run ID already exists: ${launcherRunId}`, { cause: error })
+    }
+    throw error
+  }
   const eventLogPath = join(runDir, 'buck.eventlog.json-lines')
   const buildReportPath = join(runDir, 'buck.build-report.json')
   const buildIdPath = join(runDir, 'buck.build-id')
   const receiptPath = join(runDir, 'receipt.json')
-  const instrumentedArgs = [
-    ...options.buckArgs,
+  const instrumentedArgs = withEvidenceFlags(options.buckArgs, [
     '--event-log',
     eventLogPath,
     '--build-report',
@@ -247,7 +264,7 @@ export const launchBuck = async (options: LaunchOptions): Promise<LaunchResult> 
     'package-project-relative-paths,include-artifact-hash-information,truncate-error-content',
     '--write-build-id',
     buildIdPath,
-  ]
+  ])
   const started = now()
   const commandResult = await runChild({
     binary: options.buckBinary,
