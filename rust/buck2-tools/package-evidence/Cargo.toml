@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[[bin]]
+name = "buck2-package-evidence"
+path = "src/main.rs"
+
 [dependencies]
 base64 = "0.22"
 buck2-tool-core = { path = "../core" }

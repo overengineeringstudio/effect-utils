@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[lib]
+name = "buck2_tool_core"
+path = "src/lib.rs"
+
 [dependencies]
 base64 = "0.22"
 serde.workspace = true
