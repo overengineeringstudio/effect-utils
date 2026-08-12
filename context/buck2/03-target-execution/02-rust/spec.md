@@ -14,11 +14,17 @@ proc macros, support-tool consumption, and terminal artifact authority. It does
 not define Cargo's resolution algorithm, Reindeer's generated third-party rule
 internals, Nix tool recipes, platform realization, or system activation.
 
+The upstream
+[Rust Cargo authoring binding](../../01-semantic-graph/01-authoring-bindings/02-rust-cargo/spec.md)
+owns Cargo-manifest interpretation and the repository operation overlay. This
+subsystem consumes normalized Rust targets and stable selected dependency
+aliases.
+
 ## Requirement Trace
 
 | Spec section                 | Requirements                                                                   |
 | ---------------------------- | ------------------------------------------------------------------------------ |
-| First-party Rust model       | BUCK.EXEC.RUST-R01, BUCK.EXEC.RUST-R02, BUCK.EXEC.RUST-R03                     |
+| First-party Rust model       | BUCK.EXEC.RUST-R01, BUCK.EXEC.RUST-R02                                         |
 | Cargo and Reindeer boundary  | BUCK.EXEC.RUST-R04, BUCK.EXEC.RUST-R05, BUCK.EXEC.RUST-R06, BUCK.EXEC.RUST-R07 |
 | Prelude execution graph      | BUCK.EXEC.RUST-R08, BUCK.EXEC.RUST-R09, BUCK.EXEC.RUST-R10                     |
 | Quality surfaces             | BUCK.EXEC.RUST-R11, BUCK.EXEC.RUST-R12, BUCK.EXEC.RUST-R13, BUCK.EXEC.RUST-R14 |
@@ -35,7 +41,7 @@ RustPackageIntent
   `-- profiles, resources, environment, and tool capabilities
 ```
 
-The language adapter consumes a closed model:
+The execution adapter consumes a closed normalized model:
 
 ```typescript
 type RustTarget = RustLibrary | RustBinary | RustTest | RustBuildScript
@@ -67,14 +73,13 @@ interface RustTest extends RustCompileIntent {
 }
 ```
 
-Package metadata supplies defaults for crate name, version, edition, and
-profiles. Each target remains explicit about roots or an admitted conservative
-Cargo scope, sources, environment, and resources. Validation rejects an exact
-external alias absent from the requested scope, a build dependency used by
-ordinary compilation, an integration resource without a declared first-party
-target, conflicting crate identities, and unsupported target predicates. The
-Cargo/Reindeer experiments determine how canonical exact references are exposed
-and where a conservative scope remains justified.
+The authoring binding supplies normalized crate identity, targets, and admitted
+dependency-root policies. Each execution target remains explicit about sources,
+environment, and resources. Validation rejects an unavailable selected alias,
+a build dependency used by ordinary compilation, an integration resource
+without a declared first-party target, conflicting crate identities, and an
+unsupported configured platform. Execution does not reinterpret Cargo
+manifests to repair a rejected authoring contribution.
 
 ## Cargo and Reindeer Boundary
 
@@ -90,11 +95,10 @@ Cargo lock + Reindeer config + fixups + vendored sources
 first-party BUCK --alias references--> selected third-party graph
 ```
 
-One declared authority owns requested dependency aliases, ranges, features,
-default-feature policy, scopes, and target predicates. That authority may be an
-authored Cargo manifest or a canonical model that projects it; this VRS does not
-preselect the mechanism. Any synthetic Reindeer root manifest is a deterministic
-projection of the same requests rather than a parallel handwritten map.
+The Rust Cargo binding supplies canonical direct request identities and admitted
+root policies. Any synthetic Reindeer root manifest is a deterministic
+dependency-maintenance projection of the same Cargo authority rather than a
+parallel handwritten map.
 
 Cargo owns lock selection semantics. Reindeer consumes the manifest and lock,
 applies its configuration and fixups, verifies or vendors source archives, and

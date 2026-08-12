@@ -14,6 +14,11 @@ contract remain stable across executor implementations.
 file-set roles, artifact relations, and capability requirements from which Buck
 topology is projected.
 
+**Authoring Binding** is a typed, lossless adapter from an existing ecosystem or
+package-local semantic authority into a language contribution to the Semantic
+Graph. It composes authorities but does not replace them or select resolved
+dependencies.
+
 **Projection** is a deterministic, checked-in representation derived from the
 Semantic Graph. A projection is not an independent authoring authority.
 
@@ -62,7 +67,8 @@ condition.
 
 ```text
 Semantic Package Model
-  -> Semantic Graph
+  -> Authoring Binding
+     -> Semantic Graph
      -> Projection
         -> Buck target/action
            -> Build Product Descriptor

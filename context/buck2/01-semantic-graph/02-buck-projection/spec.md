@@ -1,7 +1,7 @@
-# Genie Projection Specification
+# Buck Projection Specification
 
-This document specifies the Genie adapter for Buck semantic graph projections.
-It builds on [requirements.md](./requirements.md).
+This document specifies the Buck semantic graph projection. It builds on
+[requirements.md](./requirements.md).
 
 ## Status
 
@@ -9,20 +9,21 @@ Draft.
 
 ## Scope
 
-This spec defines the pure projection interface, package-local shard shape,
-freshness flow, and projection verification. The parent semantic graph owns all
-domain meaning. Buck realization owns rule implementations and tools. The
+This spec defines the pure projection interface, current Genie realization,
+package-local shard shape, freshness flow, and projection verification. The
+parent semantic graph owns all domain meaning. Buck realization owns rule
+implementations and tools. The
 [dependency-materialization Buck closure contract](../../../dependency-materialization/05-buck2-evidence/spec.md)
 owns external dependency selection.
 
 ## Requirement Trace
 
-| Section                  | Requirements                                                                           |
-| ------------------------ | -------------------------------------------------------------------------------------- |
-| Projection boundary      | BUCK.GRAPH.GENIE-R01, BUCK.GRAPH.GENIE-R02, BUCK.GRAPH.GENIE-R03, BUCK.GRAPH.GENIE-R12 |
-| Package-local shard      | BUCK.GRAPH.GENIE-R04, BUCK.GRAPH.GENIE-R05, BUCK.GRAPH.GENIE-R06, BUCK.GRAPH.GENIE-R07 |
-| Freshness and provenance | BUCK.GRAPH.GENIE-R08, BUCK.GRAPH.GENIE-R09, BUCK.GRAPH.GENIE-R10                       |
-| Verification             | BUCK.GRAPH.GENIE-R11                                                                   |
+| Section                  | Requirements                                                                       |
+| ------------------------ | ---------------------------------------------------------------------------------- |
+| Projection boundary      | BUCK.GRAPH.PROJ-R01, BUCK.GRAPH.PROJ-R02, BUCK.GRAPH.PROJ-R03                      |
+| Package-local shard      | BUCK.GRAPH.PROJ-R04, BUCK.GRAPH.PROJ-R05, BUCK.GRAPH.PROJ-R06, BUCK.GRAPH.PROJ-R07 |
+| Freshness and provenance | BUCK.GRAPH.PROJ-R08, BUCK.GRAPH.PROJ-R09, BUCK.GRAPH.PROJ-R10                      |
+| Verification             | BUCK.GRAPH.PROJ-R11                                                                |
 
 ## Projection Boundary
 
@@ -50,24 +51,11 @@ has no process runner, compiler API, environment-derived tool path, network
 access, compiler metafile input, or callback that can perform those operations.
 The implementation is dependency-light and can be tested as a pure function.
 
-For TypeScript package dependencies, the existing package composition creates
-field-qualified branded handles in `GenieOutput.meta` before emitted manifest
-maps widen. The package manifest remains the default projection. BUCK and other
-projections import the narrow metadata facet and never parse rendered JSON or
-reconstruct provenance from `GenieOutput.data`.
-
-```text
-catalog and pure helpers
-          |
-package dependency composition
-       /        |        \
-package JSON   BUCK    tsconfig
-```
-
-No projection imports another projection or registers semantic values through
-global mutable state. Handle identity is stable value data rather than object
-identity or module initialization order, so repeated Genie module evaluation is
-observationally equivalent. Full Genie generation and freshness checking are
+The current realization uses Genie as a pure renderer and freshness engine.
+Language-authoring bindings produce normalized graph values before this
+boundary. A projection never imports an authored language projection to recover
+semantic facts, parses rendered configuration, or registers semantic values in
+global mutable state. Full Genie generation and freshness checking are
 authoritative; watch mode is not evidence of transitive projection freshness.
 
 ## Package-Local Shard

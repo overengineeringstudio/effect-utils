@@ -16,13 +16,13 @@ platform subsystem.
 
 ## Requirement Trace
 
-| Spec section        | Requirements                                                           |
-| ------------------- | ---------------------------------------------------------------------- |
-| Semantic targets    | BUCK.EXEC.TS-R01, BUCK.EXEC.TS-R02, BUCK.EXEC.TS-R03, BUCK.EXEC.TS-R12 |
-| Declared workspace  | BUCK.EXEC.TS-R04, BUCK.EXEC.TS-R05, BUCK.EXEC.TS-R07                   |
-| Tool providers      | BUCK.EXEC.TS-R06                                                       |
-| Quality graph       | BUCK.EXEC.TS-R08, BUCK.EXEC.TS-R09, BUCK.EXEC.TS-R10                   |
-| Executable artifact | BUCK.EXEC.TS-R03, BUCK.EXEC.TS-R11                                     |
+| Spec section        | Requirements                                         |
+| ------------------- | ---------------------------------------------------- |
+| Semantic targets    | BUCK.EXEC.TS-R01, BUCK.EXEC.TS-R02, BUCK.EXEC.TS-R03 |
+| Declared workspace  | BUCK.EXEC.TS-R04, BUCK.EXEC.TS-R05, BUCK.EXEC.TS-R07 |
+| Tool providers      | BUCK.EXEC.TS-R06                                     |
+| Quality graph       | BUCK.EXEC.TS-R08, BUCK.EXEC.TS-R09, BUCK.EXEC.TS-R10 |
+| Executable artifact | BUCK.EXEC.TS-R03, BUCK.EXEC.TS-R11                   |
 
 ## Semantic Targets
 
@@ -52,7 +52,6 @@ interface TypeScriptProject {
 
 interface TypeScriptOperation {
   readonly project: TypeScriptProject
-  readonly dependencyRoots: readonly DependencyRootRef[]
   readonly dependencyClosure: ClosureLabel
 }
 
@@ -75,22 +74,11 @@ The adapter names the closure and required package capabilities; it does not
 parse the lockfile, choose package versions, or infer dependencies from source
 imports.
 
-Package composition exposes rootable declarations as field-qualified handles:
-
-```typescript
-ts.test({
-  uses: [deps.dependencies.effect, deps.devDependencies.vitest],
-})
-```
-
-The operation authors only these use edges. Composition remains authoritative
-for aliases, requests, and workspace provenance. The TypeScript brand provides
-compile-time authoring safety; runtime validation resolves each structural
-reference against a canonical declaration for its owning package and rejects
-unknown, foreign-package, and non-rootable fields. Normalization emits sorted,
-duplicate-free `{ package, field, alias }` values and erases package-specific
-generic types. Peer dependencies are not execution roots until a peer-context
-contract is specified.
+The upstream
+[TypeScript authoring binding](../../01-semantic-graph/01-authoring-bindings/01-typescript/spec.md)
+owns package, project, operation, file-set, and dependency-use interpretation.
+This execution adapter consumes the resulting normalized target and opaque
+dependency closure; it does not import package or tsconfig authoring facets.
 
 ## Declared Workspace
 

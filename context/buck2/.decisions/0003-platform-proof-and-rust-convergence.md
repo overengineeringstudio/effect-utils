@@ -8,6 +8,32 @@ Build authority, cache reuse, and remote execution are platform-specific.
 Prototype Rust replacements for current Python helpers demonstrated feasibility
 and startup gains but did not satisfy parity, portability, or complexity gates.
 
+## Evidence and Argument
+
+The platform investigation established that the authority-grade pilot covered
+only x86_64-linux and that a wrong-architecture Nix tool can pass Buck analysis
+before failing at execution. This rules out treating a declared platform matrix
+as proof and supports admission per target/execution-platform tuple.
+
+The retained Rust helper experiment
+([evidence](../.experiments/2026-08-12-rust-helper-prototypes.md)) found a
+byte-identical hybrid packager sample at 30.716 ms versus 44.149 ms for Python,
+and tiny Rust executors around 1.4 ms versus 61.7 ms for the sampled Python
+process. It also found that the candidates added a second Cargo/lock authority,
+lacked parity and multi-platform proof, or increased the implementation surface.
+Startup speed alone therefore does not justify admission. Stable semantic and
+tool-binding contracts must precede any executor-language replacement.
+
+## Options
+
+| Dimension          | Option                                              | Tradeoff                                                                                        | Outcome                      |
+| ------------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------- |
+| Platform admission | Per target/execution-platform tuple                 | Mixed rollout is explicit, but each proven platform can converge independently                  | Accepted                     |
+| Platform admission | All platforms atomically                            | Simpler support statement, but retains dual authority until the slowest platform is ready       | Rejected                     |
+| Helper convergence | Fine-grained Rust after contraction and foundations | Ends with native, isolated action executors without admitting the failed prototype architecture | Accepted                     |
+| Helper convergence | TypeScript/Rust hybrid                              | Lower foundation cost, but retains two repository action-helper ecosystems                      | Rejected as the target state |
+| Helper convergence | Keep irreducible Python                             | Lowest immediate risk, but retains the complexity the convergence is intended to remove         | Rejected as the target state |
+
 ## Decision
 
 Admit authority independently for each target/execution-platform tuple with

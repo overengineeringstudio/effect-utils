@@ -9,6 +9,31 @@ from the declared graph. Giving a Buck action the whole repository would create
 a coarse invalidation boundary, while evaluating patterns in Genie would
 duplicate Buck's package and glob semantics.
 
+## Evidence and Argument
+
+The preceding source-ownership prototype showed that typed Buck file sets can
+admit a matching file without rewriting generated BUCK bytes. An adversarial
+design pass then exposed the completeness paradox: a normal Buck action cannot
+detect a supported file absent from the graph unless the action receives a
+repository-wide input. That input would invalidate the census broadly and
+would still couple correctness evidence to the graph under test.
+
+Evaluating the patterns in Genie avoids the broad Buck input but implements a
+second matcher whose package and glob semantics can disagree with Buck. A
+stateless external join avoids both defects: Git supplies the candidate path
+universe, one batched Buck ownership query supplies actual membership, and the
+command owns only deterministic cardinality classification. The decision is a
+design conclusion; native-Buck replacement remains possible without changing
+the report contract.
+
+## Options
+
+| Option                                                 | Tradeoff                                                                                                     | Outcome  |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | -------- |
+| Stateless Git-universe and batched Buck-ownership join | Adds one repository-wide metadata gate without making it an action input                                     | Accepted |
+| Repository-wide Buck action                            | Buck-native scheduling, but necessarily creates the coarse invalidation boundary and undeclared-file paradox | Rejected |
+| Genie filesystem matcher                               | Simple workflow integration, but duplicates Buck matching semantics                                          | Rejected |
+
 ## Decision
 
 Use one stateless command that enumerates Git tracked and nonignored untracked

@@ -8,7 +8,15 @@ Can exact operation-local dependency roots reuse and recompose the existing
 `package.json.genie.ts` source-of-truth chain without repeating dependency
 declarations, versions, or resolver data?
 
-## Candidates
+## Method
+
+Disposable prototypes compared three dependency-reuse seams, then exercised
+the selected direction against the repository's real Genie types, alias
+collisions, module lifecycle, import graph, and type-checking scale. The
+fixtures and commands were not retained, so these results are directional
+design evidence rather than reproducible admission evidence.
+
+### Candidates
 
 | Candidate                                               | Result                      | Main finding                                                                                                                |
 | ------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -16,7 +24,7 @@ declarations, versions, or resolver data?
 | Typed extraction from `GenieOutput.data`                | Pass with limitations       | Byte-compatible and useful for migration, but widened string keys lose compile-time alias safety and composition provenance |
 | Dependency declarations name their consuming operations | Correct but rejected        | Avoids operation lists, but creates reverse consumer knowledge, rename fanout, and cyclic composition pressure              |
 
-## Typed Export Prototype
+### Typed Export Prototype
 
 `package.json.genie.ts` exported one typed semantic value and defaulted its
 package JSON projection. BUCK and tsconfig projections imported the typed value
@@ -52,7 +60,7 @@ package manifests, with as many as 10 in one package. Handles are therefore
 field-qualified, for example `dependencies.effect` and
 `devDependencies.vitest`; a flat alias map is not exact.
 
-## Output Extraction Prototype
+### Output Extraction Prototype
 
 Extracting dependency fields from the existing structured Genie output
 preserved checked-in package JSON bytes through the normal formatter and
@@ -65,7 +73,7 @@ to `Record<string, string>` and the output no longer retains workspace/external
 composition provenance. A supported typed facet on the same Genie value avoids
 both defects.
 
-## Dependency-Use Direction Prototype
+### Dependency-Use Direction Prototype
 
 The bounded oracle covered six operations across pnpm and Cargo, including two
 same-role tests with different roots, eight declarations, and sixteen request
@@ -81,7 +89,7 @@ The operation-to-handle projection was byte-identical across equivalent
 ordering and repeated runs. Its canonical output digest was
 `29514acf015ccdbce0812417932fa76ec1e5cbd5f365c12eb98e556a5a305453`.
 
-## Lifecycle and Type-Scale Prototypes
+### Lifecycle and Type-Scale Prototypes
 
 The following disposable lifecycle and scale probes were not retained as
 reproducible admission fixtures. Genie may evaluate imported generator modules
@@ -105,6 +113,20 @@ MB and 0.27 seconds. At 500 dependencies it used 211 MB and 0.89 seconds.
 Leaking generic handle unions into normalized return types was a failure mode:
 it emitted 37.9 MB of declarations and used 1.54 GB. Erasing generics at
 operation normalization reduced the declaration to 11 KB.
+
+## Result
+
+The typed facet was the only candidate that preserved direct typed reuse,
+operation-local roots, and the existing package JSON projection without
+reverse consumer knowledge. The real-repository probe exposed two blockers in
+the current API: alias types widen during composition, and dependency aliases
+collide across manifest fields. The lifecycle probes further require pure,
+structural facet values and one-way imports. Generic erasure at normalization
+kept the modeled type surface bounded.
+
+All reported checks are prototype observations. They do not constitute
+production admission because their fixtures and exact invocation commands were
+not retained.
 
 ## Conclusion
 
@@ -130,3 +152,12 @@ they normalize into explicit operation-to-handle edges before semantic
 identity. Production admission still requires retained RED/GREEN fixtures for
 type rejection, byte parity, import cycles, privacy, foreign references, and
 relevant and irrelevant invalidation.
+
+## VRS Impact
+
+The TypeScript authoring binding should specify `GenieOutput.meta` as the typed
+dependency-facet carrier, field-qualified structural handles, one-way imports,
+operation-local use edges, generic erasure during normalization, and rejection
+of peer declarations as execution roots until peer-context semantics exist.
+The evidence-verification VRS should keep production admission blocked on the
+retained RED/GREEN fixtures named above.

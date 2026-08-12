@@ -7,6 +7,8 @@ their Nix-managed system boundary.
 - [requirements.md](./requirements.md) defines its stable constraints.
 - [spec.md](./spec.md) defines the global authority model.
 - Numbered subsystem directories refine the contract in dependency order.
+- Semantic authoring bindings translate ecosystem-owned facts before the Buck
+  projection; target execution consumes the resulting graph and closures.
 - [roadmap.md](./roadmap.md) is the non-normative execution bridge to GitHub.
 
 Dependency materialization remains a sibling upstream contract at

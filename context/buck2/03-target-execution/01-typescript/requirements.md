@@ -83,9 +83,3 @@ validation, tests, and standalone executable production.
   verified Buck artifact and does not rebuild the TypeScript sources
   independently.
   Refines: BUCK.EXEC-R17.
-- **BUCK.EXEC.TS-R12 Typed dependency use:** Each operation must select exact
-  field-qualified dependency handles derived from canonical package
-  composition. Unknown, peer-only, or foreign-package references must fail
-  before projection, and normalization must erase generic handle types into
-  stable root values that resolve to canonical declarations.
-  Refines: BUCK.EXEC-R03, BUCK.EXEC-R04.

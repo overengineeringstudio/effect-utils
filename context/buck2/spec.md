@@ -24,6 +24,9 @@ first-party intent + ecosystem metadata
                  |
                  v
         01 Semantic Graph
+  authoring bindings -> normalized IR
+                 |
+        deterministic Buck projection
                  |
       declared target operations
                  |

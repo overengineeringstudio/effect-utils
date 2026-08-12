@@ -7,7 +7,16 @@ Status: completed; both candidates rejected for current adoption
 Can current repository Python helper behavior move to Rust now while reducing
 latency and total system complexity?
 
-## Compared Candidates
+## Method
+
+Disposable prototypes compared a hybrid stage0 Rust packager with an all-Rust
+helper set. They checked selected output-byte parity and sampled execution
+latency, then assessed added source, authority duplication, platform evidence,
+and missing security and integration coverage. The exact fixtures and commands
+are not retained here, so the timing data is directional rather than a
+reproducible benchmark.
+
+### Compared Candidates
 
 | Candidate                   | Result                 | Useful evidence                                                                             | Blocking evidence                                                                                                        |
 | --------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -18,6 +27,14 @@ The timing samples establish prototype direction only. They are not a full
 cross-engine benchmark verdict because compilation amortization, closure bytes,
 platform coverage, and equivalent end-to-end work were incomplete.
 
+## Result
+
+The hybrid candidate demonstrated byte parity for its sampled package path but
+added a second implementation of verification and local Nix-path behavior. The
+all-Rust candidate reduced sampled tiny-process latency but introduced another
+Cargo/lock authority coupled to the otel vendor graph. Neither candidate had
+enough parity, platform, security, or end-to-end evidence for adoption.
+
 ## Conclusion
 
 Rust remains the preferred convergence direction for repository-owned action
@@ -27,3 +44,10 @@ binaries unless fanout and transfer measurements justify sharing. The next
 prototype must include golden bytes, modes, failures, adversarial archives,
 ambient-runtime absence, exact action invalidation, Linux and Darwin proof, and
 net abstraction deletion.
+
+## VRS Impact
+
+The VRS should not admit either helper replacement. It may retain Rust as a
+future convergence direction, conditioned on the named parity, security,
+platform, invalidation, and abstraction-deletion evidence. No current Python
+boundary is removed by this experiment.

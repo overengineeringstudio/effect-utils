@@ -11,6 +11,8 @@ materialization the owner of the broader build system.
 Subsystems refine this root contract in dependency order:
 
 - [01-semantic-graph](./01-semantic-graph/requirements.md)
+  - [01-authoring-bindings](./01-semantic-graph/01-authoring-bindings/requirements.md)
+  - [02-buck-projection](./01-semantic-graph/02-buck-projection/requirements.md)
 - [02-execution-platforms](./02-execution-platforms/requirements.md)
 - [03-target-execution](./03-target-execution/requirements.md)
 - [04-artifact-system-bridge](./04-artifact-system-bridge/requirements.md)

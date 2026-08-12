@@ -88,8 +88,8 @@ Target =
 
 DependencyRootRef {
   package: LogicalPackageId
-  field: DependencyField
-  alias: DependencyAlias
+  binding: BindingId
+  selector: StrictVersionedValue
 }
 
 Edge {
@@ -110,10 +110,12 @@ host properties, or opaque callbacks. A schema registry validates it by
 `language` and schema version.
 
 `dependencyRoots` are sorted, duplicate-free references to canonical package
-dependency declarations. Language adapters validate field/scope legality,
-project workspace requests into first-party edges, and pass external roots to
-the dependency-materialization contract. They never embed requested or
-selected versions, resolver contexts, transitive edges, or physical paths.
+dependency declarations. `binding` selects the strict versioned selector
+schema; it is not an implementation-language tag. Language bindings validate
+declaration, scope, and context legality, project workspace requests into
+first-party edges, and pass external roots to the dependency-materialization
+contract. Selectors never embed requested or selected versions, resolver
+contexts, transitive edges, or physical paths.
 
 Logical IDs are repository-stable names. `location` is resolver input and may
 change independently. A target split preserves any target whose semantics stay
@@ -139,19 +141,27 @@ Renderer, generator, or tool implementation versions are not graph fields.
 ## Adapter Boundary
 
 ```text
-LanguageAdapter {
-  languageId
-  adapterSchemaVersion
-  decodeProject(authorityData) -> ProjectContribution | AdapterError
-  validateProject(project, packageGraph) -> ValidationError[]
+AuthoringBinding {
+  bindingId
+  bindingSchemaVersion
+  compose(nativeAuthorities, semanticOverlay)
+    -> LanguageContribution | BindingError
+}
+
+LanguageContribution {
+  package: PackageContribution
+  projects: ProjectContribution[]
+  operations: OperationContribution[]
 }
 ```
 
-An adapter owns language syntax and ecosystem interpretation. For example, a
-TypeScript adapter may interpret project references and a Rust adapter may
-interpret Cargo targets. Both emit the same project, target, edge, file-set,
-artifact, and capability concepts. Neither selects `tsgo`, Bun, `rustc`, Cargo,
-Nix paths, or an execution platform.
+An authoring binding owns language syntax and ecosystem interpretation. For
+example, the TypeScript binding may interpret project references and the Rust
+binding may interpret Cargo targets. Both emit the same package, project,
+target, edge, file-set, artifact, dependency-root, and capability concepts.
+Neither selects `tsgo`, Bun, `rustc`, Cargo, Nix paths, or an execution
+platform. The child authoring-binding contract refines this single interface;
+there is no separate project-only adapter seam.
 
 Cross-language edges refer only to logical IDs and shared edge kinds. Adapter
 data from one language is never an input to another adapter.
@@ -175,8 +185,11 @@ the real graph/projection/analysis seam.
 
 ## Child Subsystems
 
-- [01-genie-projection](./01-genie-projection/spec.md) specifies pure Genie
-  projection and freshness.
+- [01-authoring-bindings](./01-authoring-bindings/spec.md) specifies how
+  ecosystem authorities and package-local operation declarations compose into
+  normalized graph contributions.
+- [02-buck-projection](./02-buck-projection/spec.md) specifies pure Buck
+  projection and freshness through the current Genie realization.
 - [Dependency-materialization Buck closures](../../dependency-materialization/05-buck2-evidence/spec.md)
   own the target-specific join to external resolver and materialization facts.
 

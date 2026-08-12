@@ -42,11 +42,6 @@ actions, and deployable native binaries.
   integration tests, documentation tests, and first-party build scripts must be
   distinct semantic target variants with valid roots and dependency scopes.
   Refines: BUCK.EXEC-R01, BUCK.EXEC-R05, BUCK.EXEC-R10.
-- **BUCK.EXEC.RUST-R03 Single request authority:** One declared authority must
-  determine canonical Cargo dependency requests and any resolver-root
-  projection. The authority may be an authored Cargo manifest or a canonical
-  model that projects it; parallel handwritten request surfaces are forbidden.
-  Refines: BUCK.EXEC-R01, BUCK.EXEC-R03.
 
 ### Must preserve the Cargo and Reindeer boundary
 
