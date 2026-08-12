@@ -18,8 +18,8 @@
  */
 import { createHash } from 'node:crypto'
 
-import ciToolsContract from '../../packages/@overeng/ci-tools/src/deploy-domain.contract.ts'
 import buck2LauncherContract from '../../packages/@overeng/buck2-launcher/src/buck2-launcher.contract.ts'
+import ciToolsContract from '../../packages/@overeng/ci-tools/src/deploy-domain.contract.ts'
 import cliContract from '../../packages/@overeng/genie/src/core/cli.contract.ts'
 import genieContract from '../../packages/@overeng/genie/src/core/genie.contract.ts'
 import { registryFromMembers } from '../../packages/@overeng/genie/src/runtime/composition/mod.ts'

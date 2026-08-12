@@ -856,12 +856,14 @@ in
     ];
   };
 
-  tasks."check:all".after = lib.optionals (currentSystem == "x86_64-linux") [
-    "buck2:check"
-  ] ++ [
-    "cargo:check"
-    "dependency-materialization:evidence:check"
-  ];
+  tasks."check:all".after =
+    lib.optionals (currentSystem == "x86_64-linux") [
+      "buck2:check"
+    ]
+    ++ [
+      "cargo:check"
+      "dependency-materialization:evidence:check"
+    ];
 
   # `test:run` executes after its package-task dependencies, so both Effect 4
   # gates see the complete managed-test summary directory in CI.

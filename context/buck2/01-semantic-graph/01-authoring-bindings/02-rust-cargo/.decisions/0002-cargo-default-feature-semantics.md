@@ -11,10 +11,10 @@ Cargo changes easy to miss.
 
 ## Options
 
-| Option | Result | Tradeoff |
-| --- | --- | --- |
+| Option                                                       | Result   | Tradeoff                                                                  |
+| ------------------------------------------------------------ | -------- | ------------------------------------------------------------------------- |
 | Inherit Cargo defaults and normalize the effective selection | Selected | Preserves Cargo authority while keeping feature-sensitive action identity |
-| Require each operation to enumerate all active features | Rejected | Makes operation overlays self-contained but duplicates manifest semantics |
+| Require each operation to enumerate all active features      | Rejected | Makes operation overlays self-contained but duplicates manifest semantics |
 
 ## Decision
 

@@ -1,4 +1,7 @@
-import { createGenieOutput, type GenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import {
+  createGenieOutput,
+  type GenieOutput,
+} from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { resolveDevenvFnScript } from './shared.ts'
 
 const withTrailingNewline = (content: string) => (content.endsWith('\n') ? content : `${content}\n`)
@@ -11,8 +14,7 @@ const textArtifact = (content: string): GenieOutput<string> =>
   })
 
 export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
-export const ciWorkflowNixGcRaceRetryWrapperPath =
-  'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
+export const ciWorkflowNixGcRaceRetryWrapperPath = 'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
 export const ciWorkflowJobLocalRustStateScriptPath =
   'genie/ci-scripts/prepare-job-local-rust-state.sh'
 export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'

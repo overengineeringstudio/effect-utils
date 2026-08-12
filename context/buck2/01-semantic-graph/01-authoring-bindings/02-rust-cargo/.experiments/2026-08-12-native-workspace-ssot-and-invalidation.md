@@ -24,17 +24,17 @@ current narrow Nix source shape.
 
 ## Result
 
-| Control | Result |
-| --- | --- |
-| Virtual workspace with external exact members | Passed |
-| Normalized dependency semantics before and after inheritance | Byte-equivalent |
-| Independent `cargo check -p` for both packages | Passed |
-| `cargo package` normalization of inherited fields | Passed |
-| Warm metadata, workspace vs two standalone calls | 24 ms median vs 42 ms median |
-| Add dependency reachable only from `otelite` | Root lock changed |
-| `otel-scrape` reachable closure after that change | Stable at 33 nodes and identical digest |
-| Member overrides root `default-features` policy | Cargo rejected it |
-| Member-only source after workspace inheritance | Failed because workspace root was absent |
+| Control                                                      | Result                                   |
+| ------------------------------------------------------------ | ---------------------------------------- |
+| Virtual workspace with external exact members                | Passed                                   |
+| Normalized dependency semantics before and after inheritance | Byte-equivalent                          |
+| Independent `cargo check -p` for both packages               | Passed                                   |
+| `cargo package` normalization of inherited fields            | Passed                                   |
+| Warm metadata, workspace vs two standalone calls             | 24 ms median vs 42 ms median             |
+| Add dependency reachable only from `otelite`                 | Root lock changed                        |
+| `otel-scrape` reachable closure after that change            | Stable at 33 nodes and identical digest  |
+| Member overrides root `default-features` policy              | Cargo rejected it                        |
+| Member-only source after workspace inheritance               | Failed because workspace root was absent |
 
 The shared-workspace prototype reduced selected identities from the descriptive
 union of 257 current lock entries to 216, but this is not a causal cache result
