@@ -32,6 +32,16 @@ let
         ln -s ../../outside "$out/share/escape"
       '';
 
+  reservedMetadataSource = pkgs.runCommand "buck2-bridge-reserved-metadata-source" {
+    allowedReferences = [ ];
+  } ''
+    mkdir -p "$out/bin" "$out/share/buck2-artifact"
+    printf '%s\n' '#!/bin/sh' 'exit 0' > "$out/bin/fixture-tool"
+    printf '%s\n' payload-owned > "$out/share/buck2-artifact/descriptor.json"
+    chmod 0555 "$out/bin/fixture-tool"
+    chmod 0444 "$out/share/buck2-artifact/descriptor.json"
+  '';
+
   mkExport =
     src:
     exportToolchain {
@@ -53,6 +63,7 @@ in
   portableExport = mkExport portableSource;
   storeReferenceExport = mkExport storeReferenceSource;
   escapingSymlinkExport = mkExport escapingSymlinkSource;
+  reservedMetadataExport = mkExport reservedMetadataSource;
   nonCanonicalEntrypointExport = mkEntrypointExport "bin/./fixture-tool";
   repeatedSeparatorEntrypointExport = mkEntrypointExport "bin//fixture-tool";
   backslashEntrypointExport = mkEntrypointExport "bin\\fixture-tool";

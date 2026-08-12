@@ -178,6 +178,21 @@ expect_build_failure \
   "descriptor contains unknown fields" \
   "$unknown_descriptor_field_expr"
 
+reserved_metadata_out="$(build_expr "($base_expr).reservedMetadataExport")"
+export BUCK2_BRIDGE_RESERVED_METADATA_OUT="$reserved_metadata_out"
+reserved_metadata_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_RESERVED_METADATA_OUT\");
+  descriptor = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+  in test.mkImport {
+    inherit descriptor;
+    artifact = exported + \"/artifact.tar\";
+  }"
+expect_build_failure \
+  "reserved importer metadata path" \
+  "artifact occupies reserved importer metadata path" \
+  "$reserved_metadata_expr"
+
 for entrypoint_case in \
   "repeated-separator|bin//fixture-tool" \
   "dot-component|bin/./fixture-tool" \

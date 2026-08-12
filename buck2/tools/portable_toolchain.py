@@ -26,6 +26,8 @@ DESCRIPTOR_KEYS = {
     "provenance",
     "schemaVersion",
 }
+MAX_ARCHIVE_MEMBER_BYTES = 1024 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 
 
 def fail(message: str) -> NoReturn:
@@ -149,6 +151,7 @@ def validate_archive(archive: tarfile.TarFile) -> list[tuple[tarfile.TarInfo, Pu
     file_like_paths: list[PurePosixPath] = []
     directory_paths: set[PurePosixPath] = set()
     member_paths: set[PurePosixPath] = set()
+    archive_bytes = 0
     for member in archive.getmembers():
         path = archive_member_path(member.name)
         if path is None:
@@ -159,6 +162,13 @@ def validate_archive(archive: tarfile.TarFile) -> list[tuple[tarfile.TarInfo, Pu
         if member.isdir():
             directory_paths.add(path)
         elif member.isfile():
+            if member.sparse is not None:
+                fail(f"sparse archive member is unsupported: {path}")
+            if member.size < 0 or member.size > MAX_ARCHIVE_MEMBER_BYTES:
+                fail(f"archive member exceeds extracted-size limit: {path} ({member.size} bytes)")
+            archive_bytes += member.size
+            if archive_bytes > MAX_ARCHIVE_BYTES:
+                fail(f"archive exceeds aggregate extracted-size limit: {archive_bytes} bytes")
             file_like_paths.append(path)
         elif member.issym():
             validate_symlink_target(path, member.linkname)

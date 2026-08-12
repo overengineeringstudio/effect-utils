@@ -158,6 +158,13 @@ pkgs.runCommand "${descriptor.name}-${descriptor.platform}-buck2-import"
 
     ${scan} tree "$out"
 
+    if [ -L "$out/share" ] \
+      || [ -e "$out/share/buck2-artifact" ] \
+      || [ -L "$out/share/buck2-artifact" ]; then
+      echo "buck2-artifact-import: artifact occupies reserved importer metadata path" >&2
+      exit 1
+    fi
+
     while IFS= read -r entrypoint; do
       case "$entrypoint" in
         /*|../*|*/../*|*/..) echo "buck2-artifact-import: unsafe entrypoint: $entrypoint" >&2; exit 1 ;;

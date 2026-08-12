@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import unittest
+import tarfile
 
 from pathlib import PurePosixPath
 
 from buck2.tools.portable_toolchain import (
     normalized_relative_path,
+    validate_archive,
     validate_descriptor_platform,
     validate_symlink_target,
 )
@@ -40,6 +42,28 @@ class PortableToolchainPathTest(unittest.TestCase):
     def test_rejects_wrong_platform(self) -> None:
         with self.assertRaisesRegex(SystemExit, "platform mismatch"):
             validate_descriptor_platform({"platform": "x86_64-linux"}, "aarch64-darwin")
+
+    def test_rejects_oversized_archive_member_before_staging(self) -> None:
+        member = tarfile.TarInfo("oversized")
+        member.size = 1024 * 1024 * 1024 + 1
+        with self.assertRaisesRegex(SystemExit, "exceeds extracted-size limit"):
+            validate_archive(type("Archive", (), {"getmembers": lambda self: [member]})())
+
+    def test_rejects_sparse_archive_member_before_staging(self) -> None:
+        member = tarfile.TarInfo("sparse")
+        member.size = 1024
+        member.sparse = [(0, 1)]
+        with self.assertRaisesRegex(SystemExit, "sparse archive member"):
+            validate_archive(type("Archive", (), {"getmembers": lambda self: [member]})())
+
+    def test_rejects_aggregate_archive_size_before_staging(self) -> None:
+        members = []
+        for index in range(5):
+            member = tarfile.TarInfo(f"part-{index}")
+            member.size = 900 * 1024 * 1024
+            members.append(member)
+        with self.assertRaisesRegex(SystemExit, "aggregate extracted-size limit"):
+            validate_archive(type("Archive", (), {"getmembers": lambda self: members})())
 
 
 if __name__ == "__main__":
