@@ -90,6 +90,37 @@ declared_digest="$(jq -r '.artifact.digest.sri' "$descriptor")"
 actual_digest="$(nix hash file --type sha256 --sri "$archive")"
 [ "$declared_digest" = "$actual_digest" ]
 
+# Close the bridge seam: the exact Nix store artifacts and byte identities are
+# configured into Buck, staged by the Nix-realized Rust verifier under hostile
+# PATH, then executed as RunInfo by a second Buck action.
+buck2_bin="${BUCK2_BIN:?BUCK2_BIN is required for the Nix to Buck bridge proof}"
+stage0_config="${BUCK2_STAGE0_CONFIG:?BUCK2_STAGE0_CONFIG is required}"
+bridge_config="$(mktemp)"
+trap 'rm -f "$bridge_config"' EXIT
+cp "$stage0_config" "$bridge_config"
+archive_sha256="$(sha256sum "$archive" | awk '{ print $1 }')"
+descriptor_sha256="$(sha256sum "$descriptor" | awk '{ print $1 }')"
+{
+  printf '\n[buck2_bridge]\n'
+  printf '  archive = %s\n' "$archive"
+  printf '  archive_sha256 = %s\n' "$archive_sha256"
+  printf '  descriptor = %s\n' "$descriptor"
+  printf '  descriptor_sha256 = %s\n' "$descriptor_sha256"
+} >>"$bridge_config"
+buck_output="$("$buck2_bin" build --config-file "$bridge_config" \
+  //buck2/toolchains:configured_nix_export_evidence \
+  --show-full-output --local-only --no-remote-cache)"
+buck_evidence="$(printf '%s\n' "$buck_output" | awk \
+  '$1 == "root//buck2/toolchains:configured_nix_export_evidence" { print $2 }')"
+[ -f "$buck_evidence" ] || {
+  echo "buck2-bridge-test: Buck did not materialize configured Nix export evidence" >&2
+  exit 1
+}
+grep -Fx 'portable-toolchain-ok' "$buck_evidence" >/dev/null || {
+  echo "buck2-bridge-test: configured Nix export did not execute through Buck RunInfo" >&2
+  exit 1
+}
+
 export BUCK2_BRIDGE_EXPORT_OUT="$export_out"
 unsupported_runtime_expr="let
   $common_let
@@ -296,4 +327,4 @@ expect_command_failure \
   "$scan_out" archive "$concatenated_root.tar"
 rm -rf "$concatenated_root" "$concatenated_root.tar" "$concatenated_root-second.tar"
 
-echo "buck2-bridge-test: PASS export=$export_out importer=fail-closed"
+echo "buck2-bridge-test: PASS export=$export_out buck_runinfo=executed importer=fail-closed"

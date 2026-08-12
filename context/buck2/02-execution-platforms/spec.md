@@ -180,10 +180,12 @@ The current provider exposes an immutable Nix store executable through
 delivery is deliberately unspecified until an experiment proves a current
 consumer and a smaller winning contract.
 
-### Prelude live-origin closure
+### On-demand Prelude CPython closure
 
-Prelude rule loading currently carries a CPython live-origin dependency. It is
-part of stage-0, not ambient infrastructure:
+Targets that use Prelude Python rules currently trigger an on-demand CPython
+live-origin dependency. Starlark rule loading itself does not require this
+tree. For the actions that consume it, the interpreter is declared stage-0
+input rather than ambient infrastructure:
 
 ```text
 reviewed source/recipe pin
@@ -198,20 +200,25 @@ reviewed Nix stage-0 realization
 exact descriptor + content digest
           |
           v
-Buck rule-loading input
+Buck Python action-toolchain input
 ```
 
-The admitted origin is an immutable Nix stage-0 realization. Nix owns the
-reviewed source expectation, recipe, runtime-closure pin, and realized
-descriptor, while Buck consumes only the exact staged tree. Nix may retrieve
+While Python actions remain, the admitted origin is an immutable Nix stage-0
+realization. Nix owns the reviewed source expectation, recipe,
+runtime-closure pin, and realized descriptor, while Buck consumes only the
+exact staged tree. Nix may retrieve
 the expected source bytes by digest from self-hosted OCI storage, applying the
 same untrusted-transport principle as product publication, but this retrieval
 does not use or depend on the Buck-product importer in
-`04-artifact-system-bridge`. Direct upstream fetches during Buck analysis,
-floating revisions, registry tags, ambient `python`, and mutable checkout paths
-fail bootstrap admission. Transport may replace where Nix obtains expected
-bytes, but it does not replace the reviewed Nix pin or tool descriptor as
-authority.
+`04-artifact-system-bridge`. Direct upstream fetches during Buck analysis or
+action-toolchain construction, floating revisions, registry tags, ambient
+`python`, and mutable checkout paths fail bootstrap admission. Transport may
+replace where Nix obtains expected bytes, but it does not replace the reviewed
+Nix pin or tool descriptor as authority. Repository-owned support tools
+converge to fine-grained Rust binaries from the shared Cargo workspace. That
+measured contraction removes
+the Prelude Python consumers; eliminating the then-unused live origin is a
+separate deletion gate, not a requirement to fork Prelude.
 
 ## Provider shape
 
@@ -284,13 +291,14 @@ buck.cache.outcome
 ```
 
 The evidence subsystem owns receipt schemas and verdicts. This subsystem only
-exposes platform and selected-tool facts to that contract. The current Python
-replacement delta is retained as an experiment, not a timeless platform rule.
+exposes platform and selected-tool facts to that contract. Repository-owned
+helper implementation language is not part of this stable provider contract.
 
 ## Mechanism Admission
 
 A new delivery mechanism is introduced only for a declared consumer and from
 comparative evidence; it does not receive speculative interface support.
-Prelude Python removal is its own measured delta and is not a prerequisite for
-this platform contract. Until removal, its live-origin closure must satisfy
-`BUCK.PLAT-R013`; language purity is not an exemption from bootstrap integrity.
+Repository-owned Python-helper removal is its own measured delta and is not a
+prerequisite for this platform contract. Until the last Prelude Python consumer
+is removed, its on-demand live-origin closure must satisfy `BUCK.PLAT-R013`;
+language purity is not an exemption from bootstrap integrity.

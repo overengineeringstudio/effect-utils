@@ -37,12 +37,17 @@ pub fn io_error(code: &'static str, context: &str, error: io::Error) -> ToolErro
 }
 
 pub fn sha256_bytes(value: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(value))
+    hex(&Sha256::digest(value))
 }
 
 pub fn sha256_file(path: &Path) -> ToolResult<String> {
-    let mut source = File::open(path)
-        .map_err(|error| io_error("BUCK2_IO", &format!("could not read {}", path.display()), error))?;
+    let mut source = File::open(path).map_err(|error| {
+        io_error(
+            "BUCK2_IO",
+            &format!("could not read {}", path.display()),
+            error,
+        )
+    })?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 1024 * 1024];
     loop {
@@ -54,7 +59,17 @@ pub fn sha256_file(path: &Path) -> ToolResult<String> {
         }
         digest.update(&buffer[..read]);
     }
-    Ok(format!("{digest:x}"))
+    Ok(hex(&digest.finalize()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(DIGITS[(byte >> 4) as usize] as char);
+        encoded.push(DIGITS[(byte & 0x0f) as usize] as char);
+    }
+    encoded
 }
 
 pub fn sha256_sri(hex_digest: &str) -> ToolResult<String> {
@@ -80,7 +95,10 @@ pub fn is_sha256(value: &str) -> bool {
 
 pub fn canonical_json<T: Serialize>(value: &T) -> ToolResult<Vec<u8>> {
     let mut bytes = serde_json::to_vec(value).map_err(|error| {
-        ToolError::new("BUCK2_JSON", format!("could not serialize canonical JSON: {error}"))
+        ToolError::new(
+            "BUCK2_JSON",
+            format!("could not serialize canonical JSON: {error}"),
+        )
     })?;
     bytes.push(b'\n');
     Ok(bytes)
@@ -113,7 +131,10 @@ pub fn normalized_relative(value: &str, field: &str) -> ToolResult<String> {
             format!("{field} must be a normalized relative path: {value:?}"),
         ));
     }
-    if value.split('/').any(|part| part.is_empty() || part == "." || part == "..") {
+    if value
+        .split('/')
+        .any(|part| part.is_empty() || part == "." || part == "..")
+    {
         return Err(ToolError::new(
             "BUCK2_INVALID_PATH",
             format!("{field} must not traverse and must be a normalized relative path: {value:?}"),
@@ -123,7 +144,11 @@ pub fn normalized_relative(value: &str, field: &str) -> ToolResult<String> {
 }
 
 pub fn safe_text(value: &str, field: &str) -> ToolResult<String> {
-    if value.is_empty() || value.bytes().any(|byte| byte == 0 || byte == b'\n' || byte == b'\r') {
+    if value.is_empty()
+        || value
+            .bytes()
+            .any(|byte| byte == 0 || byte == b'\n' || byte == b'\r')
+    {
         return Err(ToolError::new(
             "BUCK2_INVALID_TEXT",
             format!("{field} must be non-empty and contain no control characters"),
@@ -139,8 +164,18 @@ mod tests {
     #[test]
     fn path_contract_is_posix_relative_and_normalized() {
         assert_eq!(normalized_relative("bin/tool", "path").unwrap(), "bin/tool");
-        for bad in ["", "/bin/tool", "bin/../tool", "bin//tool", "./bin/tool", "bin\\tool"] {
-            assert!(normalized_relative(bad, "path").is_err(), "accepted {bad:?}");
+        for bad in [
+            "",
+            "/bin/tool",
+            "bin/../tool",
+            "bin//tool",
+            "./bin/tool",
+            "bin\\tool",
+        ] {
+            assert!(
+                normalized_relative(bad, "path").is_err(),
+                "accepted {bad:?}"
+            );
         }
     }
 }

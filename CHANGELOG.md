@@ -31,7 +31,7 @@ All notable changes to this project will be documented in this file.
   product joins, OCI as untrusted product transport, reviewed exact-child Nix
   pins, sealed admission bundles, independent durability and restore proof,
   zero-network activation, conservative collection, separate reuse planes, and
-  an admitted Prelude CPython live-origin bootstrap boundary.
+  an admitted on-demand Prelude CPython action-toolchain bootstrap boundary.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema
@@ -53,6 +53,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Buck2 foundation contraction**: run the destructive invalidation RED/GREEN
+  proof in a disposable Buck project instead of mutating a shared tracked
+  fixture. Correct the VRS boundary from rule-load-time CPython to Prelude's
+  on-demand Python action toolchain, make the launcher and synthetic package
+  E2E documentation match their current receipt-only and
+  `admission=not-attempted` behavior, and record the shared-workspace Rust
+  helper contraction gates without claiming a premature admission verdict.
 - **genie/weaver**: wrap long generated TypeScript constant declarations so
   generated registry projections remain formatter-clean without hand edits.
 - **Buck2 evidence safety**: accept generated v2 closure projections, redact

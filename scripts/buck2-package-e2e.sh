@@ -20,7 +20,8 @@ build_output="$("$launcher" \
   --evidence-dir "$evidence_dir" \
   --run-id "$run_id" \
   --print-command \
-  -- build "$target" "$target[descriptor]" \
+  -- build --config-file "${BUCK2_STAGE0_CONFIG:?BUCK2_STAGE0_CONFIG is required}" \
+    "$target" "$target[descriptor]" \
     --show-full-output --local-only --no-remote-cache)"
 
 [ -f "$receipt" ] || {

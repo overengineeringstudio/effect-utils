@@ -99,6 +99,20 @@ let
   };
   buck2Launcher = repoFlake.packages.${currentSystem}.buck2-launcher;
   buck2Task = "${buck2Launcher}/bin/buck2-task";
+  buck2Stage0 = {
+    closureTool = repoFlake.packages.${currentSystem}.buck2-closure-tool;
+    packageEvidence = repoFlake.packages.${currentSystem}.buck2-package-evidence;
+    portableToolchain = repoFlake.packages.${currentSystem}.buck2-portable-toolchain;
+    portableToolchainFixture = repoFlake.packages.${currentSystem}.buck2-portable-toolchain-fixture;
+  };
+  buck2Stage0Config = pkgs.writeText "buck2-stage0.conf" ''
+    [buck2_stage0]
+      closure_tool = ${buck2Stage0.closureTool}/bin/buck2-closure-tool
+      package_evidence_tool = ${buck2Stage0.packageEvidence}/bin/buck2-package-evidence
+      portable_toolchain = ${buck2Stage0.portableToolchain}/bin/buck2-portable-toolchain
+      portable_toolchain_fixture = ${buck2Stage0.portableToolchainFixture}/bin/buck2-portable-toolchain-fixture
+  '';
+  buck2Stage0Args = "--config-file ${buck2Stage0Config}";
 
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -738,7 +752,7 @@ in
       exec ${buck2Task} \
         --evidence-dir "$root/tmp/buck2-evidence" \
         --print-command \
-        -- build //:buck2_foundation //:portable_toolchain_evidence --local-only --no-remote-cache
+        -- build ${buck2Stage0Args} //:buck2_foundation //:portable_toolchain_evidence --local-only --no-remote-cache
     '';
   };
 
@@ -750,10 +764,9 @@ in
       exec ${buck2Task} \
         --evidence-dir "$root/tmp/buck2-evidence" \
         --print-command \
-        -- test \
-          //buck2/tools:closure_tool_test \
-          //buck2/tools:package_evidence_tool_test \
-          //buck2/tools:portable_toolchain_test \
+        -- build ${buck2Stage0Args} \
+          //:buck2_foundation \
+          //:portable_toolchain_evidence \
           --local-only --no-remote-cache
     '';
   };
@@ -767,6 +780,7 @@ in
       export AWK_BIN=${pkgs.gawk}/bin/awk
       export JQ_BIN=${pkgs.jq}/bin/jq
       export NIX_BIN=${pkgs.nix}/bin/nix
+      export BUCK2_STAGE0_CONFIG=${buck2Stage0Config}
       exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
         "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan
     '';
@@ -776,8 +790,20 @@ in
     description = "Check the strict build-product contract, Nix tool export, and fail-closed artifact importer";
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
+      export BUCK2_BIN=${pkgs.buck2}/bin/buck2
+      export BUCK2_STAGE0_CONFIG=${buck2Stage0Config}
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
+    '';
+  };
+
+  tasks."buck2:foundation:graph-check" = {
+    description = "Prove the Buck2 foundation has no repo-owned Python or CPython graph edges";
+    exec = trace.exec "buck2:foundation:graph-check" ''
+      set -euo pipefail
+      export BUCK2_STAGE0_CONFIG=${buck2Stage0Config}
+      exec ${pkgs.bash}/bin/bash scripts/buck2-foundation-graph-check.sh \
+        "$PWD" ${pkgs.buck2}/bin/buck2
     '';
   };
 
@@ -801,6 +827,7 @@ in
       root="''${DEVENV_ROOT:-$PWD}"
       export AWK_BIN=${pkgs.gawk}/bin/awk
       export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
+      export BUCK2_STAGE0_CONFIG=${buck2Stage0Config}
       exec ${pkgs.bash}/bin/bash scripts/buck2-invalidation-e2e.sh \
         "$root" ${pkgs.buck2}/bin/buck2
     '';
@@ -821,7 +848,7 @@ in
       trap 'exit 143' TERM
       if ${pkgs.buck2}/bin/buck2 \
         --isolation-dir "$isolation" \
-        build --fake-arch aarch64 \
+        build --config-file ${buck2Stage0Config} --fake-arch aarch64 \
         //packages/@overeng/tui-core:typescript_input_plan \
         --local-only --no-remote-cache \
         >/dev/null 2>"$stderr_file"; then

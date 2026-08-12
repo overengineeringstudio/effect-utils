@@ -73,6 +73,7 @@
             fileset = ./. + "/packages/@overeng/buck2-launcher/src";
           };
         };
+        buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -195,6 +196,10 @@
           // providerCliPackages
           // {
             inherit otelite otel-scrape buck2-launcher;
+            buck2-closure-tool = buck2-stage0-tools.closure-tool;
+            buck2-package-evidence = buck2-stage0-tools.package-evidence;
+            buck2-portable-toolchain = buck2-stage0-tools.portable-toolchain;
+            buck2-portable-toolchain-fixture = buck2-stage0-tools.portable-toolchain-fixture;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;

@@ -7,6 +7,9 @@ Status: accepted
 Build authority, cache reuse, and remote execution are platform-specific.
 Prototype Rust replacements for current Python helpers demonstrated feasibility
 and startup gains but did not satisfy parity, portability, or complexity gates.
+The later shared root Cargo workspace removes the prototype's second-lock
+authority objection, but it does not by itself prove behavioral parity or earn
+replacement admission.
 
 ## Evidence and Argument
 
@@ -43,7 +46,9 @@ Converge repository-owned action executors toward separate Rust binaries only
 after the semantic graph and canonical tool-binding foundation exist and the
 replacement wins parity, invalidation, portability, and complexity gates.
 External workflow orchestration remains TypeScript; Prelude Python is a
-separate upstream or overlay decision.
+separate on-demand toolchain boundary. Rust convergence removes the
+repository-owned consumers first; deleting the unused Prelude CPython bootstrap
+does not require an immediate Prelude fork.
 
 ## Consequences
 
@@ -52,3 +57,6 @@ separate upstream or overlay decision.
   justify a shared binary.
 - A faster prototype is not admitted when it adds another lockfile, bootstrap
   cycle, duplicated schema, or unsupported platform claim.
+- The shared workspace reopens the Rust candidate under one Cargo authority;
+  the new parity, adversarial, invalidation, platform, and deletion results stay
+  in a follow-up experiment until they support a separate decision.

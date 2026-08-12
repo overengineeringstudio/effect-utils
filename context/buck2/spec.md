@@ -95,14 +95,17 @@ objects and perform no registry or network access.
 ## Developer Interface
 
 The development shell owns bootstrap availability, long-lived development
-services, secrets, and temporary compatibility aliases. effect-utils initially
-owns one thin generic launcher that resolves human-facing aliases to semantic
-labels, selects an already realized pinned Buck binary and configured platform,
-and invokes Buck directly. It must retain native build and event evidence,
-correlate traces, explain execution/reuse/materialization, and expose the exact
-underlying Buck invocation. After bootstrap it remains bypassable and must not
-trigger fresh Nix or devenv evaluation, own target topology, reinterpret exit
-status, or become a second task graph.
+services, secrets, and temporary compatibility aliases. effect-utils owns one
+thin generic launcher that forwards caller-supplied Buck arguments to an
+already-realized pinned Buck binary. It adds Buck-native report and event-log
+flags, retains those artifacts, writes a sanitized receipt, and exposes the
+exact underlying invocation. Its current runtime observability is that receipt
+and retained Buck evidence; it does not emit OTLP, resolve aliases, select a
+configured platform, or claim an exact invalidation cause without a supplied
+comparison dimension. Human-facing aliases and platform policy remain in
+consumer-owned composition surfaces. After bootstrap the launcher remains
+bypassable and must not trigger fresh Nix or devenv evaluation, own target
+topology, reinterpret Buck failures, or become a second task graph.
 
 ```text
 devenv bootstrap/services/secrets

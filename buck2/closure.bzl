@@ -165,7 +165,7 @@ strict_closure_projection = rule(
         "manifest": attrs.source(),
         "packages": attrs.list(attrs.dep(providers = [PackageArtifactInfo])),
         "_tool": attrs.default_only(attrs.exec_dep(
-            default = "//buck2/tools:closure_tool",
+            default = "toolchains//:closure_tool",
             providers = [RunInfo],
         )),
     },
@@ -212,7 +212,7 @@ closure_probe = rule(
         "closure": attrs.dep(providers = [ClosureProjectionInfo]),
         "source": attrs.source(),
         "_tool": attrs.default_only(attrs.exec_dep(
-            default = "//buck2/tools:closure_tool",
+            default = "toolchains//:closure_tool",
             providers = [RunInfo],
         )),
     },

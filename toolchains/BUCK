@@ -1,6 +1,27 @@
-load("@prelude//toolchains:demo.bzl", "system_demo_toolchains")
+load(":configured.bzl", "configured_exec")
 
-# BOOTSTRAP ONLY. Prelude's pinned demo toolchains may build the verifier that
-# admits a portable Nix-exported toolchain. Real package actions must consume a
-# reviewed portable_toolchain RunInfo and may not use these demo targets.
-system_demo_toolchains()
+# Nix is the stage-0 authority. Each literal immutable path participates in the
+# configured graph and therefore in every consuming action key.
+configured_exec(
+    name = "closure_tool",
+    path = read_config("buck2_stage0", "closure_tool", ""),
+    visibility = ["PUBLIC"],
+)
+
+configured_exec(
+    name = "package_evidence_tool",
+    path = read_config("buck2_stage0", "package_evidence_tool", ""),
+    visibility = ["PUBLIC"],
+)
+
+configured_exec(
+    name = "portable_toolchain",
+    path = read_config("buck2_stage0", "portable_toolchain", ""),
+    visibility = ["PUBLIC"],
+)
+
+configured_exec(
+    name = "portable_toolchain_fixture",
+    path = read_config("buck2_stage0", "portable_toolchain_fixture", ""),
+    visibility = ["PUBLIC"],
+)

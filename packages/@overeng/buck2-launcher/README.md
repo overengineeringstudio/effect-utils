@@ -87,9 +87,9 @@ carry the runtime `span.label` required by `@overeng/otel-contract`.
 Genie owns this package's manifest and TypeScript project registration. Nix
 builds the launcher with the repository-pinned Buck binary, and devenv exposes
 the local-only foundation and package E2E tasks. The package E2E retains Buck's
-raw report/log beside the receipt, then passes the produced archive and
-descriptor through the hardened Nix importer. It admits the archive to Nix only
-after independently asserting a successful, observationally complete receipt.
-Remote cache access and remote
-execution remain disabled until the admission gates in the Buck2 evidence spec
-are satisfied.
+raw report/log beside the receipt and independently checks the provisional
+input-evidence descriptor and payload digest. It deliberately reports
+`admission=not-attempted`; the separate Nix bridge gate exercises the hardened
+product importer, and this synthetic input-plan fixture is not an admitted
+build product. Remote cache access and remote execution remain disabled until
+the admission gates in the Buck2 evidence spec are satisfied.

@@ -119,7 +119,63 @@ portable_toolchain = rule(
         # Prelude Python is intentionally limited to verifying and unpacking
         # the portable archive. Consumer actions execute the archive entrypoint.
         "_bootstrap": attrs.default_only(attrs.exec_dep(
-            default = "//buck2/tools:portable_toolchain_bootstrap",
+            default = "toolchains//:portable_toolchain",
+            providers = [RunInfo],
+        )),
+    },
+)
+
+def _configured_portable_toolchain_impl(ctx):
+    _validate_entrypoint(ctx.attrs.entrypoint)
+    _validate_platform(ctx.attrs._local_host_platform)
+    _validate_sha256(ctx.attrs.archive_sha256, "archive_sha256")
+    _validate_sha256(ctx.attrs.descriptor_sha256, "descriptor_sha256")
+    for path in [ctx.attrs.archive_path, ctx.attrs.descriptor_path]:
+        if not path.startswith("/nix/store/"):
+            fail("configured portable toolchain inputs must be immutable Nix store paths")
+    out = ctx.actions.declare_output("toolchain", dir = True)
+    ctx.actions.run(
+        cmd_args([
+            ctx.attrs._bootstrap[RunInfo],
+            "stage",
+            "--archive", ctx.attrs.archive_path,
+            "--descriptor", ctx.attrs.descriptor_path,
+            "--archive-sha256", ctx.attrs.archive_sha256,
+            "--descriptor-sha256", ctx.attrs.descriptor_sha256,
+            "--entrypoint", ctx.attrs.entrypoint,
+            "--expected-platform", ctx.attrs._local_host_platform,
+            "--out", out.as_output(),
+        ]),
+        env = {"PATH": "/nonexistent"},
+        category = "buck2_portable_toolchain_stage",
+        identifier = "configured_nix_export",
+        local_only = True,
+    )
+    return [
+        DefaultInfo(default_output = out),
+        RunInfo(args = cmd_args(out, format = "{}/" + ctx.attrs.entrypoint)),
+        PortableToolchainInfo(
+            archive = ctx.attrs.archive_path,
+            archive_sha256 = ctx.attrs.archive_sha256,
+            descriptor = ctx.attrs.descriptor_path,
+            descriptor_sha256 = ctx.attrs.descriptor_sha256,
+            entrypoint = ctx.attrs.entrypoint,
+            expected_platform = ctx.attrs._local_host_platform,
+            tree = out,
+        ),
+    ]
+
+configured_portable_toolchain = rule(
+    impl = _configured_portable_toolchain_impl,
+    attrs = {
+        "archive_path": attrs.string(),
+        "archive_sha256": attrs.string(),
+        "descriptor_path": attrs.string(),
+        "descriptor_sha256": attrs.string(),
+        "entrypoint": attrs.string(),
+        "_local_host_platform": attrs.default_only(attrs.string(default = _local_host_platform())),
+        "_bootstrap": attrs.default_only(attrs.exec_dep(
+            default = "toolchains//:portable_toolchain",
             providers = [RunInfo],
         )),
     },
@@ -154,7 +210,7 @@ portable_toolchain_fixture = rule(
     impl = _portable_toolchain_fixture_impl,
     attrs = {
         "_bootstrap": attrs.default_only(attrs.exec_dep(
-            default = "//buck2/tools:portable_toolchain_bootstrap",
+            default = "toolchains//:portable_toolchain_fixture",
             providers = [RunInfo],
         )),
     },

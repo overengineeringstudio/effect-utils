@@ -121,7 +121,7 @@ _package_task = rule(
         "deps": attrs.list(attrs.dep()),
         "closure_descriptor": attrs.source(),
         "_tool": attrs.default_only(attrs.exec_dep(
-            default = "//buck2/tools:package_evidence_tool",
+            default = "toolchains//:package_evidence_tool",
             providers = [RunInfo],
         )),
     },
