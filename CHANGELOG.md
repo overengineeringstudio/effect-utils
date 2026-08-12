@@ -13,7 +13,9 @@ All notable changes to this project will be documented in this file.
   digest and rejects every runtime until its real inspector exists. This removes
   the synthetic shell import as evidence of an admitted portable product; the
   input-plan fixture is now labeled `buck2-package-evidence` rather than
-  masquerading as a build product.
+  masquerading as a build product. Descriptor paths reject CR/LF bytes, fixed
+  canonical conformance vectors guard identity, and archive scanning rejects
+  non-padding bytes or concatenated archives after the first end marker.
 - **Buck2 build foundation**: add generated package-local Buck targets, an exact
   pnpm closure compiler with content/context/task identities, deterministic
   package evidence archives, a Nix-exported portable-toolchain boundary, and a

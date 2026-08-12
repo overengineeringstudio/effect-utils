@@ -36,6 +36,15 @@ RED controls for:
 - action identity embedded in semantic provenance; and
 - an unknown runtime tag.
 
+Independent review then broke two boundaries the initial proof had not fixed:
+the descriptor accepted carriage-return or newline entrypoint bytes that the
+archive scanner rejected, and GNU tar ignored bytes or another archive appended
+after its first end marker. The hardened validator rejects both path bytes. The
+scanner now reads through zero blocks and rejects appended non-padding bytes or
+concatenated archives. A fixed canonical JSON byte vector and its fixed digest
+replace the former self-comparison, while nested-field and semantic-identity
+controls prevent schema and locality drift.
+
 The four recognized runtime records (`interpreter`, `elf-dynamic`,
 `mach-o-dynamic`, and `self-contained`) canonicalized successfully. This proves
 only their exact schema. The bridge test then rejected the synthetic shell

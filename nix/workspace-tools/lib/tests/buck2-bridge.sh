@@ -274,4 +274,26 @@ expect_command_failure \
   "$scan_out" archive "$aggregate_root.tar"
 rm -rf "$aggregate_root" "$aggregate_root.tar"
 
+trailing_root="$(mktemp -d)"
+printf '%s\n' payload >"$trailing_root/file"
+tar --create --file "$trailing_root.tar" --directory "$trailing_root" file
+printf '%s' trailing-bytes >>"$trailing_root.tar"
+expect_command_failure \
+  "trailing archive bytes" \
+  "archive contains trailing data after end-of-archive marker" \
+  "$scan_out" archive "$trailing_root.tar"
+rm -rf "$trailing_root" "$trailing_root.tar"
+
+concatenated_root="$(mktemp -d)"
+printf '%s\n' first >"$concatenated_root/first"
+printf '%s\n' second >"$concatenated_root/second"
+tar --create --file "$concatenated_root.tar" --directory "$concatenated_root" first
+tar --create --file "$concatenated_root-second.tar" --directory "$concatenated_root" second
+${CAT_BIN:-cat} "$concatenated_root-second.tar" >>"$concatenated_root.tar"
+expect_command_failure \
+  "concatenated archive" \
+  "archive contains trailing data after end-of-archive marker" \
+  "$scan_out" archive "$concatenated_root.tar"
+rm -rf "$concatenated_root" "$concatenated_root.tar" "$concatenated_root-second.tar"
+
 echo "buck2-bridge-test: PASS export=$export_out importer=fail-closed"

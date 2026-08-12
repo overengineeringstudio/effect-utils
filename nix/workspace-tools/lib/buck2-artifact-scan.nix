@@ -75,6 +75,20 @@ pkgs.writeShellScript "buck2-artifact-scan" ''
     local archive="$1"
     [ -f "$archive" ] || fail "archive does not exist: $archive"
 
+    # GNU tar normally stops at the first end-of-archive marker. Validate the
+    # complete byte stream as well, otherwise appended bytes or a concatenated
+    # second archive would be outside every member/path/resource check below.
+    local archive_size canonical_listing complete_listing
+    archive_size="$(${pkgs.coreutils}/bin/stat --format=%s "$archive")"
+    [ $((archive_size % 512)) -eq 0 ] \
+      || fail "archive contains trailing data after end-of-archive marker"
+    canonical_listing="$(${pkgs.gnutar}/bin/tar --list --file "$archive")" \
+      || fail "archive member listing failed"
+    complete_listing="$(${pkgs.gnutar}/bin/tar --ignore-zeros --list --file "$archive" 2>/dev/null)" \
+      || fail "archive contains trailing data after end-of-archive marker"
+    [ "$canonical_listing" = "$complete_listing" ] \
+      || fail "archive contains trailing data after end-of-archive marker"
+
     # These are deliberately limits on the declared, extracted byte count,
     # rather than on the compact archive. That rejects sparse-file and archive
     # bomb inputs before extraction while leaving ample room for toolchains.

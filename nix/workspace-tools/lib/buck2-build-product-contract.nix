@@ -44,6 +44,7 @@ let
     nonEmptyString value
     && builtins.substring 0 1 value != "/"
     && builtins.match ".*\\\\.*" value == null
+    && builtins.match "[^\n\r]*" value != null
     && builtins.all (component: component != "" && component != "." && component != "..") (
       builtins.filter builtins.isString (builtins.split "/" value)
     );

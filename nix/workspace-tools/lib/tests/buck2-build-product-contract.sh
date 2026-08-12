@@ -62,10 +62,15 @@ expect_eval_failure() {
 
 canonical="$(eval_raw 'contract.canonicalDescriptorJson valid')"
 [ "$canonical" = "$(eval_raw 'contract.canonicalDescriptorJson valid')" ]
+expected_canonical='{"entrypoints":["bin/fixture-tool"],"name":"fixture-tool","payload":{"digest":{"algorithm":"sha256","sri":"sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},"file":"artifact.tar","format":"tar","sizeBytes":123},"platform":{"abi":"musl","architecture":"x86_64","os":"linux"},"runtime":{"inspectionContract":"elf-static/v1","kind":"self-contained"},"schema":"buck-build-product/v1","semanticProvenance":{"recipe":"fixture-tool/v1","target":"//fixtures:tool","toolchain":"rust-linux-musl/v1"}}'
+[ "$canonical" = "$expected_canonical" ] || {
+  echo "buck2-build-product-contract-test: canonical descriptor bytes changed" >&2
+  exit 1
+}
 
 descriptor_digest="$(eval_raw 'contract.descriptorDigest valid')"
-[[ "$descriptor_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
-  echo "buck2-build-product-contract-test: invalid descriptor digest: $descriptor_digest" >&2
+[ "$descriptor_digest" = "sha256:920dafd10e3eb7c3d54a0ef6d80213a58ceac533019537cb9e7098177b72389d" ] || {
+  echo "buck2-build-product-contract-test: canonical descriptor digest changed: $descriptor_digest" >&2
   exit 1
 }
 
@@ -97,6 +102,29 @@ expect_eval_failure \
   'contract.canonicalDescriptorJson (valid // { surprise = true; })'
 
 expect_eval_failure \
+  "unknown nested payload field" \
+  "descriptor.payload has unknown fields: surprise" \
+  'contract.canonicalDescriptorJson (valid // {
+    payload = valid.payload // { surprise = true; };
+  })'
+
+expect_eval_failure \
+  "unknown nested digest field" \
+  "descriptor.payload.digest has unknown fields: surprise" \
+  'contract.canonicalDescriptorJson (valid // {
+    payload = valid.payload // {
+      digest = valid.payload.digest // { surprise = true; };
+    };
+  })'
+
+expect_eval_failure \
+  "unknown nested platform field" \
+  "descriptor.platform has unknown fields: surprise" \
+  'contract.canonicalDescriptorJson (valid // {
+    platform = valid.platform // { surprise = true; };
+  })'
+
+expect_eval_failure \
   "evidence provenance in semantic descriptor" \
   "descriptor has unknown fields: evidenceProvenance" \
   'contract.canonicalDescriptorJson (valid // {
@@ -123,6 +151,28 @@ expect_eval_failure \
   'contract.canonicalDescriptorJson (valid // {
     runtime = valid.runtime // { assumedPortable = true; };
   })'
+
+expect_eval_failure \
+  "newline entrypoint" \
+  "descriptor.entrypoints must be safe relative paths" \
+  'contract.canonicalDescriptorJson (valid // {
+    entrypoints = [ "bin/fixture\nunsafe" ];
+  })'
+
+expect_eval_failure \
+  "carriage-return entrypoint" \
+  "descriptor.entrypoints must be safe relative paths" \
+  'contract.canonicalDescriptorJson (valid // {
+    entrypoints = [ "bin/fixture\runsafe" ];
+  })'
+
+semantic_change_digest="$(eval_raw 'contract.descriptorDigest (valid // {
+  semanticProvenance = valid.semanticProvenance // { recipe = "fixture-tool/v2"; };
+})')"
+[ "$semantic_change_digest" != "$descriptor_digest" ] || {
+  echo "buck2-build-product-contract-test: semantic provenance did not change descriptor identity" >&2
+  exit 1
+}
 
 expect_eval_failure \
   "duplicate entrypoint" \
