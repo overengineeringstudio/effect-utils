@@ -86,8 +86,9 @@ select build tools, or execute repository work.
 - **BUCK.GRAPH-R12 Owned file sets and completeness:** Every supported
   repository source or test file must match typed, target-scoped Buck file sets
   for exactly the intended semantic roles. An independent repository census
-  must fail on missing or ambiguous ownership. Matching membership changes must
-  not require generated shard enumeration.
+  must fail on missing or ambiguous ownership. It must use Buck's resolved
+  ownership rather than reimplementing pattern matching. Matching membership
+  changes must not require generated shard enumeration.
 - **BUCK.GRAPH-R13 Projection locality:** A semantic change confined to one
   package must leave unrelated package projections byte-identical. A dependent
   target may change only when its declared semantic relationship or selected

@@ -196,3 +196,34 @@ default.
 Admission requires causal RED/GREEN controls for matching additions, unmatched
 supported files, ambiguous overlaps, unrelated package edits, target splits,
 and measured action-key fanout.
+
+## Stateless Ownership Assertion
+
+Completeness is one stateless admission command, not another build subsystem:
+
+```text
+Git tracked + nonignored untracked paths
+                   |
+                   +--> deterministic cardinality join --> pass/fail JSON
+                   |
+Buck uquery owner(files) results
+```
+
+The command enumerates the repository path universe with Git, filters it by the
+supported-file policy projected from the semantic model, and submits the
+candidate paths to one batched Buck ownership query. Buck remains the sole
+evaluator of package boundaries and file-set patterns. The assertion only
+classifies each governed path as missing, exactly-one primary owner, or
+ambiguous. Multiple consumers may reference the same primary owned set.
+
+Its normalized output is `buck-owned-files/v1` with sorted counts, missing
+paths, and ambiguous paths plus owner IDs. It contains no file contents or
+hashes. The command has no daemon, database, cache, committed membership
+snapshot, custom matcher, graph compiler, or repository-wide Buck action. It
+runs on demand and in the existing Buck CI lane; it does not become Genie
+freshness or an input to ordinary build actions.
+
+The minimum proof corpus establishes that an unmatched supported addition fails,
+placing that file under an existing owned pattern passes without changing
+generated BUCK bytes, overlapping primary sets fail, and an unsupported
+unrelated file has no effect.

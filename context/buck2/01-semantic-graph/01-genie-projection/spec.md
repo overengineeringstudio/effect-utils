@@ -95,10 +95,10 @@ analysis. Operational provenance that changes when the generator implementation
 changes is retained in Genie's result metadata or a non-semantic sidecar, not in
 the shard's semantic fingerprint.
 
-Completeness is a separate validation pass over declared file sets and the
-repository census. It may share the normalized model but does not replace the
-projection, invoke build tools, or feed discovered compiler inputs back into the
-model.
+Completeness is the separate stateless ownership assertion defined by the
+parent semantic-graph spec. Genie projects the supported-file policy but does
+not scan paths, evaluate Buck patterns, replace the projection, invoke build
+tools, or feed discovered compiler inputs back into the model.
 
 ## Verification
 
