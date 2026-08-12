@@ -6,10 +6,11 @@ This document specifies the bounded Rust Cargo authoring binding. It builds on
 
 ## Status
 
-Draft. The authority, normalization, default-feature, and repository
-resolution-domain boundaries are selected. The Nix locality bridge, supported
-`cfg` breadth, and Cargo-profile equivalence remain open; build-script and
-cross-platform proc-macro execution remain unadmitted.
+Draft. The authority, normalization, default-feature, repository
+resolution-domain, and workspace-aware Nix locality boundaries are implemented
+and proved on `x86_64-linux`. Supported `cfg` breadth and Cargo-profile
+equivalence remain open; build-script and cross-platform proc-macro execution
+remain unadmitted.
 
 ## Scope
 
