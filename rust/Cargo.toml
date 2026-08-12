@@ -1,6 +1,14 @@
 [workspace]
 resolver = "2"
-members = ["../packages/@overeng/otel-scrape", "../packages/@overeng/otelite"]
+members = [
+  "../packages/@overeng/otel-scrape",
+  "../packages/@overeng/otelite",
+  "buck2-tools/core",
+  "buck2-tools/closure-tool",
+  "buck2-tools/package-evidence",
+  "buck2-tools/portable-toolchain",
+  "buck2-tools/portable-toolchain-fixture",
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -13,6 +21,7 @@ license = "MIT"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.11"
 tempfile = "3"
 
 [profile.release]

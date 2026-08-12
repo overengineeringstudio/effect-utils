@@ -1,0 +1,16 @@
+[package]
+name = "buck2-closure-tool"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+buck2-tool-core = { path = "../core" }
+clap = { version = "4", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
