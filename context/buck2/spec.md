@@ -160,13 +160,13 @@ runtime health.
 
 ## Requirement Trace
 
-| Root requirements         | Owning refinements                            |
-| ------------------------- | --------------------------------------------- |
-| BUCK-R01 through BUCK-R06 | 01 Semantic Graph and 03 Target Execution     |
-| BUCK-R07 through BUCK-R09 | 02 Execution Platforms and 06 Admission/Reuse |
-| BUCK-R02, BUCK-R03        | 04 Artifact/System Bridge                     |
-| BUCK-R10 through BUCK-R12 | 05 Evidence/Verification                      |
-| BUCK-R13 through BUCK-R15 | 06 Admission/Reuse                            |
+| Root requirements         | Owning refinements                             |
+| ------------------------- | ---------------------------------------------- |
+| BUCK-R01 through BUCK-R06 | 01 Semantic Graph and 03 Target Execution      |
+| BUCK-R07 through BUCK-R09 | 02 Execution Platforms and 06 Admission/Reuse  |
+| BUCK-R02, BUCK-R03        | 04 Artifact/System Bridge                      |
+| BUCK-R10 through BUCK-R12 | 05 Evidence/Verification                       |
+| BUCK-R13 through BUCK-R15 | 06 Admission/Reuse                             |
 | BUCK-R16                  | Root composition and product integration joins |
 
 ## Open Design Questions

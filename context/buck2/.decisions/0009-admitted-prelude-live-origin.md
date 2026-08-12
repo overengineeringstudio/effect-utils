@@ -28,11 +28,11 @@ reverse dependency on the Buck-product importer.
 
 ## Options
 
-| Option                                                     | Tradeoff                                                                    | Outcome  |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------- | -------- |
-| Admitted Nix realization with optional OCI source transport | Declares the real dependency and preserves upstream Prelude                 | Accepted |
-| Mutable upstream or ambient CPython live origin             | Minimal setup, but undeclared network/runtime state enters analysis         | Rejected |
-| Immediate Prelude fork or Rust rewrite                      | Removes Python eventually, but adds unsupported bootstrap complexity        | Rejected |
+| Option                                                      | Tradeoff                                                             | Outcome  |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- | -------- |
+| Admitted Nix realization with optional OCI source transport | Declares the real dependency and preserves upstream Prelude          | Accepted |
+| Mutable upstream or ambient CPython live origin             | Minimal setup, but undeclared network/runtime state enters analysis  | Rejected |
+| Immediate Prelude fork or Rust rewrite                      | Removes Python eventually, but adds unsupported bootstrap complexity | Rejected |
 
 ## Decision
 

@@ -29,14 +29,14 @@ online copy.
 
 ## Options
 
-| Dimension            | Accepted option                                      | Rejected alternative and reason                          |
-| -------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
-| Transport authority  | OCI is untrusted digest-addressed storage            | Registry/tag authority is mutable and operational        |
-| Platform selection   | Reviewed exact child-manifest Nix pin                 | OCI-index auto-selection omits complete runtime ABI      |
-| Evidence completeness| Sealed admission-bundle root                          | Referrer discovery cannot prove a closed required set    |
-| Durability           | Two independent reads plus third restore-tested archive| Replica-only design shares failure and deletion risks   |
-| Lifecycle            | Network only in fixed-output import                   | Networked activation makes rollback depend on transport  |
-| Collection           | Disabled until pin-derived, previewed, restorable GC  | Tag/age-based deletion can remove admitted rollback data |
+| Dimension             | Accepted option                                         | Rejected alternative and reason                          |
+| --------------------- | ------------------------------------------------------- | -------------------------------------------------------- |
+| Transport authority   | OCI is untrusted digest-addressed storage               | Registry/tag authority is mutable and operational        |
+| Platform selection    | Reviewed exact child-manifest Nix pin                   | OCI-index auto-selection omits complete runtime ABI      |
+| Evidence completeness | Sealed admission-bundle root                            | Referrer discovery cannot prove a closed required set    |
+| Durability            | Two independent reads plus third restore-tested archive | Replica-only design shares failure and deletion risks    |
+| Lifecycle             | Network only in fixed-output import                     | Networked activation makes rollback depend on transport  |
+| Collection            | Disabled until pin-derived, previewed, restorable GC    | Tag/age-based deletion can remove admitted rollback data |
 
 ## Decision
 

@@ -27,12 +27,12 @@ boundaries while making the actual composition testable.
 
 ## Options
 
-| Option                                      | Tradeoff                                                                  | Outcome  |
-| ------------------------------------------- | ------------------------------------------------------------------------- | -------- |
-| Sibling foundations plus product join       | Narrow review and invalidation; requires explicit composition evidence    | Accepted |
-| One linear stack of all foundations         | Simple visual order; invents dependencies and couples unrelated changes   | Rejected |
-| Fully independent lanes with no product join| Maximum isolation; defers integration risk and cannot establish admission | Rejected |
-| One monolithic foundation                   | One merge event; coarse review, rollback, and invalidation boundary        | Rejected |
+| Option                                       | Tradeoff                                                                  | Outcome  |
+| -------------------------------------------- | ------------------------------------------------------------------------- | -------- |
+| Sibling foundations plus product join        | Narrow review and invalidation; requires explicit composition evidence    | Accepted |
+| One linear stack of all foundations          | Simple visual order; invents dependencies and couples unrelated changes   | Rejected |
+| Fully independent lanes with no product join | Maximum isolation; defers integration risk and cannot establish admission | Rejected |
+| One monolithic foundation                    | One merge event; coarse review, rollback, and invalidation boundary       | Rejected |
 
 ## Decision
 
