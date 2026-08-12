@@ -16,6 +16,7 @@ export default buck2Projection.packageFile({
     symbol: 'package_task',
   },
   targets: [target],
-  semanticInputs,
+  semanticInputs: [...semanticInputs, 'packages/@overeng/tui-core/BUCK.genie.ts'],
   regenerationCommand,
+  source: 'packages/@overeng/tui-core/BUCK.genie.ts',
 })

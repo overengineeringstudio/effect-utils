@@ -20,6 +20,13 @@ genie/weaver-registry/*.yaml linguist-generated=true
 genie/weaver-registry/constants.ts linguist-generated=true
 genie/weaver-registry/constants.rs linguist-generated=true
 
+# Generated CI scripts are projections of adjacent TypeScript sources.
+genie/ci-scripts/*.sh linguist-generated=true
+
+# The large dependency plan is generated noise by default. Keep the compact
+# package-local BUCK contract and its *.genie.ts source visible for review.
+packages/@overeng/tui-core/buck2/typescript-input-plan.json linguist-generated=true
+
 # Lock files - collapse in GitHub PR diffs
 *.lock linguist-generated=true
 **/*.lock linguist-generated=true
@@ -27,3 +34,6 @@ genie/weaver-registry/constants.rs linguist-generated=true
 **/*.lockb linguist-generated=true
 pnpm-lock.yaml linguist-generated=true
 **/pnpm-lock.yaml linguist-generated=true
+
+# The root Cargo lock is selected dependency topology and must stay visible.
+rust/Cargo.lock -linguist-generated

@@ -2,6 +2,7 @@
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
 // fingerprint: sha256:cb89f2e80111168597f97a466ba059565ca1904e6edb6f050973c41caf2c1b73
+// regen: devenv tasks run genie:run
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
-import { buck2Projection } from './mod.ts'
+import { buck2Projection, buck2SemanticFingerprint } from './mod.ts'
 
 const genieContext: GenieContext = {
   cwd: '/workspace',
@@ -29,13 +29,14 @@ describe('buck2Projection.packageFile', () => {
       targets: [target],
       semanticInputs: ['pnpm-lock.yaml', 'packages/@overeng/example/package.json.genie.ts'],
       regenerationCommand: 'devenv tasks run genie:run',
+      source: 'packages/@overeng/example/BUCK.genie.ts',
     })
 
     expect(output.stringify(genieContext)).toMatchInlineSnapshot(`
-      "# GENERATED FILE - DO NOT EDIT. Edit the corresponding .genie.ts source.
-      # Projection schema version: 2
+      "# Projection source: packages/@overeng/example/BUCK.genie.ts
+      # Projection schema version: 3
       # Projection generator: effect-utils/genie/buck2
-      # Semantic fingerprint: sha256:2ba5268b762e25ad765e405dbae7e6a205106363b336a7c6555b25cddae10181
+      # Semantic fingerprint: sha256:9c39a8c8c9d712a74162b985aca424865ea51b9fb267d61094b137cd21608779
       # Semantic inputs: packages/@overeng/example/package.json.genie.ts, pnpm-lock.yaml
       # Regenerate: devenv tasks run genie:run
 
@@ -71,6 +72,7 @@ describe('buck2Projection.packageFile', () => {
       targets: [target, { ...target, name: 'typecheck', kind: 'tsgo' }],
       semanticInputs: ['z', 'a'],
       regenerationCommand: 'genie',
+      source: 'BUCK.genie.ts',
     })
     const right = buck2Projection.packageFile({
       packagePath: 'packages/@overeng/example',
@@ -88,6 +90,7 @@ describe('buck2Projection.packageFile', () => {
       ],
       semanticInputs: ['a', 'z'],
       regenerationCommand: 'genie',
+      source: 'BUCK.genie.ts',
     })
 
     expect(left.stringify(genieContext)).toBe(right.stringify(genieContext))
@@ -101,6 +104,7 @@ describe('buck2Projection.packageFile', () => {
         targets: [target, target],
         semanticInputs: [],
         regenerationCommand: 'genie',
+        source: 'BUCK.genie.ts',
       }),
     ).toThrow('Duplicate Buck target name: unit_test')
 
@@ -111,6 +115,7 @@ describe('buck2Projection.packageFile', () => {
         targets: [{ ...target, sources: ['src/a.ts', 'src/a.ts'] }],
         semanticInputs: [],
         regenerationCommand: 'genie',
+        source: 'BUCK.genie.ts',
       }),
     ).toThrow('Duplicate source in target unit_test: src/a.ts')
   })
@@ -129,10 +134,11 @@ describe('buck2Projection.closureDescriptor', () => {
       },
       semanticInputs: ['pnpm-lock.yaml', 'pnpm-workspace.yaml'],
       regenerationCommand: 'devenv tasks run genie:run',
+      source: 'packages/@overeng/example/closure.json.genie.ts',
     })
 
     expect(JSON.parse(output.stringify(genieContext))).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       packagePath: 'packages/@overeng/example',
       target: {
         name: 'unit_test',
@@ -154,6 +160,8 @@ describe('buck2Projection.closureDescriptor', () => {
         regenerationCommand: 'devenv tasks run genie:run',
         semanticFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         semanticInputs: ['pnpm-lock.yaml', 'pnpm-workspace.yaml'],
+        source: 'packages/@overeng/example/closure.json.genie.ts',
+        warning: 'GENERATED FILE - DO NOT EDIT',
       },
     })
   })
@@ -169,6 +177,7 @@ describe('buck2Projection.closureDescriptor', () => {
         resolvedClosure,
         semanticInputs: [],
         regenerationCommand: 'genie',
+        source: 'closure.json.genie.ts',
       })
 
     const left = make({ roots: ['a'], metadata: { z: 'last', a: 'first' } })
@@ -189,10 +198,21 @@ describe('buck2Projection.closureDescriptor', () => {
         resolvedClosure: { roots: ['vitest@4.1.9'] },
         semanticInputs: ['pnpm-lock.yaml'],
         regenerationCommand,
+        source: 'closure.json.genie.ts',
       })
 
     expect(make('genie').data.provenance.semanticFingerprint).toBe(
       make('devenv tasks run genie:run').data.provenance.semanticFingerprint,
     )
+  })
+
+  it('binds generator identity and schema version into the semantic fingerprint', () => {
+    const fingerprint = (generator: string, schemaVersion: number) =>
+      buck2SemanticFingerprint({ generator, schemaVersion, semanticData: { value: 'same' } })
+
+    expect(fingerprint('effect-utils/genie/buck2', 3)).not.toBe(
+      fingerprint('effect-utils/genie/buck2', 4),
+    )
+    expect(fingerprint('effect-utils/genie/buck2', 3)).not.toBe(fingerprint('another-generator', 3))
   })
 })

@@ -50,4 +50,58 @@ if [ "$configured_globs" != '["registry.json"]' ]; then
   exit 1
 fi
 
+echo "Checking commentless generated JSON ownership and warm-state drift..."
+test_dir="$(mktemp -d)"
+trap 'rm -rf "$test_dir"' EXIT
+mkdir -p "$test_dir/bin"
+
+cat > "$test_dir/bin/genie" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "--version" ]; then
+  echo "genie-test 1"
+fi
+EOF
+chmod +x "$test_dir/bin/genie"
+
+git -C "$test_dir" init -q
+printf 'export default {}\n' > "$test_dir/contract.json.genie.ts"
+printf '{"value":1}\n' > "$test_dir/contract.json"
+git -C "$test_dir" add contract.json.genie.ts contract.json
+
+run_exec="$(eval_genie_module_attr "{ }" 'evaluated.config.tasks."genie:run".exec')"
+run_status="$(eval_genie_module_attr "{ }" 'evaluated.config.tasks."genie:run".status')"
+(
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_exec"
+)
+
+if ! grep -qxF 'contract.json' "$test_dir/.devenv/task-cache/genie-run/generated-files.txt"; then
+  echo "FAIL: commentless JSON paired with a .genie.ts source was not collected"
+  exit 1
+fi
+
+printf '{"value":2}\n' > "$test_dir/contract.json"
+if (
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" DEVENV_SETUP_OUTER_CACHE_HIT=0 \
+    OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_status"
+); then
+  echo "FAIL: mutating commentless generated JSON should invalidate Genie warm state"
+  exit 1
+fi
+
+printf '{"value":1}\n' > "$test_dir/contract.json"
+sed -i 's/genie-test 1/genie-test 2/' "$test_dir/bin/genie"
+if (
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" DEVENV_SETUP_OUTER_CACHE_HIT=0 \
+    OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_status"
+); then
+  echo "FAIL: changing Genie binary identity should invalidate Genie warm state"
+  exit 1
+fi
+
 echo "Genie module option smoke test passed."

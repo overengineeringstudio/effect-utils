@@ -1,11 +1,11 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
-# GENERATED FILE - DO NOT EDIT. Edit the corresponding .genie.ts source.
-# Projection schema version: 2
+# Projection source: packages/@overeng/tui-core/BUCK.genie.ts
+# Projection schema version: 3
 # Projection generator: effect-utils/genie/buck2
-# Semantic fingerprint: sha256:88c75e9d868bed634acc52188c96d95eb6e154149c211656ff78a8ff9264a880
-# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/buck2-tools/src/canonical.ts, packages/@overeng/buck2-tools/src/model.ts, packages/@overeng/buck2-tools/src/pnpm-closure.ts, packages/@overeng/tui-core/buck2/target.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts, pnpm-lock.yaml, pnpm-workspace.yaml
+# Semantic fingerprint: sha256:8bf6a7cdcb47213d3d909b4c4db15a10fc83b1dcee0b7bf30cbb8846f0db3344
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/buck2-tools/src/canonical.ts, packages/@overeng/buck2-tools/src/model.ts, packages/@overeng/buck2-tools/src/pnpm-closure.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/buck2/target.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts, pnpm-lock.yaml, pnpm-workspace.yaml
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:package_targets.bzl", "package_task")

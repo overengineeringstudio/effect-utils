@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Generated Buck contracts**: bind generator and schema identities into
+  semantic projection fingerprints, record exact projection sources, make
+  commentless Genie outputs participate in freshness state, enforce Genie
+  freshness unconditionally in CI, and distinguish immutable benchmark
+  evidence and review-visible Cargo topology from collapsible generated noise.
+
 ### Added
 
 - **Buck2 build-product contract**: add a pure exact validator and canonical

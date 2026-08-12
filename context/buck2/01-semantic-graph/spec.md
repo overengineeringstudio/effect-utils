@@ -17,13 +17,14 @@ specs, the parent Buck spec, and the dependency-materialization VRS.
 
 ## Requirement Trace
 
-| Section                       | Requirements                                                                   |
-| ----------------------------- | ------------------------------------------------------------------------------ |
-| Composition and ownership     | BUCK.GRAPH-R01, BUCK.GRAPH-R04                                                 |
-| Runtime-neutral IR            | BUCK.GRAPH-R02, BUCK.GRAPH-R03, BUCK.GRAPH-R05, BUCK.GRAPH-R06                 |
-| Normalization and evolution   | BUCK.GRAPH-R07, BUCK.GRAPH-R08                                                 |
-| Adapter boundary              | BUCK.GRAPH-R09, BUCK.GRAPH-R10, BUCK.GRAPH-R11                                 |
-| Completeness and invalidation | BUCK.GRAPH-R12, BUCK.GRAPH-R13, BUCK.GRAPH-R14, BUCK.GRAPH-R15, BUCK.GRAPH-R16 |
+| Section                        | Requirements                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| Composition and ownership      | BUCK.GRAPH-R01, BUCK.GRAPH-R04                                                 |
+| Runtime-neutral IR             | BUCK.GRAPH-R02, BUCK.GRAPH-R03, BUCK.GRAPH-R05, BUCK.GRAPH-R06                 |
+| Normalization and evolution    | BUCK.GRAPH-R07, BUCK.GRAPH-R08                                                 |
+| Adapter boundary               | BUCK.GRAPH-R09, BUCK.GRAPH-R10, BUCK.GRAPH-R11                                 |
+| Completeness and invalidation  | BUCK.GRAPH-R12, BUCK.GRAPH-R13, BUCK.GRAPH-R14, BUCK.GRAPH-R15, BUCK.GRAPH-R16 |
+| Generated projection lifecycle | BUCK.GRAPH-R17                                                                 |
 
 ## Composition and Ownership
 
@@ -170,18 +171,41 @@ data from one language is never an input to another adapter.
 
 The graph verifier exercises the following matrix:
 
-| Change                            | Semantic projection                    | Required downstream effect                            |
-| --------------------------------- | -------------------------------------- | ----------------------------------------------------- |
-| File added inside an owned set    | Generated shard remains byte-identical | Only consumers of the owned set change                |
-| Supported file outside every set  | No accepted graph                      | Completeness check fails                              |
-| Unrelated package edit            | Unrelated shard remains byte-identical | No unrelated action invalidation                      |
-| Equivalent normalizer or renderer | All semantic bytes remain identical    | No semantic invalidation                              |
-| Target split                      | Owning package projection changes      | Only new/changed targets receive new identities       |
-| Physical package move             | Logical model identity remains stable  | Location resolver changes                             |
-| Tool implementation change        | Semantic projection remains identical  | Affected action key changes through Buck dependencies |
+| Change                            | Semantic projection                    | Required downstream effect                      |
+| --------------------------------- | -------------------------------------- | ----------------------------------------------- |
+| File added inside an owned set    | Generated shard remains byte-identical | Only consumers of the owned set change          |
+| Supported file outside every set  | No accepted graph                      | Completeness check fails                        |
+| Unrelated package edit            | Unrelated shard remains byte-identical | No unrelated action invalidation                |
+| Equivalent normalizer or renderer | All semantic bytes remain identical    | No semantic invalidation                        |
+| Target split                      | Owning package projection changes      | Only new/changed targets receive new identities |
+| Physical package move             | Logical model identity remains stable  | Location resolver changes                       |
+| Tool implementation change        | Semantic projection remains identical  | Action key changes through Buck dependencies    |
 
 Each control has a RED form that violates the invariant and a GREEN form through
 the real graph/projection/analysis seam.
+
+## Generated Projection Lifecycle
+
+Committed Buck parser inputs and cross-boundary descriptors are deterministic
+projections, never graph authorities. Their provenance binds the generator
+contract ID and projection schema into the semantic fingerprint, names the
+exact authored source and semantic inputs, and records the canonical
+regeneration command. Output-specific emitter sources stay separate so a
+change to one projection does not churn an unrelated sibling projection.
+
+Genie derives freshness membership from the structural `*.genie.ts -> output`
+pair and retains marker discovery only for compatibility. CI runs the complete
+freshness check unconditionally; path filters remain local performance hints.
+Review keeps compact `BUCK` contracts and the selected root Cargo lock visible,
+while large generated dependency plans and mechanical script projections may
+be collapsed.
+
+Historical benchmark captures are immutable evidence, not current generated
+state. Their checker pins content digests and includes a mutation control; it
+must never replace the capture by regenerating “latest” results. Nix store
+outputs, exported archives, descriptors, staged manifests, and receipts remain
+ephemeral derivation outputs. Golden fixtures stay handwritten when generating
+them from their producer would make the proof circular.
 
 ## Child Subsystems
 

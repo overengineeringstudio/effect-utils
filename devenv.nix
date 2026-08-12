@@ -816,12 +816,13 @@ in
   };
 
   tasks."buck2:benchmark:check" = {
-    description = "Validate the Buck2 benchmark parser and non-mutating dry-run contract";
+    description = "Validate the Buck2 benchmark parser, immutable evidence, and non-mutating dry-run contract";
     exec = trace.exec "buck2:benchmark:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       ${pkgs.nodejs}/bin/node --test \
         scripts/buck2-benchmark/lib.unit.test.mjs \
+        scripts/buck2-benchmark/evidence-integrity.unit.test.mjs \
         scripts/buck2-benchmark/dry-run.integration.test.mjs
       ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
         --output "$root/tmp/buck2-benchmark/dry-run.jsonl"

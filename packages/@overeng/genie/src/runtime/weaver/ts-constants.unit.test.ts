@@ -43,6 +43,12 @@ const typecheck = (files: ReadonlyMap<string, string>, rootNames: ReadonlyArray<
 describe('renderTsConstants (otel-scrape fixture)', () => {
   const source = renderTsConstants({ registry, provenance: FIXTURE_PROVENANCE })
 
+  it('carries actionable provenance from the shared Weaver banner', () => {
+    expect(source.startsWith(`// registry-source: ${FIXTURE_PROVENANCE.source}\n`)).toBe(true)
+    expect(source).toContain(`// fingerprint: ${FIXTURE_PROVENANCE.fingerprint}`)
+    expect(source).toContain('// regen: devenv tasks run genie:run')
+  })
+
   it('emits prefixed metric and span name constants', () => {
     expect(source).toContain(
       `export const METRIC_OtelScrapeScrapes = 'otel_scrape.scrapes' as const`,

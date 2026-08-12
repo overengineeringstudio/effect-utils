@@ -88,8 +88,14 @@ Run the pure parser and aggregation tests without installing dependencies:
 ```bash
 node --test \
   scripts/buck2-benchmark/lib.unit.test.mjs \
+  scripts/buck2-benchmark/evidence-integrity.unit.test.mjs \
   scripts/buck2-benchmark/dry-run.integration.test.mjs
 ```
+
+That gate also pins the exact SHA-256 digests of the two committed `tui-core`
+summary snapshots. They are immutable experiment evidence rather than outputs
+to regenerate in place; a new measurement should add a new reviewed snapshot
+and update the adjacent experiment record.
 
 Re-summarize an existing raw record:
 

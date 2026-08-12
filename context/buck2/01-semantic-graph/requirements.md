@@ -105,3 +105,10 @@ select build tools, or execute repository work.
   versions, selected topology, resolver context, or physical paths. Each
   language binding must define its request authority, legality rules, and any
   explicitly conservative root policy before admission.
+- **BUCK.GRAPH-R17 Generated projection contract:** Every committed semantic
+  projection must identify its authored source, generator contract, projection
+  schema, semantic fingerprint inputs, and canonical regeneration command.
+  Freshness must run unconditionally in CI. Projection metadata must not turn
+  generated output into a second semantic authority, and review presentation
+  must keep compact contracts and selected dependency topology visible while
+  collapsing only high-volume generated detail.

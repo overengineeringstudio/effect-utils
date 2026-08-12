@@ -33,14 +33,45 @@ let
   generatedFilesFile = "${cacheRoot}/generated-files.txt";
   collectGenieGeneratedFiles = ''
     collect_genie_generated_files() {
-      # Genie owns these markers, so the warm-path fingerprint follows the same
-      # explicit generated-file contract as the generator itself.
-      ${pkgs.ripgrep}/bin/rg -l \
-        --glob '!tmp/**' \
-        --glob '!.git/**' \
-        --glob '!.devenv/**' \
-        --glob '!node_modules/**' \
-        '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
+      {
+        # A colocated `name.ext.genie.ts` source owns `name.ext`. Deriving the
+        # output path from the source keeps formats without comments (notably
+        # JSON) in the generated-file list and warm-state fingerprint.
+        if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          {
+            ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- '*.genie.ts' ':(glob)**/*.genie.ts'
+            ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- '*.genie.ts' ':(glob)**/*.genie.ts'
+          } | while IFS= read -r -d $'\0' source; do
+            output="''${source%.genie.ts}"
+            if [ -f "$output" ]; then
+              printf '%s\n' "$output"
+            fi
+          done
+        else
+          ${pkgs.findutils}/bin/find . \
+            -type f \
+            -name '*.genie.ts' \
+            -not -path './.git/*' \
+            -not -path './.devenv/*' \
+            -not -path './node_modules/*' \
+            -print0 \
+            | while IFS= read -r -d $'\0' source; do
+                output="''${source%.genie.ts}"
+                if [ -f "$output" ]; then
+                  printf '%s\n' "$output"
+                fi
+              done
+        fi
+
+        # Retain marker discovery for legacy generators whose outputs are not
+        # colocated with an equivalently named `.genie.ts` source.
+        ${pkgs.ripgrep}/bin/rg -l \
+          --glob '!tmp/**' \
+          --glob '!.git/**' \
+          --glob '!.devenv/**' \
+          --glob '!node_modules/**' \
+          '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
+      } | LC_ALL=C sort -u
     }
   '';
   # Enumerate the extra non-`.genie.ts` generator inputs so their content joins
@@ -61,6 +92,7 @@ let
     fi
   '';
   computeGenieStateHash = ''
+    ${collectGenieGeneratedFiles}
     compute_genie_state_hash() {
       {
         if command -v genie >/dev/null 2>&1; then
@@ -68,33 +100,32 @@ let
           printf 'genie-version %s\n' "$(genie --version 2>/dev/null | ${pkgs.coreutils}/bin/head -n1 || echo unknown)"
         fi
 
-        # Track both the `.genie.ts` sources and the generated files they own so
-        # warm status checks catch manual drift without booting the full CLI.
-        # In Git worktrees, follow Git's tracked + untracked/non-ignored view so
-        # local ignored worktrees and caches do not poison Genie status.
-        if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-          ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- '*.genie.ts' ':(glob)**/*.genie.ts' \
-            | tr '\0' '\n'
-          ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- '*.genie.ts' ':(glob)**/*.genie.ts' \
-            | tr '\0' '\n'
-        else
-          ${pkgs.findutils}/bin/find . \
-            -type f \
-            -name '*.genie.ts' \
-            -not -path './.git/*' \
-            -not -path './.devenv/*' \
-            -not -path './node_modules/*' \
-            -print
-        fi
-        ${enumerateGenieInputGlobs}
-        ${collectGenieGeneratedFiles}
+        {
+          # Track both the `.genie.ts` sources and the generated files they own
+          # so warm status checks catch manual drift without booting the full
+          # CLI. Follow Git's tracked + untracked/non-ignored view in worktrees.
+          if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- '*.genie.ts' ':(glob)**/*.genie.ts' \
+              | tr '\0' '\n'
+            ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- '*.genie.ts' ':(glob)**/*.genie.ts' \
+              | tr '\0' '\n'
+          else
+            ${pkgs.findutils}/bin/find . \
+              -type f \
+              -name '*.genie.ts' \
+              -not -path './.git/*' \
+              -not -path './.devenv/*' \
+              -not -path './node_modules/*' \
+              -print
+          fi
+          ${enumerateGenieInputGlobs}
+          collect_genie_generated_files
+        } | LC_ALL=C sort -u | while IFS= read -r file; do
+          [ -f "$file" ] || continue
+          printf '%s\n' "$file"
+          ${pkgs.coreutils}/bin/sha256sum "$file" | awk '{print $1}'
+        done
       } \
-        | LC_ALL=C sort -u \
-        | while IFS= read -r file; do
-            [ -f "$file" ] || continue
-            printf '%s\n' "$file"
-            ${pkgs.coreutils}/bin/sha256sum "$file" | awk '{print $1}'
-          done \
         | ${pkgs.coreutils}/bin/sha256sum \
         | awk '{print $1}'
     }
@@ -114,7 +145,6 @@ let
       exec = trace.exec "genie:run" ''
         set -euo pipefail
         mkdir -p ${lib.escapeShellArg cacheRoot}
-        ${collectGenieGeneratedFiles}
         ${computeGenieStateHash}
         genie
         cache_value="$(compute_genie_state_hash)"

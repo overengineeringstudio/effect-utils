@@ -328,9 +328,12 @@ const signalToObject = (sig: SignalDef): Record<string, unknown> => {
 
 // ---------------------------------------------------------------------------
 // Provenance (GEN-R07). The engine adds the `# Generated / # Source:` banner; we add the
-// input fingerprint + source path below it. The fingerprint is computed in the design-time
-// layer and passed in (Layer 1 stays node-free — no `node:crypto`).
+// semantic source, input fingerprint, and canonical regeneration command below it. The
+// fingerprint is computed in the design-time layer and passed in (Layer 1 stays node-free — no
+// `node:crypto`).
 // ---------------------------------------------------------------------------
+
+const REGENERATION_COMMAND = 'devenv tasks run genie:run'
 
 /** The source path + input fingerprint stamped into a generated file's provenance banner. */
 export type Provenance = {
@@ -350,6 +353,7 @@ const provenanceComment = ({
   [
     `${prefix} registry-source: ${provenance.source}`,
     `${prefix} fingerprint: ${provenance.fingerprint}`,
+    `${prefix} regen: ${REGENERATION_COMMAND}`,
     '',
   ].join('\n')
 
@@ -674,9 +678,7 @@ export const renderRustConstants = ({
   const attributeKeys = ownKeys(registry)
   const { spanNames, metricNames } = signalNames(registry)
   return [
-    `// registry-source: ${provenance.source}`,
-    `// fingerprint: ${provenance.fingerprint}`,
-    '// regen: devenv tasks run genie:run',
+    provenanceComment({ provenance, prefix: '//' }).trimEnd(),
     '',
     '//! Generated OpenTelemetry semantic-convention name constants.',
     '',

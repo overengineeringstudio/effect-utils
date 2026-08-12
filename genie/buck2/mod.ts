@@ -6,8 +6,9 @@ import {
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/projection-artifact/mod.ts'
 
-export const buck2ProjectionSchemaVersion = 2 as const
+export const buck2ProjectionSchemaVersion = 3 as const
 export const buck2ProjectionGenerator = 'effect-utils/genie/buck2' as const
+export const buck2ProjectionWarning = 'GENERATED FILE - DO NOT EDIT' as const
 
 type CanonicalJson =
   | boolean
@@ -23,6 +24,8 @@ export type Buck2ProjectionProvenance = {
   readonly regenerationCommand: string
   readonly semanticFingerprint: `sha256:${string}`
   readonly semanticInputs: readonly string[]
+  readonly source: string
+  readonly warning: typeof buck2ProjectionWarning
 }
 
 export type Buck2TargetProjection = {
@@ -49,6 +52,7 @@ export type Buck2PackageFileArgs = {
   readonly targets: readonly Buck2TargetProjection[]
   readonly semanticInputs: readonly string[]
   readonly regenerationCommand: string
+  readonly source: string
 }
 
 export type Buck2PackageFileData = {
@@ -72,6 +76,7 @@ export type Buck2ClosureDescriptorArgs<TClosure> = {
   readonly resolvedClosure: TClosure
   readonly semanticInputs: readonly string[]
   readonly regenerationCommand: string
+  readonly source: string
 }
 
 export type Buck2ClosureDescriptor<TClosure> = {
@@ -138,9 +143,23 @@ const canonicalJsonValue = ({
   )
 }
 
-const semanticFingerprint = (value: unknown): `sha256:${string}` =>
+export const buck2SemanticFingerprint = ({
+  generator,
+  schemaVersion,
+  semanticData,
+}: {
+  generator: string
+  schemaVersion: number
+  semanticData: unknown
+}): `sha256:${string}` =>
   `sha256:${createHash('sha256')
-    .update(JSON.stringify(canonicalJsonValue({ value })))
+    .update(
+      JSON.stringify(
+        canonicalJsonValue({
+          value: { generator, schemaVersion, semanticData },
+        }),
+      ),
+    )
     .digest('hex')}`
 
 const normalizeTarget = (target: Buck2TargetProjection): Buck2TargetProjection => ({
@@ -180,18 +199,26 @@ const provenance = ({
   semanticData,
   semanticInputs,
   regenerationCommand,
+  source,
 }: {
   semanticData: unknown
   semanticInputs: readonly string[]
   regenerationCommand: string
+  source: string
 }): Buck2ProjectionProvenance => ({
   generator: buck2ProjectionGenerator,
   regenerationCommand: requireNonEmpty({
     value: regenerationCommand,
     label: 'regeneration command',
   }),
-  semanticFingerprint: semanticFingerprint(semanticData),
+  semanticFingerprint: buck2SemanticFingerprint({
+    generator: buck2ProjectionGenerator,
+    schemaVersion: buck2ProjectionSchemaVersion,
+    semanticData,
+  }),
   semanticInputs: sortedUnique({ values: semanticInputs, label: 'semantic input' }),
+  source: requireNonEmpty({ value: source, label: 'projection source' }),
+  warning: buck2ProjectionWarning,
 })
 
 const starlarkString = (value: string): string => JSON.stringify(value)
@@ -210,7 +237,7 @@ const renderStringList = ({
 
 const renderPackageFile = (data: Buck2PackageFileData): string => {
   const lines = [
-    '# GENERATED FILE - DO NOT EDIT. Edit the corresponding .genie.ts source.',
+    `# Projection source: ${data.provenance.source}`,
     `# Projection schema version: ${buck2ProjectionSchemaVersion}`,
     `# Projection generator: ${data.provenance.generator}`,
     `# Semantic fingerprint: ${data.provenance.semanticFingerprint}`,
@@ -249,6 +276,7 @@ const packageFile = (args: Buck2PackageFileArgs): GenieOutput<Buck2PackageFileDa
       semanticData,
       semanticInputs: args.semanticInputs,
       regenerationCommand: args.regenerationCommand,
+      source: args.source,
     }),
   }
 
@@ -276,6 +304,7 @@ const closureDescriptor = <const TClosure>(
       semanticData,
       semanticInputs: args.semanticInputs,
       regenerationCommand: args.regenerationCommand,
+      source: args.source,
     }),
     schemaVersion: buck2ProjectionSchemaVersion,
   }

@@ -84,6 +84,10 @@ export default buck2Projection.closureDescriptor({
       relevantPackageNames,
     }),
   },
-  semanticInputs,
+  semanticInputs: [
+    ...semanticInputs,
+    'packages/@overeng/tui-core/buck2/typescript-input-plan.json.genie.ts',
+  ],
   regenerationCommand,
+  source: 'packages/@overeng/tui-core/buck2/typescript-input-plan.json.genie.ts',
 })

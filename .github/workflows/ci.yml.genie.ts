@@ -419,7 +419,9 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   lint: job({
     step: {
       name: 'Format + lint',
-      run: runDevenvTasksBefore('lint:check'),
+      // Keep generated-file freshness authoritative in CI. The lint task's
+      // execIfModified filter remains only a local fast path.
+      run: runDevenvTasksBefore('genie:check', 'lint:check'),
     },
   }),
   test: multiPlatformJob({
