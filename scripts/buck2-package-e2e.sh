@@ -7,7 +7,6 @@ target="${3:?usage: buck2-package-e2e.sh REPO_ROOT LAUNCHER TARGET}"
 evidence_dir="$repo_root/tmp/buck2-evidence"
 awk_bin="${AWK_BIN:-awk}"
 nix_bin="${NIX_BIN:-nix}"
-nix_store_bin="${NIX_STORE_BIN:-nix-store}"
 jq_bin="${JQ_BIN:-jq}"
 run_id="package-e2e-$$-$RANDOM"
 receipt="$evidence_dir/$run_id/receipt.json"
@@ -60,31 +59,20 @@ descriptor="$(printf '%s\n' "$build_output" | "$awk_bin" -v label="$output_label
   exit 1
 }
 
-export BUCK2_E2E_REPO="$repo_root"
-# A sandboxed Nix build cannot read Buck's mutable output tree directly. Admit
-# the two immutable files to the local store first, then make the importer
-# independently verify the descriptor's digest, size, platform, and archive.
-export BUCK2_E2E_ARTIFACT="$($nix_bin store add --mode flat --name artifact.tar "$artifact")"
-export BUCK2_E2E_DESCRIPTOR="$($nix_bin store add --mode flat --name descriptor.json "$descriptor")"
-imported="$("$nix_bin" build --impure --no-link --print-out-paths --expr '
-  let
-    repo = builtins.toPath (builtins.getEnv "BUCK2_E2E_REPO");
-    flake = builtins.getFlake (toString repo);
-    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    importArtifact = import (repo + "/nix/workspace-tools/lib/buck2-artifact-import.nix") { inherit pkgs; };
-    artifact = builtins.storePath (builtins.getEnv "BUCK2_E2E_ARTIFACT");
-    descriptorPath = builtins.storePath (builtins.getEnv "BUCK2_E2E_DESCRIPTOR");
-    descriptor = builtins.fromJSON (builtins.readFile descriptorPath);
-  in importArtifact {
-    inherit descriptor;
-    inherit artifact;
-  }
-')"
-
-env -i PATH=/nonexistent "$imported/bin/package-evidence" >/dev/null
-[ -z "$("$nix_store_bin" --query --references "$imported")" ] || {
-  echo "buck2-package-e2e: imported artifact retained Nix references" >&2
+# This output is an input-plan evidence fixture, not an admitted build product.
+# Verify its own provisional package-evidence shape and payload identity without
+# routing it through the strict product importer.
+"$jq_bin" -e '
+  .schemaVersion == 1 and
+  .kind == "buck2-package-evidence" and
+  .provenance.producer == "effect-utils/buck2/package-evidence@1" and
+  .entrypoints == ["bin/package-evidence"]
+' "$descriptor" >/dev/null
+declared_digest="$("$jq_bin" -r '.artifact.digest.sri' "$descriptor")"
+actual_digest="$("$nix_bin" hash file --type sha256 --sri "$artifact")"
+[ "$declared_digest" = "$actual_digest" ] || {
+  echo "buck2-package-e2e: package evidence payload digest mismatch" >&2
   exit 1
 }
 
-echo "buck2-package-e2e: PASS target=$target imported=$imported"
+echo "buck2-package-e2e: PASS target=$target admission=not-attempted"

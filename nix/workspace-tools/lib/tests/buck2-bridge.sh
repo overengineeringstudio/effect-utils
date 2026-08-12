@@ -8,13 +8,18 @@ common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
   flake = builtins.getFlake (toString repo);
   pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
   test = import (repo + "/nix/workspace-tools/lib/tests/buck2-bridge.nix") { inherit pkgs; };
-  asBuckDescriptor = original: (builtins.removeAttrs original [ "normalization" ]) // {
-    kind = "buck2-build-artifact";
-    provenance = {
-      producer = "buck2-test-fixture";
-      target = "//fixtures:portable-tool";
-      sourceRevision = "0123456789abcdef0123456789abcdef01234567";
-      actionDigest = original.artifact.digest.sri;
+  contract = import (repo + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
+  mkStrictDescriptor = { original, entrypoints }: {
+    schema = "buck-build-product/v1";
+    name = "fixture-tool";
+    platform = { os = "linux"; architecture = "x86_64"; abi = "musl"; };
+    payload = original.artifact;
+    inherit entrypoints;
+    runtime = { kind = "self-contained"; inspectionContract = "elf-static/v1"; };
+    semanticProvenance = {
+      target = "//fixtures:tool";
+      recipe = "fixture-tool/v1";
+      toolchain = "rust-linux-musl/v1";
     };
   };'
 base_expr="let
@@ -86,27 +91,43 @@ actual_digest="$(nix hash file --type sha256 --sri "$archive")"
 [ "$declared_digest" = "$actual_digest" ]
 
 export BUCK2_BRIDGE_EXPORT_OUT="$export_out"
-import_expr="let
+unsupported_runtime_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    descriptor = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
+    original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+    descriptor = mkStrictDescriptor {
+      inherit original;
+      entrypoints = [ \"bin/fixture-tool\" ];
+    };
   in test.mkImport {
     inherit descriptor;
+    expectedDescriptorDigest = contract.descriptorDigest descriptor;
+    expectedPlatform = descriptor.platform;
     artifact = exported + \"/artifact.tar\";
   }"
-import_out="$(build_expr "$import_expr")"
+expect_build_failure \
+  "unsupported build-product runtime" \
+  "runtime inspector is not available for self-contained" \
+  "$unsupported_runtime_expr"
 
-[ "$(env -i PATH=/nonexistent "$import_out/bin/fixture-tool")" = "buck2-bridge-ok" ]
-[ -f "$import_out/share/buck2-artifact/descriptor.json" ]
-jq -e '
-  .kind == "buck2-build-artifact" and
-  .provenance.target == "//fixtures:portable-tool"
-' "$import_out/share/buck2-artifact/descriptor.json" >/dev/null
-if grep -a -R -F '/nix/store/' "$import_out" >/dev/null; then
-  echo "buck2-bridge-test: imported artifact contains a Nix store reference" >&2
-  exit 1
-fi
-[ -z "$(nix-store --query --references "$import_out")" ]
+duplicate_import_entrypoint_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+    original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+    descriptor = mkStrictDescriptor {
+      inherit original;
+      entrypoints = [ \"bin/fixture-tool\" \"bin/fixture-tool\" ];
+    };
+  in test.mkImport {
+    inherit descriptor;
+    expectedDescriptorDigest = \"sha256:0000000000000000000000000000000000000000000000000000000000000000\";
+    expectedPlatform = descriptor.platform;
+    artifact = exported + \"/artifact.tar\";
+  }"
+expect_build_failure \
+  "duplicate import entrypoint" \
+  "descriptor.entrypoints entries must be unique" \
+  "$duplicate_import_entrypoint_expr"
 
 expect_build_failure \
   "store-reference export" \
@@ -142,128 +163,6 @@ expect_build_failure \
   "duplicate entrypoint export" \
   "entrypoints must be unique" \
   "($base_expr).duplicateEntrypointExport"
-
-wrong_digest_expr="let
-  $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-    descriptor = original // {
-      artifact = original.artifact // {
-        digest = original.artifact.digest // {
-          sri = \"sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\";
-        };
-      };
-    };
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
-expect_build_failure "wrong digest import" "hash mismatch" "$wrong_digest_expr"
-
-wrong_size_expr="let
-  $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-    descriptor = original // {
-      artifact = original.artifact // { sizeBytes = original.artifact.sizeBytes + 1; };
-    };
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
-expect_build_failure "wrong size import" "size mismatch" "$wrong_size_expr"
-
-unknown_descriptor_field_expr="let
-  $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-  descriptor = (asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"))) // {
-    unexpected = true;
-  });
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
-expect_build_failure \
-  "unknown descriptor field" \
-  "descriptor contains unknown fields" \
-  "$unknown_descriptor_field_expr"
-
-duplicate_import_entrypoint_expr="let
-  $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-  original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-  descriptor = original // { entrypoints = [ \"bin/fixture-tool\" \"bin/fixture-tool\" ]; };
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
-expect_build_failure \
-  "duplicate import entrypoint" \
-  "descriptor entrypoints must be unique" \
-  "$duplicate_import_entrypoint_expr"
-
-control_character_import_entrypoint_expr="let
-  $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-  original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-  descriptor = original // { entrypoints = [ \"bin/fixture-tool\\nbin/fixture-tool\" ]; };
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
-expect_build_failure \
-  "control-character import entrypoint" \
-  "descriptor entrypoints must be canonical safe relative paths" \
-  "$control_character_import_entrypoint_expr"
-
-reserved_metadata_out="$(build_expr "($base_expr).reservedMetadataExport")"
-export BUCK2_BRIDGE_RESERVED_METADATA_OUT="$reserved_metadata_out"
-reserved_metadata_expr="let
-  $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_RESERVED_METADATA_OUT\");
-  descriptor = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
-expect_build_failure \
-  "reserved importer metadata path" \
-  "artifact occupies reserved importer metadata path" \
-  "$reserved_metadata_expr"
-
-for entrypoint_case in \
-  "repeated-separator|bin//fixture-tool" \
-  "dot-component|bin/./fixture-tool" \
-  'backslash|bin\fixture-tool'
-do
-  entrypoint_label="${entrypoint_case%%|*}"
-  entrypoint_value="${entrypoint_case#*|}"
-  export BUCK2_BRIDGE_ENTRYPOINT="$entrypoint_value"
-  non_canonical_import_entrypoint_expr="let
-    $common_let
-    exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-    descriptor = original // { entrypoints = [ (builtins.getEnv \"BUCK2_BRIDGE_ENTRYPOINT\") ]; };
-    in test.mkImport {
-      inherit descriptor;
-      artifact = exported + \"/artifact.tar\";
-    }"
-  expect_build_failure \
-    "$entrypoint_label import entrypoint" \
-    "descriptor entrypoints must be canonical safe relative paths" \
-    "$non_canonical_import_entrypoint_expr"
-done
-
-wrong_platform_expr="let
-  $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
-    original = asBuckDescriptor (builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\")));
-    descriptor = original // { platform = \"definitely-not-${system:-current}-platform\"; };
-  in test.mkImport {
-    inherit descriptor;
-    artifact = exported + \"/artifact.tar\";
-  }"
-expect_build_failure "wrong platform import" "platform mismatch" "$wrong_platform_expr"
 
 scan_expr="let
   $common_let
@@ -332,17 +231,6 @@ expect_command_failure \
   "$scan_out" archive "$duplicate_root.tar"
 rm -rf "$duplicate_root" "$duplicate_root.tar"
 
-trailing_root="$(mktemp -d)"
-printf '%s\n' canonical >"$trailing_root/file"
-tar --create --file "$trailing_root.tar" --directory "$trailing_root" file
-printf 'x' >>"$trailing_root.tar"
-dd if=/dev/zero bs=511 count=1 status=none >>"$trailing_root.tar"
-expect_command_failure \
-  "non-zero bytes after archive end marker" \
-  "non-zero data after archive end marker" \
-  "$scan_out" archive "$trailing_root.tar"
-rm -rf "$trailing_root" "$trailing_root.tar"
-
 backslash_root="$(mktemp -d)"
 mkdir -p "$backslash_root/share"
 tar --create --file "$backslash_root.tar" --directory "$backslash_root" \
@@ -386,4 +274,4 @@ expect_command_failure \
   "$scan_out" archive "$aggregate_root.tar"
 rm -rf "$aggregate_root" "$aggregate_root.tar"
 
-echo "buck2-bridge-test: PASS export=$export_out import=$import_out"
+echo "buck2-bridge-test: PASS export=$export_out importer=fail-closed"

@@ -40,7 +40,7 @@ class PackageEvidenceTest(unittest.TestCase):
         ])
         return archive, descriptor
 
-    def test_is_byte_deterministic_and_matches_import_contract(self) -> None:
+    def test_is_byte_deterministic_and_has_provisional_evidence_shape(self) -> None:
         _, root = self.fixture()
         first_archive, first_descriptor = self.run_package(root, "-one")
         second_archive, second_descriptor = self.run_package(root, "-two")
@@ -48,7 +48,7 @@ class PackageEvidenceTest(unittest.TestCase):
         self.assertEqual(first_descriptor.read_bytes(), second_descriptor.read_bytes())
 
         descriptor = json.loads(first_descriptor.read_text())
-        self.assertEqual(descriptor["kind"], "buck2-build-artifact")
+        self.assertEqual(descriptor["kind"], "buck2-package-evidence")
         self.assertEqual(descriptor["artifact"]["file"], "artifact.tar")
         self.assertEqual(descriptor["artifact"]["sizeBytes"], first_archive.stat().st_size)
         self.assertEqual(descriptor["entrypoints"], ["bin/package-evidence"])

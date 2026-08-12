@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Buck2 build-product contract**: add a pure exact validator and canonical
+  descriptor digest for the shared Buck-to-Nix product envelope. Runtime is a
+  required tagged union, invocation evidence is excluded from semantic product
+  identity, and the importer now requires an independently supplied descriptor
+  digest and rejects every runtime until its real inspector exists. This removes
+  the synthetic shell import as evidence of an admitted portable product; the
+  input-plan fixture is now labeled `buck2-package-evidence` rather than
+  masquerading as a build product.
 - **Buck2 build foundation**: add generated package-local Buck targets, an exact
   pnpm closure compiler with content/context/task identities, deterministic
   package evidence archives, a Nix-exported portable-toolchain boundary, and a

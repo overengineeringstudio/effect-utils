@@ -4,9 +4,11 @@ This document specifies the verified Buck-to-Nix build-product boundary and
 the handoff into Nix-managed system generations. It builds on
 [requirements.md](./requirements.md).
 
-Status: **Draft**. The generic archive and import seam and OCI protocol have
-prototype evidence. No TypeScript or Rust executable, publication flow, or
-system generation is admitted through the bridge yet.
+Status: **Draft**. The exact descriptor validator and canonical identity are
+implemented, and the generic archive/import seam plus OCI protocol have
+prototype evidence. The importer rejects every runtime because no runtime
+inspector is admitted yet. No TypeScript or Rust executable, publication flow,
+or system generation is admitted through the bridge.
 
 ## Scope
 
@@ -55,28 +57,57 @@ Nix may transform runtime representation but must not compile repository source.
 
 ## Build-Product Contract
 
-There is one logical `buck-build-product/v1` descriptor:
+There is one logical `buck-build-product/v1` descriptor. The exact common
+envelope is:
 
-```text
-buck-build-product/v1
-  schema and semantic contract
-  payload digest, size, and normalized format
-  declared entrypoints
-  target platform and runtime ABI
-  result-affecting provenance
+```json
+{
+  "schema": "buck-build-product/v1",
+  "name": "otel-scrape",
+  "platform": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "abi": "musl"
+  },
+  "payload": {
+    "file": "artifact.tar",
+    "format": "tar",
+    "digest": {
+      "algorithm": "sha256",
+      "sri": "sha256-..."
+    },
+    "sizeBytes": 123
+  },
+  "entrypoints": ["bin/otel-scrape"],
+  "runtime": {
+    "kind": "self-contained",
+    "inspectionContract": "elf-static/v1"
+  },
+  "semanticProvenance": {
+    "target": "//packages/@overeng/otel-scrape:product",
+    "recipe": "otel-scrape/v1",
+    "toolchain": "rust-linux-musl/v1"
+  }
+}
 ```
+
+All listed records are exact: missing and unknown fields fail. The canonical
+descriptor bytes are UTF-8 `builtins.toJSON` output with no trailing newline;
+their external identity is `sha256:<lowercase-hex>`. Payload identity remains
+the SHA-256 SRI digest of `artifact.tar` and is therefore distinct from
+descriptor identity.
 
 The descriptor carries a required runtime tagged union. Runtime behavior is a
 product property rather than a source-language property:
 
 ```text
 RuntimeContract =
-  | Interpreter { runtimeId, runtimeContract, program }
-  | ElfDynamic { machine, loaderClass, neededLibraries,
-                 symbolVersionFloors, runpathPolicy }
-  | MachODynamic { architecture, minimumOs, dylibs,
-                   installNamePolicy, rpathPolicy, signingPolicy }
-  | SelfContained { inspectionContract }
+  | interpreter { runtimeId, runtimeContract, program }
+  | elf-dynamic { machine, loaderClass, neededLibraries,
+                  symbolVersionFloors, runpathPolicy }
+  | mach-o-dynamic { architecture, minimumOs, dylibs,
+                     installNamePolicy, rpathPolicy, signingPolicy }
+  | self-contained { inspectionContract }
 ```
 
 The shared importer has no TypeScript or Rust branches. It strictly validates
@@ -91,11 +122,14 @@ rejects digest or size mismatch, unknown fields, duplicate or escaping paths,
 file/ancestor collisions, unsupported node types, undeclared entrypoints,
 trailing data, and platform or ABI mismatch.
 
-Semantic provenance that changes the declared product contract or bytes enters
-descriptor identity. Implementation provenance such as helper language,
-checkout location, native Buck invocation/action identity, or generator binary
-identity belongs in the evidence envelope. It must not perturb product identity
-when the normalized payload and semantic contract are equal.
+Semantic provenance is the exact `target`, `recipe`, and `toolchain` contract
+that changes the declared product meaning and therefore enters descriptor
+identity. Implementation provenance such as helper language, checkout
+location, source revision used only for attribution, native Buck
+invocation/action identity, or generator binary identity belongs in the
+evidence envelope. Evidence fields are unknown descriptor fields and fail exact
+validation. Evidence must not perturb product identity when the normalized
+payload and semantic contract are equal.
 
 ## Verified Import
 
@@ -121,8 +155,10 @@ Import is fail closed:
 7. Emit an evidence record through the evidence subsystem and expose only the
    verified realized output to system composition.
 
-The caller supplies the digest of the canonical descriptor bytes independently
-of the descriptor. Unknown fields and runtime variants fail strict decoding.
+The caller supplies the `sha256:<lowercase-hex>` digest of the canonical
+descriptor bytes independently of the descriptor. Unknown fields and runtime
+variants fail strict decoding. A recognized runtime tag is still not import
+admission: the importer fails until the selected runtime inspector exists.
 `portable` is not a synonym for a script or source archive: an interpreter-based
 product names the exact runtime contract that Nix supplies and wraps.
 

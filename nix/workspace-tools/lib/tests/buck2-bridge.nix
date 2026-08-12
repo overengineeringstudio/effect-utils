@@ -86,14 +86,16 @@ in
   mkImport =
     {
       descriptor,
+      expectedDescriptorDigest,
+      expectedPlatform,
       url ? null,
       artifact ? null,
-      expectedPlatform ? pkgs.stdenv.hostPlatform.system,
     }:
     importArtifact {
       inherit
         artifact
         descriptor
+        expectedDescriptorDigest
         expectedPlatform
         url
         ;

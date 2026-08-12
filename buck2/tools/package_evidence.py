@@ -181,7 +181,7 @@ def package(args: argparse.Namespace) -> None:
             "sizeBytes": len(archive_bytes),
         },
         "entrypoints": ["bin/package-evidence"],
-        "kind": "buck2-build-artifact",
+        "kind": "buck2-package-evidence",
         "name": name,
         "platform": platform,
         "provenance": {

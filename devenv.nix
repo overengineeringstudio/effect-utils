@@ -758,7 +758,7 @@ in
   };
 
   tasks."buck2:e2e:tui-core" = {
-    description = "Generate, build, observe, and Nix-import the tui-core Buck input-plan artifact";
+    description = "Generate, build, and observe the provisional tui-core Buck input-plan evidence";
     after = [ "genie:run" ];
     exec = trace.exec "buck2:e2e:tui-core" ''
       set -euo pipefail
@@ -766,16 +766,16 @@ in
       export AWK_BIN=${pkgs.gawk}/bin/awk
       export JQ_BIN=${pkgs.jq}/bin/jq
       export NIX_BIN=${pkgs.nix}/bin/nix
-      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
       exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
         "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan
     '';
   };
 
   tasks."buck2:nix-bridge:check" = {
-    description = "Prove portable Nix tool export and digest/platform-verified Buck artifact import";
+    description = "Check the strict build-product contract, Nix tool export, and fail-closed artifact importer";
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
+      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
     '';
   };
