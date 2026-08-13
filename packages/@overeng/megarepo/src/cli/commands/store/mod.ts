@@ -151,11 +151,13 @@ const planGeneratedArtifacts = ({
   config,
   fs,
   liveSet,
+  now,
   repoWorktrees,
 }: {
   config: StoreGcConfig
   fs: FileSystem.FileSystem
   liveSet: StoreLiveSet
+  now: number
   repoWorktrees: GeneratedArtifactRepoWorktrees
 }): Effect.Effect<
   { readonly results: ReadonlyArray<StoreGcResult>; readonly planSha256: string },
@@ -178,7 +180,7 @@ const planGeneratedArtifacts = ({
           Number.isFinite(parsed.expiresAtMs) === false ||
           parsed.activeWorkspacePaths.some((path) => isNormalizedAbsolutePath(path) === false) ===
             true ||
-          parsed.expiresAtMs < (yield* Clock.currentTimeMillis)
+          parsed.expiresAtMs < now
         ) {
           return undefined
         }
@@ -237,12 +239,11 @@ const planGeneratedArtifacts = ({
               ? yield* scanGeneratedArtifact({ path: artifactPath })
               : undefined
           const mtimeMs = traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
-          const candidateNow = yield* Clock.currentTimeMillis
           const reason =
             cheapReason ??
             (traversal?._tag !== 'complete'
               ? 'artifact-scan-incomplete'
-              : candidateNow - traversal.newestMtimeMs < config.generatedArtifacts.retentionMs
+              : now - traversal.newestMtimeMs < config.generatedArtifacts.retentionMs
                 ? 'retention'
                 : 'eligible')
           const outcome =
@@ -1854,6 +1855,7 @@ const storeGcCommand = Cli.Command.make(
               config,
               fs,
               liveSet,
+              now,
               repoWorktrees,
             })
             planSha256 = generatedPlan.planSha256
