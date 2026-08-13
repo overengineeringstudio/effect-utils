@@ -471,6 +471,9 @@ in
     taskModules.context
     (taskModules.setup {
       requiredTasks = [ ];
+      # Reuse the Genie semantic-input SSOT in the cheap Git-index outer
+      # fingerprint so a warm shell cannot bypass projection invalidation.
+      extraFingerprintGlobs = genieExtraInputGlobs;
       # Keep shell entry resilient (R12): optional tasks run via @complete.
       # Ordering ensures source CLIs have deps before use.
       optionalTasks = [

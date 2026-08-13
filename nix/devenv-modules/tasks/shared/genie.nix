@@ -76,7 +76,43 @@ let
           --glob '!*.genie.ts' \
           --glob '!**/*.genie.ts' \
           '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
+
+        # Commentless JSON projections carry the same owner in data. Requiring
+        # output-side provenance makes ownership checkable on a fresh checkout
+        # even after the structural owner has been deleted.
+        ${pkgs.ripgrep}/bin/rg -l \
+          --glob '!tmp/**' \
+          --glob '!.git/**' \
+          --glob '!.devenv/**' \
+          --glob '!node_modules/**' \
+          --glob '!*.genie.ts' \
+          --glob '!**/*.genie.ts' \
+          --glob '*.json' \
+          '"source"[[:space:]]*:[[:space:]]*"[^"]+\.genie\.ts"' . || true
       } | ${pkgs.gnused}/bin/sed 's#^\./##' | LC_ALL=C sort -u
+    }
+
+    assert_current_genie_owners_exist() {
+      current_manifest="$1"
+      invalid=0
+      while IFS= read -r output; do
+        [ -n "$output" ] || continue
+        structural_owner="$output.genie.ts"
+        [ -f "$structural_owner" ] && continue
+
+        declared_owner="$(${pkgs.gnused}/bin/sed -n -E \
+          -e 's@^(//|#) Source: (.*\.genie\.ts)[[:space:]]*$@\2@p' \
+          -e 's@^[[:space:]]*"source"[[:space:]]*:[[:space:]]*"([^"]+\.genie\.ts)"[,]?[[:space:]]*$@\1@p' \
+          "$output" | ${pkgs.coreutils}/bin/head -n 1)"
+        if [ -n "$declared_owner" ] \
+          && { [ -f "$declared_owner" ] || [ -f "$(dirname "$output")/$declared_owner" ]; }; then
+          continue
+        fi
+
+        printf 'Genie ownership error: generated output has no current owner: %s\n' "$output" >&2
+        invalid=1
+      done < "$current_manifest"
+      [ "$invalid" -eq 0 ]
     }
 
     assert_no_orphaned_genie_outputs() {
@@ -176,6 +212,10 @@ let
 
         generated_tmp_file="$(mktemp)"
         collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
+        if ! assert_current_genie_owners_exist "$generated_tmp_file"; then
+          rm "$generated_tmp_file"
+          exit 1
+        fi
         if ! assert_no_orphaned_genie_outputs ${lib.escapeShellArg generatedFilesFile} "$generated_tmp_file"; then
           rm "$generated_tmp_file"
           exit 1
@@ -228,7 +268,16 @@ let
       description = "Check if generated files are up to date (CI)";
       after = [ "genie:prepare" ];
       env = genieTaskEnv;
-      exec = trace.exec "genie:check" "genie --check";
+      exec = trace.exec "genie:check" ''
+        set -euo pipefail
+        ${collectGenieGeneratedFiles}
+        generated_tmp_file="$(mktemp)"
+        trap 'rm -f "$generated_tmp_file"' EXIT
+        collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
+        assert_current_genie_owners_exist "$generated_tmp_file"
+        assert_no_orphaned_genie_outputs ${lib.escapeShellArg generatedFilesFile} "$generated_tmp_file"
+        genie --check
+      '';
     };
   };
 in

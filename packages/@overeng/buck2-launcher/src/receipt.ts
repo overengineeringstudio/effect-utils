@@ -571,6 +571,14 @@ export const descriptorForClosureManifest = async (
   }
   stringAt(provenance.regenerationCommand, '$.provenance.regenerationCommand')
   stringArrayAt(provenance.semanticInputs, '$.provenance.semanticInputs')
+  if (root.schemaVersion === 3) {
+    stringAt(provenance.source, '$.provenance.source')
+    if (provenance.warning !== 'GENERATED FILE - DO NOT EDIT') {
+      throw new Error(
+        '$.provenance.warning must identify the schema-3 manifest as generated',
+      )
+    }
+  }
   const semanticData = {
     closure: root.closure,
     packagePath: root.packagePath,

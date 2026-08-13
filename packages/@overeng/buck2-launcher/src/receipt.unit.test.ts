@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -298,6 +298,8 @@ describe('Buck receipt normalization', () => {
         ...generatedSemantic,
         provenance: {
           ...value.provenance,
+          source: 'buck2/generated-v3.json.genie.ts',
+          warning: 'GENERATED FILE - DO NOT EDIT',
           semanticFingerprint: `sha256:${createHash('sha256')
             .update(
               JSON.stringify(
@@ -315,6 +317,20 @@ describe('Buck receipt normalization', () => {
     await expect(descriptorForClosureManifest(generatedV3, 'root//:check')).resolves.toMatchObject({
       mediaType: 'application/json',
     })
+    const validGeneratedV3 = await readFile(generatedV3, 'utf8')
+    for (const [field, value] of [
+      ['source', undefined],
+      ['warning', 'handwritten'],
+    ] as const) {
+      const malformed = JSON.parse(validGeneratedV3) as Record<string, unknown>
+      const malformedProvenance = malformed.provenance as Record<string, unknown>
+      if (value === undefined) delete malformedProvenance[field]
+      else malformedProvenance[field] = value
+      await writeFile(generatedV3, JSON.stringify(malformed))
+      await expect(descriptorForClosureManifest(generatedV3, 'root//:check')).rejects.toThrow(
+        field === 'source' ? '$.provenance.source' : '$.provenance.warning',
+      )
+    }
     await writeFile(
       generatedV3,
       JSON.stringify({
@@ -322,6 +338,8 @@ describe('Buck receipt normalization', () => {
         ...generatedSemantic,
         provenance: {
           ...value.provenance,
+          source: 'buck2/generated-v3.json.genie.ts',
+          warning: 'GENERATED FILE - DO NOT EDIT',
           semanticFingerprint: `sha256:${createHash('sha256')
             .update(JSON.stringify(canonical(generatedSemantic)))
             .digest('hex')}`,

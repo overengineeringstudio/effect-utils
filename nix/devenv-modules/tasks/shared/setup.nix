@@ -30,6 +30,7 @@
   requiredTasks ? [ ],
   optionalTasks ? [ ],
   completionsCliNames ? [ ],
+  extraFingerprintGlobs ? [ ],
   skipDuringRebase ? true,
   skipNonInteractive ? false,
 }:
@@ -52,6 +53,8 @@ let
   completionsCliList = lib.concatStringsSep " " completionsCliNames;
   setupFingerprintFile = cache.mkCachePath "setup-fingerprint";
   setupGitHashFile = cache.mkCachePath "setup-git-hash";
+  extraFingerprintPathspecs = map (glob: lib.escapeShellArg ":(glob)${glob}") extraFingerprintGlobs;
+  extraFingerprintPathspecArgs = lib.concatStringsSep " " extraFingerprintPathspecs;
   completionsExec = ''
     shell=""
     if [ -n "''${FISH_VERSION:-}" ]; then
@@ -196,6 +199,13 @@ let
       _setup_generated_from_head=$(
         ${git} grep -l -E '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' HEAD -- . 2>/dev/null || true
       )
+      _setup_paired_generated_files=$(
+        ${git} ls-files -z -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts' 2>/dev/null \
+          | while IFS= read -r -d $'\0' _setup_source; do
+              _setup_output="''${_setup_source%.genie.ts}"
+              [ -f "$_setup_output" ] && printf '%s\n' "$_setup_output"
+            done
+      )
       _setup_dirty_files=$(
         {
           ${git} -c core.quotepath=off ls-files \
@@ -205,7 +215,8 @@ let
             --deduplicate \
             -- \
             ':(glob)**/*.genie.ts' \
-            ':(glob)**/package.json' 2>/dev/null || true
+            ':(glob)**/package.json' \
+            ${extraFingerprintPathspecArgs} 2>/dev/null || true
 
           for _setup_file in package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc megarepo.kdl megarepo.json megarepo.lock; do
             if [ -f "$_setup_file" ] && ! ${git} ls-files --error-unmatch -- "$_setup_file" >/dev/null 2>&1; then
@@ -216,6 +227,14 @@ let
           done
 
           printf '%s\n' "$_setup_generated_from_head" \
+            | while IFS= read -r _setup_file; do
+                [ -n "$_setup_file" ] || continue
+                if [ ! -e "$_setup_file" ] || ! ${git} diff --quiet -- "$_setup_file" 2>/dev/null; then
+                  printf '%s\n' "$_setup_file"
+                fi
+              done
+
+          printf '%s\n' "$_setup_paired_generated_files" \
             | while IFS= read -r _setup_file; do
                 [ -n "$_setup_file" ] || continue
                 if [ ! -e "$_setup_file" ] || ! ${git} diff --quiet -- "$_setup_file" 2>/dev/null; then
@@ -242,7 +261,17 @@ let
 
         ${git} -c core.quotepath=off ls-files -s -- ':(glob)**/*.genie.ts' ':(glob)**/package.json' 2>/dev/null || true
 
+        ${lib.optionalString (extraFingerprintGlobs != [ ]) ''
+          ${git} -c core.quotepath=off ls-files -s -- ${extraFingerprintPathspecArgs} 2>/dev/null || true
+        ''}
+
         printf '%s\n' "$_setup_generated_from_head" \
+          | while IFS= read -r _setup_file; do
+              [ -n "$_setup_file" ] || continue
+              ${git} ls-files -s -- "$_setup_file" 2>/dev/null || true
+            done
+
+        printf '%s\n' "$_setup_paired_generated_files" \
           | while IFS= read -r _setup_file; do
               [ -n "$_setup_file" ] || continue
               ${git} ls-files -s -- "$_setup_file" 2>/dev/null || true

@@ -80,6 +80,7 @@ git -C "$test_dir" add \
 module_config='{ effectUtils.genie.extraInputGlobs = [ "semantic/**/*.ts" ]; }'
 run_exec="$(eval_genie_module_attr "$module_config" 'evaluated.config.tasks."genie:run".exec')"
 run_status="$(eval_genie_module_attr "$module_config" 'evaluated.config.tasks."genie:run".status')"
+check_exec="$(eval_genie_module_attr "$module_config" 'evaluated.config.tasks."genie:check".exec')"
 (
   cd "$test_dir"
   PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
@@ -179,6 +180,47 @@ rm "$test_dir/contract.json"
 )
 if grep -qxF 'contract.json' "$test_dir/.devenv/task-cache/genie-run/generated-files.txt"; then
   echo "FAIL: deleting an owner and its output together should retire retained ownership"
+  exit 1
+fi
+
+echo "Checking stateless output-side ownership..."
+printf 'export default {}\n' > "$test_dir/marked.txt.genie.ts"
+printf '%s\n' '// Generated file - DO NOT EDIT' '// Source: marked.txt.genie.ts' 'value' \
+  > "$test_dir/marked.txt"
+printf 'export default {}\n' > "$test_dir/projection.json.genie.ts"
+printf '%s\n' '{' '  "provenance": {' \
+  '    "source": "projection.json.genie.ts",' \
+  '    "warning": "GENERATED FILE - DO NOT EDIT"' '  }' '}' \
+  > "$test_dir/projection.json"
+git -C "$test_dir" add \
+  marked.txt.genie.ts marked.txt projection.json.genie.ts projection.json
+(
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_exec"
+)
+
+rm "$test_dir/marked.txt.genie.ts"
+if (
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_exec"
+); then
+  echo "FAIL: a marked output whose declared owner is missing should fail closed"
+  exit 1
+fi
+rm "$test_dir/marked.txt"
+
+# A fresh CI checkout has no retained local ownership manifest. The embedded
+# source in commentless JSON is therefore the stateless ownership authority.
+rm "$test_dir/projection.json.genie.ts"
+rm -rf "$test_dir/.devenv"
+if (
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$check_exec"
+); then
+  echo "FAIL: fresh Genie check should reject commentless JSON whose declared owner is missing"
   exit 1
 fi
 
