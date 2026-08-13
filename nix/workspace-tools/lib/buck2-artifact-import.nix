@@ -5,6 +5,7 @@
 {
   pkgs,
   inspectElfDynamic ? import ./buck2-runtime-inspect-elf-dynamic.nix { inherit pkgs; },
+  inspectElfStatic ? import ./buck2-runtime-inspect-elf-static.nix { inherit pkgs; },
   inspectMachODynamic ?
     if pkgs.stdenv.hostPlatform.isDarwin then
       import ./buck2-runtime-inspect-mach-o-dynamic.nix {
@@ -34,6 +35,15 @@ let
   };
   checkedPlatform = checkedDescriptor.platform;
   runtimeKind = checkedDescriptor.runtime.kind;
+  runtimeInspector =
+    if runtimeKind == "elf-dynamic" then
+      inspectElfDynamic
+    else if runtimeKind == "mach-o-dynamic" then
+      inspectMachODynamic
+    else if runtimeKind == "self-contained" then
+      inspectElfStatic
+    else
+      throw "buck2-artifact-import: runtime inspector is not available for ${runtimeKind}";
   payload = checkedDescriptor.payload;
   fetchedArtifact =
     if url == null then
@@ -62,6 +72,7 @@ if
   !(builtins.elem runtimeKind [
     "elf-dynamic"
     "mach-o-dynamic"
+    "self-contained"
   ])
 then
   throw "buck2-artifact-import: runtime inspector is not available for ${runtimeKind}"
@@ -97,9 +108,7 @@ else
       ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
         --no-same-owner --no-same-permissions
       ${scan} tree "$out"
-      ${
-        if runtimeKind == "elf-dynamic" then inspectElfDynamic else inspectMachODynamic
-      } ${descriptorFile} "$out"
+      ${runtimeInspector} ${descriptorFile} "$out"
 
       ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
       while IFS= read -r -d "" file; do

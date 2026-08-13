@@ -96,6 +96,19 @@ unsupported_runtime_expr="let
     expectedPlatform = descriptor.platform;
     artifact = exported + \"/artifact.tar\";
   }"
+# The static ELF product must survive import as a self-contained runtime.
+static_import="$(build_expr "($base_expr).staticElfImport")"
+[ -x "$static_import/bin/fixture-tool" ] || {
+  echo "buck2-bridge-test: static ELF import omitted its entrypoint" >&2
+  exit 1
+}
+echo "buck2-bridge-test: GREEN static ELF import"
+
+expect_build_failure \
+  "dynamic ELF as self-contained" \
+  "self-contained ELF declares an interpreter" \
+  "($base_expr).dynamicElfImport"
+
 expect_build_failure \
   "unsupported build-product runtime" \
   "runtime inspector is not available for interpreter" \
@@ -109,6 +122,34 @@ jq -e '
   (.runtime.symbolVersionFloors | index("F")) == null and
   (.runtime.symbolVersionFloors | index("LOCAL_DEFINITION")) == null
 ' "$dynamic_export/descriptor.json" >/dev/null
+
+# A dynamic ELF relabeled self-contained must be rejected by the static
+# inspector, including through a hostile readelf that hides program headers.
+needed_only_expr="let
+  $common_let
+  dynamic = builtins.fromJSON (builtins.readFile \"\${BUCK2_BRIDGE_DYNAMIC_EXPORT}/descriptor.json\");
+  descriptor = dynamic // {
+    platform = { os = \"linux\"; architecture = \"x86_64\"; abi = \"musl\"; };
+    runtime = { kind = \"self-contained\"; inspectionContract = \"elf-static/v1\"; };
+  };
+  importArtifact = import (repo + \"/nix/workspace-tools/lib/buck2-artifact-import.nix\") {
+    inherit pkgs;
+    inspectElfStatic = import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-static.nix\") {
+      inherit pkgs;
+      readelf = test.hiddenInterpreterReadelf;
+    };
+  };
+in importArtifact {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\") + \"/artifact.tar\";
+}"
+expect_build_failure \
+  "self-contained ELF with DT_NEEDED" \
+  "self-contained ELF declares a shared-library dependency" \
+  "$needed_only_expr"
+
 dynamic_import_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
