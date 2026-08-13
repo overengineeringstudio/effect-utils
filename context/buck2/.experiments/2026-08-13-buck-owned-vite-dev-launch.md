@@ -64,7 +64,7 @@ boundary.
 | Launch ownership receipt                         | Pass   |
 | Terminating the Buck client removed the listener | Pass   |
 | HTTP serving                                     | Pass   |
-| Vite HMR after a local source edit                | Pass   |
+| Vite HMR after a local source edit               | Pass   |
 | Vite HMR after a workspace-relative source edit  | Pass   |
 | Two concurrent ports and state namespaces        | Pass   |
 | Launcher signal teardown                         | Pass   |

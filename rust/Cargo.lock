@@ -219,27 +219,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "buck2-portable-toolchain"
-version = "0.0.0"
-dependencies = [
- "buck2-tool-core",
- "clap",
- "serde_json",
- "tar",
- "tempfile",
-]
-
-[[package]]
-name = "buck2-portable-toolchain-fixture"
-version = "0.0.0"
-dependencies = [
- "buck2-tool-core",
- "clap",
- "serde_json",
- "tar",
-]
-
-[[package]]
 name = "buck2-tool-core"
 version = "0.0.0"
 dependencies = [
