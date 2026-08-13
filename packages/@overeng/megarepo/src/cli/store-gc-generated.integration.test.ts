@@ -28,14 +28,16 @@ const fixedClock = Layer.setClock({
 })
 
 type JsonResult = {
+  readonly artifactClass?: string
+  readonly kind?: string
   readonly path: string
   readonly reason?: string
   readonly outcome?: string
   readonly status: string
 }
 
-const samePath = (left: string, right: string) =>
-  left.replace(/\/+$/u, '') === right.replace(/\/+$/u, '')
+const generated = (results: ReadonlyArray<JsonResult>, artifactClass: string) =>
+  results.find((row) => row.kind === 'generated-artifact' && row.artifactClass === artifactClass)
 
 const runGc = ({
   cwd,
@@ -158,9 +160,7 @@ describe('mr store gc --generated-artifacts', () => {
         yield* configure({ config: f.config, manifest: f.manifest })
         const artifact = yield* oldIgnoredArtifact(f.worktree)
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(result.results.find((row) => samePath(row.path, artifact))?.outcome).toBe(
-          'would-delete',
-        )
+        expect(generated(result.results, 'node_modules')?.outcome).toBe('would-delete')
         expect(result.planSha256).toMatch(/^[0-9a-f]{64}$/)
         const repeated = yield* runGc({
           cwd: f.outside,
@@ -188,7 +188,7 @@ describe('mr store gc --generated-artifacts', () => {
           utimes(`${artifact}/fixture.txt`, new Date(NOW - 1_000), new Date(NOW - 1_000)),
         )
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(result.results.find((row) => samePath(row.path, artifact))?.reason).toBe('retention')
+        expect(generated(result.results, 'node_modules')?.reason).toBe('retention')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
@@ -207,15 +207,15 @@ describe('mr store gc --generated-artifacts', () => {
           storePath: f.storePath,
           args: ['--dry-run'],
         })
-        expect(missing.results.find((row) => samePath(row.path, artifact))?.outcome).toBe('unknown')
+        expect(generated(missing.results, 'node_modules')?.outcome).toBe('unknown')
         yield* configure({ config: f.config, manifest: f.manifest, expiresAtMs: NOW - 1 })
         const expired = yield* runGc({
           cwd: f.outside,
           storePath: f.storePath,
           args: ['--dry-run'],
         })
-        expect(expired.results.find((row) => samePath(row.path, artifact))?.outcome).toBe('unknown')
-        expect(expired.results.find((row) => samePath(row.path, artifact))?.reason).toBe(
+        expect(generated(expired.results, 'node_modules')?.outcome).toBe('unknown')
+        expect(generated(expired.results, 'node_modules')?.reason).toBe(
           'agent-liveness-unavailable',
         )
       },
@@ -234,9 +234,7 @@ describe('mr store gc --generated-artifacts', () => {
         const fs = yield* FileSystem.FileSystem
         yield* fs.writeFileString(`${f.worktree}/README.md`, 'dirty')
         const dirty = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(dirty.results.find((row) => samePath(row.path, ignored))?.reason).toBe(
-          'dirty-worktree',
-        )
+        expect(generated(dirty.results, 'node_modules')?.reason).toBe('dirty-worktree')
         yield* Git.runCommand({ args: ['add', 'README.md'], cwd: f.worktree })
         yield* Git.runCommand({ args: ['commit', '-m', 'restore clean fixture'], cwd: f.worktree })
         const dist = `${f.worktree}/dist`
@@ -252,9 +250,7 @@ describe('mr store gc --generated-artifacts', () => {
           storePath: f.storePath,
           args: ['--dry-run'],
         })
-        expect(nonIgnored.results.find((row) => samePath(row.path, dist))?.reason).toBe(
-          'artifact-not-ignored',
-        )
+        expect(generated(nonIgnored.results, 'dist')?.reason).toBe('artifact-not-ignored')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
@@ -291,7 +287,7 @@ describe('mr store gc --generated-artifacts', () => {
         const artifact = yield* oldIgnoredArtifact(f.worktree)
         yield* Effect.promise(() => symlink(f.outside, `${artifact}/outside`))
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(result.results.find((row) => samePath(row.path, artifact))).toMatchObject({
+        expect(generated(result.results, 'node_modules')).toMatchObject({
           outcome: 'unknown',
           reason: 'artifact-scan-incomplete',
         })
@@ -315,7 +311,7 @@ describe('mr store gc --generated-artifacts', () => {
           generatedArtifacts: false,
         })
         expect(result.planSha256).toBeUndefined()
-        expect(result.results.some((row) => samePath(row.path, artifact))).toBe(false)
+        expect(result.results.some((row) => row.kind === 'generated-artifact')).toBe(false)
         expect(yield* FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(artifact)))).toBe(
           true,
         )
