@@ -83,16 +83,10 @@
                 cross.${"rust_${builtins.elemAt rustVersionParts 0}_${builtins.elemAt rustVersionParts 1}"};
             in
             (import ./nix/workspace-tools/lib/buck2-rust-local-toolchain-config.nix { inherit pkgs; } {
-              clippyDriver = "${pkgs.clippy}/bin/clippy-driver";
-              # The matching prebuilt archive supplies rustc, rustdoc, and
-              # the musl standard library without rebuilding Rust/LLVM.
+              # The matching prebuilt archive supplies rustc and the musl
+              # standard library without rebuilding Rust/LLVM.
               rustc = "${rustPackageSet.packages.prebuilt.rustc}/bin/rustc";
-              rustdoc = "${rustPackageSet.packages.prebuilt.rustc}/bin/rustdoc";
               linker = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}cc";
-              cxx = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}c++";
-              binutils = cross.binutils;
-              python = "${pkgs.python3}/bin/python3";
-              toolPath = "${pkgs.bash}/bin:${pkgs.coreutils}/bin";
             }).config
           else
             null;

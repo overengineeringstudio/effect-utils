@@ -61,7 +61,7 @@ let
         export LC_ALL=C
         mkdir -p payload/bin "$out"
         printf '%s\n' 'int fixture_symbol(void) { return 0; }' > library.c
-        printf '%s\n' 'FOO { global: fixture_symbol; };' > library.map
+        printf '%s\n' 'F123456789O { global: fixture_symbol; };' > library.map
         cc -shared -Wl,--version-script=library.map \
           -Wl,-soname,'libfixture[bracket].so' -o 'libfixture[bracket].so' library.c
         printf '%s\n' \
@@ -73,7 +73,7 @@ let
         # ELF string-table names may contain whitespace even though the linker
         # version-script grammar cannot spell it. Preserve the byte width while
         # making the observed version need distinguishable from field splitting.
-        sed -i 's/FOO/F O/g' payload/bin/fixture-tool
+        sed -i 's/F123456789O/F  Flags: O/g' payload/bin/fixture-tool
         # Replacing the wrapper-injected store RPATH before removing it ensures
         # those bytes are absent rather than merely unreachable dynamic data.
         patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --set-rpath /unused payload/bin/fixture-tool
@@ -104,7 +104,12 @@ let
                 name_start = index($0, name_marker)
                 if (name_start > 0) {
                   value = substr($0, name_start + length(name_marker))
-                  flags_start = index(value, flags_marker)
+              flags_start = 0
+              search_start = 1
+              while ((relative_start = index(substr(value, search_start), flags_marker)) > 0) {
+                flags_start = search_start + relative_start - 1
+                search_start = flags_start + length(flags_marker)
+              }
                   if (flags_start == 0) exit 2
                   print substr(value, 1, flags_start - 1)
                 }

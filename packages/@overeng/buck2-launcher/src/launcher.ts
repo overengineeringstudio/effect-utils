@@ -176,6 +176,8 @@ const requestedTargetsFromReport = (report: Record<string, unknown> | undefined)
 
 const loadPreviousReceipt = async (
   path: string | undefined,
+  repositoryRevision: string,
+  executionPlatform: string,
 ): Promise<BuckRunReceipt | undefined> => {
   if (path === undefined) return undefined
   let bytes: string
@@ -199,6 +201,19 @@ const loadPreviousReceipt = async (
     throw new Error(`explicit compare receipt is unsupported or invalid: ${path}`, {
       cause: error,
     })
+  }
+  if (receipt.repositoryRevision === undefined || receipt.executionPlatform === undefined) {
+    throw new Error(`explicit compare receipt has no repository/platform identity: ${path}`)
+  }
+  if (receipt.repositoryRevision !== repositoryRevision) {
+    throw new Error(
+      `explicit compare receipt repository revision does not match current run: ${path}`,
+    )
+  }
+  if (receipt.executionPlatform !== executionPlatform) {
+    throw new Error(
+      `explicit compare receipt execution platform does not match current run: ${path}`,
+    )
   }
   if (receipt.observation.complete === false) {
     throw new Error(`explicit compare receipt is incomplete: ${path}`)
@@ -293,7 +308,11 @@ export const launchBuck = async (options: LaunchOptions): Promise<LaunchResult> 
   assertSupportedCommand(options.buckArgs)
   const [closures, previous] = await Promise.all([
     prepareClosures(options.closureManifests ?? []),
-    loadPreviousReceipt(options.compareReceipt),
+    loadPreviousReceipt(
+      options.compareReceipt,
+      options.repositoryRevision,
+      options.executionPlatform,
+    ),
   ])
   const now = options.now ?? (() => new Date())
   const launcherRunId = options.launcherRunId ?? randomUUID()

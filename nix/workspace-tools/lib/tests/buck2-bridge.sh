@@ -145,7 +145,7 @@ dynamic_export="$(build_expr "($base_expr).dynamicExport")"
 export BUCK2_BRIDGE_DYNAMIC_EXPORT="$dynamic_export"
 jq -e '
   (.runtime.neededLibraries | index("libfixture[bracket].so")) != null and
-  (.runtime.symbolVersionFloors | index("F O")) != null and
+  (.runtime.symbolVersionFloors | index("F  Flags: O")) != null and
   (.runtime.symbolVersionFloors | index("F")) == null and
   (.runtime.symbolVersionFloors | index("LOCAL_DEFINITION")) == null
 ' "$dynamic_export/descriptor.json" >/dev/null
@@ -216,7 +216,7 @@ expect_command_failure "DT_NEEDED mutation" "DT_NEEDED mismatch" \
 rm -rf "$needed_root"
 
 symbol_root="$(mutation_root)"
-first_version="$(jq -er '.runtime.symbolVersionFloors[] | select(. == "F O")' "$dynamic_export/descriptor.json")"
+first_version="$(jq -er '.runtime.symbolVersionFloors[] | select(. == "F  Flags: O")' "$dynamic_export/descriptor.json")"
 case "$first_version" in
   *9) mutated_version="${first_version%?}8" ;;
   *) mutated_version="${first_version%?}9" ;;

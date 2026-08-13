@@ -160,6 +160,53 @@ describe('launchBuck process boundary', () => {
     ).rejects.toThrow('explicit compare receipt is incomplete')
   })
 
+  it.each([
+    {
+      name: 'repository revision',
+      previousRevision: '1111111111111111111111111111111111111111',
+      previousPlatform: 'x86_64-linux',
+      currentRevision: '2222222222222222222222222222222222222222',
+      currentPlatform: 'x86_64-linux',
+      diagnostic: 'repository revision does not match current run',
+    },
+    {
+      name: 'execution platform',
+      previousRevision: '1111111111111111111111111111111111111111',
+      previousPlatform: 'aarch64-linux',
+      currentRevision: '1111111111111111111111111111111111111111',
+      currentPlatform: 'x86_64-linux',
+      diagnostic: 'execution platform does not match current run',
+    },
+  ])('rejects a cross-$name comparison receipt before executing Buck', async (identity) => {
+    const root = await mkdtemp(join(tmpdir(), `buck2-launcher-compare-${identity.name}-`))
+    const binary = join(root, 'fake-buck2')
+    await writeFile(binary, fakeBuckSource)
+    await chmod(binary, 0o700)
+    const first = await launchBuckRaw({
+      buckBinary: binary,
+      buckArgs: ['build', 'root//:check'],
+      cwd: root,
+      evidenceRoot: join(root, 'evidence'),
+      repositoryRevision: identity.previousRevision,
+      executionPlatform: identity.previousPlatform,
+      launcherRunId: 'identity-before',
+    })
+    if (first.receiptPath === undefined) throw new Error('first launch did not write a receipt')
+
+    await expect(
+      launchBuckRaw({
+        buckBinary: join(root, 'does-not-exist'),
+        buckArgs: ['build', 'root//:check'],
+        cwd: root,
+        evidenceRoot: join(root, 'evidence'),
+        repositoryRevision: identity.currentRevision,
+        executionPlatform: identity.currentPlatform,
+        compareReceipt: first.receiptPath,
+        launcherRunId: 'identity-after',
+      }),
+    ).rejects.toThrow(identity.diagnostic)
+  })
+
   it('rejects inexact receipt identity before executing Buck', async () => {
     const root = await mkdtemp(join(tmpdir(), 'buck2-launcher-identity-'))
     await expect(
