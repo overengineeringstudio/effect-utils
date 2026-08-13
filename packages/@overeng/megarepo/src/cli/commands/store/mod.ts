@@ -131,6 +131,7 @@ const GENERATED_SCAN_TIMEOUT_MS = 30_000
 const scanGeneratedArtifact = ({ path }: { path: string }) =>
   Effect.tryPromise({
     try: async () => {
+      const startedAt = Date.now()
       const artifactRootInfo = await lstat(path)
       if (artifactRootInfo.isDirectory() === false || artifactRootInfo.isSymbolicLink() === true) {
         return undefined
@@ -139,7 +140,12 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
       let count = 0
       let newestMtimeMs = 0
       while (pending.length > 0) {
-        if (count >= GENERATED_SCAN_ENTRY_CAP) return undefined
+        if (
+          count >= GENERATED_SCAN_ENTRY_CAP ||
+          Date.now() - startedAt >= GENERATED_SCAN_TIMEOUT_MS
+        ) {
+          return undefined
+        }
         const current = pending.pop()!
         // Sequential traversal is intentional: the bounded planner keeps filesystem pressure low.
         // eslint-disable-next-line no-await-in-loop
@@ -163,10 +169,7 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
       return { count, newestMtimeMs }
     },
     catch: (cause) => cause,
-  }).pipe(
-    Effect.timeout(`${GENERATED_SCAN_TIMEOUT_MS} millis`),
-    Effect.orElseSucceed(() => undefined),
-  )
+  }).pipe(Effect.orElseSucceed(() => undefined))
 
 const runStoreCommand = ({ output, action }: { output: string; action: StoreAction }) => {
   const visualEffect = run(
