@@ -40,7 +40,7 @@ import {
   validateNixStoreStep,
   defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
-import { type CoreCIJobName } from '../../genie/ci.ts'
+import { buck2MeasurementTargets, type CoreCIJobName } from '../../genie/ci.ts'
 import {
   githubWorkflowEvent,
   type GitHubWorkflowArgs,
@@ -302,9 +302,11 @@ const normalCiIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
 const job = ({
   step,
   extraSteps = [],
+  postSteps = [],
 }: {
   step: { name: string; run: string }
   extraSteps?: readonly any[]
+  postSteps?: readonly any[]
 }) => ({
   if: normalCiIf,
   'runs-on': namespaceRunner({
@@ -318,6 +320,7 @@ const job = ({
     ...baseSteps,
     ...extraSteps,
     step,
+    ...postSteps,
     savePnpmStateStep(),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
@@ -482,6 +485,25 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       name: 'Buck2 local evidence and Nix bridge',
       run: runDevenvTasksBefore('buck2:check'),
     },
+    postSteps: [
+      ...buck2MeasurementTargets.map((target) => ({
+        name: `Adapt and admit Buck measurements: ${target.label}`,
+        if: 'always()',
+        shell: 'bash',
+        env: { CI_MEASUREMENT_BUCK_TARGET: JSON.stringify(target) },
+        run: [
+          'set -euo pipefail',
+          `output="tmp/buck2-ci-measurements/${target.id}/measurements.json"`,
+          'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun scripts/buck2-benchmark/assert-invalidation.mjs --contract-json "$CI_MEASUREMENT_BUCK_TARGET" --output "$output" "' +
+            target.rawPath +
+            '"',
+        ].join('\n'),
+      })),
+      ciMeasurementsArtifactStep({
+        artifactName: 'buck2-measurements',
+        path: 'tmp/buck2-ci-measurements',
+      }),
+    ],
   }),
   cargo: job({
     step: {
@@ -801,8 +823,8 @@ const extraJobs: Record<string, any> = {
   },
   'ci-measurements-report': {
     name: 'ci/measurements-report',
-    if: normalCiIf,
-    needs: ['devenv-perf', 'nix-closure-sizes', 'source-shape'],
+    if: `\${{ always() && ${ciMeasurementNotBaselineBackfillPredicate} }}`,
+    needs: ['buck2', 'devenv-perf', 'nix-closure-sizes', 'source-shape'],
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -815,18 +837,34 @@ const extraJobs: Record<string, any> = {
       checkoutStep(),
       installNixStep(),
       ciMeasurementReportToolStep,
-      downloadCurrentMeasurementArtifactStep({
-        artifactName: 'devenv-perf',
-        outputDir: `${ciMeasurementReportDir}/current/devenv-perf`,
-      }),
-      downloadCurrentMeasurementArtifactStep({
-        artifactName: 'nix-closure-measurements',
-        outputDir: `${ciMeasurementReportDir}/current/nix-closure-measurements`,
-      }),
-      downloadCurrentMeasurementArtifactStep({
-        artifactName: 'source-shape',
-        outputDir: `${ciMeasurementReportDir}/current/source-shape`,
-      }),
+      {
+        ...downloadCurrentMeasurementArtifactStep({
+          artifactName: 'buck2-measurements',
+          outputDir: `${ciMeasurementReportDir}/current/buck2-measurements`,
+        }),
+        'continue-on-error': true,
+      },
+      {
+        ...downloadCurrentMeasurementArtifactStep({
+          artifactName: 'devenv-perf',
+          outputDir: `${ciMeasurementReportDir}/current/devenv-perf`,
+        }),
+        'continue-on-error': true,
+      },
+      {
+        ...downloadCurrentMeasurementArtifactStep({
+          artifactName: 'nix-closure-measurements',
+          outputDir: `${ciMeasurementReportDir}/current/nix-closure-measurements`,
+        }),
+        'continue-on-error': true,
+      },
+      {
+        ...downloadCurrentMeasurementArtifactStep({
+          artifactName: 'source-shape',
+          outputDir: `${ciMeasurementReportDir}/current/source-shape`,
+        }),
+        'continue-on-error': true,
+      },
       downloadPreviousGitHubArtifactStep({
         artifactName: 'devenv-perf',
         outputDir: `${ciMeasurementReportDir}/baseline/devenv-perf`,
@@ -858,6 +896,7 @@ const extraJobs: Record<string, any> = {
         baselineDir: `${ciMeasurementReportDir}/baseline`,
         outputFile: `${ciMeasurementReportDir}/measurement-comparison.json`,
         regressionMode: 'warn',
+        assertionTargets: buck2MeasurementTargets,
         prComment: {
           enabled: true,
           title: 'CI Measurements',

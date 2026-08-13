@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **CI measurements**: Unify Buck2 invalidation evidence with the existing schema-v1 measurement pipeline. Consumer-owned typed assertions now drive both native Buck admission and the required shared report, while complete per-sample evidence gates semantic invalidation and timing profiles remain advisory.
+
 - Fix lazy Buck stage-0 recovery to snapshot only its fingerprinted source inputs, keep unrelated Cargo product manifests out of tool derivations, and retain the observability gate when shell-entry setup is disabled.
 
 - **Buck2 megarepo product**: add Python-free, separately cacheable `mr`,

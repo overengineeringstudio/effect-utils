@@ -28,12 +28,30 @@ emit_compare_script() {
   cat >"$emitter" <<TS
 import { compareCiMeasurementsStep } from '$ROOT/genie/ci-workflow/measurements.ts'
 
-process.stdout.write(compareCiMeasurementsStep({
+const step = compareCiMeasurementsStep({
   currentDir: '$tmp_dir/current',
   baselineDir: '$tmp_dir/baseline',
   outputFile: '$tmp_dir/comparison.json',
   regressionMode: 'warn',
-}).run)
+})
+process.stdout.write("export CI_MEASUREMENT_ASSERTION_TARGETS='" + step.env.CI_MEASUREMENT_ASSERTION_TARGETS + "'\n" + step.run)
+TS
+  run_bun_to_file "$tmp_dir/compare.sh" "$emitter"
+}
+
+emit_assertion_compare_script() {
+  local emitter="$tmp_dir/emit-assertion-compare.ts"
+  cat >"$emitter" <<TS
+import { compareCiMeasurementsStep } from '$ROOT/genie/ci-workflow/measurements.ts'
+
+const step = compareCiMeasurementsStep({
+  currentDir: '$tmp_dir/current',
+  baselineDir: '$tmp_dir/baseline',
+  outputFile: '$tmp_dir/comparison.json',
+  regressionMode: 'warn',
+  assertionTargets: [$assertion_target_json],
+})
+process.stdout.write("export CI_MEASUREMENT_ASSERTION_TARGETS='" + step.env.CI_MEASUREMENT_ASSERTION_TARGETS + "'\n" + step.run)
 TS
   run_bun_to_file "$tmp_dir/compare.sh" "$emitter"
 }
@@ -323,3 +341,76 @@ if [ "$actual_status" != "partial" ] || [ "$actual_row" != "pass" ] || [ "$actua
 fi
 
 echo "ci-measurement-comparison tests passed"
+
+assertion_target_json='{"id":"fixture","label":"Fixture","workContract":"fixture/v1","benchmarkSchema":"effect-utils-buck2-benchmark/v0","buckTarget":"//fixture:product","rawPath":"tmp/raw.jsonl","runs":2,"assertions":[{"id":"warm-actions","label":"Warm actions","phase":"warm-noop","metric":"actionCount","expectation":{"_tag":"exact","value":0}}]}'
+assertion_fingerprint="$(printf '%s' "$assertion_target_json" | sha256sum | cut -d' ' -f1)"
+
+write_assertion_measurement() {
+  local file="$1"
+  local samples="$2"
+  local snapshot="${3:-$assertion_target_json}"
+  local asserted_status="${4:-$(jq -nr --argjson samples "$samples" 'if ($samples | all(. == 0)) then "pass" else "fail" end')}"
+  mkdir -p "$(dirname "$file")"
+  jq -n \
+    --arg fingerprint "$assertion_fingerprint" \
+    --argjson snapshot "$snapshot" \
+    --argjson samples "$samples" \
+    --arg assertedStatus "$asserted_status" \
+    '{
+      schemaVersion:1,
+      generatedAt:"2026-08-13T00:00:00Z",
+      producer:{name:"effect-utils-ci-measurement",version:1,measurementProtocol:"buck2-invalidation-v1"},
+      target:{kind:"buck2",id:"fixture",label:"Fixture"},
+      contract:{fingerprint:$fingerprint,snapshot:$snapshot},
+      completeness:{status:"complete",missing:[]},
+      observations:[{
+        id:"warm-actions",label:"Warm actions",name:"buck2.action_count",unit:"count",value:0,
+        measurementKind:"deterministic",
+        dimensions:{phase:"warm-noop",measurementProtocol:"buck2-invalidation-v1"},
+        policy:{enabled:true,comparisonMode:"assertion",expectation:{_tag:"exact",value:0},onNoVerdict:"fail"},
+        statistics:{sampleCount:2,measuredSampleCount:2,samples:$samples},
+        assertion:{status:$assertedStatus},
+        evidence:{status:"complete",sampleIndexes:[0,1],rawSha256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+      }]
+    }' >"$file"
+}
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,0]'
+emit_assertion_compare_script
+run_compare
+[ "$(jq -r '.status' "$tmp_dir/comparison.json")" = pass ] || { echo "expected healthy assertion pass" >&2; exit 1; }
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,1]'
+set +e
+run_compare
+assertion_rc=$?
+set -e
+[ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = fail ] || { jq . "$tmp_dir/comparison.json" >&2; echo "expected one bad sample to fail required assertion" >&2; exit 1; }
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,1]' "$assertion_target_json" pass
+set +e
+run_compare
+assertion_rc=$?
+set -e
+[ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = no_verdict ] || { echo "expected contradictory pass receipt to fail closed" >&2; exit 1; }
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+weakened_target_json="$(printf '%s' "$assertion_target_json" | jq -c '.assertions[0].expectation={"_tag":"at-most","value":1}')"
+write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,0]' "$weakened_target_json"
+set +e
+run_compare
+assertion_rc=$?
+set -e
+[ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = no_verdict ] || { echo "expected producer-adjusted expectation to fail closed" >&2; exit 1; }
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+set +e
+run_compare
+assertion_rc=$?
+set -e
+[ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = no_verdict ] || { echo "expected missing artifact to reconstruct no-verdict row" >&2; exit 1; }
+
+echo "ci-measurement assertion tests passed"

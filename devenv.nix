@@ -945,7 +945,6 @@ in
         --irrelevant-path packages/@overeng/megarepo/src/lib/ref.unit.test.ts \
         --runs 7 --warmups 2 --isolation-dir megarepo-mr-benchmark \
         --output "$output"
-      exec ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/assert-invalidation.mjs "$output"
     '';
   };
 
@@ -1308,8 +1307,6 @@ in
         --execute \
         --in-place \
         --buck-incremental-only \
-        --assert-buck-invalidation \
-        --expected-relevant-actions 2 \
         --buck-bin ${buck2Machine}/bin/buck2 \
         --buck-config-file "$buck2_stage0_config" \
         --buck-config-file "$toolchain_config" \
@@ -1317,7 +1314,8 @@ in
         --buck-target-platform //buck2/platforms:target_x86_64_linux_musl_static \
         --work-contract effect-utils/otel-scrape-native-product-v1 \
         --relevant-path packages/@overeng/otel-scrape/src/lib.rs \
-        --irrelevant-path context/dependency-materialization/intuition.md
+        --irrelevant-path context/dependency-materialization/intuition.md \
+        --output "$root/tmp/buck2-benchmark/otel-scrape-product.jsonl"
     '';
   };
 

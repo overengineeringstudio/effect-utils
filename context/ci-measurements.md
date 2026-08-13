@@ -13,6 +13,7 @@ Active.
 | `deterministic` | Nix closure size, source lines, file counts            | Did a structural quantity exceed its budget?                          | Budget/diff against a comparable baseline.               |
 | `wall-clock`    | Devenv shell eval, task runtime, CLI command latency   | Did this PR make this operation slower on the same runner conditions? | Paired same-run base/head samples before merge blocking. |
 | `diagnostic`    | OTEL-traced shell eval, host context, trace breakdowns | Where did time go?                                                    | Never a regression gate; may be produced by required CI. |
+| `deterministic` | Buck invalidation action/materialization assertions    | Did every measured sample preserve the expected semantic boundary?    | Consumer-owned assertion over complete raw samples.      |
 
 The class is part of the observation contract through `measurementKind`.
 The comparison policy is part of the gate contract through `comparisonMode`.
@@ -27,6 +28,7 @@ semantics match:
 | `wall-clock`      | `paired`                  | Same PR run, same runner, base/head pairs     | Per-pair delta evidence interval.         |
 | `wall-clock`      | `historical`              | Previous comparable successful artifacts      | Advisory robust bands only.               |
 | `diagnostic`      | none                      | Optional context artifact or trace attachment | Not gateable.                             |
+| `deterministic`   | `assertion`               | No baseline; a typed expected value or range   | Every configured raw sample must satisfy. |
 
 Historical comparison is not a substitute for paired wall-clock evidence.
 Budget comparison is not a substitute for owner-approved semantic budgets.
@@ -75,6 +77,17 @@ producer adapter
 This keeps probe-specific collection code separate from the reusable regression
 system. A new probe should not fork comparison, markdown rendering, or asset
 publication logic.
+
+Buck invalidation measurements use the same path. `genie/ci.ts` owns the typed
+product expectations consumed independently by the native Buck admission step
+and the shared report. The additive schema-v1 artifact owns measured samples,
+raw-evidence hashes, and an audit snapshot of that policy; it cannot redefine
+the policy. The comparator rejects a mismatched snapshot or fingerprint.
+
+Required assertions evaluate every sample, require exact configured sample
+indexes and complete Buck logs, and fail closed on missing or malformed
+evidence. Their median numeric value exists only for display. Phase timings and
+non-asserted action/materialization profiles remain diagnostic observations.
 
 The reusable engine boundary is specified in
 [ci-measurement-engine.md](./ci-measurement-engine.md). The long-term direction

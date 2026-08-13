@@ -98,7 +98,7 @@ const generatedCiJobKeys = Array.from(
   ([, jobKey]) => jobKey,
 ).filter((jobKey): jobKey is string => jobKey !== undefined)
 
-const advisoryCheckContexts = new Set(['ci/measurements-report', 'notify-alignment'])
+const advisoryCheckContexts = new Set(['notify-alignment'])
 const matrixCheckJobs = new Set(['test', 'nix-check', 'nix-fod-check'])
 const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
 

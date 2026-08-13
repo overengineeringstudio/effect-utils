@@ -1,4 +1,7 @@
+import { createHash } from 'node:crypto'
+
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import type { Buck2MeasurementTarget, CiMeasurementExpectation } from '../ci.ts'
 import {
   checkoutStep,
   installNixStep,
@@ -24,7 +27,9 @@ export type CiMeasurementDescriptor = {
 
 export type CiMeasurementGatePolicy = {
   readonly enabled?: boolean
-  readonly comparisonMode?: 'budget' | 'historical' | 'paired'
+  readonly comparisonMode?: 'budget' | 'historical' | 'paired' | 'assertion'
+  readonly expectation?: CiMeasurementExpectation
+  readonly onNoVerdict?: 'advisory' | 'fail'
   readonly minBaselineSources?: number
   readonly minCurrentSamples?: number
   readonly minPairedSamples?: number
@@ -82,6 +87,13 @@ export type CiMeasurementObservation = {
     readonly pairedDeltaP75?: number
     readonly pairedDeltaMad?: number
     readonly pairedDeltaSamples?: readonly number[]
+    readonly samples?: readonly number[]
+  }
+  readonly assertion?: { readonly status: 'pass' | 'fail' | 'no-verdict' }
+  readonly evidence?: {
+    readonly status: 'complete' | 'partial'
+    readonly sampleIndexes?: readonly number[]
+    readonly rawSha256?: string
   }
 }
 
@@ -121,6 +133,11 @@ export type CiMeasurementArtifact = {
   }
   readonly target: CiMeasurementTarget
   readonly observations: readonly CiMeasurementObservation[]
+  readonly contract?: { readonly fingerprint: string; readonly snapshot: unknown }
+  readonly completeness?: {
+    readonly status: 'complete' | 'partial'
+    readonly missing: readonly { readonly observationId?: string; readonly reason: string }[]
+  }
   readonly attachments?: readonly {
     readonly name: string
     readonly path: string
@@ -254,6 +271,7 @@ export type CiMeasurementsComparisonStepOptions = {
   readonly baselineDir?: string
   readonly outputFile?: string
   readonly regressionMode?: 'off' | 'warn' | 'fail'
+  readonly assertionTargets?: readonly Buck2MeasurementTarget[]
   readonly prComment?: {
     readonly enabled?: boolean
     readonly title?: string
@@ -1955,8 +1973,14 @@ cat "$artifact_file"
   } as const
 }
 
-export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOptions) =>
-  ({
+export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOptions) => {
+  const assertionTargets = (opts?.assertionTargets ?? []).map((target) =>
+    Object.assign({}, target, {
+      fingerprint: createHash('sha256').update(JSON.stringify(target)).digest('hex'),
+    }),
+  )
+
+  return {
     name: 'Compare CI measurements with baseline',
     shell: 'bash',
     env: {
@@ -1965,6 +1989,7 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
       CI_MEASUREMENT_COMPARISON_FILE:
         opts?.outputFile ?? 'tmp/ci-measurements/measurement-comparison.json',
       CI_MEASUREMENT_REGRESSION_MODE: opts?.regressionMode ?? 'warn',
+      CI_MEASUREMENT_ASSERTION_TARGETS: JSON.stringify(assertionTargets),
       CI_MEASUREMENT_PR_COMMENT_ENABLED: opts?.prComment?.enabled === true ? 'true' : 'false',
       CI_MEASUREMENT_PR_COMMENT_TITLE: opts?.prComment?.title ?? 'CI Measurements',
       CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: String(opts?.prComment?.maxRows ?? 10),
@@ -1991,6 +2016,7 @@ current_dir="${dollar}{CI_MEASUREMENT_CURRENT_DIR:?CI_MEASUREMENT_CURRENT_DIR no
 baseline_dir="${dollar}{CI_MEASUREMENT_BASELINE_DIR:?CI_MEASUREMENT_BASELINE_DIR not set}"
 comparison_file="${dollar}{CI_MEASUREMENT_COMPARISON_FILE:?CI_MEASUREMENT_COMPARISON_FILE not set}"
 mode="${dollar}{CI_MEASUREMENT_REGRESSION_MODE:-warn}"
+assertion_targets="${dollar}{CI_MEASUREMENT_ASSERTION_TARGETS:-[]}"
 mkdir -p "$(dirname "$comparison_file")"
 
 if [ "$mode" = "off" ]; then
@@ -2008,13 +2034,20 @@ find "$current_dir" -name baseline -type d -prune -o -name measurements.json -ty
 } | sort -u >"$baseline_index" || true
 
 if [ ! -s "$current_index" ]; then
-  echo "::error::no current measurements.json files found under $current_dir"
-  exit 1
+  if [ "$assertion_targets" = "[]" ]; then
+    echo "::error::no current measurements.json files found under $current_dir"
+    exit 1
+  fi
+  echo "::warning::no current measurements.json files found; reconstructing required assertion rows"
 fi
 
 current_json="$comparison_file.current.json"
 baseline_json="$comparison_file.baseline.json"
-xargs -r jq -s '.' <"$current_index" >"$current_json"
+if [ -s "$current_index" ]; then
+  xargs -r jq -s '.' <"$current_index" >"$current_json"
+else
+  printf '[]\n' >"$current_json"
+fi
 if [ -s "$baseline_index" ]; then
   xargs -r jq -s '.' <"$baseline_index" >"$baseline_json"
 else
@@ -2026,6 +2059,7 @@ jq -n \
   --slurpfile baseline "$baseline_json" \
   --argjson schemaVersion 1 \
   --arg mode "$mode" \
+  --argjson assertionTargets "$assertion_targets" \
   --arg currentDir "$current_dir" \
   --arg baselineDir "$baseline_dir" \
   '
@@ -2067,7 +2101,7 @@ jq -n \
     def observations_by_key($docs):
       reduce $docs[]? as $doc
         ({};
-          reduce (($doc.observations // [])[]? | select(.value | type == "number")) as $obs
+          reduce (($doc.observations // [])[]? | select((.value | type == "number") and (.policy.comparisonMode // "") != "assertion")) as $obs
             (.;
               ($obs | observation_key($doc)) as $key
               | .[$key] = ((.[$key] // []) + [{
@@ -2145,6 +2179,80 @@ jq -n \
       default_policy($obs.name // "unknown"; $obs.unit // "unknown") + ($obs.policy // {});
     def policy_enabled($policy):
       if ($policy | has("enabled")) then $policy.enabled else true end;
+
+    def expectation_matches($expectation; $value):
+      if $expectation._tag == "exact" then $value == $expectation.value
+      elif $expectation._tag == "at-least" then $value >= $expectation.value
+      elif $expectation._tag == "at-most" then $value <= $expectation.value
+      elif $expectation._tag == "range" then $value >= $expectation.min and $value <= $expectation.max
+      else false
+      end;
+
+    def assertion_comparisons($docs; $targets):
+      reduce $targets[]? as $target
+        ({};
+          ([ $docs[]? | select(.target.kind == "buck2" and .target.id == $target.id) ]) as $matchingDocs
+          | reduce $target.assertions[] as $expected
+              (.;
+                ($matchingDocs[0] // null) as $doc
+                | ([ $doc.observations[]? | select(.id == $expected.id) ]) as $matchingObservations
+                | ($matchingObservations[0] // null) as $observed
+                | ($observed.statistics.samples // []) as $samples
+                | ($observed.evidence.sampleIndexes // []) as $indexes
+                | (
+                    ($matchingDocs | length) == 1
+                    and $doc.schemaVersion == 1
+                    and $doc.producer.measurementProtocol == "buck2-invalidation-v1"
+                    and $doc.contract.fingerprint == $target.fingerprint
+                    and $doc.contract.snapshot == ($target | del(.fingerprint))
+                    and $doc.completeness.status == "complete"
+                    and ($matchingObservations | length) == 1
+                    and $observed.policy.comparisonMode == "assertion"
+                    and $observed.policy.expectation == $expected.expectation
+                    and $observed.policy.onNoVerdict == "fail"
+                    and $observed.name == ("buck2." + (if $expected.metric == "actionCount" then "action_count" else "materialization_count" end))
+                    and $observed.unit == "count"
+                    and $observed.dimensions.phase == $expected.phase
+                    and $observed.dimensions.measurementProtocol == "buck2-invalidation-v1"
+                    and $observed.evidence.status == "complete"
+                    and $observed.statistics.sampleCount == $target.runs
+                    and $observed.statistics.measuredSampleCount == $target.runs
+                    and ($samples | length) == $target.runs
+                    and ($indexes | length) == $target.runs
+                    and (($indexes | unique | sort) == ([range(0; $target.runs)]))
+                    and ($samples | all(type == "number" and isfinite and floor == . and . >= 0))
+                    and (($observed.evidence.rawSha256 // "") | test("^[0-9a-f]{64}$"))
+                    and $observed.assertion.status == (if ($samples | all(expectation_matches($expected.expectation; .))) then "pass" else "fail" end)
+                  ) as $complete
+                | ($complete and ($samples | all(expectation_matches($expected.expectation; .)))) as $passing
+                | ("assertion|" + $target.id + "|" + $expected.id) as $key
+                | .[$key] = {
+                    status: (if $complete then (if $passing then "pass" else "fail" end) else "no_verdict" end),
+                    target: {kind:"buck2", id:$target.id, label:$target.label},
+                    observation: ($observed // {
+                      id:$expected.id,
+                      label:$expected.label,
+                      name:("buck2." + (if $expected.metric == "actionCount" then "action_count" else "materialization_count" end)),
+                      unit:"count",
+                      measurementKind:"deterministic",
+                      dimensions:{phase:$expected.phase, measurementProtocol:"buck2-invalidation-v1"},
+                      policy:{enabled:true, comparisonMode:"assertion", expectation:$expected.expectation, onNoVerdict:"fail"}
+                    }),
+                    current: (if ($samples | length) == 0 then null else ($samples | median) end),
+                    currentSamples: ($samples | length),
+                    baselineSources: 0,
+                    gatePolicy: {enabled:true, comparisonMode:"assertion", expectation:$expected.expectation, onNoVerdict:"fail"},
+                    comparisonMode:"assertion",
+                    gateable:$complete,
+                    gateReason:(if $complete then "eligible" else "incomplete_assertion_evidence" end),
+                    confidence:(if $complete then (if $passing then "assertion_satisfied" else "assertion_violated" end) else "no_verdict" end),
+                    direction:(if $complete and $passing then "unchanged" else "regressed" end),
+                    semanticImpactScore:(if $complete and $passing then 0 else 1 end),
+                    semanticImpactKind:(if $complete and $passing then "neutral" else "fail_boundary" end),
+                    assertion:{expected:$expected.expectation, samples:$samples}
+                  }
+              )
+        );
 
     def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples; $pairedDeltaMedian; $pairedDeltaP25; $pairedDeltaP75; $pairedDeltaMad; $pairedDeltaValues):
       $policy as $b
@@ -2367,10 +2475,13 @@ jq -n \
               }
           )
         | from_entries
-      ) as $comparisons
+      ) as $legacyComparisons
+    | assertion_comparisons($current[0]; $assertionTargets) as $assertionComparisons
+    | ($legacyComparisons + $assertionComparisons) as $comparisons
     | (
         if any($comparisons[]?; .status == "fail") then "fail"
         elif any($comparisons[]?; .status == "warn") then "warn"
+        elif any($comparisons[]?; .status == "no_verdict") then "partial"
         elif any($comparisons[]?;
           (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
           and (.gateReason == "missing_baseline"
@@ -2392,6 +2503,7 @@ jq -n \
             lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length),
             lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length),
             missingPairedDeltaCount: (map(select(.gateReason == "missing_paired_delta")) | length)
+            ,noVerdictCount: (map(select(.status == "no_verdict")) | length)
           }
         | . + {
             nonGateableCount: (.enabledCount - .gateableCount),
@@ -2432,6 +2544,11 @@ case "$status:$mode" in
     echo "::notice::CI measurement comparison is partial because one or more enabled observations are not gateable"
     ;;
 esac
+
+if jq -e 'any(.comparisons[]?; .comparisonMode == "assertion" and (.status == "fail" or .status == "no_verdict"))' "$comparison_file" >/dev/null; then
+  echo "::error::required CI measurement assertion failed or has no verdict"
+  exit_code=1
+fi
 
 if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   {
@@ -2751,6 +2868,12 @@ const interpretation = (row) => {
     tone: 'bad',
     color: '#ef4444',
   }
+  if (row.status === 'no_verdict') return {
+    label: 'No verdict - blocks merge',
+    detail: 'Required evidence is missing, malformed, or contradicts the configured assertion.',
+    tone: 'bad',
+    color: '#ef4444',
+  }
   if (row.status === 'warn') return {
     label: 'Regression - review',
     detail: 'Worse than the configured warning threshold.',
@@ -2931,9 +3054,10 @@ const dimensions = (row) => {
 
 const rank = (row) => {
   if (row.status === 'fail') return 0
-  if (row.status === 'warn') return 1
-  if (row.status === 'missing_baseline') return 3
-  return 2
+  if (row.status === 'no_verdict') return 1
+  if (row.status === 'warn') return 2
+  if (row.status === 'missing_baseline') return 4
+  return 3
 }
 
 const allRows = Object.values(comparison.comparisons || {}).sort((left, right) => {
@@ -2957,6 +3081,7 @@ const protocolLabel = (() => {
 })()
 const visibleLimit = Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10
 const comparableRows = allRows.filter((row) => typeof row.baseline === 'number')
+const assertionRows = allRows.filter((row) => row.comparisonMode === 'assertion')
 const hasComparableBaseline = comparableRows.length > 0
 const isDiagnosticRow = (row) =>
   row.status === 'missing_baseline' ||
@@ -2969,10 +3094,14 @@ const isZeroImpactRow = (row) =>
   !Number.isNaN(row.semanticImpactScore) &&
   Math.abs(row.semanticImpactScore) < 0.005
 const actionableComparableRows = comparableRows.filter((row) => !isDiagnosticRow(row))
-const visibleRows = (hasComparableBaseline
-  ? actionableComparableRows
-  : allRows.filter((row) => !isDiagnosticRow(row)).sort((left, right) => (right.current || 0) - (left.current || 0))
-).slice(0, visibleLimit)
+const visibleRows = [
+  ...assertionRows,
+  ...(hasComparableBaseline
+    ? actionableComparableRows
+    : allRows
+        .filter((row) => !isDiagnosticRow(row) && row.comparisonMode !== 'assertion')
+        .sort((left, right) => (right.current || 0) - (left.current || 0))),
+].slice(0, visibleLimit)
 const nonZeroImpactRows = actionableComparableRows.filter((row) => !isZeroImpactRow(row))
 const zeroImpactRows = actionableComparableRows.filter(isZeroImpactRow)
 const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
@@ -3004,6 +3133,7 @@ const confidenceSummary = (row) => {
 
 const scanDecision = (row) => {
   if (row.status === 'fail') return 'regression blocks'
+  if (row.status === 'no_verdict') return 'evidence missing - blocks'
   if (row.status === 'warn') return 'regression review'
   if (row.status === 'missing_baseline') return 'needs baseline'
   if (row.direction === 'improved') return 'faster'
@@ -3638,7 +3768,8 @@ if [ "$exit_code" -ne 0 ]; then
   exit "$exit_code"
 fi
 `,
-  }) as const
+  } as const
+}
 
 export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
   const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'
