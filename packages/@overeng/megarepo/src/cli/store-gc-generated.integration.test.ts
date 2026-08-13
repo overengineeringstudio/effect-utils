@@ -11,6 +11,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../lib/git.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
+import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
@@ -26,6 +27,7 @@ type JsonResult = {
   readonly reason?: string
   readonly outcome?: string
   readonly status: string
+  readonly message?: string
 }
 
 const generated = (results: ReadonlyArray<JsonResult>, artifactClass: string) =>
@@ -63,7 +65,7 @@ const runGc = ({
     if (previous === undefined) delete process.env['MEGAREPO_STORE']
     else process.env['MEGAREPO_STORE'] = previous
     const stdout = (yield* getStdoutLines).join('\n')
-    const json = stdout.length === 0 ? undefined : (JSON.parse(stdout) as Record<string, unknown>)
+    const json = stdout.length === 0 ? undefined : (decodeJson(stdout) as Record<string, unknown>)
     return {
       exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
       planSha256: json?.['planSha256'] as string | undefined,
@@ -109,12 +111,12 @@ const configure = ({
     if (manifest !== undefined) {
       yield* fs.writeFileString(
         manifest,
-        JSON.stringify({ version: 1, expiresAtMs, activeWorkspacePaths }),
+        encodeJson({ version: 1, expiresAtMs, activeWorkspacePaths }),
       )
     }
     yield* fs.writeFileString(
       config,
-      JSON.stringify({
+      encodeJson({
         generatedArtifacts: {
           enabled: true,
           retentionMs: DAY_MS,

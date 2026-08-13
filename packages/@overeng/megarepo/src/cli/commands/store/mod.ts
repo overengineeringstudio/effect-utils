@@ -159,13 +159,12 @@ const planGeneratedArtifacts = ({
   repoWorktrees: GeneratedArtifactRepoWorktrees
 }): Effect.Effect<
   { readonly results: ReadonlyArray<StoreGcResult>; readonly planSha256: string },
-  never,
-  Clock.Clock
+  never
 > =>
   Effect.gen(function* () {
     const generatedResults: StoreGcResult[] = []
-    const readAgentActivePaths: Effect.Effect<ReadonlySet<string> | undefined, never, Clock.Clock> =
-      Effect.gen(function* () {
+    const readAgentActivePaths: Effect.Effect<ReadonlySet<string> | undefined> = Effect.gen(
+      function* () {
         if (config.generatedArtifacts.agentLivenessManifest === undefined) return undefined
         const manifestContent = yield* fs
           .readFileString(config.generatedArtifacts.agentLivenessManifest)
@@ -179,12 +178,13 @@ const planGeneratedArtifacts = ({
           Number.isFinite(parsed.expiresAtMs) === false ||
           parsed.activeWorkspacePaths.some((path) => isNormalizedAbsolutePath(path) === false) ===
             true ||
-          parsed.expiresAtMs < (yield* Clock.currentTimeMillis)
+          parsed.expiresAtMs < Date.now()
         ) {
           return undefined
         }
         return new Set(parsed.activeWorkspacePaths.map(normalizeStorePath))
-      })
+      },
+    )
     for (const { repo, worktrees } of repoWorktrees) {
       for (const worktree of worktrees) {
         if (worktree.broken === true) continue
@@ -237,7 +237,7 @@ const planGeneratedArtifacts = ({
               ? yield* scanGeneratedArtifact({ path: artifactPath })
               : undefined
           const mtimeMs = traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
-          const candidateNow = yield* Clock.currentTimeMillis
+          const candidateNow = Date.now()
           const reason =
             cheapReason ??
             (traversal?._tag !== 'complete'
