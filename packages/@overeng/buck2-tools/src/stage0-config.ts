@@ -117,30 +117,34 @@ export const digestSemanticInputs = async ({
   const treeInputs: Array<string> = []
   const visitTree = async (directory: string): Promise<void> => {
     const entries = await readdir(directory, { withFileTypes: true })
-    for (const entry of entries.toSorted((left, right) =>
-      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
-    )) {
-      const path = resolve(directory, entry.name)
-      if (entry.isSymbolicLink() === true) {
-        throw new Error(`semantic input tree refuses symlink: ${path}`)
-      }
-      if (entry.isDirectory() === true) await visitTree(path)
-      else if (
-        entry.isFile() === true &&
-        (extname(entry.name) === '.rs' || basename(entry.name) === 'Cargo.toml')
-      ) {
-        treeInputs.push(path)
-      }
-    }
+    await Promise.all(
+      entries
+        .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
+        .map(async (entry) => {
+          const path = resolve(directory, entry.name)
+          if (entry.isSymbolicLink() === true) {
+            throw new Error(`semantic input tree refuses symlink: ${path}`)
+          }
+          if (entry.isDirectory() === true) await visitTree(path)
+          else if (
+            entry.isFile() === true &&
+            (extname(entry.name) === '.rs' || basename(entry.name) === 'Cargo.toml')
+          ) {
+            treeInputs.push(path)
+          }
+        }),
+    )
   }
-  for (const tree of semanticInputTrees) {
-    const canonicalTree = await realpath(resolve(canonicalRoot, tree))
-    relativeSemanticPath({ repoRoot: canonicalRoot, input: canonicalTree })
-    if ((await stat(canonicalTree)).isDirectory() === false) {
-      throw new Error(`semantic input tree must be a directory: ${tree}`)
-    }
-    await visitTree(canonicalTree)
-  }
+  await Promise.all(
+    semanticInputTrees.map(async (tree) => {
+      const canonicalTree = await realpath(resolve(canonicalRoot, tree))
+      relativeSemanticPath({ repoRoot: canonicalRoot, input: canonicalTree })
+      if ((await stat(canonicalTree)).isDirectory() === false) {
+        throw new Error(`semantic input tree must be a directory: ${tree}`)
+      }
+      await visitTree(canonicalTree)
+    }),
+  )
   const allInputs = [...semanticInputs, ...treeInputs]
   if (allInputs.length === 0) {
     throw new Error('at least one --semantic-input or --semantic-input-tree is required')
