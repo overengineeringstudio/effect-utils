@@ -73,9 +73,7 @@ const runCli = async ({
           ...(mutateDuringRealization === true ? { FAKE_NIX_MUTATE_SEMANTIC: '1' } : {}),
           ...(mutateDuringEveryRealization === true ? { FAKE_NIX_MUTATE_ALWAYS: '1' } : {}),
           ...(mutateAbaDuringRealization === true ? { FAKE_NIX_MUTATE_ABA: '1' } : {}),
-          ...(requireFilteredSnapshot === true
-            ? { FAKE_NIX_REQUIRE_FILTERED_SNAPSHOT: '1' }
-            : {}),
+          ...(requireFilteredSnapshot === true ? { FAKE_NIX_REQUIRE_FILTERED_SNAPSHOT: '1' } : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },

@@ -103,7 +103,9 @@ in
   # The resolver performs this census on every invocation, so files added or
   # removed after devenv evaluation still change the stage-0 fingerprint.
   semantic-input-trees = [ (repositoryRoot + "/rust/buck2-tools") ];
-  source-inputs = lib.mapAttrs (_: definition: lib.fileset.toList (mkSourceFileset definition.packageRoot)) toolDefinitions;
+  source-inputs = lib.mapAttrs (
+    _: definition: lib.fileset.toList (mkSourceFileset definition.packageRoot)
+  ) toolDefinitions;
   closure-tool = mkTool toolDefinitions.closure-tool;
   package-evidence = mkTool toolDefinitions.package-evidence;
   portable-toolchain = mkTool toolDefinitions.portable-toolchain;
