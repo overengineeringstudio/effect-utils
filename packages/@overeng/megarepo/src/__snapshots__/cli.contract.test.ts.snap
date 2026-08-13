@@ -133,7 +133,7 @@ COMMANDS
 
   - store fetch [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                                         Fetch all repositories in the store
 
-  - store gc [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all]                                                                                                                                                                                                        Garbage collect unused worktrees
+  - store gc [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all] [--generated-artifacts] [--expected-plan text]                                                                                                                                                         Garbage collect unused worktrees
 
   - store fix [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [<member>]                                                                                                                                                                                                                    Fix store issues
 
@@ -216,21 +216,21 @@ OPTIONS
 
 COMMANDS
 
-  - add [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <source>                                                                  Add a repository to the store (without adding to megarepo)
+  - add [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <source>                                                                           Add a repository to the store (without adding to megarepo)
 
-  - ls [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                            List repositories in the store
+  - ls [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                     List repositories in the store
 
-  - status [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                        Show store status and detect issues
+  - status [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                 Show store status and detect issues
 
-  - fetch [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                         Fetch all repositories in the store
+  - fetch [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                  Fetch all repositories in the store
 
-  - gc [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all]                                        Garbage collect unused worktrees
+  - gc [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all] [--generated-artifacts] [--expected-plan text]  Garbage collect unused worktrees
 
-  - fix [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [<member>]                                                    Fix store issues
+  - fix [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [<member>]                                                             Fix store issues
 
-  - worktree                                                                                                                                                     Manage worktrees in the store
+  - worktree                                                                                                                                                              Manage worktrees in the store
 
-  - worktree new [--ref text] [--base text] [--commit text] [--porcelain] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <repo>  Create a new worktree in the store
+  - worktree new [--ref text] [--base text] [--commit text] [--porcelain] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <repo>           Create a new worktree in the store
 
 ",
 }

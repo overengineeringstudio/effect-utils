@@ -34,6 +34,9 @@ type JsonResult = {
   readonly status: string
 }
 
+const samePath = (left: string, right: string) =>
+  left.replace(/\/+$/u, '') === right.replace(/\/+$/u, '')
+
 const runGc = ({
   cwd,
   storePath,
@@ -155,7 +158,9 @@ describe('mr store gc --generated-artifacts', () => {
         yield* configure({ config: f.config, manifest: f.manifest })
         const artifact = yield* oldIgnoredArtifact(f.worktree)
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(result.results.find((row) => row.path === artifact)?.outcome).toBe('would-delete')
+        expect(result.results.find((row) => samePath(row.path, artifact))?.outcome).toBe(
+          'would-delete',
+        )
         expect(result.planSha256).toMatch(/^[0-9a-f]{64}$/)
         const repeated = yield* runGc({
           cwd: f.outside,
@@ -183,7 +188,7 @@ describe('mr store gc --generated-artifacts', () => {
           utimes(`${artifact}/fixture.txt`, new Date(NOW - 1_000), new Date(NOW - 1_000)),
         )
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(result.results.find((row) => row.path === artifact)?.reason).toBe('retention')
+        expect(result.results.find((row) => samePath(row.path, artifact))?.reason).toBe('retention')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
@@ -202,15 +207,15 @@ describe('mr store gc --generated-artifacts', () => {
           storePath: f.storePath,
           args: ['--dry-run'],
         })
-        expect(missing.results.find((row) => row.path === artifact)?.outcome).toBe('unknown')
+        expect(missing.results.find((row) => samePath(row.path, artifact))?.outcome).toBe('unknown')
         yield* configure({ config: f.config, manifest: f.manifest, expiresAtMs: NOW - 1 })
         const expired = yield* runGc({
           cwd: f.outside,
           storePath: f.storePath,
           args: ['--dry-run'],
         })
-        expect(expired.results.find((row) => row.path === artifact)?.outcome).toBe('unknown')
-        expect(expired.results.find((row) => row.path === artifact)?.reason).toBe(
+        expect(expired.results.find((row) => samePath(row.path, artifact))?.outcome).toBe('unknown')
+        expect(expired.results.find((row) => samePath(row.path, artifact))?.reason).toBe(
           'agent-liveness-unavailable',
         )
       },
@@ -229,7 +234,9 @@ describe('mr store gc --generated-artifacts', () => {
         const fs = yield* FileSystem.FileSystem
         yield* fs.writeFileString(`${f.worktree}/README.md`, 'dirty')
         const dirty = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(dirty.results.find((row) => row.path === ignored)?.reason).toBe('dirty-worktree')
+        expect(dirty.results.find((row) => samePath(row.path, ignored))?.reason).toBe(
+          'dirty-worktree',
+        )
         yield* Git.runCommand({ args: ['add', 'README.md'], cwd: f.worktree })
         yield* Git.runCommand({ args: ['commit', '-m', 'restore clean fixture'], cwd: f.worktree })
         const dist = `${f.worktree}/dist`
@@ -245,7 +252,7 @@ describe('mr store gc --generated-artifacts', () => {
           storePath: f.storePath,
           args: ['--dry-run'],
         })
-        expect(nonIgnored.results.find((row) => row.path === dist)?.reason).toBe(
+        expect(nonIgnored.results.find((row) => samePath(row.path, dist))?.reason).toBe(
           'artifact-not-ignored',
         )
       },
@@ -284,7 +291,7 @@ describe('mr store gc --generated-artifacts', () => {
         const artifact = yield* oldIgnoredArtifact(f.worktree)
         yield* Effect.promise(() => symlink(f.outside, `${artifact}/outside`))
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(result.results.find((row) => row.path === artifact)).toMatchObject({
+        expect(result.results.find((row) => samePath(row.path, artifact))).toMatchObject({
           outcome: 'unknown',
           reason: 'artifact-scan-incomplete',
         })
@@ -308,7 +315,7 @@ describe('mr store gc --generated-artifacts', () => {
           generatedArtifacts: false,
         })
         expect(result.planSha256).toBeUndefined()
-        expect(result.results.some((row) => row.path === artifact)).toBe(false)
+        expect(result.results.some((row) => samePath(row.path, artifact))).toBe(false)
         expect(yield* FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(artifact)))).toBe(
           true,
         )
