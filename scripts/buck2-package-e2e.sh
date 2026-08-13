@@ -1,50 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="${1:?usage: buck2-package-e2e.sh REPO_ROOT LAUNCHER TARGET}"
-launcher="${2:?usage: buck2-package-e2e.sh REPO_ROOT LAUNCHER TARGET}"
-target="${3:?usage: buck2-package-e2e.sh REPO_ROOT LAUNCHER TARGET}"
-evidence_dir="$repo_root/tmp/buck2-evidence"
+repo_root="${1:?usage: buck2-package-e2e.sh REPO_ROOT BUCK2_BIN TARGET}"
+buck2_bin="${2:?usage: buck2-package-e2e.sh REPO_ROOT BUCK2_BIN TARGET}"
+target="${3:?usage: buck2-package-e2e.sh REPO_ROOT BUCK2_BIN TARGET}"
 awk_bin="${AWK_BIN:-awk}"
 nix_bin="${NIX_BIN:-nix}"
 jq_bin="${JQ_BIN:-jq}"
-run_id="package-e2e-$$-$RANDOM"
-receipt="$evidence_dir/$run_id/receipt.json"
 
 case "$target" in
   //*:* ) ;;
   * ) echo "buck2-package-e2e: target must be a canonical root-cell label" >&2; exit 64 ;;
 esac
 
-build_output="$("$launcher" \
-  --evidence-dir "$evidence_dir" \
-  --run-id "$run_id" \
-  --print-command \
-  -- build --config-file "${BUCK2_STAGE0_CONFIG:?BUCK2_STAGE0_CONFIG is required}" \
+build_output="$("$buck2_bin" \
+  build \
     "$target" "$target[descriptor]" \
     --show-full-output --local-only --no-remote-cache)"
-
-[ -f "$receipt" ] || {
-  echo "buck2-package-e2e: launcher did not write the expected receipt" >&2
-  exit 1
-}
-"$jq_bin" -e '
-  .schema == "buck-run-receipt/v1" and
-  .status.success == true and
-  .status.exitCode == 0 and
-  .observation.complete == true and
-  .observation.verdict == "complete" and
-  .observation.reasons == [] and
-  .observation.whatRan.exitCode == 0 and
-  .observation.whatRan.parseComplete == true and
-  .observation.whatRan.semanticComplete == true and
-  .observation.materialized.exitCode == 0 and
-  .observation.materialized.parseComplete == true and
-  .observation.materialized.semanticComplete == true
-' "$receipt" >/dev/null || {
-  echo "buck2-package-e2e: launcher receipt is unsuccessful or observationally incomplete" >&2
-  exit 1
-}
 
 # Buck renders canonical root-cell labels as `root//...` even when the caller
 # supplies the accepted shorthand `//...`.

@@ -144,9 +144,9 @@ def _strict_closure_projection_impl(ctx):
         package_ids.append(package.id)
     ctx.actions.run(
         args,
-        env = {"PATH": "/nonexistent"},
         category = "buck2_closure_stage",
         identifier = "strict",
+        local_only = True,
     )
     return [
         DefaultInfo(default_output = out),
@@ -200,9 +200,9 @@ def _closure_probe_impl(ctx):
             "--out",
             out.as_output(),
         ]),
-        env = {"PATH": "/nonexistent"},
         category = "buck2_closure_probe",
         identifier = "evidence",
+        local_only = True,
     )
     return [DefaultInfo(default_output = out)]
 

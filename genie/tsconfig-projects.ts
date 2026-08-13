@@ -3,7 +3,6 @@ import effectSocketTsconfig from '../context/effect/socket/tsconfig.json.genie.t
 import opentuiTsconfig from '../context/opentui/tsconfig.json.genie.ts'
 import { rootWorkspacePackages } from '../package.json.genie.ts'
 import agentSessionIngestTsconfig from '../packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts'
-import buck2LauncherTsconfig from '../packages/@overeng/buck2-launcher/tsconfig.json.genie.ts'
 import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.genie.ts'
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
@@ -50,7 +49,6 @@ const workspaceTsconfigsByPath = new Map<string, GenieOutput<TSConfigArgs>>([
   ['context/effect/socket', effectSocketTsconfig],
   ['context/opentui', opentuiTsconfig],
   ['packages/@overeng/agent-session-ingest', agentSessionIngestTsconfig],
-  ['packages/@overeng/buck2-launcher', buck2LauncherTsconfig],
   ['packages/@overeng/buck2-tools', buck2ToolsTsconfig],
   ['packages/@overeng/ci-tools', ciToolsTsconfig],
   ['packages/@overeng/content-address', contentAddressTsconfig],

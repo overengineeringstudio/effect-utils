@@ -12,15 +12,6 @@ let
     (workspaceRoot + "/buck2-tools/core/Cargo.toml")
     (lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/buck2-tools/core/src"))
   ];
-  resolverFixedFileset = lib.fileset.unions [
-    (workspaceRoot + "/Cargo.toml")
-    (workspaceRoot + "/Cargo.lock")
-    (repositoryRoot + "/rust-toolchain.toml")
-    (repositoryRoot + "/nix/buck2-stage0-tools.nix")
-    (repositoryRoot + "/flake.lock")
-    (repositoryRoot + "/flake.nix")
-  ];
-
   mkSourceFileset =
     packageRoot:
     lib.fileset.unions [
@@ -36,6 +27,11 @@ let
     };
 
   toolDefinitions = {
+    archive-tool = {
+      package = "buck2-archive-tool";
+      packageRoot = workspaceRoot + "/buck2-tools/archive-tool";
+      workspaceMember = "buck2-tools/archive-tool";
+    };
     closure-tool = {
       package = "buck2-closure-tool";
       packageRoot = workspaceRoot + "/buck2-tools/closure-tool";
@@ -45,6 +41,11 @@ let
       package = "buck2-package-evidence";
       packageRoot = workspaceRoot + "/buck2-tools/package-evidence";
       workspaceMember = "buck2-tools/package-evidence";
+    };
+    product = {
+      package = "buck2-product";
+      packageRoot = workspaceRoot + "/buck2-tools/product";
+      workspaceMember = "buck2-tools/product";
     };
   };
 
@@ -80,22 +81,18 @@ let
       '';
       doCheck = false;
       meta = {
-        description = "Nix-realized Buck2 stage-0 execution tool";
+        description = "Nix-realized Buck2 execution capability";
         license = lib.licenses.mit;
         inherit mainProgram;
       };
     };
 in
 {
-  # This list is also consumed by the lazy devenv resolver. Keeping source
-  # selection here makes the Nix derivations the sole stage-0 input authority.
-  semantic-inputs = lib.fileset.toList resolverFixedFileset;
-  # The resolver performs this census on every invocation, so files added or
-  # removed after devenv evaluation still change the stage-0 fingerprint.
-  semantic-input-trees = [ (repositoryRoot + "/rust/buck2-tools") ];
+  archive-tool = mkTool toolDefinitions.archive-tool;
   source-inputs = lib.mapAttrs (
     _: definition: lib.fileset.toList (mkSourceFileset definition.packageRoot)
   ) toolDefinitions;
   closure-tool = mkTool toolDefinitions.closure-tool;
   package-evidence = mkTool toolDefinitions.package-evidence;
+  product = mkTool toolDefinitions.product;
 }

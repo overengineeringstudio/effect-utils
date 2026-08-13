@@ -124,6 +124,7 @@ let
           value = exactAttrs "descriptor.runtime" [
             "architecture"
             "dylibs"
+            "inspectionContract"
             "installNamePolicy"
             "kind"
             "minimumOs"
@@ -132,9 +133,15 @@ let
           ] runtime;
         in
         force [
+          (ensure (
+            value.inspectionContract == "mach-o-dynamic/v1"
+          ) "descriptor.runtime.inspectionContract must be mach-o-dynamic/v1")
           (ensure (nonEmptyString value.architecture) "descriptor.runtime.architecture must be a non-empty string")
-          (ensure (nonEmptyString value.minimumOs) "descriptor.runtime.minimumOs must be a non-empty string")
-          (validateStringList "descriptor.runtime.dylibs" value.dylibs)
+          (ensure (
+            nonEmptyString value.minimumOs
+            && builtins.match "[0-9]+\\.[0-9]+(\\.[0-9]+)?" value.minimumOs != null
+          ) "descriptor.runtime.minimumOs must be a canonical version")
+          (validateStructuredStringList "descriptor.runtime.dylibs" value.dylibs)
           (ensure (nonEmptyString value.installNamePolicy) "descriptor.runtime.installNamePolicy must be a non-empty string")
           (ensure (nonEmptyString value.rpathPolicy) "descriptor.runtime.rpathPolicy must be a non-empty string")
           (ensure (nonEmptyString value.signingPolicy) "descriptor.runtime.signingPolicy must be a non-empty string")
@@ -211,6 +218,39 @@ let
             (ensure (
               expectedGlibcInterpreter != null && runtime.interpreter == expectedGlibcInterpreter
             ) "descriptor.runtime.interpreter does not prove the declared glibc architecture")
+          ]
+        else if runtime.kind == "mach-o-dynamic" then
+          [
+            (ensure (
+              platform.os == "darwin"
+            ) "descriptor.runtime mach-o-dynamic requires descriptor.platform.os = darwin")
+            (ensure (
+              platform.abi == "darwin"
+            ) "descriptor.runtime mach-o-dynamic/v1 requires descriptor.platform.abi = darwin")
+            (ensure (
+              runtime.architecture == (
+                {
+                  x86_64 = "x86_64";
+                  aarch64 = "arm64";
+                }
+                .${platform.architecture} or null
+              )
+            ) "descriptor.runtime.architecture must match descriptor.platform.architecture")
+            (ensure (builtins.elem platform.architecture [
+              "x86_64"
+              "aarch64"
+            ]) "descriptor.runtime mach-o-dynamic architecture is unsupported")
+            (ensure (
+              runtime.installNamePolicy == "system-only/v1"
+            ) "descriptor.runtime.installNamePolicy must be system-only/v1")
+            (ensure (runtime.rpathPolicy == "empty/v1") "descriptor.runtime.rpathPolicy must be empty/v1")
+            (ensure (runtime.signingPolicy == "adhoc/v1") "descriptor.runtime.signingPolicy must be adhoc/v1")
+            (ensure (
+              runtime.dylibs == builtins.sort builtins.lessThan runtime.dylibs
+            ) "descriptor.runtime.dylibs must be sorted")
+            (ensure (builtins.all (
+              dylib: builtins.match "(/usr/lib|/System/Library)/.*" dylib != null
+            ) runtime.dylibs) "descriptor.runtime.dylibs must use system install names")
           ]
         else
           [ ];

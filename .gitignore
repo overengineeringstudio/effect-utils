@@ -24,6 +24,10 @@ __pycache__/
 
 # Buck2 daemon and materialized build state
 buck-out/
+# Executor-local, Nix-realized Buck capability projection
+/.buck2/capabilities/
+/.buck2/capabilities
+/.buck2/capability-generations/
 
 # Direnv
 repos/
