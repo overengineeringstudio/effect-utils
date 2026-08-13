@@ -178,7 +178,7 @@ const planGeneratedArtifacts = ({
           Number.isFinite(parsed.expiresAtMs) === false ||
           parsed.activeWorkspacePaths.some((path) => isNormalizedAbsolutePath(path) === false) ===
             true ||
-          parsed.expiresAtMs < Date.now()
+          parsed.expiresAtMs < (yield* Clock.currentTimeMillis)
         ) {
           return undefined
         }
@@ -237,7 +237,7 @@ const planGeneratedArtifacts = ({
               ? yield* scanGeneratedArtifact({ path: artifactPath })
               : undefined
           const mtimeMs = traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
-          const candidateNow = Date.now()
+          const candidateNow = yield* Clock.currentTimeMillis
           const reason =
             cheapReason ??
             (traversal?._tag !== 'complete'
