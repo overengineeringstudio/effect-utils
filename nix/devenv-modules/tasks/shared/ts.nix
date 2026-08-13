@@ -301,8 +301,17 @@ let
 
       exit "$_tsc_exit"
     else
-      # No OTEL: run without diagnostics overhead
-      ${compilerBin} ${tscInvocation} ${extraArgs}
+      # No OTEL: retain the compiler stream and make an otherwise silent
+      # non-zero exit diagnosable in CI.
+      _tsc_output="$(mktemp)"
+      trap 'rm -f "$_tsc_output"' EXIT
+      _tsc_exit=0
+      ${compilerBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
+      if [ "$_tsc_exit" -ne 0 ]; then
+        echo "ts: compiler failed (exit=$_tsc_exit bytes=$(wc -c < "$_tsc_output"))" >&2
+      fi
+      cat "$_tsc_output"
+      exit "$_tsc_exit"
     fi
   '';
 
