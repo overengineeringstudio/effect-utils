@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mode="${1:?usage: buck2-otel-scrape-nix-admission.sh smoke|admit STAGE0_CONFIG TOOLCHAIN_CONFIG}"
-stage0_config="${2:?stage-0 config is required}"
-toolchain_config="${3:?toolchain config is required}"
+mode="${1:?usage: buck2-otel-scrape-nix-admission.sh smoke|admit TOOLCHAIN_CONFIG}"
+toolchain_config="${2:?Rust toolchain config is required}"
 repo_root="${DEVENV_ROOT:-$PWD}"
 buck2_bin="${BUCK2_BIN:?BUCK2_BIN is required}"
 nix_bin="${NIX_BIN:?NIX_BIN is required}"
@@ -32,7 +31,6 @@ trap cleanup EXIT
 buck_output="$($buck2_bin \
   --isolation-dir "$isolation" \
   build \
-  --config-file "$stage0_config" \
   --config-file "$toolchain_config" \
   --target-platforms //buck2/platforms:target_x86_64_linux_musl_static \
   //packages/@overeng/otel-scrape:product \
