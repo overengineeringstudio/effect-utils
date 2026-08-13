@@ -152,10 +152,14 @@ let
         "''${_otel_instr[@]}" ${compilerBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
       fi
 
-      # Always re-surface compiler errors and lints to the user. The raw output
-      # was captured to a temp file for parsing, so without this the diagnostics
-      # path would suppress everything tsgo prints (notably its Effect lints).
-      filter_diagnostics_noise "$_tsc_output"
+      # Preserve the complete compiler failure stream. Besides making compiler
+      # crashes diagnosable, this avoids mistaking a new diagnostic shape for
+      # timing scaffolding. Successful checks retain the concise filtered view.
+      if [ "$_tsc_exit" -ne 0 ]; then
+        cat "$_tsc_output"
+      else
+        filter_diagnostics_noise "$_tsc_output"
+      fi
 
       if [[ "${tscInvocation}" == --build* ]]; then
         # Parse task-scoped trace context to get trace ID and current task span ID.
