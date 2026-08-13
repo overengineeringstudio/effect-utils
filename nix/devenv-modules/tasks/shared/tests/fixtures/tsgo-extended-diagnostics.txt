@@ -3,7 +3,7 @@
     * packages/@overeng/effect-path/tsconfig.json
 12:13:31 AM - Building project 'context/effect/socket/tsconfig.json'...
 
-packages/@overeng/effect-path/src/index.ts(12,3): warning TS377030: This has unknown in the error channel which is not recommended. effect(anyUnknownInErrorContext)
+12:34:56 PM - packages/@overeng/effect-path/src/index.ts(12,3): warning TS377030: This has unknown in the error channel which is not recommended. effect(anyUnknownInErrorContext)
 Files:                    689
 Lines:                 271605
 Identifiers:           264054

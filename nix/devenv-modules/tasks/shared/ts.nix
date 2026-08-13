@@ -132,7 +132,9 @@ let
       # aggregate-summary lines (`Building project`, timestamped project status,
       # `Projects in scope:`, `Aggregate ...`).
       filter_diagnostics_noise() {
-        grep -v -E "^([0-9]{1,2}:[0-9]{2}:[0-9]{2} (AM|PM) - |Files:|Lines:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Memory allocs:|Assignability|Identity|Subtype|Strict subtype|I/O|Config time:|BuildInfo read time:|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Changes compute time:|Check time:|Emit time:|Total time:|Build time:|Projects in scope:|Projects built:|Timestamps only updates:|Aggregate)" "$1" || true
+        sed -E 's/^[0-9]{1,2}:[0-9]{2}:[0-9]{2} (AM|PM) - //' "$1" \
+          | grep -v -E "^(Files:|Lines:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Memory allocs:|Assignability|Identity|Subtype|Strict subtype|I/O|Config time:|BuildInfo read time:|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Changes compute time:|Check time:|Emit time:|Total time:|Build time:|Projects in scope:|Projects built:|Timestamps only updates:|Aggregate)" \
+          || true
       }
 
       # Wrap ONLY the compiler with otel-scrape (adapter=none) for a `tsgo`-named
