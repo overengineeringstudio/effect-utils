@@ -13,3 +13,9 @@ configured_exec(
     path = read_config("buck2_stage0", "package_evidence_tool", ""),
     visibility = ["PUBLIC"],
 )
+
+configured_exec(
+    name = "typescript_product_tool",
+    path = read_config("buck2_stage0", "typescript_product_tool", ""),
+    visibility = ["PUBLIC"],
+)

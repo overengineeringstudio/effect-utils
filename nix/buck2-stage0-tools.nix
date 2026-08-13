@@ -46,6 +46,11 @@ let
       packageRoot = workspaceRoot + "/buck2-tools/package-evidence";
       workspaceMember = "buck2-tools/package-evidence";
     };
+    typescript-product = {
+      package = "buck2-typescript-product";
+      packageRoot = workspaceRoot + "/buck2-tools/typescript-product";
+      workspaceMember = "buck2-tools/typescript-product";
+    };
   };
 
   mkTool =
@@ -98,4 +103,5 @@ in
   ) toolDefinitions;
   closure-tool = mkTool toolDefinitions.closure-tool;
   package-evidence = mkTool toolDefinitions.package-evidence;
+  typescript-product = mkTool toolDefinitions.typescript-product;
 }

@@ -229,6 +229,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "buck2-typescript-product"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "buck2-tool-core",
+ "clap",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tempfile",
+ "walkdir",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
