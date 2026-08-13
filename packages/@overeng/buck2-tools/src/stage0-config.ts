@@ -31,16 +31,6 @@ export const stage0Tools = [
     flakeAttribute: 'buck2-package-evidence',
     executable: 'bin/buck2-package-evidence',
   },
-  {
-    configKey: 'portable_toolchain',
-    flakeAttribute: 'buck2-portable-toolchain',
-    executable: 'bin/buck2-portable-toolchain',
-  },
-  {
-    configKey: 'portable_toolchain_fixture',
-    flakeAttribute: 'buck2-portable-toolchain-fixture',
-    executable: 'bin/buck2-portable-toolchain-fixture',
-  },
 ] as const
 
 export interface SemanticInputDigest {

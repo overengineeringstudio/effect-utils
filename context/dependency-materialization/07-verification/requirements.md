@@ -4,8 +4,8 @@
 
 Verification defines the proof, benchmark, and regression architecture for
 dependency materialization. It refines DMP-R11 and DMP-R16 through DMP-R20 and
-composes the live pnpm, projection, Nix prepared-deps, store-authority, Buck2
-evidence, and observability subsystems.
+composes the live pnpm, projection, Nix prepared-deps, store-authority, and
+observability subsystems. External build adapters remain consumer-owned.
 
 ## Assumptions
 

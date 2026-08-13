@@ -1,127 +1,66 @@
-# Buck Evidence and Verification Requirements
+# Buck Evidence and OpenTelemetry Requirements
 
-## Context
-
-This subsystem defines the evidence needed to explain and admit Buck graph,
-execution, cache, artifact, and performance claims. It does not assign build or
-deployment authority; it makes the observations used by those decisions
-explicit, comparable, and auditable.
+This subsystem defines native evidence, its observational adapter, and
+failure-capable verification. It refines BUCK-R11 through BUCK-R15.
 
 ## Assumptions
 
-- **BUCK.EVID-A01 Native authority:** Buck event logs and build reports are the
-  authority for what Buck observed and executed. Derived records may summarize
-  and join that evidence but may not replace or contradict it.
-- **BUCK.EVID-A02 Generated graph authority:** Generator-owned graph declarations and
-  their checked-in projections define intended graph topology. Execution
-  success alone does not prove that the generated graph is fresh.
-- **BUCK.EVID-A03 Layered evidence:** Fast fixtures protect contracts on every relevant
-  change. Expensive, repeated, cross-host, or destructive proofs may run on a
-  broader admission lane.
+- **BUCK.OBS-A01 Native evidence authority:** Buck's build report, event log,
+  invocation ID, and supported derived queries remain execution truth.
+- **BUCK.OBS-A02 Control-plane trace:** The calling task or CI control plane
+  owns the trace root, retention, sampling, routing, and admission decision.
+- **BUCK.OBS-A03 Collector export:** OTLP delivery policy belongs to the
+  OpenTelemetry SDK and Collector path, not the Buck action result.
 
 ## Acceptable Tradeoffs
 
-- **BUCK.EVID-T01 Selective execution:** CI may execute only affected graph compilers
-  and target shards when a complete, fail-closed graph audit justifies the
-  selection.
-- **BUCK.EVID-T02 Sanitized receipts:** Public CI may retain a sanitized,
-  content-addressed receipt instead of unrestricted native logs when the
-  receipt preserves evidence provenance and observation completeness.
+- **BUCK.OBS-T01 Versioned rich decoder:** Rich event-log interpretation may be
+  bound to one Buck version and degrade to stable evidence fields when the
+  decoder does not admit a new version.
+- **BUCK.OBS-T02 Transitional TypeScript launcher:** The existing launcher may
+  remain while direct invocation and native-evidence processing prove parity.
+  A Rust observer is admitted only for a measured remaining gap. The launcher
+  and custom receipt are then deleted unless a durable consumer is named.
 
 ## Requirements
 
-### Must preserve native evidence
+### Must preserve execution truth
 
-- **BUCK.EVID-R01 Native evidence retention:** Every authoritative Buck invocation
-  must retain or content-address its event log and build report and record the
-  Buck invocation identity, command kind, requested targets, exact revision,
-  platform, status, and duration.
-- **BUCK.EVID-R02 Complete observation:** A receipt must state whether event-log,
-  build-report, action, output, cache, and materialization observations are
-  complete. Missing or unparseable evidence must be represented explicitly and
-  must not be converted to an empty observation or zero measurement.
-- **BUCK.EVID-R03 Outcome separation:** Evidence must distinguish DICE reuse, local
-  cache hit or miss, remote cache hit or miss, local execution, remote
-  execution, materialization-only work, failure, cancellation, and unknown
-  outcome.
-- **BUCK.EVID-R04 Safe derivation:** Public receipts must exclude credentials, raw
-  environments, unrestricted command lines, host-private paths, and other
-  sensitive data. Redaction must not remove the identities needed to join a
-  receipt to its native evidence.
+- **BUCK.OBS-R01 Native capture:** Authoritative invocations must request and
+  retain a build report, event log, and invocation identity under an explicit
+  retention policy.
+- **BUCK.OBS-R02 Lossless correlation:** Normalized telemetry must link to the
+  native evidence and configured operation without replacing or rewriting it.
+- **BUCK.OBS-R03 Honest interpretation:** Unsupported evidence versions,
+  incomplete files, and unavailable comparison dimensions must be represented
+  explicitly; no exact cause may be inferred without causal proof.
 
-### Must preserve verdict semantics
+### Must provide first-class telemetry
 
-- **BUCK.EVID-R05 Three-way verdict:** Every proof must report exactly one semantic
-  verdict: `pass`, `fail`, or `no-verdict`. Execution dispositions such as
-  skipped, cancelled, unavailable, timed out, or incomplete must remain
-  separate from the semantic verdict.
-- **BUCK.EVID-R06 No-verdict integrity:** Missing prerequisites, failed experimental
-  controls, incomplete native observations, runner pressure, or infrastructure
-  corruption must produce `no-verdict`. Such records must not be counted as
-  passing or failing samples, establish parity, or advance admission.
-- **BUCK.EVID-R07 Fail-closed policy:** When a required proof produces `no-verdict`,
-  admission policy must select a proven fallback, require a rerun, or block the
-  transition. The policy failure must not rewrite the underlying evidence as a
-  product failure.
+- **BUCK.OBS-R04 Trace propagation:** The control plane must represent the Buck
+  invocation below its task span using W3C trace context. Any interposed observer
+  must preserve that context and parentage.
+- **BUCK.OBS-R05 Stable semantic conventions:** Span names, result classes,
+  evidence links, platform identity, cache outcome, and product correlation must
+  be versioned and align with OpenTelemetry CI/CD conventions where applicable.
+- **BUCK.OBS-R06 Cardinality control:** Metrics must contain only bounded
+  operation kind, result class, platform class, and cache class. Labels,
+  invocation IDs, digests, paths, and evidence URLs must not be metric labels.
+- **BUCK.OBS-R07 Sanitization:** Raw argv, environment values, host paths, and
+  repository-private identities must be omitted or transformed by explicit
+  policy before export.
+- **BUCK.OBS-R08 Export independence:** OTLP failure must not change Buck's exit
+  code, stdout, stderr, cancellation, or signal behavior.
 
-### Must prove causal invalidation
+### Must prove the observation and authority seam
 
-- **BUCK.EVID-R08 Harness sensitivity:** An invalidation harness used for admission
-  must prove RED on a deliberately broken dependency edge or observation seam
-  and GREEN on the corrected seam under the same mutation.
-- **BUCK.EVID-R09 Exact controls:** Invalidation evidence must distinguish warm no-op,
-  metadata-only, relevant-content, irrelevant-content, restoration,
-  configuration, provenance, and error-producing changes and assert the exact
-  affected action identities or an explicitly bounded action set.
-- **BUCK.EVID-R10 Observable consequence:** A relevant mutation must change an
-  independently observable output digest, behavior, diagnostic, or declared
-  evidence field. Action execution alone is insufficient causal proof.
-- **BUCK.EVID-R11 Restoration:** Mutation proofs must restore source bytes and
-  relevant metadata, terminate or isolate their daemon state, remove temporary
-  worktrees, and reproduce the original output identity before reporting
-  completion.
-
-### Must make benchmarks comparable
-
-- **BUCK.EVID-R12 Comparable subjects:** A benchmark comparison must name the exact
-  revisions, work contract, target set, tool versions, platform and runner
-  class, cache treatment, isolation treatment, repetitions, warmups, and
-  observation completeness for every subject.
-- **BUCK.EVID-R13 Controlled phases:** Cold, warm, daemon-restart, relevant edit,
-  irrelevant edit, and remote-cache phases may be compared only when their
-  preconditions were successfully controlled. A failed clean, kill, seed, or
-  cache-isolation control yields `no-verdict` for that phase.
-- **BUCK.EVID-R14 Honest aggregation:** Benchmark summaries must exclude no-verdict
-  samples, report the included and excluded counts and reasons, preserve raw
-  observations, and avoid cross-engine conclusions unless equivalent work is
-  independently established.
-
-### Must audit generated topology
-
-- **BUCK.EVID-R15 Derived graph index:** Every generated Buck projection must have a
-  deterministic audit index derived from the authoritative semantic graph and
-  projection metadata. The index may name owners, outputs, target labels,
-  semantic inputs by role, compiler groups, platforms, and output digests, but
-  must not redefine package or target semantics.
-- **BUCK.EVID-R16 Complete selection:** A graph audit must map every relevant changed
-  path to one or more freshness or execution shards. Unknown ownership,
-  ambiguous ownership, an invalid graph record, or a missing output must select
-  the conservative full check or fail closed.
-- **BUCK.EVID-R17 Runtime-neutral contract:** A helper's semantic CLI, output schema,
-  normalization, and error categories must be separable from its implementation
-  runtime. Runtime replacement must invalidate helper-dependent actions and
-  provenance without rewriting semantically unchanged graph projections.
-
-### Must make CI decisions auditable
-
-- **BUCK.EVID-R18 CI decision report:** Every CI selection must emit a deterministic
-  report containing compared revisions, changed-path and graph-record digests,
-  selected and skipped shards, reasons, fallback state, executed compilers,
-  evidence references, and final verdict.
-- **BUCK.EVID-R19 Stable admission meaning:** Required CI checks must represent stable
-  semantic guarantees. Target shards, helper runtimes, and execution jobs may
-  change without changing the meaning of the required check.
-- **BUCK.EVID-R20 Evidence availability:** Sanitized receipts, graph-audit reports,
-  CI decision reports, benchmark observations, and failure diagnostics must be
-  retained long enough to review an admission or regression claim and must be
-  uploaded on both success and failure when they exist.
+- **BUCK.OBS-R09 Wrapper justification and transparency:** Direct Buck is the
+  baseline. Any interposed observer must identify the unmet requirement and
+  prove parity for arguments, environment policy, exit status, signals,
+  cancellation, stdout, stderr, and native evidence.
+- **BUCK.OBS-R10 Failure-capable E2E:** Verification must capture a real task
+  trace through Buck and independent Nix import, plus negative controls for
+  missing evidence, failed export, malformed evidence, and import rejection.
+- **BUCK.OBS-R11 No-verdict semantics:** Missing required evidence yields no
+  verdict. Consumer admission may hold, while the recorded Buck result remains
+  unchanged.

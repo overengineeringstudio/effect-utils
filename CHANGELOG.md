@@ -53,8 +53,8 @@ All notable changes to this project will be documented in this file.
   keeps each package's source local while including the exact workspace contract.
 - **Buck2 build foundation**: add generated package-local Buck targets, an exact
   pnpm closure compiler with content/context/task identities, deterministic
-  package evidence archives, a Nix-exported portable-toolchain boundary, and a
-  hardened Buck-artifact-to-Nix import bridge. A thin Nix-built launcher retains
+  package evidence archives, and a hardened Buck-artifact-to-Nix import bridge.
+  A thin Nix-built launcher retains
   Buck reports and emits fail-closed receipts; devenv exposes local-only E2E and
   benchmark gates. Remote cache access and remote execution stay disabled until
   authoritative package materialization, trust, and cross-platform gates pass.
@@ -63,14 +63,6 @@ All notable changes to this project will be documented in this file.
   pins, sealed admission bundles, independent durability and restore proof,
   zero-network activation, conservative collection, separate reuse planes, and
   an admitted on-demand Prelude CPython action-toolchain bootstrap boundary.
-- **Buck2 Rust platform prototype**: add explicit x86_64 Linux glibc-dynamic and
-  musl-static target boundaries plus a local-only, Nix-store Rust toolchain
-  probe that produces and inspects a self-contained static PIE. Bind the probe
-  to an exact Buck execution constraint and one Nix-authored toolchain config
-  so platform claims cannot silently fall back or drift from tool identities.
-  Use nixpkgs' version-matched prebuilt musl Rust toolchain instead of rebuilding
-  the target standard library from source in each uncached CI environment, and
-  retain a task-scoped GC root until all Buck invocations finish.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema

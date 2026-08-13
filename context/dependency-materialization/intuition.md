@@ -7,7 +7,7 @@ Dependency materialization is the contract for turning a workspace dependency
 graph into something tools can execute against. The hard part is that the same
 graph is realized through several mechanisms: a live `node_modules` tree during
 development, a prepared dependency artifact in Nix, a job-local CI install, and
-eventually Buck2 evidence or actions.
+declared inputs to an external build system.
 
 The VRS is shaped around one rule: immutable dependency work may have a shared
 identity, but mutable realization state always belongs to one root.
@@ -16,7 +16,7 @@ identity, but mutable realization state always belongs to one root.
   declared inputs                         prepared profileKey
         |                                        |
         v                                        v
-  live pnpm root                         Nix data + Buck2 evidence
+  live pnpm root                         Nix data + external adapter
   mutable/repairable                     immutable/declared
         |
         +---- root-owned projection + observability
@@ -31,12 +31,13 @@ owner:
   classification.
 - Shared package content is repaired or garbage-collected only by an authority
   that can see every active root.
-- Buck2 consumes profile evidence before it owns live dependency mutation.
+- External build adapters consume immutable dependency evidence and never own
+  live dependency mutation through this contract.
 
 This is why the VRS is hierarchical. The root DMP contract defines shared
 identity and authority vocabulary. Child systems define each realization:
-live pnpm, projections, Nix prepared deps, store authority, Buck2 evidence, and
-producer observability. Verification composes those children: fixture checks
+live pnpm, projections, Nix prepared deps, store authority, and producer
+observability. Verification composes those children: fixture checks
 prove contract regressions, synthetic proofs preserve known failure modes, and
 real-workload benchmarks decide when a sharing or default change is actually
 better.
