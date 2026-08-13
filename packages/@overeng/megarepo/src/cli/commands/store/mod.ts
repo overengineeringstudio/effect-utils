@@ -147,6 +147,8 @@ type GeneratedArtifactRepoWorktrees = ReadonlyArray<{
   readonly worktrees: ReadonlyArray<CollectedWorktree>
 }>
 
+const encodeCanonicalPlan = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+
 const planGeneratedArtifacts = ({
   config,
   fs,
@@ -291,9 +293,7 @@ const planGeneratedArtifacts = ({
       .toSorted((left, right) => compareCanonicalPlanPaths({ left: left.path, right: right.path }))
     return {
       results: generatedResults,
-      planSha256: createHash('sha256')
-        .update(Schema.encodeSync(Schema.parseJson(Schema.Unknown))(canonicalPlan))
-        .digest('hex'),
+      planSha256: createHash('sha256').update(encodeCanonicalPlan(canonicalPlan)).digest('hex'),
     }
   })
 
