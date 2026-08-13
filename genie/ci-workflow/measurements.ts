@@ -2044,7 +2044,23 @@ fi
 current_json="$comparison_file.current.json"
 baseline_json="$comparison_file.baseline.json"
 if [ -s "$current_index" ]; then
-  xargs -r jq -s '.' <"$current_index" >"$current_json"
+  verified_current_dir="$(mktemp -d)"
+  verified_index="$(mktemp)"
+  verified_count=0
+  while IFS= read -r measurement_file; do
+    verified_count=$((verified_count + 1))
+    raw_file="$(dirname "$measurement_file")/raw.jsonl"
+    raw_sha256=""
+    if [ -f "$raw_file" ]; then
+      raw_sha256="$(sha256sum "$raw_file" | awk '{print $1}')"
+    fi
+    verified_file="$verified_current_dir/$verified_count.json"
+    jq --arg rawSha256 "$raw_sha256" \
+      '. + {_consumerVerification:{rawSha256:(if $rawSha256 == "" then null else $rawSha256 end)}}' \
+      "$measurement_file" >"$verified_file"
+    printf '%s\n' "$verified_file" >>"$verified_index"
+  done <"$current_index"
+  xargs -r jq -s '.' <"$verified_index" >"$current_json"
 else
   printf '[]\n' >"$current_json"
 fi
@@ -2062,6 +2078,7 @@ jq -n \
   --argjson assertionTargets "$assertion_targets" \
   --arg currentDir "$current_dir" \
   --arg baselineDir "$baseline_dir" \
+  --arg expectedSubjectSha "${dollar}{CI_MEASUREMENT_SUBJECT_SHA:-${dollar}{GITHUB_SHA:-unknown}}" \
   '
     def identity_dimensions:
       (.dimensions // {})
@@ -2206,6 +2223,7 @@ jq -n \
                     and $doc.contract.fingerprint == $target.fingerprint
                     and $doc.contract.snapshot == ($target | del(.fingerprint))
                     and $doc.completeness.status == "complete"
+                    and $doc.subject.sha == $expectedSubjectSha
                     and ($matchingObservations | length) == 1
                     and $observed.policy.comparisonMode == "assertion"
                     and $observed.policy.expectation == $expected.expectation
@@ -2222,6 +2240,7 @@ jq -n \
                     and (($indexes | unique | sort) == ([range(0; $target.runs)]))
                     and ($samples | all(type == "number" and isfinite and floor == . and . >= 0))
                     and (($observed.evidence.rawSha256 // "") | test("^[0-9a-f]{64}$"))
+                    and $observed.evidence.rawSha256 == $doc._consumerVerification.rawSha256
                     and $observed.assertion.status == (if ($samples | all(expectation_matches($expected.expectation; .))) then "pass" else "fail" end)
                   ) as $complete
                 | ($complete and ($samples | all(expectation_matches($expected.expectation; .)))) as $passing
@@ -2591,8 +2610,10 @@ ${
     ? String.raw`if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
   if [ "${dollar}{GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
     echo "::notice::CI measurement PR comments are produced only by pull_request workflows; skipping comment for event ${dollar}{GITHUB_EVENT_NAME:-unknown}"
-    exit 0
+    exit "$exit_code"
   fi
+
+  set +e
 
   can_render_pr_comment=true
   is_fork_pr=false
@@ -2608,33 +2629,27 @@ ${
     if command -v "$tool_name" >/dev/null 2>&1; then
       return 0
     fi
-    if ! command -v nix >/dev/null 2>&1; then
-      return 1
-    fi
-    if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
-      export PATH="$tool_out/bin:$PATH"
-    fi
-    command -v "$tool_name" >/dev/null 2>&1
+    return 1
   }
 
   if ! ensure_ci_measurement_tool gh gh; then
-    echo "::error::gh is not available; unable to publish required CI measurement PR comment"
+    echo "::notice::gh is not available; skipping optional CI measurement PR comment"
     can_render_pr_comment=false
   fi
   if ! ensure_ci_measurement_tool node nodejs; then
-    echo "::error::node is not available; unable to publish required CI measurement PR comment"
+    echo "::notice::node is not available; skipping optional CI measurement PR comment"
     can_render_pr_comment=false
   fi
   if ! command -v jq >/dev/null 2>&1; then
     if ensure_ci_measurement_tool jq jq; then
       :
     else
-      echo "::error::jq is not available; unable to publish required CI measurement PR comment"
+      echo "::notice::jq is not available for the optional CI measurement PR comment"
       can_render_pr_comment=false
     fi
   fi
   if [ -z "${dollar}{GH_TOKEN:-${dollar}{GITHUB_TOKEN:-}}" ]; then
-    echo "::error::GH_TOKEN/GITHUB_TOKEN is not set; unable to publish required CI measurement PR comment"
+    echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping optional CI measurement PR comment"
     can_render_pr_comment=false
   fi
 
@@ -2644,14 +2659,8 @@ ${
     pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
   fi
   if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
-    echo "::error::pull request number is unavailable; unable to publish required CI measurement PR comment"
+    echo "::notice::pull request number is unavailable; skipping optional CI measurement PR comment"
     can_render_pr_comment=false
-  fi
-
-  if [ "$can_render_pr_comment" != "true" ]; then
-    if [ "$is_fork_pr" != "true" ]; then
-      exit 1
-    fi
   fi
 
   if [ "$can_render_pr_comment" = "true" ]; then
@@ -3651,7 +3660,7 @@ EOF
       if [ -s "$chart_file" ]; then
         if [ "$require_public_asset" = "true" ] && [ -z "$public_asset_command" ]; then
           echo "::error::CI measurement chart was rendered for a private repository, but CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND is not configured. Private raw GitHub URLs cannot be embedded in PR comments."
-          exit 1
+          can_render_pr_comment=false
         fi
 
         if ensure_ci_measurement_tool resvg resvg; then
@@ -3735,11 +3744,11 @@ EOF
           fi
           if [ "$require_public_asset" = "true" ] && [ -z "$chart_url" ]; then
             echo "::error::unable to publish CI measurement chart PNG to a public asset host for private repository $repo"
-            exit 1
+            can_render_pr_comment=false
           fi
           if [ "$require_public_asset" = "true" ] && [ -s "$chart_dark_png_file" ] && [ -z "$chart_dark_url" ]; then
             echo "::error::unable to publish dark CI measurement chart PNG to a public asset host for private repository $repo"
-            exit 1
+            can_render_pr_comment=false
           fi
           node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
         fi

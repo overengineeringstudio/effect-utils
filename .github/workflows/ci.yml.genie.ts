@@ -561,11 +561,11 @@ const downloadCurrentMeasurementArtifactStep = ({
   }) as const
 
 const ciMeasurementReportToolStep = {
-  name: 'Provide CI measurement report tools',
+  name: 'Provide CI measurement comparison tool',
   shell: 'bash',
   run: [
     'set -euo pipefail',
-    'for out in $(nix build --no-link --print-out-paths nixpkgs#jq nixpkgs#nodejs nixpkgs#gh nixpkgs#resvg); do',
+    'for out in $(nix build --no-link --print-out-paths nixpkgs#jq); do',
     '  echo "$out/bin" >> "$GITHUB_PATH"',
     'done',
   ].join('\n'),

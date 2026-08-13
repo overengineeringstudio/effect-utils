@@ -50,6 +50,7 @@ const step = compareCiMeasurementsStep({
   outputFile: '$tmp_dir/comparison.json',
   regressionMode: 'warn',
   assertionTargets: [$assertion_target_json],
+  prComment: { enabled: true },
 })
 process.stdout.write("export CI_MEASUREMENT_ASSERTION_TARGETS='" + step.env.CI_MEASUREMENT_ASSERTION_TARGETS + "'\n" + step.run)
 TS
@@ -95,6 +96,7 @@ run_compare() {
   CI_MEASUREMENT_BASELINE_DIR="$tmp_dir/baseline" \
   CI_MEASUREMENT_COMPARISON_FILE="$tmp_dir/comparison.json" \
   CI_MEASUREMENT_REGRESSION_MODE=warn \
+  CI_MEASUREMENT_SUBJECT_SHA=abc123 \
   CI_MEASUREMENT_PR_COMMENT_ENABLED=false \
     bash "$tmp_dir/compare.sh"
 }
@@ -350,17 +352,24 @@ write_assertion_measurement() {
   local samples="$2"
   local snapshot="${3:-$assertion_target_json}"
   local asserted_status="${4:-$(jq -nr --argjson samples "$samples" 'if ($samples | all(. == 0)) then "pass" else "fail" end')}"
+  local subject_sha="${5:-abc123}"
   mkdir -p "$(dirname "$file")"
+  printf 'fixture raw evidence\n' >"$(dirname "$file")/raw.jsonl"
+  local raw_sha256
+  raw_sha256="$(sha256sum "$(dirname "$file")/raw.jsonl" | awk '{print $1}')"
   jq -n \
     --arg fingerprint "$assertion_fingerprint" \
     --argjson snapshot "$snapshot" \
     --argjson samples "$samples" \
     --arg assertedStatus "$asserted_status" \
+    --arg subjectSha "$subject_sha" \
+    --arg rawSha256 "$raw_sha256" \
     '{
       schemaVersion:1,
       generatedAt:"2026-08-13T00:00:00Z",
       producer:{name:"effect-utils-ci-measurement",version:1,measurementProtocol:"buck2-invalidation-v1"},
       target:{kind:"buck2",id:"fixture",label:"Fixture"},
+      subject:{sha:$subjectSha},
       contract:{fingerprint:$fingerprint,snapshot:$snapshot},
       completeness:{status:"complete",missing:[]},
       observations:[{
@@ -370,7 +379,7 @@ write_assertion_measurement() {
         policy:{enabled:true,comparisonMode:"assertion",expectation:{_tag:"exact",value:0},onNoVerdict:"fail"},
         statistics:{sampleCount:2,measuredSampleCount:2,samples:$samples},
         assertion:{status:$assertedStatus},
-        evidence:{status:"complete",sampleIndexes:[0,1],rawSha256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        evidence:{status:"complete",sampleIndexes:[0,1],rawSha256:$rawSha256}
       }]
     }' >"$file"
 }
@@ -381,6 +390,16 @@ emit_assertion_compare_script
 run_compare
 [ "$(jq -r '.status' "$tmp_dir/comparison.json")" = pass ] || { echo "expected healthy assertion pass" >&2; exit 1; }
 
+CI_MEASUREMENT_CURRENT_DIR="$tmp_dir/current" \
+CI_MEASUREMENT_BASELINE_DIR="$tmp_dir/baseline" \
+CI_MEASUREMENT_COMPARISON_FILE="$tmp_dir/comparison.json" \
+CI_MEASUREMENT_REGRESSION_MODE=warn \
+CI_MEASUREMENT_SUBJECT_SHA=abc123 \
+CI_MEASUREMENT_PR_COMMENT_ENABLED=true \
+GITHUB_EVENT_NAME=pull_request \
+GITHUB_EVENT_PATH="$tmp_dir/missing-event.json" \
+  bash "$tmp_dir/compare.sh" || { echo "optional comment tooling must not fail a valid semantic verdict" >&2; exit 1; }
+
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,1]'
 set +e
@@ -388,6 +407,19 @@ run_compare
 assertion_rc=$?
 set -e
 [ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = fail ] || { jq . "$tmp_dir/comparison.json" >&2; echo "expected one bad sample to fail required assertion" >&2; exit 1; }
+
+set +e
+CI_MEASUREMENT_CURRENT_DIR="$tmp_dir/current" \
+CI_MEASUREMENT_BASELINE_DIR="$tmp_dir/baseline" \
+CI_MEASUREMENT_COMPARISON_FILE="$tmp_dir/comparison.json" \
+CI_MEASUREMENT_REGRESSION_MODE=warn \
+CI_MEASUREMENT_SUBJECT_SHA=abc123 \
+CI_MEASUREMENT_PR_COMMENT_ENABLED=true \
+GITHUB_EVENT_NAME=push \
+  bash "$tmp_dir/compare.sh"
+non_pr_assertion_rc=$?
+set -e
+[ "$non_pr_assertion_rc" -ne 0 ] || { echo "expected non-PR comment skip to preserve assertion failure" >&2; exit 1; }
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,1]' "$assertion_target_json" pass
@@ -405,6 +437,23 @@ run_compare
 assertion_rc=$?
 set -e
 [ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = no_verdict ] || { echo "expected producer-adjusted expectation to fail closed" >&2; exit 1; }
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,0]' "$assertion_target_json" pass stale-sha
+set +e
+run_compare
+assertion_rc=$?
+set -e
+[ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = no_verdict ] || { echo "expected stale artifact subject SHA to fail closed" >&2; exit 1; }
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,0]'
+printf 'tampered raw evidence\n' >"$tmp_dir/current/raw.jsonl"
+set +e
+run_compare
+assertion_rc=$?
+set -e
+[ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = no_verdict ] || { echo "expected raw evidence tampering to fail closed" >&2; exit 1; }
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 set +e
