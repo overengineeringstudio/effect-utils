@@ -31,3 +31,15 @@ package_task(
     ],
     closure_descriptor = "buck2/typescript-input-plan.json",
 )
+
+filegroup(
+    name = "production_sources",
+    srcs = glob(["src/**/*.ts", "src/**/*.tsx", "package.json", "tsconfig.json"], exclude = ["src/**/*.test.ts", "src/**/*.test.tsx"]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "project_sources",
+    srcs = glob(["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "package.json", "tsconfig.json"]),
+    visibility = ["PUBLIC"],
+)

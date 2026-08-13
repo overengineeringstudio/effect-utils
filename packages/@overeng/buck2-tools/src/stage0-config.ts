@@ -32,6 +32,11 @@ export const stage0Tools = [
     executable: 'bin/buck2-package-evidence',
   },
   {
+    configKey: 'typescript_product_tool',
+    flakeAttribute: 'buck2-typescript-product',
+    executable: 'bin/buck2-typescript-product',
+  },
+  {
     configKey: 'portable_toolchain',
     flakeAttribute: 'buck2-portable-toolchain',
     executable: 'bin/buck2-portable-toolchain',

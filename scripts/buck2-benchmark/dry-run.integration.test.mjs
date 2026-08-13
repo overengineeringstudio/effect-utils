@@ -31,7 +31,7 @@ describe('buck2 benchmark dry run', () => {
       assert.equal(result.status, 0, result.stderr)
       const records = parseJsonl(readFileSync(output, 'utf8'))
       const samples = records.filter((record) => record.kind === 'sample')
-      assert.equal(samples.length, 13)
+      assert.equal(samples.length, 14)
       assert.ok(samples.every((record) => record.status === 'skipped'))
       assert.ok(samples.every((record) => record.verdict === 'no-verdict'))
       assert.ok(records.some((record) => record.kind === 'cleanup' && record.status === 'ok'))
