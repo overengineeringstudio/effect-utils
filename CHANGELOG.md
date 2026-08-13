@@ -1,9 +1,3 @@
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-## [Unreleased]
-
 ### Changed
 
 - **@overeng/utils, @overeng/genie, @overeng/notion-md**: apply the watch-recursion
@@ -2710,3 +2704,8 @@ Initial release of effect-notion monorepo.
 - Initial monorepo setup with pnpm workspaces
 - TypeScript configuration with project references
 - Modern ESM-first package structure
+- Record an aarch64-linux Buck-owned Vite development-launch experiment proving
+  exact closure launch, live local and workspace HMR, external writable caches,
+  concurrent instances, signal teardown, restart, and zero application-local
+  `node_modules`, while keeping Vite transformation and process supervision as
+  separate authorities.
