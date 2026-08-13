@@ -26,6 +26,14 @@ All notable changes to this project will be documented in this file.
 - Preserve fixed-marker PT_INTERP paths and complete whitespace-bearing version-need names when inspecting dynamic ELF artifacts.
 - Bind Buck comparison receipts to the same repository revision and execution platform, preserve delimiter-like ELF version names, and keep the Rust toolchain flake call aligned with its minimal config API.
 
+- **Native otel-scrape product**: generate a fine-grained Buck Rust graph from
+  the root Cargo/Reindeer resolution domain, compile a configured static-musl
+  library, binary, and unit harness without Cargo actions, and package an exact
+  `buck-build-product/v1` archive admitted by Nix's static-ELF inspector. Keep
+  the required self-derived import smoke test distinct from real admission,
+  which now requires an externally supplied descriptor digest with no fallback
+  and retains a literal Nix-side platform expectation.
+
 - **Buck2/devenv fast path**: make shell activation independent of Buck and
   repository setup, expose the pinned Buck client through a source-mode local
   launcher, lazily resolve stage-0 tools only for consuming tasks, and classify
@@ -49,7 +57,7 @@ All notable changes to this project will be documented in this file.
   descriptor digest for the shared Buck-to-Nix product envelope. Runtime is a
   required tagged union, invocation evidence is excluded from semantic product
   identity, and the importer now requires an independently supplied descriptor
-  digest and rejects every runtime until its real inspector exists. This removes
+  digest and rejects every runtime without an admitted inspector. This removes
   the synthetic shell import as evidence of an admitted portable product; the
   input-plan fixture is now labeled `buck2-package-evidence` rather than
   masquerading as a build product. Descriptor paths reject CR/LF bytes, fixed
@@ -99,6 +107,15 @@ All notable changes to this project will be documented in this file.
   external-store subscriber observations.
 
 ### Fixed
+
+- **Buck2 Rust toolchain identity**: bind every consumed compiler, linker,
+  binutils, documentation, lint, Python, and helper-PATH input into the single
+  Nix-authored identity, reconstruct the complete material independently in
+  Buck, and fail closed when a configured tool such as the archiver is omitted.
+  Project a separate minimal Rust compile/product identity so changes to
+  clippy, rustdoc, Python, or unused binutils do not invalidate compilation or
+  packaging. Bind that identity at Prelude's conventional compiler `RunInfo`,
+  so the real OTEL compile path verifies it before invoking `rustc`.
 
 - **Buck2 pnpm prototype scope**: retain the exact lock-derived contextual
   dependency plan for `tui-core` while keeping it explicitly non-admitted. The

@@ -122,13 +122,44 @@ grep -Fx 'buck2-bridge-ok' "$buck_evidence" >/dev/null || {
 }
 
 export BUCK2_BRIDGE_EXPORT_OUT="$export_out"
+
+static_import="$(build_expr "($base_expr).staticElfImport")"
+[ -x "$static_import/bin/fixture-tool" ] || {
+  echo "buck2-bridge-test: static ELF import omitted its entrypoint" >&2
+  exit 1
+}
+echo "buck2-bridge-test: GREEN static ELF import"
+
+expect_build_failure \
+  "dynamic ELF as self-contained" \
+  "self-contained ELF declares an interpreter" \
+  "($base_expr).dynamicElfImport"
+
+expect_build_failure \
+  "store reference in static ELF" \
+  "forbidden Nix store reference" \
+  "($base_expr).storeReferenceElfImport"
+
+expect_build_failure \
+  "foreign architecture static ELF" \
+  "static ELF inspector admits only linux/x86_64/musl" \
+  "($base_expr).foreignArchitectureImport"
+
 unsupported_runtime_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
     original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
-    descriptor = mkStrictDescriptor {
+    baseDescriptor = mkStrictDescriptor {
       inherit original;
       entrypoints = [ \"bin/fixture-tool\" ];
+    };
+    descriptor = baseDescriptor // {
+      runtime = {
+        kind = \"interpreter\";
+        program = \"bin/fixture-tool\";
+        runtimeContract = \"fixture-shell/v1\";
+        runtimeId = \"sh\";
+      };
     };
   in test.mkImport {
     inherit descriptor;
@@ -138,7 +169,7 @@ unsupported_runtime_expr="let
   }"
 expect_build_failure \
   "unsupported build-product runtime" \
-  "runtime inspector is not available for self-contained" \
+  "runtime inspector is not available for interpreter" \
   "$unsupported_runtime_expr"
 
 dynamic_export="$(build_expr "($base_expr).dynamicExport")"

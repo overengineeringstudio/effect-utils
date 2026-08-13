@@ -1,4 +1,9 @@
 load(":configured.bzl", "configured_exec")
+load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
+load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
+load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
+load("@root//buck2/toolchains:nix_local.bzl", "nix_local_rust_cxx_python_toolchains")
+load("@root//buck2/toolchains:conventional_probe.bzl", "conventional_toolchain_probe")
 
 # Nix is the stage-0 authority. Each literal immutable path participates in the
 # configured graph and therefore in every consuming action key.
@@ -7,6 +12,22 @@ configured_exec(
     path = read_config("buck2_stage0", "closure_tool", ""),
     visibility = ["PUBLIC"],
 )
+
+# Prelude Rust compilation and linking consume both conventional providers,
+# but only Rust product invocations supply that independently rooted config.
+# The macro is a no-op without it, so stage-0 and TypeScript-only graphs do not
+# accidentally acquire a Rust/Nix dependency merely by loading this package.
+nix_local_rust_cxx_python_toolchains()
+
+conventional_toolchain_probe(
+    name = "conventional_rust_cxx_execution_probe",
+    toolchain_identity = read_config("rust_toolchain", "compile_identity", ""),
+    visibility = ["PUBLIC"],
+)
+
+system_genrule_toolchain(name = "genrule", visibility = ["PUBLIC"])
+noop_test_toolchain(name = "test", visibility = ["PUBLIC"])
+remote_test_execution_toolchain(name = "remote_test_execution", visibility = ["PUBLIC"])
 
 configured_exec(
     name = "package_evidence_tool",

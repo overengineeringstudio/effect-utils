@@ -140,6 +140,7 @@ attribute="\${installable##*#}"
 case "$attribute" in
   buck2-closure-tool) executable="buck2-closure-tool" ;;
   buck2-package-evidence) executable="buck2-package-evidence" ;;
+  buck2-typescript-product) executable="buck2-typescript-product" ;;
   buck2-portable-toolchain) executable="buck2-portable-toolchain" ;;
   buck2-portable-toolchain-fixture) executable="buck2-portable-toolchain-fixture" ;;
   *) echo "unexpected attribute: $attribute" >&2; exit 64 ;;
@@ -189,18 +190,18 @@ printf '%s\\n' "$output"
   it('hits across unrelated mutations and misses across semantic mutations', async () => {
     const cold = await runCli({ root, cacheRoot })
     expect(cold).toMatchObject({ exitCode: 0, stderr: '' })
-    expect(await invocationCount(root)).toBe(4)
+    expect(await invocationCount(root)).toBe(5)
 
     await writeFile(join(root, 'unrelated.txt'), 'unrelated two\n')
     const unrelated = await runCli({ root, cacheRoot })
     expect(unrelated).toMatchObject({ exitCode: 0, stdout: cold.stdout, stderr: '' })
-    expect(await invocationCount(root)).toBe(4)
+    expect(await invocationCount(root)).toBe(5)
 
     await writeFile(join(root, 'semantic.txt'), 'version two\n')
     const semantic = await runCli({ root, cacheRoot })
     expect(semantic.exitCode).toBe(0)
     expect(semantic.stdout).not.toBe(cold.stdout)
-    expect(await invocationCount(root)).toBe(8)
+    expect(await invocationCount(root)).toBe(10)
   })
 
   it('copies only fingerprinted inputs into the immutable source snapshot', async () => {
@@ -258,7 +259,7 @@ printf '%s\\n' "$output"
 
     const repaired = await runCli({ root, cacheRoot })
     expect(repaired).toMatchObject({ exitCode: 0, stdout: cold.stdout, stderr: '' })
-    expect(await invocationCount(root)).toBe(8)
+    expect(await invocationCount(root)).toBe(10)
     expect((await stat(config.closure_tool!)).mode & 0o111).not.toBe(0)
     expect((await stat(configPath)).mode & 0o222).toBe(0)
   })
@@ -279,18 +280,18 @@ printf '%s\\n' "$output"
     )
     const fingerprintRepaired = await runCli({ root, cacheRoot })
     expect(fingerprintRepaired.exitCode).toBe(0)
-    expect(await invocationCount(root)).toBe(8)
+    expect(await invocationCount(root)).toBe(10)
 
     await chmod(configPath, 0o600)
     await writeFile(configPath, original.replace(/^# Resolver ABI: .+$/mu, '# Resolver ABI: stale'))
     const abiRepaired = await runCli({ root, cacheRoot })
     expect(abiRepaired.exitCode).toBe(0)
-    expect(await invocationCount(root)).toBe(12)
+    expect(await invocationCount(root)).toBe(15)
 
     await unlink(join(dirname(configPath), 'roots', 'closure_tool'))
     const rootRepaired = await runCli({ root, cacheRoot })
     expect(rootRepaired.exitCode).toBe(0)
-    expect(await invocationCount(root)).toBe(16)
+    expect(await invocationCount(root)).toBe(20)
   })
 
   it('single-flights concurrent cold callers under flock', async () => {
@@ -300,7 +301,7 @@ printf '%s\\n' "$output"
     )
     expect(results.every(({ exitCode, stderr }) => exitCode === 0 && stderr === '')).toBe(true)
     expect(new Set(results.map(({ stdout }) => stdout).filter(Boolean)).size).toBe(1)
-    expect(await invocationCount(root)).toBe(4)
+    expect(await invocationCount(root)).toBe(5)
     const configPath = results[0]!.stdout.trim()
     expect(dirname(configPath)).toMatch(concurrentCache)
     expect(await readFile(configPath, 'utf8')).toContain('[buck2_stage0]')
@@ -310,7 +311,7 @@ printf '%s\\n' "$output"
     const result = await runCli({ root, cacheRoot, mutateDuringRealization: true })
     expect(result).toMatchObject({ exitCode: 0, stderr: '' })
     expect(await readFile(join(root, 'semantic.txt'), 'utf8')).toBe('version two\n')
-    expect(await invocationCount(root)).toBe(8)
+    expect(await invocationCount(root)).toBe(10)
     const configPath = result.stdout.trim()
     const entries = await readdir(cacheRoot)
     const lockFingerprints = entries
@@ -324,7 +325,7 @@ printf '%s\\n' "$output"
     const result = await runCli({ root, cacheRoot, mutateDuringEveryRealization: true })
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toContain('semantic inputs remained unstable after 3 attempts')
-    expect(await invocationCount(root)).toBe(12)
+    expect(await invocationCount(root)).toBe(15)
   })
 
   it('rejects a semantic input symlink which escapes the repository', async () => {

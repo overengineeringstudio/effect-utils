@@ -91,6 +91,16 @@ protocol, entrypoint, platform, and runtime behavior are unchanged.
 
 The exact artifact, not merely a package name, version string, store prefix, or
 ambient executable path, MUST participate in the consuming action key.
+For an aggregate compiler provider, the identity material MUST enumerate every
+configured executable and search path that any exposed language, linker,
+archiver, binary-utility, documentation, lint, build-script, or action-helper
+surface consumes. Omitting one field MUST fail closed rather than preserve the
+aggregate identity.
+That complete configuration-integrity identity MUST NOT be used as a universal
+action or product identity. Each action class and product descriptor MUST bind
+only the tools and semantic claims it consumes, so changing an unrelated lint,
+documentation, Python, or binary-utility tool does not invalidate compilation
+or packaging.
 
 ### BUCK.PLAT-R007: per-platform stage 0
 

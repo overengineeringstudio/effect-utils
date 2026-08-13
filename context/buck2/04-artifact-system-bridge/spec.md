@@ -6,10 +6,10 @@ the handoff into Nix-managed system generations. It builds on
 
 Status: **Draft**. The exact descriptor validator and canonical identity are
 implemented, and the generic archive/import seam plus OCI protocol have
-prototype evidence. The importer admits the exact observation-only
-`elf-dynamic/v1` runtime inspector on the supported Linux/glibc tuples and
-rejects every other runtime. No TypeScript or Rust executable, publication
-flow, or system generation is admitted through the bridge.
+prototype evidence. The importer dispatches exact inspectors for dynamic
+Linux/glibc ELF and static Linux/x86_64-musl ELF products after archive, digest,
+size, platform, entrypoint, dependency, and store-reference checks. Other
+runtimes, publication, and system generation remain unadmitted.
 
 ## Scope
 
@@ -143,6 +143,18 @@ expected descriptor digest
 + expected target platform and entrypoints
 + provenance policy
 ```
+
+An admission invocation must receive `BUCK2_OTEL_EXPECTED_DESCRIPTOR_DIGEST`
+from an authority outside the product-producing invocation. It has no
+self-derived fallback. The expected platform remains the literal Nix policy
+`linux/x86_64/musl`; it is never copied from the candidate descriptor.
+
+The required repository check is explicitly an import smoke test, not an
+admission decision. It may derive the candidate descriptor digest to exercise
+the Buck-output-to-Nix plumbing. Both workflows reuse the same runner and prove
+the identity seam with a valid descriptor-substitution RED (modified semantic
+provenance under the original expected digest) followed by a GREEN using that
+same pin. Only the externally pinned workflow may claim admission authority.
 
 Import is fail closed:
 
