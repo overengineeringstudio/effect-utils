@@ -33,6 +33,19 @@ contract_expr='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
       recipe = "fixture-tool/v1";
       toolchain = "rust-linux-musl/v1";
     };
+  };
+  validMachO = valid // {
+    platform = { os = "darwin"; architecture = "aarch64"; abi = "darwin"; };
+    runtime = {
+      kind = "mach-o-dynamic";
+      inspectionContract = "mach-o-dynamic/v1";
+      architecture = "arm64";
+      minimumOs = "14.0";
+      dylibs = [ "/usr/lib/libSystem.B.dylib" ];
+      installNamePolicy = "system-only/v1";
+      rpathPolicy = "empty/v1";
+      signingPolicy = "adhoc/v1";
+    };
   };'
 
 eval_raw() {
@@ -239,7 +252,8 @@ for variant in interpreter elf-dynamic mach-o-dynamic self-contained; do
       platform_override='platform = valid.platform // { abi = "glibc"; };'
       ;;
     mach-o-dynamic)
-      runtime='{ kind = "mach-o-dynamic"; architecture = "arm64"; minimumOs = "14.0"; dylibs = [ "/usr/lib/libSystem.B.dylib" ]; installNamePolicy = "system-only/v1"; rpathPolicy = "none/v1"; signingPolicy = "adhoc/v1"; }'
+      runtime='{ kind = "mach-o-dynamic"; inspectionContract = "mach-o-dynamic/v1"; architecture = "arm64"; minimumOs = "14.0"; dylibs = [ "/usr/lib/libSystem.B.dylib" ]; installNamePolicy = "system-only/v1"; rpathPolicy = "empty/v1"; signingPolicy = "adhoc/v1"; }'
+      platform_override='platform = { os = "darwin"; architecture = "aarch64"; abi = "darwin"; };'
       ;;
     self-contained)
       runtime='{ kind = "self-contained"; inspectionContract = "elf-static/v1"; }'
@@ -247,6 +261,120 @@ for variant in interpreter elf-dynamic mach-o-dynamic self-contained; do
   esac
   eval_raw "contract.descriptorDigest (valid // { $platform_override runtime = $runtime; })" >/dev/null
 done
+
+expect_eval_failure \
+  "Mach-O runtime on Linux" \
+  "mach-o-dynamic requires descriptor.platform.os = darwin" \
+  'contract.descriptorDigest (valid // {
+    runtime = {
+      kind = "mach-o-dynamic";
+      inspectionContract = "mach-o-dynamic/v1";
+      architecture = "x86_64";
+      minimumOs = "14.0";
+      dylibs = [ "/usr/lib/libSystem.B.dylib" ];
+      installNamePolicy = "system-only/v1";
+      rpathPolicy = "empty/v1";
+      signingPolicy = "adhoc/v1";
+    };
+  })'
+
+expect_eval_failure \
+  "Mach-O non-system install name" \
+  "descriptor.runtime.dylibs must use system install names" \
+  'contract.descriptorDigest (valid // {
+    platform = { os = "darwin"; architecture = "aarch64"; abi = "darwin"; };
+    runtime = {
+      kind = "mach-o-dynamic";
+      inspectionContract = "mach-o-dynamic/v1";
+      architecture = "arm64";
+      minimumOs = "14.0";
+      dylibs = [ "@rpath/libprivate.dylib" ];
+      installNamePolicy = "system-only/v1";
+      rpathPolicy = "empty/v1";
+      signingPolicy = "adhoc/v1";
+    };
+  })'
+
+expect_eval_failure \
+  "missing Mach-O inspection contract" \
+  "descriptor.runtime is missing fields: inspectionContract" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = builtins.removeAttrs validMachO.runtime [ "inspectionContract" ];
+  })'
+
+expect_eval_failure \
+  "wrong Mach-O inspection contract" \
+  "descriptor.runtime.inspectionContract must be mach-o-dynamic/v1" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // { inspectionContract = "mach-o-dynamic/v2"; };
+  })'
+
+expect_eval_failure \
+  "unknown Mach-O runtime field" \
+  "descriptor.runtime has unknown fields: universal" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // { universal = true; };
+  })'
+
+expect_eval_failure \
+  "Mach-O ABI mismatch" \
+  "mach-o-dynamic/v1 requires descriptor.platform.abi = darwin" \
+  'contract.descriptorDigest (validMachO // {
+    platform = validMachO.platform // { abi = "none"; };
+  })'
+
+expect_eval_failure \
+  "Mach-O architecture mismatch" \
+  "descriptor.runtime.architecture must match descriptor.platform.architecture" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // { architecture = "x86_64"; };
+  })'
+
+expect_eval_failure \
+  "malformed Mach-O minimum OS" \
+  "descriptor.runtime.minimumOs must be a canonical version" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // { minimumOs = "14"; };
+  })'
+
+expect_eval_failure \
+  "unsorted Mach-O dylibs" \
+  "descriptor.runtime.dylibs must be sorted" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // {
+      dylibs = [ "/usr/lib/libz.dylib" "/usr/lib/libSystem.B.dylib" ];
+    };
+  })'
+
+expect_eval_failure \
+  "duplicate Mach-O dylib" \
+  "descriptor.runtime.dylibs entries must be unique" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // {
+      dylibs = [ "/usr/lib/libSystem.B.dylib" "/usr/lib/libSystem.B.dylib" ];
+    };
+  })'
+
+expect_eval_failure \
+  "Mach-O dylib control character" \
+  "descriptor.runtime.dylibs entries must not contain control characters" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // { dylibs = [ "/usr/lib/libSystem.B.dylib\n" ]; };
+  })'
+
+expect_eval_failure \
+  "Mach-O RPATH policy mismatch" \
+  "descriptor.runtime.rpathPolicy must be empty/v1" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // { rpathPolicy = "declared/v1"; };
+  })'
+
+expect_eval_failure \
+  "Mach-O signing policy mismatch" \
+  "descriptor.runtime.signingPolicy must be adhoc/v1" \
+  'contract.descriptorDigest (validMachO // {
+    runtime = validMachO.runtime // { signingPolicy = "unsigned/v1"; };
+  })'
 
 expect_eval_failure \
   "missing ELF inspection contract" \

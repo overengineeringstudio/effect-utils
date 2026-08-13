@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use buck2_tool_core::{
-    canonical_json, normalized_relative, safe_text, sha256_bytes, sha256_file, ToolError,
-    ToolResult,
+    canonical_json, normalized_relative, safe_text, sha256_bytes, sha256_file,
+    verify_execution_capability, ToolError, ToolResult,
 };
 use clap::{Args, Parser, Subcommand};
 use serde_json::{json, Value};
@@ -16,6 +16,8 @@ use walkdir::WalkDir;
 
 #[derive(Parser)]
 struct Cli {
+    #[arg(long)]
+    capability_manifest: PathBuf,
     #[command(subcommand)]
     command: Command,
 }
@@ -314,7 +316,14 @@ fn hex_to_bytes(value: &str) -> Vec<u8> {
         .collect()
 }
 fn run() -> ToolResult<()> {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    verify_execution_capability(
+        &cli.capability_manifest,
+        "package-evidence",
+        "effect-utils/buck2-package-evidence/v1",
+        "native-executable/v1",
+    )?;
+    match cli.command {
         Command::Package(args) => package(args),
     }
 }
@@ -360,6 +369,8 @@ mod tests {
     fn accepts_repeatable_buck_rule_flags() {
         let cli = Cli::try_parse_from([
             "buck2-package-evidence",
+            "--capability-manifest",
+            "manifest.json",
             "package",
             "--name",
             "example",

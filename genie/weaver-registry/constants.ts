@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:bbda7a3c1328b2eef65347b46a8d7aa31aa66c81064b2660e768b780c3abe6ac
+// fingerprint: sha256:c9c5d586d6712e7fcf1417af0b24745494b07f5e4c23e89a5de619bc83b83f8c
 // regen: devenv tasks run genie:run
 
 export const AcmeAttempt = 'acme.attempt' as const
@@ -9,12 +9,6 @@ export const AcmeProbeLabel = 'acme.probe.label' as const
 export const AcmeProbeName = 'acme.probe.name' as const
 export const AcmeRegion = 'acme.region' as const
 export const AcmeRequestHeader = 'acme.request.header' as const
-export const BuckCommand = 'buck.command' as const
-export const BuckDependencyClosureDigest = 'buck.dependency.closure.digest' as const
-export const BuckExecutionOutcome = 'buck.execution.outcome' as const
-export const BuckInvocationId = 'buck.invocation.id' as const
-export const BuckStatus = 'buck.status' as const
-export const BuckTargetLabel = 'buck.target.label' as const
 export const Ci_toolsDeployAttempt = 'ci_tools.deploy.attempt' as const
 export const Ci_toolsDeployCleanup_id = 'ci_tools.deploy.cleanup_id' as const
 export const Ci_toolsDeployCleanup_status = 'ci_tools.deploy.cleanup_status' as const
@@ -351,7 +345,6 @@ export const SemaphoreKey = 'semaphore.key' as const
 export const SemaphoreTarget_holder_id = 'semaphore.target_holder_id' as const
 export const SPAN_AcmeOperation = 'acme.operation' as const
 export const SPAN_AtomicWriteFile = 'atomicWriteFile' as const
-export const SPAN_BuckInvocation = 'buck.invocation' as const
 export const SPAN_CiToolsDeploy = 'ci-tools.deploy' as const
 export const SPAN_CiToolsDeployAttempt = 'ci-tools.deploy.attempt' as const
 export const SPAN_CiToolsDeployCleanup = 'ci-tools.deploy.cleanup' as const
@@ -432,7 +425,6 @@ export const SPAN_SpanAcmeProbe = 'span.acme.probe' as const
 export const SPAN_SpanNotionReactSync = 'span.notion-react.sync' as const
 export const METRIC_AcmeProbeDuration = 'acme.probe.duration' as const
 export const METRIC_AcmeProbes = 'acme.probes' as const
-export const METRIC_BuckActions = 'buck.actions' as const
 export const METRIC_MegarepoStoreGcRssBytes = 'megarepo_store_gc_rss_bytes' as const
 export const METRIC_RestateAttemptsTotal = 'restate_attempts_total' as const
 export const METRIC_RestateAwakeableWaitMs = 'restate_awakeable_wait_ms' as const
@@ -447,12 +439,6 @@ export type AttributeKey =
   | 'acme.probe.name'
   | 'acme.region'
   | 'acme.request.header'
-  | 'buck.command'
-  | 'buck.dependency.closure.digest'
-  | 'buck.execution.outcome'
-  | 'buck.invocation.id'
-  | 'buck.status'
-  | 'buck.target.label'
   | 'ci_tools.deploy.attempt'
   | 'ci_tools.deploy.cleanup_id'
   | 'ci_tools.deploy.cleanup_status'
@@ -768,7 +754,6 @@ export type AttributeKey =
 export type SpanName =
   | 'acme.operation'
   | 'atomicWriteFile'
-  | 'buck.invocation'
   | 'ci-tools.deploy'
   | 'ci-tools.deploy.attempt'
   | 'ci-tools.deploy.cleanup'
@@ -846,7 +831,6 @@ export type SpanName =
 export type MetricName =
   | 'acme.probe.duration'
   | 'acme.probes'
-  | 'buck.actions'
   | 'megarepo_store_gc_rss_bytes'
   | 'restate_attempts_total'
   | 'restate_awakeable_wait_ms'

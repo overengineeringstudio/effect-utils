@@ -1,5 +1,6 @@
 use buck2_tool_core::{
-    is_sha256, normalized_relative, pretty_json, sha256_file, ToolError, ToolResult,
+    is_sha256, normalized_relative, pretty_json, sha256_file, verify_execution_capability,
+    ToolError, ToolResult,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,8 @@ const RESERVED_METADATA_PATH: &str = "closure-manifest.json";
 
 #[derive(Parser)]
 struct Cli {
+    #[arg(long)]
+    capability_manifest: PathBuf,
     #[command(subcommand)]
     command: Command,
 }
@@ -296,7 +299,14 @@ fn set_mode(path: &std::path::Path, _mode: u32) -> ToolResult<()> {
 }
 
 fn run() -> ToolResult<()> {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    verify_execution_capability(
+        &cli.capability_manifest,
+        "closure-tool",
+        "effect-utils/buck2-closure-tool/v1",
+        "native-executable/v1",
+    )?;
+    match cli.command {
         Command::Stage(args) => stage(args),
         Command::Probe(args) => probe(args),
     }

@@ -93,13 +93,11 @@ baseline. The calling control plane owns the task and invocation spans,
 retention, sampling, routing, sanitization, and admission verdict. Evidence may
 be decoded after execution without interposing on Buck.
 
-An execution-transparent observer is justified only when a measured requirement
-cannot be met by the caller and post-execution native-evidence adapter. The
-current TypeScript launcher is transitional; a Rust replacement is a candidate,
-not a required architecture. Before any wrapper replaces it, conformance must
-prove passthrough, cancellation, evidence, sanitization, and telemetry parity.
-No launcher receipt is a durable authority unless an independent consumer is
-specified.
+The repository does not interpose a launcher between the caller and Buck.
+Observation which cannot be implemented at the caller or native-evidence
+boundary belongs in a separately justified Rust observer. Its conformance must
+prove passthrough, cancellation, evidence, sanitization, and telemetry parity;
+its output is never independent build authority.
 
 ## Forbidden Edges
 
