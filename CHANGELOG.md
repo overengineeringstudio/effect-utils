@@ -40,9 +40,6 @@ All notable changes to this project will be documented in this file.
   Use nixpkgs' version-matched prebuilt musl Rust toolchain instead of rebuilding
   the target standard library from source in each uncached CI environment, and
   retain a task-scoped GC root until all Buck invocations finish.
-- **Buck2 pnpm materialization prototype**: verify lockfile SHA-512 integrity,
-  normalize npm package tarballs into content-addressed file payloads, and feed
-  their exact receipts into task-closure identity without ambient `node_modules`.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema
@@ -64,6 +61,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Buck2 pnpm prototype scope**: retain the exact lock-derived contextual
+  dependency plan for `tui-core` while keeping it explicitly non-admitted. The
+  prototype does not fetch, unpack, normalize, or materialize package archives.
 - **Buck2 foundation contraction**: run the destructive invalidation RED/GREEN
   proof in a disposable Buck project instead of mutating a shared tracked
   fixture. Correct the VRS boundary from rule-load-time CPython to Prelude's
