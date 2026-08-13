@@ -22,7 +22,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    Package(PackageArgs),
+    Package(Box<PackageArgs>),
+    Product(ProductArgs),
+}
+
+#[derive(Args)]
+struct ProductArgs {
+    #[arg(long)]
+    binary: PathBuf,
+    #[arg(long = "binary-name")]
+    binary_name: String,
+    #[arg(long)]
+    target: String,
+    #[arg(long = "toolchain-identity")]
+    toolchain_identity: String,
+    #[arg(long)]
+    archive: PathBuf,
+    #[arg(long)]
+    descriptor: PathBuf,
 }
 
 #[derive(Args)]
@@ -312,9 +329,59 @@ fn hex_to_bytes(value: &str) -> Vec<u8> {
         .map(|index| u8::from_str_radix(&value[index..index + 2], 16).unwrap())
         .collect()
 }
+
+fn product(args: ProductArgs) -> ToolResult<()> {
+    let name = nix_name(&args.binary_name, "binary name")?;
+    let target = safe_text(&args.target, "target")?;
+    let toolchain = safe_text(&args.toolchain_identity, "toolchain identity")?;
+    if !toolchain.starts_with("sha256:") || toolchain.len() != 71 {
+        return Err(ToolError::new(
+            "BUCK2_PRODUCT_TOOLCHAIN",
+            "toolchain identity must be a Nix-authored sha256 identity",
+        ));
+    }
+    let binary = fs::read(&args.binary)
+        .map_err(|error| ToolError::new("BUCK2_PRODUCT_INPUT", error.to_string()))?;
+    let archive_file = fs::File::create(&args.archive)
+        .map_err(|error| ToolError::new("BUCK2_PRODUCT_IO", error.to_string()))?;
+    let mut builder = Builder::new(archive_file);
+    add_member(&mut builder, "bin", None, 0o555)?;
+    add_member(&mut builder, &format!("bin/{name}"), Some(&binary), 0o555)?;
+    builder
+        .finish()
+        .map_err(|error| ToolError::new("BUCK2_PRODUCT_TAR", error.to_string()))?;
+    drop(builder);
+    let archive = fs::read(&args.archive)
+        .map_err(|error| ToolError::new("BUCK2_PRODUCT_IO", error.to_string()))?;
+    let digest = sha256_bytes(&archive);
+    let descriptor = json!({
+        "entrypoints": [format!("bin/{name}")],
+        "name": name,
+        "payload": {
+            "digest": {"algorithm": "sha256", "sri": format!("sha256-{}", STANDARD.encode(hex_to_bytes(&digest)))},
+            "file": "artifact.tar",
+            "format": "tar",
+            "sizeBytes": archive.len(),
+        },
+        "platform": {"abi": "musl", "architecture": "x86_64", "os": "linux"},
+        "runtime": {"inspectionContract": "elf-static/v1", "kind": "self-contained"},
+        "schema": "buck-build-product/v1",
+        "semanticProvenance": {
+            "recipe": "rust-static-binary/v1",
+            "target": target,
+            "toolchain": toolchain,
+        },
+    });
+    let descriptor_bytes = serde_json::to_vec(&descriptor)
+        .map_err(|error| ToolError::new("BUCK2_PRODUCT_JSON", error.to_string()))?;
+    fs::write(&args.descriptor, descriptor_bytes)
+        .map_err(|error| ToolError::new("BUCK2_PRODUCT_IO", error.to_string()))
+}
+
 fn run() -> ToolResult<()> {
     match Cli::parse().command {
-        Command::Package(args) => package(args),
+        Command::Package(args) => package(*args),
+        Command::Product(args) => product(args),
     }
 }
 fn main() {
@@ -392,7 +459,9 @@ mod tests {
             "descriptor.json",
         ])
         .unwrap();
-        let Command::Package(args) = cli.command;
+        let Command::Package(args) = cli.command else {
+            panic!("expected package command")
+        };
         assert_eq!(args.sources, [PathBuf::from("a.ts"), PathBuf::from("b.ts")]);
         assert_eq!(args.configs, [PathBuf::from("tsconfig.json")]);
     }

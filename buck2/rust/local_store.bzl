@@ -1,15 +1,30 @@
 """Exact Nix-store Rust tools for local-only target probes."""
 
 RustLocalStoreToolchainInfo = provider(fields = [
+    "ar",
+    "cc",
+    "clippy_driver",
     "contract",
+    "cxx",
+    "dwp",
     "execution_platform",
     "identity_verifier",
     "linker",
+    "nm",
+    "objcopy",
+    "objdump",
+    "python",
+    "ranlib",
     "rustc",
+    "rustdoc",
+    "strip",
     "target_platform",
     "target_triple",
-    "toolchain_identity",
-    "toolchain_identity_material",
+    "tool_path",
+    "compile_identity",
+    "compile_identity_material",
+    "config_integrity_identity",
+    "config_integrity_material",
 ])
 
 _CONTRACT = "effect-utils/rust-local-store-toolchain/v1"
@@ -21,28 +36,81 @@ def _require_nix_store_executable(value, name):
     if not value.startswith("/nix/store/") or "/bin/" not in value:
         fail("{} must be an absolute Nix store executable".format(name))
 
-def _require_toolchain_identity(value):
+def _require_identity(value, name):
     if len(value) != 71 or not value.startswith("sha256:"):
-        fail("toolchain_identity must be a Nix-authored sha256 identity")
+        fail("{} must be a Nix-authored sha256 identity".format(name))
 
-def _identity_material(ctx):
+def _require_nix_tool_path(value):
+    if not value:
+        fail("tool_path must be a non-empty list of immutable Nix store paths")
+    for path in value.split(":"):
+        if not path.startswith("/nix/store/") or not path.endswith("/bin"):
+            fail("tool_path entry must be an immutable Nix store bin directory: {}".format(path))
+
+def _config_integrity_material(ctx):
     return ";".join([
+        "ar=" + ctx.attrs.ar,
+        "cc=" + ctx.attrs.cc,
+        "clippy_driver=" + ctx.attrs.clippy_driver,
         "contract=" + ctx.attrs.contract,
+        "cxx=" + ctx.attrs.cxx,
+        "dwp=" + ctx.attrs.dwp,
         "execution_platform=" + ctx.attrs.execution_platform,
         "identity_verifier=" + ctx.attrs.identity_verifier,
+        "linker=" + ctx.attrs.linker,
+        "nm=" + ctx.attrs.nm,
+        "objcopy=" + ctx.attrs.objcopy,
+        "objdump=" + ctx.attrs.objdump,
+        "python=" + ctx.attrs.python,
+        "ranlib=" + ctx.attrs.ranlib,
+        "rustc=" + ctx.attrs.rustc,
+        "rustdoc=" + ctx.attrs.rustdoc,
+        "strip=" + ctx.attrs.strip,
+        "target_platform=" + ctx.attrs.target_platform,
+        "target_triple=" + ctx.attrs.target_triple,
+        "tool_path=" + ctx.attrs.tool_path,
+    ])
+
+def _compile_identity_material(ctx):
+    return ";".join([
+        "ar=" + ctx.attrs.ar,
+        "cc=" + ctx.attrs.cc,
+        "contract=" + ctx.attrs.contract,
+        "cxx=" + ctx.attrs.cxx,
+        "execution_platform=" + ctx.attrs.execution_platform,
         "linker=" + ctx.attrs.linker,
         "rustc=" + ctx.attrs.rustc,
         "target_platform=" + ctx.attrs.target_platform,
         "target_triple=" + ctx.attrs.target_triple,
+        "tool_path=" + ctx.attrs.tool_path,
     ])
 
 def _rust_local_store_toolchain_impl(ctx):
-    _require_nix_store_executable(ctx.attrs.rustc, "rustc")
-    _require_nix_store_executable(ctx.attrs.linker, "linker")
-    _require_nix_store_executable(ctx.attrs.identity_verifier, "identity_verifier")
-    _require_toolchain_identity(ctx.attrs.toolchain_identity)
-    if ctx.attrs.toolchain_identity_material != _identity_material(ctx):
-        fail("Rust toolchain identity material does not match the configured fields")
+    for name, executable in [
+        ("ar", ctx.attrs.ar),
+        ("cc", ctx.attrs.cc),
+        ("clippy_driver", ctx.attrs.clippy_driver),
+        ("cxx", ctx.attrs.cxx),
+        ("dwp", ctx.attrs.dwp),
+        ("identity_verifier", ctx.attrs.identity_verifier),
+        ("linker", ctx.attrs.linker),
+        ("nm", ctx.attrs.nm),
+        ("objcopy", ctx.attrs.objcopy),
+        ("objdump", ctx.attrs.objdump),
+        ("python", ctx.attrs.python),
+        ("ranlib", ctx.attrs.ranlib),
+        ("rustc", ctx.attrs.rustc),
+        ("rustdoc", ctx.attrs.rustdoc),
+        ("strip", ctx.attrs.strip),
+    ]:
+        _require_nix_store_executable(executable, name)
+    _require_nix_tool_path(ctx.attrs.tool_path)
+    _require_identity(ctx.attrs.config_integrity_identity, "config_integrity_identity")
+    _require_identity(ctx.attrs.compile_identity, "compile_identity")
+    if ctx.attrs.config_integrity_material != _config_integrity_material(ctx):
+        fail("Rust config-integrity material does not match the configured fields")
+    if ctx.attrs.compile_identity_material != _compile_identity_material(ctx):
+        fail("Rust compile-identity material does not match the configured fields")
     if ctx.attrs.contract != _CONTRACT:
         fail("unsupported Rust toolchain contract: {}".format(ctx.attrs.contract))
     if ctx.attrs.execution_platform != _EXECUTION_PLATFORM:
@@ -54,30 +122,85 @@ def _rust_local_store_toolchain_impl(ctx):
     return [
         DefaultInfo(),
         RustLocalStoreToolchainInfo(
+            ar = ctx.attrs.ar,
+            cc = ctx.attrs.cc,
+            clippy_driver = ctx.attrs.clippy_driver,
             contract = ctx.attrs.contract,
+            cxx = ctx.attrs.cxx,
+            dwp = ctx.attrs.dwp,
             execution_platform = ctx.attrs.execution_platform,
             identity_verifier = ctx.attrs.identity_verifier,
             linker = ctx.attrs.linker,
+            nm = ctx.attrs.nm,
+            objcopy = ctx.attrs.objcopy,
+            objdump = ctx.attrs.objdump,
+            python = ctx.attrs.python,
+            ranlib = ctx.attrs.ranlib,
             rustc = ctx.attrs.rustc,
+            rustdoc = ctx.attrs.rustdoc,
+            strip = ctx.attrs.strip,
             target_platform = ctx.attrs.target_platform,
             target_triple = ctx.attrs.target_triple,
-            toolchain_identity = ctx.attrs.toolchain_identity,
-            toolchain_identity_material = ctx.attrs.toolchain_identity_material,
+            tool_path = ctx.attrs.tool_path,
+            compile_identity = ctx.attrs.compile_identity,
+            compile_identity_material = ctx.attrs.compile_identity_material,
+            config_integrity_identity = ctx.attrs.config_integrity_identity,
+            config_integrity_material = ctx.attrs.config_integrity_material,
         ),
     ]
 
 rust_local_store_toolchain = rule(
     impl = _rust_local_store_toolchain_impl,
     attrs = {
+        "ar": attrs.string(),
+        "cc": attrs.string(),
+        "clippy_driver": attrs.string(),
         "contract": attrs.string(),
+        "cxx": attrs.string(),
+        "dwp": attrs.string(),
         "execution_platform": attrs.string(),
         "identity_verifier": attrs.string(),
         "linker": attrs.string(),
+        "nm": attrs.string(),
+        "objcopy": attrs.string(),
+        "objdump": attrs.string(),
+        "python": attrs.string(),
+        "ranlib": attrs.string(),
         "rustc": attrs.string(),
+        "rustdoc": attrs.string(),
+        "strip": attrs.string(),
         "target_platform": attrs.string(),
         "target_triple": attrs.string(),
-        "toolchain_identity": attrs.string(),
-        "toolchain_identity_material": attrs.string(),
+        "tool_path": attrs.string(),
+        "compile_identity": attrs.string(),
+        "compile_identity_material": attrs.string(),
+        "config_integrity_identity": attrs.string(),
+        "config_integrity_material": attrs.string(),
+    },
+)
+
+def _config_integrity_impl(ctx):
+    toolchain = ctx.attrs.toolchain[RustLocalStoreToolchainInfo]
+    out = ctx.actions.declare_output("config-integrity.txt")
+    ctx.actions.run(
+        [
+            toolchain.identity_verifier,
+            toolchain.config_integrity_material,
+            toolchain.config_integrity_identity,
+            "--stamp",
+            out.as_output(),
+        ],
+        category = "rust_toolchain_config_integrity",
+        env = {"PATH": "/nonexistent"},
+        identifier = toolchain.config_integrity_identity[7:19],
+        local_only = True,
+    )
+    return [DefaultInfo(default_output = out)]
+
+rust_toolchain_config_integrity = rule(
+    impl = _config_integrity_impl,
+    attrs = {
+        "toolchain": attrs.exec_dep(providers = [RustLocalStoreToolchainInfo]),
     },
 )
 
@@ -87,8 +210,8 @@ def _rust_static_binary_impl(ctx):
     ctx.actions.run(
         [
             toolchain.identity_verifier,
-            toolchain.toolchain_identity_material,
-            toolchain.toolchain_identity,
+            toolchain.compile_identity_material,
+            toolchain.compile_identity,
             toolchain.rustc,
             ctx.attrs.src,
             "--crate-name",
@@ -109,7 +232,7 @@ def _rust_static_binary_impl(ctx):
         ],
         category = "rust_compile",
         env = {"PATH": "/nonexistent"},
-        identifier = "{}-{}".format(toolchain.target_triple, toolchain.toolchain_identity[7:19]),
+        identifier = "{}-{}".format(toolchain.target_triple, toolchain.compile_identity[7:19]),
         local_only = True,
     )
     return [DefaultInfo(default_output = out), RunInfo(args = cmd_args(out))]

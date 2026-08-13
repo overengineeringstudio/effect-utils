@@ -238,6 +238,32 @@ ExecutionToolInfo
 
 Compiler toolchains may aggregate several tools when the compiler contract
 requires them to change together. Leaf helpers remain separate exec deps.
+The local-store Rust aggregate reconstructs a complete ordered integrity
+material string independently on each side of the boundary. It includes `rustc`,
+`rustdoc`, `clippy-driver`, linker, C and C++ compilers, archiver, every exposed
+binutils executable, Python, and the complete helper `PATH`, in addition to the
+contract and target/execution-platform claims. Nix hashes that material; Buck
+requires every path to be an immutable store executable (or, for `PATH`, an
+ordered colon-separated set of store `bin` directories), reconstructs the same
+bytes from individual configured fields, and rejects any omission or mismatch
+before creating the provider. This integrity root detects mixed configuration;
+it is not threaded through every action.
+
+The initial Rust compile identity is a separate projection containing only
+`rustc`, linker, C compiler, C++ compiler, archiver, helper `PATH`, contract,
+target triple, and target/execution-platform claims. Prelude exposes those
+values to compilation and build-script-capable Rust actions. The OTEL compile
+actions and build-product descriptor use this projection. `rustdoc`,
+`clippy-driver`, Python, `dwp`, `nm`, `objcopy`, `objdump`, `ranlib`, and `strip`
+remain covered by configuration integrity but do not invalidate compile or
+package outputs until an action explicitly consumes them.
+
+Prelude's conventional Rust provider independently reconstructs this same
+projection from its individual configured attributes. Its compiler `RunInfo`
+invokes the immutable identity verifier with the material and digest before
+`rustc`, making the check part of every real conventional compile action. The
+OTEL product's false-identity control therefore traverses the production
+library/binary/package graph rather than relying on the separate static probe.
 Packaging-only, test-only, and lint-only providers are attached only to their
 respective actions.
 
