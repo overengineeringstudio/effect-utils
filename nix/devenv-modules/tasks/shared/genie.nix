@@ -33,14 +33,107 @@ let
   generatedFilesFile = "${cacheRoot}/generated-files.txt";
   collectGenieGeneratedFiles = ''
     collect_genie_generated_files() {
-      # Genie owns these markers, so the warm-path fingerprint follows the same
-      # explicit generated-file contract as the generator itself.
-      ${pkgs.ripgrep}/bin/rg -l \
-        --glob '!tmp/**' \
-        --glob '!.git/**' \
-        --glob '!.devenv/**' \
-        --glob '!node_modules/**' \
-        '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
+      {
+        # A colocated `name.ext.genie.ts` source owns `name.ext`. Deriving the
+        # output path from the source keeps formats without comments (notably
+        # JSON) in the generated-file list and warm-state fingerprint. This
+        # ambient census is freshness evidence only; it does not admit an
+        # output as a semantic authority.
+        if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          {
+            ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts'
+            ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts'
+          } | while IFS= read -r -d $'\0' source; do
+            [ -f "$source" ] || continue
+            output="''${source%.genie.ts}"
+            if [ -f "$output" ]; then
+              printf '%s\n' "$output"
+            fi
+          done
+        else
+          ${pkgs.findutils}/bin/find . \
+            -type f \
+            -name '*.genie.ts' \
+            -not -path './.git/*' \
+            -not -path './.devenv/*' \
+            -not -path './node_modules/*' \
+            -print0 \
+            | while IFS= read -r -d $'\0' source; do
+                output="''${source%.genie.ts}"
+                if [ -f "$output" ]; then
+                  printf '%s\n' "$output"
+                fi
+              done
+        fi
+
+        # Retain marker discovery for legacy generators whose outputs are not
+        # colocated with an equivalently named `.genie.ts` source.
+        ${pkgs.ripgrep}/bin/rg -l \
+          --glob '!tmp/**' \
+          --glob '!.git/**' \
+          --glob '!.devenv/**' \
+          --glob '!node_modules/**' \
+          --glob '!*.genie.ts' \
+          --glob '!**/*.genie.ts' \
+          '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
+
+        # Commentless JSON projections carry the same owner in data. Requiring
+        # output-side provenance makes ownership checkable on a fresh checkout
+        # even after the structural owner has been deleted.
+        ${pkgs.ripgrep}/bin/rg -l \
+          --glob '!tmp/**' \
+          --glob '!.git/**' \
+          --glob '!.devenv/**' \
+          --glob '!node_modules/**' \
+          --glob '!*.genie.ts' \
+          --glob '!**/*.genie.ts' \
+          --glob '*.json' \
+          '"source"[[:space:]]*:[[:space:]]*"[^"]+\.genie\.ts"' . || true
+      } | ${pkgs.gnused}/bin/sed 's#^\./##' | LC_ALL=C sort -u
+    }
+
+    assert_current_genie_owners_exist() {
+      current_manifest="$1"
+      invalid=0
+      while IFS= read -r output; do
+        [ -n "$output" ] || continue
+        structural_owner="$output.genie.ts"
+        [ -f "$structural_owner" ] && continue
+
+        declared_owner="$(${pkgs.gnused}/bin/sed -n -E \
+          -e 's@^(//|#) Source: (.*\.genie\.ts)[[:space:]]*$@\2@p' \
+          -e 's@^[[:space:]]*"source"[[:space:]]*:[[:space:]]*"([^"]+\.genie\.ts)"[,]?[[:space:]]*$@\1@p' \
+          "$output" | ${pkgs.coreutils}/bin/head -n 1)"
+        if [ -n "$declared_owner" ] \
+          && { [ -f "$declared_owner" ] || [ -f "$(dirname "$output")/$declared_owner" ]; }; then
+          continue
+        fi
+
+        printf 'Genie ownership error: generated output has no current owner: %s\n' "$output" >&2
+        invalid=1
+      done < "$current_manifest"
+      [ "$invalid" -eq 0 ]
+    }
+
+    assert_no_orphaned_genie_outputs() {
+      retained_manifest="$1"
+      current_manifest="$2"
+      [ -f "$retained_manifest" ] || return 0
+
+      orphaned=0
+      while IFS= read -r output; do
+        output="''${output#./}"
+        [ -n "$output" ] || continue
+        # Older marker census accidentally classified generator sources whose
+        # template literals contained a Source marker as generated outputs.
+        # Such paths can never be owned outputs and are safe to retire.
+        case "$output" in *.genie.ts) continue ;; esac
+        if [ -f "$output" ] && ! ${pkgs.gnugrep}/bin/grep -Fqx -- "$output" "$current_manifest"; then
+          printf 'Genie ownership error: retained generated output has no current owner: %s\n' "$output" >&2
+          orphaned=1
+        fi
+      done < "$retained_manifest"
+      [ "$orphaned" -eq 0 ]
     }
   '';
   # Enumerate the extra non-`.genie.ts` generator inputs so their content joins
@@ -49,18 +142,19 @@ let
   enumerateGenieInputGlobs = lib.optionalString (cfg.extraInputGlobs != [ ]) ''
     if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ${lib.concatMapStringsSep "\n" (glob: ''
-      ${pkgs.git}/bin/git ls-files -z -- ${lib.escapeShellArg glob} | tr '\0' '\n'
-      ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ${lib.escapeShellArg glob} | tr '\0' '\n'
+      ${pkgs.git}/bin/git ls-files -z -- ${lib.escapeShellArg ":(glob)${glob}"} | tr '\0' '\n'
+      ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ${lib.escapeShellArg ":(glob)${glob}"} | tr '\0' '\n'
     '') cfg.extraInputGlobs}
     else
     ${lib.concatMapStringsSep "\n" (glob: ''
-      ${pkgs.findutils}/bin/find . -type f -path ${lib.escapeShellArg "./${glob}"} \
-        -not -path './.git/*' -not -path './.devenv/*' -not -path './node_modules/*' \
-        -print 2>/dev/null || true
+      ${pkgs.ripgrep}/bin/rg --files --hidden \
+        --glob ${lib.escapeShellArg glob} \
+        --glob '!.git/**' --glob '!.devenv/**' --glob '!node_modules/**' || true
     '') cfg.extraInputGlobs}
     fi
   '';
   computeGenieStateHash = ''
+    ${collectGenieGeneratedFiles}
     compute_genie_state_hash() {
       {
         if command -v genie >/dev/null 2>&1; then
@@ -68,33 +162,32 @@ let
           printf 'genie-version %s\n' "$(genie --version 2>/dev/null | ${pkgs.coreutils}/bin/head -n1 || echo unknown)"
         fi
 
-        # Track both the `.genie.ts` sources and the generated files they own so
-        # warm status checks catch manual drift without booting the full CLI.
-        # In Git worktrees, follow Git's tracked + untracked/non-ignored view so
-        # local ignored worktrees and caches do not poison Genie status.
-        if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-          ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- '*.genie.ts' ':(glob)**/*.genie.ts' \
-            | tr '\0' '\n'
-          ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- '*.genie.ts' ':(glob)**/*.genie.ts' \
-            | tr '\0' '\n'
-        else
-          ${pkgs.findutils}/bin/find . \
-            -type f \
-            -name '*.genie.ts' \
-            -not -path './.git/*' \
-            -not -path './.devenv/*' \
-            -not -path './node_modules/*' \
-            -print
-        fi
-        ${enumerateGenieInputGlobs}
-        ${collectGenieGeneratedFiles}
+        {
+          # Track both the `.genie.ts` sources and the generated files they own
+          # so warm status checks catch manual drift without booting the full
+          # CLI. Follow Git's tracked + untracked/non-ignored view in worktrees.
+          if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts' \
+              | tr '\0' '\n'
+            ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts' \
+              | tr '\0' '\n'
+          else
+            ${pkgs.findutils}/bin/find . \
+              -type f \
+              -name '*.genie.ts' \
+              -not -path './.git/*' \
+              -not -path './.devenv/*' \
+              -not -path './node_modules/*' \
+              -print
+          fi
+          ${enumerateGenieInputGlobs}
+          collect_genie_generated_files
+        } | LC_ALL=C sort -u | while IFS= read -r file; do
+          [ -f "$file" ] || continue
+          printf '%s\n' "$file"
+          ${pkgs.coreutils}/bin/sha256sum "$file" | awk '{print $1}'
+        done
       } \
-        | LC_ALL=C sort -u \
-        | while IFS= read -r file; do
-            [ -f "$file" ] || continue
-            printf '%s\n' "$file"
-            ${pkgs.coreutils}/bin/sha256sum "$file" | awk '{print $1}'
-          done \
         | ${pkgs.coreutils}/bin/sha256sum \
         | awk '{print $1}'
     }
@@ -114,9 +207,20 @@ let
       exec = trace.exec "genie:run" ''
         set -euo pipefail
         mkdir -p ${lib.escapeShellArg cacheRoot}
-        ${collectGenieGeneratedFiles}
         ${computeGenieStateHash}
         genie
+
+        generated_tmp_file="$(mktemp)"
+        collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
+        if ! assert_current_genie_owners_exist "$generated_tmp_file"; then
+          rm "$generated_tmp_file"
+          exit 1
+        fi
+        if ! assert_no_orphaned_genie_outputs ${lib.escapeShellArg generatedFilesFile} "$generated_tmp_file"; then
+          rm "$generated_tmp_file"
+          exit 1
+        fi
+
         cache_value="$(compute_genie_state_hash)"
         tmp_file="$(mktemp)"
         printf "%s" "$cache_value" > "$tmp_file"
@@ -126,8 +230,6 @@ let
           mv "$tmp_file" ${lib.escapeShellArg stateFile}
         fi
 
-        generated_tmp_file="$(mktemp)"
-        collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
         mv "$generated_tmp_file" ${lib.escapeShellArg generatedFilesFile}
       '';
       status = trace.status "genie:run" "binary" ''
@@ -166,7 +268,16 @@ let
       description = "Check if generated files are up to date (CI)";
       after = [ "genie:prepare" ];
       env = genieTaskEnv;
-      exec = trace.exec "genie:check" "genie --check";
+      exec = trace.exec "genie:check" ''
+        set -euo pipefail
+        ${collectGenieGeneratedFiles}
+        generated_tmp_file="$(mktemp)"
+        trap 'rm -f "$generated_tmp_file"' EXIT
+        collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
+        assert_current_genie_owners_exist "$generated_tmp_file"
+        assert_no_orphaned_genie_outputs ${lib.escapeShellArg generatedFilesFile} "$generated_tmp_file"
+        genie --check
+      '';
     };
   };
 in
@@ -187,8 +298,9 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        Extra non-.genie.ts generator inputs, expressed as git pathspecs/globs,
-        that should participate in the `genie:run` warm-cache fingerprint.
+        Extra non-.genie.ts generator inputs, expressed as plain Git glob
+        patterns without pathspec magic, that should participate in the
+        `genie:run` warm-cache fingerprint.
       '';
     };
   };

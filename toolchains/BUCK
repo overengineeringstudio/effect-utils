@@ -1,0 +1,15 @@
+load(":configured.bzl", "configured_exec")
+
+# Nix is the stage-0 authority. Each literal immutable path participates in the
+# configured graph and therefore in every consuming action key.
+configured_exec(
+    name = "closure_tool",
+    path = read_config("buck2_stage0", "closure_tool", ""),
+    visibility = ["PUBLIC"],
+)
+
+configured_exec(
+    name = "package_evidence_tool",
+    path = read_config("buck2_stage0", "package_evidence_tool", ""),
+    visibility = ["PUBLIC"],
+)

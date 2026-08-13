@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+  "../packages/@overeng/otel-scrape",
+  "../packages/@overeng/otelite",
+  "buck2-tools/core",
+  "buck2-tools/closure-tool",
+  "buck2-tools/package-evidence",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+
+# Request templates are inherited only where the member semantics match.
+# Each member still owns whether, where, and with which dependency kind it uses
+# the request. Package-local requests remain explicit exceptions.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = "symbols"

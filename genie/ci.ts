@@ -25,6 +25,8 @@ export const CORE_CI_JOB_NAMES = [
   'pnpm-builder-contract',
   'pnpm-regression',
   'bundle-smoke',
+  // Local-only Buck graph, receipt, bridge, and benchmark-contract evidence.
+  'buck2',
   // Rust lane: delegates build/test/clippy/fmt semantics to devenv task cargo:check.
   'cargo',
   // Additive Weaver semantic-conventions gate (separate lane; degrades if weaver unavailable).

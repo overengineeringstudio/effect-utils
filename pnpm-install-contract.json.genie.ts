@@ -1,7 +1,4 @@
-import {
-  pnpmInstallStorageContractV2 as storage,
-  projectionArtifact,
-} from './genie/external.ts'
+import { pnpmInstallStorageContractV2 as storage, projectionArtifact } from './genie/external.ts'
 import rootPackageJson from './package.json.genie.ts'
 import rootPnpmWorkspaceYaml from './pnpm-workspace.yaml.genie.ts'
 
