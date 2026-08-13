@@ -195,7 +195,7 @@ const planGeneratedArtifacts = ({
         if (worktree.broken === true) continue
         const removalStatus = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
           Effect.map((status) => ({ _tag: 'known' as const, status })),
-          Effect.catchAll(() => Effect.succeed({ _tag: 'unknown' as const })),
+          Effect.orElseSucceed(() => ({ _tag: 'unknown' as const })),
         )
         for (const artifactClass of config.generatedArtifacts.allowlist) {
           const artifactPath = EffectPath.ops.join(
