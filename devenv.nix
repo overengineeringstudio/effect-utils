@@ -97,7 +97,54 @@ let
     name = "ci-tools";
     entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
   };
-
+  buck2Machine = pkgs.buck2;
+  buck2SourceCli = mkSourceCli {
+    name = "buck2-task";
+    entry = "packages/@overeng/buck2-launcher/src/cli.ts";
+  };
+  buck2Task = "${buck2SourceCli}/bin/buck2-task";
+  buck2Stage0Resolver = mkSourceCli {
+    name = "buck2-stage0-config";
+    entry = "packages/@overeng/buck2-tools/src/stage0-config-cli.ts";
+  };
+  buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
+  buck2Stage0SemanticArgs = lib.concatMapStringsSep " " (
+    path:
+    let
+      repositoryPrefix = "${toString ./.}/";
+      absolute = toString path;
+      relative = lib.removePrefix repositoryPrefix absolute;
+    in
+    assert lib.assertMsg (
+      relative != absolute && relative != ""
+    ) "Buck stage-0 semantic inputs must be files below the repository root";
+    # Contents are runtime fingerprint inputs, not Nix inputs of the shell.
+    # The resolver independently validates repository containment at runtime.
+    "--semantic-input ${lib.escapeShellArg (builtins.unsafeDiscardStringContext relative)}"
+  ) buck2Stage0Definition.semantic-inputs;
+  buck2Stage0SemanticTreeArgs = lib.concatMapStringsSep " " (
+    path:
+    let
+      repositoryPrefix = "${toString ./.}/";
+      absolute = toString path;
+      relative = lib.removePrefix repositoryPrefix absolute;
+    in
+    assert lib.assertMsg (
+      relative != absolute && relative != ""
+    ) "Buck stage-0 semantic input trees must be below the repository root";
+    "--semantic-input-tree ${lib.escapeShellArg (builtins.unsafeDiscardStringContext relative)}"
+  ) buck2Stage0Definition.semantic-input-trees;
+  buck2Stage0Resolve = ''
+    cache_root="''${XDG_CACHE_HOME:-''${HOME:?HOME is required}/.cache}/effect-utils/buck2-stage0"
+    ${buck2Stage0Resolver}/bin/buck2-stage0-config \
+      --repo-root "$root" \
+      --cache-root "$cache_root" \
+      --nix-bin ${pkgs.nix}/bin/nix \
+      --flock-bin ${pkgs.flock}/bin/flock \
+      --bun-bin ${pkgs.bun}/bin/bun \
+      ${buck2Stage0SemanticArgs} \
+      ${buck2Stage0SemanticTreeArgs}
+  '';
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
     {
@@ -149,6 +196,8 @@ let
   # See: context/workarounds/bun-issues.md
   allPackages = [
     "packages/@overeng/agent-session-ingest"
+    "packages/@overeng/buck2-launcher"
+    "packages/@overeng/buck2-tools"
     "packages/@overeng/content-address"
     "packages/@overeng/utils"
     "packages/@overeng/utils-dev"
@@ -317,17 +366,46 @@ let
     }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
+  # Repository-specific semantic inputs read by Genie sources. The shared
+  # Genie module already owns the direct and nested `.genie.ts` census; this
+  # single list is composed into both its warm fingerprint and lint freshness.
+  genieExtraInputGlobs = [
+    "context/otel-scrape/telemetry-registry.json"
+    "genie/buck2/*.ts"
+    "packages/@overeng/buck2-tools/src/**/*.ts"
+    "packages/@overeng/tui-core/buck2/target.ts"
+    "packages/@overeng/tui-core/src/**/*.ts"
+    "packages/@overeng/tui-core/src/**/*.tsx"
+    "packages/@overeng/tui-core/src/**/*.cts"
+    "packages/@overeng/tui-core/src/**/*.mts"
+    "packages/@overeng/tui-core/test/**/*.ts"
+    "packages/@overeng/tui-core/test/**/*.tsx"
+    "packages/@overeng/tui-core/test/**/*.cts"
+    "packages/@overeng/tui-core/test/**/*.mts"
+    "pnpm-lock.yaml"
+    "pnpm-workspace.yaml"
+  ];
 in
 {
   imports = [
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
-    (import ./nix/devenv-modules/otel.nix { })
+    (import ./nix/devenv-modules/otel.nix { traceShellEntry = false; })
     # Hermetic native-devenv + effect-utils task-tree capture. Ambient mode
     # composes with the full stack above without importing it a second time.
     (import ./nix/devenv-modules/observability.nix {
       project = "effect-utils";
+      # Shell-entry setup is intentionally absent. Profile an instantiated,
+      # non-mutating task so check:all retains its trace integrity gate.
+      profile = {
+        name = "genie-check";
+        task = "genie:check";
+        mode = "single";
+        smokeTask = "genie:check";
+        smokeMode = "single";
+        bridgeTask = "genie:check";
+      };
       wireInto = [ "check:all" ];
     })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
@@ -414,20 +492,14 @@ in
         "scripts"
         "context"
       ];
-      # Genie file patterns for caching genie:check tasks. Besides `.genie.ts`
-      # sources, include non-`.genie.ts` generator inputs (source-of-truth files
-      # a generator reads) so a JSON-only edit still triggers `lint:check:genie`
-      # (its `execIfModified`) — kept in sync with `_module.args.genieInputGlobs`.
+      # Match both repo-root and nested Genie sources explicitly, then compose
+      # the same repository-specific semantic inputs used by the warm-state
+      # fingerprint. This is freshness scheduling, not output admission.
       geniePatterns = [
-        "packages/@overeng/*/*.genie.ts"
-        "packages/@overeng/*/examples/*/*.genie.ts"
-        "scripts/*.genie.ts"
-        "context/effect/socket/*.genie.ts"
-        "context/opentui/*.genie.ts"
-        "context/otel-scrape/telemetry-registry.json"
-        ".oxfmtrc.json.genie.ts"
-        ".oxlintrc.json.genie.ts"
-      ];
+        "*.genie.ts"
+        "**/*.genie.ts"
+      ]
+      ++ genieExtraInputGlobs;
       genieCoverageDirs = [ "packages" ];
       # Type-aware linting for typescript/no-deprecated rule
       tsconfig = "tsconfig.check.json";
@@ -442,7 +514,14 @@ in
     # Context example tasks
     taskModules.context
     (taskModules.setup {
+      # Repository mutation is explicit. Shell entry activates only the Nix
+      # environment, so its latency and availability are independent of Buck,
+      # pnpm, Genie, megarepo state, and the repository revision.
+      runOnEnterShell = false;
       requiredTasks = [ ];
+      # Reuse the Genie semantic-input SSOT in the cheap Git-index outer
+      # fingerprint so a warm shell cannot bypass projection invalidation.
+      extraFingerprintGlobs = genieExtraInputGlobs;
       # Keep shell entry resilient (R12): optional tasks run via @complete.
       # Ordering ensures source CLIs have deps before use.
       optionalTasks = [
@@ -473,19 +552,17 @@ in
   # Genie derivation.
   effectUtils.genie.package = genieSourceCli;
 
-  # Non-`.genie.ts` generator inputs (source-of-truth files a `.genie.ts` reads).
-  # These bust the `genie:run` warm-cache fingerprint. Keep in sync with the
-  # analogous entries in `geniePatterns` below (which cover the
-  # `lint:check:genie` gate's `execIfModified`).
-  effectUtils.genie.extraInputGlobs = [
-    "context/otel-scrape/telemetry-registry.json"
-  ];
+  # Non-`.genie.ts` sources share one list with the lint freshness scheduler.
+  effectUtils.genie.extraInputGlobs = genieExtraInputGlobs;
 
   packages = [
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
+    # Buck's admitted event backend; avoids pnpm alias staleness and whole-tree
+    # crawler races under concurrent repository tools.
+    pkgs.watchman
     # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
@@ -493,6 +570,10 @@ in
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
     repoFlake.packages.${currentSystem}.otelite
     repoFlake.packages.${currentSystem}.otel-scrape
+    # Nix-distributed direct Buck launcher; its wrapper pins the Buck binary.
+    buck2Machine
+    buck2SourceCli
+    buck2Stage0Resolver
     cliBuildStamp.package
     ciToolsSourceCli
     (mkSourceCli {
@@ -511,6 +592,8 @@ in
 
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
+  env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
+  env.BUCK2_MACHINE_VERSION = buck2Machine.version;
 
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
@@ -668,21 +751,30 @@ in
     '';
   };
 
+  tasks."cargo:test:buck2-foundation" = {
+    description = "Run the Rust tests for the Buck2 foundation tools";
+    exec = trace.exec "cargo:test:buck2-foundation" ''
+      set -euo pipefail
+      (
+        cd rust
+        cargo test --locked --package 'buck2-*'
+      )
+    '';
+  };
+
   tasks."cargo:check" = {
-    description = "Build, test, lint, and format-check standalone Rust crates";
+    description = "Validate the shared Cargo workspace, then build, test, lint, and format-check each member";
+    after = [ "cargo:test:buck2-foundation" ];
     exec = trace.exec "cargo:check" ''
       set -euo pipefail
-      ${lib.concatMapStringsSep "\n" (crate: ''
-        echo "::group::${crate.name}"
-        (
-          cd "${crate.path}"
-          cargo build --release
-          cargo test
-          cargo clippy -- -D warnings
-          cargo fmt --check
-        )
-        echo "::endgroup::"
-      '') rustCrates}
+      ${pkgs.bash}/bin/bash rust/workspace-contract.test.sh "$PWD"
+      (
+        cd rust
+        cargo build --release --locked --workspace
+        cargo test --locked --workspace --exclude 'buck2-*'
+        cargo clippy --locked --workspace --all-targets -- -D warnings
+        cargo fmt --all --check
+      )
     '';
   };
 
@@ -694,10 +786,248 @@ in
     '';
   };
 
-  tasks."check:all".after = [
-    "cargo:check"
-    "dependency-materialization:evidence:check"
-  ];
+  tasks."buck2:build:foundation" = {
+    description = "Build exact-closure and portable-toolchain Buck2 evidence with remote execution/cache disabled";
+    exec = trace.exec "buck2:build:foundation" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      buck2_stage0_config="$(${buck2Stage0Resolve})"
+      exec ${buck2Task} \
+        --evidence-dir "$root/tmp/buck2-evidence" \
+        --print-command \
+        -- build --config-file "$buck2_stage0_config" //:buck2_foundation //:portable_toolchain_evidence --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:test:foundation" = {
+    description = "Run strict Buck2 closure, package-evidence, and portable-toolchain tests locally";
+    after = [ "cargo:test:buck2-foundation" ];
+    exec = trace.exec "buck2:test:foundation" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      buck2_stage0_config="$(${buck2Stage0Resolve})"
+      exec ${buck2Task} \
+        --evidence-dir "$root/tmp/buck2-evidence" \
+        --print-command \
+        -- build --config-file "$buck2_stage0_config" \
+          //:buck2_foundation \
+          //:portable_toolchain_evidence \
+          --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:e2e:tui-core" = {
+    description = "Generate, build, and observe the provisional tui-core Buck input-plan evidence";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:e2e:tui-core" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      buck2_stage0_config="$(${buck2Stage0Resolve})"
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export BUCK2_STAGE0_CONFIG="$buck2_stage0_config"
+      exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
+        "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan
+    '';
+  };
+
+  tasks."buck2:nix-bridge:check" = {
+    description = "Check the strict build-product contract, Nix tool export, and fail-closed artifact importer";
+    exec = trace.exec "buck2:nix-bridge:check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      buck2_stage0_config="$(${buck2Stage0Resolve})"
+      export BUCK2_BIN=${buck2Machine}/bin/buck2
+      export BUCK2_STAGE0_CONFIG="$buck2_stage0_config"
+      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
+      exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
+    '';
+  };
+
+  tasks."buck2:foundation:graph-check" = {
+    description = "Prove the Buck2 foundation has no repo-owned Python or CPython graph edges";
+    exec = trace.exec "buck2:foundation:graph-check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      buck2_stage0_config="$(${buck2Stage0Resolve})"
+      export BUCK2_STAGE0_CONFIG="$buck2_stage0_config"
+      exec ${pkgs.bash}/bin/bash scripts/buck2-foundation-graph-check.sh \
+        "$PWD" ${pkgs.buck2}/bin/buck2
+    '';
+  };
+
+  tasks."buck2:benchmark:check" = {
+    description = "Validate the Buck2 benchmark parser, immutable evidence, and non-mutating dry-run contract";
+    exec = trace.exec "buck2:benchmark:check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      ${pkgs.nodejs}/bin/node --test \
+        scripts/buck2-benchmark/lib.unit.test.mjs \
+        scripts/buck2-benchmark/evidence-integrity.unit.test.mjs \
+        scripts/buck2-benchmark/dry-run.integration.test.mjs
+      ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
+        --output "$root/tmp/buck2-benchmark/dry-run.jsonl"
+    '';
+  };
+
+  tasks."buck2:invalidation:e2e" = {
+    description = "Prove canonical source mutation invalidates Buck2 through the configured file watcher";
+    exec = trace.exec "buck2:invalidation:e2e" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      buck2_stage0_config="$(${buck2Stage0Resolve})"
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
+      export BUCK2_STAGE0_CONFIG="$buck2_stage0_config"
+      exec ${pkgs.bash}/bin/bash scripts/buck2-invalidation-e2e.sh \
+        "$root" ${pkgs.buck2}/bin/buck2
+    '';
+  };
+
+  tasks."buck2:platform:check" = {
+    description = "Reject a Buck2 package target whose declared platform differs from the local-only host";
+    exec = trace.exec "buck2:platform:check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      buck2_stage0_config="$(${buck2Stage0Resolve})"
+      isolation="platform-check-$$-$RANDOM"
+      stderr_file="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/buck2-platform-check.XXXXXX")"
+      cleanup() {
+        ${pkgs.buck2}/bin/buck2 --isolation-dir "$isolation" kill >/dev/null 2>&1 || true
+        ${pkgs.coreutils}/bin/rm -f "$stderr_file"
+      }
+      trap cleanup EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+
+      if ${pkgs.buck2}/bin/buck2 \
+        --isolation-dir "$isolation" \
+        build --config-file "$buck2_stage0_config" --fake-arch aarch64 \
+        //packages/@overeng/tui-core:typescript_input_plan \
+        --local-only --no-remote-cache \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:platform:check: mismatched platform unexpectedly built" >&2
+        exit 1
+      fi
+      actual="$(${pkgs.gawk}/bin/awk '
+        /error: fail: package_task platform mismatch:/ {
+          sub(/^.*error: fail: package_task platform mismatch: /, "")
+          print
+          exit
+        }
+      ' "$stderr_file")"
+      expected="target requires x86_64-linux, local-only execution host is aarch64-linux"
+      if [ "$actual" != "$expected" ]; then
+        echo "buck2:platform:check: unexpected diagnostic: $actual" >&2
+        exit 1
+      fi
+      echo "buck2:platform:check: PASS diagnostic=$actual"
+    '';
+  };
+
+  tasks."buck2:rust-musl:check" = lib.mkIf (currentSystem == "x86_64-linux") {
+    description = "Prove the Nix-authored Rust toolchain, target, and execution-platform contract";
+    exec = trace.exec "buck2:rust-musl:check" ''
+      set -euo pipefail
+      isolation="rust-musl-check-$$-$RANDOM"
+      stderr_file="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/buck2-rust-musl-check.XXXXXX")"
+      toolchain_root_dir=""
+      cleanup() {
+        ${pkgs.buck2}/bin/buck2 --isolation-dir "$isolation" kill >/dev/null 2>&1 || true
+        if [ -n "$toolchain_root_dir" ]; then
+          ${pkgs.coreutils}/bin/rm -f "$toolchain_root_dir/toolchain"
+          ${pkgs.coreutils}/bin/rmdir "$toolchain_root_dir" 2>/dev/null || true
+        fi
+        ${pkgs.coreutils}/bin/rm -f "$stderr_file"
+      }
+      trap cleanup EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+
+      # Keep the large cross-toolchain out of the default devenv closure. This
+      # explicit task boundary realizes it only when the Rust probe is run. The
+      # temporary out-link roots the config and its transitive toolchain closure
+      # until every Buck invocation has finished, including under concurrent GC.
+      toolchain_root_dir="$(${pkgs.coreutils}/bin/mktemp -d "''${TMPDIR:-/tmp}/buck2-rust-musl-root.XXXXXX")"
+      toolchain_config="$(${pkgs.nix}/bin/nix build \
+        --out-link "$toolchain_root_dir/toolchain" \
+        --print-out-paths \
+        .#buck2-rust-musl-toolchain-config)"
+
+      buck2_with_toolchain_root() {
+        if [ ! -L "$toolchain_root_dir/toolchain" ] || \
+          [ "$(${pkgs.coreutils}/bin/readlink -f "$toolchain_root_dir/toolchain")" != "$toolchain_config" ] || \
+          [ ! -e "$toolchain_config" ]; then
+          echo "buck2:rust-musl:check: toolchain GC root disappeared before Buck completed" >&2
+          return 1
+        fi
+        ${pkgs.buck2}/bin/buck2 "$@"
+      }
+
+      common=(
+        --isolation-dir "$isolation"
+        build
+        --config-file "$toolchain_config"
+        --target-platforms //buck2/platforms:target_x86_64_linux_musl_static
+        //buck2/rust:static_hello
+        --local-only
+        --no-remote-cache
+      )
+
+      if buck2_with_toolchain_root "''${common[@]}" \
+        --config build.execution_platforms=prelude//platforms:default \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: default execution platform unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "No compatible execution platform" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing execution-platform rejection" >&2
+        exit 1
+      }
+
+      if buck2_with_toolchain_root "''${common[@]}" \
+        --config rust_toolchain.target_platform=//buck2/platforms:target_x86_64_linux_glibc_dynamic \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: mismatched Nix toolchain metadata unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "Rust toolchain target platform mismatch" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing toolchain-metadata rejection" >&2
+        exit 1
+      }
+
+      buck2_with_toolchain_root "''${common[@]}"
+      identity="$(${pkgs.gawk}/bin/awk '$1 == "toolchain_identity" { print $3 }' "$toolchain_config")"
+      echo "buck2:rust-musl:check: PASS identity=$identity"
+    '';
+  };
+
+  tasks."buck2:check" = {
+    description = "Run Buck2 foundation, invalidation, platform, Nix bridge, and benchmark gates";
+    after = [
+      "buck2:build:foundation"
+      "buck2:test:foundation"
+      "buck2:foundation:graph-check"
+      "buck2:e2e:tui-core"
+      "buck2:nix-bridge:check"
+      "buck2:benchmark:check"
+      "buck2:invalidation:e2e"
+      "buck2:platform:check"
+    ]
+    ++ lib.optionals (currentSystem == "x86_64-linux") [
+      "buck2:rust-musl:check"
+    ];
+  };
+
+  tasks."check:all".after =
+    lib.optionals (currentSystem == "x86_64-linux") [
+      "buck2:check"
+    ]
+    ++ [
+      "cargo:check"
+      "dependency-materialization:evidence:check"
+    ];
 
   # `test:run` executes after its package-task dependencies, so the
   # baseline-collection gate sees the complete managed-test summary directory in CI.
