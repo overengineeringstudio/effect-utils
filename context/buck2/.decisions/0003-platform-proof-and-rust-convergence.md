@@ -1,15 +1,16 @@
 # 0003 Per-Platform Proof and Measured Rust Convergence
 
-Status: accepted
+Status: accepted; the conditional repository-helper conclusion is superseded
+by [decision 0010](./0010-admit-rust-stage-zero-support-tools.md)
 
 ## Context
 
 Build authority, cache reuse, and remote execution are platform-specific.
 Prototype Rust replacements for current Python helpers demonstrated feasibility
 and startup gains but did not satisfy parity, portability, or complexity gates.
-The later shared root Cargo workspace removes the prototype's second-lock
-authority objection, but it does not by itself prove behavioral parity or earn
-replacement admission.
+The later shared root Cargo workspace removed the prototype's second-lock
+authority objection. At the time of this decision it did not by itself prove
+behavioral parity or earn replacement admission.
 
 ## Evidence and Argument
 
@@ -57,6 +58,6 @@ does not require an immediate Prelude fork.
   justify a shared binary.
 - A faster prototype is not admitted when it adds another lockfile, bootstrap
   cycle, duplicated schema, or unsupported platform claim.
-- The shared workspace reopens the Rust candidate under one Cargo authority;
-  the new parity, adversarial, invalidation, platform, and deletion results stay
-  in a follow-up experiment until they support a separate decision.
+- The shared workspace reopened the Rust candidate under one Cargo authority.
+  The follow-up experiment subsequently passed the parity, adversarial,
+  invalidation, platform, and deletion gates and is admitted by decision 0010.
