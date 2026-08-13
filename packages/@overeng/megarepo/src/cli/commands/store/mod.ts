@@ -142,6 +142,157 @@ const AgentLivenessManifest = Schema.Struct({
   activeWorkspacePaths: Schema.Array(Schema.String),
 })
 
+type GeneratedArtifactRepoWorktrees = ReadonlyArray<{
+  readonly repo: { readonly relativePath: string }
+  readonly worktrees: ReadonlyArray<CollectedWorktree>
+}>
+
+const planGeneratedArtifacts = ({
+  config,
+  fs,
+  liveSet,
+  repoWorktrees,
+}: {
+  config: StoreGcConfig
+  fs: FileSystem.FileSystem
+  liveSet: StoreLiveSet
+  repoWorktrees: GeneratedArtifactRepoWorktrees
+}): Effect.Effect<
+  { readonly results: ReadonlyArray<StoreGcResult>; readonly planSha256: string },
+  never,
+  Clock.Clock
+> =>
+  Effect.gen(function* () {
+    const generatedResults: StoreGcResult[] = []
+    const readAgentActivePaths: Effect.Effect<ReadonlySet<string> | undefined, never, Clock.Clock> =
+      Effect.gen(function* () {
+        if (config.generatedArtifacts.agentLivenessManifest === undefined) return undefined
+        const manifestContent = yield* fs
+          .readFileString(config.generatedArtifacts.agentLivenessManifest)
+          .pipe(Effect.orElseSucceed(() => undefined))
+        if (manifestContent === undefined) return undefined
+        const parsed = yield* Schema.decodeUnknown(Schema.parseJson(AgentLivenessManifest))(
+          manifestContent,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+        if (
+          parsed === undefined ||
+          Number.isFinite(parsed.expiresAtMs) === false ||
+          parsed.activeWorkspacePaths.some((path) => isNormalizedAbsolutePath(path) === false) ===
+            true ||
+          parsed.expiresAtMs < (yield* Clock.currentTimeMillis)
+        ) {
+          return undefined
+        }
+        return new Set(parsed.activeWorkspacePaths.map(normalizeStorePath))
+      })
+    for (const { repo, worktrees } of repoWorktrees) {
+      for (const worktree of worktrees) {
+        if (worktree.broken === true) continue
+        const removalStatus = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
+          Effect.map((status) => ({ _tag: 'known' as const, status })),
+          Effect.catchAll(() => Effect.succeed({ _tag: 'unknown' as const })),
+        )
+        for (const artifactClass of config.generatedArtifacts.allowlist) {
+          const artifactPath = EffectPath.ops.join(
+            worktree.path,
+            EffectPath.unsafe.relativeDir(`${artifactClass}/`),
+          )
+          if ((yield* fs.exists(artifactPath).pipe(Effect.orElseSucceed(() => false))) === false) {
+            continue
+          }
+          const ignored = yield* Git.runCommand({
+            args: ['check-ignore', '--quiet', '--', artifactClass],
+            cwd: worktree.path,
+          }).pipe(
+            Effect.as('ignored' as const),
+            Effect.catchAll((error) =>
+              Effect.succeed(
+                error instanceof Git.GitCommandError && error.exitCode === 1
+                  ? ('not-ignored' as const)
+                  : ('unknown' as const),
+              ),
+            ),
+          )
+          const megarepoLive = isPathProtected({ liveSet, path: worktree.path })
+          const agentActivePaths = yield* readAgentActivePaths
+          const agentLive = agentActivePaths?.has(normalizeStorePath(worktree.path))
+          const cheapReason =
+            config.generatedArtifacts.enabled === false
+              ? 'generated-artifacts-disabled'
+              : agentActivePaths === undefined
+                ? 'agent-liveness-unavailable'
+                : removalStatus._tag === 'unknown'
+                  ? 'cleanliness-unknown'
+                  : removalStatus.status.isDirty === true
+                    ? 'dirty-worktree'
+                    : ignored === 'unknown'
+                      ? 'artifact-ignore-unknown'
+                      : ignored === 'not-ignored'
+                        ? 'artifact-not-ignored'
+                        : megarepoLive === true || agentLive === true
+                          ? 'live'
+                          : undefined
+          const traversal =
+            cheapReason === undefined
+              ? yield* scanGeneratedArtifact({ path: artifactPath })
+              : undefined
+          const mtimeMs = traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
+          const candidateNow = yield* Clock.currentTimeMillis
+          const reason =
+            cheapReason ??
+            (traversal?._tag !== 'complete'
+              ? 'artifact-scan-incomplete'
+              : candidateNow - traversal.newestMtimeMs < config.generatedArtifacts.retentionMs
+                ? 'retention'
+                : 'eligible')
+          const outcome =
+            reason === 'eligible'
+              ? ('would-delete' as const)
+              : reason === 'agent-liveness-unavailable' ||
+                  reason === 'cleanliness-unknown' ||
+                  reason === 'artifact-ignore-unknown' ||
+                  reason === 'artifact-scan-incomplete'
+                ? ('unknown' as const)
+                : ('keep' as const)
+          generatedResults.push({
+            repo: repo.relativePath,
+            ref: worktree.ref,
+            refType: worktree.refType,
+            path: artifactPath,
+            status: 'kept',
+            reason,
+            kind: 'generated-artifact',
+            artifactClass: artifactClass satisfies StoreGcGeneratedArtifact,
+            workspacePath: worktree.path,
+            exclusiveClosureBytes: null,
+            outcome,
+            ...(traversal?._tag === 'incomplete'
+              ? { message: `generated artifact scan incomplete: ${traversal.cause}` }
+              : {}),
+            ...(mtimeMs !== undefined ? { mtimeMs } : {}),
+          })
+        }
+      }
+    }
+    const canonicalPlan = generatedResults
+      .map((result) => ({
+        repo: result.repo,
+        ref: result.ref,
+        refType: result.refType,
+        artifactClass: result.artifactClass,
+        path: result.path,
+        workspacePath: result.workspacePath,
+        reason: result.reason,
+        outcome: result.outcome,
+        mtimeMs: result.mtimeMs,
+      }))
+      .toSorted((left, right) => compareCanonicalPlanPaths({ left: left.path, right: right.path }))
+    return {
+      results: generatedResults,
+      planSha256: createHash('sha256').update(JSON.stringify(canonicalPlan)).digest('hex'),
+    }
+  })
+
 const scanGeneratedArtifact = ({ path }: { path: string }) =>
   Effect.async<GeneratedArtifactScan>((resume) => {
     let settled = false
@@ -1699,146 +1850,19 @@ const storeGcCommand = Cli.Command.make(
 
           if (generatedArtifacts === true) {
             const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
-            const generatedResults: StoreGcResult[] = []
-            const readAgentActivePaths = Effect.fnUntraced(function* () {
-              if (config.generatedArtifacts.agentLivenessManifest === undefined) return undefined
-              const manifestContent = yield* fs
-                .readFileString(config.generatedArtifacts.agentLivenessManifest)
-                .pipe(Effect.orElseSucceed(() => undefined))
-              if (manifestContent === undefined) return undefined
-              const parsed = yield* Schema.decodeUnknown(Schema.parseJson(AgentLivenessManifest))(
-                manifestContent,
-              ).pipe(Effect.orElseSucceed(() => undefined))
-              if (
-                parsed === undefined ||
-                Number.isFinite(parsed.expiresAtMs) === false ||
-                parsed.activeWorkspacePaths.some(
-                  (path) => isNormalizedAbsolutePath(path) === false,
-                ) === true ||
-                parsed.expiresAtMs < (yield* Clock.currentTimeMillis)
-              ) {
-                return undefined
-              }
-              return new Set(parsed.activeWorkspacePaths.map(normalizeStorePath))
+            const generatedPlan = yield* planGeneratedArtifacts({
+              config,
+              fs,
+              liveSet,
+              repoWorktrees,
             })
-            for (const { repo, worktrees } of repoWorktrees) {
-              discoveredWorktreeCount += worktrees.length
-              activeWorktreeCount += worktrees.length
-              for (const worktree of worktrees) {
-                if (worktree.broken === true) continue
-                const removalStatus = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
-                  Effect.map((status) => ({ _tag: 'known' as const, status })),
-                  Effect.catchAll(() => Effect.succeed({ _tag: 'unknown' as const })),
-                )
-                for (const artifactClass of config.generatedArtifacts.allowlist) {
-                  const artifactPath = EffectPath.ops.join(
-                    worktree.path,
-                    EffectPath.unsafe.relativeDir(`${artifactClass}/`),
-                  )
-                  if (
-                    (yield* fs.exists(artifactPath).pipe(Effect.orElseSucceed(() => false))) ===
-                    false
-                  ) {
-                    continue
-                  }
-                  const ignored = yield* Git.runCommand({
-                    args: ['check-ignore', '--quiet', '--', artifactClass],
-                    cwd: worktree.path,
-                  }).pipe(
-                    Effect.as('ignored' as const),
-                    Effect.catchAll((error) =>
-                      Effect.succeed(
-                        error instanceof Git.GitCommandError && error.exitCode === 1
-                          ? ('not-ignored' as const)
-                          : ('unknown' as const),
-                      ),
-                    ),
-                  )
-                  const megarepoLive = isPathProtected({ liveSet, path: worktree.path })
-                  const agentActivePaths = yield* readAgentActivePaths()
-                  const agentLive = agentActivePaths?.has(normalizeStorePath(worktree.path))
-                  const cheapReason =
-                    config.generatedArtifacts.enabled === false
-                      ? 'generated-artifacts-disabled'
-                      : agentActivePaths === undefined
-                        ? 'agent-liveness-unavailable'
-                        : removalStatus._tag === 'unknown'
-                          ? 'cleanliness-unknown'
-                          : removalStatus.status.isDirty === true
-                            ? 'dirty-worktree'
-                            : ignored === 'unknown'
-                              ? 'artifact-ignore-unknown'
-                              : ignored === 'not-ignored'
-                                ? 'artifact-not-ignored'
-                                : megarepoLive === true || agentLive === true
-                                  ? 'live'
-                                  : undefined
-                  const traversal =
-                    cheapReason === undefined
-                      ? yield* scanGeneratedArtifact({ path: artifactPath })
-                      : undefined
-                  const mtimeMs =
-                    traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
-                  const candidateNow = yield* Clock.currentTimeMillis
-                  const reason =
-                    cheapReason ??
-                    (traversal?._tag !== 'complete'
-                      ? 'artifact-scan-incomplete'
-                      : candidateNow - traversal.newestMtimeMs <
-                          config.generatedArtifacts.retentionMs
-                        ? 'retention'
-                        : 'eligible')
-                  const outcome =
-                    reason === 'eligible'
-                      ? ('would-delete' as const)
-                      : reason === 'agent-liveness-unavailable' ||
-                          reason === 'cleanliness-unknown' ||
-                          reason === 'artifact-ignore-unknown' ||
-                          reason === 'artifact-scan-incomplete'
-                        ? ('unknown' as const)
-                        : ('keep' as const)
-                  generatedResults.push({
-                    repo: repo.relativePath,
-                    ref: worktree.ref,
-                    refType: worktree.refType,
-                    path: artifactPath,
-                    status: 'kept',
-                    reason,
-                    kind: 'generated-artifact',
-                    artifactClass: artifactClass satisfies StoreGcGeneratedArtifact,
-                    workspacePath: worktree.path,
-                    exclusiveClosureBytes: null,
-                    outcome,
-                    ...(traversal?._tag === 'incomplete'
-                      ? { message: `generated artifact scan incomplete: ${traversal.cause}` }
-                      : {}),
-                    ...(mtimeMs !== undefined ? { mtimeMs } : {}),
-                  })
-                }
-              }
-              activeWorktreeCount -= worktrees.length
-              completedRepoCount += 1
-              if (progressive === true) {
-                yield* dispatchGc({ done: false, forceDispatch: true })
-              }
-            }
-            const canonicalPlan = generatedResults
-              .map((result) => ({
-                repo: result.repo,
-                ref: result.ref,
-                refType: result.refType,
-                artifactClass: result.artifactClass,
-                path: result.path,
-                workspacePath: result.workspacePath,
-                reason: result.reason,
-                outcome: result.outcome,
-                mtimeMs: result.mtimeMs,
-              }))
-              .toSorted((left, right) =>
-                compareCanonicalPlanPaths({ left: left.path, right: right.path }),
-              )
-            planSha256 = createHash('sha256').update(JSON.stringify(canonicalPlan)).digest('hex')
-            for (const result of generatedResults) results.push(result)
+            planSha256 = generatedPlan.planSha256
+            for (const result of generatedPlan.results) results.push(result)
+            discoveredWorktreeCount += repoWorktrees.reduce(
+              (count, repo) => count + repo.worktrees.length,
+              0,
+            )
+            completedRepoCount += repoWorktrees.length
           }
 
           // Default cold reclamation path (decisions 0001–0010): additive third
