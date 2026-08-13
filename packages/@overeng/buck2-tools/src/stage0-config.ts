@@ -5,7 +5,9 @@ import { constants } from 'node:fs'
 import {
   access,
   chmod,
+  copyFile,
   mkdir,
+  mkdtemp,
   open,
   readFile,
   readdir,
@@ -484,29 +486,44 @@ const realizeTool = async ({
 const createSourceSnapshot = async ({
   request,
   fingerprint,
+  inputs,
 }: {
   readonly request: Stage0ConfigRequest
   readonly fingerprint: string
+  readonly inputs: ReadonlyArray<SemanticInputDigest>
 }): Promise<string> => {
-  const stdout = await run({
-    binary: request.nixBinary,
-    args: [
-      'store',
-      'add-path',
-      '--name',
-      `effect-utils-buck2-stage0-${fingerprint}`,
-      request.repoRoot,
-    ],
-    cwd: request.repoRoot,
-  })
-  const paths = stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '')
-  if (paths.length !== 1 || isAbsolute(paths[0]!) === false) {
-    throw new Error('Nix returned an invalid stage-0 source snapshot')
+  await mkdir(request.cacheRoot, { recursive: true })
+  const stagingRoot = await mkdtemp(resolve(request.cacheRoot, 'source-snapshot-'))
+  try {
+    await Promise.all(
+      inputs.map(async ({ path }) => {
+        const destination = resolve(stagingRoot, path)
+        await mkdir(dirname(destination), { recursive: true })
+        await copyFile(resolve(request.repoRoot, path), destination)
+      }),
+    )
+    const stdout = await run({
+      binary: request.nixBinary,
+      args: [
+        'store',
+        'add-path',
+        '--name',
+        `effect-utils-buck2-stage0-${fingerprint}`,
+        stagingRoot,
+      ],
+      cwd: request.repoRoot,
+    })
+    const paths = stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '')
+    if (paths.length !== 1 || isAbsolute(paths[0]!) === false) {
+      throw new Error('Nix returned an invalid stage-0 source snapshot')
+    }
+    return paths[0]!
+  } finally {
+    await rm(stagingRoot, { recursive: true, force: true })
   }
-  return paths[0]!
 }
 
 export const resolveStage0ConfigUnderLock = async ({
@@ -531,6 +548,7 @@ export const resolveStage0ConfigUnderLock = async ({
   const sourceSnapshot = await createSourceSnapshot({
     request,
     fingerprint: identity.fingerprint,
+    inputs: identity.inputs,
   })
   const snapshotIdentity = await resolveIdentity({ ...request, repoRoot: sourceSnapshot })
   if (snapshotIdentity.fingerprint !== identity.fingerprint) return { status: 'retry' }

@@ -395,6 +395,16 @@ in
     # composes with the full stack above without importing it a second time.
     (import ./nix/devenv-modules/observability.nix {
       project = "effect-utils";
+      # Shell-entry setup is intentionally absent. Profile an instantiated,
+      # non-mutating task so check:all retains its trace integrity gate.
+      profile = {
+        name = "genie-check";
+        task = "genie:check";
+        mode = "single";
+        smokeTask = "genie:check";
+        smokeMode = "single";
+        bridgeTask = "genie:check";
+      };
       wireInto = [ "check:all" ];
     })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fix lazy Buck stage-0 recovery to snapshot only its fingerprinted source inputs, keep unrelated Cargo product manifests out of tool derivations, and retain the observability gate when shell-entry setup is disabled.
+
 - **Buck2/devenv fast path**: make shell activation independent of Buck and
   repository setup, expose the pinned Buck client through a source-mode local
   launcher, lazily resolve stage-0 tools only for consuming tasks, and classify

@@ -3,28 +3,15 @@ let
   lib = pkgs.lib;
   repositoryRoot = ../.;
   workspaceRoot = repositoryRoot + "/rust";
-  workspace = builtins.fromTOML (builtins.readFile (workspaceRoot + "/Cargo.toml"));
-  memberManifests = map (member: workspaceRoot + "/${member}/Cargo.toml") workspace.workspace.members;
 
-  sharedFileset = lib.fileset.unions (
-    [
-      (workspaceRoot + "/Cargo.toml")
-      (workspaceRoot + "/Cargo.lock")
-      (repositoryRoot + "/rust-toolchain.toml")
-      (repositoryRoot + "/nix/buck2-stage0-tools.nix")
-      (lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/buck2-tools/core/src"))
-    ]
-    ++ memberManifests
-  );
-  leafFilesets =
-    map (member: lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/${member}/src"))
-      [
-        "buck2-tools/closure-tool"
-        "buck2-tools/package-evidence"
-        "buck2-tools/portable-toolchain"
-        "buck2-tools/portable-toolchain-fixture"
-      ];
-  semanticFileset = lib.fileset.unions ([ sharedFileset ] ++ leafFilesets);
+  sharedFileset = lib.fileset.unions [
+    (workspaceRoot + "/Cargo.toml")
+    (workspaceRoot + "/Cargo.lock")
+    (repositoryRoot + "/rust-toolchain.toml")
+    (repositoryRoot + "/nix/buck2-stage0-tools.nix")
+    (workspaceRoot + "/buck2-tools/core/Cargo.toml")
+    (lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/buck2-tools/core/src"))
+  ];
   resolverFixedFileset = lib.fileset.unions [
     (workspaceRoot + "/Cargo.toml")
     (workspaceRoot + "/Cargo.lock")
@@ -34,15 +21,42 @@ let
     (repositoryRoot + "/flake.nix")
   ];
 
+  mkSourceFileset =
+    packageRoot:
+    lib.fileset.unions [
+      sharedFileset
+      (packageRoot + "/Cargo.toml")
+      (lib.fileset.fileFilter (file: file.hasExt "rs") (packageRoot + "/src"))
+    ];
   mkSource =
     packageRoot:
     lib.fileset.toSource {
       root = repositoryRoot;
-      fileset = lib.fileset.unions ([
-        sharedFileset
-        (lib.fileset.fileFilter (file: file.hasExt "rs") (packageRoot + "/src"))
-      ]);
+      fileset = mkSourceFileset packageRoot;
     };
+
+  toolDefinitions = {
+    closure-tool = {
+      package = "buck2-closure-tool";
+      packageRoot = workspaceRoot + "/buck2-tools/closure-tool";
+      workspaceMember = "buck2-tools/closure-tool";
+    };
+    package-evidence = {
+      package = "buck2-package-evidence";
+      packageRoot = workspaceRoot + "/buck2-tools/package-evidence";
+      workspaceMember = "buck2-tools/package-evidence";
+    };
+    portable-toolchain = {
+      package = "buck2-portable-toolchain";
+      packageRoot = workspaceRoot + "/buck2-tools/portable-toolchain";
+      workspaceMember = "buck2-tools/portable-toolchain";
+    };
+    portable-toolchain-fixture = {
+      package = "buck2-portable-toolchain-fixture";
+      packageRoot = workspaceRoot + "/buck2-tools/portable-toolchain-fixture";
+      workspaceMember = "buck2-tools/portable-toolchain-fixture";
+    };
+  };
 
   mkTool =
     {
@@ -89,24 +103,9 @@ in
   # The resolver performs this census on every invocation, so files added or
   # removed after devenv evaluation still change the stage-0 fingerprint.
   semantic-input-trees = [ (repositoryRoot + "/rust/buck2-tools") ];
-  closure-tool = mkTool {
-    package = "buck2-closure-tool";
-    packageRoot = workspaceRoot + "/buck2-tools/closure-tool";
-    workspaceMember = "buck2-tools/closure-tool";
-  };
-  package-evidence = mkTool {
-    package = "buck2-package-evidence";
-    packageRoot = workspaceRoot + "/buck2-tools/package-evidence";
-    workspaceMember = "buck2-tools/package-evidence";
-  };
-  portable-toolchain = mkTool {
-    package = "buck2-portable-toolchain";
-    packageRoot = workspaceRoot + "/buck2-tools/portable-toolchain";
-    workspaceMember = "buck2-tools/portable-toolchain";
-  };
-  portable-toolchain-fixture = mkTool {
-    package = "buck2-portable-toolchain-fixture";
-    packageRoot = workspaceRoot + "/buck2-tools/portable-toolchain-fixture";
-    workspaceMember = "buck2-tools/portable-toolchain-fixture";
-  };
+  source-inputs = lib.mapAttrs (_: definition: lib.fileset.toList (mkSourceFileset definition.packageRoot)) toolDefinitions;
+  closure-tool = mkTool toolDefinitions.closure-tool;
+  package-evidence = mkTool toolDefinitions.package-evidence;
+  portable-toolchain = mkTool toolDefinitions.portable-toolchain;
+  portable-toolchain-fixture = mkTool toolDefinitions.portable-toolchain-fixture;
 }

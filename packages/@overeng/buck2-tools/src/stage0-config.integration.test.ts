@@ -35,6 +35,7 @@ const runCli = async ({
   mutateDuringRealization = false,
   mutateDuringEveryRealization = false,
   mutateAbaDuringRealization = false,
+  requireFilteredSnapshot = false,
 }: {
   readonly root: string
   readonly cacheRoot: string
@@ -42,6 +43,7 @@ const runCli = async ({
   readonly mutateDuringRealization?: boolean
   readonly mutateDuringEveryRealization?: boolean
   readonly mutateAbaDuringRealization?: boolean
+  readonly requireFilteredSnapshot?: boolean
 }): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> =>
   new Promise((resolvePromise, reject) => {
     const child = spawn(
@@ -71,6 +73,9 @@ const runCli = async ({
           ...(mutateDuringRealization === true ? { FAKE_NIX_MUTATE_SEMANTIC: '1' } : {}),
           ...(mutateDuringEveryRealization === true ? { FAKE_NIX_MUTATE_ALWAYS: '1' } : {}),
           ...(mutateAbaDuringRealization === true ? { FAKE_NIX_MUTATE_ABA: '1' } : {}),
+          ...(requireFilteredSnapshot === true
+            ? { FAKE_NIX_REQUIRE_FILTERED_SNAPSHOT: '1' }
+            : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -113,6 +118,10 @@ set -eu
 if [ "\${1:-}" = store ] && [ "\${2:-}" = add-path ]; then
   shift 2
   if [ "\${1:-}" = --name ]; then shift 2; fi
+  if [ "\${FAKE_NIX_REQUIRE_FILTERED_SNAPSHOT:-}" = 1 ] && [ -e "$1/unrelated.txt" ]; then
+    echo "unrelated file reached stage-0 source snapshot" >&2
+    exit 65
+  fi
   snapshot="\${FAKE_NIX_ROOT%/*}-snapshot"
   rm -rf "$snapshot"
   mkdir -p "$snapshot"
@@ -194,6 +203,12 @@ printf '%s\\n' "$output"
     expect(semantic.exitCode).toBe(0)
     expect(semantic.stdout).not.toBe(cold.stdout)
     expect(await invocationCount(root)).toBe(8)
+  })
+
+  it('copies only fingerprinted inputs into the immutable source snapshot', async () => {
+    const result = await runCli({ root, cacheRoot, requireFilteredSnapshot: true })
+    expect(result).toMatchObject({ exitCode: 0, stderr: '' })
+    expect(await readFile(`${root}-snapshot/semantic.txt`, 'utf8')).toBe('version one\n')
   })
 
   it('discovers additions and removals from the runtime semantic input census', async () => {
