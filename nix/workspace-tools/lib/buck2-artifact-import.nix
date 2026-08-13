@@ -26,10 +26,13 @@ let
   runtimeKind = checkedDescriptor.runtime.kind;
   payload = checkedDescriptor.payload;
   fetchedArtifact =
-    if url == null then artifact else pkgs.fetchurl {
-      inherit url;
-      hash = payload.digest.sri;
-    };
+    if url == null then
+      artifact
+    else
+      pkgs.fetchurl {
+        inherit url;
+        hash = payload.digest.sri;
+      };
   descriptorFile = pkgs.writeText "${checkedDescriptor.name}-buck-build-product.json" (
     contract.canonicalDescriptorJson checkedDescriptor
   );

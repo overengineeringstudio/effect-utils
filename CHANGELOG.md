@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Preserve pre-identity Buck receipt and dry-run compatibility while hardening dynamic ELF metadata boundaries, inspector failures, and artifact-seam mutation proofs.
 - Parse dynamic ELF dependency delimiters and version-need sections structurally, including non-numeric symbol versions without admitting local definition noise.
 - Preserve fixed-marker PT_INTERP paths and complete whitespace-bearing version-need names when inspecting dynamic ELF artifacts.
+- Bind Buck comparison receipts to the same repository revision and execution platform, preserve delimiter-like ELF version names, and keep the Rust toolchain flake call aligned with its minimal config API.
 
 - **Buck2/devenv fast path**: make shell activation independent of Buck and
   repository setup, expose the pinned Buck client through a source-mode local

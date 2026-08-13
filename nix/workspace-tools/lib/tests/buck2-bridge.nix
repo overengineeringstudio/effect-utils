@@ -104,12 +104,12 @@ let
                 name_start = index($0, name_marker)
                 if (name_start > 0) {
                   value = substr($0, name_start + length(name_marker))
-              flags_start = 0
-              search_start = 1
-              while ((relative_start = index(substr(value, search_start), flags_marker)) > 0) {
-                flags_start = search_start + relative_start - 1
-                search_start = flags_start + length(flags_marker)
-              }
+                  flags_start = 0
+                  search_start = 1
+                  while ((relative_start = index(substr(value, search_start), flags_marker)) > 0) {
+                    flags_start = search_start + relative_start - 1
+                    search_start = flags_start + length(flags_marker)
+                  }
                   if (flags_start == 0) exit 2
                   print substr(value, 1, flags_start - 1)
                 }
