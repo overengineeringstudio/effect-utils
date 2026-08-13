@@ -251,7 +251,7 @@ freshness and behavior. The index is not another semantic graph.
       "platforms": ["x86_64-linux"],
       "inputs": [
         { "role": "membership", "selector": "packages/@overeng/otel-scrape/src/**/*.rs" },
-        { "role": "closure", "selector": "packages/@overeng/otel-scrape/Cargo.lock" },
+        { "role": "closure", "selector": "rust/Cargo.lock" },
         { "role": "implementation", "selector": "buck2/tools/**/*" }
       ]
     }
