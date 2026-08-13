@@ -5,7 +5,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { lstat, readdir, realpath, stat } from 'node:fs/promises'
+import { lstat, readdir, realpath } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
 
 import * as Cli from '@effect/cli'
@@ -132,8 +132,8 @@ const GENERATED_SCAN_TIMEOUT_MS = 30_000
 const scanGeneratedArtifact = ({ path, workspace }: { path: string; workspace: string }) =>
   Effect.tryPromise({
     try: async () => {
-      const [workspaceInfo, workspaceReal, artifactReal] = await Promise.all([
-        stat(workspace),
+      const [artifactRootInfo, workspaceReal, artifactReal] = await Promise.all([
+        lstat(path),
         realpath(workspace),
         realpath(path),
       ])
@@ -148,7 +148,7 @@ const scanGeneratedArtifact = ({ path, workspace }: { path: string; workspace: s
         // eslint-disable-next-line no-await-in-loop
         const info = await lstat(current.path)
         count += 1
-        if (info.isSymbolicLink() === true || info.dev !== workspaceInfo.dev) return undefined
+        if (info.isSymbolicLink() === true || info.dev !== artifactRootInfo.dev) return undefined
         if (current.relative === '.' && info.isDirectory() === false) return undefined
         newestMtimeMs = Math.max(newestMtimeMs, info.mtimeMs)
         if (info.isDirectory() === true) {
@@ -1682,19 +1682,14 @@ const storeGcCommand = Cli.Command.make(
                   }
                   const pathSafety = yield* Effect.tryPromise({
                     try: async () => {
-                      const [artifactInfo, workspaceInfo, artifactRealPath, workspaceRealPath] =
-                        await Promise.all([
-                          lstat(artifactPath),
-                          stat(worktree.path),
-                          realpath(artifactPath),
-                          realpath(worktree.path),
-                        ])
+                      const [artifactInfo, artifactRealPath, workspaceRealPath] = await Promise.all(
+                        [lstat(artifactPath), realpath(artifactPath), realpath(worktree.path)],
+                      )
                       return {
                         artifactInfo,
                         safe:
                           artifactInfo.isDirectory() === true &&
                           artifactInfo.isSymbolicLink() === false &&
-                          artifactInfo.dev === workspaceInfo.dev &&
                           artifactRealPath === resolve(workspaceRealPath, artifactClass) &&
                           artifactRealPath.startsWith(`${workspaceRealPath}${sep}`) === true,
                       }
