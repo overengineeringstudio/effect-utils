@@ -490,7 +490,11 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
         name: `Adapt and admit Buck measurements: ${target.label}`,
         if: 'always()',
         shell: 'bash',
-        env: { CI_MEASUREMENT_BUCK_TARGET: JSON.stringify(target) },
+        env: {
+          CI_MEASUREMENT_BUCK_TARGET: JSON.stringify(target),
+          CI_MEASUREMENT_SUBJECT_SHA: ciMeasurementSubjectEnv.CI_MEASUREMENT_SUBJECT_SHA,
+          CI_MEASUREMENT_CHECKOUT_SHA: '${{ github.sha }}',
+        },
         run: [
           'set -euo pipefail',
           `output="tmp/buck2-ci-measurements/${target.id}/measurements.json"`,

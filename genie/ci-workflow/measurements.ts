@@ -129,6 +129,7 @@ export type CiMeasurementArtifact = {
   readonly subject?: {
     readonly ref?: string
     readonly sha?: string
+    readonly evidenceSha?: string
     readonly label?: string
   }
   readonly target: CiMeasurementTarget
@@ -2051,13 +2052,23 @@ if [ -s "$current_index" ]; then
     verified_count=$((verified_count + 1))
     raw_file="$(dirname "$measurement_file")/raw.jsonl"
     raw_sha256=""
+    raw_parse_status="missing"
+    raw_records_file="$(mktemp)"
+    printf '[]\n' >"$raw_records_file"
     if [ -f "$raw_file" ]; then
       raw_sha256="$(sha256sum "$raw_file" | awk '{print $1}')"
+      raw_parse_status="valid"
+      if ! jq -s '.' "$raw_file" >"$raw_records_file" 2>/dev/null; then
+        echo "::warning::raw CI measurement evidence is malformed: $raw_file"
+        raw_parse_status="invalid"
+        printf '[]\n' >"$raw_records_file"
+      fi
     fi
     verified_file="$verified_current_dir/$verified_count.json"
-    jq --arg rawSha256 "$raw_sha256" \
-      '. + {_consumerVerification:{rawSha256:(if $rawSha256 == "" then null else $rawSha256 end)}}' \
+    jq --arg rawSha256 "$raw_sha256" --arg rawParseStatus "$raw_parse_status" --slurpfile rawRecords "$raw_records_file" \
+      '. + {_consumerVerification:{rawSha256:(if $rawSha256 == "" then null else $rawSha256 end),rawParseStatus:$rawParseStatus,rawRecords:($rawRecords[0] // [])}}' \
       "$measurement_file" >"$verified_file"
+    rm -f "$raw_records_file"
     printf '%s\n' "$verified_file" >>"$verified_index"
   done <"$current_index"
   xargs -r jq -s '.' <"$verified_index" >"$current_json"
@@ -2079,6 +2090,7 @@ jq -n \
   --arg currentDir "$current_dir" \
   --arg baselineDir "$baseline_dir" \
   --arg expectedSubjectSha "${dollar}{CI_MEASUREMENT_SUBJECT_SHA:-${dollar}{GITHUB_SHA:-unknown}}" \
+  --arg expectedCheckoutSha "${dollar}{CI_MEASUREMENT_CHECKOUT_SHA:-${dollar}{GITHUB_SHA:-unknown}}" \
   '
     def identity_dimensions:
       (.dimensions // {})
@@ -2216,6 +2228,19 @@ jq -n \
                 | ($matchingObservations[0] // null) as $observed
                 | ($observed.statistics.samples // []) as $samples
                 | ($observed.evidence.sampleIndexes // []) as $indexes
+                | ($doc._consumerVerification.rawRecords // []) as $rawRecords
+                | ([ $rawRecords[]? | select(.kind == "metadata") ]) as $rawMetadata
+                | ([ $rawRecords[]?
+                      | select(
+                          .kind == "sample"
+                          and .engine == "buck2"
+                          and .warmup == false
+                          and .workContract == $target.workContract
+                          and .phase == $expected.phase
+                        )
+                    ]) as $rawSamples
+                | ($rawSamples | map(.sampleIndex)) as $rawIndexes
+                | ($rawSamples | map(.[$expected.metric])) as $rawValues
                 | (
                     ($matchingDocs | length) == 1
                     and $doc.schemaVersion == 1
@@ -2224,6 +2249,14 @@ jq -n \
                     and $doc.contract.snapshot == ($target | del(.fingerprint))
                     and $doc.completeness.status == "complete"
                     and $doc.subject.sha == $expectedSubjectSha
+                    and $doc.subject.evidenceSha == $expectedCheckoutSha
+                    and $doc._consumerVerification.rawParseStatus == "valid"
+                    and ($rawMetadata | length) == 1
+                    and $rawMetadata[0].sha == $expectedCheckoutSha
+                    and $rawMetadata[0].schema == $target.benchmarkSchema
+                    and $rawMetadata[0].target == $target.buckTarget
+                    and $rawMetadata[0].workContract == $target.workContract
+                    and $rawMetadata[0].samplePolicy.runs == $target.runs
                     and ($matchingObservations | length) == 1
                     and $observed.policy.comparisonMode == "assertion"
                     and $observed.policy.expectation == $expected.expectation
@@ -2238,6 +2271,16 @@ jq -n \
                     and ($samples | length) == $target.runs
                     and ($indexes | length) == $target.runs
                     and (($indexes | unique | sort) == ([range(0; $target.runs)]))
+                    and $rawIndexes == $indexes
+                    and $rawValues == $samples
+                    and ($rawSamples | all(
+                      .schema == $target.benchmarkSchema
+                      and .target == $target.buckTarget
+                      and .sha == $expectedCheckoutSha
+                      and .runId == $rawMetadata[0].runId
+                      and .status == "ok"
+                      and .buckLogStatus == "ok"
+                    ))
                     and ($samples | all(type == "number" and isfinite and floor == . and . >= 0))
                     and (($observed.evidence.rawSha256 // "") | test("^[0-9a-f]{64}$"))
                     and $observed.evidence.rawSha256 == $doc._consumerVerification.rawSha256
@@ -2514,6 +2557,7 @@ jq -n \
       ) as $status
     | (
         [$comparisons[]?]
+        | . as $rows
         | {
             enabledCount: (map(select((if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end))) | length),
             gateableCount: (map(select(.gateable == true)) | length),
@@ -2522,11 +2566,26 @@ jq -n \
             lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length),
             lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length),
             missingPairedDeltaCount: (map(select(.gateReason == "missing_paired_delta")) | length)
-            ,noVerdictCount: (map(select(.status == "no_verdict")) | length)
+            ,noVerdictCount: (map(select(.status == "no_verdict")) | length),
+            assertions: {
+              requiredCount: ($rows | map(select(.comparisonMode == "assertion")) | length),
+              passingCount: ($rows | map(select(.comparisonMode == "assertion" and .status == "pass")) | length),
+              blockingCount: ($rows | map(select(.comparisonMode == "assertion" and (.status == "fail" or .status == "no_verdict"))) | length)
+            },
+            advisory: {
+              enabledCount: ($rows | map(select(.comparisonMode != "assertion" and (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end))) | length),
+              gateableCount: ($rows | map(select(.comparisonMode != "assertion" and .gateable == true)) | length)
+            }
           }
         | . + {
             nonGateableCount: (.enabledCount - .gateableCount),
-            enforceable: (.enabledCount == .gateableCount)
+            enforceable: (.enabledCount == .gateableCount),
+            assertions: (.assertions + {
+              status: (if .assertions.requiredCount == 0 then "not_applicable" elif .assertions.blockingCount == 0 and .assertions.passingCount == .assertions.requiredCount then "pass" else "blocking" end)
+            }),
+            advisory: (.advisory + {
+              status: (if .advisory.enabledCount == .advisory.gateableCount then "ready" else "partial" end)
+            })
           }
       ) as $readiness
     | {
@@ -2573,7 +2632,7 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   {
     echo "### ${dollar}{CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
     echo ""
-    jq -r '"- Status: " + .status + "\n- Gate: " + (if .mode == "fail" then "enforced" elif .mode == "warn" then "advisory" elif .mode == "off" then "off" else (.mode // "unknown") end) + "\n- Baseline: " + .baselineDir' "$comparison_file"
+    jq -r '"- Status: " + .status + "\n- Required assertions: " + .readiness.assertions.status + " (" + (.readiness.assertions.passingCount | tostring) + "/" + (.readiness.assertions.requiredCount | tostring) + " passing)\n- Baseline regressions: " + (if .mode == "fail" then "enforced" elif .mode == "warn" then "advisory" elif .mode == "off" then "off" else (.mode // "unknown") end) + "; readiness " + .readiness.advisory.status + " (" + (.readiness.advisory.gateableCount | tostring) + "/" + (.readiness.advisory.enabledCount | tostring) + " gateable)\n- Baseline: " + .baselineDir' "$comparison_file"
     echo ""
     echo "| Status | Gate | Target | Observation | Current | Baseline | Delta | Ratio |"
     echo "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |"
@@ -2812,6 +2871,12 @@ const formatSemanticImpact = (value) => {
 }
 
 const formatRowImpact = (row) => {
+  if (row.comparisonMode === 'assertion') {
+    if (row.status === 'pass') return 'pass'
+    if (row.status === 'fail') return 'failed'
+    if (row.status === 'no_verdict') return 'blocking'
+    return 'n/a'
+  }
   if (row.confidence === 'diagnostic' || row.gateReason === 'disabled' || row.semanticImpactKind === 'diagnostic') {
     return 'diagnostic'
   }
@@ -3444,6 +3509,12 @@ const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
   return svg.join('\n')
 }
 
+const gateModeLabel = (mode) => {
+  if (mode === 'fail') return 'enforced'
+  if (mode === 'warn') return 'advisory'
+  if (mode === 'off') return 'off'
+  return mode || 'unknown'
+}
 const statusWord = comparison.status || 'unknown'
 const readiness = comparison.readiness || {}
 const readinessLabel = readiness.enforceable
@@ -3451,6 +3522,12 @@ const readinessLabel = readiness.enforceable
   : 'partial (' + (readiness.gateableCount ?? 0) + '/' + (readiness.enabledCount ?? 0) + ' enabled observations gateable)'
 const runUrl = runId ? serverUrl + '/' + repo + '/actions/runs/' + runId : undefined
 const shortSha = (headSha || sha || 'unknown').slice(0, 7)
+const assertionRows = allRows.filter((row) => row.comparisonMode === 'assertion')
+const passingAssertionCount = assertionRows.filter((row) => row.status === 'pass').length
+const assertionReadinessLabel = assertionRows.length > 0
+  ? String(passingAssertionCount) + '/' + String(assertionRows.length) + ' required assertions passing'
+  : 'no required assertions configured'
+const baselineGateLabel = gateModeLabel(comparison.mode) + ' baseline regressions'
 const existingState = extractState(existing?.body)
 const currentRun = {
   commitSha: headSha || sha || 'unknown',
@@ -3472,7 +3549,7 @@ const currentRun = {
     current: formatValue(row.current, row.observation?.unit),
     delta: formatDelta(row.delta, row.observation?.unit),
     ratio: formatRatio(row.ratio),
-    impact: formatSemanticImpact(row.semanticImpactScore),
+    impact: formatRowImpact(row),
   })),
 }
 const hasComparableHistory = (run) => Array.isArray(run.visibleRows) && run.visibleRows.some((row) =>
@@ -3483,12 +3560,6 @@ const hasComparableHistory = (run) => Array.isArray(run.visibleRows) && run.visi
 const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha && hasComparableHistory(run))
 const historyLimit = Number.isFinite(maxHistory) && maxHistory > 0 ? maxHistory : 20
 const state = { _tag: stateTag, schemaVersion, title, runs: [currentRun, ...previousRuns].slice(0, historyLimit) }
-const gateModeLabel = (mode) => {
-  if (mode === 'fail') return 'enforced'
-  if (mode === 'warn') return 'advisory'
-  if (mode === 'off') return 'off'
-  return mode || 'unknown'
-}
 const historyRows = state.runs.slice(1).map((run) => {
   const link = run.runUrl ? '[' + run.shortSha + '](' + run.runUrl + ')' : run.shortSha
   const top = Array.isArray(run.visibleRows) && run.visibleRows.length > 0
@@ -3507,7 +3578,8 @@ const sourceOfTruth = {
   schemaVersion,
   title,
   status: statusWord,
-  gate: gateModeLabel(comparison.mode),
+  gate: baselineGateLabel,
+  assertionReadiness: assertionReadinessLabel,
   readiness: readinessLabel,
   commit: {
     shortSha,
@@ -3548,9 +3620,12 @@ const chartMarkdown = chartImageMarkdown
   : ''
 
 const regressionCount = allRows.filter((row) => row.status === 'fail' || row.status === 'warn').length
+const blockingAssertionCount = assertionRows.filter((row) => row.status === 'fail' || row.status === 'no_verdict').length
 const improvementCount = comparableRows.filter((row) => row.direction === 'improved' && !isZeroImpactRow(row)).length
 const neutralCount = zeroImpactRows.length + diagnosticRows.length
-const humanSummary = hasComparableBaseline
+const humanSummary = blockingAssertionCount > 0
+  ? String(blockingAssertionCount) + ' required assertion' + (blockingAssertionCount === 1 ? '' : 's') + ' block merge because evidence failed or has no verdict.'
+  : hasComparableBaseline
   ? regressionCount > 0
     ? String(regressionCount) + ' regression' + (regressionCount === 1 ? '' : 's') + ' need review.'
     : improvementCount > 0
@@ -3561,7 +3636,7 @@ const humanSummary = hasComparableBaseline
 const summaryLines = [
   '## ' + title,
   '',
-  '**' + statusWord + '** - ' + gateModeLabel(comparison.mode) + ' gate - readiness <code>' + readinessLabel + '</code> - commit <code>' + shortSha + '</code> - protocol <code>' + protocolLabel + '</code>',
+  '**' + statusWord + '** - ' + assertionReadinessLabel + ' - ' + baselineGateLabel + ' - baseline readiness <code>' + readinessLabel + '</code> - commit <code>' + shortSha + '</code> - protocol <code>' + protocolLabel + '</code>',
   '',
   '> ' + humanSummary,
   '',

@@ -871,6 +871,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain('DEVENV_PERF_REGRESSION_MODE')
     expect(generatedCiWorkflowYamlSource).toContain('devenv-perf-warm-median-v2')
     expect(generatedCiWorkflowYamlSource).toContain("CI_MEASUREMENT_PR_COMMENT_ENABLED: 'true'")
+    expect(generatedCiWorkflowYamlSource).toContain('CI_MEASUREMENT_SUBJECT_SHA:')
+    expect(generatedCiWorkflowYamlSource).toContain('CI_MEASUREMENT_CHECKOUT_SHA:')
     expect(generatedCiWorkflowYamlSource).toContain(
       'CI_MEASUREMENT_PR_COMMENT_TITLE: CI Measurements',
     )
@@ -901,7 +903,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       'CI measurement PR comments are produced only by pull_request workflows',
     )
-    expect(ciWorkflowSource).toContain('unable to publish required CI measurement PR comment')
+    expect(ciWorkflowSource).toContain('skipping optional CI measurement PR comment')
+    expect(ciWorkflowSource).not.toContain('unable to publish required CI measurement PR comment')
     expect(ciWorkflowSource).toContain('seedRuns: ($seedRuns[0] // [])')
     expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
     expect(ciWorkflowSource).toContain(

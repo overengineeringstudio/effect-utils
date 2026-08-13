@@ -3,7 +3,7 @@
 
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const argv = process.argv.slice(2)
 const optionValue = (name) => {
@@ -12,6 +12,8 @@ const optionValue = (name) => {
 }
 const contractJson = optionValue('--contract-json')
 const outputPath = optionValue('--output')
+const subjectSha = process.env.CI_MEASUREMENT_SUBJECT_SHA
+const checkoutSha = process.env.CI_MEASUREMENT_CHECKOUT_SHA
 const rawPath = argv.find(
   (arg, index) =>
     !arg.startsWith('--') &&
@@ -130,6 +132,7 @@ const emitCiMeasurementArtifact = (contract) => {
       soleMetadata.schema === contract.benchmarkSchema &&
       soleMetadata.target === contract.buckTarget &&
       soleMetadata.workContract === contract.workContract &&
+      (checkoutSha === undefined || soleMetadata.sha === checkoutSha) &&
       soleMetadata.samplePolicy?.runs === contract.runs &&
       phaseSamples.length === contract.runs &&
       new Set(indexes).size === contract.runs &&
@@ -225,7 +228,10 @@ const emitCiMeasurementArtifact = (contract) => {
       version: 1,
       measurementProtocol: 'buck2-invalidation-v1',
     },
-    subject: { sha: metadata[0]?.sha ?? null },
+    subject: {
+      sha: subjectSha ?? metadata[0]?.sha ?? null,
+      evidenceSha: checkoutSha ?? metadata[0]?.sha ?? null,
+    },
     target: { kind: 'buck2', id: contract.id, label: contract.label },
     contract: { fingerprint: contractFingerprint, snapshot: contract },
     completeness: { status: missing.length === 0 ? 'complete' : 'partial', missing },
@@ -235,7 +241,8 @@ const emitCiMeasurementArtifact = (contract) => {
     ],
   }
   mkdirSync(dirname(outputPath), { recursive: true })
-  copyFileSync(rawPath, join(dirname(outputPath), 'raw.jsonl'))
+  const artifactRawPath = join(dirname(outputPath), 'raw.jsonl')
+  if (resolve(rawPath) !== resolve(artifactRawPath)) copyFileSync(rawPath, artifactRawPath)
   writeFileSync(outputPath, `${JSON.stringify(artifact, null, 2)}\n`)
   if (
     missing.length > 0 ||

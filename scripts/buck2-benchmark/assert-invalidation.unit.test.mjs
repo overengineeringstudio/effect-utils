@@ -114,11 +114,19 @@ const runMeasurementAdmission = (records, contract = measurementContract) => {
       output,
       input,
     ],
-    { encoding: 'utf8' },
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        CI_MEASUREMENT_SUBJECT_SHA: 'pr-head-123',
+        CI_MEASUREMENT_CHECKOUT_SHA: 'abc123',
+      },
+    },
   )
+  const rawEvidence = readFileSync(input, 'utf8')
   const artifact = existsSync(output) ? JSON.parse(readFileSync(output, 'utf8')) : null
   rmSync(directory, { recursive: true, force: true })
-  return { result, artifact }
+  return { result, artifact, rawEvidence }
 }
 
 describe('Buck invalidation assertions', () => {
@@ -153,8 +161,16 @@ describe('Buck invalidation assertions', () => {
 
 describe('Buck CI measurement admission', () => {
   it('emits additive schema-v1 assertion and advisory sample evidence', () => {
-    const { result, artifact } = runMeasurementAdmission(measurementRecords())
+    const { result, artifact, rawEvidence } = runMeasurementAdmission(measurementRecords())
     assert.equal(result.status, 0, result.stderr)
+    assert.equal(artifact.subject.sha, 'pr-head-123')
+    assert.equal(artifact.subject.evidenceSha, 'abc123')
+    assert.equal(
+      rawEvidence,
+      measurementRecords()
+        .map((record) => JSON.stringify(record))
+        .join('\n') + '\n',
+    )
     assert.equal(artifact.schemaVersion, 1)
     assert.equal(artifact.completeness.status, 'complete')
     assert.deepEqual(
@@ -190,5 +206,21 @@ describe('Buck CI measurement admission', () => {
     malformed.assertions[0].expectation = { _tag: 'exact', value: -1 }
     const { result } = runMeasurementAdmission(measurementRecords(), malformed)
     assert.notEqual(result.status, 0)
+  })
+
+  it('rejects evidence produced from a different checkout', () => {
+    const records = structuredClone(measurementRecords())
+    for (const record of records) {
+      if (record.kind === 'metadata' || record.kind === 'sample') record.sha = 'unexpected-checkout'
+    }
+    const { result, artifact } = runMeasurementAdmission(records)
+    assert.equal(result.status, 1)
+    assert.equal(artifact.completeness.status, 'partial')
+    assert.equal(
+      artifact.observations
+        .filter((observation) => observation.policy.comparisonMode === 'assertion')
+        .every((observation) => observation.assertion?.status === 'no-verdict'),
+      true,
+    )
   })
 })

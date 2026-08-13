@@ -97,7 +97,9 @@ run_compare() {
   CI_MEASUREMENT_COMPARISON_FILE="$tmp_dir/comparison.json" \
   CI_MEASUREMENT_REGRESSION_MODE=warn \
   CI_MEASUREMENT_SUBJECT_SHA=abc123 \
+  CI_MEASUREMENT_CHECKOUT_SHA=merge123 \
   CI_MEASUREMENT_PR_COMMENT_ENABLED=false \
+  GITHUB_SHA=merge123 \
     bash "$tmp_dir/compare.sh"
 }
 
@@ -353,8 +355,17 @@ write_assertion_measurement() {
   local snapshot="${3:-$assertion_target_json}"
   local asserted_status="${4:-$(jq -nr --argjson samples "$samples" 'if ($samples | all(. == 0)) then "pass" else "fail" end')}"
   local subject_sha="${5:-abc123}"
+  local evidence_sha="${6:-merge123}"
   mkdir -p "$(dirname "$file")"
-  printf 'fixture raw evidence\n' >"$(dirname "$file")/raw.jsonl"
+  jq -cn \
+    --arg evidenceSha "$evidence_sha" \
+    '{kind:"metadata",schema:"effect-utils-buck2-benchmark/v0",target:"//fixture:product",runId:"run-1",sha:$evidenceSha,workContract:"fixture/v1",samplePolicy:{runs:2,warmups:0}}' \
+    >"$(dirname "$file")/raw.jsonl"
+  jq -cn \
+    --arg evidenceSha "$evidence_sha" \
+    --argjson samples "$samples" \
+    '$samples | to_entries[] | {kind:"sample",schema:"effect-utils-buck2-benchmark/v0",engine:"buck2",target:"//fixture:product",runId:"run-1",sha:$evidenceSha,workContract:"fixture/v1",warmup:false,phase:"warm-noop",sampleIndex:.key,status:"ok",buckLogStatus:"ok",actionCount:.value,materializationCount:0,durationMs:1}' \
+    >>"$(dirname "$file")/raw.jsonl"
   local raw_sha256
   raw_sha256="$(sha256sum "$(dirname "$file")/raw.jsonl" | awk '{print $1}')"
   jq -n \
@@ -363,13 +374,14 @@ write_assertion_measurement() {
     --argjson samples "$samples" \
     --arg assertedStatus "$asserted_status" \
     --arg subjectSha "$subject_sha" \
+    --arg evidenceSha "$evidence_sha" \
     --arg rawSha256 "$raw_sha256" \
     '{
       schemaVersion:1,
       generatedAt:"2026-08-13T00:00:00Z",
       producer:{name:"effect-utils-ci-measurement",version:1,measurementProtocol:"buck2-invalidation-v1"},
       target:{kind:"buck2",id:"fixture",label:"Fixture"},
-      subject:{sha:$subjectSha},
+      subject:{sha:$subjectSha,evidenceSha:$evidenceSha},
       contract:{fingerprint:$fingerprint,snapshot:$snapshot},
       completeness:{status:"complete",missing:[]},
       observations:[{
@@ -386,16 +398,36 @@ write_assertion_measurement() {
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,0]'
+rm "$tmp_dir/current/measurements.json"
+CI_MEASUREMENT_SUBJECT_SHA=abc123 \
+CI_MEASUREMENT_CHECKOUT_SHA=merge123 \
+  bun scripts/buck2-benchmark/assert-invalidation.mjs \
+    --contract-json "$assertion_target_json" \
+    --output "$tmp_dir/current/measurements.json" \
+    "$tmp_dir/current/raw.jsonl"
 emit_assertion_compare_script
-run_compare
+summary_file="$tmp_dir/summary.md"
+GITHUB_STEP_SUMMARY="$summary_file" run_compare
 [ "$(jq -r '.status' "$tmp_dir/comparison.json")" = pass ] || { echo "expected healthy assertion pass" >&2; exit 1; }
+[ "$(jq -r '.readiness.assertions.status + ":" + (.readiness.assertions.passingCount | tostring) + "/" + (.readiness.assertions.requiredCount | tostring)' "$tmp_dir/comparison.json")" = 'pass:1/1' ] || { jq . "$tmp_dir/comparison.json" >&2; echo "expected required assertion readiness" >&2; exit 1; }
+rg -Fx -- '- Required assertions: pass (1/1 passing)' "$summary_file" >/dev/null || { sed -n '1,12p' "$summary_file" >&2; echo "expected separate required assertion summary" >&2; exit 1; }
+rg -F -- '- Baseline regressions: advisory; readiness ready' "$summary_file" >/dev/null || { sed -n '1,12p' "$summary_file" >&2; echo "expected separate advisory baseline summary" >&2; exit 1; }
+
+mkdir -p "$tmp_dir/current/legacy" "$tmp_dir/baseline/run-1"
+write_measurement "$tmp_dir/current/legacy/measurements.json" 10.05 current "$policy"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 current "$policy"
+run_compare
+[ "$(jq -r '[.comparisons[] | select(.gatePolicy.enabled == true) | .comparisonMode] | sort | join(",")' "$tmp_dir/comparison.json")" = 'assertion,historical' ] || { jq . "$tmp_dir/comparison.json" >&2; echo "expected mixed legacy and Buck comparison" >&2; exit 1; }
+[ "$(jq -r '.readiness.assertions.status + ":" + .readiness.advisory.status' "$tmp_dir/comparison.json")" = 'pass:ready' ] || { jq . "$tmp_dir/comparison.json" >&2; echo "expected separate ready assertion and advisory channels" >&2; exit 1; }
 
 CI_MEASUREMENT_CURRENT_DIR="$tmp_dir/current" \
 CI_MEASUREMENT_BASELINE_DIR="$tmp_dir/baseline" \
 CI_MEASUREMENT_COMPARISON_FILE="$tmp_dir/comparison.json" \
 CI_MEASUREMENT_REGRESSION_MODE=warn \
 CI_MEASUREMENT_SUBJECT_SHA=abc123 \
+CI_MEASUREMENT_CHECKOUT_SHA=merge123 \
 CI_MEASUREMENT_PR_COMMENT_ENABLED=true \
+GITHUB_SHA=merge123 \
 GITHUB_EVENT_NAME=pull_request \
 GITHUB_EVENT_PATH="$tmp_dir/missing-event.json" \
   bash "$tmp_dir/compare.sh" || { echo "optional comment tooling must not fail a valid semantic verdict" >&2; exit 1; }
@@ -414,7 +446,9 @@ CI_MEASUREMENT_BASELINE_DIR="$tmp_dir/baseline" \
 CI_MEASUREMENT_COMPARISON_FILE="$tmp_dir/comparison.json" \
 CI_MEASUREMENT_REGRESSION_MODE=warn \
 CI_MEASUREMENT_SUBJECT_SHA=abc123 \
+CI_MEASUREMENT_CHECKOUT_SHA=merge123 \
 CI_MEASUREMENT_PR_COMMENT_ENABLED=true \
+GITHUB_SHA=merge123 \
 GITHUB_EVENT_NAME=push \
   bash "$tmp_dir/compare.sh"
 non_pr_assertion_rc=$?
@@ -448,12 +482,29 @@ set -e
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,0]'
-printf 'tampered raw evidence\n' >"$tmp_dir/current/raw.jsonl"
+raw_tmp="$tmp_dir/current/raw-tampered.jsonl"
+jq -c 'if .kind == "sample" and .sampleIndex == 0 then .actionCount = 1 else . end' \
+  "$tmp_dir/current/raw.jsonl" >"$raw_tmp"
+mv "$raw_tmp" "$tmp_dir/current/raw.jsonl"
+tampered_raw_sha256="$(sha256sum "$tmp_dir/current/raw.jsonl" | awk '{print $1}')"
+jq --arg rawSha256 "$tampered_raw_sha256" \
+  '.observations[].evidence.rawSha256 = $rawSha256' \
+  "$tmp_dir/current/measurements.json" >"$tmp_dir/current/measurements-tampered.json"
+mv "$tmp_dir/current/measurements-tampered.json" "$tmp_dir/current/measurements.json"
 set +e
 run_compare
 assertion_rc=$?
 set -e
 [ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = no_verdict ] || { echo "expected raw evidence tampering to fail closed" >&2; exit 1; }
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_assertion_measurement "$tmp_dir/current/measurements.json" '[0,0]'
+printf 'malformed raw evidence\n' >"$tmp_dir/current/raw.jsonl"
+set +e
+run_compare
+assertion_rc=$?
+set -e
+[ "$assertion_rc" -ne 0 ] && [ "$(jq -r '.comparisons[].status' "$tmp_dir/comparison.json")" = no_verdict ] || { echo "expected malformed raw evidence to produce a blocking no-verdict" >&2; exit 1; }
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 set +e
