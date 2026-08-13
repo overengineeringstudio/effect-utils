@@ -34,7 +34,7 @@ cargo metadata \
   --no-deps \
   --format-version 1 >"$metadata"
 
-expected_packages='["buck2-closure-tool","buck2-package-evidence","buck2-tool-core","otel-scrape","otelite"]'
+expected_packages='["buck2-closure-tool","buck2-package-evidence","buck2-tool-core","buck2-typescript-product","otel-scrape","otelite"]'
 jq -e --argjson expected "$expected_packages" '
   (.packages | map(.name) | sort) == $expected and
   all(.packages[]; .version == "0.0.0" and .edition == "2021" and .license == "MIT") and

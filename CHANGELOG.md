@@ -12,6 +12,14 @@ All notable changes to this project will be documented in this file.
 
 - Fix lazy Buck stage-0 recovery to snapshot only its fingerprinted source inputs, keep unrelated Cargo product manifests out of tool derivations, and retain the observability gate when shell-entry setup is disabled.
 
+- **Buck2 megarepo product**: add Python-free, separately cacheable `mr`,
+  project-typecheck, and quality targets whose runtime and project closures
+  compose one package/tsconfig Genie registry. The exact product is checked by
+  the Nix runtime boundary; admission retains asserted invalidation and hostile
+  seam controls, while the benchmark explicitly reports the still-coarse
+  package-level production source boundary instead of claiming import-level
+  cache granularity.
+
 - Harden Buck foundation review contracts by recording explicit revision and execution-platform receipt identity, redacting password aliases, validating schema-v3 provenance, preserving mutation-free observability checks, narrowing generated-file markings, and leasing in-flight publications against future collection.
 - Preserve pre-identity Buck receipt and dry-run compatibility while hardening dynamic ELF metadata boundaries, inspector failures, and artifact-seam mutation proofs.
 - Parse dynamic ELF dependency delimiters and version-need sections structurally, including non-numeric symbol versions without admitting local definition noise.

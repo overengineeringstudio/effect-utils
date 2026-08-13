@@ -1,0 +1,309 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+filegroup(
+    name = "utils-dev_production_sources",
+    srcs = glob([
+        "utils-dev/package.json",
+        "utils-dev/tsconfig.json",
+        "utils-dev/src/**/*.cts",
+        "utils-dev/src/**/*.mts",
+        "utils-dev/src/**/*.ts",
+        "utils-dev/src/**/*.tsx",
+    ], exclude = [
+        "utils-dev/src/**/*.test.ts",
+        "utils-dev/src/**/*.test.tsx",
+        "utils-dev/src/**/*.stories.ts",
+        "utils-dev/src/**/*.stories.tsx",
+        "utils-dev/src/**/stories/**",
+        "utils-dev/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "utils-dev_project_sources",
+    srcs = glob([
+        "utils-dev/package.json",
+        "utils-dev/tsconfig.json",
+        "utils-dev/src/**/*.cts",
+        "utils-dev/src/**/*.mts",
+        "utils-dev/src/**/*.ts",
+        "utils-dev/src/**/*.tsx",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "utils_production_sources",
+    srcs = glob([
+        "utils/package.json",
+        "utils/tsconfig.json",
+        "utils/src/**/*.cts",
+        "utils/src/**/*.mts",
+        "utils/src/**/*.ts",
+        "utils/src/**/*.tsx",
+    ], exclude = [
+        "utils/src/**/*.test.ts",
+        "utils/src/**/*.test.tsx",
+        "utils/src/**/*.stories.ts",
+        "utils/src/**/*.stories.tsx",
+        "utils/src/**/stories/**",
+        "utils/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "utils_project_sources",
+    srcs = glob([
+        "utils/package.json",
+        "utils/tsconfig.json",
+        "utils/src/**/*.cts",
+        "utils/src/**/*.mts",
+        "utils/src/**/*.ts",
+        "utils/src/**/*.tsx",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "otel-contract_production_sources",
+    srcs = glob([
+        "otel-contract/package.json",
+        "otel-contract/tsconfig.json",
+        "otel-contract/src/**/*.cts",
+        "otel-contract/src/**/*.mts",
+        "otel-contract/src/**/*.ts",
+        "otel-contract/src/**/*.tsx",
+    ], exclude = [
+        "otel-contract/src/**/*.test.ts",
+        "otel-contract/src/**/*.test.tsx",
+        "otel-contract/src/**/*.stories.ts",
+        "otel-contract/src/**/*.stories.tsx",
+        "otel-contract/src/**/stories/**",
+        "otel-contract/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "otel-contract_project_sources",
+    srcs = glob([
+        "otel-contract/package.json",
+        "otel-contract/tsconfig.json",
+        "otel-contract/src/**/*.cts",
+        "otel-contract/src/**/*.mts",
+        "otel-contract/src/**/*.ts",
+        "otel-contract/src/**/*.tsx",
+    ], exclude = [
+        "otel-contract/src/**/*.genie.ts",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "content-address_production_sources",
+    srcs = glob([
+        "content-address/package.json",
+        "content-address/tsconfig.json",
+        "content-address/src/**/*.cts",
+        "content-address/src/**/*.mts",
+        "content-address/src/**/*.ts",
+        "content-address/src/**/*.tsx",
+    ], exclude = [
+        "content-address/src/**/*.test.ts",
+        "content-address/src/**/*.test.tsx",
+        "content-address/src/**/*.stories.ts",
+        "content-address/src/**/*.stories.tsx",
+        "content-address/src/**/stories/**",
+        "content-address/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "content-address_project_sources",
+    srcs = glob([
+        "content-address/package.json",
+        "content-address/tsconfig.json",
+        "content-address/src/**/*.cts",
+        "content-address/src/**/*.mts",
+        "content-address/src/**/*.ts",
+        "content-address/src/**/*.tsx",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "effect-distributed-lock_production_sources",
+    srcs = glob([
+        "effect-distributed-lock/package.json",
+        "effect-distributed-lock/tsconfig.json",
+        "effect-distributed-lock/src/**/*.cts",
+        "effect-distributed-lock/src/**/*.mts",
+        "effect-distributed-lock/src/**/*.ts",
+        "effect-distributed-lock/src/**/*.tsx",
+    ], exclude = [
+        "effect-distributed-lock/src/**/*.test.ts",
+        "effect-distributed-lock/src/**/*.test.tsx",
+        "effect-distributed-lock/src/**/*.stories.ts",
+        "effect-distributed-lock/src/**/*.stories.tsx",
+        "effect-distributed-lock/src/**/stories/**",
+        "effect-distributed-lock/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "effect-distributed-lock_project_sources",
+    srcs = glob([
+        "effect-distributed-lock/package.json",
+        "effect-distributed-lock/tsconfig.json",
+        "effect-distributed-lock/src/**/*.cts",
+        "effect-distributed-lock/src/**/*.mts",
+        "effect-distributed-lock/src/**/*.ts",
+        "effect-distributed-lock/src/**/*.tsx",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "kdl-effect_production_sources",
+    srcs = glob([
+        "kdl-effect/package.json",
+        "kdl-effect/tsconfig.json",
+        "kdl-effect/src/**/*.cts",
+        "kdl-effect/src/**/*.mts",
+        "kdl-effect/src/**/*.ts",
+        "kdl-effect/src/**/*.tsx",
+    ], exclude = [
+        "kdl-effect/src/**/*.test.ts",
+        "kdl-effect/src/**/*.test.tsx",
+        "kdl-effect/src/**/*.stories.ts",
+        "kdl-effect/src/**/*.stories.tsx",
+        "kdl-effect/src/**/stories/**",
+        "kdl-effect/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "kdl-effect_project_sources",
+    srcs = glob([
+        "kdl-effect/package.json",
+        "kdl-effect/tsconfig.json",
+        "kdl-effect/src/**/*.cts",
+        "kdl-effect/src/**/*.mts",
+        "kdl-effect/src/**/*.ts",
+        "kdl-effect/src/**/*.tsx",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "kdl_production_sources",
+    srcs = glob([
+        "kdl/package.json",
+        "kdl/tsconfig.json",
+        "kdl/src/**/*.cts",
+        "kdl/src/**/*.mts",
+        "kdl/src/**/*.ts",
+        "kdl/src/**/*.tsx",
+    ], exclude = [
+        "kdl/src/**/*.test.ts",
+        "kdl/src/**/*.test.tsx",
+        "kdl/src/**/*.stories.ts",
+        "kdl/src/**/*.stories.tsx",
+        "kdl/src/**/stories/**",
+        "kdl/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "kdl_project_sources",
+    srcs = glob([
+        "kdl/package.json",
+        "kdl/tsconfig.json",
+        "kdl/src/**/*.cts",
+        "kdl/src/**/*.mts",
+        "kdl/src/**/*.ts",
+        "kdl/src/**/*.tsx",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "effect-path_production_sources",
+    srcs = glob([
+        "effect-path/package.json",
+        "effect-path/tsconfig.json",
+        "effect-path/src/**/*.cts",
+        "effect-path/src/**/*.mts",
+        "effect-path/src/**/*.ts",
+        "effect-path/src/**/*.tsx",
+    ], exclude = [
+        "effect-path/src/**/*.test.ts",
+        "effect-path/src/**/*.test.tsx",
+        "effect-path/src/**/*.stories.ts",
+        "effect-path/src/**/*.stories.tsx",
+        "effect-path/src/**/stories/**",
+        "effect-path/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "effect-path_project_sources",
+    srcs = glob([
+        "effect-path/package.json",
+        "effect-path/tsconfig.json",
+        "effect-path/src/**/*.cts",
+        "effect-path/src/**/*.mts",
+        "effect-path/src/**/*.ts",
+        "effect-path/src/**/*.tsx",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "tui-react_production_sources",
+    srcs = glob([
+        "tui-react/package.json",
+        "tui-react/tsconfig.json",
+        "tui-react/src/**/*.cts",
+        "tui-react/src/**/*.mts",
+        "tui-react/src/**/*.ts",
+        "tui-react/src/**/*.tsx",
+    ], exclude = [
+        "tui-react/src/**/*.test.ts",
+        "tui-react/src/**/*.test.tsx",
+        "tui-react/src/**/*.stories.ts",
+        "tui-react/src/**/*.stories.tsx",
+        "tui-react/src/**/stories/**",
+        "tui-react/src/test-utils/**",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "tui-react_project_sources",
+    srcs = glob([
+        "tui-react/package.json",
+        "tui-react/tsconfig.json",
+        "tui-react/src/**/*.cts",
+        "tui-react/src/**/*.mts",
+        "tui-react/src/**/*.ts",
+        "tui-react/src/**/*.tsx",
+        "tui-react/test/**/*.cts",
+        "tui-react/test/**/*.mts",
+        "tui-react/test/**/*.ts",
+        "tui-react/test/**/*.tsx",
+        "tui-react/examples/**/*.cts",
+        "tui-react/examples/**/*.mts",
+        "tui-react/examples/**/*.ts",
+        "tui-react/examples/**/*.tsx",
+    ]),
+    visibility = ["PUBLIC"],
+)
