@@ -1,0 +1,22 @@
+[package]
+name = "buck2-package-evidence"
+workspace = "../.."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "buck2-package-evidence"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+buck2-tool-core = { path = "../core" }
+clap = { version = "4", features = ["derive"] }
+serde_json.workspace = true
+tar = { version = "0.4", default-features = false }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile.workspace = true
