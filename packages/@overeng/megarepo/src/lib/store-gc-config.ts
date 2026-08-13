@@ -16,6 +16,24 @@ import * as Observability from './observability.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+/** Canonical generated directories which may be considered by store GC. */
+export const STORE_GC_GENERATED_ARTIFACTS = [
+  'node_modules',
+  '.devenv/pnpm-store-pure-v1',
+  '.pnpm-store',
+  '.direnv',
+  'target',
+  'buck-out',
+  'dist',
+  'build',
+  '.next',
+  '.turbo',
+] as const
+
+export type StoreGcGeneratedArtifact = (typeof STORE_GC_GENERATED_ARTIFACTS)[number]
+
+export const DEFAULT_GENERATED_ARTIFACT_RETENTION_MS = DAY_MS
+
 /** Default: a worktree must be absent from ALL live sets this long before archive eligibility. */
 export const DEFAULT_ABSENCE_GRACE_MS = 14 * DAY_MS
 
@@ -30,6 +48,12 @@ export interface StoreGcConfig {
   readonly absenceGraceMs: number
   readonly postMergeGraceMs: number
   readonly archiveRetentionMs: number
+  readonly generatedArtifacts: {
+    readonly enabled: boolean
+    readonly retentionMs: number
+    readonly allowlist: ReadonlyArray<StoreGcGeneratedArtifact>
+    readonly agentLivenessManifest?: string | undefined
+  }
 }
 
 /** Defaults applied when no override file is present (or it is invalid). */
@@ -37,6 +61,11 @@ export const DEFAULT_STORE_GC_CONFIG: StoreGcConfig = {
   absenceGraceMs: DEFAULT_ABSENCE_GRACE_MS,
   postMergeGraceMs: DEFAULT_POST_MERGE_GRACE_MS,
   archiveRetentionMs: DEFAULT_ARCHIVE_RETENTION_MS,
+  generatedArtifacts: {
+    enabled: false,
+    retentionMs: DEFAULT_GENERATED_ARTIFACT_RETENTION_MS,
+    allowlist: STORE_GC_GENERATED_ARTIFACTS,
+  },
 } as const
 
 /** On-disk override shape: every key optional; only provided keys override defaults. */
@@ -44,6 +73,14 @@ const StoreGcConfigOverride = Schema.Struct({
   absenceGraceMs: Schema.optional(Schema.Number),
   postMergeGraceMs: Schema.optional(Schema.Number),
   archiveRetentionMs: Schema.optional(Schema.Number),
+  generatedArtifacts: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean),
+      retentionMs: Schema.optional(Schema.Number),
+      allowlist: Schema.optional(Schema.Array(Schema.Literal(...STORE_GC_GENERATED_ARTIFACTS))),
+      agentLivenessManifest: Schema.optional(Schema.String),
+    }),
+  ),
 })
 
 /** Parsed `gc-config.json` override: every timer optional. */
@@ -65,6 +102,19 @@ export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConf
   absenceGraceMs: override.absenceGraceMs ?? DEFAULT_STORE_GC_CONFIG.absenceGraceMs,
   postMergeGraceMs: override.postMergeGraceMs ?? DEFAULT_STORE_GC_CONFIG.postMergeGraceMs,
   archiveRetentionMs: override.archiveRetentionMs ?? DEFAULT_STORE_GC_CONFIG.archiveRetentionMs,
+  generatedArtifacts: {
+    enabled:
+      override.generatedArtifacts?.enabled ?? DEFAULT_STORE_GC_CONFIG.generatedArtifacts.enabled,
+    retentionMs:
+      override.generatedArtifacts?.retentionMs ??
+      DEFAULT_STORE_GC_CONFIG.generatedArtifacts.retentionMs,
+    allowlist:
+      override.generatedArtifacts?.allowlist ??
+      DEFAULT_STORE_GC_CONFIG.generatedArtifacts.allowlist,
+    ...(override.generatedArtifacts?.agentLivenessManifest !== undefined
+      ? { agentLivenessManifest: override.generatedArtifacts.agentLivenessManifest }
+      : {}),
+  },
 })
 
 /**

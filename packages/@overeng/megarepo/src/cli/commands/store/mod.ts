@@ -4,6 +4,10 @@
  * Commands for managing the shared git store.
  */
 
+import { createHash } from 'node:crypto'
+import { lstat, readdir, realpath } from 'node:fs/promises'
+import { resolve, sep } from 'node:path'
+
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Clock, Effect, Option, Schedule, Stream } from 'effect'
@@ -28,7 +32,11 @@ import {
   reapArchive,
   scanArchives,
 } from '../../../lib/store-archive.ts'
-import { loadStoreGcConfig, type StoreGcConfig } from '../../../lib/store-gc-config.ts'
+import {
+  loadStoreGcConfig,
+  type StoreGcConfig,
+  type StoreGcGeneratedArtifact,
+} from '../../../lib/store-gc-config.ts'
 import {
   coldSinceMs as coldSinceMsFor,
   nextObservationLedger,
@@ -118,6 +126,48 @@ const gcRepoConcurrency = (): number => {
 const GC_WORKTREE_CONCURRENCY = 1
 const GC_PROGRESS_BATCH_SIZE = 10
 const STORE_REF_TYPES = ['heads', 'tags', 'commits'] as const
+const GENERATED_SCAN_ENTRY_CAP = 100_000
+const GENERATED_SCAN_TIMEOUT_MS = 30_000
+
+const scanGeneratedArtifact = ({ path, workspace }: { path: string; workspace: string }) =>
+  Effect.tryPromise({
+    try: async () => {
+      const [workspaceInfo, workspaceReal, artifactReal] = await Promise.all([
+        lstat(workspace),
+        realpath(workspace),
+        realpath(path),
+      ])
+      if (artifactReal.startsWith(`${workspaceReal}${sep}`) === false) return undefined
+      const pending = [{ path, relative: '.' }]
+      let count = 0
+      let newestMtimeMs = 0
+      while (pending.length > 0) {
+        if (count >= GENERATED_SCAN_ENTRY_CAP) return undefined
+        const current = pending.pop()!
+        const info = await lstat(current.path)
+        count += 1
+        if (info.isSymbolicLink() === true || info.dev !== workspaceInfo.dev) return undefined
+        if (current.relative === '.' && info.isDirectory() === false) return undefined
+        newestMtimeMs = Math.max(newestMtimeMs, info.mtimeMs)
+        if (info.isDirectory() === true) {
+          const entries = await readdir(current.path)
+          entries.sort()
+          for (let index = entries.length - 1; index >= 0; index -= 1) {
+            const entry = entries[index]!
+            pending.push({
+              path: `${current.path}/${entry}`,
+              relative: current.relative === '.' ? entry : `${current.relative}/${entry}`,
+            })
+          }
+        }
+      }
+      return { count, newestMtimeMs }
+    },
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.timeout(`${GENERATED_SCAN_TIMEOUT_MS} millis`),
+    Effect.orElseSucceed(() => undefined),
+  )
 
 const runStoreCommand = ({ output, action }: { output: string; action: StoreAction }) => {
   const visualEffect = run(
@@ -157,6 +207,7 @@ const toStoreGcAction = ({
   activeWorktreeCount,
   statusMessage,
   done,
+  planSha256,
 }: {
   basePath: string
   results: ReadonlyArray<StoreGcResult>
@@ -169,6 +220,7 @@ const toStoreGcAction = ({
   activeWorktreeCount: number
   statusMessage: string | undefined
   done: boolean
+  planSha256?: string | undefined
 }): StoreAction => ({
   _tag: 'SetGc',
   basePath,
@@ -188,6 +240,7 @@ const toStoreGcAction = ({
   activeWorktreeCount,
   statusMessage,
   done,
+  ...(planSha256 !== undefined ? { planSha256 } : {}),
 })
 
 const classifyGcProtection = ({
@@ -1274,8 +1327,16 @@ const storeGcCommand = Cli.Command.make(
       Cli.Options.withDescription('Remove all worktrees (not just unused ones)'),
       Cli.Options.withDefault(false),
     ),
+    generatedArtifacts: Cli.Options.boolean('generated-artifacts').pipe(
+      Cli.Options.withDescription('Plan configured generated-artifact cleanup'),
+      Cli.Options.withDefault(false),
+    ),
+    expectedPlan: Cli.Options.text('expected-plan').pipe(
+      Cli.Options.withDescription('Apply only the exact generated-artifact dry-run plan'),
+      Cli.Options.optional,
+    ),
   },
-  ({ output, dryRun, force, all }) =>
+  ({ output, dryRun, force, all, generatedArtifacts, expectedPlan }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const store = yield* Store
@@ -1287,6 +1348,25 @@ const storeGcCommand = Cli.Command.make(
       let gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined
       let repoCount: number | undefined
       let repoConcurrencyForMetrics = 1
+      let planSha256: string | undefined
+
+      if (generatedArtifacts === true && (all === true || force === true)) {
+        return yield* Effect.fail(
+          new StoreCommandError({
+            message: '--generated-artifacts is incompatible with --all and --force',
+          }),
+        )
+      }
+      if (generatedArtifacts === true && dryRun === false) {
+        return yield* Effect.fail(
+          new StoreCommandError({ message: '--generated-artifacts currently requires --dry-run' }),
+        )
+      }
+      if (Option.isSome(expectedPlan) === true) {
+        return yield* Effect.fail(
+          new StoreCommandError({ message: '--expected-plan is not supported by planning-only GC' }),
+        )
+      }
 
       const processGcDecision = ({
         decision,
@@ -1446,6 +1526,7 @@ const storeGcCommand = Cli.Command.make(
               activeWorktreeCount,
               statusMessage,
               done,
+              planSha256,
             }),
           )
         })
@@ -1543,10 +1624,159 @@ const storeGcCommand = Cli.Command.make(
             }),
           )
 
+          if (generatedArtifacts === true) {
+            const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+            const generatedResults: StoreGcResult[] = []
+            const manifestContent =
+              config.generatedArtifacts.agentLivenessManifest === undefined
+                ? undefined
+                : yield* fs
+                    .readFileString(config.generatedArtifacts.agentLivenessManifest)
+                    .pipe(Effect.orElseSucceed(() => undefined))
+            const agentActivePaths = (() => {
+              if (manifestContent === undefined) return undefined
+              try {
+                const parsed: unknown = JSON.parse(manifestContent)
+                if (
+                  typeof parsed !== 'object' ||
+                  parsed === null ||
+                  !('version' in parsed) ||
+                  parsed.version !== 1 ||
+                  !('activeWorkspacePaths' in parsed) ||
+                  Array.isArray(parsed.activeWorkspacePaths) === false ||
+                  parsed.activeWorkspacePaths.some((path) => typeof path !== 'string') ||
+                  !('expiresAtMs' in parsed) ||
+                  typeof parsed.expiresAtMs !== 'number' ||
+                  parsed.expiresAtMs < now
+                ) {
+                  return undefined
+                }
+                return new Set(
+                  parsed.activeWorkspacePaths.map((path) => normalizeStorePath(path as string)),
+                )
+              } catch {
+                return undefined
+              }
+            })()
+            for (const { repo, worktrees } of repoWorktrees) {
+              for (const worktree of worktrees) {
+                if (worktree.broken === true) continue
+                const removalStatus = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
+                  Effect.map((status) => ({ _tag: 'known' as const, status })),
+                  Effect.catchAll(() => Effect.succeed({ _tag: 'unknown' as const })),
+                )
+                for (const artifactClass of config.generatedArtifacts.allowlist) {
+                  const artifactPath = EffectPath.ops.join(
+                    worktree.path,
+                    EffectPath.unsafe.relativeDir(`${artifactClass}/`),
+                  )
+                  if (
+                    (yield* fs.exists(artifactPath).pipe(Effect.orElseSucceed(() => false))) ===
+                    false
+                  ) {
+                    continue
+                  }
+                  const pathSafety = yield* Effect.tryPromise({
+                    try: async () => {
+                      const [artifactInfo, workspaceInfo, artifactRealPath, workspaceRealPath] =
+                        await Promise.all([
+                          lstat(artifactPath),
+                          lstat(worktree.path),
+                          realpath(artifactPath),
+                          realpath(worktree.path),
+                        ])
+                      return {
+                        artifactInfo,
+                        safe:
+                          artifactInfo.isDirectory() === true &&
+                          artifactInfo.isSymbolicLink() === false &&
+                          artifactInfo.dev === workspaceInfo.dev &&
+                          artifactRealPath === resolve(workspaceRealPath, artifactClass) &&
+                          artifactRealPath.startsWith(`${workspaceRealPath}${sep}`) === true,
+                      }
+                    },
+                    catch: (cause) => cause,
+                  }).pipe(Effect.orElseSucceed(() => null))
+                  const traversal =
+                    pathSafety?.safe === true
+                      ? yield* scanGeneratedArtifact({ path: artifactPath, workspace: worktree.path })
+                      : undefined
+                  const mtimeMs = traversal?.newestMtimeMs
+                  const ignored = yield* Git.runCommand({
+                    args: ['check-ignore', '--quiet', '--', artifactClass],
+                    cwd: worktree.path,
+                  }).pipe(
+                    Effect.as(true),
+                    Effect.orElseSucceed(() => false),
+                  )
+                  const megarepoLive = isPathProtected({ liveSet, path: worktree.path })
+                  const agentLive = agentActivePaths?.has(normalizeStorePath(worktree.path))
+                  const reason =
+                    config.generatedArtifacts.enabled === false
+                      ? 'generated-artifacts-disabled'
+                      : agentActivePaths === undefined
+                        ? 'agent-liveness-unavailable'
+                        : removalStatus._tag === 'unknown'
+                          ? 'cleanliness-unknown'
+                          : removalStatus.status.isDirty === true
+                            ? 'dirty-worktree'
+                            : traversal === undefined
+                              ? 'artifact-scan-incomplete'
+                              : ignored === false
+                              ? 'artifact-not-ignored'
+                              : megarepoLive === true || agentLive === true
+                                ? 'live'
+                                : mtimeMs === undefined
+                                  ? 'mtime-unknown'
+                                  : now - mtimeMs < config.generatedArtifacts.retentionMs
+                                    ? 'retention'
+                                    : 'eligible'
+                  const outcome =
+                    reason === 'eligible'
+                      ? ('would-delete' as const)
+                      : reason === 'agent-liveness-unavailable' ||
+                          reason === 'cleanliness-unknown' ||
+                          reason === 'mtime-unknown' || reason === 'artifact-scan-incomplete'
+                        ? ('unknown' as const)
+                        : ('keep' as const)
+                  generatedResults.push({
+                    repo: repo.relativePath,
+                    ref: worktree.ref,
+                    refType: worktree.refType,
+                    path: artifactPath,
+                    status: 'kept',
+                    reason,
+                    kind: 'generated-artifact',
+                    artifactClass: artifactClass satisfies StoreGcGeneratedArtifact,
+                    workspacePath: worktree.path,
+                    exclusiveClosureBytes: null,
+                    outcome,
+                    ...(mtimeMs !== undefined ? { mtimeMs } : {}),
+                  })
+                }
+              }
+            }
+            const canonicalPlan = generatedResults
+              .map((result) => ({
+                repo: result.repo,
+                ref: result.ref,
+                refType: result.refType,
+                artifactClass: result.artifactClass,
+                path: result.path,
+                workspacePath: result.workspacePath,
+                reason: result.reason,
+                outcome: result.outcome,
+                mtimeMs: result.mtimeMs,
+              }))
+              .sort((left, right) => left.path.localeCompare(right.path))
+            planSha256 = createHash('sha256').update(JSON.stringify(canonicalPlan)).digest('hex')
+            for (const result of generatedResults) results.push(result)
+          }
+
           // Default cold reclamation path (decisions 0001–0010): additive third
           // path. Named (`refs/heads/*`/`refs/tags/*`) worktrees are owned here;
           // `--all` removes everything via the legacy stream and skips this.
-          if (all === false) {
+          if (all === false && generatedArtifacts === false) {
             const namedTargets: Array<NamedWorktreeTarget> = []
             for (const { repo, bareRepoPath, worktrees } of repoWorktrees) {
               for (const worktree of worktrees) {
@@ -1662,8 +1892,9 @@ const storeGcCommand = Cli.Command.make(
             )
           }
 
-          yield* Stream.fromIterable(repoWorktrees).pipe(
-            Stream.mapEffect(
+          if (generatedArtifacts === false) {
+            yield* Stream.fromIterable(repoWorktrees).pipe(
+              Stream.mapEffect(
               ({ repo, bareRepoPath, worktrees: allWorktrees }) =>
                 Effect.gen(function* () {
                   let removedForRepo = 0
@@ -1752,14 +1983,15 @@ const storeGcCommand = Cli.Command.make(
                   }),
                 ),
               { concurrency: repoConcurrency, unordered: true },
-            ),
-            Stream.runDrain,
-            Observability.withStoreGcPhaseSpan({
-              phase: 'legacy-sweep',
-              repoCount: repoWorktrees.length,
-              repoConcurrency,
-            }),
-          )
+              ),
+              Stream.runDrain,
+              Observability.withStoreGcPhaseSpan({
+                phase: 'legacy-sweep',
+                repoCount: repoWorktrees.length,
+                repoConcurrency,
+              }),
+            )
+          }
 
           statusMessage = undefined
           if (progressive === true) {
@@ -1787,6 +2019,7 @@ const storeGcCommand = Cli.Command.make(
             activeWorktreeCount,
             statusMessage,
             done: true,
+            planSha256,
           }),
         })
       } else {
