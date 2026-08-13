@@ -6,11 +6,12 @@ This document specifies the bounded Rust Cargo authoring binding. It builds on
 
 ## Status
 
-Draft. The authority, normalization, default-feature, repository
-resolution-domain, and workspace-aware Nix locality boundaries are implemented
-and proved on `x86_64-linux`. Supported `cfg` breadth and Cargo-profile
-equivalence remain open; build-script and cross-platform proc-macro execution
-remain unadmitted.
+Draft. Cargo-manifest authority, the shared repository resolution domain, and
+workspace-aware Nix source locality are implemented. The normalized Cargo
+contribution, operation overlay, default-feature normalization, and resolver
+join remain design contracts without a production binding. Supported `cfg`
+breadth and Cargo-profile equivalence remain open; build-script and
+cross-platform proc-macro execution remain unadmitted.
 
 ## Scope
 
@@ -28,6 +29,17 @@ target execution.
 | Repository overlay      | BUCK.GRAPH.BIND.RUST-R04, BUCK.GRAPH.BIND.RUST-R05, BUCK.GRAPH.BIND.RUST-R06 |
 | Compatibility admission | BUCK.GRAPH.BIND.RUST-R07, BUCK.GRAPH.BIND.RUST-R08, BUCK.GRAPH.BIND.RUST-R09 |
 | Workspace composition   | BUCK.GRAPH.BIND.RUST-R10, BUCK.GRAPH.BIND.RUST-R11, BUCK.GRAPH.BIND.RUST-R12 |
+
+## Implementation Status
+
+| Contract surface                    | Status      | Evidence boundary                                                                                                                   |
+| ----------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Authored Cargo manifest authority   | Implemented | Root and member manifests plus `cargo metadata --offline --locked --no-deps` controls in `rust/workspace-contract.test.sh`          |
+| Shared resolution domain            | Implemented | `rust/Cargo.toml`, `rust/Cargo.lock`, and [the resolution-domain decision](./.decisions/0003-one-effect-utils-resolution-domain.md) |
+| Workspace-aware Nix source locality | Implemented | `nix/workspace-tools/lib/mk-rust-workspace-source.nix` and package-source controls in `rust/workspace-contract.test.sh`             |
+| Normalized Cargo contribution       | Specified   | No production normalizer or projected contribution is admitted                                                                      |
+| Repository operation overlay        | Specified   | The schema below is an experimental upper bound, not an implemented format                                                          |
+| Resolver join and fine invalidation | Specified   | No production Cargo-to-Reindeer closure join is admitted                                                                            |
 
 ## Authority Boundary
 
