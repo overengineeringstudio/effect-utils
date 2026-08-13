@@ -27,8 +27,9 @@ Graph**, **Source Input**, **Package Instance**, **Dependency Edge**, **Dependen
 
 Live pnpm owns concrete workspace and virtual-store realization terms. Nix
 prepared dependencies own prepared artifacts, native integrations, and hash
-evidence. Buck2 owns its target and evidence representations. Those terms must
-refer back to this ontology rather than redefine its identities or authorities.
+evidence. External build systems own their target and evidence representations.
+Those terms may refer back to this ontology but do not become authorities in
+this VRS.
 
 ## Language
 
@@ -51,8 +52,9 @@ replacement target. pnpm holds this role for a live pnpm root.
 descriptor for equivalent immutable dependency work. It names normalized
 topology and dependency inputs plus package-manager and toolchain policy. It
 does not own mutable realization state, storage placement, repair, or garbage
-collection. Prepared dependency and Buck2 evidence use its `profileKey` as a
-compatibility boundary; a live root need not emit a separate profile artifact.
+collection. Prepared dependencies and declared external adapters may use its
+`profileKey` as a compatibility boundary; a live root need not emit a separate
+profile artifact.
 
 **Source Input** is canonical package source selected by a topology before the
 Authoritative Materializer realizes Package Instances. A composed root may

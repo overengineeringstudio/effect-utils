@@ -1,40 +1,27 @@
 # Buck2 Repository Build Intuition
 
-_For: repository maintainers and build-system authors - Assumes: Buck2 and Nix
-fundamentals - Covers: why the system has two directional authorities and one
-semantic graph_
+_For: repository maintainers and build-system authors - Assumes: Buck and Nix
+fundamentals - Covers: the three authority boundaries_
 
-The central idea is not "replace Nix with Buck." It is to stop asking one
-system boundary to do two incompatible jobs.
-
-Buck is good at representing many small computations and reusing them when
-their declared inputs are equal. Nix is good at pinning system tools, composing
-runtime closures, and moving machines between reversible configurations. The
-fast and principled design lets each system own the work matching its model.
+Buck, Nix, and a consuming control plane solve different problems:
 
 ```text
-package intent -> fine-grained Buck work -> normalized immutable artifact
-                                                      |
-                                                      v
-Nix tool recipes ------------------------------> verified system realization
+repository intent -> Buck deterministic work -> BuildProduct
+Nix inputs -----------------------------------> Nix import/store realization
+control plane -------- trace + policy --------> live consumer effects
 ```
 
-The bridge passes immutable data and expectations. It does not create a
-meta-build loop in which Buck invokes Nix and Nix invokes Buck.
+Buck owns admitted repository-local computation. Nix owns immutable inputs and
+the independent store boundary. The control plane owns observation and anything
+that changes a live system. The contracts pass data in one direction; none of
+the systems becomes a hidden second producer for another.
 
-Genie is the authoring adapter. Package authors declare projects, tests,
-artifacts, and capabilities once. Genie normalizes that intent and writes thin,
-stable package-local Buck projections. Buck rules decide how semantic
-operations become actions. A Rust executor can replace a Python executor
-without changing the package model or target label.
+The reusable part is deliberately smaller than a repository. The public kernel
+defines schemas and mechanics. Repository adapters keep labels, paths,
+dependency choices, aliases, and private policy local. This is what allows the
+same build mechanism to compound without centralizing repository authority.
 
-Fine-grained does not mean one target per line of source. Boundaries follow
-semantic ownership: a project check, emitted project, test suite, library,
-binary, build script, normalizer, or artifact packager. Measurements can justify
-further splitting. This produces useful cache precision without turning graph
-maintenance into the dominant cost.
-
-The migration is a contraction program. A shadow path exists only long enough
-to prove the new authority at the real seam. Once the proof is complete, the
-old producer is deleted; rollback uses a prior immutable artifact or a Git
-revert, not a permanent second build universe.
+OpenTelemetry is part of the operating contract, not part of Buck's result. The
+control plane records the invocation and derives telemetry from native evidence,
+optionally through a justified observer. If telemetry export fails, the Buck
+result remains true; if required evidence is missing, admission has no verdict.

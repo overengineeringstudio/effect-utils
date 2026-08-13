@@ -1,8 +1,7 @@
 # Buck2 Repository Build Spec
 
-This document specifies the system-wide authority model and composition of the
-Buck2 repository build system. It builds on
-[requirements.md](./requirements.md).
+This document specifies the portable Buck kernel and its repository and Nix
+boundaries. It builds on [requirements.md](./requirements.md).
 
 ## Status
 
@@ -10,172 +9,116 @@ Draft.
 
 ## Scope
 
-**Defines:** the global authority boundaries, dependency direction, subsystem
-composition, state vocabulary, forbidden edges, and cross-repository contract.
+**Defines:** authority, component ownership, dependency direction, the public
+kernel boundary, and subsystem composition.
 
-**Does not define:** language syntax, package-manager resolution, tool archive
-formats, action command lines, CI job names, rollout phases, or current target
-inventories. Those belong to subsystem specs or the non-normative roadmap.
+**Does not define:** a consumer's dependency resolver, CI topology, artifact
+transport, deployment, activation, rollback, health, or rollout plan.
 
-## System Structure
+## Architecture
 
 ```text
-first-party intent + ecosystem metadata
-                 |
-                 v
-       +--------------------+--------------------+
-       |                    |                    |
-       v                    v                    v
-01 Semantic Graph   02 Execution Platforms   shared contracts
-       |                    |                    |
-       +------------+-------+--------------------+
-                    |
-             product integration join
-                    |
-                    v
-            03 Target Execution
-                    |
-             normalized result
-                    v
-       04 Artifact/System Bridge
-                 |
-      verified Nix realization
-
-05 Evidence/Verification observes every seam
-06 Admission/Reuse controls authority expansion and contraction
+public kernel                         repository adapter
+  schemas + rules <------------------ semantic intent + policy
+  executors + evidence adapters <---- dependency projections
+          |                                  |
+          +--------------+-------------------+
+                         v
+                  configured Buck graph
+                         |
+               declared deterministic work
+                         v
+            native evidence + BuildProduct
+                    |              |
+                    |              v
+                    |       independent Nix import
+                    |              |
+                    v              v
+              caller-owned task trace and system realization
 ```
 
-The numbered directories encode documentation and dependency direction where a
-dependency exists; they do not require every earlier sibling to depend on the
-preceding one. Semantic graph, execution-platform, dependency-materialization,
-and shared-contract slices remain independently reviewable foundations. A real
-product declares an integration join over only the slices it consumes. A later
-subsystem may refine an earlier contract; an earlier subsystem must not depend
-on a later realization.
+The kernel is portable source code and versioned contracts. A repository
+adapter binds those contracts to repository-local labels, sources, dependency
+projections, aliases, and policy. A consumer invokes Buck directly or through
+an observational adapter and owns the trace root and every live effect.
 
 ## Authority Matrix
 
-| Concern                                             | Authority                                       | Transfer contract                                                        |
-| --------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
-| Package identity and requested dependencies         | Package semantic source and ecosystem manifests | Versioned semantic graph inputs                                          |
-| Selected external dependency topology               | Ecosystem resolver and its declared projection  | Stable resolver-produced labels or closure identities                    |
-| Generated first-party Buck topology                 | Genie semantic projection                       | Checked-in deterministic package-local shards                            |
-| Repository-local analysis and actions               | Buck                                            | Declared labels, providers, configured platforms, and action keys        |
-| Tool recipes, versions, patches, system libraries   | Nix                                             | Current immutable local per-platform tool binding                        |
-| Deployable repository artifact                      | Buck after admission                            | Normalized artifact envelope and native evidence                         |
-| Artifact transport and retention                    | Untrusted OCI distribution/storage              | Exact digest-addressed OCI graph and sealed admission bundle             |
-| Artifact verification and system composition        | Reviewed Nix configuration                      | Exact child-manifest pin, caller expectations, and import receipt        |
-| User/system activation and rollback                 | Home Manager, NixOS, or nix-darwin              | Managed generation and activation receipt                                |
-| Private aliases, endpoints, secrets, fleet topology | Downstream system repository                    | Runtime-only configuration outside public artifacts and cache identities |
+| Concern                                       | Authority                                         | Boundary                                       |
+| --------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- |
+| Repository semantic intent and private policy | Repository adapter                                | Versioned kernel input                         |
+| Dependency selection                          | Ecosystem resolver or declared repository adapter | Immutable closure projection                   |
+| Repository-local deterministic work           | Buck                                              | Providers, configured platforms, action keys   |
+| Tools and system inputs                       | Nix                                               | Immutable executable and data providers        |
+| Portable artifact                             | Buck                                              | `buck-build-product/v1` descriptor and payload |
+| Product validation and store import           | Nix                                               | Exact descriptor and payload checks            |
+| Task trace, retention, and admission decision | Calling control plane                             | W3C context, native evidence links, verdict    |
+| Deployment and all live effects               | Consumer                                          | Outside the public Buck contract               |
 
-## Directional Flow
+## Invocation Flow
 
 ```text
-Nix tool recipes -----------------------> Buck executable providers
-                                                |
-semantic graph + dependency projections ------> Buck actions
-                                                |
-                                                v
-                                      normalized Buck artifact
-                                                |
-                                                v
-                                  untrusted OCI transport
-                                                |
-                                                v
-reviewed exact child pin -> Nix verify/import -> runtime composition -> activation
+1. control plane starts task span and passes W3C context
+2. repository adapter selects an admitted Buck label and platform tuple
+3. Buck analyzes and executes using declared providers
+4. control plane, optionally aided by an adapter, records native evidence
+5. Buck returns its native result and, when requested, a BuildProduct
+6. Nix independently validates and imports the BuildProduct
+7. control plane records evidence, product, import, and admission outcome
 ```
 
-No arrow grants authority backward. Normal Nix evaluation, import, or
-activation must not start a Buck daemon or inspect a mutable source checkout.
-Buck actions must not invoke Nix evaluation or live dependency repair.
-Registry location, tags, indexes, and availability do not grant product or
-deployment authority. Activation and rollback use already imported Nix store
-objects and perform no registry or network access.
+Buck's result is determined at step 5. Export, retention, or import failures are
+separate outcomes and never rewrite it. Product publication or live operation,
+when needed, begins after this flow under consumer-owned requirements.
 
-## Developer Interface
+## Public Kernel
 
-The development shell owns bootstrap availability, long-lived development
-services, secrets, and temporary compatibility aliases. effect-utils owns one
-thin generic launcher that forwards caller-supplied Buck arguments to an
-already-realized pinned Buck binary. It adds Buck-native report and event-log
-flags, retains those artifacts, writes a sanitized receipt, and exposes the
-exact underlying invocation. Its current runtime observability is that receipt
-and retained Buck evidence; it does not emit OTLP, resolve aliases, select a
-configured platform, or claim an exact invalidation cause without a supplied
-comparison dimension. Human-facing aliases and platform policy remain in
-consumer-owned composition surfaces. After bootstrap the launcher remains
-bypassable and must not trigger fresh Nix or devenv evaluation, own target
-topology, reinterpret Buck failures, or become a second task graph.
+The portable kernel may contain:
 
-```text
-devenv bootstrap/services/secrets
-             |
-             v
-thin bypassable launcher -> realized Buck -> semantic targets
-             ^
-             |
-consumer-owned aliases and private policy
-```
+- semantic graph, operation, and native-evidence schemas;
+- Starlark rules and providers;
+- platform and executable-provider contracts;
+- deterministic support executors;
+- `BuildProduct` validation fixtures;
+- Buck evidence decoders and OpenTelemetry semantic bindings;
+- cross-repository conformance fixtures.
 
-Stable semantic target labels are the primary repository interface. Devenv
-tasks and downstream aliases are compatibility or composition surfaces that
-delegate to those labels and remain owned by their consumer repository.
+It must not contain repository paths, private labels, fleet names, endpoints,
+secrets, activation policy, or a central list of consumer targets.
 
-## State Vocabulary
+## Observation Boundary
 
-| State           | Meaning                                                            |
-| --------------- | ------------------------------------------------------------------ |
-| `declared`      | Semantic graph and every required input/provider are valid         |
-| `built`         | Buck reports successful authoritative action results               |
-| `published`     | Immutable artifact bytes, envelope, and provenance are retrievable |
-| `verified`      | An independent consumer validated pinned expectations and bytes    |
-| `imported`      | Nix created a composed output without rebuilding repository source |
-| `activated`     | A managed generation committed the imported output                 |
-| `observed-live` | A separate runtime observation matched the activated identity      |
+Direct invocation of the pinned Buck binary plus native build evidence is the
+baseline. The calling control plane owns the task and invocation spans,
+retention, sampling, routing, sanitization, and admission verdict. Evidence may
+be decoded after execution without interposing on Buck.
 
-Later states imply evidence for earlier states, not semantic equivalence between
-them. In particular, `built` is not `activated`, and activation success is not
-runtime health.
+An execution-transparent observer is justified only when a measured requirement
+cannot be met by the caller and post-execution native-evidence adapter. The
+current TypeScript launcher is transitional; a Rust replacement is a candidate,
+not a required architecture. Before any wrapper replaces it, conformance must
+prove passthrough, cancellation, evidence, sanitization, and telemetry parity.
+No launcher receipt is a durable authority unless an independent consumer is
+specified.
 
 ## Forbidden Edges
 
-- A semantic package declaration must not contain a physical compiler path,
-  Nix store path, helper implementation language, or host-derived platform.
-- Genie generation must not compile, test, bundle, or inspect compiler-produced
-  runtime graphs.
-- First-party graph generation must not select third-party versions or rewrite
-  resolver fixups.
-- An authoritative action must not discover tools through ambient `PATH`, run a
-  live package-manager install, or access undeclared workspace state.
-- Nix import and system activation must not fall back to a source build.
-- Nix-to-Buck stage-0 materialization must not route through the Buck-to-Nix
-  product importer; shared transport principles do not reverse subsystem
-  authority.
-- Evidence aggregation must not replace Buck's native execution authority or
-  infer a cause that native and semantic evidence cannot establish.
-- Cross-repository reuse must not copy private topology into a public semantic
-  graph, artifact, receipt, or cache key.
-- A deployment consumer must not infer a platform artifact from an OCI index or
-  mutable tag; it consumes the exact reviewed child-manifest digest.
-- Buck action-cache records, published OCI products, and Nix binary-cache/store
-  objects must not be treated as interchangeable identities or one shared
-  cache authority.
+- Kernel code must not depend on a consumer repository.
+- Buck actions must not evaluate Nix, run a package-manager install, or mutate
+  consumer live state.
+- Nix import must not invoke Buck or fall back to a repository source build.
+- An observer must not select targets, platforms, aliases, or policy.
+- Telemetry must not supersede native Buck evidence or change Buck's result.
+- A `BuildProduct` must not encode transport, activation, rollback, or health
+  state.
 
 ## Requirement Trace
 
-| Root requirements         | Owning refinements                             |
-| ------------------------- | ---------------------------------------------- |
-| BUCK-R01 through BUCK-R06 | 01 Semantic Graph and 03 Target Execution      |
-| BUCK-R07 through BUCK-R09 | 02 Execution Platforms and 06 Admission/Reuse  |
-| BUCK-R02, BUCK-R03        | 04 Artifact/System Bridge                      |
-| BUCK-R10 through BUCK-R12 | 05 Evidence/Verification                       |
-| BUCK-R13 through BUCK-R15 | 06 Admission/Reuse                             |
-| BUCK-R16                  | Root composition and product integration joins |
-
-## Open Design Questions
-
-- **BUCK-DQ1 Contract ownership:** Which repository and package boundary own the
-  shared schemas and conformance tools without creating a bootstrap cycle? OCI
-  is the selected artifact transport, not the answer to source ownership.
-  Resolve by proving the same pinned contract in a second megarepo and a
-  system-configuration consumer.
+| Requirements                           | Refinement                |
+| -------------------------------------- | ------------------------- |
+| BUCK-R05 through BUCK-R07              | 01 Semantic Graph         |
+| BUCK-R03, BUCK-R05, BUCK-R08           | 02 Execution Platforms    |
+| BUCK-R01, BUCK-R02, BUCK-R08           | 03 Target Execution       |
+| BUCK-R03, BUCK-R04, BUCK-R09, BUCK-R10 | 04 Artifact/System Bridge |
+| BUCK-R11 through BUCK-R15              | 05 Evidence/Verification  |
+| BUCK-R16, BUCK-R17                     | 06 Admission/Reuse        |

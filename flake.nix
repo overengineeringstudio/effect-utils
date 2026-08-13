@@ -74,22 +74,6 @@
           };
         };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
-        buck2-rust-musl-toolchain-config =
-          if system == "x86_64-linux" then
-            let
-              cross = pkgs.pkgsCross.musl64;
-              rustVersionParts = pkgs.lib.versions.splitVersion cross.rustc.version;
-              rustPackageSet =
-                cross.${"rust_${builtins.elemAt rustVersionParts 0}_${builtins.elemAt rustVersionParts 1}"};
-            in
-            (import ./nix/workspace-tools/lib/buck2-rust-local-toolchain-config.nix { inherit pkgs; } {
-              # The matching prebuilt archive supplies rustc and the musl
-              # standard library without rebuilding Rust/LLVM.
-              rustc = "${rustPackageSet.packages.prebuilt.rustc}/bin/rustc";
-              linker = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}cc";
-            }).config
-          else
-            null;
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -215,8 +199,6 @@
             buck2-closure-tool = buck2-stage0-tools.closure-tool;
             buck2-package-evidence = buck2-stage0-tools.package-evidence;
             buck2-typescript-product = buck2-stage0-tools.typescript-product;
-            buck2-portable-toolchain = buck2-stage0-tools.portable-toolchain;
-            buck2-portable-toolchain-fixture = buck2-stage0-tools.portable-toolchain-fixture;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
@@ -250,7 +232,6 @@
             node-pty-native = nodePtyNative;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
-            inherit buck2-rust-musl-toolchain-config;
           };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
@@ -328,12 +309,6 @@
 
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
-
-      # Export a Nix-authored tree as a normalized, relocatable Buck toolchain
-      # artifact. The helper validates relocation; native closures that retain
-      # store references belong in an execution image instead.
-      lib.mkBuck2ToolchainExport =
-        { pkgs }: import ./nix/workspace-tools/lib/buck2-toolchain-export.nix { inherit pkgs; };
 
       # Verify and import a published Buck artifact into a normal Nix output for
       # wrapping and later Home Manager/system activation.

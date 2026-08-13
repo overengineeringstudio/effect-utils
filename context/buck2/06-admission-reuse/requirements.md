@@ -1,101 +1,43 @@
 # Admission and Reuse Requirements
 
-## Context
-
-Admission changes which implementation is authoritative for one bounded
-semantic result. It evaluates immutable evidence produced by upstream systems;
-it is not a parallel graph, receipt universe, migration database, or runtime
-router. Reuse is claimed only after independent consumption of public
-contracts.
+This subsystem defines authority transfer and cross-repository conformance. It
+refines BUCK-R16 and BUCK-R17.
 
 ## Assumptions
 
-- **BUCK.ADM-A01 Upstream authority:** Candidate identity, graphs, platforms,
-  artifacts, and evidence are owned by their preceding subsystems.
-- **BUCK.ADM-A02 Native records:** Admission references native records and the
-  evidence envelope; it does not replace them.
+- **BUCK.ADMIT-A01 Exact tuple:** Admission applies to one configured operation,
+  target platform, execution platform, toolchain, policy, and trust tuple.
+- **BUCK.ADMIT-A02 Consumer decision:** Each repository or control plane owns
+  the decision to admit a tuple.
 
 ## Acceptable Tradeoffs
 
-- **BUCK.ADM-T01 Slice-local authority:** Disjoint semantic slices may be
-  admitted independently.
-- **BUCK.ADM-T02 Evidence over time:** Policy may require independent repeated
-  observations, but never an elapsed-time soak without relevant evidence.
+- **BUCK.ADMIT-T01 Incremental coverage:** Operations and platform tuples may be
+  admitted independently; unsupported tuples remain explicit.
 
 ## Requirements
 
-### Must decide a precise capability
+### Must transfer authority explicitly
 
-- **BUCK.ADM-R01 Stable subject:** A decision must identify the operation,
-  target set, target platform, execution platform, dependency closure,
-  toolchain, artifact contract, policy version, and requested capability.
-- **BUCK.ADM-R02 Deterministic predicate:** Equal subject, policy, and immutable
-  evidence references must produce the same `admitted`, `rejected`, or
-  `no-verdict` result and enumerate every gate outcome.
-- **BUCK.ADM-R03 Exact proof binding:** Evidence from a different revision,
-  contract, action identity, platform, policy, or proof kind must not satisfy a
-  gate. Evaluated or emulated proof must not be reported as physical proof.
-- **BUCK.ADM-R04 Upstream evidence vocabulary:** Gate outcomes must reference
-  `05-evidence-verification` envelopes. Admission must not define another
-  receipt schema or reinterpret missing evidence as success.
+- **BUCK.ADMIT-R01 Complete predicate:** Admission must require graph freshness,
+  hermetic execution, semantic parity, causal invalidation, native evidence,
+  and any required product-import checks for the exact tuple.
+- **BUCK.ADMIT-R02 No partial verdict:** Missing or incomparable evidence must
+  produce no verdict and must not transfer authority.
+- **BUCK.ADMIT-R03 Atomic contraction:** The change that consumes a completed
+  admission must route normal entrypoints to Buck and remove the superseded
+  producer without a permanent fallback.
+- **BUCK.ADMIT-R04 Separate capabilities:** Local execution, cache read, cache
+  write, remote execution, product consumption, and system import must be
+  granted independently.
 
-### Must change authority atomically
+### Must compound without centralizing consumers
 
-- **BUCK.ADM-R05 One active owner:** An admitted result has exactly one
-  authoritative producer and route.
-- **BUCK.ADM-R06 Atomic retirement:** The authority switch, command and CI
-  routing, and deletion of the superseded producer and fallback for that exact
-  slice occur in one coherent change after candidate proof. A non-authoritative
-  candidate may coexist before that change.
-- **BUCK.ADM-R07 Bounded remainder:** Any legacy behavior left for unadmitted
-  slices must have a machine-checkable, non-overlapping semantic domain.
-  Current rollout state and deletion checklists belong in the roadmap and
-  GitHub issues, not a normative survivor database.
-- **BUCK.ADM-R08 Coherent rollback:** Rollback restores a previously identified
-  whole authority state; it must not activate an implicit runtime selector or
-  two live producers.
-
-### Must separate trust capabilities
-
-- **BUCK.ADM-R09 Independent capabilities:** Local execution, remote-cache read,
-  remote-cache write, remote execution, verified import, and system activation
-  require distinct verdicts.
-- **BUCK.ADM-R10 Trust isolation:** Public and private repositories must not
-  share writable cache authority or credentials. Cross-boundary reuse requires
-  explicit artifact classification, provenance validation, path-independent
-  replay, and poisoning and credential-leak controls.
-
-### Must prove reusable contracts
-
-- **BUCK.ADM-R11 Public contract map:** Reuse must state exactly which schemas,
-  conformance fixtures, and adapters are shared and which graph declarations,
-  aliases, policies, and private system values remain consumer-owned.
-- **BUCK.ADM-R12 Independent consumer:** General reuse must not be claimed until
-  a second independently owned repository consumes versioned public contracts
-  without private imports, copied generated output, or framework patches.
-- **BUCK.ADM-R13 Compatibility and version skew:** Contracts must define
-  supported version negotiation, fail-closed incompatibility, corpus version,
-  logical label namespace and relocation behavior, and a no-reverse-dependency
-  rule preventing shared infrastructure from depending on consumer repos.
-- **BUCK.ADM-R14 Complexity contraction:** Admission must prove that the
-  admitted domain has one producer and one primary developer interface, adds no
-  permanent duplicate abstraction, and removes migration-only mechanisms.
-
-### Must keep reuse planes and publication gates distinct
-
-- **BUCK.ADM-R15 Separate reuse planes:** Buck REAPI action/cache records, OCI
-  product graphs, and Nix binary-cache/store objects must have independent
-  identities, credentials, retention policies, health, and admission verdicts.
-  Availability or trust in one plane must not imply either for another.
-- **BUCK.ADM-R16 Reviewed publication authority:** Production artifact import
-  must be admitted only for the exact OCI child manifest and sealed admission
-  bundle selected by reviewed Nix configuration. Mutable tags, index selection,
-  registry state, and referrer discovery must not advance authority.
-- **BUCK.ADM-R17 Durability and offline gates:** Production publication must
-  require two independent full-graph fetch-and-verification passes, a verified
-  restore from a third encrypted failure-domain archive, and network-disabled
-  activation and rollback evidence for the imported generation.
-- **BUCK.ADM-R18 Collection capability:** Artifact deletion and garbage
-  collection are separate destructive capabilities and remain unadmitted until
-  live-set completeness, dry-run accuracy, rollback retention, snapshot, and
-  restore controls all pass.
+- **BUCK.ADMIT-R05 Kernel conformance:** Shared kernel changes must pass public
+  fixtures and at least two independent repository-adapter suites before a
+  cross-repository compatibility claim.
+- **BUCK.ADMIT-R06 Private isolation:** Conformance records must not copy private
+  graphs, labels, paths, or policies into the public kernel.
+- **BUCK.ADMIT-R07 Reuse isolation:** Writable cache capabilities must remain
+  scoped by compatible principals; cross-trust reuse requires immutable bytes
+  and consumer verification.

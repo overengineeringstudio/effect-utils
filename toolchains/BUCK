@@ -13,15 +13,3 @@ configured_exec(
     path = read_config("buck2_stage0", "package_evidence_tool", ""),
     visibility = ["PUBLIC"],
 )
-
-configured_exec(
-    name = "portable_toolchain",
-    path = read_config("buck2_stage0", "portable_toolchain", ""),
-    visibility = ["PUBLIC"],
-)
-
-configured_exec(
-    name = "portable_toolchain_fixture",
-    path = read_config("buck2_stage0", "portable_toolchain_fixture", ""),
-    visibility = ["PUBLIC"],
-)
