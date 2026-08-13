@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -26,6 +26,39 @@ const descriptor = (hex: string): EvidenceDescriptor => ({
 })
 
 describe('Buck receipt normalization', () => {
+  const legacyReceipt = {
+    schema: 'buck-run-receipt/v1',
+    launcherRunId: 'legacy-run',
+    command: { kind: 'build', requestedTargets: ['//:x'] },
+    status: { exitCode: 1, success: false },
+    timing: { startedAt: '2026-01-01T00:00:00Z', endedAt: '2026-01-01T00:00:01Z', durationMs: 1 },
+    buck: {},
+    evidence: {},
+    observation: {
+      complete: false,
+      verdict: 'incomplete',
+      reasons: ['legacy receipt'],
+      whatRan: { exitCode: 1, parseComplete: false, semanticComplete: false, records: 0 },
+      materialized: { exitCode: 1, parseComplete: false, semanticComplete: false, records: 0 },
+    },
+    outputs: [],
+    closures: [],
+    actions: [],
+    outcomes: {},
+    materialization: { records: 0, files: 0, bytes: 0 },
+    explanation: { status: 'unknown', changedDimensions: [], note: 'legacy receipt' },
+  } as const
+
+  it('decodes pre-identity v1 receipts but rejects partial identity', () => {
+    expect(decodeReceipt(legacyReceipt)).toMatchObject({ launcherRunId: 'legacy-run' })
+    expect(() =>
+      decodeReceipt({
+        ...legacyReceipt,
+        repositoryRevision: '0123456789abcdef0123456789abcdef01234567',
+      }),
+    ).toThrow('identity fields must either both be present or both be absent')
+  })
+
   it('keeps DICE reuse distinct from cache hits and execution', () => {
     const actions = normalizeActions([
       {
@@ -69,11 +102,21 @@ describe('Buck receipt normalization', () => {
 
   it('redacts header and space-delimited credential forms', () => {
     const result = sanitizeEvidenceText(
-      'authorization: Bearer header-secret token: token-secret --api-key cli-secret',
+      'authorization: Bearer header-secret token: token-secret --api-key cli-secret --passwd passwd-secret --passphrase passphrase-secret',
     )
     expect(result).not.toContain('header-secret')
     expect(result).not.toContain('token-secret')
     expect(result).not.toContain('cli-secret')
+    expect(result).not.toContain('passwd-secret')
+    expect(result).not.toContain('passphrase-secret')
+  })
+
+  it('redacts password aliases in structured evidence', () => {
+    const result = sanitizeEvidenceText(
+      JSON.stringify({ passphrase: 'json-passphrase-secret', passwd: 'json-passwd-secret' }),
+    )
+    expect(result).not.toContain('json-passphrase-secret')
+    expect(result).not.toContain('json-passwd-secret')
   })
 
   it('redacts authorization schemes and credentials from normalized action identities', () => {
@@ -298,7 +341,7 @@ describe('Buck receipt normalization', () => {
         ...generatedSemantic,
         provenance: {
           ...value.provenance,
-          source: 'buck2/generated-v3.json.genie.ts',
+          source: 'packages/example/BUCK.genie.ts',
           warning: 'GENERATED FILE - DO NOT EDIT',
           semanticFingerprint: `sha256:${createHash('sha256')
             .update(
@@ -317,18 +360,38 @@ describe('Buck receipt normalization', () => {
     await expect(descriptorForClosureManifest(generatedV3, 'root//:check')).resolves.toMatchObject({
       mediaType: 'application/json',
     })
-    const validGeneratedV3 = await readFile(generatedV3, 'utf8')
-    for (const [field, value] of [
-      ['source', undefined],
-      ['warning', 'handwritten'],
-    ] as const) {
-      const malformed = JSON.parse(validGeneratedV3) as Record<string, unknown>
-      const malformedProvenance = malformed.provenance as Record<string, unknown>
-      if (value === undefined) delete malformedProvenance[field]
-      else malformedProvenance[field] = value
-      await writeFile(generatedV3, JSON.stringify(malformed))
+    for (const provenance of [
+      { ...value.provenance, warning: 'GENERATED FILE - DO NOT EDIT' },
+      { ...value.provenance, source: 'packages/example/BUCK.genie.ts' },
+      {
+        ...value.provenance,
+        source: 'packages/example/BUCK.genie.ts',
+        warning: 'not the generated contract warning',
+      },
+    ]) {
+      await writeFile(
+        generatedV3,
+        JSON.stringify({
+          schemaVersion: 3,
+          ...generatedSemantic,
+          provenance: {
+            ...provenance,
+            semanticFingerprint: `sha256:${createHash('sha256')
+              .update(
+                JSON.stringify(
+                  canonical({
+                    generator: 'effect-utils/genie/buck2',
+                    schemaVersion: 3,
+                    semanticData: generatedSemantic,
+                  }),
+                ),
+              )
+              .digest('hex')}`,
+          },
+        }),
+      )
       await expect(descriptorForClosureManifest(generatedV3, 'root//:check')).rejects.toThrow(
-        field === 'source' ? '$.provenance.source' : '$.provenance.warning',
+        /provenance\.(source|warning)/u,
       )
     }
     await writeFile(
@@ -338,7 +401,7 @@ describe('Buck receipt normalization', () => {
         ...generatedSemantic,
         provenance: {
           ...value.provenance,
-          source: 'buck2/generated-v3.json.genie.ts',
+          source: 'packages/example/BUCK.genie.ts',
           warning: 'GENERATED FILE - DO NOT EDIT',
           semanticFingerprint: `sha256:${createHash('sha256')
             .update(JSON.stringify(canonical(generatedSemantic)))
@@ -356,6 +419,8 @@ describe('Buck receipt normalization', () => {
       decodeReceipt({
         schema: 'buck-run-receipt/v1',
         launcherRunId: 'x',
+        repositoryRevision: '0123456789abcdef0123456789abcdef01234567',
+        executionPlatform: 'x86_64-linux',
         closures: [],
         actions: [],
       }),

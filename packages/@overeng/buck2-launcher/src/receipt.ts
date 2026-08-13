@@ -28,6 +28,10 @@ export interface BuckRunReceipt {
   readonly schema: 'buck-run-receipt/v1'
   readonly launcherRunId: string
   readonly buckInvocationId?: string
+  /** Added during v1; absent only on receipts written by older launchers. */
+  readonly repositoryRevision?: string
+  /** Added during v1; absent only on receipts written by older launchers. */
+  readonly executionPlatform?: string
   readonly command: { readonly kind: string; readonly requestedTargets: ReadonlyArray<string> }
   readonly status: {
     readonly exitCode: number
@@ -100,6 +104,11 @@ export const BuckRunReceiptJsonSchema = {
     schema: { const: 'buck-run-receipt/v1' },
     launcherRunId: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' },
     buckInvocationId: { type: 'string', minLength: 1 },
+    repositoryRevision: { type: 'string', pattern: '^(?:[a-f0-9]{40}|[a-f0-9]{64})$' },
+    executionPlatform: {
+      type: 'string',
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$',
+    },
     command: {
       type: 'object',
       required: ['kind', 'requestedTargets'],
@@ -231,6 +240,10 @@ export const BuckRunReceiptJsonSchema = {
       },
     },
   },
+  dependentRequired: {
+    repositoryRevision: ['executionPlatform'],
+    executionPlatform: ['repositoryRevision'],
+  },
   $defs: {
     digest: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$' },
     descriptor: {
@@ -282,6 +295,21 @@ export const decodeReceipt = (value: unknown): BuckRunReceipt => {
   }
   if (root.buckInvocationId !== undefined)
     receiptString(root.buckInvocationId, '$.buckInvocationId')
+  const hasRepositoryRevision = root.repositoryRevision !== undefined
+  const hasExecutionPlatform = root.executionPlatform !== undefined
+  if (hasRepositoryRevision !== hasExecutionPlatform) {
+    throw new Error('receipt v1 identity fields must either both be present or both be absent')
+  }
+  if (hasRepositoryRevision) {
+    const repositoryRevision = receiptString(root.repositoryRevision, '$.repositoryRevision')
+    if (isRepositoryRevision(repositoryRevision) === false) {
+      throw new Error('receipt $.repositoryRevision must be an exact Git revision')
+    }
+    const executionPlatform = receiptString(root.executionPlatform, '$.executionPlatform')
+    if (isExecutionPlatform(executionPlatform) === false) {
+      throw new Error('receipt $.executionPlatform must be a portable platform identifier')
+    }
+  }
   const command = receiptObject(root.command, '$.command')
   receiptString(command.kind, '$.command.kind')
   receiptStringArray(command.requestedTargets, '$.command.requestedTargets')
@@ -391,6 +419,10 @@ const actionOutcomes = new Set<ActionOutcome>([
 
 export const isSafePathComponent = (value: string): boolean =>
   /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value)
+export const isRepositoryRevision = (value: string): boolean =>
+  /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(value)
+export const isExecutionPlatform = (value: string): boolean =>
+  /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/u.test(value)
 const receiptObject = (value: unknown, path: string): Record<string, unknown> => {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     throw new Error(`receipt ${path} must be an object`)
@@ -574,7 +606,7 @@ export const descriptorForClosureManifest = async (
   if (root.schemaVersion === 3) {
     stringAt(provenance.source, '$.provenance.source')
     if (provenance.warning !== 'GENERATED FILE - DO NOT EDIT') {
-      throw new Error('$.provenance.warning must identify the schema-3 manifest as generated')
+      throw new Error('closure manifest $.provenance.warning must be GENERATED FILE - DO NOT EDIT')
     }
   }
   const semanticData = {
@@ -611,6 +643,8 @@ const sensitiveKeyWords = new Set([
   'credentials',
   'key',
   'password',
+  'passphrase',
+  'passwd',
   'secret',
   'token',
 ])
