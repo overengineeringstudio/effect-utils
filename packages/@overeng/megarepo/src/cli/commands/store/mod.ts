@@ -5,8 +5,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { lstat, readdir, realpath } from 'node:fs/promises'
-import { sep } from 'node:path'
+import { lstat, readdir } from 'node:fs/promises'
 
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
@@ -129,15 +128,13 @@ const STORE_REF_TYPES = ['heads', 'tags', 'commits'] as const
 const GENERATED_SCAN_ENTRY_CAP = 100_000
 const GENERATED_SCAN_TIMEOUT_MS = 30_000
 
-const scanGeneratedArtifact = ({ path, workspace }: { path: string; workspace: string }) =>
+const scanGeneratedArtifact = ({ path }: { path: string }) =>
   Effect.tryPromise({
     try: async () => {
-      const [artifactRootInfo, workspaceReal, artifactReal] = await Promise.all([
-        lstat(path),
-        realpath(workspace),
-        realpath(path),
-      ])
-      if (artifactReal.startsWith(`${workspaceReal}${sep}`) === false) return undefined
+      const artifactRootInfo = await lstat(path)
+      if (artifactRootInfo.isDirectory() === false || artifactRootInfo.isSymbolicLink() === true) {
+        return undefined
+      }
       const pending = [{ path, relative: '.' }]
       let count = 0
       let newestMtimeMs = 0
@@ -1680,10 +1677,7 @@ const storeGcCommand = Cli.Command.make(
                   ) {
                     continue
                   }
-                  const traversal = yield* scanGeneratedArtifact({
-                    path: artifactPath,
-                    workspace: worktree.path,
-                  })
+                  const traversal = yield* scanGeneratedArtifact({ path: artifactPath })
                   const mtimeMs = traversal?.newestMtimeMs
                   const ignored = yield* Git.runCommand({
                     args: ['check-ignore', '--quiet', '--', artifactClass],
