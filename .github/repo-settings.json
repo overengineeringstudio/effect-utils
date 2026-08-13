@@ -87,6 +87,9 @@
             "context": "source-shape"
           },
           {
+            "context": "ci/measurements-report"
+          },
+          {
             "context": "test-integration-notion"
           },
           {

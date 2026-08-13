@@ -175,7 +175,9 @@ const emitCiMeasurementArtifact = (contract) => {
     })
   }
 
-  const phases = [...new Set(matchingSamples.map((sample) => sample.phase))].toSorted()
+  const phases = [...new Set(matchingSamples.map((sample) => sample.phase))].toSorted(
+    (left, right) => left.localeCompare(right),
+  )
   for (const phase of phases) {
     const phaseSamples = matchingSamples.filter(
       (sample) => sample.phase === phase && sample.status === 'ok',

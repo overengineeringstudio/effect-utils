@@ -2963,6 +2963,34 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:check'
+      - name: 'Adapt and admit Buck measurements: Megarepo CLI'
+        if: always()
+        shell: bash
+        env:
+          CI_MEASUREMENT_BUCK_TARGET: '{"id":"megarepo-mr","label":"Megarepo CLI","workContract":"megarepo-cli-product/no-equivalent-devenv-lane/v1","benchmarkSchema":"effect-utils-buck2-benchmark/v0","buckTarget":"//packages/@overeng/megarepo:mr","rawPath":"tmp/buck2-benchmark/megarepo-mr.jsonl","runs":7,"assertions":[{"id":"warm-actions","label":"Warm actions","phase":"warm-noop","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"warm-materializations","label":"Warm materializations","phase":"warm-noop","metric":"materializationCount","expectation":{"_tag":"exact","value":0}},{"id":"mtime-actions","label":"Mtime-only actions","phase":"mtime-only","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"irrelevant-actions","label":"Role-excluded actions","phase":"irrelevant-edit","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"irrelevant-materializations","label":"Role-excluded materializations","phase":"irrelevant-edit","metric":"materializationCount","expectation":{"_tag":"exact","value":0}},{"id":"relevant-actions","label":"Relevant-edit actions","phase":"relevant-edit","metric":"actionCount","expectation":{"_tag":"at-least","value":1}},{"id":"declared-unreachable-actions","label":"Declared-unreachable actions","phase":"declared-unreachable-edit","metric":"actionCount","expectation":{"_tag":"at-least","value":1}}]}'
+        run: |
+          set -euo pipefail
+          output="tmp/buck2-ci-measurements/megarepo-mr/measurements.json"
+          DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun scripts/buck2-benchmark/assert-invalidation.mjs --contract-json "$CI_MEASUREMENT_BUCK_TARGET" --output "$output" "tmp/buck2-benchmark/megarepo-mr.jsonl"
+      - name: 'Adapt and admit Buck measurements: OTel scrape native product'
+        if: always()
+        shell: bash
+        env:
+          CI_MEASUREMENT_BUCK_TARGET: '{"id":"otel-scrape-product","label":"OTel scrape native product","workContract":"effect-utils/otel-scrape-native-product-v1","benchmarkSchema":"effect-utils-buck2-benchmark/v0","buckTarget":"//packages/@overeng/otel-scrape:product","rawPath":"tmp/buck2-benchmark/otel-scrape-product.jsonl","runs":7,"assertions":[{"id":"warm-actions","label":"Warm actions","phase":"warm-noop","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"warm-materializations","label":"Warm materializations","phase":"warm-noop","metric":"materializationCount","expectation":{"_tag":"exact","value":0}},{"id":"irrelevant-actions","label":"Irrelevant-edit actions","phase":"irrelevant-edit","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"irrelevant-materializations","label":"Irrelevant-edit materializations","phase":"irrelevant-edit","metric":"materializationCount","expectation":{"_tag":"exact","value":0}},{"id":"relevant-actions","label":"Relevant-edit actions","phase":"relevant-edit","metric":"actionCount","expectation":{"_tag":"exact","value":2}}]}'
+        run: |
+          set -euo pipefail
+          output="tmp/buck2-ci-measurements/otel-scrape-product/measurements.json"
+          DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun scripts/buck2-benchmark/assert-invalidation.mjs --contract-json "$CI_MEASUREMENT_BUCK_TARGET" --output "$output" "tmp/buck2-benchmark/otel-scrape-product.jsonl"
+      - name: 'Upload CI measurements: buck2-measurements'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buck2-measurements
+          path: |
+            tmp/buck2-ci-measurements
+            !tmp/buck2-ci-measurements/baseline/**
+          if-no-files-found: error
+          retention-days: 14
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -5668,8 +5696,8 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   ci-measurements-report:
     name: ci/measurements-report
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
-    needs: [devenv-perf, nix-closure-sizes, source-shape]
+    if: ${{ always() && !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    needs: [buck2, devenv-perf, nix-closure-sizes, source-shape]
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
@@ -5698,28 +5726,37 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
-      - name: Provide CI measurement report tools
+      - name: Provide CI measurement comparison tool
         shell: bash
         run: |
           set -euo pipefail
-          for out in $(nix build --no-link --print-out-paths nixpkgs#jq nixpkgs#nodejs nixpkgs#gh nixpkgs#resvg); do
+          for out in $(nix build --no-link --print-out-paths nixpkgs#jq); do
             echo "$out/bin" >> "$GITHUB_PATH"
           done
+      - name: 'Download current measurement artifact: buck2-measurements'
+        uses: actions/download-artifact@v4
+        with:
+          name: buck2-measurements
+          path: tmp/ci-measurement-report/current/buck2-measurements
+        continue-on-error: true
       - name: 'Download current measurement artifact: devenv-perf'
         uses: actions/download-artifact@v4
         with:
           name: devenv-perf
           path: tmp/ci-measurement-report/current/devenv-perf
+        continue-on-error: true
       - name: 'Download current measurement artifact: nix-closure-measurements'
         uses: actions/download-artifact@v4
         with:
           name: nix-closure-measurements
           path: tmp/ci-measurement-report/current/nix-closure-measurements
+        continue-on-error: true
       - name: 'Download current measurement artifact: source-shape'
         uses: actions/download-artifact@v4
         with:
           name: source-shape
           path: tmp/ci-measurement-report/current/source-shape
+        continue-on-error: true
       - name: 'Download previous artifact: devenv-perf'
         shell: bash
         env:
@@ -6510,6 +6547,7 @@ jobs:
           CI_MEASUREMENT_BASELINE_DIR: tmp/ci-measurement-report/baseline
           CI_MEASUREMENT_COMPARISON_FILE: tmp/ci-measurement-report/measurement-comparison.json
           CI_MEASUREMENT_REGRESSION_MODE: warn
+          CI_MEASUREMENT_ASSERTION_TARGETS: '[{"id":"megarepo-mr","label":"Megarepo CLI","workContract":"megarepo-cli-product/no-equivalent-devenv-lane/v1","benchmarkSchema":"effect-utils-buck2-benchmark/v0","buckTarget":"//packages/@overeng/megarepo:mr","rawPath":"tmp/buck2-benchmark/megarepo-mr.jsonl","runs":7,"assertions":[{"id":"warm-actions","label":"Warm actions","phase":"warm-noop","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"warm-materializations","label":"Warm materializations","phase":"warm-noop","metric":"materializationCount","expectation":{"_tag":"exact","value":0}},{"id":"mtime-actions","label":"Mtime-only actions","phase":"mtime-only","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"irrelevant-actions","label":"Role-excluded actions","phase":"irrelevant-edit","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"irrelevant-materializations","label":"Role-excluded materializations","phase":"irrelevant-edit","metric":"materializationCount","expectation":{"_tag":"exact","value":0}},{"id":"relevant-actions","label":"Relevant-edit actions","phase":"relevant-edit","metric":"actionCount","expectation":{"_tag":"at-least","value":1}},{"id":"declared-unreachable-actions","label":"Declared-unreachable actions","phase":"declared-unreachable-edit","metric":"actionCount","expectation":{"_tag":"at-least","value":1}}],"fingerprint":"9c3ebecfad98051362f3ae2e17f9d5344ffba3e17dba028df5aff079cfe3c5c5"},{"id":"otel-scrape-product","label":"OTel scrape native product","workContract":"effect-utils/otel-scrape-native-product-v1","benchmarkSchema":"effect-utils-buck2-benchmark/v0","buckTarget":"//packages/@overeng/otel-scrape:product","rawPath":"tmp/buck2-benchmark/otel-scrape-product.jsonl","runs":7,"assertions":[{"id":"warm-actions","label":"Warm actions","phase":"warm-noop","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"warm-materializations","label":"Warm materializations","phase":"warm-noop","metric":"materializationCount","expectation":{"_tag":"exact","value":0}},{"id":"irrelevant-actions","label":"Irrelevant-edit actions","phase":"irrelevant-edit","metric":"actionCount","expectation":{"_tag":"exact","value":0}},{"id":"irrelevant-materializations","label":"Irrelevant-edit materializations","phase":"irrelevant-edit","metric":"materializationCount","expectation":{"_tag":"exact","value":0}},{"id":"relevant-actions","label":"Relevant-edit actions","phase":"relevant-edit","metric":"actionCount","expectation":{"_tag":"exact","value":2}}],"fingerprint":"b0035374449996dfe6adcea2e6b132ce2aef8e8a5dfe9b9a5aba443e5cd3ba48"}]'
           CI_MEASUREMENT_PR_COMMENT_ENABLED: 'true'
           CI_MEASUREMENT_PR_COMMENT_TITLE: CI Measurements
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '16'
@@ -6526,6 +6564,7 @@ jobs:
           baseline_dir="${CI_MEASUREMENT_BASELINE_DIR:?CI_MEASUREMENT_BASELINE_DIR not set}"
           comparison_file="${CI_MEASUREMENT_COMPARISON_FILE:?CI_MEASUREMENT_COMPARISON_FILE not set}"
           mode="${CI_MEASUREMENT_REGRESSION_MODE:-warn}"
+          assertion_targets="${CI_MEASUREMENT_ASSERTION_TARGETS:-[]}"
           mkdir -p "$(dirname "$comparison_file")"
 
           if [ "$mode" = "off" ]; then
@@ -6543,13 +6582,36 @@ jobs:
           } | sort -u >"$baseline_index" || true
 
           if [ ! -s "$current_index" ]; then
-            echo "::error::no current measurements.json files found under $current_dir"
-            exit 1
+            if [ "$assertion_targets" = "[]" ]; then
+              echo "::error::no current measurements.json files found under $current_dir"
+              exit 1
+            fi
+            echo "::warning::no current measurements.json files found; reconstructing required assertion rows"
           fi
 
           current_json="$comparison_file.current.json"
           baseline_json="$comparison_file.baseline.json"
-          xargs -r jq -s '.' <"$current_index" >"$current_json"
+          if [ -s "$current_index" ]; then
+            verified_current_dir="$(mktemp -d)"
+            verified_index="$(mktemp)"
+            verified_count=0
+            while IFS= read -r measurement_file; do
+              verified_count=$((verified_count + 1))
+              raw_file="$(dirname "$measurement_file")/raw.jsonl"
+              raw_sha256=""
+              if [ -f "$raw_file" ]; then
+                raw_sha256="$(sha256sum "$raw_file" | awk '{print $1}')"
+              fi
+              verified_file="$verified_current_dir/$verified_count.json"
+              jq --arg rawSha256 "$raw_sha256" \
+                '. + {_consumerVerification:{rawSha256:(if $rawSha256 == "" then null else $rawSha256 end)}}' \
+                "$measurement_file" >"$verified_file"
+              printf '%s\n' "$verified_file" >>"$verified_index"
+            done <"$current_index"
+            xargs -r jq -s '.' <"$verified_index" >"$current_json"
+          else
+            printf '[]\n' >"$current_json"
+          fi
           if [ -s "$baseline_index" ]; then
             xargs -r jq -s '.' <"$baseline_index" >"$baseline_json"
           else
@@ -6561,8 +6623,10 @@ jobs:
             --slurpfile baseline "$baseline_json" \
             --argjson schemaVersion 1 \
             --arg mode "$mode" \
+            --argjson assertionTargets "$assertion_targets" \
             --arg currentDir "$current_dir" \
             --arg baselineDir "$baseline_dir" \
+            --arg expectedSubjectSha "${CI_MEASUREMENT_SUBJECT_SHA:-${GITHUB_SHA:-unknown}}" \
             '
               def identity_dimensions:
                 (.dimensions // {})
@@ -6602,7 +6666,7 @@ jobs:
               def observations_by_key($docs):
                 reduce $docs[]? as $doc
                   ({};
-                    reduce (($doc.observations // [])[]? | select(.value | type == "number")) as $obs
+                    reduce (($doc.observations // [])[]? | select((.value | type == "number") and (.policy.comparisonMode // "") != "assertion")) as $obs
                       (.;
                         ($obs | observation_key($doc)) as $key
                         | .[$key] = ((.[$key] // []) + [{
@@ -6680,6 +6744,82 @@ jobs:
                 default_policy($obs.name // "unknown"; $obs.unit // "unknown") + ($obs.policy // {});
               def policy_enabled($policy):
                 if ($policy | has("enabled")) then $policy.enabled else true end;
+
+              def expectation_matches($expectation; $value):
+                if $expectation._tag == "exact" then $value == $expectation.value
+                elif $expectation._tag == "at-least" then $value >= $expectation.value
+                elif $expectation._tag == "at-most" then $value <= $expectation.value
+                elif $expectation._tag == "range" then $value >= $expectation.min and $value <= $expectation.max
+                else false
+                end;
+
+              def assertion_comparisons($docs; $targets):
+                reduce $targets[]? as $target
+                  ({};
+                    ([ $docs[]? | select(.target.kind == "buck2" and .target.id == $target.id) ]) as $matchingDocs
+                    | reduce $target.assertions[] as $expected
+                        (.;
+                          ($matchingDocs[0] // null) as $doc
+                          | ([ $doc.observations[]? | select(.id == $expected.id) ]) as $matchingObservations
+                          | ($matchingObservations[0] // null) as $observed
+                          | ($observed.statistics.samples // []) as $samples
+                          | ($observed.evidence.sampleIndexes // []) as $indexes
+                          | (
+                              ($matchingDocs | length) == 1
+                              and $doc.schemaVersion == 1
+                              and $doc.producer.measurementProtocol == "buck2-invalidation-v1"
+                              and $doc.contract.fingerprint == $target.fingerprint
+                              and $doc.contract.snapshot == ($target | del(.fingerprint))
+                              and $doc.completeness.status == "complete"
+                              and $doc.subject.sha == $expectedSubjectSha
+                              and ($matchingObservations | length) == 1
+                              and $observed.policy.comparisonMode == "assertion"
+                              and $observed.policy.expectation == $expected.expectation
+                              and $observed.policy.onNoVerdict == "fail"
+                              and $observed.name == ("buck2." + (if $expected.metric == "actionCount" then "action_count" else "materialization_count" end))
+                              and $observed.unit == "count"
+                              and $observed.dimensions.phase == $expected.phase
+                              and $observed.dimensions.measurementProtocol == "buck2-invalidation-v1"
+                              and $observed.evidence.status == "complete"
+                              and $observed.statistics.sampleCount == $target.runs
+                              and $observed.statistics.measuredSampleCount == $target.runs
+                              and ($samples | length) == $target.runs
+                              and ($indexes | length) == $target.runs
+                              and (($indexes | unique | sort) == ([range(0; $target.runs)]))
+                              and ($samples | all(type == "number" and isfinite and floor == . and . >= 0))
+                              and (($observed.evidence.rawSha256 // "") | test("^[0-9a-f]{64}$"))
+                              and $observed.evidence.rawSha256 == $doc._consumerVerification.rawSha256
+                              and $observed.assertion.status == (if ($samples | all(expectation_matches($expected.expectation; .))) then "pass" else "fail" end)
+                            ) as $complete
+                          | ($complete and ($samples | all(expectation_matches($expected.expectation; .)))) as $passing
+                          | ("assertion|" + $target.id + "|" + $expected.id) as $key
+                          | .[$key] = {
+                              status: (if $complete then (if $passing then "pass" else "fail" end) else "no_verdict" end),
+                              target: {kind:"buck2", id:$target.id, label:$target.label},
+                              observation: ($observed // {
+                                id:$expected.id,
+                                label:$expected.label,
+                                name:("buck2." + (if $expected.metric == "actionCount" then "action_count" else "materialization_count" end)),
+                                unit:"count",
+                                measurementKind:"deterministic",
+                                dimensions:{phase:$expected.phase, measurementProtocol:"buck2-invalidation-v1"},
+                                policy:{enabled:true, comparisonMode:"assertion", expectation:$expected.expectation, onNoVerdict:"fail"}
+                              }),
+                              current: (if ($samples | length) == 0 then null else ($samples | median) end),
+                              currentSamples: ($samples | length),
+                              baselineSources: 0,
+                              gatePolicy: {enabled:true, comparisonMode:"assertion", expectation:$expected.expectation, onNoVerdict:"fail"},
+                              comparisonMode:"assertion",
+                              gateable:$complete,
+                              gateReason:(if $complete then "eligible" else "incomplete_assertion_evidence" end),
+                              confidence:(if $complete then (if $passing then "assertion_satisfied" else "assertion_violated" end) else "no_verdict" end),
+                              direction:(if $complete and $passing then "unchanged" else "regressed" end),
+                              semanticImpactScore:(if $complete and $passing then 0 else 1 end),
+                              semanticImpactKind:(if $complete and $passing then "neutral" else "fail_boundary" end),
+                              assertion:{expected:$expected.expectation, samples:$samples}
+                            }
+                        )
+                  );
 
               def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples; $pairedDeltaMedian; $pairedDeltaP25; $pairedDeltaP75; $pairedDeltaMad; $pairedDeltaValues):
                 $policy as $b
@@ -6902,10 +7042,13 @@ jobs:
                         }
                     )
                   | from_entries
-                ) as $comparisons
+                ) as $legacyComparisons
+              | assertion_comparisons($current[0]; $assertionTargets) as $assertionComparisons
+              | ($legacyComparisons + $assertionComparisons) as $comparisons
               | (
                   if any($comparisons[]?; .status == "fail") then "fail"
                   elif any($comparisons[]?; .status == "warn") then "warn"
+                  elif any($comparisons[]?; .status == "no_verdict") then "partial"
                   elif any($comparisons[]?;
                     (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
                     and (.gateReason == "missing_baseline"
@@ -6927,6 +7070,7 @@ jobs:
                       lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length),
                       lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length),
                       missingPairedDeltaCount: (map(select(.gateReason == "missing_paired_delta")) | length)
+                      ,noVerdictCount: (map(select(.status == "no_verdict")) | length)
                     }
                   | . + {
                       nonGateableCount: (.enabledCount - .gateableCount),
@@ -6968,6 +7112,11 @@ jobs:
               ;;
           esac
 
+          if jq -e 'any(.comparisons[]?; .comparisonMode == "assertion" and (.status == "fail" or .status == "no_verdict"))' "$comparison_file" >/dev/null; then
+            echo "::error::required CI measurement assertion failed or has no verdict"
+            exit_code=1
+          fi
+
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
             {
               echo "### ${CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
@@ -7007,8 +7156,10 @@ jobs:
           if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
             if [ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
               echo "::notice::CI measurement PR comments are produced only by pull_request workflows; skipping comment for event ${GITHUB_EVENT_NAME:-unknown}"
-              exit 0
+              exit "$exit_code"
             fi
+
+            set +e
 
             can_render_pr_comment=true
             is_fork_pr=false
@@ -7024,33 +7175,27 @@ jobs:
               if command -v "$tool_name" >/dev/null 2>&1; then
                 return 0
               fi
-              if ! command -v nix >/dev/null 2>&1; then
-                return 1
-              fi
-              if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
-                export PATH="$tool_out/bin:$PATH"
-              fi
-              command -v "$tool_name" >/dev/null 2>&1
+              return 1
             }
 
             if ! ensure_ci_measurement_tool gh gh; then
-              echo "::error::gh is not available; unable to publish required CI measurement PR comment"
+              echo "::notice::gh is not available; skipping optional CI measurement PR comment"
               can_render_pr_comment=false
             fi
             if ! ensure_ci_measurement_tool node nodejs; then
-              echo "::error::node is not available; unable to publish required CI measurement PR comment"
+              echo "::notice::node is not available; skipping optional CI measurement PR comment"
               can_render_pr_comment=false
             fi
             if ! command -v jq >/dev/null 2>&1; then
               if ensure_ci_measurement_tool jq jq; then
                 :
               else
-                echo "::error::jq is not available; unable to publish required CI measurement PR comment"
+                echo "::notice::jq is not available for the optional CI measurement PR comment"
                 can_render_pr_comment=false
               fi
             fi
             if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-              echo "::error::GH_TOKEN/GITHUB_TOKEN is not set; unable to publish required CI measurement PR comment"
+              echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping optional CI measurement PR comment"
               can_render_pr_comment=false
             fi
 
@@ -7060,14 +7205,8 @@ jobs:
               pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
             fi
             if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
-              echo "::error::pull request number is unavailable; unable to publish required CI measurement PR comment"
+              echo "::notice::pull request number is unavailable; skipping optional CI measurement PR comment"
               can_render_pr_comment=false
-            fi
-
-            if [ "$can_render_pr_comment" != "true" ]; then
-              if [ "$is_fork_pr" != "true" ]; then
-                exit 1
-              fi
             fi
 
             if [ "$can_render_pr_comment" = "true" ]; then
@@ -7284,6 +7423,12 @@ jobs:
               tone: 'bad',
               color: '#ef4444',
             }
+            if (row.status === 'no_verdict') return {
+              label: 'No verdict - blocks merge',
+              detail: 'Required evidence is missing, malformed, or contradicts the configured assertion.',
+              tone: 'bad',
+              color: '#ef4444',
+            }
             if (row.status === 'warn') return {
               label: 'Regression - review',
               detail: 'Worse than the configured warning threshold.',
@@ -7464,9 +7609,10 @@ jobs:
 
           const rank = (row) => {
             if (row.status === 'fail') return 0
-            if (row.status === 'warn') return 1
-            if (row.status === 'missing_baseline') return 3
-            return 2
+            if (row.status === 'no_verdict') return 1
+            if (row.status === 'warn') return 2
+            if (row.status === 'missing_baseline') return 4
+            return 3
           }
 
           const allRows = Object.values(comparison.comparisons || {}).sort((left, right) => {
@@ -7490,6 +7636,7 @@ jobs:
           })()
           const visibleLimit = Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10
           const comparableRows = allRows.filter((row) => typeof row.baseline === 'number')
+          const assertionRows = allRows.filter((row) => row.comparisonMode === 'assertion')
           const hasComparableBaseline = comparableRows.length > 0
           const isDiagnosticRow = (row) =>
             row.status === 'missing_baseline' ||
@@ -7502,10 +7649,14 @@ jobs:
             !Number.isNaN(row.semanticImpactScore) &&
             Math.abs(row.semanticImpactScore) < 0.005
           const actionableComparableRows = comparableRows.filter((row) => !isDiagnosticRow(row))
-          const visibleRows = (hasComparableBaseline
-            ? actionableComparableRows
-            : allRows.filter((row) => !isDiagnosticRow(row)).sort((left, right) => (right.current || 0) - (left.current || 0))
-          ).slice(0, visibleLimit)
+          const visibleRows = [
+            ...assertionRows,
+            ...(hasComparableBaseline
+              ? actionableComparableRows
+              : allRows
+                  .filter((row) => !isDiagnosticRow(row) && row.comparisonMode !== 'assertion')
+                  .sort((left, right) => (right.current || 0) - (left.current || 0))),
+          ].slice(0, visibleLimit)
           const nonZeroImpactRows = actionableComparableRows.filter((row) => !isZeroImpactRow(row))
           const zeroImpactRows = actionableComparableRows.filter(isZeroImpactRow)
           const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
@@ -7537,6 +7688,7 @@ jobs:
 
           const scanDecision = (row) => {
             if (row.status === 'fail') return 'regression blocks'
+            if (row.status === 'no_verdict') return 'evidence missing - blocks'
             if (row.status === 'warn') return 'regression review'
             if (row.status === 'missing_baseline') return 'needs baseline'
             if (row.direction === 'improved') return 'faster'
@@ -8054,7 +8206,7 @@ jobs:
                 if [ -s "$chart_file" ]; then
                   if [ "$require_public_asset" = "true" ] && [ -z "$public_asset_command" ]; then
                     echo "::error::CI measurement chart was rendered for a private repository, but CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND is not configured. Private raw GitHub URLs cannot be embedded in PR comments."
-                    exit 1
+                    can_render_pr_comment=false
                   fi
 
                   if ensure_ci_measurement_tool resvg resvg; then
@@ -8138,11 +8290,11 @@ jobs:
                     fi
                     if [ "$require_public_asset" = "true" ] && [ -z "$chart_url" ]; then
                       echo "::error::unable to publish CI measurement chart PNG to a public asset host for private repository $repo"
-                      exit 1
+                      can_render_pr_comment=false
                     fi
                     if [ "$require_public_asset" = "true" ] && [ -s "$chart_dark_png_file" ] && [ -z "$chart_dark_url" ]; then
                       echo "::error::unable to publish dark CI measurement chart PNG to a public asset host for private repository $repo"
-                      exit 1
+                      can_render_pr_comment=false
                     fi
                     node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
                   fi
