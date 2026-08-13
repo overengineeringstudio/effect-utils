@@ -71,6 +71,17 @@ describe('store-gc-config', () => {
       expect(mergeStoreGcConfig({ postMergeGraceMs: 0 }).postMergeGraceMs).toBe(0)
     })
 
+    it('fails safe to defaults for negative or non-finite durations', () => {
+      const merged = mergeStoreGcConfig({
+        absenceGraceMs: -1,
+        generatedArtifacts: { retentionMs: Number.POSITIVE_INFINITY },
+      })
+      expect(merged.absenceGraceMs).toBe(DEFAULT_STORE_GC_CONFIG.absenceGraceMs)
+      expect(merged.generatedArtifacts.retentionMs).toBe(
+        DEFAULT_STORE_GC_CONFIG.generatedArtifacts.retentionMs,
+      )
+    })
+
     it('accepts only canonical generated classes and an explicit liveness manifest', () => {
       expect(
         mergeStoreGcConfig({

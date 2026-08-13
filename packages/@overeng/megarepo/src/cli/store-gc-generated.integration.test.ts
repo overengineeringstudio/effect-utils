@@ -67,6 +67,9 @@ const runGc = ({
     return {
       exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
       planSha256: json?.['planSha256'] as string | undefined,
+      completedRepoCount: json?.['completedRepoCount'] as number | undefined,
+      discoveredWorktreeCount: json?.['discoveredWorktreeCount'] as number | undefined,
+      activeWorktreeCount: json?.['activeWorktreeCount'] as number | undefined,
       results: (json?.['results'] ?? []) as ReadonlyArray<JsonResult>,
     }
   }).pipe(Effect.scoped)
@@ -163,6 +166,41 @@ describe('mr store gc --generated-artifacts', () => {
         expect(yield* FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(artifact)))).toBe(
           true,
         )
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'rejects relative and non-normalized agent workspace paths',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* oldIgnoredArtifact(f.worktree)
+        for (const invalidPath of [
+          'relative/worktree',
+          `${f.worktree}/../worktree`,
+          `${f.worktree}/`,
+        ]) {
+          yield* configure({
+            config: f.config,
+            manifest: f.manifest,
+            activeWorkspacePaths: [invalidPath],
+          })
+          const result = yield* runGc({
+            cwd: f.outside,
+            storePath: f.storePath,
+            args: ['--dry-run'],
+          })
+          expect(generated(result.results, 'node_modules')).toMatchObject({
+            outcome: 'unknown',
+            reason: 'agent-liveness-unavailable',
+          })
+          expect(result.completedRepoCount).toBe(1)
+          expect(result.discoveredWorktreeCount).toBe(1)
+          expect(result.activeWorktreeCount).toBe(0)
+        }
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
@@ -307,6 +345,24 @@ describe('mr store gc --generated-artifacts', () => {
         expect(yield* FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(artifact)))).toBe(
           true,
         )
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'planning does not create or reconcile the shared workspace registry',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* configure({ config: f.config, manifest: f.manifest })
+        yield* oldIgnoredArtifact(f.worktree)
+        const registry = `${f.storePath}/.state/workspaces`
+        const fs = yield* FileSystem.FileSystem
+        expect(yield* fs.exists(registry)).toBe(false)
+        yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        expect(yield* fs.exists(registry)).toBe(false)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

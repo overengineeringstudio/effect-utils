@@ -484,7 +484,7 @@ const StoreFetchView = ({
 }
 
 /** GC view - show garbage collection results */
-const StoreGcView = ({
+export const StoreGcView = ({
   basePath,
   results,
   dryRun,
@@ -515,12 +515,17 @@ const StoreGcView = ({
   interrupted?: boolean | undefined
   maxInUseToShow?: number
 }) => {
-  const removed = results.filter((r) => r.status === 'removed')
+  const removed = results.filter(
+    (r) => r.status === 'removed' || r.outcome === 'would-delete' || r.outcome === 'deleted',
+  )
   const archived = results.filter((r) => r.status === 'archived')
   const reaped = results.filter((r) => r.status === 'reaped')
   const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
   const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
-  const kept = results.filter((r) => r.status === 'kept')
+  const kept = results.filter(
+    (r) =>
+      r.status === 'kept' && r.outcome !== 'would-delete' && r.outcome !== 'deleted',
+  )
   const errors = results.filter((r) => r.status === 'error')
 
   // Determine which results to show
@@ -682,8 +687,20 @@ const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
 }
 
 /** GC Result line component */
-const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: boolean }) => {
+export const StoreGcResultRow = ({
+  result,
+  dryRun,
+}: {
+  result: StoreGcResult
+  dryRun: boolean
+}) => {
+  const isGeneratedDeletion =
+    result.kind === 'generated-artifact' &&
+    (result.outcome === 'would-delete' || result.outcome === 'deleted')
+
   const getSymbol = () => {
+    if (isGeneratedDeletion === true) return <Text color="green">{SYMBOLS.check}</Text>
+
     switch (result.status) {
       case 'removed':
         return <Text color="green">{SYMBOLS.check}</Text>
@@ -703,6 +720,10 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
   }
 
   const getStatusText = () => {
+    if (isGeneratedDeletion === true) {
+      return <Text dim> ({result.outcome === 'would-delete' ? 'would delete' : 'deleted'})</Text>
+    }
+
     switch (result.status) {
       case 'removed':
         return <Text dim> ({dryRun === true ? 'would remove' : 'removed'})</Text>
@@ -726,7 +747,15 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
     }
   }
 
-  const isDim = result.status === 'skipped_in_use' || result.status === 'kept'
+  const isDim =
+    isGeneratedDeletion === false &&
+    (result.status === 'skipped_in_use' || result.status === 'kept')
+  const label =
+    result.kind === 'generated-artifact'
+      ? result.workspacePath === undefined
+        ? result.path
+        : `${result.workspacePath}/${result.artifactClass ?? 'generated artifact'}`
+      : `${result.repo}refs/${result.refType}/${result.ref}`
 
   return (
     <Box flexDirection="column">
@@ -735,12 +764,12 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
         {isDim === true ? (
           <Text dim>
             {' '}
-            {result.repo}refs/{result.refType}/{result.ref}{' '}
+            {label}{' '}
           </Text>
         ) : (
           <Text>
             {' '}
-            {result.repo}refs/{result.refType}/{result.ref}{' '}
+            {label}{' '}
           </Text>
         )}
         {getStatusText()}

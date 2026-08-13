@@ -88,6 +88,9 @@ const StoreGcConfigOverride = Schema.Struct({
 /** Parsed `gc-config.json` override: every timer optional. */
 export type StoreGcConfigOverride = Schema.Schema.Type<typeof StoreGcConfigOverride>
 
+const validDuration = (value: number | undefined, fallback: number): number =>
+  value !== undefined && Number.isFinite(value) === true && value >= 0 ? value : fallback
+
 /** Relative path of the override file within the store. */
 export const GC_CONFIG_RELATIVE_PATH = '.state/gc-config.json'
 
@@ -101,15 +104,22 @@ const gcConfigPath = (storeBasePath: AbsoluteDirPath) =>
  * the default. Pure so it is the unit-tested seam for the merge contract.
  */
 export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConfig => ({
-  absenceGraceMs: override.absenceGraceMs ?? DEFAULT_STORE_GC_CONFIG.absenceGraceMs,
-  postMergeGraceMs: override.postMergeGraceMs ?? DEFAULT_STORE_GC_CONFIG.postMergeGraceMs,
-  archiveRetentionMs: override.archiveRetentionMs ?? DEFAULT_STORE_GC_CONFIG.archiveRetentionMs,
+  absenceGraceMs: validDuration(override.absenceGraceMs, DEFAULT_STORE_GC_CONFIG.absenceGraceMs),
+  postMergeGraceMs: validDuration(
+    override.postMergeGraceMs,
+    DEFAULT_STORE_GC_CONFIG.postMergeGraceMs,
+  ),
+  archiveRetentionMs: validDuration(
+    override.archiveRetentionMs,
+    DEFAULT_STORE_GC_CONFIG.archiveRetentionMs,
+  ),
   generatedArtifacts: {
     enabled:
       override.generatedArtifacts?.enabled ?? DEFAULT_STORE_GC_CONFIG.generatedArtifacts.enabled,
-    retentionMs:
-      override.generatedArtifacts?.retentionMs ??
+    retentionMs: validDuration(
+      override.generatedArtifacts?.retentionMs,
       DEFAULT_STORE_GC_CONFIG.generatedArtifacts.retentionMs,
+    ),
     allowlist:
       override.generatedArtifacts?.allowlist ??
       DEFAULT_STORE_GC_CONFIG.generatedArtifacts.allowlist,
