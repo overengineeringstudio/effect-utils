@@ -15,9 +15,10 @@ self-contained ELF without ambient `PATH`?
 ## Method
 
 The prototype introduced distinct glibc-dynamic and musl-static target labels,
-plus an x86_64 Linux local-store execution label. Nix's flake-pinned
-`pkgsCross.musl64` supplied exact `rustc` and linker store paths to a local-only
-Buck action through configuration. The action ran with `PATH=/nonexistent`.
+plus an x86_64 Linux local-store execution constraint and platform. Nix's
+flake-pinned `pkgsCross.musl64` supplies exact `rustc` and linker store paths,
+the semantic platform claims, and their joined identity through one immutable
+Buck configuration. The action ran with `PATH=/nonexistent`.
 
 The probe compiled one dependency-free Rust program. Controls inspected ELF
 headers and strings, executed the binary with an empty environment, selected
@@ -33,6 +34,8 @@ Remote execution and remote caches remained disabled.
 | Source mtime only               | 0.044 s; zero actions                                    |
 | Relevant source content         | 0.579 s; one local action                                |
 | glibc target for musl-only rule | rejected during analysis; musl constraint unsatisfied    |
+| Prelude default exec platform   | rejected; exact local-store exec constraint unsatisfied  |
+| Mismatched Nix target metadata  | rejected during toolchain analysis                       |
 | Output                          | 488,064-byte x86-64 static PIE                           |
 | Runtime dependencies            | no `PT_INTERP`, no `DT_NEEDED`, `ldd`: statically linked |
 | Nix-store leakage               | no `/nix/store` string in the output                     |
@@ -55,11 +58,14 @@ flake-pinned Nix cross-toolchain
   -> self-contained musl target product
 ```
 
-The store paths participate in the action command and therefore its identity,
-but the current prototype supplies them as invocation configuration. Production
-integration still needs one Nix/devenv-owned launcher projection that emits the
-complete toolchain descriptor and arguments atomically. Buck actions must not
-invoke Nix, and committed BUCK files must not pin ephemeral store paths.
+The store paths participate in the action command and therefore its identity.
+The Nix/devenv-owned projection emits those paths, the contract version,
+execution platform, target platform, target triple, and their SHA-256 identity
+atomically. Buck validates the semantic fields and separately requires the
+selected execution and target constraints. `buck2:rust-musl:check` keeps the two
+negative controls and real compile probe executable on x86_64 Linux. Buck
+actions do not invoke Nix, and committed BUCK files do not pin ephemeral store
+paths.
 
 The target needs both ABI and linkage constraints. A `musl` constraint alone
 does not establish static linkage. `static` versus `dynamic` is therefore an

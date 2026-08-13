@@ -74,6 +74,20 @@
           };
         };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
+        buck2-rust-musl-toolchain-config =
+          if system == "x86_64-linux" then
+            let
+              cross = pkgs.pkgsCross.musl64;
+            in
+            (
+              import ./nix/workspace-tools/lib/buck2-rust-local-toolchain-config.nix { inherit pkgs; }
+              {
+                rustc = "${cross.rustc}/bin/rustc";
+                linker = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}cc";
+              }
+            ).config
+          else
+            null;
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -231,6 +245,9 @@
               inherit pkgs oxlintNpm;
             };
             node-pty-native = nodePtyNative;
+          }
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            inherit buck2-rust-musl-toolchain-config;
           };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {

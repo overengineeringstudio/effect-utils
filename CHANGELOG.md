@@ -34,7 +34,9 @@ All notable changes to this project will be documented in this file.
   an admitted on-demand Prelude CPython action-toolchain bootstrap boundary.
 - **Buck2 Rust platform prototype**: add explicit x86_64 Linux glibc-dynamic and
   musl-static target boundaries plus a local-only, Nix-store Rust toolchain
-  probe that produces and inspects a self-contained static PIE.
+  probe that produces and inspects a self-contained static PIE. Bind the probe
+  to an exact Buck execution constraint and one Nix-authored toolchain config
+  so platform claims cannot silently fall back or drift from tool identities.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema

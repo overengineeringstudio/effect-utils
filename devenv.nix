@@ -113,7 +113,6 @@ let
       portable_toolchain_fixture = ${buck2Stage0.portableToolchainFixture}/bin/buck2-portable-toolchain-fixture
   '';
   buck2Stage0Args = "--config-file ${buck2Stage0Config}";
-
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
     {
@@ -855,6 +854,7 @@ in
       trap cleanup EXIT
       trap 'exit 130' INT
       trap 'exit 143' TERM
+
       if ${pkgs.buck2}/bin/buck2 \
         --isolation-dir "$isolation" \
         build --config-file ${buck2Stage0Config} --fake-arch aarch64 \
@@ -880,6 +880,65 @@ in
     '';
   };
 
+  tasks."buck2:rust-musl:check" = lib.mkIf (currentSystem == "x86_64-linux") {
+    description = "Prove the Nix-authored Rust toolchain, target, and execution-platform contract";
+    exec = trace.exec "buck2:rust-musl:check" ''
+      set -euo pipefail
+      isolation="rust-musl-check-$$-$RANDOM"
+      stderr_file="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/buck2-rust-musl-check.XXXXXX")"
+      cleanup() {
+        ${pkgs.buck2}/bin/buck2 --isolation-dir "$isolation" kill >/dev/null 2>&1 || true
+        ${pkgs.coreutils}/bin/rm -f "$stderr_file"
+      }
+      trap cleanup EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+
+      # Keep the large cross-toolchain out of the default devenv closure. This
+      # explicit task boundary realizes it only when the Rust probe is run.
+      toolchain_config="$(${pkgs.nix}/bin/nix build \
+        --no-link \
+        --print-out-paths \
+        .#buck2-rust-musl-toolchain-config)"
+
+      common=(
+        --isolation-dir "$isolation"
+        build
+        --config-file "$toolchain_config"
+        --target-platforms //buck2/platforms:target_x86_64_linux_musl_static
+        //buck2/rust:static_hello
+        --local-only
+        --no-remote-cache
+      )
+
+      if ${pkgs.buck2}/bin/buck2 "''${common[@]}" \
+        --config build.execution_platforms=prelude//platforms:default \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: default execution platform unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "No compatible execution platform" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing execution-platform rejection" >&2
+        exit 1
+      }
+
+      if ${pkgs.buck2}/bin/buck2 "''${common[@]}" \
+        --config rust_toolchain.target_platform=//buck2/platforms:target_x86_64_linux_glibc_dynamic \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: mismatched Nix toolchain metadata unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "Rust toolchain target platform mismatch" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing toolchain-metadata rejection" >&2
+        exit 1
+      }
+
+      ${pkgs.buck2}/bin/buck2 "''${common[@]}"
+      identity="$(${pkgs.gawk}/bin/awk '$1 == "toolchain_identity" { print $3 }' "$toolchain_config")"
+      echo "buck2:rust-musl:check: PASS identity=$identity"
+    '';
+  };
+
   tasks."buck2:check" = {
     description = "Run Buck2 foundation, invalidation, platform, Nix bridge, and benchmark gates";
     after = [
@@ -891,6 +950,9 @@ in
       "buck2:benchmark:check"
       "buck2:invalidation:e2e"
       "buck2:platform:check"
+    ]
+    ++ lib.optionals (currentSystem == "x86_64-linux") [
+      "buck2:rust-musl:check"
     ];
   };
 

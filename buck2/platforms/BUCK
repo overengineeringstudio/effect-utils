@@ -1,4 +1,4 @@
-load("@prelude//platforms:defs.bzl", "execution_platform")
+load(":local_execution.bzl", "local_execution_platform")
 
 constraint_setting(
     name = "runtime_linkage",
@@ -8,6 +8,19 @@ constraint_setting(
 constraint_value(
     name = "dynamic",
     constraint_setting = ":runtime_linkage",
+    visibility = ["PUBLIC"],
+)
+
+# This is an execution identity, not merely a locality hint. Actions requiring
+# it cannot silently fall back to Prelude's host-derived default platform.
+constraint_setting(
+    name = "execution_identity",
+    visibility = ["PUBLIC"],
+)
+
+constraint_value(
+    name = "x86_64_linux_local_store_execution",
+    constraint_setting = ":execution_identity",
     visibility = ["PUBLIC"],
 )
 
@@ -39,12 +52,21 @@ platform(
     visibility = ["PUBLIC"],
 )
 
-# Current delivery is an exact Nix store path and therefore local-only. The
-# compiler executes for the host platform even when it emits a musl target.
-execution_platform(
+# Current delivery is an exact Nix store path and therefore local-only. Keep a
+# distinct configuration target so execution compatibility can require this
+# exact identity instead of trusting descriptive provider metadata.
+platform(
+    name = "exec_x86_64_linux_local_store_configuration",
+    constraint_values = [
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+        ":x86_64_linux_local_store_execution",
+    ],
+)
+
+local_execution_platform(
     name = "exec_x86_64_linux_local_store",
-    cpu_configuration = "prelude//cpu:x86_64",
-    os_configuration = "prelude//os:linux",
+    platform = ":exec_x86_64_linux_local_store_configuration",
     use_windows_path_separators = False,
     visibility = ["PUBLIC"],
 )

@@ -4,9 +4,13 @@ load(":local_store.bzl", "rust_local_store_toolchain", "rust_static_binary")
 # paths with --config; they are command-line inputs to the local-only action.
 rust_local_store_toolchain(
     name = "x86_64_linux_musl_toolchain",
+    contract = read_config("rust_toolchain", "contract", ""),
+    execution_platform = read_config("rust_toolchain", "execution_platform", ""),
     linker = read_config("rust_toolchain", "linker", ""),
     rustc = read_config("rust_toolchain", "rustc", ""),
-    target_triple = "x86_64-unknown-linux-musl",
+    target_platform = read_config("rust_toolchain", "target_platform", ""),
+    target_triple = read_config("rust_toolchain", "target_triple", ""),
+    toolchain_identity = read_config("rust_toolchain", "toolchain_identity", ""),
 )
 
 rust_static_binary(
@@ -14,6 +18,9 @@ rust_static_binary(
     binary_name = "static-hello",
     crate_name = "static_hello",
     src = "static_hello.rs",
+    exec_compatible_with = [
+        "//buck2/platforms:x86_64_linux_local_store_execution",
+    ],
     target_compatible_with = [
         "prelude//abi/constraints:musl",
         "prelude//cpu/constraints:x86_64",
