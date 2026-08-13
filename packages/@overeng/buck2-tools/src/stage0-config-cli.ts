@@ -27,6 +27,7 @@ Options:
   --flock-bin PATH           Exact util-linux flock executable
   --bun-bin PATH             Exact Bun executable used by the locked worker
   --semantic-input PATH      Semantic input below repo root; repeatable
+  --semantic-input-tree PATH Recursively census Rust/Cargo inputs at runtime; repeatable
   --format path|json         Output format (default: path)
   -h, --help                 Show help`
 
@@ -49,6 +50,7 @@ export const parseStage0ConfigCli = (args: ReadonlyArray<string>): ParsedCli => 
   let expectedFingerprint: string | undefined
   let output: 'path' | 'json' = 'path'
   const semanticInputs: Array<string> = []
+  const semanticInputTrees: Array<string> = []
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!
     if (arg === '--internal-worker') internalWorker = true
@@ -59,6 +61,7 @@ export const parseStage0ConfigCli = (args: ReadonlyArray<string>): ParsedCli => 
     else if (arg === '--bun-bin') bunBinary = valueAfter(args, index++)
     else if (arg === '--resolver-script') resolverScript = valueAfter(args, index++)
     else if (arg === '--semantic-input') semanticInputs.push(valueAfter(args, index++))
+    else if (arg === '--semantic-input-tree') semanticInputTrees.push(valueAfter(args, index++))
     else if (arg === '--platform') platform = valueAfter(args, index++)
     else if (arg === '--architecture') architecture = valueAfter(args, index++)
     else if (arg === '--expected-fingerprint') expectedFingerprint = valueAfter(args, index++)
@@ -86,6 +89,7 @@ export const parseStage0ConfigCli = (args: ReadonlyArray<string>): ParsedCli => 
       bunBinary: resolve(bunBinary!),
       resolverScript: resolve(resolverScript),
       semanticInputs,
+      semanticInputTrees,
       ...(platform === undefined ? {} : { platform }),
       ...(architecture === undefined ? {} : { architecture }),
     },

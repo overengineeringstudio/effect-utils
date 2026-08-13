@@ -122,6 +122,18 @@ let
     # The resolver independently validates repository containment at runtime.
     "--semantic-input ${lib.escapeShellArg (builtins.unsafeDiscardStringContext relative)}"
   ) buck2Stage0Definition.semantic-inputs;
+  buck2Stage0SemanticTreeArgs = lib.concatMapStringsSep " " (
+    path:
+    let
+      repositoryPrefix = "${toString ./.}/";
+      absolute = toString path;
+      relative = lib.removePrefix repositoryPrefix absolute;
+    in
+    assert lib.assertMsg (
+      relative != absolute && relative != ""
+    ) "Buck stage-0 semantic input trees must be below the repository root";
+    "--semantic-input-tree ${lib.escapeShellArg (builtins.unsafeDiscardStringContext relative)}"
+  ) buck2Stage0Definition.semantic-input-trees;
   buck2Stage0Resolve = ''
     cache_root="''${XDG_CACHE_HOME:-''${HOME:?HOME is required}/.cache}/effect-utils/buck2-stage0"
     ${buck2Stage0Resolver}/bin/buck2-stage0-config \
@@ -130,7 +142,8 @@ let
       --nix-bin ${pkgs.nix}/bin/nix \
       --flock-bin ${pkgs.flock}/bin/flock \
       --bun-bin ${pkgs.bun}/bin/bun \
-      ${buck2Stage0SemanticArgs}
+      ${buck2Stage0SemanticArgs} \
+      ${buck2Stage0SemanticTreeArgs}
   '';
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [

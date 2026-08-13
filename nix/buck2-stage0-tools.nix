@@ -25,8 +25,11 @@ let
         "buck2-tools/portable-toolchain-fixture"
       ];
   semanticFileset = lib.fileset.unions ([ sharedFileset ] ++ leafFilesets);
-  resolverFileset = lib.fileset.unions [
-    semanticFileset
+  resolverFixedFileset = lib.fileset.unions [
+    (workspaceRoot + "/Cargo.toml")
+    (workspaceRoot + "/Cargo.lock")
+    (repositoryRoot + "/rust-toolchain.toml")
+    (repositoryRoot + "/nix/buck2-stage0-tools.nix")
     (repositoryRoot + "/flake.lock")
     (repositoryRoot + "/flake.nix")
   ];
@@ -82,7 +85,10 @@ in
 {
   # This list is also consumed by the lazy devenv resolver. Keeping source
   # selection here makes the Nix derivations the sole stage-0 input authority.
-  semantic-inputs = lib.fileset.toList resolverFileset;
+  semantic-inputs = lib.fileset.toList resolverFixedFileset;
+  # The resolver performs this census on every invocation, so files added or
+  # removed after devenv evaluation still change the stage-0 fingerprint.
+  semantic-input-trees = [ (repositoryRoot + "/rust/buck2-tools") ];
   closure-tool = mkTool {
     package = "buck2-closure-tool";
     packageRoot = workspaceRoot + "/buck2-tools/closure-tool";

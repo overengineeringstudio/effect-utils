@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import {
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -30,13 +31,17 @@ const flockBinary =
 const runCli = async ({
   root,
   cacheRoot,
+  semanticInputTrees = [],
   mutateDuringRealization = false,
   mutateDuringEveryRealization = false,
+  mutateAbaDuringRealization = false,
 }: {
   readonly root: string
   readonly cacheRoot: string
+  readonly semanticInputTrees?: ReadonlyArray<string>
   readonly mutateDuringRealization?: boolean
   readonly mutateDuringEveryRealization?: boolean
+  readonly mutateAbaDuringRealization?: boolean
 }): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> =>
   new Promise((resolvePromise, reject) => {
     const child = spawn(
@@ -55,6 +60,7 @@ const runCli = async ({
         process.execPath,
         '--semantic-input',
         'semantic.txt',
+        ...semanticInputTrees.flatMap((path) => ['--semantic-input-tree', path]),
       ],
       {
         cwd: root,
@@ -64,6 +70,7 @@ const runCli = async ({
           FAKE_NIX_ROOT: join(root, 'store'),
           ...(mutateDuringRealization === true ? { FAKE_NIX_MUTATE_SEMANTIC: '1' } : {}),
           ...(mutateDuringEveryRealization === true ? { FAKE_NIX_MUTATE_ALWAYS: '1' } : {}),
+          ...(mutateAbaDuringRealization === true ? { FAKE_NIX_MUTATE_ABA: '1' } : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -103,6 +110,17 @@ describe('Buck stage-0 config resolver', { timeout: 20_000 }, () => {
       join(root, 'fake-nix'),
       `#!/bin/sh
 set -eu
+if [ "\${1:-}" = store ] && [ "\${2:-}" = add-path ]; then
+  shift 2
+  if [ "\${1:-}" = --name ]; then shift 2; fi
+  snapshot="\${FAKE_NIX_ROOT%/*}-snapshot"
+  rm -rf "$snapshot"
+  mkdir -p "$snapshot"
+  cp "$1/semantic.txt" "$snapshot/semantic.txt"
+  if [ -d "$1/semantic-tree" ]; then cp -R "$1/semantic-tree" "$snapshot/semantic-tree"; fi
+  printf '%s\\n' "$snapshot"
+  exit 0
+fi
 installable=""
 out_link=""
 while [ "$#" -gt 0 ]; do
@@ -121,7 +139,17 @@ case "$attribute" in
 esac
 output="$FAKE_NIX_ROOT/$attribute"
 mkdir -p "$output/bin"
-printf '#!/bin/sh\\nexit 0\\n' > "$output/bin/$executable"
+sequence=0
+if [ "\${FAKE_NIX_MUTATE_ABA:-}" = 1 ]; then
+  while ! mkdir "$FAKE_NIX_ROOT/aba-lock" 2>/dev/null; do sleep 0.01; done
+  sequence=1
+  while [ -e "$FAKE_NIX_ROOT/aba-$sequence" ]; do sequence=$((sequence + 1)); done
+  : > "$FAKE_NIX_ROOT/aba-$sequence"
+fi
+source_root="\${installable#path:}"
+source_root="\${source_root%%#*}"
+cat "$source_root/semantic.txt" > "$output/semantic-value"
+printf '#!/bin/sh\\ncat "%s/semantic-value"\\n' "$output" > "$output/bin/$executable"
 chmod +x "$output/bin/$executable"
 mkdir -p "$(dirname "$out_link")"
 ln -sfn "$output" "$out_link"
@@ -132,6 +160,13 @@ fi
 if [ "\${FAKE_NIX_MUTATE_ALWAYS:-}" = 1 ]; then
   date +%s%N > semantic.txt
 fi
+if [ "$sequence" -gt 0 ]; then
+  case "$sequence" in
+    1) printf 'version two\\n' > semantic.txt ;;
+    2) printf 'version one\\n' > semantic.txt ;;
+  esac
+  rmdir "$FAKE_NIX_ROOT/aba-lock"
+fi
 sleep 0.05
 printf '%s\\n' "$output"
 `,
@@ -141,6 +176,7 @@ printf '%s\\n' "$output"
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
+    await rm(`${root}-snapshot`, { recursive: true, force: true })
   })
 
   it('hits across unrelated mutations and misses across semantic mutations', async () => {
@@ -158,6 +194,46 @@ printf '%s\\n' "$output"
     expect(semantic.exitCode).toBe(0)
     expect(semantic.stdout).not.toBe(cold.stdout)
     expect(await invocationCount(root)).toBe(8)
+  })
+
+  it('discovers additions and removals from the runtime semantic input census', async () => {
+    await mkdir(join(root, 'semantic-tree'))
+    await writeFile(join(root, 'semantic-tree', 'existing.rs'), 'pub const EXISTING: u8 = 1;\n')
+    const cold = await runCli({ root, cacheRoot, semanticInputTrees: ['semantic-tree'] })
+    expect(cold).toMatchObject({ exitCode: 0, stderr: '' })
+
+    await writeFile(join(root, 'semantic-tree', 'added.rs'), 'pub const ADDED: u8 = 2;\n')
+    const added = await runCli({ root, cacheRoot, semanticInputTrees: ['semantic-tree'] })
+    expect(added).toMatchObject({ exitCode: 0, stderr: '' })
+    expect(added.stdout).not.toBe(cold.stdout)
+
+    await unlink(join(root, 'semantic-tree', 'added.rs'))
+    const removed = await runCli({ root, cacheRoot, semanticInputTrees: ['semantic-tree'] })
+    expect(removed).toMatchObject({ exitCode: 0, stdout: cold.stdout, stderr: '' })
+  })
+
+  it('binds every realized tool to one immutable source snapshot across an A-B-A mutation', async () => {
+    const result = await runCli({ root, cacheRoot, mutateAbaDuringRealization: true })
+    expect(result).toMatchObject({ exitCode: 0, stderr: '' })
+    const config = parseStage0Config(await readFile(result.stdout.trim(), 'utf8'))
+    const observed = await Promise.all(
+      Object.values(config).map(
+        (executable) =>
+          new Promise<string>((resolvePromise, reject) => {
+            const child = spawn(executable, [], { stdio: ['ignore', 'pipe', 'inherit'] })
+            let stdout = ''
+            child.stdout.setEncoding('utf8')
+            child.stdout.on('data', (chunk: string) => {
+              stdout += chunk
+            })
+            child.once('error', reject)
+            child.once('close', (code) =>
+              code === 0 ? resolvePromise(stdout.trim()) : reject(new Error(`tool exited ${code}`)),
+            )
+          }),
+      ),
+    )
+    expect(new Set(observed)).toEqual(new Set(['version one']))
   })
 
   it('treats a missing cached executable as a miss and atomically repairs the config', async () => {

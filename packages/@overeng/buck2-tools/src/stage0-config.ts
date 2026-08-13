@@ -2,10 +2,21 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, chmod, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import {
+  access,
+  chmod,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  stat,
+} from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 
-export const stage0ConfigResolverAbi = 'effect-utils.buck2-stage0-config.v1' as const
+export const stage0ConfigResolverAbi = 'effect-utils.buck2-stage0-config.v2' as const
 
 export const stage0Tools = [
   {
@@ -43,6 +54,7 @@ export interface Stage0ConfigRequest {
   readonly bunBinary: string
   readonly resolverScript: string
   readonly semanticInputs: ReadonlyArray<string>
+  readonly semanticInputTrees: ReadonlyArray<string>
   readonly platform?: string
   readonly architecture?: string
 }
@@ -95,14 +107,46 @@ const relativeSemanticPath = ({ repoRoot, input }: { repoRoot: string; input: st
 export const digestSemanticInputs = async ({
   repoRoot,
   semanticInputs,
+  semanticInputTrees = [],
 }: {
   readonly repoRoot: string
   readonly semanticInputs: ReadonlyArray<string>
+  readonly semanticInputTrees?: ReadonlyArray<string>
 }): Promise<ReadonlyArray<SemanticInputDigest>> => {
-  if (semanticInputs.length === 0) throw new Error('at least one --semantic-input is required')
   const canonicalRoot = await realpath(repoRoot)
+  const treeInputs: Array<string> = []
+  const visitTree = async (directory: string): Promise<void> => {
+    const entries = await readdir(directory, { withFileTypes: true })
+    for (const entry of entries.toSorted((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    )) {
+      const path = resolve(directory, entry.name)
+      if (entry.isSymbolicLink() === true) {
+        throw new Error(`semantic input tree refuses symlink: ${path}`)
+      }
+      if (entry.isDirectory() === true) await visitTree(path)
+      else if (
+        entry.isFile() === true &&
+        (extname(entry.name) === '.rs' || basename(entry.name) === 'Cargo.toml')
+      ) {
+        treeInputs.push(path)
+      }
+    }
+  }
+  for (const tree of semanticInputTrees) {
+    const canonicalTree = await realpath(resolve(canonicalRoot, tree))
+    relativeSemanticPath({ repoRoot: canonicalRoot, input: canonicalTree })
+    if ((await stat(canonicalTree)).isDirectory() === false) {
+      throw new Error(`semantic input tree must be a directory: ${tree}`)
+    }
+    await visitTree(canonicalTree)
+  }
+  const allInputs = [...semanticInputs, ...treeInputs]
+  if (allInputs.length === 0) {
+    throw new Error('at least one --semantic-input or --semantic-input-tree is required')
+  }
   const normalized = await Promise.all(
-    semanticInputs.map(async (input) => {
+    allInputs.map(async (input) => {
       const canonicalInput = await realpath(resolve(canonicalRoot, input))
       const path = relativeSemanticPath({ repoRoot: canonicalRoot, input: canonicalInput })
       if ((await stat(canonicalInput)).isFile() === false) {
@@ -273,11 +317,16 @@ const requestArgs = ({
   '--expected-fingerprint',
   expectedFingerprint,
   ...request.semanticInputs.flatMap((input) => ['--semantic-input', input]),
+  ...request.semanticInputTrees.flatMap((input) => ['--semantic-input-tree', input]),
 ]
 
 const resolveIdentity = async (
   request: Stage0ConfigRequest,
-): Promise<{ readonly fingerprint: string; readonly configPath: string }> => {
+): Promise<{
+  readonly fingerprint: string
+  readonly configPath: string
+  readonly inputs: ReadonlyArray<SemanticInputDigest>
+}> => {
   const inputs = await digestSemanticInputs(request)
   const fingerprint = fingerprintSemanticManifest({
     inputs,
@@ -287,6 +336,7 @@ const resolveIdentity = async (
   return {
     fingerprint,
     configPath: resolve(request.cacheRoot, fingerprint, 'buck2-stage0.conf'),
+    inputs,
   }
 }
 
@@ -387,12 +437,14 @@ const writeFileAtomic = async ({
 
 const realizeTool = async ({
   request,
+  sourceSnapshot,
   configKey,
   fingerprint,
   flakeAttribute,
   executable,
 }: {
   readonly request: Stage0ConfigRequest
+  readonly sourceSnapshot: string
   readonly configKey: string
   readonly fingerprint: string
   readonly flakeAttribute: string
@@ -407,7 +459,7 @@ const realizeTool = async ({
       '--out-link',
       rootPath,
       '--print-out-paths',
-      `path:${request.repoRoot}#${flakeAttribute}`,
+      `path:${sourceSnapshot}#${flakeAttribute}`,
     ],
     cwd: request.repoRoot,
   })
@@ -423,6 +475,34 @@ const realizeTool = async ({
     throw new Error(`Nix output ${flakeAttribute} is missing executable ${executable}`)
   }
   return executablePath
+}
+
+const createSourceSnapshot = async ({
+  request,
+  fingerprint,
+}: {
+  readonly request: Stage0ConfigRequest
+  readonly fingerprint: string
+}): Promise<string> => {
+  const stdout = await run({
+    binary: request.nixBinary,
+    args: [
+      'store',
+      'add-path',
+      '--name',
+      `effect-utils-buck2-stage0-${fingerprint}`,
+      request.repoRoot,
+    ],
+    cwd: request.repoRoot,
+  })
+  const paths = stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+  if (paths.length !== 1 || isAbsolute(paths[0]!) === false) {
+    throw new Error('Nix returned an invalid stage-0 source snapshot')
+  }
+  return paths[0]!
 }
 
 export const resolveStage0ConfigUnderLock = async ({
@@ -444,20 +524,31 @@ export const resolveStage0ConfigUnderLock = async ({
   )
     return { ...identity, status: 'hit' }
 
+  const sourceSnapshot = await createSourceSnapshot({
+    request,
+    fingerprint: identity.fingerprint,
+  })
+  const snapshotIdentity = await resolveIdentity({ ...request, repoRoot: sourceSnapshot })
+  if (snapshotIdentity.fingerprint !== identity.fingerprint) return { status: 'retry' }
+
   const realized = await Promise.all(
     stage0Tools.map(async (tool) => ({
       configKey: tool.configKey,
-      path: await realizeTool({ request, fingerprint: identity.fingerprint, ...tool }),
+      path: await realizeTool({
+        request,
+        sourceSnapshot,
+        fingerprint: identity.fingerprint,
+        ...tool,
+      }),
     })),
   )
   const settledIdentity = await resolveIdentity(request)
   if (settledIdentity.fingerprint !== identity.fingerprint) return { status: 'retry' }
-  const inputs = await digestSemanticInputs(request)
   const contents = [
     '# Generated by @overeng/buck2-tools stage-0 config resolver. DO NOT EDIT.',
     `# Resolver ABI: ${stage0ConfigResolverAbi}`,
     `# Semantic fingerprint: ${identity.fingerprint}`,
-    `# Semantic inputs: ${inputs
+    `# Semantic inputs: ${identity.inputs
       .map(({ path }) => path)
       .toSorted()
       .join(', ')}`,
