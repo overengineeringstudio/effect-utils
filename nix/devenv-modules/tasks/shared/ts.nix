@@ -156,7 +156,7 @@ let
       # crashes diagnosable, this avoids mistaking a new diagnostic shape for
       # timing scaffolding. Successful checks retain the concise filtered view.
       if [ "$_tsc_exit" -ne 0 ]; then
-        cat "$_tsc_output"
+      cat "$_tsc_output" >&2
       else
         filter_diagnostics_noise "$_tsc_output"
       fi
