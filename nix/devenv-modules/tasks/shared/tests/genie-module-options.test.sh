@@ -54,6 +54,7 @@ echo "Checking commentless generated JSON ownership and warm-state drift..."
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 mkdir -p "$test_dir/bin"
+mkdir -p "$test_dir/semantic/nested"
 
 cat > "$test_dir/bin/genie" <<'EOF'
 #!/usr/bin/env bash
@@ -69,12 +70,16 @@ printf '{"value":1}\n' > "$test_dir/contract.json"
 mkdir -p "$test_dir/nested"
 printf 'export default {}\n' > "$test_dir/nested/contract.json.genie.ts"
 printf '{"nested":true}\n' > "$test_dir/nested/contract.json"
+printf 'direct one\n' > "$test_dir/semantic/direct.ts"
+printf 'nested one\n' > "$test_dir/semantic/nested/input.ts"
 git -C "$test_dir" add \
   contract.json.genie.ts contract.json \
-  nested/contract.json.genie.ts nested/contract.json
+  nested/contract.json.genie.ts nested/contract.json \
+  semantic/direct.ts semantic/nested/input.ts
 
-run_exec="$(eval_genie_module_attr "{ }" 'evaluated.config.tasks."genie:run".exec')"
-run_status="$(eval_genie_module_attr "{ }" 'evaluated.config.tasks."genie:run".status')"
+module_config='{ effectUtils.genie.extraInputGlobs = [ "semantic/**/*.ts" ]; }'
+run_exec="$(eval_genie_module_attr "$module_config" 'evaluated.config.tasks."genie:run".exec')"
+run_status="$(eval_genie_module_attr "$module_config" 'evaluated.config.tasks."genie:run".status')"
 (
   cd "$test_dir"
   PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
@@ -102,6 +107,40 @@ if (
 fi
 
 printf '{"value":1}\n' > "$test_dir/contract.json"
+(
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_exec"
+)
+printf 'direct two\n' > "$test_dir/semantic/direct.ts"
+if (
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" DEVENV_SETUP_OUTER_CACHE_HIT=0 \
+    OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_status"
+); then
+  echo "FAIL: changing a direct extraInputGlobs match should invalidate Genie warm state"
+  exit 1
+fi
+
+printf 'direct one\n' > "$test_dir/semantic/direct.ts"
+(
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_exec"
+)
+printf 'nested two\n' > "$test_dir/semantic/nested/input.ts"
+if (
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" DEVENV_SETUP_OUTER_CACHE_HIT=0 \
+    OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_status"
+); then
+  echo "FAIL: changing a nested extraInputGlobs match should invalidate Genie warm state"
+  exit 1
+fi
+
+printf 'nested one\n' > "$test_dir/semantic/nested/input.ts"
 sed -i 's/genie-test 1/genie-test 2/' "$test_dir/bin/genie"
 if (
   cd "$test_dir"

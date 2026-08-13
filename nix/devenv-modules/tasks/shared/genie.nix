@@ -82,14 +82,14 @@ let
   enumerateGenieInputGlobs = lib.optionalString (cfg.extraInputGlobs != [ ]) ''
     if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ${lib.concatMapStringsSep "\n" (glob: ''
-      ${pkgs.git}/bin/git ls-files -z -- ${lib.escapeShellArg glob} | tr '\0' '\n'
-      ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ${lib.escapeShellArg glob} | tr '\0' '\n'
+      ${pkgs.git}/bin/git ls-files -z -- ${lib.escapeShellArg ":(glob)${glob}"} | tr '\0' '\n'
+      ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ${lib.escapeShellArg ":(glob)${glob}"} | tr '\0' '\n'
     '') cfg.extraInputGlobs}
     else
     ${lib.concatMapStringsSep "\n" (glob: ''
-      ${pkgs.findutils}/bin/find . -type f -path ${lib.escapeShellArg "./${glob}"} \
-        -not -path './.git/*' -not -path './.devenv/*' -not -path './node_modules/*' \
-        -print 2>/dev/null || true
+      ${pkgs.ripgrep}/bin/rg --files --hidden \
+        --glob ${lib.escapeShellArg glob} \
+        --glob '!.git/**' --glob '!.devenv/**' --glob '!node_modules/**' || true
     '') cfg.extraInputGlobs}
     fi
   '';
@@ -219,8 +219,9 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        Extra non-.genie.ts generator inputs, expressed as git pathspecs/globs,
-        that should participate in the `genie:run` warm-cache fingerprint.
+        Extra non-.genie.ts generator inputs, expressed as plain Git glob
+        patterns without pathspec magic, that should participate in the
+        `genie:run` warm-cache fingerprint.
       '';
     };
   };

@@ -7,8 +7,10 @@ dependency closures, Buck rule behavior, or build-tool selection.
 
 ## Context
 
-The Buck projector emits committed, read-only configuration whose freshness is
-checked locally and in CI. The normalized semantic graph is its complete
+The Buck projector emits committed configuration whose freshness is checked
+locally and in CI. Generation makes outputs read-only as a local editing
+guardrail; Git checkout modes are not freshness identity because Git does not
+preserve ordinary write bits. The normalized semantic graph is its complete
 semantic input.
 
 ## Assumptions
@@ -56,7 +58,8 @@ semantic input.
 
 - **BUCK.GRAPH.PROJ-R08 Authoritative freshness:** One supported Genie check
   must regenerate and compare all semantic graph projections and fail on
-  missing, stale, writable, or conflicting outputs.
+  missing, stale, or conflicting outputs. It must not reject a byte-identical
+  fresh checkout solely because Git restored an ordinary file as writable.
 - **BUCK.GRAPH.PROJ-R09 Non-semantic provenance:** Operational provenance may
   identify an authored source, schema version, and regeneration command, but a
   generator or tool implementation change that preserves output semantics must

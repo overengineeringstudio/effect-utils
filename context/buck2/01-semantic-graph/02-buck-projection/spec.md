@@ -93,15 +93,17 @@ location mapping, not its semantic identities or unrelated package shards.
 discover authored Genie sources
   -> compose and normalize semantic package models
   -> render expected package-local shards
-  -> compare expected bytes and modes with committed outputs
+  -> compare expected bytes with committed outputs
   -> report exact owning source for every drift
 ```
 
-Freshness rejects missing outputs, stale bytes, conflicting ownership, and
-writable generated files. Semantic bytes contain only data needed by Buck
-analysis. Operational provenance that changes when the generator implementation
-changes is retained in Genie's result metadata or a non-semantic sidecar, not in
-the shard's semantic fingerprint.
+Freshness rejects missing outputs, stale bytes, and conflicting ownership.
+Generation reapplies read-only modes as a local editing guardrail, but check
+mode does not treat ordinary write bits as identity because Git cannot preserve
+them across checkout. Semantic bytes contain only data needed by Buck analysis.
+Operational provenance that changes when the generator implementation changes
+is retained in Genie's result metadata or a non-semantic sidecar, not in the
+shard's semantic fingerprint.
 
 Completeness is the separate stateless ownership assertion defined by the
 parent semantic-graph spec. Genie projects the supported-file policy but does
