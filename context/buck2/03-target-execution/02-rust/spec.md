@@ -4,7 +4,10 @@ This document specifies Rust target execution. It refines the shared
 [target execution spec](../spec.md) and satisfies
 [requirements.md](./requirements.md).
 
-Status: **Draft**
+Status: **Draft**. `otel-scrape` now has generated first-party library, binary,
+and unit-test targets on the configured `x86_64-linux-musl` lane. They consume
+the central Reindeer projection from `rust/Cargo.toml` plus `rust/Cargo.lock`;
+integration tests and other platforms remain unadmitted.
 
 ## Scope
 

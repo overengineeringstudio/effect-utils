@@ -16,10 +16,15 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { cpus, freemem, platform, release, tmpdir, totalmem } from 'node:os'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 
-import { countNonEmptyLines, parseMaterializations, summarizeSamples } from './lib.mjs'
+import {
+  assertBuckInvalidation,
+  countNonEmptyLines,
+  parseMaterializations,
+  summarizeSamples,
+} from './lib.mjs'
 
 const schema = 'effect-utils-buck2-benchmark/v0'
 const defaultRelevantPath = 'packages/@overeng/tui-core/src/mod.ts'
@@ -45,9 +50,12 @@ const parseArgs = (argv) => {
     runs: 7,
     warmups: 2,
     target: null,
+    targetPlatform: null,
     workContract: null,
     declareEquivalentWork: false,
     buckIncrementalOnly: false,
+    assertBuckInvalidation: false,
+    expectedRelevantActions: null,
     isolationDir: 'effect-utils-benchmark',
     relevantPath: defaultRelevantPath,
     irrelevantPath: defaultIrrelevantPath,
@@ -55,7 +63,7 @@ const parseArgs = (argv) => {
     output: null,
     buckBin: process.env.BUCK2_BENCH_BUCK_BIN ?? null,
     buckConfig: [],
-    buckConfigFile: null,
+    buckConfigFiles: [],
     hostLabel: process.env.BUCK2_BENCH_HOST_LABEL ?? 'redacted-local',
   }
 
@@ -73,9 +81,13 @@ const parseArgs = (argv) => {
     else if (arg === '--runs') options.runs = parsePositiveInteger(arg, take())
     else if (arg === '--warmups') options.warmups = parsePositiveInteger(arg, take())
     else if (arg === '--buck-target') options.target = take()
+    else if (arg === '--buck-target-platform') options.targetPlatform = take()
     else if (arg === '--work-contract') options.workContract = take()
     else if (arg === '--declare-equivalent-work') options.declareEquivalentWork = true
     else if (arg === '--buck-incremental-only') options.buckIncrementalOnly = true
+    else if (arg === '--assert-buck-invalidation') options.assertBuckInvalidation = true
+    else if (arg === '--expected-relevant-actions')
+      options.expectedRelevantActions = parsePositiveInteger(arg, take())
     else if (arg === '--isolation-dir') options.isolationDir = take()
     else if (arg === '--relevant-path') options.relevantPath = take()
     else if (arg === '--irrelevant-path') options.irrelevantPath = take()
@@ -83,7 +95,7 @@ const parseArgs = (argv) => {
     else if (arg === '--output') options.output = take()
     else if (arg === '--buck-bin') options.buckBin = take()
     else if (arg === '--buck-config') options.buckConfig.push(take())
-    else if (arg === '--buck-config-file') options.buckConfigFile = take()
+    else if (arg === '--buck-config-file') options.buckConfigFiles.push(take())
     else if (arg === '--host-label') options.hostLabel = take()
     else if (arg === '--help') {
       console.log(`usage: node benchmark.mjs [options]
@@ -96,12 +108,15 @@ Defaults to a non-executing dry run. Use --execute to run commands.
   --runs N                  measured samples per repeatable phase (default: 7)
   --warmups N               warmup samples (default: 2)
   --buck-target LABEL       explicit Buck target under measurement
+  --buck-target-platform LABEL configured Buck target platform
   --work-contract ID        stable ID for the reviewed workload relationship
   --declare-equivalent-work assert the contract covers equivalent work (off by default)
   --buck-incremental-only   skip Devenv and destructive cold/restart Buck phases
+  --assert-buck-invalidation require exact warm/edit action evidence
+  --expected-relevant-actions N exact actions for each relevant edit
   --buck-bin PATH           pinned Buck2 executable
   --buck-config KEY=VALUE   Buck config value (repeatable)
-  --buck-config-file PATH   exact generated Buck config file
+  --buck-config-file PATH   immutable Buck config file (repeatable)
   --isolation-dir NAME      Buck daemon/cache namespace
   --relevant-path PATH      source mutation path
   --irrelevant-path PATH    non-input mutation path
@@ -117,6 +132,8 @@ Defaults to a non-executing dry run. Use --execute to run commands.
     fail('--execute requires --buck-target; there is no comparable default')
   if (options.execute === true && options.workContract === null)
     fail('--execute requires --work-contract; the workload relationship must be named')
+  if (options.assertBuckInvalidation === true && options.expectedRelevantActions === null)
+    fail('--assert-buck-invalidation requires --expected-relevant-actions')
   return options
 }
 
@@ -279,6 +296,12 @@ const main = async () => {
           ? 'undeclared'
           : 'work-contract-declares-no-equivalent-devenv-lane',
   }
+  const appendRelevantMutation = (path, index) => {
+    const probe = `Buck2BenchmarkProbe${index}`
+    if (extname(path) === '.rs')
+      appendFileSync(path, `\npub type ${probe} = &'static str; // ${runId}\n`)
+    else appendFileSync(path, `\nexport type ${probe} = '${runId}'\n`)
+  }
   const env = { ...process.env, CI: '1', DEVENV_TUI: 'false' }
 
   const emitSkip = ({
@@ -380,6 +403,7 @@ const main = async () => {
       buck2Requested: options.buckBin,
     },
     target: options.target,
+    targetPlatform: options.targetPlatform,
     comparison: {
       summaryGenerated: false,
       verdict: 'no-verdict',
@@ -694,8 +718,9 @@ const main = async () => {
       '--isolation-dir',
       options.isolationDir,
       'build',
-      ...(options.buckConfigFile === null ? [] : ['--config-file', options.buckConfigFile]),
       ...options.buckConfig.flatMap((value) => ['-c', value]),
+      ...options.buckConfigFiles.flatMap((path) => ['--config-file', path]),
+      ...(options.targetPlatform === null ? [] : ['--target-platforms', options.targetPlatform]),
       options.target,
       '--local-only',
       '--no-remote-cache',
@@ -801,8 +826,7 @@ const main = async () => {
         phase: 'relevant-edit',
         mutation: 'relevant',
         path: options.relevantPath,
-        mutate: (path, index) =>
-          appendFileSync(path, `\nexport type Buck2BenchmarkProbe${index} = '${runId}'\n`),
+        mutate: appendRelevantMutation,
         command: 'devenv',
         args: computeOnly,
       })
@@ -940,8 +964,7 @@ const main = async () => {
         phase: 'relevant-edit',
         mutation: 'relevant',
         path: options.relevantPath,
-        mutate: (path, index) =>
-          appendFileSync(path, `\nexport type Buck2BenchmarkProbe${index} = '${runId}'\n`),
+        mutate: appendRelevantMutation,
         command: buckBin,
         args: (stem) => makeBuckArgs(stem),
       })
@@ -988,6 +1011,27 @@ const main = async () => {
       phase: 'final',
       state: cacheState(worktree, options.isolationDir),
     })
+    if (options.assertBuckInvalidation === true) {
+      assertBuckInvalidation({
+        records: writer.records,
+        runs: options.runs,
+        expectedRelevantActions: options.expectedRelevantActions,
+      })
+      writer.write({
+        ...baseRecord,
+        kind: 'assertion',
+        assertion: 'buck-invalidation',
+        status: 'ok',
+        verdict: 'verified',
+        expected: {
+          warmActions: 0,
+          warmMaterializations: 0,
+          irrelevantActions: 0,
+          irrelevantMaterializations: 0,
+          relevantActions: options.expectedRelevantActions,
+        },
+      })
+    }
   } finally {
     cleanup()
   }

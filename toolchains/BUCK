@@ -2,6 +2,11 @@ load("@root//buck2/platforms:defs.bzl", "host_platform_label")
 load("@root//buck2/toolchains:defs.bzl", "configured_rust_toolchain", "host_rust_target_triple")
 load(":configured.bzl", "support_tool")
 load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
+load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
+load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
+load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
+load("@root//buck2/toolchains:nix_local.bzl", "nix_local_rust_cxx_python_toolchains")
+load("@root//buck2/toolchains:conventional_probe.bzl", "conventional_toolchain_probe")
 
 support_tool(
     name = "archive_tool",
@@ -18,6 +23,22 @@ support_tool(
     tool_id = "closure-tool",
     visibility = ["PUBLIC"],
 )
+
+# Prelude Rust compilation and linking consume both conventional providers,
+# but only Rust product invocations supply that independently rooted config.
+# The macro is a no-op without it, so stage-0 and TypeScript-only graphs do not
+# accidentally acquire a Rust/Nix dependency merely by loading this package.
+nix_local_rust_cxx_python_toolchains()
+
+conventional_toolchain_probe(
+    name = "conventional_rust_cxx_execution_probe",
+    toolchain_identity = read_config("rust_toolchain", "compile_identity", ""),
+    visibility = ["PUBLIC"],
+)
+
+system_genrule_toolchain(name = "genrule", visibility = ["PUBLIC"])
+noop_test_toolchain(name = "test", visibility = ["PUBLIC"])
+remote_test_execution_toolchain(name = "remote_test_execution", visibility = ["PUBLIC"])
 
 support_tool(
     name = "product_tool",

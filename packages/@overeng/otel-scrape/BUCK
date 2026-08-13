@@ -1,0 +1,41 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
+# Projection schema version: 3
+# Projection generator: effect-utils/genie/buck2
+# Semantic fingerprint: sha256:b711181197a70b80b60246aa0b9b3198812a99801a743e858b7f784cdf67ba0a
+# Semantic inputs: rust/Cargo.toml, rust/Cargo.lock, rust/reindeer.toml, rust/third-party/BUCK, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs
+# Regenerate: devenv tasks run genie:run
+
+load("//packages/@overeng/otel-scrape/buck2:otel_scrape.bzl", "otel_scrape_targets")
+
+otel_scrape_targets(
+    binary_name = "otel-scrape",
+    binary_path = "src/main.rs",
+    dev_deps = [
+        "//rust/third-party:tempfile",
+    ],
+    library_sources = [
+        "src/adapters/deadnix.rs",
+        "src/adapters/mod.rs",
+        "src/adapters/node_cpuprofile.rs",
+        "src/adapters/oxlint.rs",
+        "src/adapters/vitest.rs",
+        "src/content_address.rs",
+        "src/lib.rs",
+        "src/telemetry_registry.gen.rs",
+    ],
+    edition = "2021",
+    library_name = "otel_scrape",
+    library_path = "src/lib.rs",
+    normal_deps = [
+        "//rust/third-party:getrandom",
+        "//rust/third-party:libc",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+    ],
+    package_name = "otel-scrape",
+    package_version = "0.0.0",
+)

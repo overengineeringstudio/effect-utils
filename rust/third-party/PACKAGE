@@ -1,0 +1,8 @@
+load("@prelude//rust:cargo_package.bzl", "set_reindeer_platforms")
+
+set_reindeer_platforms(
+    select({
+        "prelude//abi/constraints:musl": "x86_64-linux-musl",
+        "DEFAULT": "x86_64-linux",
+    }),
+)
