@@ -717,15 +717,27 @@ in
     '';
   };
 
+  tasks."cargo:test:buck2-foundation" = {
+    description = "Run the Rust tests for the Buck2 foundation tools";
+    exec = trace.exec "cargo:test:buck2-foundation" ''
+      set -euo pipefail
+      (
+        cd rust
+        cargo test --locked --package 'buck2-*'
+      )
+    '';
+  };
+
   tasks."cargo:check" = {
     description = "Validate the shared Cargo workspace, then build, test, lint, and format-check each member";
+    after = [ "cargo:test:buck2-foundation" ];
     exec = trace.exec "cargo:check" ''
       set -euo pipefail
       ${pkgs.bash}/bin/bash rust/workspace-contract.test.sh "$PWD"
       (
         cd rust
         cargo build --release --locked --workspace
-        cargo test --locked --workspace
+        cargo test --locked --workspace --exclude 'buck2-*'
         cargo clippy --locked --workspace --all-targets -- -D warnings
         cargo fmt --all --check
       )
@@ -754,6 +766,7 @@ in
 
   tasks."buck2:test:foundation" = {
     description = "Run strict Buck2 closure, package-evidence, and portable-toolchain tests locally";
+    after = [ "cargo:test:buck2-foundation" ];
     exec = trace.exec "buck2:test:foundation" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -872,6 +885,7 @@ in
     after = [
       "buck2:build:foundation"
       "buck2:test:foundation"
+      "buck2:foundation:graph-check"
       "buck2:e2e:tui-core"
       "buck2:nix-bridge:check"
       "buck2:benchmark:check"
