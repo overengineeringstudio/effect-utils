@@ -144,14 +144,16 @@ const scanGeneratedArtifact = ({ path, workspace }: { path: string; workspace: s
       while (pending.length > 0) {
         if (count >= GENERATED_SCAN_ENTRY_CAP) return undefined
         const current = pending.pop()!
+        // Sequential traversal is intentional: the bounded planner keeps filesystem pressure low.
+        // eslint-disable-next-line no-await-in-loop
         const info = await lstat(current.path)
         count += 1
         if (info.isSymbolicLink() === true || info.dev !== workspaceInfo.dev) return undefined
         if (current.relative === '.' && info.isDirectory() === false) return undefined
         newestMtimeMs = Math.max(newestMtimeMs, info.mtimeMs)
         if (info.isDirectory() === true) {
-          const entries = await readdir(current.path)
-          entries.sort()
+          // eslint-disable-next-line no-await-in-loop
+          const entries = (await readdir(current.path)).toSorted()
           for (let index = entries.length - 1; index >= 0; index -= 1) {
             const entry = entries[index]!
             pending.push({
@@ -1364,7 +1366,9 @@ const storeGcCommand = Cli.Command.make(
       }
       if (Option.isSome(expectedPlan) === true) {
         return yield* Effect.fail(
-          new StoreCommandError({ message: '--expected-plan is not supported by planning-only GC' }),
+          new StoreCommandError({
+            message: '--expected-plan is not supported by planning-only GC',
+          }),
         )
       }
 
@@ -1644,7 +1648,7 @@ const storeGcCommand = Cli.Command.make(
                   parsed.version !== 1 ||
                   !('activeWorkspacePaths' in parsed) ||
                   Array.isArray(parsed.activeWorkspacePaths) === false ||
-                  parsed.activeWorkspacePaths.some((path) => typeof path !== 'string') ||
+                  parsed.activeWorkspacePaths.some((path) => typeof path !== 'string') === true ||
                   !('expiresAtMs' in parsed) ||
                   typeof parsed.expiresAtMs !== 'number' ||
                   parsed.expiresAtMs < now
@@ -1699,7 +1703,10 @@ const storeGcCommand = Cli.Command.make(
                   }).pipe(Effect.orElseSucceed(() => null))
                   const traversal =
                     pathSafety?.safe === true
-                      ? yield* scanGeneratedArtifact({ path: artifactPath, workspace: worktree.path })
+                      ? yield* scanGeneratedArtifact({
+                          path: artifactPath,
+                          workspace: worktree.path,
+                        })
                       : undefined
                   const mtimeMs = traversal?.newestMtimeMs
                   const ignored = yield* Git.runCommand({
@@ -1723,20 +1730,21 @@ const storeGcCommand = Cli.Command.make(
                             : traversal === undefined
                               ? 'artifact-scan-incomplete'
                               : ignored === false
-                              ? 'artifact-not-ignored'
-                              : megarepoLive === true || agentLive === true
-                                ? 'live'
-                                : mtimeMs === undefined
-                                  ? 'mtime-unknown'
-                                  : now - mtimeMs < config.generatedArtifacts.retentionMs
-                                    ? 'retention'
-                                    : 'eligible'
+                                ? 'artifact-not-ignored'
+                                : megarepoLive === true || agentLive === true
+                                  ? 'live'
+                                  : mtimeMs === undefined
+                                    ? 'mtime-unknown'
+                                    : now - mtimeMs < config.generatedArtifacts.retentionMs
+                                      ? 'retention'
+                                      : 'eligible'
                   const outcome =
                     reason === 'eligible'
                       ? ('would-delete' as const)
                       : reason === 'agent-liveness-unavailable' ||
                           reason === 'cleanliness-unknown' ||
-                          reason === 'mtime-unknown' || reason === 'artifact-scan-incomplete'
+                          reason === 'mtime-unknown' ||
+                          reason === 'artifact-scan-incomplete'
                         ? ('unknown' as const)
                         : ('keep' as const)
                   generatedResults.push({
@@ -1768,7 +1776,7 @@ const storeGcCommand = Cli.Command.make(
                 outcome: result.outcome,
                 mtimeMs: result.mtimeMs,
               }))
-              .sort((left, right) => left.path.localeCompare(right.path))
+              .toSorted((left, right) => left.path.localeCompare(right.path))
             planSha256 = createHash('sha256').update(JSON.stringify(canonicalPlan)).digest('hex')
             for (const result of generatedResults) results.push(result)
           }
@@ -1895,94 +1903,94 @@ const storeGcCommand = Cli.Command.make(
           if (generatedArtifacts === false) {
             yield* Stream.fromIterable(repoWorktrees).pipe(
               Stream.mapEffect(
-              ({ repo, bareRepoPath, worktrees: allWorktrees }) =>
-                Effect.gen(function* () {
-                  let removedForRepo = 0
-                  // Default mode owns named worktrees in the cold path above; the
-                  // legacy stream only handles commit worktrees (and everything in
-                  // `--all` mode).
-                  const worktrees =
-                    all === false
-                      ? allWorktrees.filter(
-                          (worktree) =>
-                            worktree.broken === true || isNamedRefWorktree(worktree) === false,
-                        )
-                      : allWorktrees
+                ({ repo, bareRepoPath, worktrees: allWorktrees }) =>
+                  Effect.gen(function* () {
+                    let removedForRepo = 0
+                    // Default mode owns named worktrees in the cold path above; the
+                    // legacy stream only handles commit worktrees (and everything in
+                    // `--all` mode).
+                    const worktrees =
+                      all === false
+                        ? allWorktrees.filter(
+                            (worktree) =>
+                              worktree.broken === true || isNamedRefWorktree(worktree) === false,
+                          )
+                        : allWorktrees
 
-                  yield* Stream.fromIterable(worktrees).pipe(
-                    Stream.mapEffect(
-                      (worktree) =>
-                        Effect.gen(function* () {
-                          discoveredWorktreeCount += 1
-                          activeWorktreeCount += 1
-                          if (progressive === true) {
-                            yield* dispatchGc({ done: false, forceDispatch: true })
-                          }
-                          yield* Effect.gen(function* () {
-                            const decision = yield* classifyGcWorktree({
-                              worktree,
-                              liveSet,
-                              all,
-                            })
-                            const result = yield* processGcDecision({
-                              decision,
-                              repoRelativePath: repo.relativePath,
-                              bareRepoPath,
-                            })
-                            if (result.status === 'removed' && dryRun === false) {
-                              removedForRepo += 1
+                    yield* Stream.fromIterable(worktrees).pipe(
+                      Stream.mapEffect(
+                        (worktree) =>
+                          Effect.gen(function* () {
+                            discoveredWorktreeCount += 1
+                            activeWorktreeCount += 1
+                            if (progressive === true) {
+                              yield* dispatchGc({ done: false, forceDispatch: true })
                             }
-                            results.push(result)
-                          }).pipe(
-                            Effect.ensuring(
-                              Effect.sync(() => {
-                                activeWorktreeCount -= 1
-                              }).pipe(
-                                Effect.zipRight(
-                                  progressive === true
-                                    ? dispatchGc({ done: false, forceDispatch: true })
-                                    : Effect.void,
+                            yield* Effect.gen(function* () {
+                              const decision = yield* classifyGcWorktree({
+                                worktree,
+                                liveSet,
+                                all,
+                              })
+                              const result = yield* processGcDecision({
+                                decision,
+                                repoRelativePath: repo.relativePath,
+                                bareRepoPath,
+                              })
+                              if (result.status === 'removed' && dryRun === false) {
+                                removedForRepo += 1
+                              }
+                              results.push(result)
+                            }).pipe(
+                              Effect.ensuring(
+                                Effect.sync(() => {
+                                  activeWorktreeCount -= 1
+                                }).pipe(
+                                  Effect.zipRight(
+                                    progressive === true
+                                      ? dispatchGc({ done: false, forceDispatch: true })
+                                      : Effect.void,
+                                  ),
                                 ),
                               ),
-                            ),
-                          )
-                        }),
-                      { concurrency: GC_WORKTREE_CONCURRENCY, unordered: true },
-                    ),
-                    Stream.runDrain,
-                  )
-
-                  if (removedForRepo > 0) {
-                    yield* Git.pruneWorktrees(bareRepoPath).pipe(
-                      Effect.catchAll((error) =>
-                        Effect.sync(() => {
-                          results.push({
-                            repo: repo.relativePath,
-                            ref: '.bare',
-                            refType: 'commits',
-                            path: bareRepoPath,
-                            status: 'error',
-                            message:
-                              error instanceof Error === true ? error.message : String(error),
-                          })
-                        }),
+                            )
+                          }),
+                        { concurrency: GC_WORKTREE_CONCURRENCY, unordered: true },
                       ),
+                      Stream.runDrain,
                     )
-                  }
 
-                  completedRepoCount += 1
-                  if (progressive === true) {
-                    yield* dispatchGc({ done: false, forceDispatch: true })
-                  }
-                }).pipe(
-                  Observability.withStoreWorktreeSpan({
-                    name: 'megarepo/store/gc/repo',
-                    repo: repo.relativePath,
-                    refType: 'repo',
-                    ref: Observability.shortPath(repo.relativePath),
-                  }),
-                ),
-              { concurrency: repoConcurrency, unordered: true },
+                    if (removedForRepo > 0) {
+                      yield* Git.pruneWorktrees(bareRepoPath).pipe(
+                        Effect.catchAll((error) =>
+                          Effect.sync(() => {
+                            results.push({
+                              repo: repo.relativePath,
+                              ref: '.bare',
+                              refType: 'commits',
+                              path: bareRepoPath,
+                              status: 'error',
+                              message:
+                                error instanceof Error === true ? error.message : String(error),
+                            })
+                          }),
+                        ),
+                      )
+                    }
+
+                    completedRepoCount += 1
+                    if (progressive === true) {
+                      yield* dispatchGc({ done: false, forceDispatch: true })
+                    }
+                  }).pipe(
+                    Observability.withStoreWorktreeSpan({
+                      name: 'megarepo/store/gc/repo',
+                      repo: repo.relativePath,
+                      refType: 'repo',
+                      ref: Observability.shortPath(repo.relativePath),
+                    }),
+                  ),
+                { concurrency: repoConcurrency, unordered: true },
               ),
               Stream.runDrain,
               Observability.withStoreGcPhaseSpan({

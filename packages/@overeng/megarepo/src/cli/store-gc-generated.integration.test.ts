@@ -1,4 +1,4 @@
-import { utimes } from 'node:fs/promises'
+import { symlink, utimes } from 'node:fs/promises'
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
@@ -10,8 +10,8 @@ import { expect } from 'vitest'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../lib/git.ts'
-import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
+import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 
@@ -38,10 +38,12 @@ const runGc = ({
   cwd,
   storePath,
   args,
+  generatedArtifacts = true,
 }: {
   cwd: AbsoluteDirPath
   storePath: AbsoluteDirPath
   args: ReadonlyArray<string>
+  generatedArtifacts?: boolean
 }) =>
   Effect.gen(function* () {
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
@@ -52,7 +54,7 @@ const runGc = ({
       'mr',
       'store',
       'gc',
-      '--generated-artifacts',
+      ...(generatedArtifacts === true ? ['--generated-artifacts'] : []),
       ...args,
       '--output',
       'json',
@@ -128,18 +130,19 @@ const oldIgnoredArtifact = (worktree: AbsoluteDirPath) =>
     const fs = yield* FileSystem.FileSystem
     yield* fs.writeFileString(`${worktree}/.gitignore`, 'node_modules/\n')
     yield* Git.runCommand({ args: ['add', '.gitignore'], cwd: worktree })
-    yield* Git.runCommand({ args: ['commit', '-m', 'ignore generated dependencies'], cwd: worktree })
+    yield* Git.runCommand({
+      args: ['commit', '-m', 'ignore generated dependencies'],
+      cwd: worktree,
+    })
     const artifact = `${worktree}/node_modules`
     yield* fs.makeDirectory(artifact, { recursive: true })
     yield* fs.writeFileString(`${artifact}/fixture.txt`, 'generated')
     yield* Effect.promise(() =>
-      utimes(
-        `${artifact}/fixture.txt`,
-        new Date(NOW - 2 * DAY_MS),
-        new Date(NOW - 2 * DAY_MS),
-      ),
+      utimes(`${artifact}/fixture.txt`, new Date(NOW - 2 * DAY_MS), new Date(NOW - 2 * DAY_MS)),
     )
-    yield* Effect.promise(() => utimes(artifact, new Date(NOW - 2 * DAY_MS), new Date(NOW - 2 * DAY_MS)))
+    yield* Effect.promise(() =>
+      utimes(artifact, new Date(NOW - 2 * DAY_MS), new Date(NOW - 2 * DAY_MS)),
+    )
     return artifact
   })
 
@@ -154,9 +157,18 @@ describe('mr store gc --generated-artifacts', () => {
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
         expect(result.results.find((row) => row.path === artifact)?.outcome).toBe('would-delete')
         expect(result.planSha256).toMatch(/^[0-9a-f]{64}$/)
-        expect(yield* FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(artifact)))).toBe(true)
+        const repeated = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+        })
+        expect(repeated.planSha256).toBe(result.planSha256)
+        expect(yield* FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(artifact)))).toBe(
+          true,
+        )
       },
       Effect.provide(NodeContext.layer),
+      Effect.scoped,
     ),
   )
 
@@ -174,6 +186,7 @@ describe('mr store gc --generated-artifacts', () => {
         expect(result.results.find((row) => row.path === artifact)?.reason).toBe('retention')
       },
       Effect.provide(NodeContext.layer),
+      Effect.scoped,
     ),
   )
 
@@ -184,15 +197,25 @@ describe('mr store gc --generated-artifacts', () => {
         const f = yield* fixture()
         const artifact = yield* oldIgnoredArtifact(f.worktree)
         yield* configure({ config: f.config })
-        const missing = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        const missing = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+        })
         expect(missing.results.find((row) => row.path === artifact)?.outcome).toBe('unknown')
         yield* configure({ config: f.config, manifest: f.manifest, expiresAtMs: NOW - 1 })
-        const expired = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        const expired = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+        })
+        expect(expired.results.find((row) => row.path === artifact)?.outcome).toBe('unknown')
         expect(expired.results.find((row) => row.path === artifact)?.reason).toBe(
           'agent-liveness-unavailable',
         )
       },
       Effect.provide(NodeContext.layer),
+      Effect.scoped,
     ),
   )
 
@@ -214,13 +237,20 @@ describe('mr store gc --generated-artifacts', () => {
         yield* fs.writeFileString(`${dist}/tracked.txt`, 'tracked')
         yield* Git.runCommand({ args: ['add', 'dist/tracked.txt'], cwd: f.worktree })
         yield* Git.runCommand({ args: ['commit', '-m', 'track dist fixture'], cwd: f.worktree })
-        yield* Effect.promise(() => utimes(dist, new Date(NOW - 2 * DAY_MS), new Date(NOW - 2 * DAY_MS)))
-        const nonIgnored = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        yield* Effect.promise(() =>
+          utimes(dist, new Date(NOW - 2 * DAY_MS), new Date(NOW - 2 * DAY_MS)),
+        )
+        const nonIgnored = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+        })
         expect(nonIgnored.results.find((row) => row.path === dist)?.reason).toBe(
           'artifact-not-ignored',
         )
       },
       Effect.provide(NodeContext.layer),
+      Effect.scoped,
     ),
   )
 
@@ -229,20 +259,62 @@ describe('mr store gc --generated-artifacts', () => {
     Effect.fnUntraced(
       function* () {
         const f = yield* fixture()
+        expect((yield* runGc({ cwd: f.outside, storePath: f.storePath, args: [] })).exitCode).toBe(
+          1,
+        )
         expect(
-          (yield* runGc({ cwd: f.outside, storePath: f.storePath, args: [] })).exitCode,
-        ).toBe(1)
-        expect(
-          (
-            yield* runGc({
-              cwd: f.outside,
-              storePath: f.storePath,
-              args: ['--dry-run', '--expected-plan', '0'.repeat(64)],
-            })
-          ).exitCode,
+          (yield* runGc({
+            cwd: f.outside,
+            storePath: f.storePath,
+            args: ['--dry-run', '--expected-plan', '0'.repeat(64)],
+          })).exitCode,
         ).toBe(1)
       },
       Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'nested symlink fails the bounded scan closed',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* configure({ config: f.config, manifest: f.manifest })
+        const artifact = yield* oldIgnoredArtifact(f.worktree)
+        yield* Effect.promise(() => symlink(f.outside, `${artifact}/outside`))
+        const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        expect(result.results.find((row) => row.path === artifact)).toMatchObject({
+          outcome: 'unknown',
+          reason: 'artifact-scan-incomplete',
+        })
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'legacy store gc does not include generated-artifact planning',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* configure({ config: f.config, manifest: f.manifest })
+        const artifact = yield* oldIgnoredArtifact(f.worktree)
+        const result = yield* runGc({
+          cwd: f.outside,
+          storePath: f.storePath,
+          args: ['--dry-run'],
+          generatedArtifacts: false,
+        })
+        expect(result.planSha256).toBeUndefined()
+        expect(result.results.some((row) => row.path === artifact)).toBe(false)
+        expect(yield* FileSystem.FileSystem.pipe(Effect.flatMap((fs) => fs.exists(artifact)))).toBe(
+          true,
+        )
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
     ),
   )
 })

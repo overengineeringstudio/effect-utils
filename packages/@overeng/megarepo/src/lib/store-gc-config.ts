@@ -30,8 +30,10 @@ export const STORE_GC_GENERATED_ARTIFACTS = [
   '.turbo',
 ] as const
 
+/** Generated-artifact directory class accepted by the bounded GC planner. */
 export type StoreGcGeneratedArtifact = (typeof STORE_GC_GENERATED_ARTIFACTS)[number]
 
+/** Default time without filesystem activity before an artifact can be planned. */
 export const DEFAULT_GENERATED_ARTIFACT_RETENTION_MS = DAY_MS
 
 /** Default: a worktree must be absent from ALL live sets this long before archive eligibility. */
