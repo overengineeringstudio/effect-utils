@@ -10,7 +10,7 @@ import { lstat, opendir } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 
 import * as Cli from '@effect/cli'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { type CommandExecutor, FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import React from 'react'
 
@@ -161,7 +161,8 @@ const planGeneratedArtifacts = ({
   repoWorktrees: GeneratedArtifactRepoWorktrees
 }): Effect.Effect<
   { readonly results: ReadonlyArray<StoreGcResult>; readonly planSha256: string },
-  never
+  never,
+  CommandExecutor.CommandExecutor
 > =>
   Effect.gen(function* () {
     const generatedResults: StoreGcResult[] = []
@@ -290,7 +291,9 @@ const planGeneratedArtifacts = ({
       .toSorted((left, right) => compareCanonicalPlanPaths({ left: left.path, right: right.path }))
     return {
       results: generatedResults,
-      planSha256: createHash('sha256').update(JSON.stringify(canonicalPlan)).digest('hex'),
+      planSha256: createHash('sha256')
+        .update(Schema.encodeSync(Schema.parseJson(Schema.Unknown))(canonicalPlan))
+        .digest('hex'),
     }
   })
 
