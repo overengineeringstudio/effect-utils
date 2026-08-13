@@ -1,6 +1,6 @@
 # Shared-Workspace Rust Foundation Contraction
 
-Status: implementation verified on x86_64-linux; cross-platform product admission pending
+Status: completed; repository-owned stage-zero support tools admitted
 
 ## Question
 
@@ -40,29 +40,30 @@ if measured closure/transfer savings exceed that coarser invalidation cost.
 
 ## Required Evidence
 
-| Gate             | Required control                                                                                  | Current result                                                                                                                   |
-| ---------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Golden behavior  | Byte-identical valid outputs and equivalent modes                                                 | Portable staging and fixture outputs matched the Python implementation in disposable controls                                    |
-| Failure parity   | Existing malformed-input corpus and exit partition                                                | 26 Rust unit and adversarial tests pass; stable structured error codes replace traceback-shaped failures                         |
-| Archive security | Traversal, link, duplicate, sparse, size, padding, and trailing-byte adversaries                  | Passed by the portable-toolchain adversarial corpus and strict bridge contract controls                                          |
-| Runtime absence  | Buck actions run with no ambient `python` and make no CPython fetch                               | Passed with hostile `PATH`; foundation graph census reports zero owned Python and zero CPython edges                             |
-| Invalidation     | Relevant helper changes affect only its consumers; irrelevant changes run zero production actions | Disposable-project RED/GREEN/restore proof passed with one relevant action and zero restored-state actions                       |
-| Bootstrap        | Stage-0 realization does not consume the Buck artifact it verifies                                | Passed: Nix independently realizes four leaf tools and Buck consumes immutable store executables                                 |
-| Platforms        | Linux and Darwin target/execution tuples pass independently                                       | Four stage-0 tools and the bridge pass natively on aarch64 Linux and Darwin; the fixture pins every admitted descriptor identity |
-| Performance      | Comparable cold/warm latency, closure bytes, and action/materialization counts                    | Rust actions measured 38-41x faster; runtime footprint measured about 180x smaller                                               |
-| Contraction      | Python sources, tests, targets, archive bootstrap, and duplicate adapters are deleted             | Passed: six Python files, their tests/targets, live CPython archive, and empty legacy package are removed                        |
+| Gate             | Required control                                                                                  | Current result                                                                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Golden behavior  | Byte-identical valid outputs and equivalent modes                                                 | Portable staging and fixture outputs matched the Python implementation in disposable controls                                                                            |
+| Failure parity   | Existing malformed-input corpus and exit partition                                                | 26 Rust unit and adversarial tests pass; stable structured error codes replace traceback-shaped failures                                                                 |
+| Archive security | Traversal, link, duplicate, sparse, size, padding, and trailing-byte adversaries                  | Passed by the portable-toolchain adversarial corpus and strict bridge contract controls                                                                                  |
+| Runtime absence  | Buck actions run with no ambient `python` and make no CPython fetch                               | Passed with hostile `PATH`; foundation graph census reports zero owned Python and zero CPython edges                                                                     |
+| Invalidation     | Relevant helper changes affect only its consumers; irrelevant changes run zero production actions | Disposable-project RED/GREEN/restore proof passed with one relevant action and zero restored-state actions                                                               |
+| Bootstrap        | Stage-0 realization does not consume the Buck artifact it verifies                                | Passed: Nix independently realizes four leaf tools and Buck consumes immutable store executables                                                                         |
+| Platforms        | Linux and Darwin target/execution tuples pass independently                                       | Four stage-0 tools and the bridge pass on previously verified x86_64 Linux and natively on aarch64 Linux and Darwin; the fixture pins every admitted descriptor identity |
+| Performance      | Comparable cold/warm latency, closure bytes, and action/materialization counts                    | Rust actions measured 38-41x faster; runtime footprint measured about 180x smaller                                                                                       |
+| Contraction      | Python sources, tests, targets, archive bootstrap, and duplicate adapters are deleted             | Passed: six Python files, their tests/targets, live CPython archive, and empty legacy package are removed                                                                |
 
 The invalidation harness must mutate a disposable repository/cell rather than a
 shared tracked source. RED and GREEN controls use the same target and
 observation queries.
 
-## Admission Rule
+## Admission Result
 
-Do not add decision 0010 or call the migration complete until the table has
-measured results and the net abstraction count contracts. A Linux-only pass may
-admit only that execution-platform tuple. Until the last Python action is
-removed, decision 0009 still requires the on-demand Prelude CPython closure to
-be immutable and digest-pinned; it is not a Starlark rule-loading dependency.
+The measured gates and net contraction admit the four repository-owned Rust
+stage-zero tools through
+[decision 0010](../.decisions/0010-admit-rust-stage-zero-support-tools.md).
+This admission does not generalize to Prelude Python actions: decision 0009
+continues to require an immutable, digest-pinned CPython closure for any such
+action until its consumer is removed.
 
 ## Measurements
 
