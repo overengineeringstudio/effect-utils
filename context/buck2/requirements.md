@@ -37,10 +37,6 @@ repository-local work and its independent Nix import boundary.
 - **BUCK-T02 Version-bound evidence adapter:** Rich Buck event-log decoding may
   be pinned to the admitted Buck version while stable build-report fields remain
   tolerant of additive change.
-- **BUCK-T03 Transitional launcher:** The existing TypeScript launcher may remain
-  while direct Buck plus native evidence is proved as the baseline. A Rust
-  observer is eligible only for a measured gap that cannot be satisfied at the
-  caller or native-evidence boundary. Neither wrapper is a build authority.
 
 ## Requirements
 

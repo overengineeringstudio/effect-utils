@@ -91,7 +91,6 @@ def _package_task_impl(ctx):
 
     ctx.actions.run(
         args,
-        env = {"PATH": "/nonexistent"},
         category = "buck2_package_evidence",
         identifier = ctx.attrs.name,
         local_only = True,

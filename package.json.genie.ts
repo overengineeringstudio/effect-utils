@@ -3,7 +3,6 @@ import effectSocketPkg from './context/effect/socket/package.json.genie.ts'
 import opentuiPkg from './context/opentui/package.json.genie.ts'
 import { packageJson } from './genie/internal.ts'
 import agentSessionIngestPkg from './packages/@overeng/agent-session-ingest/package.json.genie.ts'
-import buck2LauncherPkg from './packages/@overeng/buck2-launcher/package.json.genie.ts'
 import buck2ToolsPkg from './packages/@overeng/buck2-tools/package.json.genie.ts'
 import ciToolsPkg from './packages/@overeng/ci-tools/package.json.genie.ts'
 import contentAddressPkg from './packages/@overeng/content-address/package.json.genie.ts'
@@ -42,7 +41,6 @@ import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
 /** All package.json genie definitions that belong to the root pnpm workspace */
 export const rootWorkspacePackages = [
   agentSessionIngestPkg,
-  buck2LauncherPkg,
   buck2ToolsPkg,
   contentAddressPkg,
   effectSocketPkg,

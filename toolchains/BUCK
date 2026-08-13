@@ -1,15 +1,31 @@
-load(":configured.bzl", "configured_exec")
+load(":configured.bzl", "support_tool")
 
-# Nix is the stage-0 authority. Each literal immutable path participates in the
-# configured graph and therefore in every consuming action key.
-configured_exec(
-    name = "closure_tool",
-    path = read_config("buck2_stage0", "closure_tool", ""),
+support_tool(
+    name = "archive_tool",
+    protocol = "effect-utils/buck2-archive-tool/v1",
+    tool_id = "archive-tool",
     visibility = ["PUBLIC"],
 )
 
-configured_exec(
+# Nix activation provides the logical commands; each tool attests its semantic
+# capability identity before performing work.
+support_tool(
+    name = "closure_tool",
+    protocol = "effect-utils/buck2-closure-tool/v1",
+    tool_id = "closure-tool",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "product_tool",
+    protocol = "effect-utils/buck2-product/v1",
+    tool_id = "product",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
     name = "package_evidence_tool",
-    path = read_config("buck2_stage0", "package_evidence_tool", ""),
+    protocol = "effect-utils/buck2-package-evidence/v1",
+    tool_id = "package-evidence",
     visibility = ["PUBLIC"],
 )

@@ -3,7 +3,6 @@ set -euo pipefail
 
 repo_root="${1:?usage: buck2-foundation-graph-check.sh REPO_ROOT BUCK2_BIN}"
 buck2_bin="${2:?usage: buck2-foundation-graph-check.sh REPO_ROOT BUCK2_BIN}"
-stage0_config="${BUCK2_STAGE0_CONFIG:?BUCK2_STAGE0_CONFIG is required}"
 
 if find "$repo_root/buck2" -type f -name '*.py' -print -quit | grep -q .; then
   echo "buck2-foundation-graph-check: repository-owned Python remains under buck2/" >&2
@@ -15,7 +14,7 @@ if rg -n 'python_(binary|library|test)|cpython(_archive)?' \
   exit 1
 fi
 
-graph="$($buck2_bin cquery --config-file "$stage0_config" \
+graph="$($buck2_bin cquery \
   'deps(//:buck2_foundation) + deps(//buck2/evidence:package_evidence)')"
 if printf '%s\n' "$graph" | grep -Ei 'python|cpython' >/dev/null; then
   echo "buck2-foundation-graph-check: Python or CPython is reachable from foundation targets" >&2

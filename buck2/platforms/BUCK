@@ -1,0 +1,83 @@
+load(":defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "product_platform")
+
+native_execution_platform(
+    name = "exec_linux_x86_64",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_linux_aarch64",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_macos_aarch64",
+    constraint_values = [
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:macos",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+product_platform(
+    name = "linux_x86_64",
+    os = "linux",
+    architecture = "x86_64",
+    abi = "glibc",
+    runtime_contract = "elf-dynamic/v1",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+product_platform(
+    name = "linux_aarch64",
+    os = "linux",
+    architecture = "aarch64",
+    abi = "glibc",
+    runtime_contract = "elf-dynamic/v1",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+product_platform(
+    name = "macos_aarch64",
+    os = "darwin",
+    architecture = "aarch64",
+    abi = "darwin",
+    runtime_contract = "mach-o-dynamic/v1",
+    constraint_values = [
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:macos",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "host_platform",
+    actual = host_platform_label(),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "host_execution_platform",
+    actual = host_execution_platform_label(),
+    visibility = ["PUBLIC"],
+)
