@@ -37,6 +37,8 @@ All notable changes to this project will be documented in this file.
   probe that produces and inspects a self-contained static PIE. Bind the probe
   to an exact Buck execution constraint and one Nix-authored toolchain config
   so platform claims cannot silently fall back or drift from tool identities.
+  Use nixpkgs' version-matched prebuilt musl Rust toolchain instead of rebuilding
+  the target standard library from source in each uncached CI environment.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema

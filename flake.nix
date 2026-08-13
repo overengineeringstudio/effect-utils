@@ -78,14 +78,19 @@
           if system == "x86_64-linux" then
             let
               cross = pkgs.pkgsCross.musl64;
+              rustVersionParts = pkgs.lib.versions.splitVersion cross.rustc.version;
+              rustPackageSet =
+                cross.${"rust_${builtins.elemAt rustVersionParts 0}_${builtins.elemAt rustVersionParts 1}"};
             in
-            (
-              import ./nix/workspace-tools/lib/buck2-rust-local-toolchain-config.nix { inherit pkgs; }
-              {
-                rustc = "${cross.rustc}/bin/rustc";
-                linker = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}cc";
-              }
-            ).config
+            (import ./nix/workspace-tools/lib/buck2-rust-local-toolchain-config.nix { inherit pkgs; } {
+              # `cross.rustc` builds the target standard library from the
+              # Rust source tree.  This probe needs the same pinned compiler
+              # and musl stdlib, but not a source-built compiler toolchain.
+              # nixpkgs' matching bootstrap archive supplies both as a
+              # substitutable binary while the cross linker remains Nix-owned.
+              rustc = "${rustPackageSet.packages.prebuilt.rustc}/bin/rustc";
+              linker = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}cc";
+            }).config
           else
             null;
         cliPackages = {

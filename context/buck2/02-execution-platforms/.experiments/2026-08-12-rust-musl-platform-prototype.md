@@ -16,9 +16,12 @@ self-contained ELF without ambient `PATH`?
 
 The prototype introduced distinct glibc-dynamic and musl-static target labels,
 plus an x86_64 Linux local-store execution constraint and platform. Nix's
-flake-pinned `pkgsCross.musl64` supplies exact `rustc` and linker store paths,
-the semantic platform claims, and their joined identity through one immutable
-Buck configuration. The action ran with `PATH=/nonexistent`.
+flake-pinned `pkgsCross.musl64` supplies the linker, while nixpkgs' matching
+prebuilt musl Rust bootstrap archive supplies `rustc` and its target standard
+library without rebuilding them from source on an uncached runner. Nix supplies
+the exact tool store paths, semantic platform claims, and their joined identity
+through one immutable Buck configuration. The action ran with
+`PATH=/nonexistent`.
 
 The probe compiled one dependency-free Rust program. Controls inspected ELF
 headers and strings, executed the binary with an empty environment, selected
@@ -52,7 +55,7 @@ mechanism: a Rust compiler is a large Nix closure that legitimately retains
 store references. The smaller boundary is:
 
 ```text
-flake-pinned Nix cross-toolchain
+flake-pinned Nix prebuilt musl rustc plus cross linker
   -> exact local-store execution-tool identities
   -> Buck compile/link action
   -> self-contained musl target product
