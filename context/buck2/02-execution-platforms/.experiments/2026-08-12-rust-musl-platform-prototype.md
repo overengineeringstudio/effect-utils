@@ -21,7 +21,10 @@ prebuilt musl Rust bootstrap archive supplies `rustc` and its target standard
 library without rebuilding them from source on an uncached runner. Nix supplies
 the exact tool store paths, semantic platform claims, and their joined identity
 through one immutable Buck configuration. The action ran with
-`PATH=/nonexistent`.
+`PATH=/nonexistent`. The task retains a temporary Nix out-link for that config
+through all three Buck invocations, so concurrent garbage collection cannot
+invalidate the config or its transitive compiler and linker closure. Its
+signal-safe cleanup removes the root after Buck has stopped.
 
 The probe compiled one dependency-free Rust program. Controls inspected ELF
 headers and strings, executed the binary with an empty environment, selected

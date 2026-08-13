@@ -886,8 +886,13 @@ in
       set -euo pipefail
       isolation="rust-musl-check-$$-$RANDOM"
       stderr_file="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/buck2-rust-musl-check.XXXXXX")"
+      toolchain_root_dir=""
       cleanup() {
         ${pkgs.buck2}/bin/buck2 --isolation-dir "$isolation" kill >/dev/null 2>&1 || true
+        if [ -n "$toolchain_root_dir" ]; then
+          ${pkgs.coreutils}/bin/rm -f "$toolchain_root_dir/toolchain"
+          ${pkgs.coreutils}/bin/rmdir "$toolchain_root_dir" 2>/dev/null || true
+        fi
         ${pkgs.coreutils}/bin/rm -f "$stderr_file"
       }
       trap cleanup EXIT
@@ -895,11 +900,24 @@ in
       trap 'exit 143' TERM
 
       # Keep the large cross-toolchain out of the default devenv closure. This
-      # explicit task boundary realizes it only when the Rust probe is run.
+      # explicit task boundary realizes it only when the Rust probe is run. The
+      # temporary out-link roots the config and its transitive toolchain closure
+      # until every Buck invocation has finished, including under concurrent GC.
+      toolchain_root_dir="$(${pkgs.coreutils}/bin/mktemp -d "''${TMPDIR:-/tmp}/buck2-rust-musl-root.XXXXXX")"
       toolchain_config="$(${pkgs.nix}/bin/nix build \
-        --no-link \
+        --out-link "$toolchain_root_dir/toolchain" \
         --print-out-paths \
         .#buck2-rust-musl-toolchain-config)"
+
+      buck2_with_toolchain_root() {
+        if [ ! -L "$toolchain_root_dir/toolchain" ] || \
+          [ "$(${pkgs.coreutils}/bin/readlink -f "$toolchain_root_dir/toolchain")" != "$toolchain_config" ] || \
+          [ ! -e "$toolchain_config" ]; then
+          echo "buck2:rust-musl:check: toolchain GC root disappeared before Buck completed" >&2
+          return 1
+        fi
+        ${pkgs.buck2}/bin/buck2 "$@"
+      }
 
       common=(
         --isolation-dir "$isolation"
@@ -911,7 +929,7 @@ in
         --no-remote-cache
       )
 
-      if ${pkgs.buck2}/bin/buck2 "''${common[@]}" \
+      if buck2_with_toolchain_root "''${common[@]}" \
         --config build.execution_platforms=prelude//platforms:default \
         >/dev/null 2>"$stderr_file"; then
         echo "buck2:rust-musl:check: default execution platform unexpectedly admitted" >&2
@@ -922,7 +940,7 @@ in
         exit 1
       }
 
-      if ${pkgs.buck2}/bin/buck2 "''${common[@]}" \
+      if buck2_with_toolchain_root "''${common[@]}" \
         --config rust_toolchain.target_platform=//buck2/platforms:target_x86_64_linux_glibc_dynamic \
         >/dev/null 2>"$stderr_file"; then
         echo "buck2:rust-musl:check: mismatched Nix toolchain metadata unexpectedly admitted" >&2
@@ -933,7 +951,7 @@ in
         exit 1
       }
 
-      ${pkgs.buck2}/bin/buck2 "''${common[@]}"
+      buck2_with_toolchain_root "''${common[@]}"
       identity="$(${pkgs.gawk}/bin/awk '$1 == "toolchain_identity" { print $3 }' "$toolchain_config")"
       echo "buck2:rust-musl:check: PASS identity=$identity"
     '';
