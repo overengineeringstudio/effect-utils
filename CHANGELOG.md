@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Buck2/devenv fast path**: make shell activation independent of Buck and
+  repository setup, expose the pinned Buck client through a source-mode local
+  launcher, lazily resolve stage-0 tools only for consuming tasks, and classify
+  warm shell versus warm Buck as separate benchmark workloads.
+
 - **Generated Buck contracts**: bind generator and schema identities into
   semantic projection fingerprints, record exact projection sources, make
   commentless Genie outputs participate in freshness state, enforce Genie

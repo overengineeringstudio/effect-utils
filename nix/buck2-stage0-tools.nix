@@ -6,20 +6,39 @@ let
   workspace = builtins.fromTOML (builtins.readFile (workspaceRoot + "/Cargo.toml"));
   memberManifests = map (member: workspaceRoot + "/${member}/Cargo.toml") workspace.workspace.members;
 
+  sharedFileset = lib.fileset.unions (
+    [
+      (workspaceRoot + "/Cargo.toml")
+      (workspaceRoot + "/Cargo.lock")
+      (repositoryRoot + "/rust-toolchain.toml")
+      (repositoryRoot + "/nix/buck2-stage0-tools.nix")
+      (lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/buck2-tools/core/src"))
+    ]
+    ++ memberManifests
+  );
+  leafFilesets =
+    map (member: lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/${member}/src"))
+      [
+        "buck2-tools/closure-tool"
+        "buck2-tools/package-evidence"
+        "buck2-tools/portable-toolchain"
+        "buck2-tools/portable-toolchain-fixture"
+      ];
+  semanticFileset = lib.fileset.unions ([ sharedFileset ] ++ leafFilesets);
+  resolverFileset = lib.fileset.unions [
+    semanticFileset
+    (repositoryRoot + "/flake.lock")
+    (repositoryRoot + "/flake.nix")
+  ];
+
   mkSource =
     packageRoot:
     lib.fileset.toSource {
       root = repositoryRoot;
-      fileset = lib.fileset.unions (
-        [
-          (workspaceRoot + "/Cargo.toml")
-          (workspaceRoot + "/Cargo.lock")
-          (repositoryRoot + "/rust-toolchain.toml")
-          (lib.fileset.fileFilter (file: file.hasExt "rs") (packageRoot + "/src"))
-          (lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/buck2-tools/core/src"))
-        ]
-        ++ memberManifests
-      );
+      fileset = lib.fileset.unions ([
+        sharedFileset
+        (lib.fileset.fileFilter (file: file.hasExt "rs") (packageRoot + "/src"))
+      ]);
     };
 
   mkTool =
@@ -61,6 +80,9 @@ let
     };
 in
 {
+  # This list is also consumed by the lazy devenv resolver. Keeping source
+  # selection here makes the Nix derivations the sole stage-0 input authority.
+  semantic-inputs = lib.fileset.toList resolverFileset;
   closure-tool = mkTool {
     package = "buck2-closure-tool";
     packageRoot = workspaceRoot + "/buck2-tools/closure-tool";

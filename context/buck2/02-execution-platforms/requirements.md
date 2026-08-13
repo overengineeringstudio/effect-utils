@@ -171,6 +171,19 @@ producer evidence MUST be independently verified, and changing that origin
 MUST invalidate only declared consumers. The Buck-product importer in
 `04-artifact-system-bridge` MUST NOT mediate this Nix-to-Buck stage-0 flow.
 
+### BUCK.PLAT-R014: mutation-free shell activation
+
+Development-shell activation MUST NOT invoke Buck, realize repository stage-0
+tools, mutate repository projections, install dependencies, or synchronize
+repository composition. Nix/devenv MAY expose immutable machine capabilities,
+environment variables, and thin source-mode command adapters. Repository setup
+and Buck target execution MUST remain explicit, demand-driven operations.
+
+A warm Buck daemon accelerates the first repository command, not shell
+activation. Warm-shell evidence MUST prove zero Buck invocations and zero
+repository setup tasks. Warm-Buck evidence MUST separately prove zero executed
+actions from Buck's own event/receipt authority.
+
 ## Non-goals
 
 - Reimplementing Nix package management inside Buck.

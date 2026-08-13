@@ -57,6 +57,8 @@ shared Cargo authority
   -> remove obsolete bootstrap/archive machinery
   -> derive a minimal stage-0 vendor closure from the root Cargo authority
   -> expose a minimal foundation task closure outside the full development shell
+  -> remove repository mutation and stage-0 realization from shell activation
+  -> expose source-mode lazy Buck commands while retaining compiled distribution artifacts
 ```
 
 TypeScript remains the repository authoring, Genie, and external orchestration

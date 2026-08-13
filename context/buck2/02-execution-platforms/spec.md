@@ -241,6 +241,44 @@ requires them to change together. Leaf helpers remain separate exec deps.
 Packaging-only, test-only, and lint-only providers are attached only to their
 respective actions.
 
+## Developer Shell Boundary
+
+```text
+Nix / system authority
+  -> immutable Buck, Watchman, runtimes, SDKs
+  -> mutation-free devenv activation
+       |
+       `-> explicit repository command
+             -> lazy stage-0 resolution when required
+             -> stable Buck project daemon
+             -> DICE/action/cache reuse
+```
+
+Shell activation is independent of Buck daemon health and repository setup
+state. It performs no pnpm install, Genie generation, megarepo reconciliation,
+stage-0 realization, or Buck query. The local shell may run a source-mode
+launcher through an already-provisioned runtime; the compiled launcher remains
+the distributable boundary for other repositories and CI.
+
+Stage-0 resolution is lazy and single-flight. Its local cache is a disposable
+projection of the Nix-owned recipes and root Cargo authority, validates every
+referenced executable before reuse, and is never an action or dependency
+authority. A missing or changed projection triggers Nix realization only when
+an explicit Buck task requires it.
+
+Shell and Buck performance are distinct workloads:
+
+| Workload                        | Required evidence                                      |
+| ------------------------------- | ------------------------------------------------------ |
+| Setup-free warm activation      | no setup task, Buck process, network, or repo mutation |
+| Warm Buck no-op                 | complete event evidence and zero executed actions      |
+| Cached stage-0 recovery         | valid tools, complete receipt, zero executed actions   |
+| Selective semantic invalidation | only declared consuming actions execute                |
+
+Native devenv tracing owns activation latency and phases. Buck event logs and
+receipts own action/cache classification; neither layer invents the other's
+verdict.
+
 ## Fail-closed rules
 
 Analysis or toolchain resolution rejects:

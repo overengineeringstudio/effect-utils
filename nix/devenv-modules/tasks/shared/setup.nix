@@ -17,6 +17,8 @@
 #
 # Required tasks are hard dependencies of devenv:enterShell.
 # Optional tasks use the `@completed` suffix so failures don't block shell entry.
+# Set `runOnEnterShell = false` for mutation-free shells; `setup:run` and
+# `setup:strict` remain explicit recovery/bootstrap entrypoints.
 #
 # ## Rebase Guard
 #
@@ -31,6 +33,7 @@
   optionalTasks ? [ ],
   completionsCliNames ? [ ],
   extraFingerprintGlobs ? [ ],
+  runOnEnterShell ? true,
   skipDuringRebase ? true,
   skipNonInteractive ? false,
 }:
@@ -341,7 +344,7 @@ in
       # `DEVENV_SETUP_*` values without re-running the fingerprint logic.
       # This keeps us aligned with upstream task plumbing instead of carrying a
       # parallel ad-hoc output protocol in this repo.
-      "setup:gate" = lib.mkIf skipDuringRebase {
+      "setup:gate" = lib.mkIf (runOnEnterShell && skipDuringRebase) {
         description = "Check if setup should run (fails during rebase to skip setup)";
         exports = [
           "DEVENV_SETUP_OUTER_CACHE_HIT"
@@ -393,7 +396,7 @@ in
         before = allSetupTasks;
       };
 
-      "${setupRecordCacheTaskName}" = lib.mkIf (setupTasks != [ ]) {
+      "${setupRecordCacheTaskName}" = lib.mkIf (runOnEnterShell && setupTasks != [ ]) {
         description = "Record the successful setup fingerprint";
         # Persist the outer cache only after the setup tasks finished. Writing it
         # earlier would let later warm shells skip work that never completed.
@@ -426,10 +429,11 @@ in
       # Required tasks are hard dependencies; optional tasks use @completed so
       # failures don't block shell entry.
       "devenv:enterShell" = {
-        after =
+        after = lib.optionals runOnEnterShell (
           setupRequiredTasks
           ++ (map (t: "${t}@completed") setupOptionalTasks)
-          ++ lib.optionals (setupTasks != [ ]) [ "${setupRecordCacheTaskName}@completed" ];
+          ++ lib.optionals (setupTasks != [ ]) [ "${setupRecordCacheTaskName}@completed" ]
+        );
       };
 
       # Run setup tasks explicitly.

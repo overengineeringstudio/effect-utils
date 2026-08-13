@@ -171,7 +171,7 @@ not a proxy for an uncached developer workflow. For example:
 | ------------------------- | ------------------------ | -------------------------------------------------- |
 | `task_check_quick_warm`   | Warm cached no-op path   | Devenv task/status orchestration overhead.         |
 | `task_check_quick_forced` | `--refresh-task-cache`   | Developer-facing quick-check work with cache miss. |
-| `shell_eval_warm`         | Warm shell entry         | Shell evaluation and setup overhead.               |
+| `shell_eval_warm`         | Setup-free warm shell    | Environment activation only; Buck is not invoked.  |
 | `shell_eval_traced`       | Trace capture diagnostic | Explanation input, not a gate.                     |
 
 The label and `dimensions.workload` must make this distinction visible in the

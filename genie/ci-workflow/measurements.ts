@@ -495,7 +495,14 @@ const devenvPerfProbes = (
     id: 'shell_eval_warm',
     label: 'Warm shell eval',
     group: 'devenv shell',
-    description: 'Evaluates a warm dev shell without reloading direnv state.',
+    path: ['devenv', 'shell'],
+    description:
+      'Activates the mutation-free warm shell; repository setup is explicit and Buck must not run.',
+    dimensions: {
+      workload: 'setup-free-activation',
+      setupMode: 'disabled',
+      buckExpected: 'not-invoked',
+    },
     warmupRepetitions: 1,
     repetitions: 5,
     command: ['$DEVENV_BIN', 'shell', '--no-reload', '--', 'true'],
