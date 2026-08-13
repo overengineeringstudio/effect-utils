@@ -6,7 +6,7 @@
 
 import { createHash } from 'node:crypto'
 import { lstat, readdir, realpath } from 'node:fs/promises'
-import { resolve, sep } from 'node:path'
+import { sep } from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
@@ -1680,29 +1680,10 @@ const storeGcCommand = Cli.Command.make(
                   ) {
                     continue
                   }
-                  const pathSafety = yield* Effect.tryPromise({
-                    try: async () => {
-                      const [artifactInfo, artifactRealPath, workspaceRealPath] = await Promise.all(
-                        [lstat(artifactPath), realpath(artifactPath), realpath(worktree.path)],
-                      )
-                      return {
-                        artifactInfo,
-                        safe:
-                          artifactInfo.isDirectory() === true &&
-                          artifactInfo.isSymbolicLink() === false &&
-                          artifactRealPath === resolve(workspaceRealPath, artifactClass) &&
-                          artifactRealPath.startsWith(`${workspaceRealPath}${sep}`) === true,
-                      }
-                    },
-                    catch: (cause) => cause,
-                  }).pipe(Effect.orElseSucceed(() => null))
-                  const traversal =
-                    pathSafety?.safe === true
-                      ? yield* scanGeneratedArtifact({
-                          path: artifactPath,
-                          workspace: worktree.path,
-                        })
-                      : undefined
+                  const traversal = yield* scanGeneratedArtifact({
+                    path: artifactPath,
+                    workspace: worktree.path,
+                  })
                   const mtimeMs = traversal?.newestMtimeMs
                   const ignored = yield* Git.runCommand({
                     args: ['check-ignore', '--quiet', '--', artifactClass],
