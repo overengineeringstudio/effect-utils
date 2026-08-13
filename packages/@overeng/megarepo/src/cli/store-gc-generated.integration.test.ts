@@ -15,17 +15,9 @@ import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 
-const NOW = Date.parse('2026-08-13T12:00:00.000Z')
+const NOW = Date.now()
 const DAY_MS = 24 * 60 * 60 * 1000
-const liveClock = Clock.make()
-const fixedClock = Layer.setClock({
-  [Clock.ClockTypeId]: Clock.ClockTypeId,
-  currentTimeMillis: Effect.succeed(NOW),
-  currentTimeNanos: Effect.succeed(BigInt(NOW) * 1_000_000n),
-  sleep: (duration) => liveClock.sleep(duration),
-  unsafeCurrentTimeMillis: () => NOW,
-  unsafeCurrentTimeNanos: () => BigInt(NOW) * 1_000_000n,
-})
+const liveClock = Layer.setClock(Clock.make())
 
 type JsonResult = {
   readonly artifactClass?: string
@@ -65,7 +57,7 @@ const runGc = ({
       'json',
     ]).pipe(
       Effect.provideService(Cwd, cwd),
-      Effect.provide(Layer.mergeAll(consoleLayer, fixedClock)),
+      Effect.provide(Layer.mergeAll(consoleLayer, liveClock)),
       Effect.exit,
     )
     if (previous === undefined) delete process.env['MEGAREPO_STORE']
