@@ -17,10 +17,11 @@ failure-capable verification. It refines BUCK-R11 through BUCK-R15.
 - **BUCK.OBS-T01 Versioned rich decoder:** Rich event-log interpretation may be
   bound to one Buck version and degrade to stable evidence fields when the
   decoder does not admit a new version.
-- **BUCK.OBS-T02 Transitional TypeScript launcher:** The existing launcher may
-  remain while direct invocation and native-evidence processing prove parity.
-  A Rust observer is admitted only for a measured remaining gap. The launcher
-  and custom receipt are then deleted unless a durable consumer is named.
+- **BUCK.OBS-T02 Optional observer:** Direct invocation may remain the permanent
+  baseline even when it provides less synchronous telemetry. An interposed
+  observer is admitted only for a measured capability gap and is removed when
+  caller-owned tracing or native-evidence processing closes that gap. See
+  [decision 0011](../.decisions/0011-direct-native-evidence-observation.md).
 
 ## Requirements
 

@@ -45,9 +45,12 @@ prototype must include golden bytes, modes, failures, adversarial archives,
 ambient-runtime absence, exact action invalidation, Linux and Darwin proof, and
 net abstraction deletion.
 
-## VRS Impact
+## Historical VRS Impact
 
-The VRS should not admit either helper replacement. It may retain Rust as a
-future convergence direction, conditioned on the named parity, security,
-platform, invalidation, and abstraction-deletion evidence. No current Python
-boundary is removed by this experiment.
+This experiment did not admit either helper replacement. It established the
+parity, security, platform, invalidation, and abstraction-deletion gates for a
+new candidate. The shared-workspace candidate later satisfied those gates and
+was admitted by
+[decision 0010](../.decisions/0010-admit-rust-stage-zero-support-tools.md);
+that decision supersedes this experiment's then-current rejection without
+rewriting the historical result.

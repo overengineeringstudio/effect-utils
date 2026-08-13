@@ -10,11 +10,10 @@ All notable changes to this project will be documented in this file.
   `node_modules`, while keeping Vite transformation and process supervision as
   separate authorities.
 
-- Harden Buck foundation review contracts by recording explicit revision and execution-platform receipt identity, redacting password aliases, validating schema-v3 provenance, preserving mutation-free observability checks, narrowing generated-file markings, and leasing in-flight publications against future collection.
-- Preserve pre-identity Buck receipt and dry-run compatibility while hardening dynamic ELF metadata boundaries, inspector failures, and artifact-seam mutation proofs.
-- Parse dynamic ELF dependency delimiters and version-need sections structurally, including non-numeric symbol versions without admitting local definition noise.
-- Preserve fixed-marker PT_INTERP paths and complete whitespace-bearing version-need names when inspecting dynamic ELF artifacts.
-- Bind Buck comparison receipts to the same repository revision and execution platform, preserve delimiter-like ELF version names, and keep the Rust toolchain flake call aligned with its minimal config API.
+- Harden dynamic ELF metadata boundaries, inspector failures, and artifact-seam
+  mutation proofs, including structural dependency delimiters, version-need
+  sections, fixed-marker `PT_INTERP` paths, and whitespace-bearing version
+  names.
 
 - **Generated Buck contracts**: bind generator and schema identities into
   semantic projection fingerprints, record exact projection sources, make
@@ -86,7 +85,8 @@ All notable changes to this project will be documented in this file.
   on-demand Python action toolchain and make the synthetic package
   E2E documentation match its current
   `admission=not-attempted` behavior, and record the shared-workspace Rust
-  helper contraction gates without claiming a premature admission verdict.
+  helper contraction gates and admit the replacement only after those
+  cross-platform controls pass.
 - **Buck2 Rust support tools**: replace repository-owned Python action helpers
   with fine-grained Rust workspace members, independently realize them through
   Nix, inject immutable executables into Buck action keys, and prove the real

@@ -13,7 +13,7 @@ ConfiguredRustToolchainInfo = provider(fields = {
     "compiler": provider_field(RunInfo),
     "identity": provider_field(str),
     "linker": provider_field(RunInfo),
-    "target_platform": provider_field(typing.Any),
+    "target_platform": provider_field(ProductPlatformInfo),
     "target_triple": provider_field(str),
 })
 

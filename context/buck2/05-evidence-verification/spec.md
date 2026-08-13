@@ -67,11 +67,15 @@ evidence. It does not resolve aliases, choose targets or platforms, alter action
 policy, or create a durable build receipt. Telemetry/export diagnostics use a
 separate channel and cannot replace Buck diagnostics.
 
-If a Rust observer is justified, it replaces the TypeScript launcher only after
-conformance proves equivalence for success, semantic failure, startup failure,
-signal forwarding, cancellation, stdout/stderr byte preservation, evidence
-completeness, sanitization, inbound context, and exporter outage. After parity,
-the launcher, its receipt schema, and its registry fragment are removed together.
+The former TypeScript launcher and its custom receipt are superseded by direct
+Buck invocation plus caller-owned tracing and native-evidence processing; see
+[decision 0011](../.decisions/0011-direct-native-evidence-observation.md). If a
+measured gap later justifies a Rust observer, conformance must prove equivalence
+for success, semantic failure, startup failure, signal forwarding,
+cancellation, stdout/stderr byte preservation, evidence completeness,
+sanitization, inbound context, and exporter outage. The observer remains an
+optional observational adapter, not the successor authority to the removed
+launcher.
 
 ## Evidence Adapter
 
