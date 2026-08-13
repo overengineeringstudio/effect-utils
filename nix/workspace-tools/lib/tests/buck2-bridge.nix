@@ -2,6 +2,13 @@
 
 let
   importArtifact = import ../buck2-artifact-import.nix { inherit pkgs; };
+  hostArchitecture = if pkgs.stdenv.hostPlatform.isAarch64 then "aarch64" else "x86_64";
+  hostElfMachine = hostArchitecture;
+  hostInterpreter =
+    if pkgs.stdenv.hostPlatform.isAarch64 then
+      "/lib/ld-linux-aarch64.so.1"
+    else
+      "/lib64/ld-linux-x86-64.so.2";
 
   dynamicExport =
     pkgs.runCommand "buck2-bridge-dynamic-export"
@@ -34,7 +41,7 @@ let
         sed -i 's/F123456789O/F  Flags: O/g' payload/bin/fixture-tool
         # Replacing the wrapper-injected store RPATH before removing it ensures
         # those bytes are absent rather than merely unreachable dynamic data.
-        patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --set-rpath /unused payload/bin/fixture-tool
+        patchelf --set-interpreter ${hostInterpreter} --set-rpath /unused payload/bin/fixture-tool
         patchelf --remove-rpath payload/bin/fixture-tool
         chmod 0555 payload/bin/fixture-tool
         tar --create --format=gnu --sort=name --mtime='@1' --owner=0 --group=0 \
@@ -76,11 +83,13 @@ let
           | jq --raw-input --slurp 'split("\n") | map(select(length > 0))')"
         jq --null-input --sort-keys \
           --arg digest "$digest" --argjson size "$size" \
+          --arg architecture ${hostArchitecture} --arg machine ${hostElfMachine} \
+          --arg interpreter ${hostInterpreter} \
           --argjson needed "$needed" --argjson versions "$versions" \
           '{
             schema: "buck-build-product/v1",
             name: "fixture-tool",
-            platform: { os: "linux", architecture: "x86_64", abi: "glibc" },
+            platform: { os: "linux", architecture: $architecture, abi: "glibc" },
             payload: {
               file: "artifact.tar", format: "tar",
               digest: { algorithm: "sha256", sri: $digest }, sizeBytes: $size
@@ -88,8 +97,8 @@ let
             entrypoints: ["bin/fixture-tool"],
             runtime: {
               kind: "elf-dynamic", inspectionContract: "elf-dynamic/v1",
-              elfClass: "ELF64", machine: "x86_64",
-              interpreter: "/lib64/ld-linux-x86-64.so.2",
+              elfClass: "ELF64", machine: $machine,
+              interpreter: $interpreter,
               neededLibraries: $needed, symbolVersionFloors: $versions,
               rpathPolicy: "empty/v1"
             },
@@ -117,11 +126,58 @@ let
   multilineInterpreterReadelf = pkgs.writeShellScript "multiline-interpreter-readelf" ''
     if [ "''${1-}" = --program-headers ]; then
       printf '%s\n' \
-        '      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2' \
+        '      [Requesting program interpreter: ${hostInterpreter}' \
         'injected-control-data]'
       exit 0
     fi
     exec ${pkgs.binutils}/bin/readelf "$@"
+  '';
+
+  fixtureMachOOtool = pkgs.writeShellScript "fixture-mach-o-otool" ''
+    case "''${1-}" in
+      -hv)
+        printf '%s\n' \
+          'Mach header' \
+          'MH_MAGIC_64 arm64 ALL 0x00 EXECUTE 0 0 NOUNDEFS'
+        ;;
+      -l)
+        printf '%s\n' \
+          'Load command 0' \
+          '      cmd LC_BUILD_VERSION' \
+          ' platform MACOS' \
+          '    minos 14.0' \
+          'Load command 1' \
+          '      cmd LC_CODE_SIGNATURE' \
+          '  dataoff 64' \
+          ' datasize 44'
+        ;;
+      -L)
+        printf '%s\n' \
+          "$2:" \
+          '        /usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)'
+        ;;
+      *) exit 64 ;;
+    esac
+  '';
+
+  fixtureMachOLipo = pkgs.writeShellScript "fixture-mach-o-lipo" ''
+    [ "''${1-}" = -info ] && [ -f "''${2-}" ]
+    printf 'Non-fat file: %s is architecture: arm64\n' "$2"
+  '';
+
+  fatMachOLipo = pkgs.writeShellScript "fat-mach-o-lipo" ''
+    [ "''${1-}" = -info ] && [ -f "''${2-}" ]
+    printf 'Architectures in the fat file: %s are: x86_64 arm64\n' "$2"
+  '';
+
+  hostileMachOOtool = pkgs.writeShellScript "hostile-mach-o-otool" ''
+    if [ "''${1-}" = -L ]; then
+      printf '%s\n' \
+        "$2:" \
+        '        @rpath/libprivate.dylib (compatibility version 1.0.0, current version 1.0.0)'
+      exit 0
+    fi
+    exec ${fixtureMachOOtool} "$@"
   '';
 
   mkElfProduct =
@@ -144,20 +200,18 @@ let
         mkdir -p payload/bin "$out"
         printf '%s\n' 'int main(void) { return 0; }' > fixture.c
         $CC ${
-          if static then
-            "-static"
-          else
-            "-Wl,--dynamic-linker=/lib64/ld-linux-x86-64.so.2 -Wl,--disable-new-dtags"
+          if static then "-static" else "-Wl,--dynamic-linker=${hostInterpreter} -Wl,--disable-new-dtags"
         } fixture.c -o payload/bin/fixture-tool
         tar --create --format=gnu --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner \
           --file "$out/artifact.tar" --directory payload .
         digest="sha256-$(openssl dgst -sha256 -binary "$out/artifact.tar" | openssl base64 -A)"
         size="$(stat --format=%s "$out/artifact.tar")"
-        jq -cn --arg digest "$digest" --argjson size "$size" '{
+        jq -cn --arg digest "$digest" --argjson size "$size" \
+          --arg architecture ${hostArchitecture} '{
           entrypoints: ["bin/fixture-tool"],
           name: "fixture-tool",
           payload: { digest: { algorithm: "sha256", sri: $digest }, file: "artifact.tar", format: "tar", sizeBytes: $size },
-          platform: { abi: "musl", architecture: "x86_64", os: "linux" },
+          platform: { abi: "musl", architecture: $architecture, os: "linux" },
           runtime: { inspectionContract: "elf-static/v1", kind: "self-contained" },
           schema: "buck-build-product/v1",
           semanticProvenance: { recipe: "fixture/v1", target: "//fixture:tool", toolchain: "fixture/v1" }
@@ -192,10 +246,11 @@ let
           --file "$out/artifact.tar" --directory payload .
         digest="sha256-$(openssl dgst -sha256 -binary "$out/artifact.tar" | openssl base64 -A)"
         size="$(stat --format=%s "$out/artifact.tar")"
-        jq -cn --arg digest "$digest" --argjson size "$size" '{
+        jq -cn --arg digest "$digest" --argjson size "$size" \
+          --arg architecture ${hostArchitecture} '{
           entrypoints: ["bin/fixture-tool"], name: "fixture-tool",
           payload: { digest: { algorithm: "sha256", sri: $digest }, file: "artifact.tar", format: "tar", sizeBytes: $size },
-          platform: { abi: "musl", architecture: "x86_64", os: "linux" },
+          platform: { abi: "musl", architecture: $architecture, os: "linux" },
           runtime: { inspectionContract: "elf-static/v1", kind: "self-contained" },
           schema: "buck-build-product/v1",
           semanticProvenance: { recipe: "fixture/v1", target: "//fixture:tool", toolchain: "fixture/v1" }
@@ -221,29 +276,34 @@ in
     failingVersionReadelf
     emptyVersionReadelf
     multilineInterpreterReadelf
+    fixtureMachOOtool
+    fixtureMachOLipo
+    fatMachOLipo
+    hostileMachOOtool
     ;
   staticElfImport = importProduct staticElfProduct {
     os = "linux";
-    architecture = "x86_64";
+    architecture = hostArchitecture;
     abi = "musl";
   };
   dynamicElfImport = importProduct dynamicElfProduct {
     os = "linux";
-    architecture = "x86_64";
+    architecture = hostArchitecture;
     abi = "musl";
   };
   storeReferenceElfImport = importProduct storeReferenceElfProduct {
     os = "linux";
-    architecture = "x86_64";
+    architecture = hostArchitecture;
     abi = "musl";
   };
   foreignArchitectureImport =
     let
       original = builtins.fromJSON (builtins.readFile "${staticElfProduct}/descriptor.json");
+      foreignArchitecture = if hostArchitecture == "aarch64" then "x86_64" else "aarch64";
       descriptor = original // {
         platform = {
           os = "linux";
-          architecture = "aarch64";
+          architecture = foreignArchitecture;
           abi = "musl";
         };
       };

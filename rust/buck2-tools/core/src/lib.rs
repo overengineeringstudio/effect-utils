@@ -1,11 +1,133 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
+    env,
     fs::File,
     io::{self, Read},
     path::Path,
 };
+
+pub const SUPPORT_CAPABILITY_CONTRACT: &str = "effect-utils/buck2-support-tools/v1";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CapabilityManifest {
+    closure_identity: String,
+    content_digest: String,
+    execution_platform: String,
+    executable_store_path: String,
+    protocol: String,
+    runtime_contract: String,
+    schema: String,
+    tool_id: String,
+}
+
+pub fn verify_execution_capability(
+    manifest_path: &Path,
+    actual_tool_id: &str,
+    actual_protocol: &str,
+    actual_runtime_contract: &str,
+) -> ToolResult<()> {
+    let bytes = std::fs::read(manifest_path).map_err(|error| {
+        io_error(
+            "BUCK2_CAPABILITY_MANIFEST",
+            "could not read capability manifest",
+            error,
+        )
+    })?;
+    let manifest: CapabilityManifest = serde_json::from_slice(&bytes).map_err(|error| {
+        ToolError::new(
+            "BUCK2_CAPABILITY_MANIFEST",
+            format!("invalid capability manifest: {error}"),
+        )
+    })?;
+    let actual_platform = format!("{}-{}", env::consts::ARCH, env::consts::OS);
+    let resolved = env::current_exe()
+        .map_err(|error| {
+            io_error(
+                "BUCK2_CAPABILITY_EXECUTABLE",
+                "could not resolve current executable",
+                error,
+            )
+        })?
+        .canonicalize()
+        .map_err(|error| {
+            io_error(
+                "BUCK2_CAPABILITY_EXECUTABLE",
+                "could not resolve executable identity",
+                error,
+            )
+        })?;
+    let executable_bytes = std::fs::read(&resolved).map_err(|error| {
+        io_error(
+            "BUCK2_CAPABILITY_EXECUTABLE",
+            "could not read current executable",
+            error,
+        )
+    })?;
+    verify_capability_manifest(
+        &manifest,
+        &resolved,
+        &executable_bytes,
+        &actual_platform,
+        actual_tool_id,
+        actual_protocol,
+        actual_runtime_contract,
+    )
+}
+
+fn verify_capability_manifest(
+    manifest: &CapabilityManifest,
+    resolved: &Path,
+    executable_bytes: &[u8],
+    actual_platform: &str,
+    actual_tool_id: &str,
+    actual_protocol: &str,
+    actual_runtime_contract: &str,
+) -> ToolResult<()> {
+    if manifest.schema != SUPPORT_CAPABILITY_CONTRACT
+        || manifest.execution_platform != actual_platform
+        || manifest.tool_id != actual_tool_id
+    {
+        return Err(ToolError::new(
+            "BUCK2_CAPABILITY_IDENTITY",
+            "execution capability identity or native platform does not match",
+        ));
+    }
+    if manifest.protocol != actual_protocol || manifest.runtime_contract != actual_runtime_contract
+    {
+        return Err(ToolError::new(
+            "BUCK2_CAPABILITY_PROTOCOL",
+            "execution capability protocol does not match the tool",
+        ));
+    }
+    if !resolved.starts_with("/nix/store/") {
+        return Err(ToolError::new(
+            "BUCK2_CAPABILITY_EXECUTABLE",
+            "support tool must resolve to an immutable Nix store executable",
+        ));
+    }
+    if resolved != Path::new(&manifest.executable_store_path) {
+        return Err(ToolError::new(
+            "BUCK2_CAPABILITY_EXECUTABLE",
+            "executable does not match the exact store target",
+        ));
+    }
+    if !resolved.starts_with(&manifest.closure_identity) {
+        return Err(ToolError::new(
+            "BUCK2_CAPABILITY_EXECUTABLE",
+            "executable is outside the declared Nix closure identity",
+        ));
+    }
+    if sha256_bytes(executable_bytes) != manifest.content_digest {
+        return Err(ToolError::new(
+            "BUCK2_CAPABILITY_DIGEST",
+            "executable byte digest does not match capability manifest",
+        ));
+    }
+    Ok(())
+}
 
 pub type ToolResult<T> = Result<T, ToolError>;
 
@@ -184,5 +306,86 @@ mod tests {
                 "accepted byte {byte}"
             );
         }
+    }
+
+    fn capability() -> CapabilityManifest {
+        CapabilityManifest {
+            closure_identity: "/nix/store/00000000000000000000000000000000-tool".into(),
+            content_digest: sha256_bytes(b"tool-bytes"),
+            execution_platform: "x86_64-linux".into(),
+            executable_store_path: "/nix/store/00000000000000000000000000000000-tool/bin/tool"
+                .into(),
+            protocol: "tool/v1".into(),
+            runtime_contract: "native-executable/v1".into(),
+            schema: SUPPORT_CAPABILITY_CONTRACT.into(),
+            tool_id: "tool".into(),
+        }
+    }
+
+    #[test]
+    fn capability_attestation_rejects_every_identity_lie() {
+        let path = Path::new("/nix/store/00000000000000000000000000000000-tool/bin/tool");
+        let verify =
+            |manifest: &CapabilityManifest, bytes: &[u8], platform: &str, protocol: &str| {
+                verify_capability_manifest(
+                    manifest,
+                    path,
+                    bytes,
+                    platform,
+                    "tool",
+                    protocol,
+                    "native-executable/v1",
+                )
+            };
+        assert!(verify(&capability(), b"tool-bytes", "x86_64-linux", "tool/v1").is_ok());
+        assert_eq!(
+            verify(&capability(), b"replacement", "x86_64-linux", "tool/v1")
+                .unwrap_err()
+                .code,
+            "BUCK2_CAPABILITY_DIGEST"
+        );
+        assert_eq!(
+            verify(&capability(), b"tool-bytes", "aarch64-linux", "tool/v1")
+                .unwrap_err()
+                .code,
+            "BUCK2_CAPABILITY_IDENTITY"
+        );
+        assert_eq!(
+            verify(&capability(), b"tool-bytes", "x86_64-linux", "tool/v2")
+                .unwrap_err()
+                .code,
+            "BUCK2_CAPABILITY_PROTOCOL"
+        );
+        let mut digest_lie = capability();
+        digest_lie.content_digest = "0".repeat(64);
+        assert_eq!(
+            verify(&digest_lie, b"tool-bytes", "x86_64-linux", "tool/v1")
+                .unwrap_err()
+                .code,
+            "BUCK2_CAPABILITY_DIGEST"
+        );
+        let mut target_lie = capability();
+        target_lie.executable_store_path.push_str("-replacement");
+        assert_eq!(
+            verify(&target_lie, b"tool-bytes", "x86_64-linux", "tool/v1")
+                .unwrap_err()
+                .code,
+            "BUCK2_CAPABILITY_EXECUTABLE"
+        );
+        let ambient = Path::new("/tmp/tool");
+        assert_eq!(
+            verify_capability_manifest(
+                &capability(),
+                ambient,
+                b"tool-bytes",
+                "x86_64-linux",
+                "tool",
+                "tool/v1",
+                "native-executable/v1"
+            )
+            .unwrap_err()
+            .code,
+            "BUCK2_CAPABILITY_EXECUTABLE"
+        );
     }
 }

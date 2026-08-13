@@ -1,7 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: constants.rs.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:bbda7a3c1328b2eef65347b46a8d7aa31aa66c81064b2660e768b780c3abe6ac
+// fingerprint: sha256:c9c5d586d6712e7fcf1417af0b24745494b07f5e4c23e89a5de619bc83b83f8c
 // regen: devenv tasks run genie:run
 
 //! Generated OpenTelemetry semantic-convention name constants.
@@ -13,12 +13,6 @@ pub mod attribute {
     pub const ACME_PROBE_NAME: &str = "acme.probe.name";
     pub const ACME_REGION: &str = "acme.region";
     pub const ACME_REQUEST_HEADER: &str = "acme.request.header";
-    pub const BUCK_COMMAND: &str = "buck.command";
-    pub const BUCK_DEPENDENCY_CLOSURE_DIGEST: &str = "buck.dependency.closure.digest";
-    pub const BUCK_EXECUTION_OUTCOME: &str = "buck.execution.outcome";
-    pub const BUCK_INVOCATION_ID: &str = "buck.invocation.id";
-    pub const BUCK_STATUS: &str = "buck.status";
-    pub const BUCK_TARGET_LABEL: &str = "buck.target.label";
     pub const CI_TOOLS_DEPLOY_ATTEMPT: &str = "ci_tools.deploy.attempt";
     pub const CI_TOOLS_DEPLOY_CLEANUP_ID: &str = "ci_tools.deploy.cleanup_id";
     pub const CI_TOOLS_DEPLOY_CLEANUP_STATUS: &str = "ci_tools.deploy.cleanup_status";
@@ -337,12 +331,6 @@ pub mod attribute {
         "acme.probe.name",
         "acme.region",
         "acme.request.header",
-        "buck.command",
-        "buck.dependency.closure.digest",
-        "buck.execution.outcome",
-        "buck.invocation.id",
-        "buck.status",
-        "buck.target.label",
         "ci_tools.deploy.attempt",
         "ci_tools.deploy.cleanup_id",
         "ci_tools.deploy.cleanup_status",
@@ -661,7 +649,6 @@ pub mod attribute {
 pub mod span {
     pub const ACME_OPERATION: &str = "acme.operation";
     pub const ATOMICWRITEFILE: &str = "atomicWriteFile";
-    pub const BUCK_INVOCATION: &str = "buck.invocation";
     pub const CI_TOOLS_DEPLOY: &str = "ci-tools.deploy";
     pub const CI_TOOLS_DEPLOY_ATTEMPT: &str = "ci-tools.deploy.attempt";
     pub const CI_TOOLS_DEPLOY_CLEANUP: &str = "ci-tools.deploy.cleanup";
@@ -739,7 +726,6 @@ pub mod span {
     pub const ALL: &[&str] = &[
         "acme.operation",
         "atomicWriteFile",
-        "buck.invocation",
         "ci-tools.deploy",
         "ci-tools.deploy.attempt",
         "ci-tools.deploy.cleanup",
@@ -820,7 +806,6 @@ pub mod span {
 pub mod metric {
     pub const ACME_PROBE_DURATION: &str = "acme.probe.duration";
     pub const ACME_PROBES: &str = "acme.probes";
-    pub const BUCK_ACTIONS: &str = "buck.actions";
     pub const MEGAREPO_STORE_GC_RSS_BYTES: &str = "megarepo_store_gc_rss_bytes";
     pub const RESTATE_ATTEMPTS_TOTAL: &str = "restate_attempts_total";
     pub const RESTATE_AWAKEABLE_WAIT_MS: &str = "restate_awakeable_wait_ms";
@@ -832,7 +817,6 @@ pub mod metric {
     pub const ALL: &[&str] = &[
         "acme.probe.duration",
         "acme.probes",
-        "buck.actions",
         "megarepo_store_gc_rss_bytes",
         "restate_attempts_total",
         "restate_awakeable_wait_ms",
