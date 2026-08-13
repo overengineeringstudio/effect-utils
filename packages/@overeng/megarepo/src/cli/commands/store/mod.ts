@@ -1573,23 +1573,19 @@ const storeGcCommand = Cli.Command.make(
       let planSha256: string | undefined
 
       if (generatedArtifacts === true && (all === true || force === true)) {
-        return yield* Effect.fail(
-          new StoreCommandError({
-            message: '--generated-artifacts is incompatible with --all and --force',
-          }),
-        )
+        return yield* new StoreCommandError({
+          message: '--generated-artifacts is incompatible with --all and --force',
+        })
       }
       if (generatedArtifacts === true && dryRun === false) {
-        return yield* Effect.fail(
-          new StoreCommandError({ message: '--generated-artifacts currently requires --dry-run' }),
-        )
+        return yield* new StoreCommandError({
+          message: '--generated-artifacts currently requires --dry-run',
+        })
       }
       if (Option.isSome(expectedPlan) === true) {
-        return yield* Effect.fail(
-          new StoreCommandError({
-            message: '--expected-plan is not supported by planning-only GC',
-          }),
-        )
+        return yield* new StoreCommandError({
+          message: '--expected-plan is not supported by planning-only GC',
+        })
       }
 
       const processGcDecision = ({
