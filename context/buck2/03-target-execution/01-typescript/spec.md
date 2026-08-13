@@ -4,7 +4,7 @@ This document specifies TypeScript target execution. It refines the shared
 [target execution spec](../spec.md) and satisfies
 [requirements.md](./requirements.md).
 
-Status: **Draft**
+Status: **Draft; mr product prototype is not admitted for Nix import**
 
 ## Scope
 
@@ -59,7 +59,7 @@ interface TypeScriptExecutable extends TypeScriptOperation {
   readonly kind: 'executable'
   readonly entry: RepoRelativePath
   readonly outputName: string
-  readonly buildIdentity: BuildIdentityInput
+  readonly releaseVersion: ReleaseVersionInput
   readonly runtimeAbi: RuntimeAbi
 }
 ```
@@ -166,11 +166,35 @@ project-check marker --------------------> aggregate quality gate
                     artifact packaging
 ```
 
-Compilation injects the shared build-identity contract at the executable leaf
-and emits one raw executable provider. Normalization applies the configured
+Compilation injects only an explicit release version at the executable leaf
+and emits one raw executable provider. Git SHA, commit timestamp, dirty state,
+invocation ID, and action evidence remain in the launcher receipt and never
+affect product bytes or semantic descriptor identity. Normalization applies the configured
 runtime ABI without changing language semantics. Packaging emits the shared
 artifact provider and structured provenance.
 
-The deployment consumer verifies and imports that artifact. It may add system
+The current `//packages/@overeng/megarepo:mr` prototype emits the strict
+`buck-build-product/v1` descriptor and is verified by the Nix importer's
+`elf-dynamic/v1` runtime inspector. The deployment consumer verifies and
+imports that artifact. It may add system
 wrappers or runtime dependencies, but it does not invoke the TypeScript
 compiler, runtime bundler, or package manager against repository sources.
+
+The generated role projections recursively compose runtime workspace
+dependencies from `package.json.genie.ts` and project-check references from
+`tsconfig.json.genie.ts`. Both facets share one fail-closed workspace registry,
+while their edges remain role-specific. Tsconfig include and exclude facets
+also derive each project file set, so tests, examples, stories, fixtures, and
+every source admitted by the real tsconfig participate in checking; product
+compilation excludes quality-only sources. The selected immutable Nix
+dependency closure, Bun tool, and stage-0 Rust product tool remain separate
+declared Buck inputs. The dependency closure is an explicitly unadmitted
+granularity boundary. The current source projection is also package-level: an
+entrypoint-unreachable file in a reachable package is still a declared product
+input and therefore invalidates the product action. The asserted benchmark must
+record that coarse boundary as a positive action count; it must separately
+prove role-excluded test edits, warm no-ops, and mtime-only changes execute zero
+actions, while entrypoint-reachable edits execute at least one. Neither the
+package source closure nor the opaque external dependency closure is admitted
+as fine-grained until a sound generated module/dependency projection replaces
+the package-level input and its own negative controls pass.

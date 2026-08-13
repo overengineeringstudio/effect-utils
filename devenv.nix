@@ -825,6 +825,9 @@ in
       export AWK_BIN=${pkgs.gawk}/bin/awk
       export JQ_BIN=${pkgs.jq}/bin/jq
       export NIX_BIN=${pkgs.nix}/bin/nix
+      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg currentSystem}
+      export RM_BIN=${pkgs.coreutils}/bin/rm
       export BUCK2_STAGE0_CONFIG="$buck2_stage0_config"
       exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
         "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan
