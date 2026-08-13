@@ -681,17 +681,21 @@ const structurallyRedactJson = (source: string): string => {
 }
 
 const secretAssignmentOrHeader =
-  /(^|[^A-Za-z0-9])(["']?)([A-Za-z][A-Za-z0-9_-]*)(\2)(\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
+  /(^|[^A-Za-z0-9])(["']?)([A-Za-z][A-Za-z0-9_-]*)(\2)(\s*[:=]\s*)(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&]+)/gim
 const secretCliArgument =
   /(^|[\s"'])--([A-Za-z][A-Za-z0-9_-]*)\s+(?:(?:bearer|basic)\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|\S+)/gim
 const unixAbsolutePath = /(^|[\s"'=])(\/(?!\/)[^\s"']+)/g
 const windowsAbsolutePath = /\b[A-Za-z]:\\[^\s"']+/g
 const urlUserInfo = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi
+const urlQueryValue = /([?&])([A-Za-z][A-Za-z0-9_-]*)=([^\s&#]*)/gi
 
 /** Receipt-safe text. Raw argv, command, environment, and reproducer fields are never copied. */
 export const sanitizeEvidenceText = (value: unknown): string => {
   const source = structurallyRedactJson(typeof value === 'string' ? value : 'unknown')
   const sanitized = source
+    .replace(urlQueryValue, (match, separator, key) =>
+      isSensitiveKey(key) ? `${separator}${key}=<redacted>` : match,
+    )
     .replace(secretAssignmentOrHeader, (match, prefix, _quote, key) =>
       isSensitiveKey(key) ? `${prefix}<redacted>` : match,
     )
