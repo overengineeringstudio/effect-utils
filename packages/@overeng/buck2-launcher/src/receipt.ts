@@ -574,9 +574,7 @@ export const descriptorForClosureManifest = async (
   if (root.schemaVersion === 3) {
     stringAt(provenance.source, '$.provenance.source')
     if (provenance.warning !== 'GENERATED FILE - DO NOT EDIT') {
-      throw new Error(
-        '$.provenance.warning must identify the schema-3 manifest as generated',
-      )
+      throw new Error('$.provenance.warning must identify the schema-3 manifest as generated')
     }
   }
   const semanticData = {
