@@ -16,7 +16,7 @@ if rg -n 'python_(binary|library|test)|cpython(_archive)?' \
 fi
 
 graph="$($buck2_bin cquery --config-file "$stage0_config" \
-  'deps(//:buck2_foundation) + deps(//:portable_toolchain_evidence) + deps(//buck2/evidence:package_evidence)')"
+  'deps(//:buck2_foundation) + deps(//buck2/evidence:package_evidence)')"
 if printf '%s\n' "$graph" | grep -Ei 'python|cpython' >/dev/null; then
   echo "buck2-foundation-graph-check: Python or CPython is reachable from foundation targets" >&2
   printf '%s\n' "$graph" | grep -Ei 'python|cpython' >&2
@@ -25,9 +25,7 @@ fi
 
 for target in \
   toolchains//:closure_tool \
-  toolchains//:package_evidence_tool \
-  toolchains//:portable_toolchain \
-  toolchains//:portable_toolchain_fixture; do
+  toolchains//:package_evidence_tool; do
   printf '%s\n' "$graph" | awk -v target="$target" '$1 == target { found = 1 } END { exit !found }' || {
     echo "buck2-foundation-graph-check: missing configured execution edge: $target" >&2
     exit 1

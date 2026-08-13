@@ -42,7 +42,7 @@ fixture checks
 | Prepared deps          | Scan fixtures for `.bin`, leaked state, unexpected `*.node`, and known platform dirs.                    | [03-nix-prepared-deps](../03-nix-prepared-deps/spec.md)                                                 |
 | Native packages        | Lockfile-policy audit and graft-file existence checks.                                                   | [03-nix-prepared-deps/02-native-node-packages](../03-nix-prepared-deps/02-native-node-packages/spec.md) |
 | Shared store authority | Root-local topology proof, shared-content immutability, and raw-prune refusal.                           | [04-store-authority](../04-store-authority/spec.md)                                                     |
-| Buck2 evidence         | Stable declared-input evidence; no live pnpm mutation.                                                   | [05-buck2-evidence](../05-buck2-evidence/spec.md)                                                       |
+| External build adapter | Stable declared-input evidence; no live pnpm mutation.                                                   | Consumer-owned; Buck adapters are specified in [`context/buck2`](../../buck2/spec.md)                   |
 | Observability          | Fixture records for phase, timing, size, reuse, profile link, and safe paths.                            | [06-observability](../06-observability/spec.md)                                                         |
 
 ## Benchmark Matrix
