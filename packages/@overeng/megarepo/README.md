@@ -105,7 +105,7 @@ short-lived snapshot produced by the host's agent manager:
 Missing, invalid, or expired liveness data produces `unknown`. A candidate
 must also be Git-ignored, older than the retention window, absent from Megarepo's live set, and
 inside a clean registered worktree. A capped, timed recursive scan uses the newest nested mtime;
-symlinks, device crossings, or incomplete scans produce `unknown`. JSON results distinguish
+symlinks or incomplete scans produce `unknown`. JSON results distinguish
 `would-delete`, `keep`, and `unknown` and include a deterministic `planSha256`. Mutation and
 `--expected-plan` are rejected until the deletion transaction has a separately verified design.
 
