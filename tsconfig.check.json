@@ -13,6 +13,12 @@
       "path": "./packages/@overeng/agent-session-ingest"
     },
     {
+      "path": "./packages/@overeng/buck2-launcher"
+    },
+    {
+      "path": "./packages/@overeng/buck2-tools"
+    },
+    {
       "path": "./packages/@overeng/ci-tools"
     },
     {

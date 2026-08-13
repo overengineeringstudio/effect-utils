@@ -328,9 +328,12 @@ const signalToObject = (sig: SignalDef): Record<string, unknown> => {
 
 // ---------------------------------------------------------------------------
 // Provenance (GEN-R07). The engine adds the `# Generated / # Source:` banner; we add the
-// input fingerprint + source path below it. The fingerprint is computed in the design-time
-// layer and passed in (Layer 1 stays node-free — no `node:crypto`).
+// semantic source, input fingerprint, and canonical regeneration command below it. The
+// fingerprint is computed in the design-time layer and passed in (Layer 1 stays node-free — no
+// `node:crypto`).
 // ---------------------------------------------------------------------------
+
+const REGENERATION_COMMAND = 'devenv tasks run genie:run'
 
 /** The source path + input fingerprint stamped into a generated file's provenance banner. */
 export type Provenance = {
@@ -350,6 +353,7 @@ const provenanceComment = ({
   [
     `${prefix} registry-source: ${provenance.source}`,
     `${prefix} fingerprint: ${provenance.fingerprint}`,
+    `${prefix} regen: ${REGENERATION_COMMAND}`,
     '',
   ].join('\n')
 
@@ -445,6 +449,13 @@ const screamingSnake = (key: string): string => key.replace(/[.\-:/]/g, '_').toU
 
 /** Single-quoted string literal (matches the repo's oxfmt style, so no reformat is needed). */
 const sq = (k: string): string => `'${k}'`
+
+const tsConstDeclaration = ({ identifier, value }: { identifier: string; value: string }) => {
+  const declaration = `export const ${identifier} = ${sq(value)} as const`
+  return declaration.length <= 100
+    ? [declaration]
+    : [`export const ${identifier} =`, `  ${sq(value)} as const`]
+}
 
 const ownKeys = (r: Registry): ReadonlyArray<string> =>
   byId(r.groups.flatMap((g) => g.attributes)).map((a) => a.id)
@@ -546,7 +557,9 @@ const tsConstLines = ({
   prefix: 'METRIC' | 'SPAN'
   names: ReadonlyArray<string>
 }): ReadonlyArray<string> => {
-  return names.map((name) => `export const ${prefix}_${namePascal(name)} = ${sq(name)} as const`)
+  return names.flatMap((name) =>
+    tsConstDeclaration({ identifier: `${prefix}_${namePascal(name)}`, value: name }),
+  )
 }
 
 const unionLines = ({
@@ -575,7 +588,9 @@ export const renderTsConstants = ({
   const { spanNames, metricNames } = signalNames(registry)
   assertUniqueTsConstIdentifiers({ attributeKeys, spanNames, metricNames })
   const lines: string[] = [provenanceComment({ provenance, prefix: '//' }).trimEnd(), '']
-  for (const k of attributeKeys) lines.push(`export const ${pascal(k)} = ${sq(k)} as const`)
+  for (const k of attributeKeys) {
+    lines.push(...tsConstDeclaration({ identifier: pascal(k), value: k }))
+  }
   lines.push(...tsConstLines({ prefix: 'SPAN', names: spanNames }))
   lines.push(...tsConstLines({ prefix: 'METRIC', names: metricNames }))
   lines.push(
@@ -663,9 +678,7 @@ export const renderRustConstants = ({
   const attributeKeys = ownKeys(registry)
   const { spanNames, metricNames } = signalNames(registry)
   return [
-    `// registry-source: ${provenance.source}`,
-    `// fingerprint: ${provenance.fingerprint}`,
-    '// regen: devenv tasks run genie:run',
+    provenanceComment({ provenance, prefix: '//' }).trimEnd(),
     '',
     '//! Generated OpenTelemetry semantic-convention name constants.',
     '',

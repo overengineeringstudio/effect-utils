@@ -66,6 +66,9 @@
             "context": "bundle-smoke"
           },
           {
+            "context": "buck2"
+          },
+          {
             "context": "cargo"
           },
           {
