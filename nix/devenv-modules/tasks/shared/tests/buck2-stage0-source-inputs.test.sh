@@ -24,6 +24,13 @@ inputs="$(nix eval --impure --json --expr "
   in builtins.mapAttrs (_: paths: map (path: pkgs.lib.removePrefix \"$ROOT/\" (toString path)) paths) tools.source-inputs
 ")"
 
+jq -e '
+  (keys | sort) == ["archive-tool", "closure-tool", "package-evidence", "product"]
+' <<<"$inputs" >/dev/null || {
+  echo "FAIL: support-tool source inventory is incomplete or has unknown tools" >&2
+  exit 1
+}
+
 assert_contains() {
   local tool="$1"
   local path="$2"
@@ -39,10 +46,19 @@ assert_excludes() {
   fi
 }
 
-assert_contains closure-tool rust/buck2-tools/core/Cargo.toml
-assert_contains closure-tool rust/buck2-tools/closure-tool/Cargo.toml
-assert_excludes closure-tool packages/@overeng/otelite
-assert_excludes closure-tool packages/@overeng/otel-scrape
-assert_excludes closure-tool rust/buck2-tools/package-evidence
+for tool in archive-tool closure-tool package-evidence product; do
+  assert_contains "$tool" rust/Cargo.toml
+  assert_contains "$tool" rust/Cargo.lock
+  assert_contains "$tool" rust-toolchain.toml
+  assert_contains "$tool" rust/buck2-tools/core/Cargo.toml
+  assert_contains "$tool" "rust/buck2-tools/$tool/Cargo.toml"
+  assert_excludes "$tool" packages/@overeng/otelite
+  assert_excludes "$tool" packages/@overeng/otel-scrape
+  for sibling in archive-tool closure-tool package-evidence product; do
+    if [ "$sibling" != "$tool" ]; then
+      assert_excludes "$tool" "rust/buck2-tools/$sibling/src"
+    fi
+  done
+done
 
-echo "Buck stage-0 source input tests passed."
+echo "Buck support-tool source input tests passed."

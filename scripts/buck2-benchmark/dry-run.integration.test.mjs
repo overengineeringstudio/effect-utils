@@ -308,12 +308,23 @@ esac
       writeFileSync(join(repository, relevant), original)
       for (const args of [
         ['init', '--quiet'],
+        // The disposable fixture must not inherit workstation commit-signing policy.
+        ['config', '--local', 'commit.gpgsign', 'false'],
         ['config', 'user.email', 'test@example.invalid'],
         ['config', 'user.name', 'Buck benchmark test'],
         ['add', relevant],
         ['commit', '--quiet', '-m', 'fixture'],
       ]) {
-        const result = spawnSync('git', args, { cwd: repository, encoding: 'utf8' })
+        const hostileSigning = join(directory, 'hostile-gitconfig')
+        writeFileSync(
+          hostileSigning,
+          '[commit]\n\tgpgsign = true\n[gpg]\n\tformat = ssh\n[user]\n\tsigningkey = /definitely/missing/signing-key.pub\n',
+        )
+        const result = spawnSync('git', args, {
+          cwd: repository,
+          encoding: 'utf8',
+          env: { ...process.env, GIT_CONFIG_GLOBAL: hostileSigning },
+        })
         assert.equal(result.status, 0, result.stderr)
       }
       const buck2 = join(directory, 'buck2')

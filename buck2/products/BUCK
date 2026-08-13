@@ -1,0 +1,3 @@
+load(":defs.bzl", "build_product")
+
+# Public rule API lives in defs.bzl; concrete products belong to repository adapters.

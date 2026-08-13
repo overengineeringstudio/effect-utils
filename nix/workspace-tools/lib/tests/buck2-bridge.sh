@@ -147,7 +147,15 @@ expect_command_failure "ELF class mutation" "ELF class mismatch" \
 rm -rf "$class_root"
 
 machine_root="$(mutation_root)"
-printf '\xb7\x00' | dd of="$machine_root/bin/fixture-tool" bs=1 seek=18 conv=notrunc status=none
+case "$(jq -r '.platform.architecture' "$dynamic_export/descriptor.json")" in
+  aarch64) foreign_machine='\x3e\x00' ;;
+  x86_64) foreign_machine='\xb7\x00' ;;
+  *)
+    echo "buck2-bridge-test: unsupported native ELF architecture" >&2
+    exit 1
+    ;;
+esac
+printf '%b' "$foreign_machine" | dd of="$machine_root/bin/fixture-tool" bs=1 seek=18 conv=notrunc status=none
 expect_command_failure "ELF machine mutation" "ELF machine mismatch" \
   "$inspector_out" "$dynamic_export/descriptor.json" "$machine_root"
 rm -rf "$machine_root"
@@ -156,7 +164,7 @@ interpreter_root="$(mutation_root)"
 mutated_interpreter='/wrong/interpreter: [loader]'
 "$patchelf_out/bin/patchelf" --set-interpreter "$mutated_interpreter" "$interpreter_root/bin/fixture-tool"
 expect_command_failure "ELF interpreter mutation" \
-  "ELF interpreter mismatch for bin/fixture-tool: expected /lib64/ld-linux-x86-64.so.2, got $mutated_interpreter" \
+  "ELF interpreter mismatch for bin/fixture-tool: expected $(jq -r '.runtime.interpreter' "$dynamic_export/descriptor.json"), got $mutated_interpreter" \
   "$inspector_out" "$dynamic_export/descriptor.json" "$interpreter_root"
 rm -rf "$interpreter_root"
 
@@ -214,6 +222,68 @@ empty_inspector_out="$(build_expr "$empty_inspector_expr")"
 "$empty_inspector_out" "$empty_descriptor" "$clean_root"
 rm -rf "$clean_root"
 rm -f "$empty_descriptor"
+
+mach_o_root="$(mktemp -d)"
+mkdir -p "$mach_o_root/bin"
+dd if=/dev/zero of="$mach_o_root/bin/fixture-tool" bs=1 count=64 status=none
+printf '\372\336\014\300\000\000\000\054\000\000\000\001\000\000\000\000\000\000\000\024\372\336\014\002\000\000\000\030\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000\000' >>"$mach_o_root/bin/fixture-tool"
+chmod +x "$mach_o_root/bin/fixture-tool"
+mach_o_descriptor="$(mktemp)"
+jq -cn '{
+  schema: "buck-build-product/v1", name: "fixture-tool",
+  platform: { os: "darwin", architecture: "aarch64", abi: "darwin" },
+  payload: { file: "artifact.tar", format: "tar", digest: { algorithm: "sha256", sri: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }, sizeBytes: 1 },
+  entrypoints: ["bin/fixture-tool"],
+  runtime: { kind: "mach-o-dynamic", inspectionContract: "mach-o-dynamic/v1", architecture: "arm64", minimumOs: "14.0", dylibs: ["/usr/lib/libSystem.B.dylib"], installNamePolicy: "system-only/v1", rpathPolicy: "empty/v1", signingPolicy: "adhoc/v1" },
+  semanticProvenance: { target: "//fixtures:tool", recipe: "fixture/v1", toolchain: "rust-darwin/v1" }
+}' >"$mach_o_descriptor"
+mach_o_inspector_expr="let
+  $common_let
+in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-mach-o-dynamic.nix\") {
+  inherit pkgs;
+  inspectionTools = {
+    otool = { identity = builtins.toString test.fixtureMachOOtool; executable = builtins.toString test.fixtureMachOOtool; };
+    lipo = { identity = builtins.toString test.fixtureMachOLipo; executable = builtins.toString test.fixtureMachOLipo; };
+  };
+}"
+mach_o_inspector_out="$(build_expr "$mach_o_inspector_expr")"
+"$mach_o_inspector_out" "$mach_o_descriptor" "$mach_o_root"
+cp "$mach_o_root/bin/fixture-tool" "$mach_o_root/bin/no-adhoc-tool"
+printf '\000\000\000\000' | dd of="$mach_o_root/bin/no-adhoc-tool" bs=1 seek=96 conv=notrunc status=none
+jq '.entrypoints = ["bin/no-adhoc-tool"]' "$mach_o_descriptor" >"$mach_o_descriptor.no-adhoc"
+expect_command_failure "Mach-O CodeDirectory without ad-hoc flag" "must carry the ad-hoc flag" \
+  "$mach_o_inspector_out" "$mach_o_descriptor.no-adhoc" "$mach_o_root"
+cp "$mach_o_root/bin/fixture-tool" "$mach_o_root/bin/cms-tool"
+printf '\000\001\000\000' | dd of="$mach_o_root/bin/cms-tool" bs=1 seek=76 conv=notrunc status=none
+jq '.entrypoints = ["bin/cms-tool"]' "$mach_o_descriptor" >"$mach_o_descriptor.cms"
+expect_command_failure "Mach-O CMS signature slot" "CMS signature must be absent" \
+  "$mach_o_inspector_out" "$mach_o_descriptor.cms" "$mach_o_root"
+hostile_mach_o_inspector_expr="let
+  $common_let
+in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-mach-o-dynamic.nix\") {
+  inherit pkgs;
+  inspectionTools = {
+    otool = { identity = builtins.toString test.hostileMachOOtool; executable = builtins.toString test.hostileMachOOtool; };
+    lipo = { identity = builtins.toString test.fixtureMachOLipo; executable = builtins.toString test.fixtureMachOLipo; };
+  };
+}"
+hostile_mach_o_inspector_out="$(build_expr "$hostile_mach_o_inspector_expr")"
+expect_command_failure "Mach-O non-system dylib observation" "Mach-O dylib mismatch" \
+  "$hostile_mach_o_inspector_out" "$mach_o_descriptor" "$mach_o_root"
+fat_mach_o_inspector_expr="let
+  $common_let
+in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-mach-o-dynamic.nix\") {
+  inherit pkgs;
+  inspectionTools = {
+    otool = { identity = builtins.toString test.fixtureMachOOtool; executable = builtins.toString test.fixtureMachOOtool; };
+    lipo = { identity = builtins.toString test.fatMachOLipo; executable = builtins.toString test.fatMachOLipo; };
+  };
+}"
+fat_mach_o_inspector_out="$(build_expr "$fat_mach_o_inspector_expr")"
+expect_command_failure "Mach-O universal binary" "must contain exactly one architecture" \
+  "$fat_mach_o_inspector_out" "$mach_o_descriptor" "$mach_o_root"
+rm -rf "$mach_o_root"
+rm -f "$mach_o_descriptor" "$mach_o_descriptor.no-adhoc" "$mach_o_descriptor.cms"
 
 tampered_archive="$(mktemp)"
 cp "$dynamic_export/artifact.tar" "$tampered_archive"
