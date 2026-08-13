@@ -65,9 +65,15 @@ consumer composition supplies the physical immutable provider.
 | `//buck2/platforms:macos_aarch64` | `//buck2/platforms:exec_macos_aarch64` | darwin | aarch64      | darwin | `mach-o-dynamic/v1`        |
 
 Interactive host detection may select among these named platforms. Product
-labels and evidence always carry the resolved tuple explicitly. Product rules
-set both their default target platform and matching execution constraints, so
-an ARM product cannot silently execute through an x86-only local capability.
+labels and evidence always carry the resolved tuple explicitly. An executable
+producer is configured for its explicit target platform, declares matching
+execution compatibility on the producing action, and returns the resolved
+`ProductPlatformInfo` inside `ProductExecutableInfo`. The language-neutral
+`build_product` rule consumes that typed provider and rejects its own
+`default_target_platform`; it must not independently transition or reinterpret
+the already-produced executable. Thus an ARM producer cannot silently execute
+through an x86-only local capability, and packaging cannot relabel its output
+as another target platform.
 
 ## Darwin Capability
 
