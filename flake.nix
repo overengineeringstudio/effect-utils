@@ -83,13 +83,16 @@
                 cross.${"rust_${builtins.elemAt rustVersionParts 0}_${builtins.elemAt rustVersionParts 1}"};
             in
             (import ./nix/workspace-tools/lib/buck2-rust-local-toolchain-config.nix { inherit pkgs; } {
-              # `cross.rustc` builds the target standard library from the
-              # Rust source tree.  This probe needs the same pinned compiler
-              # and musl stdlib, but not a source-built compiler toolchain.
-              # nixpkgs' matching bootstrap archive supplies both as a
-              # substitutable binary while the cross linker remains Nix-owned.
+              clippyDriver = "${pkgs.clippy}/bin/clippy-driver";
+              # The matching prebuilt archive supplies rustc, rustdoc, and
+              # the musl standard library without rebuilding Rust/LLVM.
               rustc = "${rustPackageSet.packages.prebuilt.rustc}/bin/rustc";
+              rustdoc = "${rustPackageSet.packages.prebuilt.rustc}/bin/rustdoc";
               linker = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}cc";
+              cxx = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}c++";
+              binutils = cross.binutils;
+              python = "${pkgs.python3}/bin/python3";
+              toolPath = "${pkgs.bash}/bin:${pkgs.coreutils}/bin";
             }).config
           else
             null;
@@ -217,6 +220,7 @@
             inherit otelite otel-scrape buck2-launcher;
             buck2-closure-tool = buck2-stage0-tools.closure-tool;
             buck2-package-evidence = buck2-stage0-tools.package-evidence;
+            buck2-typescript-product = buck2-stage0-tools.typescript-product;
             buck2-portable-toolchain = buck2-stage0-tools.portable-toolchain;
             buck2-portable-toolchain-fixture = buck2-stage0-tools.portable-toolchain-fixture;
             cli-build-stamp = cliBuildStamp.package;

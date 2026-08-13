@@ -3,11 +3,13 @@
 RustLocalStoreToolchainInfo = provider(fields = [
     "contract",
     "execution_platform",
+    "identity_verifier",
     "linker",
     "rustc",
     "target_platform",
     "target_triple",
     "toolchain_identity",
+    "toolchain_identity_material",
 ])
 
 _CONTRACT = "effect-utils/rust-local-store-toolchain/v1"
@@ -23,10 +25,24 @@ def _require_toolchain_identity(value):
     if len(value) != 71 or not value.startswith("sha256:"):
         fail("toolchain_identity must be a Nix-authored sha256 identity")
 
+def _identity_material(ctx):
+    return ";".join([
+        "contract=" + ctx.attrs.contract,
+        "execution_platform=" + ctx.attrs.execution_platform,
+        "identity_verifier=" + ctx.attrs.identity_verifier,
+        "linker=" + ctx.attrs.linker,
+        "rustc=" + ctx.attrs.rustc,
+        "target_platform=" + ctx.attrs.target_platform,
+        "target_triple=" + ctx.attrs.target_triple,
+    ])
+
 def _rust_local_store_toolchain_impl(ctx):
     _require_nix_store_executable(ctx.attrs.rustc, "rustc")
     _require_nix_store_executable(ctx.attrs.linker, "linker")
+    _require_nix_store_executable(ctx.attrs.identity_verifier, "identity_verifier")
     _require_toolchain_identity(ctx.attrs.toolchain_identity)
+    if ctx.attrs.toolchain_identity_material != _identity_material(ctx):
+        fail("Rust toolchain identity material does not match the configured fields")
     if ctx.attrs.contract != _CONTRACT:
         fail("unsupported Rust toolchain contract: {}".format(ctx.attrs.contract))
     if ctx.attrs.execution_platform != _EXECUTION_PLATFORM:
@@ -40,11 +56,13 @@ def _rust_local_store_toolchain_impl(ctx):
         RustLocalStoreToolchainInfo(
             contract = ctx.attrs.contract,
             execution_platform = ctx.attrs.execution_platform,
+            identity_verifier = ctx.attrs.identity_verifier,
             linker = ctx.attrs.linker,
             rustc = ctx.attrs.rustc,
             target_platform = ctx.attrs.target_platform,
             target_triple = ctx.attrs.target_triple,
             toolchain_identity = ctx.attrs.toolchain_identity,
+            toolchain_identity_material = ctx.attrs.toolchain_identity_material,
         ),
     ]
 
@@ -53,11 +71,13 @@ rust_local_store_toolchain = rule(
     attrs = {
         "contract": attrs.string(),
         "execution_platform": attrs.string(),
+        "identity_verifier": attrs.string(),
         "linker": attrs.string(),
         "rustc": attrs.string(),
         "target_platform": attrs.string(),
         "target_triple": attrs.string(),
         "toolchain_identity": attrs.string(),
+        "toolchain_identity_material": attrs.string(),
     },
 )
 
@@ -66,6 +86,9 @@ def _rust_static_binary_impl(ctx):
     out = ctx.actions.declare_output(ctx.attrs.binary_name)
     ctx.actions.run(
         [
+            toolchain.identity_verifier,
+            toolchain.toolchain_identity_material,
+            toolchain.toolchain_identity,
             toolchain.rustc,
             ctx.attrs.src,
             "--crate-name",

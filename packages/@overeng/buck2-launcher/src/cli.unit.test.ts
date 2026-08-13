@@ -23,15 +23,37 @@ describe('buck2-launcher CLI boundary', () => {
         '//pkg:x',
         '--local-only',
       ],
-      {},
+      {
+        BUCK2_REPOSITORY_REVISION: '0123456789abcdef0123456789abcdef01234567',
+        BUCK2_EXECUTION_PLATFORM: 'x86_64-linux',
+      },
     )
     expect(parsed.buckArgs).toEqual(['build', '//pkg:x', '--local-only'])
     expect(parsed.printCommand).toBe(true)
     expect(parsed.launcherRunId).toBe('e2e-42')
+    expect(parsed.repositoryRevision).toBe('0123456789abcdef0123456789abcdef01234567')
+    expect(parsed.executionPlatform).toBe('x86_64-linux')
   })
 
   it('requires an already-resolved binary rather than evaluating Nix or devenv', () => {
     expect(() => parseCli(['--', 'build', '//:x'], {})).toThrow('--buck or BUCK2_BIN is required')
+  })
+
+  it('requires explicit revision and execution-platform provenance', () => {
+    expect(() => parseCli(['--buck', '/nix/store/a/buck2', '--', 'build', '//:x'], {})).toThrow(
+      'BUCK2_REPOSITORY_REVISION',
+    )
+    expect(() =>
+      parseCli(['--buck', '/nix/store/a/buck2', '--', 'build', '//:x'], {
+        BUCK2_REPOSITORY_REVISION: '0123456789abcdef0123456789abcdef01234567',
+      }),
+    ).toThrow('BUCK2_EXECUTION_PLATFORM')
+  })
+
+  it('keeps dry-run command preview backward compatible without receipt identity', () => {
+    expect(
+      parseCli(['--buck', '/nix/store/a/buck2', '--dry-run', '--', 'build', '//:x'], {}),
+    ).toMatchObject({ dryRun: true, printCommand: true, buckArgs: ['build', '//:x'] })
   })
 
   it('rejects evidence flag collisions with a bypass instruction', () => {

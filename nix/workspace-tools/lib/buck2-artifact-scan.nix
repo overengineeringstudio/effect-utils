@@ -63,9 +63,15 @@ pkgs.writeShellScript "buck2-artifact-scan" ''
       fi
     done < <(${pkgs.findutils}/bin/find "$root" -mindepth 1 -print0)
 
-    local leaked
-    leaked="$(${pkgs.gnugrep}/bin/grep -a -R -l -F -- '${builtins.storeDir}/' "$root" \
-      | ${pkgs.coreutils}/bin/head -n 1 || true)"
+    local leaked grep_status
+    if leaked="$(${pkgs.gnugrep}/bin/grep -a -R -l -F -- '${builtins.storeDir}/' "$root")"; then
+      leaked="''${leaked%%$'\n'*}"
+    else
+      grep_status=$?
+      [ "$grep_status" -eq 1 ] \
+        || fail "failed to scan tree for forbidden Nix store references"
+      leaked=""
+    fi
     if [ -n "$leaked" ]; then
       fail "forbidden Nix store reference in ''${leaked#"$root"/}"
     fi

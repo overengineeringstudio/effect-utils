@@ -143,3 +143,35 @@ export const parseJsonl = (text) => {
   }
   return records
 }
+
+/** Fail unless Buck's measured invalidation matches the reviewed product graph. */
+export const assertBuckInvalidation = ({ records, runs, expectedRelevantActions }) => {
+  const samplesFor = (phase) =>
+    records.filter(
+      (record) =>
+        record.kind === 'sample' &&
+        record.engine === 'buck2' &&
+        record.phase === phase &&
+        record.warmup === false,
+    )
+  const requireMeasured = (phase) => {
+    const samples = samplesFor(phase)
+    if (samples.length !== runs)
+      throw new Error(`Buck invalidation ${phase}: expected ${runs} samples, got ${samples.length}`)
+    for (const sample of samples)
+      if (sample.status !== 'ok' || sample.buckLogStatus !== 'ok')
+        throw new Error(
+          `Buck invalidation ${phase}: every sample must have complete Buck log evidence`,
+        )
+    return samples
+  }
+  for (const phase of ['warm-noop', 'irrelevant-edit'])
+    for (const sample of requireMeasured(phase))
+      if (sample.actionCount !== 0 || sample.materializationCount !== 0)
+        throw new Error(`Buck invalidation ${phase}: expected zero actions and materializations`)
+  for (const sample of requireMeasured('relevant-edit'))
+    if (sample.actionCount !== expectedRelevantActions)
+      throw new Error(
+        `Buck invalidation relevant-edit: expected ${expectedRelevantActions} actions, got ${sample.actionCount}`,
+      )
+}

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
+  assertBuckInvalidation,
   countNonEmptyLines,
   parseJsonl,
   parseMaterializations,
@@ -9,7 +10,44 @@ import {
   summarizeSamples,
 } from './lib.mjs'
 
+const invalidationSample = ({ phase, actionCount, materializationCount }) => ({
+  kind: 'sample',
+  engine: 'buck2',
+  phase,
+  warmup: false,
+  status: 'ok',
+  buckLogStatus: 'ok',
+  actionCount,
+  materializationCount,
+})
+
 describe('buck2 benchmark parsers', () => {
+  it('requires exact warm, irrelevant, and relevant invalidation evidence', () => {
+    const records = [
+      invalidationSample({ phase: 'warm-noop', actionCount: 0, materializationCount: 0 }),
+      invalidationSample({ phase: 'irrelevant-edit', actionCount: 0, materializationCount: 0 }),
+      invalidationSample({ phase: 'relevant-edit', actionCount: 3, materializationCount: 2 }),
+    ]
+    assert.doesNotThrow(() =>
+      assertBuckInvalidation({ records, runs: 1, expectedRelevantActions: 3 }),
+    )
+    assert.throws(
+      () => assertBuckInvalidation({ records, runs: 1, expectedRelevantActions: 4 }),
+      /expected 4 actions/u,
+    )
+    assert.throws(
+      () =>
+        assertBuckInvalidation({
+          records: [
+            invalidationSample({ phase: 'warm-noop', actionCount: 1, materializationCount: 0 }),
+            ...records.slice(1),
+          ],
+          runs: 1,
+          expectedRelevantActions: 3,
+        }),
+      /expected zero actions and materializations/u,
+    )
+  })
   it('uses the nearest-rank percentile definition', () => {
     assert.equal(percentile({ values: [5, 1, 4, 2, 3], fraction: 0.5 }), 3)
     assert.equal(percentile({ values: [1, 2, 3, 4, 5], fraction: 0.95 }), 5)

@@ -6,10 +6,12 @@ rust_local_store_toolchain(
     name = "x86_64_linux_musl_toolchain",
     contract = read_config("rust_toolchain", "contract", ""),
     execution_platform = read_config("rust_toolchain", "execution_platform", ""),
+    identity_verifier = read_config("rust_toolchain", "identity_verifier", ""),
     linker = read_config("rust_toolchain", "linker", ""),
     rustc = read_config("rust_toolchain", "rustc", ""),
     target_platform = read_config("rust_toolchain", "target_platform", ""),
     target_triple = read_config("rust_toolchain", "target_triple", ""),
+    toolchain_identity_material = read_config("rust_toolchain", "toolchain_identity_material", ""),
     toolchain_identity = read_config("rust_toolchain", "toolchain_identity", ""),
 )
 

@@ -13,6 +13,8 @@ import {
   descriptorForClosureManifest,
   descriptorForFile,
   explainClosures,
+  isExecutionPlatform,
+  isRepositoryRevision,
   isSafePathComponent,
   materializationsSemanticallyComplete,
   normalizeActions,
@@ -36,6 +38,8 @@ export interface LaunchOptions {
   readonly closureManifests?: ReadonlyArray<ClosureManifestInput>
   readonly compareReceipt?: string
   readonly buckMachineVersion?: string
+  readonly repositoryRevision: string
+  readonly executionPlatform: string
   readonly launcherRunId?: string
   readonly now?: () => Date
   readonly stderr?: NodeJS.WritableStream
@@ -174,11 +178,32 @@ const loadPreviousReceipt = async (
   path: string | undefined,
 ): Promise<BuckRunReceipt | undefined> => {
   if (path === undefined) return undefined
+  let bytes: string
   try {
-    return decodeReceipt(JSON.parse(await readFile(path, 'utf8')))
-  } catch {
-    return undefined
+    bytes = await readFile(path, 'utf8')
+  } catch (error) {
+    throw new Error(`explicit compare receipt is missing or unreadable: ${path}`, { cause: error })
   }
+
+  let value: unknown
+  try {
+    value = JSON.parse(bytes)
+  } catch (error) {
+    throw new Error(`explicit compare receipt is malformed JSON: ${path}`, { cause: error })
+  }
+
+  let receipt: BuckRunReceipt
+  try {
+    receipt = decodeReceipt(value)
+  } catch (error) {
+    throw new Error(`explicit compare receipt is unsupported or invalid: ${path}`, {
+      cause: error,
+    })
+  }
+  if (receipt.observation.complete === false) {
+    throw new Error(`explicit compare receipt is incomplete: ${path}`)
+  }
+  return receipt
 }
 
 const outputsFromReport = (
@@ -258,9 +283,18 @@ const prepareClosures = async (
 }
 
 export const launchBuck = async (options: LaunchOptions): Promise<LaunchResult> => {
+  if (isRepositoryRevision(options.repositoryRevision) === false) {
+    throw new Error('repository revision must be an exact 40- or 64-character Git revision')
+  }
+  if (isExecutionPlatform(options.executionPlatform) === false) {
+    throw new Error('execution platform must be a portable platform identifier')
+  }
   assertNoReservedEvidenceFlags(options.buckArgs)
   assertSupportedCommand(options.buckArgs)
-  const closures = await prepareClosures(options.closureManifests ?? [])
+  const [closures, previous] = await Promise.all([
+    prepareClosures(options.closureManifests ?? []),
+    loadPreviousReceipt(options.compareReceipt),
+  ])
   const now = options.now ?? (() => new Date())
   const launcherRunId = options.launcherRunId ?? randomUUID()
   if (isSafePathComponent(launcherRunId) === false) {
@@ -301,31 +335,24 @@ export const launchBuck = async (options: LaunchOptions): Promise<LaunchResult> 
   const ended = now()
 
   try {
-    const [
-      whatRanQuery,
-      materializedQuery,
-      report,
-      eventLogDescriptor,
-      buildReportDescriptor,
-      previous,
-    ] = await Promise.all([
-      runChild({
-        binary: options.buckBinary,
-        args: ['log', 'what-ran', '--format', 'json', '--emit-cache-queries', eventLogPath],
-        cwd: options.cwd,
-        stdio: 'capture',
-      }),
-      runChild({
-        binary: options.buckBinary,
-        args: ['log', 'what-materialized', '--format', 'json', eventLogPath],
-        cwd: options.cwd,
-        stdio: 'capture',
-      }),
-      readBuildReport(buildReportPath),
-      descriptorForFile(eventLogPath, 'application/x-ndjson'),
-      descriptorForFile(buildReportPath, 'application/json'),
-      loadPreviousReceipt(options.compareReceipt),
-    ])
+    const [whatRanQuery, materializedQuery, report, eventLogDescriptor, buildReportDescriptor] =
+      await Promise.all([
+        runChild({
+          binary: options.buckBinary,
+          args: ['log', 'what-ran', '--format', 'json', '--emit-cache-queries', eventLogPath],
+          cwd: options.cwd,
+          stdio: 'capture',
+        }),
+        runChild({
+          binary: options.buckBinary,
+          args: ['log', 'what-materialized', '--format', 'json', eventLogPath],
+          cwd: options.cwd,
+          stdio: 'capture',
+        }),
+        readBuildReport(buildReportPath),
+        descriptorForFile(eventLogPath, 'application/x-ndjson'),
+        descriptorForFile(buildReportPath, 'application/json'),
+      ])
     const whatRanParse = parseJsonLinesComplete(whatRanQuery.stdout)
     const materializedParse = parseJsonLinesComplete(materializedQuery.stdout)
     const actions = normalizeActions(whatRanParse.rows)
@@ -358,7 +385,7 @@ export const launchBuck = async (options: LaunchOptions): Promise<LaunchResult> 
       ...(buildReportDescriptor === undefined ? ['build-report-file'] : []),
     ]
     const observationComplete = incompleteReasons.length === 0
-    const previousTrusted = previous?.observation.complete === true ? previous : undefined
+    const previousTrusted = previous
     const outputs = outputsFromReport(report)
     const success = commandResult.exitCode === 0
     const fallback = !observationComplete
@@ -386,6 +413,8 @@ export const launchBuck = async (options: LaunchOptions): Promise<LaunchResult> 
       schema: 'buck-run-receipt/v1',
       launcherRunId,
       ...(buckInvocationId === undefined ? {} : { buckInvocationId }),
+      repositoryRevision: options.repositoryRevision,
+      executionPlatform: options.executionPlatform,
       command: {
         kind: sanitizeEvidenceText(buckCommand(options.buckArgs) ?? 'unknown'),
         requestedTargets: requestedTargetsFromReport(report),

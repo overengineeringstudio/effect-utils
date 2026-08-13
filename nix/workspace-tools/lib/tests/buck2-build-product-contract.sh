@@ -166,6 +166,53 @@ expect_eval_failure \
     entrypoints = [ "bin/fixture\runsafe" ];
   })'
 
+expect_eval_failure \
+  "tab entrypoint" \
+  "descriptor.entrypoints must be safe relative paths" \
+  'contract.canonicalDescriptorJson (valid // {
+    entrypoints = [ "bin/fixture\tunsafe" ];
+  })'
+
+expect_eval_failure \
+  "escape entrypoint" \
+  "descriptor.entrypoints must be safe relative paths" \
+  'contract.canonicalDescriptorJson (valid // {
+    entrypoints = [ (builtins.fromJSON "\"bin/fixture\\u001bunsafe\"") ];
+  })'
+
+expect_eval_failure \
+  "non-canonical sha256 trailing digit" \
+  "descriptor.payload.digest.sri must be a sha256 SRI digest" \
+  'contract.canonicalDescriptorJson (valid // {
+    payload = valid.payload // {
+      digest = valid.payload.digest // {
+        sri = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=";
+      };
+    };
+  })'
+
+expect_eval_failure \
+  "missing sha256 padding" \
+  "descriptor.payload.digest.sri must be a sha256 SRI digest" \
+  'contract.canonicalDescriptorJson (valid // {
+    payload = valid.payload // {
+      digest = valid.payload.digest // {
+        sri = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+      };
+    };
+  })'
+
+expect_eval_failure \
+  "sha256 digest of 31 bytes" \
+  "descriptor.payload.digest.sri must be a sha256 SRI digest" \
+  'contract.canonicalDescriptorJson (valid // {
+    payload = valid.payload // {
+      digest = valid.payload.digest // {
+        sri = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+      };
+    };
+  })'
+
 semantic_change_digest="$(eval_raw 'contract.descriptorDigest (valid // {
   semanticProvenance = valid.semanticProvenance // { recipe = "fixture-tool/v2"; };
 })')"
@@ -182,12 +229,14 @@ expect_eval_failure \
   })'
 
 for variant in interpreter elf-dynamic mach-o-dynamic self-contained; do
+  platform_override=''
   case "$variant" in
     interpreter)
       runtime='{ kind = "interpreter"; runtimeId = "bun"; runtimeContract = "bun-1.2/v1"; program = "bin/fixture-tool"; }'
       ;;
     elf-dynamic)
-      runtime='{ kind = "elf-dynamic"; machine = "x86_64"; loaderClass = "glibc"; neededLibraries = [ "libc.so.6" ]; symbolVersionFloors = [ "GLIBC_2.39" ]; runpathPolicy = "nix-realized/v1"; }'
+      runtime='{ kind = "elf-dynamic"; inspectionContract = "elf-dynamic/v1"; elfClass = "ELF64"; machine = "x86_64"; interpreter = "/lib64/ld-linux-x86-64.so.2"; neededLibraries = [ "libc.so.6" ]; symbolVersionFloors = [ "GLIBC_2.39" ]; rpathPolicy = "empty/v1"; }'
+      platform_override='platform = valid.platform // { abi = "glibc"; };'
       ;;
     mach-o-dynamic)
       runtime='{ kind = "mach-o-dynamic"; architecture = "arm64"; minimumOs = "14.0"; dylibs = [ "/usr/lib/libSystem.B.dylib" ]; installNamePolicy = "system-only/v1"; rpathPolicy = "none/v1"; signingPolicy = "adhoc/v1"; }'
@@ -196,7 +245,125 @@ for variant in interpreter elf-dynamic mach-o-dynamic self-contained; do
       runtime='{ kind = "self-contained"; inspectionContract = "elf-static/v1"; }'
       ;;
   esac
-  eval_raw "contract.descriptorDigest (valid // { runtime = $runtime; })" >/dev/null
+  eval_raw "contract.descriptorDigest (valid // { $platform_override runtime = $runtime; })" >/dev/null
+done
+
+expect_eval_failure \
+  "missing ELF inspection contract" \
+  "descriptor.runtime is missing fields: inspectionContract" \
+  'contract.descriptorDigest (valid // {
+    runtime = {
+      kind = "elf-dynamic";
+      elfClass = "ELF64";
+      machine = "x86_64";
+      interpreter = "/lib64/ld-linux-x86-64.so.2";
+      neededLibraries = [ "libc.so.6" ];
+      symbolVersionFloors = [ "GLIBC_2.39" ];
+      rpathPolicy = "empty/v1";
+    };
+  })'
+
+expect_eval_failure \
+  "legacy ELF runtime field" \
+  "descriptor.runtime has unknown fields: loaderClass" \
+  'contract.descriptorDigest (valid // {
+    runtime = {
+      kind = "elf-dynamic";
+      inspectionContract = "elf-dynamic/v1";
+      elfClass = "ELF64";
+      machine = "x86_64";
+      interpreter = "/lib64/ld-linux-x86-64.so.2";
+      neededLibraries = [ "libc.so.6" ];
+      symbolVersionFloors = [ "GLIBC_2.39" ];
+      rpathPolicy = "empty/v1";
+      loaderClass = "glibc";
+    };
+  })'
+
+expect_eval_failure \
+  "ELF machine and platform architecture mismatch" \
+  "descriptor.runtime.machine must match descriptor.platform.architecture" \
+  'contract.descriptorDigest (valid // {
+    platform = valid.platform // { abi = "glibc"; };
+    runtime = {
+      kind = "elf-dynamic";
+      inspectionContract = "elf-dynamic/v1";
+      elfClass = "ELF64";
+      machine = "aarch64";
+      interpreter = "/lib/ld-linux-aarch64.so.1";
+      neededLibraries = [ "libc.so.6" ];
+      symbolVersionFloors = [ "GLIBC_2.39" ];
+      rpathPolicy = "empty/v1";
+    };
+  })'
+
+expect_eval_failure \
+  "dynamic ELF on a non-Linux platform" \
+  "elf-dynamic requires descriptor.platform.os = linux" \
+  'contract.descriptorDigest (valid // {
+    platform = valid.platform // { os = "darwin"; abi = "glibc"; };
+    runtime = {
+      kind = "elf-dynamic";
+      inspectionContract = "elf-dynamic/v1";
+      elfClass = "ELF64";
+      machine = "x86_64";
+      interpreter = "/lib64/ld-linux-x86-64.so.2";
+      neededLibraries = [ "libc.so.6" ];
+      symbolVersionFloors = [ "GLIBC_2.39" ];
+      rpathPolicy = "empty/v1";
+    };
+  })'
+
+expect_eval_failure \
+  "dynamic ELF ABI mismatch" \
+  "currently requires descriptor.platform.abi = glibc" \
+  'contract.descriptorDigest (valid // {
+    runtime = {
+      kind = "elf-dynamic";
+      inspectionContract = "elf-dynamic/v1";
+      elfClass = "ELF64";
+      machine = "x86_64";
+      interpreter = "/lib64/ld-linux-x86-64.so.2";
+      neededLibraries = [ "libc.so.6" ];
+      symbolVersionFloors = [ "GLIBC_2.39" ];
+      rpathPolicy = "empty/v1";
+    };
+  })'
+
+expect_eval_failure \
+  "dynamic ELF loader and ABI mismatch" \
+  "interpreter does not prove the declared glibc architecture" \
+  'contract.descriptorDigest (valid // {
+    platform = valid.platform // { abi = "glibc"; };
+    runtime = {
+      kind = "elf-dynamic";
+      inspectionContract = "elf-dynamic/v1";
+      elfClass = "ELF64";
+      machine = "x86_64";
+      interpreter = "/lib/ld-musl-x86_64.so.1";
+      neededLibraries = [ "libc.so" ];
+      symbolVersionFloors = [ ];
+      rpathPolicy = "empty/v1";
+    };
+  })'
+
+for field in neededLibraries symbolVersionFloors; do
+  expect_eval_failure \
+    "dynamic ELF $field control character" \
+    "descriptor.runtime.$field entries must not contain control characters" \
+    "contract.descriptorDigest (valid // {
+      platform = valid.platform // { abi = \"glibc\"; };
+      runtime = {
+        kind = \"elf-dynamic\";
+        inspectionContract = \"elf-dynamic/v1\";
+        elfClass = \"ELF64\";
+        machine = \"x86_64\";
+        interpreter = \"/lib64/ld-linux-x86-64.so.2\";
+        neededLibraries = if \"$field\" == \"neededLibraries\" then [ \"libone.so\\nlibtwo.so\" ] else [ \"libc.so.6\" ];
+        symbolVersionFloors = if \"$field\" == \"symbolVersionFloors\" then [ \"GLIBC_2.34\\nGLIBC_2.35\" ] else [ \"GLIBC_2.39\" ];
+        rpathPolicy = \"empty/v1\";
+      };
+    })"
 done
 
 echo "buck2-build-product-contract-test: PASS digest=$descriptor_digest"

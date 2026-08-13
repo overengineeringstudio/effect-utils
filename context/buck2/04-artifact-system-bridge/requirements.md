@@ -81,6 +81,11 @@ identity, build on the
 - **BUCK.BRIDGE-R13 Post-relocation proof:** When Nix injects a loader, search
   path, wrapper, or signing state, it must re-inspect the realized output and
   record the transformation separately from the normalized Buck2 payload.
+- **BUCK.BRIDGE-R23 Exact dynamic ELF observation:** A dynamic ELF import must
+  compare every declared entrypoint's ELF class, normalized machine, absolute
+  interpreter, complete sorted `DT_NEEDED` set, and complete sorted required
+  symbol-version set against its exact descriptor. It must reject any RPATH or
+  RUNPATH and any payload byte containing a Nix store reference.
 
 ### Must support declarative system realization
 
@@ -119,5 +124,6 @@ identity, build on the
   network access.
 - **BUCK.BRIDGE-R22 Conservative collection:** Published graphs and admission
   bundles must remain undeletable until collection derives a complete live set
-  from reviewed pins and retained rollback states, previews the sweep, preserves
+  from reviewed pins, retained rollback states, and active publication or
+  staging leases acquired before the first upload, previews the sweep, preserves
   a restorable snapshot, and proves restoration after collection.

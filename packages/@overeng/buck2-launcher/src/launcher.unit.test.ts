@@ -5,7 +5,14 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { launchBuck } from './launcher.ts'
+import { launchBuck as launchBuckRaw, type LaunchOptions } from './launcher.ts'
+
+const launchBuck = (options: Omit<LaunchOptions, 'repositoryRevision' | 'executionPlatform'>) =>
+  launchBuckRaw({
+    ...options,
+    repositoryRevision: '0123456789abcdef0123456789abcdef01234567',
+    executionPlatform: 'x86_64-linux',
+  })
 
 const fakeBuckSource = `#!/usr/bin/env node
 const fs = require('node:fs')
@@ -91,6 +98,82 @@ const closureManifest = (label = 'root//:check') => {
 }
 
 describe('launchBuck process boundary', () => {
+  it.each([
+    ['missing', undefined],
+    ['malformed', '{not-json'],
+    ['unsupported', JSON.stringify({ schema: 'buck-run-receipt/v999' })],
+  ])(
+    'rejects an explicitly requested %s comparison receipt before executing Buck',
+    async (kind, body) => {
+      const root = await mkdtemp(join(tmpdir(), `buck2-launcher-compare-${kind}-`))
+      const compareReceipt = join(root, 'compare-receipt.json')
+      if (body !== undefined) await writeFile(compareReceipt, body)
+
+      await expect(
+        launchBuck({
+          buckBinary: join(root, 'does-not-exist'),
+          buckArgs: ['build', 'root//:check'],
+          cwd: root,
+          evidenceRoot: join(root, 'evidence'),
+          compareReceipt,
+          launcherRunId: `compare-${kind}`,
+        }),
+      ).rejects.toThrow(`explicit compare receipt is ${kind}`)
+    },
+  )
+
+  it('rejects an explicitly requested incomplete comparison receipt before executing Buck', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck2-launcher-compare-incomplete-'))
+    const binary = join(root, 'fake-buck2')
+    await writeFile(binary, fakeBuckSource)
+    await chmod(binary, 0o700)
+    const first = await launchBuck({
+      buckBinary: binary,
+      buckArgs: ['build', 'root//:check'],
+      cwd: root,
+      evidenceRoot: join(root, 'evidence'),
+      launcherRunId: 'before-incomplete',
+    })
+    if (first.receiptPath === undefined) throw new Error('first launch did not write a receipt')
+    const incomplete = JSON.parse(await readFile(first.receiptPath, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    incomplete.observation = {
+      complete: false,
+      verdict: 'incomplete',
+      reasons: ['event-log'],
+      whatRan: { exitCode: 0, parseComplete: true, semanticComplete: true, records: 1 },
+      materialized: { exitCode: 0, parseComplete: true, semanticComplete: true, records: 0 },
+    }
+    await writeFile(first.receiptPath, JSON.stringify(incomplete))
+
+    await expect(
+      launchBuck({
+        buckBinary: join(root, 'does-not-exist'),
+        buckArgs: ['build', 'root//:check'],
+        cwd: root,
+        evidenceRoot: join(root, 'evidence'),
+        compareReceipt: first.receiptPath,
+        launcherRunId: 'after-incomplete',
+      }),
+    ).rejects.toThrow('explicit compare receipt is incomplete')
+  })
+
+  it('rejects inexact receipt identity before executing Buck', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'buck2-launcher-identity-'))
+    await expect(
+      launchBuckRaw({
+        buckBinary: join(root, 'does-not-exist'),
+        buckArgs: ['build', 'root//:check'],
+        cwd: root,
+        evidenceRoot: join(root, 'evidence'),
+        repositoryRevision: 'main',
+        executionPlatform: 'x86_64-linux',
+      }),
+    ).rejects.toThrow('exact 40- or 64-character Git revision')
+  })
+
   it('runs Buck directly, preserves target args, and writes a sanitized receipt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'buck2-launcher-test-'))
     const binary = join(root, 'fake-buck2')
@@ -113,6 +196,8 @@ describe('launchBuck process boundary', () => {
     expect(result.receipt).toMatchObject({
       schema: 'buck-run-receipt/v1',
       buckInvocationId: '11111111-1111-4111-8111-111111111111',
+      repositoryRevision: '0123456789abcdef0123456789abcdef01234567',
+      executionPlatform: 'x86_64-linux',
       command: { kind: 'build', requestedTargets: ['root//:check'] },
       outcomes: { local_execution: 1 },
       closures: [{ label: 'root//:check' }],

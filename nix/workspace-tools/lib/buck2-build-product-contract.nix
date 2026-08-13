@@ -39,12 +39,21 @@ let
       (ensure (unique values) "${path} entries must be unique")
     ] values;
 
+  validateStructuredStringList =
+    path: values:
+    force [
+      (validateStringList path values)
+      (ensure (builtins.all (
+        value: builtins.match ".*[[:cntrl:]].*" value == null
+      ) values) "${path} entries must not contain control characters")
+    ] values;
+
   safePath =
     value:
     nonEmptyString value
     && builtins.substring 0 1 value != "/"
     && builtins.match ".*\\\\.*" value == null
-    && builtins.match "[^\n\r]*" value != null
+    && builtins.match ".*[[:cntrl:]].*" value == null
     && builtins.all (component: component != "" && component != "." && component != "..") (
       builtins.filter builtins.isString (builtins.split "/" value)
     );
@@ -78,20 +87,37 @@ let
       else if kind == "elf-dynamic" then
         let
           value = exactAttrs "descriptor.runtime" [
+            "elfClass"
+            "inspectionContract"
+            "interpreter"
             "kind"
-            "loaderClass"
             "machine"
             "neededLibraries"
-            "runpathPolicy"
+            "rpathPolicy"
             "symbolVersionFloors"
           ] runtime;
         in
         force [
+          (ensure (
+            value.inspectionContract == "elf-dynamic/v1"
+          ) "descriptor.runtime.inspectionContract must be elf-dynamic/v1")
+          (ensure (builtins.elem value.elfClass [
+            "ELF32"
+            "ELF64"
+          ]) "descriptor.runtime.elfClass must be ELF32 or ELF64")
           (ensure (nonEmptyString value.machine) "descriptor.runtime.machine must be a non-empty string")
-          (ensure (nonEmptyString value.loaderClass) "descriptor.runtime.loaderClass must be a non-empty string")
-          (validateStringList "descriptor.runtime.neededLibraries" value.neededLibraries)
-          (validateStringList "descriptor.runtime.symbolVersionFloors" value.symbolVersionFloors)
-          (ensure (nonEmptyString value.runpathPolicy) "descriptor.runtime.runpathPolicy must be a non-empty string")
+          (ensure (
+            nonEmptyString value.interpreter && builtins.substring 0 1 value.interpreter == "/"
+          ) "descriptor.runtime.interpreter must be an absolute path")
+          (validateStructuredStringList "descriptor.runtime.neededLibraries" value.neededLibraries)
+          (ensure (
+            value.neededLibraries == builtins.sort builtins.lessThan value.neededLibraries
+          ) "descriptor.runtime.neededLibraries must be sorted")
+          (validateStructuredStringList "descriptor.runtime.symbolVersionFloors" value.symbolVersionFloors)
+          (ensure (
+            value.symbolVersionFloors == builtins.sort builtins.lessThan value.symbolVersionFloors
+          ) "descriptor.runtime.symbolVersionFloors must be sorted")
+          (ensure (value.rpathPolicy == "empty/v1") "descriptor.runtime.rpathPolicy must be empty/v1")
         ] value
       else if kind == "mach-o-dynamic" then
         let
@@ -160,6 +186,34 @@ let
       ] value.semanticProvenance;
       entrypoints = validateStringList "descriptor.entrypoints" value.entrypoints;
       runtime = validateRuntime value.runtime;
+      glibcInterpreterByArchitecture = {
+        x86_64 = "/lib64/ld-linux-x86-64.so.2";
+        aarch64 = "/lib/ld-linux-aarch64.so.1";
+      };
+      expectedGlibcInterpreter = glibcInterpreterByArchitecture.${platform.architecture} or null;
+      runtimePlatformChecks =
+        if runtime.kind == "elf-dynamic" then
+          [
+            (ensure (
+              platform.os == "linux"
+            ) "descriptor.runtime elf-dynamic requires descriptor.platform.os = linux")
+            (ensure (
+              platform.abi == "glibc"
+            ) "descriptor.runtime elf-dynamic/v1 currently requires descriptor.platform.abi = glibc")
+            (ensure (
+              runtime.machine == platform.architecture
+            ) "descriptor.runtime.machine must match descriptor.platform.architecture")
+            (ensure (builtins.elem platform.architecture [
+              "x86_64"
+              "aarch64"
+            ]) "descriptor.runtime elf-dynamic architecture is unsupported")
+            (ensure (runtime.elfClass == "ELF64") "descriptor.runtime elf-dynamic architecture requires ELF64")
+            (ensure (
+              expectedGlibcInterpreter != null && runtime.interpreter == expectedGlibcInterpreter
+            ) "descriptor.runtime.interpreter does not prove the declared glibc architecture")
+          ]
+        else
+          [ ];
     in
     force [
       (ensure (value.schema == "buck-build-product/v1") "unsupported descriptor schema")
@@ -173,7 +227,12 @@ let
       (ensure (payload.format == "tar") "descriptor.payload.format must be tar")
       (ensure (digest.algorithm == "sha256") "descriptor.payload.digest.algorithm must be sha256")
       (ensure (
-        nonEmptyString digest.sri && builtins.match "sha256-[A-Za-z0-9+/]{43}=" digest.sri != null
+        nonEmptyString digest.sri
+        # SHA-256 is exactly 32 bytes. Canonical RFC 4648 base64 therefore has
+        # 42 unrestricted digits, one digit whose low four bits are zero, and
+        # exactly one padding byte. This rejects alternate encodings that
+        # decode to the same digest.
+        && builtins.match "sha256-[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=" digest.sri != null
       ) "descriptor.payload.digest.sri must be a sha256 SRI digest")
       (ensure (
         builtins.isInt payload.sizeBytes && payload.sizeBytes > 0
@@ -186,6 +245,7 @@ let
       (ensure (nonEmptyString semanticProvenance.target) "descriptor.semanticProvenance.target must be a non-empty string")
       (ensure (nonEmptyString semanticProvenance.recipe) "descriptor.semanticProvenance.recipe must be a non-empty string")
       (ensure (nonEmptyString semanticProvenance.toolchain) "descriptor.semanticProvenance.toolchain must be a non-empty string")
+      runtimePlatformChecks
     ] value;
 
   canonicalDescriptorJson = descriptor: builtins.toJSON (validateDescriptor descriptor);

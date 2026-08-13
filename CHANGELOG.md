@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 - Fix lazy Buck stage-0 recovery to snapshot only its fingerprinted source inputs, keep unrelated Cargo product manifests out of tool derivations, and retain the observability gate when shell-entry setup is disabled.
 
+- Harden Buck foundation review contracts by recording explicit revision and execution-platform receipt identity, redacting password aliases, validating schema-v3 provenance, preserving mutation-free observability checks, narrowing generated-file markings, and leasing in-flight publications against future collection.
+- Preserve pre-identity Buck receipt and dry-run compatibility while hardening dynamic ELF metadata boundaries, inspector failures, and artifact-seam mutation proofs.
+- Parse dynamic ELF dependency delimiters and version-need sections structurally, including non-numeric symbol versions without admitting local definition noise.
+- Preserve fixed-marker PT_INTERP paths and complete whitespace-bearing version-need names when inspecting dynamic ELF artifacts.
+
 - **Buck2/devenv fast path**: make shell activation independent of Buck and
   repository setup, expose the pinned Buck client through a source-mode local
   launcher, lazily resolve stage-0 tools only for consuming tasks, and classify

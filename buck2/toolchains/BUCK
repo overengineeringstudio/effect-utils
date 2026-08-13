@@ -15,6 +15,7 @@ portable_toolchain(
     descriptor_sha256_by_platform = {
         "aarch64-darwin": "2d3d9a4016ba9d2030b79507a6f291e6e217a79dc88551c54391409331c07779",
         "aarch64-linux": "bd3345101be98fec5153fc58377413133a7f0c58f402010a3c7c751f493574a5",
+        "x86_64-darwin": "c06f03188b6a97d872f372f068072cb5dabc0a1fa03a031b34a681a946acd3b9",
         "x86_64-linux": "d8092ec6f82b460b8d19d5f02e504bfd718191851fa33a15b53118f1f34b0244",
     },
     entrypoint = "bin/fixture-tool",

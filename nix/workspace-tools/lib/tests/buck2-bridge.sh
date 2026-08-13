@@ -141,6 +141,150 @@ expect_build_failure \
   "runtime inspector is not available for self-contained" \
   "$unsupported_runtime_expr"
 
+dynamic_export="$(build_expr "($base_expr).dynamicExport")"
+export BUCK2_BRIDGE_DYNAMIC_EXPORT="$dynamic_export"
+jq -e '
+  (.runtime.neededLibraries | index("libfixture[bracket].so")) != null and
+  (.runtime.symbolVersionFloors | index("F O")) != null and
+  (.runtime.symbolVersionFloors | index("F")) == null and
+  (.runtime.symbolVersionFloors | index("LOCAL_DEFINITION")) == null
+' "$dynamic_export/descriptor.json" >/dev/null
+dynamic_import_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
+  descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+in test.mkImport {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = exported + \"/artifact.tar\";
+}"
+dynamic_import="$(build_expr "$dynamic_import_expr")"
+[ -x "$dynamic_import/bin/fixture-tool" ] || {
+  echo "buck2-bridge-test: admitted dynamic entrypoint is missing" >&2
+  exit 1
+}
+
+inspector_expr="let
+  $common_let
+in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-dynamic.nix\") { inherit pkgs; }"
+inspector_out="$(build_expr "$inspector_expr")"
+patchelf_out="$(build_expr "let $common_let in pkgs.patchelf")"
+rpath_root="$(mktemp -d)"
+tar --extract --file "$dynamic_export/artifact.tar" --directory "$rpath_root"
+chmod u+w "$rpath_root/bin/fixture-tool"
+"$patchelf_out/bin/patchelf" --set-rpath /hostile/runtime/path "$rpath_root/bin/fixture-tool"
+expect_command_failure \
+  "undeclared ELF runtime path" \
+  "RPATH/RUNPATH must be absent" \
+  "$inspector_out" "$dynamic_export/descriptor.json" "$rpath_root"
+rm -rf "$rpath_root"
+
+mutation_root() {
+  local root
+  root="$(mktemp -d)"
+  tar --extract --file "$dynamic_export/artifact.tar" --directory "$root"
+  chmod u+w "$root/bin/fixture-tool"
+  printf '%s\n' "$root"
+}
+
+class_root="$(mutation_root)"
+printf '\x01' | dd of="$class_root/bin/fixture-tool" bs=1 seek=4 conv=notrunc status=none
+expect_command_failure "ELF class mutation" "ELF class mismatch" \
+  "$inspector_out" "$dynamic_export/descriptor.json" "$class_root"
+rm -rf "$class_root"
+
+machine_root="$(mutation_root)"
+printf '\xb7\x00' | dd of="$machine_root/bin/fixture-tool" bs=1 seek=18 conv=notrunc status=none
+expect_command_failure "ELF machine mutation" "ELF machine mismatch" \
+  "$inspector_out" "$dynamic_export/descriptor.json" "$machine_root"
+rm -rf "$machine_root"
+
+interpreter_root="$(mutation_root)"
+mutated_interpreter='/wrong/interpreter: [loader]'
+"$patchelf_out/bin/patchelf" --set-interpreter "$mutated_interpreter" "$interpreter_root/bin/fixture-tool"
+expect_command_failure "ELF interpreter mutation" \
+  "ELF interpreter mismatch for bin/fixture-tool: expected /lib64/ld-linux-x86-64.so.2, got $mutated_interpreter" \
+  "$inspector_out" "$dynamic_export/descriptor.json" "$interpreter_root"
+rm -rf "$interpreter_root"
+
+needed_root="$(mutation_root)"
+bracket_needed="$(jq -er '.runtime.neededLibraries[] | select(contains("["))' "$dynamic_export/descriptor.json")"
+"$patchelf_out/bin/patchelf" --replace-needed "$bracket_needed" 'libfixture[changed].so' "$needed_root/bin/fixture-tool"
+expect_command_failure "DT_NEEDED mutation" "DT_NEEDED mismatch" \
+  "$inspector_out" "$dynamic_export/descriptor.json" "$needed_root"
+rm -rf "$needed_root"
+
+symbol_root="$(mutation_root)"
+first_version="$(jq -er '.runtime.symbolVersionFloors[] | select(. == "F O")' "$dynamic_export/descriptor.json")"
+case "$first_version" in
+  *9) mutated_version="${first_version%?}8" ;;
+  *) mutated_version="${first_version%?}9" ;;
+esac
+escaped_version="${first_version//./\\.}"
+sed -i "s/$escaped_version/$mutated_version/g" "$symbol_root/bin/fixture-tool"
+expect_command_failure "symbol versions mutation" "symbol-version mismatch" \
+  "$inspector_out" "$dynamic_export/descriptor.json" "$symbol_root"
+rm -rf "$symbol_root"
+
+clean_root="$(mutation_root)"
+multiline_interpreter_inspector_expr="let
+  $common_let
+in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-dynamic.nix\") {
+  inherit pkgs;
+  readelf = builtins.toString test.multilineInterpreterReadelf;
+}"
+multiline_interpreter_inspector_out="$(build_expr "$multiline_interpreter_inspector_expr")"
+expect_command_failure \
+  "multiline PT_INTERP observation" \
+  "malformed ELF program interpreter observation: bin/fixture-tool" \
+  "$multiline_interpreter_inspector_out" "$dynamic_export/descriptor.json" "$clean_root"
+
+failing_inspector_expr="let
+  $common_let
+in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-dynamic.nix\") {
+  inherit pkgs;
+  readelf = builtins.toString test.failingVersionReadelf;
+}"
+failing_inspector_out="$(build_expr "$failing_inspector_expr")"
+expect_command_failure "readelf version-info failure" "readelf --version-info failed" \
+  "$failing_inspector_out" "$dynamic_export/descriptor.json" "$clean_root"
+
+empty_descriptor="$(mktemp)"
+jq '.runtime.symbolVersionFloors = []' "$dynamic_export/descriptor.json" >"$empty_descriptor"
+empty_inspector_expr="let
+  $common_let
+in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-dynamic.nix\") {
+  inherit pkgs;
+  readelf = builtins.toString test.emptyVersionReadelf;
+}"
+empty_inspector_out="$(build_expr "$empty_inspector_expr")"
+"$empty_inspector_out" "$empty_descriptor" "$clean_root"
+rm -rf "$clean_root"
+rm -f "$empty_descriptor"
+
+tampered_archive="$(mktemp)"
+cp "$dynamic_export/artifact.tar" "$tampered_archive"
+printf x | dd of="$tampered_archive" bs=1 seek=1024 conv=notrunc status=none
+export BUCK2_BRIDGE_TAMPERED_ARCHIVE="$tampered_archive"
+expect_build_failure \
+  "payload tampering before archive scan" \
+  "payload digest mismatch" \
+  "let
+    $common_let
+    exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
+    descriptor = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+  in test.mkImport {
+    inherit descriptor;
+    expectedDescriptorDigest = contract.descriptorDigest descriptor;
+    expectedPlatform = descriptor.platform;
+    artifact = builtins.path {
+      path = builtins.getEnv \"BUCK2_BRIDGE_TAMPERED_ARCHIVE\";
+      name = \"tampered-artifact.tar\";
+    };
+  }"
+rm -f "$tampered_archive"
+
 duplicate_import_entrypoint_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
@@ -199,6 +343,35 @@ scan_expr="let
   $common_let
 in import (repo + \"/nix/workspace-tools/lib/buck2-artifact-scan.nix\") { inherit pkgs; }"
 scan_out="$(build_expr "$scan_expr")"
+
+store_reference_root="$(mktemp -d)"
+tar --extract --file "$dynamic_export/artifact.tar" --directory "$store_reference_root"
+chmod u+w "$store_reference_root/bin/fixture-tool"
+printf '%s' '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-host-leak' \
+  >>"$store_reference_root/bin/fixture-tool"
+expect_command_failure \
+  "dynamic payload store reference" \
+  "forbidden Nix store reference" \
+  "$scan_out" tree "$store_reference_root"
+rm -rf "$store_reference_root"
+
+unreadable_archive_root="$(mktemp -d)"
+unreadable_extract_root="$(mktemp -d)"
+unreadable_archive="$(mktemp)"
+printf '%s\n' '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-unreadable-leak' \
+  >"$unreadable_archive_root/unreadable"
+tar --create --mode=000 --file "$unreadable_archive" \
+  --directory "$unreadable_archive_root" unreadable
+tar --extract --file "$unreadable_archive" \
+  --directory "$unreadable_extract_root"
+[ ! -r "$unreadable_extract_root/unreadable" ] \
+  || fail "unreadable archive fixture unexpectedly remained readable"
+expect_command_failure \
+  "unreadable archive member store reference" \
+  "failed to scan tree for forbidden Nix store references" \
+  "$scan_out" tree "$unreadable_extract_root"
+chmod u+r "$unreadable_extract_root/unreadable"
+rm -rf "$unreadable_archive_root" "$unreadable_extract_root" "$unreadable_archive"
 
 portable_symlink_root="$(mktemp -d)"
 mkdir -p "$portable_symlink_root/bin" "$portable_symlink_root/lib"
@@ -327,4 +500,4 @@ expect_command_failure \
   "$scan_out" archive "$concatenated_root.tar"
 rm -rf "$concatenated_root" "$concatenated_root.tar" "$concatenated_root-second.tar"
 
-echo "buck2-bridge-test: PASS export=$export_out buck_runinfo=executed importer=fail-closed"
+echo "buck2-bridge-test: PASS export=$export_out buck_runinfo=executed dynamic_import=$dynamic_import"

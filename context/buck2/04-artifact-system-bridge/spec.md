@@ -6,9 +6,10 @@ the handoff into Nix-managed system generations. It builds on
 
 Status: **Draft**. The exact descriptor validator and canonical identity are
 implemented, and the generic archive/import seam plus OCI protocol have
-prototype evidence. The importer rejects every runtime because no runtime
-inspector is admitted yet. No TypeScript or Rust executable, publication flow,
-or system generation is admitted through the bridge.
+prototype evidence. The importer admits the exact observation-only
+`elf-dynamic/v1` runtime inspector on the supported Linux/glibc tuples and
+rejects every other runtime. No TypeScript or Rust executable, publication
+flow, or system generation is admitted through the bridge.
 
 ## Scope
 
@@ -24,12 +25,12 @@ fleet configuration, credentials, evidence verdicts, or admission records.
 
 ## Requirement Trace
 
-| Section                | Requirements        |
-| ---------------------- | ------------------- |
-| Authorities and flow   | BUCK.BRIDGE-R01-R04 |
-| Build-product contract | BUCK.BRIDGE-R05-R13 |
-| System handoff         | BUCK.BRIDGE-R14-R16 |
-| Publication boundary   | BUCK.BRIDGE-R17-R22 |
+| Section                | Requirements                         |
+| ---------------------- | ------------------------------------ |
+| Authorities and flow   | BUCK.BRIDGE-R01-R04                  |
+| Build-product contract | BUCK.BRIDGE-R05-R13, BUCK.BRIDGE-R23 |
+| System handoff         | BUCK.BRIDGE-R14-R16                  |
+| Publication boundary   | BUCK.BRIDGE-R17-R22                  |
 
 ## Authorities and Flow
 
@@ -103,8 +104,8 @@ product property rather than a source-language property:
 ```text
 RuntimeContract =
   | interpreter { runtimeId, runtimeContract, program }
-  | elf-dynamic { machine, loaderClass, neededLibraries,
-                  symbolVersionFloors, runpathPolicy }
+  | elf-dynamic { inspectionContract, elfClass, machine, interpreter,
+                  neededLibraries, symbolVersionFloors, rpathPolicy }
   | mach-o-dynamic { architecture, minimumOs, dylibs,
                      installNamePolicy, rpathPolicy, signingPolicy }
   | self-contained { inspectionContract }
@@ -169,6 +170,22 @@ normalizes install names and runtime paths, applies declared signing policy,
 then rechecks architecture, minimum OS, dependencies, runtime paths, and
 signature state. Portable artifacts remain unmodified and contain no
 undeclared host or Nix-store dependencies.
+
+The first admitted runtime inspector is `elf-dynamic/v1`. It is
+observation-only: after payload identity verification, complete archive
+pre-scan, extraction, and tree scanning, it checks every declared entrypoint as
+a regular executable. ELF class is `ELF32` or `ELF64`; machine names normalize
+only explicitly supported GNU `readelf` values to descriptor names;
+interpreter equality is byte-exact; `DT_NEEDED` and required symbol versions
+are compared as complete C-locale sorted unique sets; and any RPATH or RUNPATH
+fails. The common contract also binds the runtime machine to the declared
+platform architecture, admits this runtime only on Linux/glibc, and maps each
+supported architecture to its exact glibc interpreter so an artifact cannot
+self-describe a contradictory platform and runtime. The inspector does not
+inject a loader, run the program, or infer host compatibility.
+Hostile-environment execution belongs to the subsequent Nix
+runtime realization and admission proof, because running a normalized dynamic
+payload directly would otherwise make the verifier host an undeclared input.
 
 ## OCI Publication Boundary
 
@@ -275,7 +292,10 @@ configuration and never enter public product identity.
 
 Deletion and registry garbage collection remain disabled initially. Later
 collection derives its live set from reviewed Nix pins, retained system
-generations, and their complete sealed bundles; emits a dry-run plan; snapshots
+generations, active publication and staging leases, and their complete sealed
+bundles. A publisher acquires its lease before uploading the first object and
+releases it only after the reviewed pin advances or the publication is
+explicitly abandoned. Collection then emits a dry-run plan; snapshots
 the candidate sweep; deletes only unreachable objects; and proves restore from
 that snapshot before collection is admitted. A replica is not a backup.
 

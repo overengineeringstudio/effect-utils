@@ -8,6 +8,8 @@ target, dependency, or task graph.
 bun packages/@overeng/buck2-launcher/src/cli.ts \
   --buck /nix/store/...-buck2/bin/buck2 \
   --buck-version 2026-04-14-7600cb8 \
+  --repository-revision "$(git rev-parse HEAD)" \
+  --execution-platform x86_64-linux \
   --closure-manifest //packages/app:check=.buck2/closures/app-check.json \
   --print-command \
   -- build //packages/app:check
@@ -34,7 +36,9 @@ Each run writes a mode-0600 `buck-run-receipt/v1` beneath
 small index, not a replacement for Buck's event log or build report. It contains
 content descriptors rather than absolute evidence paths and never copies raw
 argv, action commands, environments, reproducers, or Buck's absolute
-`project_root`.
+`project_root`. Callers must provide the exact repository revision and Buck
+execution platform explicitly; the launcher does not infer either from ambient
+Git or from its own host architecture.
 
 Outcomes deliberately distinguish:
 
@@ -57,11 +61,12 @@ other causes remain `partial` or `unknown` until their own canonical manifests
 are supplied.
 
 Closure inputs must be generated Buck projection descriptors using schema v1
-(`closure.task.label`) or v2 (`closure.request.label`). The versioned label must
-match `LABEL`, and provenance must name `effect-utils/genie/buck2`. Duplicate
-labels, malformed descriptors, and label mismatches fail before Buck executes.
-The receipt hashes validated canonical JSON, so whitespace and object-key order
-do not change closure identity.
+(`closure.task.label`) or v2/v3 (`closure.request.label`). The versioned label
+must match `LABEL`, and provenance must name `effect-utils/genie/buck2`.
+Schema v3 additionally requires its source path and exact generated-file
+warning. Duplicate labels, malformed descriptors, and label mismatches fail
+before Buck executes. The receipt hashes validated canonical JSON, so whitespace
+and object-key order do not change closure identity.
 
 Explicit run IDs are single-use. The launcher creates each receipt directory
 exclusively and fails before invoking Buck if that directory already exists.
