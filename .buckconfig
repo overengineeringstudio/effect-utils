@@ -23,7 +23,7 @@
     target:toolchains//...->prelude//platforms:default
 
 [build]
-  execution_platforms = prelude//platforms:default
+  execution_platforms = root//buck2/platforms:host_execution_platform
 
 [buck2]
   # pnpm's directory symlink forest can alias one source inode through many

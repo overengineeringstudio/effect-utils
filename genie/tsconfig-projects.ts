@@ -3,7 +3,6 @@ import effectSocketTsconfig from '../context/effect/socket/tsconfig.json.genie.t
 import opentuiTsconfig from '../context/opentui/tsconfig.json.genie.ts'
 import { rootWorkspacePackages } from '../package.json.genie.ts'
 import agentSessionIngestTsconfig from '../packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts'
-import buck2LauncherTsconfig from '../packages/@overeng/buck2-launcher/tsconfig.json.genie.ts'
 import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.genie.ts'
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
@@ -46,46 +45,6 @@ export type RootTsconfigProject = {
   tsconfig: GenieOutput<TSConfigArgs>
 }
 
-export const rootWorkspaceTsconfigProjects = (() => {
-  const workspaceTsconfigsByPath: Record<string, GenieOutput<TSConfigArgs>> = {
-    'context/effect/socket': effectSocketTsconfig,
-    'context/opentui': opentuiTsconfig,
-    'packages/@overeng/agent-session-ingest': agentSessionIngestTsconfig,
-    'packages/@overeng/buck2-launcher': buck2LauncherTsconfig,
-    'packages/@overeng/buck2-tools': buck2ToolsTsconfig,
-    'packages/@overeng/ci-tools': ciToolsTsconfig,
-    'packages/@overeng/content-address': contentAddressTsconfig,
-    'packages/@overeng/effect-ai-claude-cli': effectAiClaudeCliTsconfig,
-    'packages/@overeng/effect-distributed-lock': effectDistributedLockTsconfig,
-    'packages/@overeng/effect-path': effectPathTsconfig,
-    'packages/@overeng/effect-react': effectReactTsconfig,
-    'packages/@overeng/effect-rpc-tanstack': effectRpcTanstackTsconfig,
-    'packages/@overeng/effect-rpc-tanstack/examples/basic': effectRpcTanstackBasicTsconfig,
-    'packages/@overeng/effect-schema-form': effectSchemaFormTsconfig,
-    'packages/@overeng/effect-schema-form-aria': effectSchemaFormAriaTsconfig,
-    'packages/@overeng/genie': genieTsconfig,
-    'packages/@overeng/kdl': kdlTsconfig,
-    'packages/@overeng/kdl-effect': kdlEffectTsconfig,
-    'packages/@overeng/megarepo': megarepoTsconfig,
-    'packages/@overeng/notion-cli': notionCliTsconfig,
-    'packages/@overeng/npm-release': npmReleaseTsconfig,
-    'packages/@overeng/notion-core': notionCoreTsconfig,
-    'packages/@overeng/notion-datasource-sync': notionDatasourceSyncTsconfig,
-    'packages/@overeng/notion-effect-client': notionEffectClientTsconfig,
-    'packages/@overeng/notion-effect-schema': notionEffectSchemaTsconfig,
-    'packages/@overeng/notion-md': notionMdTsconfig,
-    'packages/@overeng/notion-property-write': notionPropertyWriteTsconfig,
-    'packages/@overeng/notion-react': notionReactTsconfig,
-    'packages/@overeng/otel-contract': otelContractTsconfig,
-    'packages/@overeng/oxc-config': oxcConfigTsconfig,
-    'packages/@overeng/pty-effect': ptyEffectTsconfig,
-    'packages/@overeng/react-inspector': reactInspectorTsconfig,
-    'packages/@overeng/restate-effect': restateEffectTsconfig,
-    'packages/@overeng/tui-core': tuiCoreTsconfig,
-    'packages/@overeng/tui-react': tuiReactTsconfig,
-    'packages/@overeng/tui-stories': tuiStoriesTsconfig,
-    'packages/@overeng/utils': utilsTsconfig,
-    'packages/@overeng/utils-dev': utilsDevTsconfig,
   }
   const rootWorkspacePackagePaths = rootWorkspacePackages.map(
     (pkg) => pkg.meta.workspace.memberPath,

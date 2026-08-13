@@ -98,52 +98,38 @@ let
     entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
   };
   buck2Machine = pkgs.buck2;
-  buck2SourceCli = mkSourceCli {
-    name = "buck2-task";
-    entry = "packages/@overeng/buck2-launcher/src/cli.ts";
-  };
-  buck2Task = "${buck2SourceCli}/bin/buck2-task";
-  buck2Stage0Resolver = mkSourceCli {
-    name = "buck2-stage0-config";
-    entry = "packages/@overeng/buck2-tools/src/stage0-config-cli.ts";
-  };
+  buck2ExecutionPlatform =
+    {
+      x86_64-linux = "x86_64-linux";
+      aarch64-linux = "aarch64-linux";
+      aarch64-darwin = "aarch64-macos";
+    }
+    .${currentSystem} or (throw "Buck2 does not admit execution platform ${currentSystem}");
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
-  buck2Stage0SemanticArgs = lib.concatMapStringsSep " " (
-    path:
-    let
-      repositoryPrefix = "${toString ./.}/";
-      absolute = toString path;
-      relative = lib.removePrefix repositoryPrefix absolute;
-    in
-    assert lib.assertMsg (
-      relative != absolute && relative != ""
-    ) "Buck stage-0 semantic inputs must be files below the repository root";
-    # Contents are runtime fingerprint inputs, not Nix inputs of the shell.
-    # The resolver independently validates repository containment at runtime.
-    "--semantic-input ${lib.escapeShellArg (builtins.unsafeDiscardStringContext relative)}"
-  ) buck2Stage0Definition.semantic-inputs;
-  buck2Stage0SemanticTreeArgs = lib.concatMapStringsSep " " (
-    path:
-    let
-      repositoryPrefix = "${toString ./.}/";
-      absolute = toString path;
-      relative = lib.removePrefix repositoryPrefix absolute;
-    in
-    assert lib.assertMsg (
-      relative != absolute && relative != ""
-    ) "Buck stage-0 semantic input trees must be below the repository root";
-    "--semantic-input-tree ${lib.escapeShellArg (builtins.unsafeDiscardStringContext relative)}"
-  ) buck2Stage0Definition.semantic-input-trees;
-  buck2Stage0Resolve = ''
-    cache_root="''${XDG_CACHE_HOME:-''${HOME:?HOME is required}/.cache}/effect-utils/buck2-stage0"
-    ${buck2Stage0Resolver}/bin/buck2-stage0-config \
-      --repo-root "$root" \
-      --cache-root "$cache_root" \
-      --nix-bin ${pkgs.nix}/bin/nix \
-      --flock-bin ${pkgs.flock}/bin/flock \
-      --bun-bin ${pkgs.bun}/bin/bun \
-      ${buck2Stage0SemanticArgs} \
-      ${buck2Stage0SemanticTreeArgs}
+  buck2CapabilityProjectionTools = [
+    pkgs.bash
+    pkgs.coreutils
+    pkgs.findutils
+    pkgs.flock
+    pkgs.gawk
+    pkgs.gnugrep
+    pkgs.jq
+  ];
+  buck2CapabilityProjection = pkgs.writeShellScript "buck2-capability-projection" ''
+    set -euo pipefail
+    export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
+    exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh \
+      "''${DEVENV_ROOT:-$PWD}" ${lib.escapeShellArg buck2ExecutionPlatform} \
+      archive-tool effect-utils/buck2-archive-tool/v1 ${
+        buck2Stage0Definition."archive-tool"
+      }/bin/buck2-archive-tool \
+      closure-tool effect-utils/buck2-closure-tool/v1 ${
+        buck2Stage0Definition."closure-tool"
+      }/bin/buck2-closure-tool \
+      package-evidence effect-utils/buck2-package-evidence/v1 ${
+        buck2Stage0Definition."package-evidence"
+      }/bin/buck2-package-evidence \
+      product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product
   '';
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -196,7 +182,6 @@ let
   # See: context/workarounds/bun-issues.md
   allPackages = [
     "packages/@overeng/agent-session-ingest"
-    "packages/@overeng/buck2-launcher"
     "packages/@overeng/buck2-tools"
     "packages/@overeng/content-address"
     "packages/@overeng/utils"
@@ -556,6 +541,7 @@ in
   effectUtils.genie.extraInputGlobs = genieExtraInputGlobs;
 
   packages = [
+    buck2Stage0Definition.archive-tool
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript
@@ -570,10 +556,11 @@ in
     # Rust binaries on PATH for local smoke tests and downstream wrappers.
     repoFlake.packages.${currentSystem}.otelite
     repoFlake.packages.${currentSystem}.otel-scrape
-    # Nix-distributed direct Buck launcher; its wrapper pins the Buck binary.
+    # Nix-distributed Buck binary used by direct repository tasks.
     buck2Machine
-    buck2SourceCli
-    buck2Stage0Resolver
+    buck2Stage0Definition.closure-tool
+    buck2Stage0Definition.package-evidence
+    buck2Stage0Definition.product
     cliBuildStamp.package
     ciToolsSourceCli
     (mkSourceCli {
@@ -786,34 +773,51 @@ in
     '';
   };
 
+  tasks."buck2:capabilities:project" = {
+    description = "Atomically project exact Nix support capabilities for Buck2 analysis";
+    exec = trace.exec "buck2:capabilities:project" ''
+      set -euo pipefail
+      ${buck2CapabilityProjection}
+      ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh --check "$PWD"
+    '';
+  };
+
+  tasks."buck2:capabilities:test" = {
+    description = "Test exact, idempotent, invalidating Buck2 capability projection";
+    after = [ "buck2:capabilities:project" ];
+    exec = trace.exec "buck2:capabilities:test" ''
+      set -euo pipefail
+      export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
+      exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.test.sh "$PWD"
+    '';
+  };
+
   tasks."buck2:build:foundation" = {
     description = "Build exact-closure Buck2 evidence with remote execution/cache disabled";
+    after = [ "buck2:capabilities:project" ];
     exec = trace.exec "buck2:build:foundation" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      buck2_stage0_config="$(${buck2Stage0Resolve})"
       export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
-      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg currentSystem}
-      exec ${buck2Task} \
-        --evidence-dir "$root/tmp/buck2-evidence" \
-        --print-command \
-        -- build --config-file "$buck2_stage0_config" //:buck2_foundation --local-only --no-remote-cache
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
+      exec ${pkgs.buck2}/bin/buck2 \
+        build //:buck2_foundation --local-only --no-remote-cache
     '';
   };
 
   tasks."buck2:test:foundation" = {
     description = "Run strict Buck2 closure and package-evidence tests locally";
-    after = [ "cargo:test:buck2-foundation" ];
+    after = [
+      "buck2:capabilities:project"
+      "cargo:test:buck2-foundation"
+    ];
     exec = trace.exec "buck2:test:foundation" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      buck2_stage0_config="$(${buck2Stage0Resolve})"
       export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
-      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg currentSystem}
-      exec ${buck2Task} \
-        --evidence-dir "$root/tmp/buck2-evidence" \
-        --print-command \
-        -- build --config-file "$buck2_stage0_config" \
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
+      exec ${pkgs.buck2}/bin/buck2 \
+        build \
           //:buck2_foundation \
           --local-only --no-remote-cache
     '';
@@ -821,24 +825,26 @@ in
 
   tasks."buck2:e2e:tui-core" = {
     description = "Generate, build, and observe the provisional tui-core Buck input-plan evidence";
-    after = [ "genie:run" ];
+    after = [
+      "buck2:capabilities:project"
+      "genie:run"
+    ];
     exec = trace.exec "buck2:e2e:tui-core" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      buck2_stage0_config="$(${buck2Stage0Resolve})"
       export AWK_BIN=${pkgs.gawk}/bin/awk
       export JQ_BIN=${pkgs.jq}/bin/jq
       export NIX_BIN=${pkgs.nix}/bin/nix
-      export BUCK2_STAGE0_CONFIG="$buck2_stage0_config"
       export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
-      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg currentSystem}
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
       exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
-        "$root" ${buck2Task} //packages/@overeng/tui-core:typescript_input_plan
+        "$root" ${pkgs.buck2}/bin/buck2 //packages/@overeng/tui-core:typescript_input_plan
     '';
   };
 
   tasks."buck2:nix-bridge:check" = {
     description = "Check the strict build-product contract and fail-closed artifact importer";
+    after = [ "buck2:capabilities:project" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
@@ -848,11 +854,10 @@ in
 
   tasks."buck2:foundation:graph-check" = {
     description = "Prove the Buck2 foundation has no repo-owned Python or CPython graph edges";
+    after = [ "buck2:capabilities:project" ];
     exec = trace.exec "buck2:foundation:graph-check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      buck2_stage0_config="$(${buck2Stage0Resolve})"
-      export BUCK2_STAGE0_CONFIG="$buck2_stage0_config"
       exec ${pkgs.bash}/bin/bash scripts/buck2-foundation-graph-check.sh \
         "$PWD" ${pkgs.buck2}/bin/buck2
     '';
@@ -860,6 +865,7 @@ in
 
   tasks."buck2:benchmark:check" = {
     description = "Validate the Buck2 benchmark parser, immutable evidence, and non-mutating dry-run contract";
+    after = [ "buck2:capabilities:project" ];
     exec = trace.exec "buck2:benchmark:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -874,24 +880,25 @@ in
 
   tasks."buck2:invalidation:e2e" = {
     description = "Prove canonical source mutation invalidates Buck2 through the configured file watcher";
+    after = [ "buck2:capabilities:project" ];
     exec = trace.exec "buck2:invalidation:e2e" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      buck2_stage0_config="$(${buck2Stage0Resolve})"
       export AWK_BIN=${pkgs.gawk}/bin/awk
       export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
-      export BUCK2_STAGE0_CONFIG="$buck2_stage0_config"
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
       exec ${pkgs.bash}/bin/bash scripts/buck2-invalidation-e2e.sh \
-        "$root" ${pkgs.buck2}/bin/buck2
+        "$root" ${pkgs.buck2}/bin/buck2 \
+        ${buck2Stage0Definition."package-evidence"}/bin/buck2-package-evidence
     '';
   };
 
   tasks."buck2:platform:check" = {
     description = "Reject a Buck2 package target whose declared platform differs from the local-only host";
+    after = [ "buck2:capabilities:project" ];
     exec = trace.exec "buck2:platform:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      buck2_stage0_config="$(${buck2Stage0Resolve})"
       isolation="platform-check-$$-$RANDOM"
       stderr_file="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/buck2-platform-check.XXXXXX")"
       cleanup() {
@@ -904,7 +911,7 @@ in
 
       if ${pkgs.buck2}/bin/buck2 \
         --isolation-dir "$isolation" \
-        build --config-file "$buck2_stage0_config" --fake-arch aarch64 \
+        build --fake-arch aarch64 \
         //packages/@overeng/tui-core:typescript_input_plan \
         --local-only --no-remote-cache \
         >/dev/null 2>"$stderr_file"; then
@@ -930,6 +937,8 @@ in
   tasks."buck2:check" = {
     description = "Run Buck2 foundation, invalidation, platform, Nix bridge, and benchmark gates";
     after = [
+      "buck2:capabilities:project"
+      "buck2:capabilities:test"
       "buck2:build:foundation"
       "buck2:test:foundation"
       "buck2:foundation:graph-check"
@@ -972,6 +981,7 @@ in
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
+    ${buck2CapabilityProjection}
     ${cliBuildStamp.shellHook}
   '';
 

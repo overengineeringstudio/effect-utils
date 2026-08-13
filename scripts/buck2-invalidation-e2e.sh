@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="${1:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN}"
-buck2_bin="${2:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN}"
-stage0_config="${BUCK2_STAGE0_CONFIG:?BUCK2_STAGE0_CONFIG is required}"
+repo_root="${1:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN PACKAGE_EVIDENCE_TOOL}"
+buck2_bin="${2:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN PACKAGE_EVIDENCE_TOOL}"
+package_evidence_tool="${3:?usage: buck2-invalidation-e2e.sh REPO_ROOT BUCK2_BIN PACKAGE_EVIDENCE_TOOL}"
 target="//buck2/evidence:package_evidence"
 expected_action="root//buck2/evidence:package_evidence (buck2_package_evidence package_evidence)"
 isolation="invalidation-e2e-$$-$RANDOM"
@@ -11,14 +11,34 @@ tracked_source="$repo_root/buck2/evidence/source.txt"
 sha256_bin="${SHA256_BIN:-sha256sum}"
 awk_bin="${AWK_BIN:-awk}"
 
+execution_platform="${BUCK2_EXECUTION_PLATFORM:?BUCK2_EXECUTION_PLATFORM must name the exact host capability}"
+case "$execution_platform" in
+  x86_64-linux|aarch64-linux|aarch64-macos) ;;
+  *)
+  echo "buck2-invalidation-e2e: unsupported execution platform: $execution_platform" >&2
+  exit 64
+  ;;
+esac
+
 [ -x "$buck2_bin" ] || {
   echo "buck2-invalidation-e2e: Buck2 binary is not executable: $buck2_bin" >&2
   exit 64
 }
-[ -f "$stage0_config" ] || {
-  echo "buck2-invalidation-e2e: stage-0 config is missing: $stage0_config" >&2
+buck2_bin="$(readlink -f "$buck2_bin")"
+[ -x "$package_evidence_tool" ] || {
+  echo "buck2-invalidation-e2e: package-evidence tool is not executable: $package_evidence_tool" >&2
   exit 64
 }
+package_evidence_tool="$(readlink -f "$package_evidence_tool")"
+case "$package_evidence_tool" in
+  /nix/store/*) ;;
+  *)
+  echo "buck2-invalidation-e2e: package-evidence tool must resolve to an exact Nix store artifact" >&2
+  exit 64
+  ;;
+esac
+package_evidence_digest="$($sha256_bin "$package_evidence_tool" | "$awk_bin" '{ print $1 }')"
+package_evidence_closure="$(dirname "$package_evidence_tool")"
 [ -f "$tracked_source" ] || {
   echo "buck2-invalidation-e2e: fixture is missing: $tracked_source" >&2
   exit 64
@@ -54,13 +74,43 @@ trap 'exit 143' TERM
 cp -p "$repo_root/.buckconfig" "$test_root/.buckconfig"
 cp -R "$repo_root/buck2" "$test_root/buck2"
 mkdir -p "$test_root/toolchains"
-cp -p "$repo_root/toolchains/configured.bzl" "$test_root/toolchains/configured.bzl"
-cat >"$test_root/toolchains/BUCK" <<'EOF'
-load(":configured.bzl", "configured_exec")
+ln -s "$package_evidence_tool" "$test_root/toolchains/package-evidence-tool"
+printf '{"closureIdentity":"%s","contentDigest":"%s","executionPlatform":"%s","executableStorePath":"%s","protocol":"effect-utils/buck2-package-evidence/v1","runtimeContract":"native-executable/v1","schema":"effect-utils/buck2-support-tools/v1","toolId":"package-evidence"}\n' \
+  "$package_evidence_closure" "$package_evidence_digest" "$execution_platform" "$package_evidence_tool" \
+  >"$test_root/toolchains/package-evidence-manifest.json"
+cat >"$test_root/toolchains/exact.bzl" <<'EOF'
+def _exact_tool_impl(ctx):
+    return [
+        DefaultInfo(),
+        RunInfo(args = cmd_args([
+            ctx.attrs.executable,
+            "--capability-manifest", ctx.attrs.manifest,
+        ])),
+    ]
 
-configured_exec(
+_exact_tool = rule(
+    impl = _exact_tool_impl,
+    attrs = {
+        "executable": attrs.source(),
+        "manifest": attrs.source(),
+    },
+)
+
+def exact_tool(name, executable, manifest, **kwargs):
+    _exact_tool(
+        name = name,
+        executable = executable,
+        manifest = manifest,
+        **kwargs
+    )
+EOF
+cat >"$test_root/toolchains/BUCK" <<'EOF'
+load(":exact.bzl", "exact_tool")
+
+exact_tool(
     name = "package_evidence_tool",
-    path = read_config("buck2_stage0", "package_evidence_tool", ""),
+    executable = "package-evidence-tool",
+    manifest = "package-evidence-manifest.json",
     visibility = ["PUBLIC"],
 )
 EOF
@@ -74,7 +124,6 @@ build_and_observe() {
   output="$($buck2_bin \
     --isolation-dir "$isolation" \
     build \
-    --config-file "$stage0_config" \
     "$target" \
     --show-full-output \
     --local-only \

@@ -66,13 +66,6 @@
             dirty
             ;
         };
-        buck2-launcher = import (rootPath + "/packages/@overeng/buck2-launcher/nix/build.nix") {
-          inherit pkgs;
-          src = pkgs.lib.fileset.toSource {
-            root = ./.;
-            fileset = ./. + "/packages/@overeng/buck2-launcher/src";
-          };
-        };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -195,9 +188,11 @@
           cliPackages
           // providerCliPackages
           // {
-            inherit otelite otel-scrape buck2-launcher;
+            inherit otelite otel-scrape;
             buck2-closure-tool = buck2-stage0-tools.closure-tool;
+            buck2-archive-tool = buck2-stage0-tools.archive-tool;
             buck2-package-evidence = buck2-stage0-tools.package-evidence;
+            buck2-product = buck2-stage0-tools.product;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
@@ -255,7 +250,6 @@
         };
         apps.otelite = flake-utils.lib.mkApp { drv = otelite; };
         apps.otel-scrape = flake-utils.lib.mkApp { drv = otel-scrape; };
-        apps.buck2-launcher = flake-utils.lib.mkApp { drv = buck2-launcher; };
       }
     )
     // {

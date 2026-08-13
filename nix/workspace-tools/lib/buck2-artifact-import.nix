@@ -2,13 +2,23 @@
 #
 # Shape validation is not runtime proof. Each accepted tagged runtime dispatches
 # to an exact inspector; all other runtime kinds remain fail closed.
-{ pkgs }:
+{
+  pkgs,
+  inspectElfDynamic ? import ./buck2-runtime-inspect-elf-dynamic.nix { inherit pkgs; },
+  inspectMachODynamic ?
+    if pkgs.stdenv.hostPlatform.isDarwin then
+      import ./buck2-runtime-inspect-mach-o-dynamic.nix {
+        inherit pkgs;
+        inspectionTools = import ./buck2-darwin-inspection-tools.nix { inherit pkgs; };
+      }
+    else
+      null,
+}:
 
 let
   lib = pkgs.lib;
   contract = import ./buck2-build-product-contract.nix;
   scan = import ./buck2-artifact-scan.nix { inherit pkgs; };
-  inspectElfDynamic = import ./buck2-runtime-inspect-elf-dynamic.nix { inherit pkgs; };
 in
 {
   descriptor,
@@ -48,8 +58,15 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   url != null || artifact != null
 ) "buck2-artifact-import: a published URL or declared artifact path is required";
-if runtimeKind != "elf-dynamic" then
+if
+  !(builtins.elem runtimeKind [
+    "elf-dynamic"
+    "mach-o-dynamic"
+  ])
+then
   throw "buck2-artifact-import: runtime inspector is not available for ${runtimeKind}"
+else if runtimeKind == "mach-o-dynamic" && inspectMachODynamic == null then
+  throw "buck2-artifact-import: mach-o-dynamic inspection requires a Darwin Nix tool realization"
 else
   pkgs.runCommand "${checkedDescriptor.name}-buck2-import"
     {
@@ -80,7 +97,9 @@ else
       ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
         --no-same-owner --no-same-permissions
       ${scan} tree "$out"
-      ${inspectElfDynamic} ${descriptorFile} "$out"
+      ${
+        if runtimeKind == "elf-dynamic" then inspectElfDynamic else inspectMachODynamic
+      } ${descriptorFile} "$out"
 
       ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
       while IFS= read -r -d "" file; do
