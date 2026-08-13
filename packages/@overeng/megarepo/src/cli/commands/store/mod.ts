@@ -133,7 +133,7 @@ type GeneratedArtifactScan =
   | { readonly _tag: 'complete'; readonly count: number; readonly newestMtimeMs: number }
   | {
       readonly _tag: 'incomplete'
-      readonly cause: 'entry-cap' | 'timeout' | 'symlink' | 'cross-device' | 'not-directory' | 'io'
+      readonly cause: 'entry-cap' | 'timeout' | 'symlink' | 'not-directory' | 'io'
     }
 
 const scanGeneratedArtifact = ({ path }: { path: string }) =>
@@ -177,10 +177,6 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
           }
           if (info.isSymbolicLink() === true) {
             finish({ _tag: 'incomplete', cause: 'symlink' })
-            return
-          }
-          if (info.dev !== artifactRootInfo.dev) {
-            finish({ _tag: 'incomplete', cause: 'cross-device' })
             return
           }
           newestMtimeMs = Math.max(newestMtimeMs, info.mtimeMs)

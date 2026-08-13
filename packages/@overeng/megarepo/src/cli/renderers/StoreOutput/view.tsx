@@ -484,6 +484,7 @@ const StoreFetchView = ({
 }
 
 /** GC view - show garbage collection results */
+// oxlint-disable-next-line overeng/exports-first -- exported for focused renderer contract tests
 export const StoreGcView = ({
   basePath,
   results,
@@ -686,6 +687,7 @@ const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
 }
 
 /** GC Result line component */
+// oxlint-disable-next-line overeng/exports-first -- exported for focused renderer contract tests
 export const StoreGcResultRow = ({
   result,
   dryRun,
