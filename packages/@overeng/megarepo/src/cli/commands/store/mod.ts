@@ -155,7 +155,10 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
     void (async () => {
       try {
         const artifactRootInfo = await lstat(path)
-        if (artifactRootInfo.isDirectory() === false || artifactRootInfo.isSymbolicLink() === true) {
+        if (
+          artifactRootInfo.isDirectory() === false ||
+          artifactRootInfo.isSymbolicLink() === true
+        ) {
           finish({ _tag: 'incomplete', cause: 'not-directory' })
           return
         }
@@ -612,8 +615,14 @@ const isNormalizedAbsolutePath = (path: string): boolean =>
   normalize(path) === path &&
   (path === '/' || normalizeStorePath(path) === path)
 
-export const compareCanonicalPlanPaths = (left: string, right: string): number =>
-  Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'))
+/** Compare plan paths by their canonical UTF-8 byte representation. */
+export const compareCanonicalPlanPaths = ({
+  left,
+  right,
+}: {
+  left: string
+  right: string
+}): number => Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'))
 
 /** A named (`refs/heads/*`) worktree paired with the repo it belongs to. */
 interface NamedWorktreeTarget {
@@ -1705,8 +1714,7 @@ const storeGcCommand = Cli.Command.make(
                   !('activeWorkspacePaths' in parsed) ||
                   Array.isArray(parsed.activeWorkspacePaths) === false ||
                   parsed.activeWorkspacePaths.some(
-                    (path) =>
-                      typeof path !== 'string' || isNormalizedAbsolutePath(path) === false,
+                    (path) => typeof path !== 'string' || isNormalizedAbsolutePath(path) === false,
                   ) === true ||
                   !('expiresAtMs' in parsed) ||
                   typeof parsed.expiresAtMs !== 'number' ||
@@ -1778,7 +1786,8 @@ const storeGcCommand = Cli.Command.make(
                     cheapReason === undefined
                       ? yield* scanGeneratedArtifact({ path: artifactPath })
                       : undefined
-                  const mtimeMs = traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
+                  const mtimeMs =
+                    traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
                   const candidateNow = yield* Clock.currentTimeMillis
                   const reason =
                     cheapReason ??
@@ -1834,7 +1843,9 @@ const storeGcCommand = Cli.Command.make(
                 outcome: result.outcome,
                 mtimeMs: result.mtimeMs,
               }))
-              .toSorted((left, right) => compareCanonicalPlanPaths(left.path, right.path))
+              .toSorted((left, right) =>
+                compareCanonicalPlanPaths({ left: left.path, right: right.path }),
+              )
             planSha256 = createHash('sha256').update(JSON.stringify(canonicalPlan)).digest('hex')
             for (const result of generatedResults) results.push(result)
           }

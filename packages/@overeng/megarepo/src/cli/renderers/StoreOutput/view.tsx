@@ -523,8 +523,7 @@ export const StoreGcView = ({
   const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
   const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
   const kept = results.filter(
-    (r) =>
-      r.status === 'kept' && r.outcome !== 'would-delete' && r.outcome !== 'deleted',
+    (r) => r.status === 'kept' && r.outcome !== 'would-delete' && r.outcome !== 'deleted',
   )
   const errors = results.filter((r) => r.status === 'error')
 
@@ -761,17 +760,7 @@ export const StoreGcResultRow = ({
     <Box flexDirection="column">
       <Box flexDirection="row">
         {getSymbol()}
-        {isDim === true ? (
-          <Text dim>
-            {' '}
-            {label}{' '}
-          </Text>
-        ) : (
-          <Text>
-            {' '}
-            {label}{' '}
-          </Text>
-        )}
+        {isDim === true ? <Text dim> {label} </Text> : <Text> {label} </Text>}
         {getStatusText()}
       </Box>
       {result.status === 'archived' && result.recoverPath !== undefined && (

@@ -88,7 +88,13 @@ const StoreGcConfigOverride = Schema.Struct({
 /** Parsed `gc-config.json` override: every timer optional. */
 export type StoreGcConfigOverride = Schema.Schema.Type<typeof StoreGcConfigOverride>
 
-const validDuration = (value: number | undefined, fallback: number): number =>
+const validDuration = ({
+  value,
+  fallback,
+}: {
+  value: number | undefined
+  fallback: number
+}): number =>
   value !== undefined && Number.isFinite(value) === true && value >= 0 ? value : fallback
 
 /** Relative path of the override file within the store. */
@@ -104,22 +110,25 @@ const gcConfigPath = (storeBasePath: AbsoluteDirPath) =>
  * the default. Pure so it is the unit-tested seam for the merge contract.
  */
 export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConfig => ({
-  absenceGraceMs: validDuration(override.absenceGraceMs, DEFAULT_STORE_GC_CONFIG.absenceGraceMs),
-  postMergeGraceMs: validDuration(
-    override.postMergeGraceMs,
-    DEFAULT_STORE_GC_CONFIG.postMergeGraceMs,
-  ),
-  archiveRetentionMs: validDuration(
-    override.archiveRetentionMs,
-    DEFAULT_STORE_GC_CONFIG.archiveRetentionMs,
-  ),
+  absenceGraceMs: validDuration({
+    value: override.absenceGraceMs,
+    fallback: DEFAULT_STORE_GC_CONFIG.absenceGraceMs,
+  }),
+  postMergeGraceMs: validDuration({
+    value: override.postMergeGraceMs,
+    fallback: DEFAULT_STORE_GC_CONFIG.postMergeGraceMs,
+  }),
+  archiveRetentionMs: validDuration({
+    value: override.archiveRetentionMs,
+    fallback: DEFAULT_STORE_GC_CONFIG.archiveRetentionMs,
+  }),
   generatedArtifacts: {
     enabled:
       override.generatedArtifacts?.enabled ?? DEFAULT_STORE_GC_CONFIG.generatedArtifacts.enabled,
-    retentionMs: validDuration(
-      override.generatedArtifacts?.retentionMs,
-      DEFAULT_STORE_GC_CONFIG.generatedArtifacts.retentionMs,
-    ),
+    retentionMs: validDuration({
+      value: override.generatedArtifacts?.retentionMs,
+      fallback: DEFAULT_STORE_GC_CONFIG.generatedArtifacts.retentionMs,
+    }),
     allowlist:
       override.generatedArtifacts?.allowlist ??
       DEFAULT_STORE_GC_CONFIG.generatedArtifacts.allowlist,

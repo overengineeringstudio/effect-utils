@@ -155,7 +155,8 @@ describe('mr store gc --generated-artifacts', () => {
         yield* configure({ config: f.config, manifest: f.manifest })
         const artifact = yield* oldIgnoredArtifact(f.worktree)
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(generated(result.results, 'node_modules')?.outcome).toBe('would-delete')
+        const row = generated(result.results, 'node_modules')
+        expect(row?.outcome, row?.message).toBe('would-delete')
         expect(result.planSha256).toMatch(/^[0-9a-f]{64}$/)
         const repeated = yield* runGc({
           cwd: f.outside,
@@ -218,7 +219,8 @@ describe('mr store gc --generated-artifacts', () => {
           utimes(`${artifact}/fixture.txt`, new Date(NOW - 1_000), new Date(NOW - 1_000)),
         )
         const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
-        expect(generated(result.results, 'node_modules')?.reason).toBe('retention')
+        const row = generated(result.results, 'node_modules')
+        expect(row?.reason, row?.message).toBe('retention')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

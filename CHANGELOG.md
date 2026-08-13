@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **@overeng/megarepo**: add a read-only `mr store gc --generated-artifacts
-  --dry-run` planner for safely identifying stale ignored build artifacts. The
+--dry-run` planner for safely identifying stale ignored build artifacts. The
   planner requires external agent-liveness evidence and fails closed on
   uncertain cleanliness, ignore status, or bounded filesystem traversal.
 
