@@ -73,8 +73,10 @@ let
           --glob '!.git/**' \
           --glob '!.devenv/**' \
           --glob '!node_modules/**' \
+          --glob '!*.genie.ts' \
+          --glob '!**/*.genie.ts' \
           '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
-      } | LC_ALL=C sort -u
+      } | ${pkgs.gnused}/bin/sed 's#^\./##' | LC_ALL=C sort -u
     }
 
     assert_no_orphaned_genie_outputs() {
@@ -84,7 +86,12 @@ let
 
       orphaned=0
       while IFS= read -r output; do
+        output="''${output#./}"
         [ -n "$output" ] || continue
+        # Older marker census accidentally classified generator sources whose
+        # template literals contained a Source marker as generated outputs.
+        # Such paths can never be owned outputs and are safe to retire.
+        case "$output" in *.genie.ts) continue ;; esac
         if [ -f "$output" ] && ! ${pkgs.gnugrep}/bin/grep -Fqx -- "$output" "$current_manifest"; then
           printf 'Genie ownership error: retained generated output has no current owner: %s\n' "$output" >&2
           orphaned=1
