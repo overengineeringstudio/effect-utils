@@ -152,4 +152,34 @@ if (
   exit 1
 fi
 
+retained_state="$(cat "$test_dir/.devenv/task-cache/genie-run/state.hash")"
+rm "$test_dir/contract.json.genie.ts"
+if (
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_exec"
+); then
+  echo "FAIL: deleting a Genie owner while retaining its generated output should fail closed"
+  exit 1
+fi
+if ! grep -qxF 'contract.json' "$test_dir/.devenv/task-cache/genie-run/generated-files.txt"; then
+  echo "FAIL: rejected owner deletion should retain the previous ownership manifest"
+  exit 1
+fi
+if [ "$(cat "$test_dir/.devenv/task-cache/genie-run/state.hash")" != "$retained_state" ]; then
+  echo "FAIL: rejected owner deletion should retain the previous warm-state hash"
+  exit 1
+fi
+
+rm "$test_dir/contract.json"
+(
+  cd "$test_dir"
+  PATH="$test_dir/bin:$PATH" OTEL_EXPORTER_OTLP_ENDPOINT= OTELITE_HTTP_ENDPOINT= OTEL_SPAN_SPOOL_DIR= \
+    bash -c "$run_exec"
+)
+if grep -qxF 'contract.json' "$test_dir/.devenv/task-cache/genie-run/generated-files.txt"; then
+  echo "FAIL: deleting an owner and its output together should retire retained ownership"
+  exit 1
+fi
+
 echo "Genie module option smoke test passed."

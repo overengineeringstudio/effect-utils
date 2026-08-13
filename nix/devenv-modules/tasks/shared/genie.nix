@@ -44,6 +44,7 @@ let
             ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts'
             ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts'
           } | while IFS= read -r -d $'\0' source; do
+            [ -f "$source" ] || continue
             output="''${source%.genie.ts}"
             if [ -f "$output" ]; then
               printf '%s\n' "$output"
@@ -74,6 +75,22 @@ let
           --glob '!node_modules/**' \
           '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
       } | LC_ALL=C sort -u
+    }
+
+    assert_no_orphaned_genie_outputs() {
+      retained_manifest="$1"
+      current_manifest="$2"
+      [ -f "$retained_manifest" ] || return 0
+
+      orphaned=0
+      while IFS= read -r output; do
+        [ -n "$output" ] || continue
+        if [ -f "$output" ] && ! ${pkgs.gnugrep}/bin/grep -Fqx -- "$output" "$current_manifest"; then
+          printf 'Genie ownership error: retained generated output has no current owner: %s\n' "$output" >&2
+          orphaned=1
+        fi
+      done < "$retained_manifest"
+      [ "$orphaned" -eq 0 ]
     }
   '';
   # Enumerate the extra non-`.genie.ts` generator inputs so their content joins
@@ -149,6 +166,14 @@ let
         mkdir -p ${lib.escapeShellArg cacheRoot}
         ${computeGenieStateHash}
         genie
+
+        generated_tmp_file="$(mktemp)"
+        collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
+        if ! assert_no_orphaned_genie_outputs ${lib.escapeShellArg generatedFilesFile} "$generated_tmp_file"; then
+          rm "$generated_tmp_file"
+          exit 1
+        fi
+
         cache_value="$(compute_genie_state_hash)"
         tmp_file="$(mktemp)"
         printf "%s" "$cache_value" > "$tmp_file"
@@ -158,8 +183,6 @@ let
           mv "$tmp_file" ${lib.escapeShellArg stateFile}
         fi
 
-        generated_tmp_file="$(mktemp)"
-        collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
         mv "$generated_tmp_file" ${lib.escapeShellArg generatedFilesFile}
       '';
       status = trace.status "genie:run" "binary" ''
