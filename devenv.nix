@@ -30,6 +30,9 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
   );
+  buck2RootedNixConfigScript = pkgs.writeText "buck2-rooted-nix-config.sh" (
+    builtins.readFile ./nix/devenv-modules/tasks/shared/buck2-rooted-nix-config.sh
+  );
   rustCrates = [
     {
       name = "otelite";
@@ -401,11 +404,20 @@ let
     "context/otel-scrape/telemetry-registry.json"
     "genie/buck2/*.ts"
     "packages/@overeng/buck2-tools/src/**/*.ts"
+    "packages/@overeng/otel-scrape/Cargo.toml"
+    "packages/@overeng/otel-scrape/src/*.rs"
+    "packages/@overeng/otel-scrape/src/**/*.rs"
+    "rust/Cargo.lock"
+    "rust/Cargo.toml"
+    "rust/reindeer.bzl"
+    "rust/reindeer.toml"
+    "rust/third-party/BUCK"
+    "rust/third-party/fixups/**/*.toml"
+    "packages/@overeng/tui-core/buck2/target.ts"
     "packages/@overeng/megarepo/bin/**/*.ts"
     "packages/@overeng/megarepo/buck2/**/*.ts"
     "packages/@overeng/megarepo/src/**/*.ts"
     "packages/@overeng/megarepo/src/**/*.tsx"
-    "packages/@overeng/tui-core/buck2/target.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.tsx"
     "packages/@overeng/tui-core/src/**/*.cts"
@@ -428,8 +440,6 @@ in
     # composes with the full stack above without importing it a second time.
     (import ./nix/devenv-modules/observability.nix {
       project = "effect-utils";
-      # Shell-entry setup is intentionally absent. Profile an instantiated,
-      # non-mutating task so check:all retains its trace integrity gate.
       profile = {
         name = "genie-check";
         task = "genie:check";
@@ -552,9 +562,6 @@ in
       # pnpm, Genie, megarepo state, and the repository revision.
       runOnEnterShell = false;
       requiredTasks = [ ];
-      # Reuse the Genie semantic-input SSOT in the cheap Git-index outer
-      # fingerprint so a warm shell cannot bypass projection invalidation.
-      extraFingerprintGlobs = genieExtraInputGlobs;
       # Keep shell entry resilient (R12): optional tasks run via @complete.
       # Ordering ensures source CLIs have deps before use.
       optionalTasks = [
@@ -885,12 +892,99 @@ in
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       export AWK_BIN=${pkgs.gawk}/bin/awk
+      export CP_BIN=${pkgs.coreutils}/bin/cp
+      export DD_BIN=${pkgs.coreutils}/bin/dd
+      export GREP_BIN=${pkgs.gnugrep}/bin/grep
       export JQ_BIN=${pkgs.jq}/bin/jq
+      export MKTEMP_BIN=${pkgs.coreutils}/bin/mktemp
       export NIX_BIN=${pkgs.nix}/bin/nix
       export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
       export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
       exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
         "$root" ${pkgs.buck2}/bin/buck2 //packages/@overeng/tui-core:typescript_input_plan
+    '';
+  };
+
+  tasks."buck2:build:megarepo" = {
+    description = "Build the mr product from its exact Buck TypeScript graph";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:build:megarepo" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
+      exec ${pkgs.buck2}/bin/buck2 \
+        build \
+        -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        //packages/@overeng/megarepo:mr --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:test:typescript-product" = {
+    description = "Test the Python-free TypeScript product tool";
+    exec = trace.exec "buck2:test:typescript-product" ''
+      set -euo pipefail
+      cd rust
+      exec cargo test --locked --package buck2-typescript-product
+    '';
+  };
+
+  tasks."buck2:e2e:megarepo-contract" = {
+    description = "Build mr and pass its emitted descriptor through the canonical Nix contract";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:e2e:megarepo-contract" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      export BUCK2_PRODUCT_NIXPKGS=${repoFlake.inputs.nixpkgs}
+      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export CP_BIN=${pkgs.coreutils}/bin/cp
+      export DD_BIN=${pkgs.coreutils}/bin/dd
+      export GREP_BIN=${pkgs.gnugrep}/bin/grep
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export MKTEMP_BIN=${pkgs.coreutils}/bin/mktemp
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export RM_BIN=${pkgs.coreutils}/bin/rm
+      exec ${pkgs.bash}/bin/bash scripts/buck2-megarepo-product-e2e.sh \
+        "$root" ${pkgs.buck2}/bin/buck2 //packages/@overeng/megarepo:mr \
+        -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl}
+    '';
+  };
+
+  tasks."buck2:benchmark:megarepo" = {
+    description = "Measure warm, role-excluded, relevant, and coarse mr Buck invalidation boundaries";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:benchmark:megarepo" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      output="$root/tmp/buck2-benchmark/megarepo-mr.jsonl"
+      ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
+        --execute --in-place --buck-incremental-only --buck-bin ${pkgs.buck2}/bin/buck2 \
+        --buck-target //packages/@overeng/megarepo:mr \
+        --buck-config buck2_nix.bun=${pkgs.bun}/bin/bun \
+        --buck-config buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        --buck-config buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        --buck-config buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        --buck-config buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        --buck-config buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        --work-contract megarepo-cli-product/no-equivalent-devenv-lane/v1 \
+        --relevant-path packages/@overeng/megarepo/src/lib/version.ts \
+        --declared-unreachable-path packages/@overeng/megarepo/src/buck2-declared-unreachable-fixture.ts \
+        --irrelevant-path packages/@overeng/megarepo/src/lib/ref.unit.test.ts \
+        --runs 7 --warmups 2 --isolation-dir megarepo-mr-benchmark \
+        --output "$output"
+      exec ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/assert-invalidation.mjs "$output"
     '';
   };
 
@@ -1046,6 +1140,313 @@ in
         package-evidence effect-utils/buck2-package-evidence/v1 ${
           buck2Stage0Definition."package-evidence"
         }/bin/buck2-package-evidence
+  tasks."buck2:rust-musl:check" = lib.mkIf (currentSystem == "x86_64-linux") {
+    description = "Prove the Nix-authored Rust toolchain, target, and execution-platform contract";
+    exec = trace.exec "buck2:rust-musl:check" ''
+      set -euo pipefail
+      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-rust-toolchain-identity-static.sh "$PWD"
+      isolation="rust-musl-check-$$-$RANDOM"
+      stderr_file="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/buck2-rust-musl-check.XXXXXX")"
+      toolchain_root_dir=""
+      cleanup() {
+        ${pkgs.buck2}/bin/buck2 --isolation-dir "$isolation" kill >/dev/null 2>&1 || true
+        if [ -n "$toolchain_root_dir" ]; then
+          ${pkgs.coreutils}/bin/rm -f "$toolchain_root_dir/toolchain"
+          ${pkgs.coreutils}/bin/rmdir "$toolchain_root_dir" 2>/dev/null || true
+        fi
+        ${pkgs.coreutils}/bin/rm -f "$stderr_file"
+      }
+      trap cleanup EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+
+      # Keep the large cross-toolchain out of the default devenv closure. This
+      # explicit task boundary realizes it only when the Rust probe is run. The
+      # temporary out-link roots the config and its transitive toolchain closure
+      # until every Buck invocation has finished, including under concurrent GC.
+      toolchain_root_dir="$(${pkgs.coreutils}/bin/mktemp -d "''${TMPDIR:-/tmp}/buck2-rust-musl-root.XXXXXX")"
+      toolchain_config="$(${pkgs.nix}/bin/nix build \
+        --out-link "$toolchain_root_dir/toolchain" \
+        --print-out-paths \
+        .#buck2-rust-musl-toolchain-config)"
+
+      buck2_with_toolchain_root() {
+        if [ ! -L "$toolchain_root_dir/toolchain" ] || \
+          [ "$(${pkgs.coreutils}/bin/readlink -f "$toolchain_root_dir/toolchain")" != "$toolchain_config" ] || \
+          [ ! -e "$toolchain_config" ]; then
+          echo "buck2:rust-musl:check: toolchain GC root disappeared before Buck completed" >&2
+          return 1
+        fi
+        ${pkgs.buck2}/bin/buck2 "$@"
+      }
+
+      common=(
+        --isolation-dir "$isolation"
+        build
+        --config-file "$toolchain_config"
+        --target-platforms //buck2/platforms:target_x86_64_linux_musl_static
+        //buck2/rust:static_hello
+        //buck2/rust:x86_64_linux_musl_config_integrity
+        --local-only
+        --no-remote-cache
+      )
+
+      if buck2_with_toolchain_root "''${common[@]}" \
+        --config build.execution_platforms=prelude//platforms:default \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: default execution platform unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "No compatible execution platform" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing execution-platform rejection" >&2
+        exit 1
+      }
+
+      # The false narrow identity must also fail through Prelude's conventional
+      # Rust provider used by the real OTEL product, not only static_hello.
+      if buck2_with_toolchain_root \
+        --isolation-dir "$isolation" \
+        build --config-file "$toolchain_config" \
+        --target-platforms //buck2/platforms:target_x86_64_linux_musl_static \
+        //packages/@overeng/otel-scrape:product \
+        --config rust_toolchain.compile_identity=sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
+        --local-only --no-remote-cache \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: false OTEL compile identity unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "toolchain identity digest mismatch" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing OTEL compile-identity rejection" >&2
+        exit 1
+      }
+
+      if buck2_with_toolchain_root "''${common[@]}" \
+        --config rust_toolchain.target_platform=//buck2/platforms:target_x86_64_linux_glibc_dynamic \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: mismatched Nix toolchain metadata unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "Rust toolchain target platform mismatch" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing toolchain-metadata rejection" >&2
+        exit 1
+      }
+
+      if buck2_with_toolchain_root "''${common[@]}" \
+        --config rust_toolchain.rustc=/nix/store/00000000000000000000000000000000-mismatch/bin/rustc \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: stale toolchain identity unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "Rust config-integrity material does not match" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing identity-material rejection" >&2
+        exit 1
+      }
+
+      # Destructive control: an omitted configured executable must fail before
+      # analysis can accept the Nix-authored aggregate identity.
+      if buck2_with_toolchain_root "''${common[@]}" \
+        --config rust_toolchain.ar= \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: omitted archiver unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "ar must be an absolute Nix store executable" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing omitted-archiver rejection" >&2
+        exit 1
+      }
+
+      if buck2_with_toolchain_root "''${common[@]}" \
+        --config rust_toolchain.compile_identity=sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: false toolchain identity unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "toolchain identity digest mismatch" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing recomputed identity rejection" >&2
+        exit 1
+      }
+
+      if buck2_with_toolchain_root "''${common[@]}" \
+        --config rust_toolchain.config_integrity_identity=sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
+        >/dev/null 2>"$stderr_file"; then
+        echo "buck2:rust-musl:check: false config-integrity identity unexpectedly admitted" >&2
+        exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F "toolchain identity digest mismatch" "$stderr_file" >/dev/null || {
+        echo "buck2:rust-musl:check: missing config-integrity digest rejection" >&2
+        exit 1
+      }
+
+      build_output="$(buck2_with_toolchain_root "''${common[@]}" --show-full-output)"
+      binary="$(printf '%s\n' "$build_output" | ${pkgs.gawk}/bin/awk \
+        '$1 == "root//buck2/rust:static_hello" { print $2; exit }')"
+      [ -f "$binary" ] || {
+        echo "buck2:rust-musl:check: Buck did not report the static binary output" >&2
+        exit 1
+      }
+      ${pkgs.binutils}/bin/readelf -h "$binary" \
+        | ${pkgs.gnugrep}/bin/grep -F "Machine:" \
+        | ${pkgs.gnugrep}/bin/grep -F "X86-64" >/dev/null || {
+          echo "buck2:rust-musl:check: output is not x86_64 ELF" >&2
+          exit 1
+        }
+      if ${pkgs.binutils}/bin/readelf -l "$binary" | ${pkgs.gnugrep}/bin/grep -F " INTERP " >/dev/null; then
+        echo "buck2:rust-musl:check: output declares a dynamic interpreter" >&2
+        exit 1
+      fi
+      if ${pkgs.binutils}/bin/readelf -d "$binary" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -F "(NEEDED)" >/dev/null; then
+        echo "buck2:rust-musl:check: output declares a dynamic dependency" >&2
+        exit 1
+      fi
+      if ${pkgs.gnugrep}/bin/grep -aF "/nix/store/" "$binary" >/dev/null; then
+        echo "buck2:rust-musl:check: output embeds a Nix store reference" >&2
+        exit 1
+      fi
+      sterile_output="$(${pkgs.coreutils}/bin/env -i PATH=/nonexistent "$binary")"
+      [ "$sterile_output" = "buck2-rust-musl-ok" ] || {
+        echo "buck2:rust-musl:check: output failed under a sterile runtime environment" >&2
+        exit 1
+      }
+      identity="$(${pkgs.gawk}/bin/awk '$1 == "compile_identity" { print $3 }' "$toolchain_config")"
+      echo "buck2:rust-musl:check: PASS compile_identity=$identity static=true store_refs=none sterile=true"
+    '';
+  };
+
+  tasks."buck2:rust-deps:generate" = {
+    description = "Regenerate the central Reindeer graph from the root Cargo resolution domain";
+    exec = trace.exec "buck2:rust-deps:generate" ''
+      set -euo pipefail
+      exec ${pkgs.reindeer}/bin/reindeer \
+        --cargo-path ${pkgs.cargo}/bin/cargo \
+        --rustc-path ${pkgs.rustc}/bin/rustc \
+        --config rust/reindeer.toml buckify
+    '';
+  };
+
+  tasks."buck2:rust-deps:check" = {
+    description = "Verify the central Reindeer graph is fresh";
+    exec = trace.exec "buck2:rust-deps:check" ''
+      set -euo pipefail
+      generated=rust/third-party/BUCK
+      candidate="$(${pkgs.coreutils}/bin/mktemp)"
+      trap '${pkgs.coreutils}/bin/rm -f "$candidate"' EXIT
+      ${pkgs.reindeer}/bin/reindeer \
+        --cargo-path ${pkgs.cargo}/bin/cargo \
+        --rustc-path ${pkgs.rustc}/bin/rustc \
+        --config rust/reindeer.toml buckify --stdout >"$candidate"
+      ${pkgs.diffutils}/bin/cmp "$generated" "$candidate" || {
+        echo "buck2:rust-deps:check: generated Reindeer graph is stale" >&2
+        exit 1
+      }
+    '';
+  };
+
+  tasks."buck2:otel-scrape:product" = lib.mkIf (currentSystem == "x86_64-linux") {
+    description = "Build the static otel-scrape product without invoking Cargo in Buck actions";
+    after = [
+      "genie:run"
+      "buck2:rust-deps:check"
+    ];
+    exec = trace.exec "buck2:otel-scrape:product" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      source ${buck2RootedNixConfigScript}
+      export BUCK2_ROOTED_NIX_BIN=${pkgs.nix}/bin/nix
+      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      buck2_root_nix_config toolchain_config .#buck2-rust-musl-toolchain-config
+      ${pkgs.buck2}/bin/buck2 \
+        build \
+          --config-file "$toolchain_config" \
+          --target-platforms //buck2/platforms:target_x86_64_linux_musl_static \
+          //packages/@overeng/otel-scrape:product \
+          toolchains//:conventional_rust_cxx_execution_probe \
+          --local-only --no-remote-cache
+      ${pkgs.buck2}/bin/buck2 \
+        test \
+          --config-file "$toolchain_config" \
+          --target-platforms //buck2/platforms:target_x86_64_linux_musl_static \
+          //packages/@overeng/otel-scrape:unit \
+          --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:rooted-nix-config:check" = {
+    description = "Prove Buck task Nix configs remain GC-rooted for child lifetime";
+    exec = trace.exec "buck2:rooted-nix-config:check" ''
+      exec ${pkgs.bash}/bin/bash \
+        nix/devenv-modules/tasks/shared/tests/buck2-rooted-nix-config.test.sh "$PWD"
+    '';
+  };
+
+  tasks."buck2:otel-scrape:benchmark" = lib.mkIf (currentSystem == "x86_64-linux") {
+    description = "Measure warm OTEL product invalidation with Buck action/materialization evidence";
+    after = [
+      "genie:run"
+      "buck2:rust-deps:check"
+    ];
+    exec = trace.exec "buck2:otel-scrape:benchmark" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      source ${buck2RootedNixConfigScript}
+      export BUCK2_ROOTED_NIX_BIN=${pkgs.nix}/bin/nix
+      buck2_root_nix_config toolchain_config .#buck2-rust-musl-toolchain-config
+      ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
+        --execute \
+        --in-place \
+        --buck-incremental-only \
+        --assert-buck-invalidation \
+        --expected-relevant-actions 2 \
+        --buck-bin ${buck2Machine}/bin/buck2 \
+        --buck-config-file "$buck2_stage0_config" \
+        --buck-config-file "$toolchain_config" \
+        --buck-target //packages/@overeng/otel-scrape:product \
+        --buck-target-platform //buck2/platforms:target_x86_64_linux_musl_static \
+        --work-contract effect-utils/otel-scrape-native-product-v1 \
+        --relevant-path packages/@overeng/otel-scrape/src/lib.rs \
+        --irrelevant-path context/dependency-materialization/intuition.md
+    '';
+  };
+
+  tasks."buck2:otel-scrape:nix-import-smoke" = lib.mkIf (currentSystem == "x86_64-linux") {
+    description = "Smoke-test exact Buck product import with a self-derived descriptor identity";
+    after = [
+      "genie:run"
+      "buck2:rust-deps:check"
+    ];
+    exec = trace.exec "buck2:otel-scrape:nix-import-smoke" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      source ${buck2RootedNixConfigScript}
+      export BUCK2_ROOTED_NIX_BIN=${pkgs.nix}/bin/nix
+      buck2_root_nix_config toolchain_config .#buck2-rust-musl-toolchain-config
+      export BUCK2_BIN=${buck2Machine}/bin/buck2
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      ${pkgs.bash}/bin/bash scripts/buck2-otel-scrape-nix-admission.sh \
+        smoke "$toolchain_config"
+    '';
+  };
+
+  tasks."buck2:otel-scrape:nix-admit" = lib.mkIf (currentSystem == "x86_64-linux") {
+    description = "Admit the exact Buck product using an externally supplied descriptor identity";
+    after = [
+      "genie:run"
+      "buck2:rust-deps:check"
+    ];
+    exec = trace.exec "buck2:otel-scrape:nix-admit" ''
+      set -euo pipefail
+      : "''${BUCK2_OTEL_EXPECTED_DESCRIPTOR_DIGEST:?buck2:otel-scrape:nix-admit requires BUCK2_OTEL_EXPECTED_DESCRIPTOR_DIGEST}"
+      root="''${DEVENV_ROOT:-$PWD}"
+      source ${buck2RootedNixConfigScript}
+      export BUCK2_ROOTED_NIX_BIN=${pkgs.nix}/bin/nix
+      buck2_root_nix_config toolchain_config .#buck2-rust-musl-toolchain-config
+      export BUCK2_BIN=${buck2Machine}/bin/buck2
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      ${pkgs.bash}/bin/bash scripts/buck2-otel-scrape-nix-admission.sh \
+        admit "$toolchain_config"
     '';
   };
 
@@ -1066,6 +1467,13 @@ in
       "buck2:benchmark:megarepo"
       "buck2:invalidation:e2e"
       "buck2:platform:check"
+    ]
+    ++ lib.optionals (currentSystem == "x86_64-linux") [
+      "buck2:rust-musl:check"
+      "buck2:rooted-nix-config:check"
+      "buck2:otel-scrape:product"
+      "buck2:otel-scrape:nix-import-smoke"
+      "buck2:otel-scrape:benchmark"
     ];
   };
 

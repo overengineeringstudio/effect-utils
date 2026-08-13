@@ -41,3 +41,6 @@ pnpm-lock.yaml linguist-generated=true
 
 # The root Cargo lock is selected dependency topology and must stay visible.
 rust/Cargo.lock -linguist-generated
+
+# Central Reindeer output is deterministic dependency topology.
+rust/third-party/BUCK linguist-generated=true

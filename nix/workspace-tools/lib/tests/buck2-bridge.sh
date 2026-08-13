@@ -78,9 +78,17 @@ unsupported_runtime_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_STATIC_PRODUCT\");
     original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
-    descriptor = mkStrictDescriptor {
+    baseDescriptor = mkStrictDescriptor {
       inherit original;
       entrypoints = [ \"bin/fixture-tool\" ];
+    };
+    descriptor = baseDescriptor // {
+      runtime = {
+        kind = \"interpreter\";
+        program = \"bin/fixture-tool\";
+        runtimeContract = \"fixture-shell/v1\";
+        runtimeId = \"sh\";
+      };
     };
   in test.mkImport {
     inherit descriptor;
@@ -90,7 +98,7 @@ unsupported_runtime_expr="let
   }"
 expect_build_failure \
   "unsupported build-product runtime" \
-  "runtime inspector is not available for self-contained" \
+  "runtime inspector is not available for interpreter" \
   "$unsupported_runtime_expr"
 
 dynamic_export="$(build_expr "($base_expr).dynamicExport")"

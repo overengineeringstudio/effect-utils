@@ -1,0 +1,55 @@
+load(":local_store.bzl", "rust_local_store_toolchain", "rust_static_binary", "rust_toolchain_config_integrity")
+
+# Nix owns these values. The invoking Nix/devenv launcher supplies exact store
+# paths with --config; they are command-line inputs to the local-only action.
+rust_local_store_toolchain(
+    name = "x86_64_linux_musl_toolchain",
+    ar = read_config("rust_toolchain", "ar", ""),
+    cc = read_config("rust_toolchain", "cc", ""),
+    clippy_driver = read_config("rust_toolchain", "clippy_driver", ""),
+    contract = read_config("rust_toolchain", "contract", ""),
+    cxx = read_config("rust_toolchain", "cxx", ""),
+    dwp = read_config("rust_toolchain", "dwp", ""),
+    execution_platform = read_config("rust_toolchain", "execution_platform", ""),
+    identity_verifier = read_config("rust_toolchain", "identity_verifier", ""),
+    linker = read_config("rust_toolchain", "linker", ""),
+    nm = read_config("rust_toolchain", "nm", ""),
+    objcopy = read_config("rust_toolchain", "objcopy", ""),
+    objdump = read_config("rust_toolchain", "objdump", ""),
+    python = read_config("rust_toolchain", "python", ""),
+    ranlib = read_config("rust_toolchain", "ranlib", ""),
+    rustc = read_config("rust_toolchain", "rustc", ""),
+    rustdoc = read_config("rust_toolchain", "rustdoc", ""),
+    strip = read_config("rust_toolchain", "strip", ""),
+    target_platform = read_config("rust_toolchain", "target_platform", ""),
+    target_triple = read_config("rust_toolchain", "target_triple", ""),
+    tool_path = read_config("rust_toolchain", "tool_path", ""),
+    config_integrity_material = read_config("rust_toolchain", "config_integrity_material", ""),
+    config_integrity_identity = read_config("rust_toolchain", "config_integrity_identity", ""),
+    compile_identity_material = read_config("rust_toolchain", "compile_identity_material", ""),
+    compile_identity = read_config("rust_toolchain", "compile_identity", ""),
+)
+
+rust_toolchain_config_integrity(
+    name = "x86_64_linux_musl_config_integrity",
+    toolchain = ":x86_64_linux_musl_toolchain",
+    visibility = ["PUBLIC"],
+)
+
+rust_static_binary(
+    name = "static_hello",
+    binary_name = "static-hello",
+    crate_name = "static_hello",
+    src = "static_hello.rs",
+    exec_compatible_with = [
+        "//buck2/platforms:x86_64_linux_local_store_execution",
+    ],
+    target_compatible_with = [
+        "prelude//abi/constraints:musl",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+        "//buck2/platforms:static",
+    ],
+    toolchain = ":x86_64_linux_musl_toolchain",
+    visibility = ["PUBLIC"],
+)
