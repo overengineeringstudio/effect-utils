@@ -497,7 +497,8 @@ in
       geniePatterns = [
         "*.genie.ts"
         "**/*.genie.ts"
-      ] ++ genieExtraInputGlobs;
+      ]
+      ++ genieExtraInputGlobs;
       genieCoverageDirs = [ "packages" ];
       # Type-aware linting for typescript/no-deprecated rule
       tsconfig = "tsconfig.check.json";
