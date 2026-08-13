@@ -38,8 +38,9 @@ validation, tests, and standalone executable production.
   workspace-package edges that can affect a result must be declared inputs.
   Refines: BUCK.EXEC-R03, BUCK.EXEC-R04.
 - **BUCK.EXEC.TS-R03 Entry and output identity:** An executable target must name
-  one declared entrypoint, output name, build identity input, runtime ABI, and
-  target platform.
+  one declared entrypoint, output name, release-version input, runtime ABI, and
+  target platform. Invocation evidence such as Git revision, timestamp, or dirty
+  state must not enter product bytes or semantic descriptor identity.
   Refines: BUCK.EXEC-R02, BUCK.EXEC-R17.
 
 ### Must isolate dependency and tool execution
@@ -83,3 +84,10 @@ validation, tests, and standalone executable production.
   verified Buck artifact and does not rebuild the TypeScript sources
   independently.
   Refines: BUCK.EXEC-R17.
+- **BUCK.EXEC.TS-R12 Role closure projection:** Runtime workspace dependency
+  closures must derive from package authoring data, and quality project
+  closures from tsconfig authoring data. Source projection may conservatively
+  admit a whole reachable package but must distinguish runtime and quality
+  roles. Whole-repository or whole-lockfile digests must not stand in for the
+  selected task closure.
+  Refines: BUCK.EXEC-R03, BUCK.EXEC-R04.

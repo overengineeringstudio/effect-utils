@@ -56,3 +56,10 @@ cross_cell_product_identity(
     executable_target_platform = "root//buck2/platforms:macos_aarch64",
     target_platform = "root//buck2/platforms:linux_x86_64",
 )
+
+support_tool(
+    name = "typescript_product_tool",
+    protocol = "effect-utils/buck2-typescript-product/v1",
+    tool_id = "typescript-product",
+    visibility = ["PUBLIC"],
+)

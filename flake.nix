@@ -193,6 +193,7 @@
             buck2-archive-tool = buck2-stage0-tools.archive-tool;
             buck2-package-evidence = buck2-stage0-tools.package-evidence;
             buck2-product = buck2-stage0-tools.product;
+            buck2-typescript-product = buck2-stage0-tools.typescript-product;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
