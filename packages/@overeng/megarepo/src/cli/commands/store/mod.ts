@@ -5,7 +5,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { lstat, readdir, realpath } from 'node:fs/promises'
+import { lstat, readdir, realpath, stat } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
 
 import * as Cli from '@effect/cli'
@@ -133,7 +133,7 @@ const scanGeneratedArtifact = ({ path, workspace }: { path: string; workspace: s
   Effect.tryPromise({
     try: async () => {
       const [workspaceInfo, workspaceReal, artifactReal] = await Promise.all([
-        lstat(workspace),
+        stat(workspace),
         realpath(workspace),
         realpath(path),
       ])
@@ -1685,7 +1685,7 @@ const storeGcCommand = Cli.Command.make(
                       const [artifactInfo, workspaceInfo, artifactRealPath, workspaceRealPath] =
                         await Promise.all([
                           lstat(artifactPath),
-                          lstat(worktree.path),
+                          stat(worktree.path),
                           realpath(artifactPath),
                           realpath(worktree.path),
                         ])
