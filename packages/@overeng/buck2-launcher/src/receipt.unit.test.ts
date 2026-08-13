@@ -111,6 +111,15 @@ describe('Buck receipt normalization', () => {
     expect(result).not.toContain('passphrase-secret')
   })
 
+  it('redacts credential URL query values without redacting benign parameters', () => {
+    const result = sanitizeEvidenceText(
+      'https://example.invalid/build?token=query-secret&view=summary&cache=cache-value',
+    )
+    expect(result).not.toContain('query-secret')
+    expect(result).toContain('view=summary')
+    expect(result).toContain('cache=cache-value')
+  })
+
   it('redacts password aliases in structured evidence', () => {
     const result = sanitizeEvidenceText(
       JSON.stringify({ passphrase: 'json-passphrase-secret', passwd: 'json-passwd-secret' }),

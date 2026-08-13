@@ -177,5 +177,12 @@ mod tests {
                 "accepted {bad:?}"
             );
         }
+        for byte in (0_u8..=31).chain(std::iter::once(127)) {
+            let bad = format!("bin/{}tool", char::from(byte));
+            assert!(
+                normalized_relative(&bad, "path").is_err(),
+                "accepted byte {byte}"
+            );
+        }
     }
 }

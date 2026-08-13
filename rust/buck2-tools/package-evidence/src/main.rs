@@ -125,6 +125,7 @@ fn digest_path(path: &Path) -> ToolResult<(&'static str, String)> {
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
+        let relative = normalized_relative(&relative, "artifact path")?;
         if entry.file_type().is_symlink() {
             return Err(ToolError::new(
                 "BUCK2_EVIDENCE_SYMLINK",
@@ -448,6 +449,22 @@ mod tests {
         let error = package(a).unwrap_err();
         assert!(error.message.contains("normalized relative path"));
         assert!(!d.path().join("artifact.tar").exists());
+    }
+    #[test]
+    fn rejects_control_characters_in_scanned_artifact_paths() {
+        for byte in (1_u8..=31).chain(std::iter::once(127)) {
+            let d = tempfile::tempdir().unwrap();
+            let artifact = d.path().join("artifact");
+            fs::create_dir(&artifact).unwrap();
+            fs::write(
+                artifact.join(format!("entry{}name", char::from(byte))),
+                "content",
+            )
+            .unwrap();
+
+            let error = digest_path(&artifact).unwrap_err();
+            assert_eq!(error.code, "BUCK2_INVALID_PATH", "accepted byte {byte}");
+        }
     }
     #[test]
     fn content_change_changes_artifact() {

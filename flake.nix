@@ -198,7 +198,6 @@
             inherit otelite otel-scrape buck2-launcher;
             buck2-closure-tool = buck2-stage0-tools.closure-tool;
             buck2-package-evidence = buck2-stage0-tools.package-evidence;
-            buck2-typescript-product = buck2-stage0-tools.typescript-product;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
