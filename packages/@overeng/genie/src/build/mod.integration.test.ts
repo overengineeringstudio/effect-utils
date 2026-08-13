@@ -78,7 +78,7 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
 }
 
 const runGenie = Effect.fnUntraced(function* (env: TestEnv, args: ReadonlyArray<string>) {
-  const cliPath = new URL('./mod.ts', import.meta.url).pathname
+  const cliPath = new URL('../../bin/genie.tsx', import.meta.url).pathname
   const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
     Command.workingDirectory(env.root),
     Command.stdout('pipe'),
@@ -189,6 +189,45 @@ export default pkg.root({ name: 'genie-cli-test' })
             expect(output).toContain('Summary: 1 files processed')
             expect(output).toContain(canonicalOutput)
             expect(output).not.toContain(linkOutput)
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
+    'rejects writable generated files in check mode',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            yield* env.writeFile({
+              path: 'package.json',
+              content: JSON.stringify({ name: 'genie-writable-check-fixture', private: true }),
+            })
+            yield* env.writeFile({
+              path: 'contract.json.genie.ts',
+              content: `export default {
+  data: { value: 1 },
+  stringify: () => JSON.stringify({ value: 1 }),
+}`,
+            })
+
+            const generated = yield* runGenie(env, [])
+            expect(generated.exitCode, `${generated.stdout}\n${generated.stderr}`).toBe(0)
+
+            const target = nodePath.join(env.root, 'contract.json')
+            expect(yield* fs.exists(target), `${generated.stdout}\n${generated.stderr}`).toBe(true)
+            yield* fs.chmod(target, 0o644)
+            const writable = yield* fs.stat(target)
+            expect(writable.mode & 0o200).toBe(0o200)
+
+            const checked = yield* runGenie(env, ['--check'])
+            expect(checked.exitCode).not.toBe(0)
+            expect(`${checked.stdout}\n${checked.stderr}`).toContain('Generated file is writable')
           }),
         )
       },

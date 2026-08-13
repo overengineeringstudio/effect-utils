@@ -289,6 +289,48 @@ describe('Buck receipt normalization', () => {
     await expect(descriptorForClosureManifest(generated, 'root//:check')).resolves.toMatchObject({
       mediaType: 'application/json',
     })
+
+    const generatedV3 = join(root, 'generated-v3.json')
+    await writeFile(
+      generatedV3,
+      JSON.stringify({
+        schemaVersion: 3,
+        ...generatedSemantic,
+        provenance: {
+          ...value.provenance,
+          semanticFingerprint: `sha256:${createHash('sha256')
+            .update(
+              JSON.stringify(
+                canonical({
+                  generator: 'effect-utils/genie/buck2',
+                  schemaVersion: 3,
+                  semanticData: generatedSemantic,
+                }),
+              ),
+            )
+            .digest('hex')}`,
+        },
+      }),
+    )
+    await expect(descriptorForClosureManifest(generatedV3, 'root//:check')).resolves.toMatchObject({
+      mediaType: 'application/json',
+    })
+    await writeFile(
+      generatedV3,
+      JSON.stringify({
+        schemaVersion: 3,
+        ...generatedSemantic,
+        provenance: {
+          ...value.provenance,
+          semanticFingerprint: `sha256:${createHash('sha256')
+            .update(JSON.stringify(canonical(generatedSemantic)))
+            .digest('hex')}`,
+        },
+      }),
+    )
+    await expect(descriptorForClosureManifest(generatedV3, 'root//:check')).rejects.toThrow(
+      'semantic fingerprint does not match',
+    )
   })
 
   it('rejects malformed nested receipt evidence', () => {

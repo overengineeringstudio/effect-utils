@@ -333,6 +333,25 @@ let
     }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
+  # Repository-specific semantic inputs read by Genie sources. The shared
+  # Genie module already owns the direct and nested `.genie.ts` census; this
+  # single list is composed into both its warm fingerprint and lint freshness.
+  genieExtraInputGlobs = [
+    "context/otel-scrape/telemetry-registry.json"
+    "genie/buck2/*.ts"
+    "packages/@overeng/buck2-tools/src/**/*.ts"
+    "packages/@overeng/tui-core/buck2/target.ts"
+    "packages/@overeng/tui-core/src/**/*.ts"
+    "packages/@overeng/tui-core/src/**/*.tsx"
+    "packages/@overeng/tui-core/src/**/*.cts"
+    "packages/@overeng/tui-core/src/**/*.mts"
+    "packages/@overeng/tui-core/test/**/*.ts"
+    "packages/@overeng/tui-core/test/**/*.tsx"
+    "packages/@overeng/tui-core/test/**/*.cts"
+    "packages/@overeng/tui-core/test/**/*.mts"
+    "pnpm-lock.yaml"
+    "pnpm-workspace.yaml"
+  ];
 in
 {
   imports = [
@@ -430,34 +449,13 @@ in
         "scripts"
         "context"
       ];
-      # Genie file patterns for caching genie:check tasks. Besides `.genie.ts`
-      # sources, include non-`.genie.ts` generator inputs (source-of-truth files
-      # a generator reads) so a JSON-only edit still triggers `lint:check:genie`
-      # (its `execIfModified`) — kept in sync with `_module.args.genieInputGlobs`.
+      # Match both repo-root and nested Genie sources explicitly, then compose
+      # the same repository-specific semantic inputs used by the warm-state
+      # fingerprint. This is freshness scheduling, not output admission.
       geniePatterns = [
-        "packages/@overeng/*/*.genie.ts"
-        "packages/@overeng/*/buck2/*.genie.ts"
-        "packages/@overeng/*/examples/*/*.genie.ts"
-        "scripts/*.genie.ts"
-        "context/effect/socket/*.genie.ts"
-        "context/opentui/*.genie.ts"
-        "context/otel-scrape/telemetry-registry.json"
-        "genie/buck2/*.ts"
-        "packages/@overeng/buck2-tools/src/**/*.ts"
-        "packages/@overeng/tui-core/buck2/target.ts"
-        "packages/@overeng/tui-core/src/**/*.ts"
-        "packages/@overeng/tui-core/src/**/*.tsx"
-        "packages/@overeng/tui-core/src/**/*.cts"
-        "packages/@overeng/tui-core/src/**/*.mts"
-        "packages/@overeng/tui-core/test/**/*.ts"
-        "packages/@overeng/tui-core/test/**/*.tsx"
-        "packages/@overeng/tui-core/test/**/*.cts"
-        "packages/@overeng/tui-core/test/**/*.mts"
-        "pnpm-lock.yaml"
-        "pnpm-workspace.yaml"
-        ".oxfmtrc.json.genie.ts"
-        ".oxlintrc.json.genie.ts"
-      ];
+        "*.genie.ts"
+        "**/*.genie.ts"
+      ] ++ genieExtraInputGlobs;
       genieCoverageDirs = [ "packages" ];
       # Type-aware linting for typescript/no-deprecated rule
       tsconfig = "tsconfig.check.json";
@@ -503,26 +501,8 @@ in
   # Genie derivation.
   effectUtils.genie.package = genieSourceCli;
 
-  # Non-`.genie.ts` generator inputs (source-of-truth files a `.genie.ts` reads).
-  # These bust the `genie:run` warm-cache fingerprint. Keep in sync with the
-  # analogous entries in `geniePatterns` below (which cover the
-  # `lint:check:genie` gate's `execIfModified`).
-  effectUtils.genie.extraInputGlobs = [
-    "context/otel-scrape/telemetry-registry.json"
-    "genie/buck2/*.ts"
-    "packages/@overeng/buck2-tools/src/**/*.ts"
-    "packages/@overeng/tui-core/buck2/target.ts"
-    "packages/@overeng/tui-core/src/**/*.ts"
-    "packages/@overeng/tui-core/src/**/*.tsx"
-    "packages/@overeng/tui-core/src/**/*.cts"
-    "packages/@overeng/tui-core/src/**/*.mts"
-    "packages/@overeng/tui-core/test/**/*.ts"
-    "packages/@overeng/tui-core/test/**/*.tsx"
-    "packages/@overeng/tui-core/test/**/*.cts"
-    "packages/@overeng/tui-core/test/**/*.mts"
-    "pnpm-lock.yaml"
-    "pnpm-workspace.yaml"
-  ];
+  # Non-`.genie.ts` sources share one list with the lint freshness scheduler.
+  effectUtils.genie.extraInputGlobs = genieExtraInputGlobs;
 
   packages = [
     pkgs.nodejs_24

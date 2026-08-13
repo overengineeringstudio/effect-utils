@@ -535,8 +535,8 @@ export const descriptorForClosureManifest = async (
     throw new Error(`closure manifest ${expectedLabel} is not valid JSON`, { cause: error })
   }
   const root = objectAt(parsed, '$')
-  if (root.schemaVersion !== 1 && root.schemaVersion !== 2) {
-    throw new Error('closure manifest $.schemaVersion must be 1 or 2')
+  if (root.schemaVersion !== 1 && root.schemaVersion !== 2 && root.schemaVersion !== 3) {
+    throw new Error('closure manifest $.schemaVersion must be 1, 2, or 3')
   }
   stringAt(root.packagePath, '$.packagePath')
   const target = objectAt(root.target, '$.target')
@@ -571,16 +571,20 @@ export const descriptorForClosureManifest = async (
   }
   stringAt(provenance.regenerationCommand, '$.provenance.regenerationCommand')
   stringArrayAt(provenance.semanticInputs, '$.provenance.semanticInputs')
-  const semanticBytes = Buffer.from(
-    JSON.stringify(
-      canonicalJson({
-        closure: root.closure,
-        packagePath: root.packagePath,
-        target: root.target,
-      }),
-    ),
-    'utf8',
-  )
+  const semanticData = {
+    closure: root.closure,
+    packagePath: root.packagePath,
+    target: root.target,
+  }
+  const fingerprintData =
+    root.schemaVersion === 3
+      ? {
+          generator: provenance.generator,
+          schemaVersion: root.schemaVersion,
+          semanticData,
+        }
+      : semanticData
+  const semanticBytes = Buffer.from(JSON.stringify(canonicalJson(fingerprintData)), 'utf8')
   const actualFingerprint = `sha256:${createHash('sha256').update(semanticBytes).digest('hex')}`
   if (declaredFingerprint !== actualFingerprint) {
     throw new Error('closure manifest semantic fingerprint does not match canonical semantic data')

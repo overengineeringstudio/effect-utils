@@ -66,7 +66,12 @@ chmod +x "$test_dir/bin/genie"
 git -C "$test_dir" init -q
 printf 'export default {}\n' > "$test_dir/contract.json.genie.ts"
 printf '{"value":1}\n' > "$test_dir/contract.json"
-git -C "$test_dir" add contract.json.genie.ts contract.json
+mkdir -p "$test_dir/nested"
+printf 'export default {}\n' > "$test_dir/nested/contract.json.genie.ts"
+printf '{"nested":true}\n' > "$test_dir/nested/contract.json"
+git -C "$test_dir" add \
+  contract.json.genie.ts contract.json \
+  nested/contract.json.genie.ts nested/contract.json
 
 run_exec="$(eval_genie_module_attr "{ }" 'evaluated.config.tasks."genie:run".exec')"
 run_status="$(eval_genie_module_attr "{ }" 'evaluated.config.tasks."genie:run".status')"
@@ -77,7 +82,11 @@ run_status="$(eval_genie_module_attr "{ }" 'evaluated.config.tasks."genie:run".s
 )
 
 if ! grep -qxF 'contract.json' "$test_dir/.devenv/task-cache/genie-run/generated-files.txt"; then
-  echo "FAIL: commentless JSON paired with a .genie.ts source was not collected"
+  echo "FAIL: direct commentless JSON paired with a .genie.ts source was not collected"
+  exit 1
+fi
+if ! grep -qxF 'nested/contract.json' "$test_dir/.devenv/task-cache/genie-run/generated-files.txt"; then
+  echo "FAIL: nested commentless JSON paired with a .genie.ts source was not collected"
   exit 1
 fi
 

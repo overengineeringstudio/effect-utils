@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
   commentless Genie outputs participate in freshness state, enforce Genie
   freshness unconditionally in CI, and distinguish immutable benchmark
   evidence and review-visible Cargo topology from collapsible generated noise.
+- **Generated contract verification**: teach the Buck launcher to verify schema
+  3 provenance fingerprints, cover direct and nested Genie ownership from one
+  Nix input list, reject writable generated outputs during checks, and keep
+  provenance ordering locale-independent.
 
 ### Added
 

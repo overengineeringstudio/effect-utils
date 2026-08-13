@@ -36,11 +36,13 @@ let
       {
         # A colocated `name.ext.genie.ts` source owns `name.ext`. Deriving the
         # output path from the source keeps formats without comments (notably
-        # JSON) in the generated-file list and warm-state fingerprint.
+        # JSON) in the generated-file list and warm-state fingerprint. This
+        # ambient census is freshness evidence only; it does not admit an
+        # output as a semantic authority.
         if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
           {
-            ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- '*.genie.ts' ':(glob)**/*.genie.ts'
-            ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- '*.genie.ts' ':(glob)**/*.genie.ts'
+            ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts'
+            ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts'
           } | while IFS= read -r -d $'\0' source; do
             output="''${source%.genie.ts}"
             if [ -f "$output" ]; then
@@ -105,9 +107,9 @@ let
           # so warm status checks catch manual drift without booting the full
           # CLI. Follow Git's tracked + untracked/non-ignored view in worktrees.
           if ${pkgs.git}/bin/git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-            ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- '*.genie.ts' ':(glob)**/*.genie.ts' \
+            ${pkgs.git}/bin/git ls-files -z --recurse-submodules -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts' \
               | tr '\0' '\n'
-            ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- '*.genie.ts' ':(glob)**/*.genie.ts' \
+            ${pkgs.git}/bin/git ls-files -z --others --exclude-standard -- ':(glob)*.genie.ts' ':(glob)**/*.genie.ts' \
               | tr '\0' '\n'
           else
             ${pkgs.findutils}/bin/find . \

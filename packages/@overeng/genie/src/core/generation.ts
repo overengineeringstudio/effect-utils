@@ -935,6 +935,14 @@ export const checkFileDetailed = ({
       })
     }
 
+    const targetStat = yield* fs.stat(targetFilePath)
+    if ((targetStat.mode & 0o222) !== 0) {
+      return yield* new GenieCheckError({
+        targetFilePath,
+        message: `Generated file is writable. Run 'genie' to restore read-only permissions.`,
+      })
+    }
+
     return { targetFilePath, loadedGenieFile }
   }).pipe(
     Observability.withFileSpan({
