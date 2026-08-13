@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { access, chmod, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 
 export const stage0ConfigResolverAbi = 'effect-utils.buck2-stage0-config.v1' as const
 
@@ -167,11 +167,44 @@ export const parseStage0Config = (contents: string): Readonly<Record<string, str
   return values
 }
 
-export const validateStage0Config = async (path: string): Promise<boolean> => {
+const configMetadata = (
+  contents: string,
+): { readonly abi: string; readonly fingerprint: string } | undefined => {
+  const abi = contents.match(/^# Resolver ABI: (.+)$/mu)?.[1]
+  const fingerprint = contents.match(/^# Semantic fingerprint: ([0-9a-f]{64})$/mu)?.[1]
+  return abi === undefined || fingerprint === undefined ? undefined : { abi, fingerprint }
+}
+
+export const validateStage0Config = async ({
+  path,
+  expectedFingerprint,
+}: {
+  readonly path: string
+  readonly expectedFingerprint: string
+}): Promise<boolean> => {
   try {
-    const values = parseStage0Config(await readFile(path, 'utf8'))
+    const contents = await readFile(path, 'utf8')
+    const metadata = configMetadata(contents)
+    if (
+      metadata?.abi !== stage0ConfigResolverAbi ||
+      metadata.fingerprint !== expectedFingerprint
+    ) {
+      return false
+    }
+    const values = parseStage0Config(contents)
+    const roots = resolve(dirname(path), 'roots')
     return (
-      await Promise.all(Object.values(values).map(async (value) => executableExists(value)))
+      await Promise.all(
+        stage0Tools.map(async ({ configKey, executable }) => {
+          const value = values[configKey]!
+          if ((await executableExists(value)) === false) return false
+          try {
+            return (await realpath(value)) === (await realpath(resolve(roots, configKey, executable)))
+          } catch {
+            return false
+          }
+        }),
+      )
     ).every(Boolean)
   } catch {
     return false
@@ -261,58 +294,71 @@ const resolveIdentity = async (
 export const resolveStage0Config = async (
   request: Stage0ConfigRequest,
 ): Promise<Stage0ConfigResult> => {
-  const identity = await resolveIdentity(request)
-  if ((await validateStage0Config(identity.configPath)) === true)
-    return { ...identity, status: 'hit' }
+  const maxAttempts = 3
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const identity = await resolveIdentity(request)
+    if (
+      (await validateStage0Config({
+        path: identity.configPath,
+        expectedFingerprint: identity.fingerprint,
+      })) === true
+    ) {
+      return { ...identity, status: 'hit' }
+    }
 
-  await mkdir(resolve(request.cacheRoot, identity.fingerprint), { recursive: true })
-  const lockPath = resolve(request.cacheRoot, `${identity.fingerprint}.lock`)
-  const stdout = await run({
-    binary: request.flockBinary,
-    args: [
-      '--exclusive',
-      lockPath,
-      request.bunBinary,
-      request.resolverScript,
-      '--internal-worker',
-      ...requestArgs({ request, expectedFingerprint: identity.fingerprint }),
-    ],
-    cwd: request.repoRoot,
-  })
-  const result: unknown = JSON.parse(stdout)
-  if (
-    typeof result === 'object' &&
-    result !== null &&
-    'status' in result &&
-    result.status === 'retry'
-  ) {
-    return resolveStage0Config(request)
+    await mkdir(resolve(request.cacheRoot, identity.fingerprint), { recursive: true })
+    const lockPath = resolve(request.cacheRoot, `${identity.fingerprint}.lock`)
+    const stdout = await run({
+      binary: request.flockBinary,
+      args: [
+        '--exclusive',
+        lockPath,
+        request.bunBinary,
+        request.resolverScript,
+        '--internal-worker',
+        ...requestArgs({ request, expectedFingerprint: identity.fingerprint }),
+      ],
+      cwd: request.repoRoot,
+    })
+    const result: unknown = JSON.parse(stdout)
+    if (
+      typeof result === 'object' &&
+      result !== null &&
+      'status' in result &&
+      result.status === 'retry'
+    ) {
+      continue
+    }
+    if (
+      typeof result !== 'object' ||
+      result === null ||
+      !('configPath' in result) ||
+      typeof result.configPath !== 'string' ||
+      !('fingerprint' in result) ||
+      typeof result.fingerprint !== 'string' ||
+      !('status' in result) ||
+      (result.status !== 'hit' && result.status !== 'miss')
+    ) {
+      throw new Error('stage-0 worker returned an invalid result')
+    }
+    const validated: Stage0ConfigResult = {
+      configPath: result.configPath,
+      fingerprint: result.fingerprint,
+      status: result.status,
+    }
+    if (
+      validated.configPath !== identity.configPath ||
+      validated.fingerprint !== identity.fingerprint ||
+      (await validateStage0Config({
+        path: validated.configPath,
+        expectedFingerprint: identity.fingerprint,
+      })) === false
+    ) {
+      throw new Error('stage-0 worker result does not match the requested identity')
+    }
+    return validated
   }
-  if (
-    typeof result !== 'object' ||
-    result === null ||
-    !('configPath' in result) ||
-    typeof result.configPath !== 'string' ||
-    !('fingerprint' in result) ||
-    typeof result.fingerprint !== 'string' ||
-    !('status' in result) ||
-    (result.status !== 'hit' && result.status !== 'miss')
-  ) {
-    throw new Error('stage-0 worker returned an invalid result')
-  }
-  const validated: Stage0ConfigResult = {
-    configPath: result.configPath,
-    fingerprint: result.fingerprint,
-    status: result.status,
-  }
-  if (
-    validated.configPath !== identity.configPath ||
-    validated.fingerprint !== identity.fingerprint ||
-    (await validateStage0Config(validated.configPath)) === false
-  ) {
-    throw new Error('stage-0 worker result does not match the requested identity')
-  }
-  return validated
+  throw new Error(`stage-0 semantic inputs remained unstable after ${maxAttempts} attempts`)
 }
 
 const writeFileAtomic = async ({
@@ -340,16 +386,28 @@ const writeFileAtomic = async ({
 
 const realizeTool = async ({
   request,
+  configKey,
+  fingerprint,
   flakeAttribute,
   executable,
 }: {
   readonly request: Stage0ConfigRequest
+  readonly configKey: string
+  readonly fingerprint: string
   readonly flakeAttribute: string
   readonly executable: string
 }): Promise<string> => {
+  const rootPath = resolve(request.cacheRoot, fingerprint, 'roots', configKey)
+  await mkdir(dirname(rootPath), { recursive: true })
   const stdout = await run({
     binary: request.nixBinary,
-    args: ['build', '--no-link', '--print-out-paths', `path:${request.repoRoot}#${flakeAttribute}`],
+    args: [
+      'build',
+      '--out-link',
+      rootPath,
+      '--print-out-paths',
+      `path:${request.repoRoot}#${flakeAttribute}`,
+    ],
     cwd: request.repoRoot,
   })
   const outputPaths = stdout
@@ -377,13 +435,18 @@ export const resolveStage0ConfigUnderLock = async ({
   if (expectedFingerprint !== undefined && identity.fingerprint !== expectedFingerprint) {
     return { status: 'retry' }
   }
-  if ((await validateStage0Config(identity.configPath)) === true)
+  if (
+    (await validateStage0Config({
+      path: identity.configPath,
+      expectedFingerprint: identity.fingerprint,
+    })) === true
+  )
     return { ...identity, status: 'hit' }
 
   const realized = await Promise.all(
     stage0Tools.map(async (tool) => ({
       configKey: tool.configKey,
-      path: await realizeTool({ request, ...tool }),
+      path: await realizeTool({ request, fingerprint: identity.fingerprint, ...tool }),
     })),
   )
   const settledIdentity = await resolveIdentity(request)
@@ -403,7 +466,12 @@ export const resolveStage0ConfigUnderLock = async ({
   ].join('\n')
   await mkdir(resolve(request.cacheRoot, identity.fingerprint), { recursive: true })
   await writeFileAtomic({ path: identity.configPath, contents })
-  if ((await validateStage0Config(identity.configPath)) === false) {
+  if (
+    (await validateStage0Config({
+      path: identity.configPath,
+      expectedFingerprint: identity.fingerprint,
+    })) === false
+  ) {
     throw new Error('generated stage-0 config failed validation')
   }
   return { ...identity, status: 'miss' }

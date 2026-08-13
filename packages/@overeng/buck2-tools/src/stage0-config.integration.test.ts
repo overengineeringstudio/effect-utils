@@ -31,10 +31,12 @@ const runCli = async ({
   root,
   cacheRoot,
   mutateDuringRealization = false,
+  mutateDuringEveryRealization = false,
 }: {
   readonly root: string
   readonly cacheRoot: string
   readonly mutateDuringRealization?: boolean
+  readonly mutateDuringEveryRealization?: boolean
 }): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> =>
   new Promise((resolvePromise, reject) => {
     const child = spawn(
@@ -60,7 +62,8 @@ const runCli = async ({
           ...process.env,
           FAKE_NIX_CALLS: join(root, 'calls'),
           FAKE_NIX_ROOT: join(root, 'store'),
-          ...(mutateDuringRealization ? { FAKE_NIX_MUTATE_SEMANTIC: '1' } : {}),
+          ...(mutateDuringRealization === true ? { FAKE_NIX_MUTATE_SEMANTIC: '1' } : {}),
+          ...(mutateDuringEveryRealization === true ? { FAKE_NIX_MUTATE_ALWAYS: '1' } : {}),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -101,7 +104,13 @@ describe('Buck stage-0 config resolver', { timeout: 20_000 }, () => {
       `#!/bin/sh
 set -eu
 installable=""
-for arg in "$@"; do installable="$arg"; done
+out_link=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --out-link) out_link="$2"; shift 2 ;;
+    *) installable="$1"; shift ;;
+  esac
+done
 attribute="\${installable##*#}"
 case "$attribute" in
   buck2-closure-tool) executable="buck2-closure-tool" ;;
@@ -114,9 +123,14 @@ output="$FAKE_NIX_ROOT/$attribute"
 mkdir -p "$output/bin"
 printf '#!/bin/sh\\nexit 0\\n' > "$output/bin/$executable"
 chmod +x "$output/bin/$executable"
+mkdir -p "$(dirname "$out_link")"
+ln -sfn "$output" "$out_link"
 printf '%s\\n' "$attribute" >> "$FAKE_NIX_CALLS"
 if [ "\${FAKE_NIX_MUTATE_SEMANTIC:-}" = 1 ] && mkdir "$FAKE_NIX_ROOT/mutation-once" 2>/dev/null; then
   printf 'version two\\n' > semantic.txt
+fi
+if [ "\${FAKE_NIX_MUTATE_ALWAYS:-}" = 1 ]; then
+  date +%s%N > semantic.txt
 fi
 sleep 0.05
 printf '%s\\n' "$output"
@@ -160,6 +174,33 @@ printf '%s\\n' "$output"
     expect((await stat(configPath)).mode & 0o222).toBe(0)
   })
 
+  it('rejects cache entries whose metadata or GC-root binding does not match their identity', async () => {
+    const cold = await runCli({ root, cacheRoot })
+    expect(cold.exitCode).toBe(0)
+    const configPath = cold.stdout.trim()
+    const original = await readFile(configPath, 'utf8')
+
+    await chmod(configPath, 0o600)
+    await writeFile(
+      configPath,
+      original.replace(/^# Semantic fingerprint: .+$/mu, `# Semantic fingerprint: ${'0'.repeat(64)}`),
+    )
+    const fingerprintRepaired = await runCli({ root, cacheRoot })
+    expect(fingerprintRepaired.exitCode).toBe(0)
+    expect(await invocationCount(root)).toBe(8)
+
+    await chmod(configPath, 0o600)
+    await writeFile(configPath, original.replace(/^# Resolver ABI: .+$/mu, '# Resolver ABI: stale'))
+    const abiRepaired = await runCli({ root, cacheRoot })
+    expect(abiRepaired.exitCode).toBe(0)
+    expect(await invocationCount(root)).toBe(12)
+
+    await unlink(join(dirname(configPath), 'roots', 'closure_tool'))
+    const rootRepaired = await runCli({ root, cacheRoot })
+    expect(rootRepaired.exitCode).toBe(0)
+    expect(await invocationCount(root)).toBe(16)
+  })
+
   it('single-flights concurrent cold callers under flock', async () => {
     const concurrentCache = join(root, 'concurrent-cache')
     const results = await Promise.all(
@@ -185,6 +226,13 @@ printf '%s\\n' "$output"
       .map((entry) => entry.slice(0, -5))
     expect(lockFingerprints).toHaveLength(2)
     expect(lockFingerprints.some((fingerprint) => configPath.includes(fingerprint))).toBe(true)
+  })
+
+  it('fails after bounded retries when semantic inputs never settle', async () => {
+    const result = await runCli({ root, cacheRoot, mutateDuringEveryRealization: true })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('semantic inputs remained unstable after 3 attempts')
+    expect(await invocationCount(root)).toBe(12)
   })
 
   it('rejects a semantic input symlink which escapes the repository', async () => {

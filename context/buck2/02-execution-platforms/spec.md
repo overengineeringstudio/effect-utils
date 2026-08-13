@@ -261,10 +261,13 @@ launcher through an already-provisioned runtime; the compiled launcher remains
 the distributable boundary for other repositories and CI.
 
 Stage-0 resolution is lazy and single-flight. Its local cache is a disposable
-projection of the Nix-owned recipes and root Cargo authority, validates every
-referenced executable before reuse, and is never an action or dependency
-authority. A missing or changed projection triggers Nix realization only when
-an explicit Buck task requires it.
+projection of the Nix-owned recipes and root Cargo authority. Each semantic
+fingerprint retains the realized outputs through explicit Nix GC roots. Cache
+reuse validates the resolver ABI, semantic fingerprint, exact tool keys,
+executable permissions, and GC-root binding. A missing or changed projection
+triggers Nix realization only when an explicit Buck task requires it; unstable
+semantic inputs fail after a bounded retry count. The projection is never an
+action or dependency authority.
 
 Shell and Buck performance are distinct workloads:
 

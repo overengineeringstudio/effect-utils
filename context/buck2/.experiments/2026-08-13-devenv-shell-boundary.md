@@ -17,6 +17,10 @@ while retaining a fast, validated path to warm Buck builds?
   that shell activation did not invoke Buck in those probes.
 - Resolver integration tests used a counting fake Nix executable. Eight concurrent
   cold callers performed exactly four realizations, one for each required tool.
+- Adversarial cache tests mutated the recorded ABI and fingerprint and removed a
+  per-tool GC root; each mutation forced realization rather than a false hit.
+- A continuously changing semantic input failed after three attempts instead of
+  recursing without a bound.
 
 ## Results
 
@@ -41,8 +45,9 @@ Shell activation is a mutation-free environment boundary. It does not run Buck,
 Nix stage-0 realization, package installation, Genie, or megarepo mutation.
 Repository tasks resolve stage-0 lazily through a source-mode TypeScript CLI. The
 resolver fingerprints the exact fileset exported by the Nix stage-0 definition,
-validates cached executables, and publishes its config atomically under a
-single-flight lock.
+retains realized outputs through per-fingerprint Nix GC roots, validates cached
+metadata and root bindings, and publishes its config atomically under a
+single-flight lock with bounded instability retries.
 
 The remaining shell latency is a devenv evaluation-cache concern, independent of
 Buck warmth. It must be benchmarked again after the pinned devenv upgrade; the

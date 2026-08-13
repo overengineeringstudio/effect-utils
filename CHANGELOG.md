@@ -81,6 +81,9 @@ All notable changes to this project will be documented in this file.
 - **Buck2 pnpm prototype scope**: retain the exact lock-derived contextual
   dependency plan for `tui-core` while keeping it explicitly non-admitted. The
   prototype does not fetch, unpack, normalize, or materialize package archives.
+- **Buck2 lazy stage-0 cache**: retain realized Nix tools with per-fingerprint
+  GC roots, validate cached resolver ABI, semantic identity, tool keys, and root
+  bindings before reuse, and bound retries when semantic inputs keep changing.
 - **Buck2 foundation contraction**: run the destructive invalidation RED/GREEN
   proof in a disposable Buck project instead of mutating a shared tracked
   fixture. Correct the VRS boundary from rule-load-time CPython to Prelude's

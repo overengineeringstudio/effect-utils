@@ -615,21 +615,20 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
-      - name: Verify OTEL shell entry
+      - name: Verify mutation-free shell entry
         shell: bash
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
           command -v script >/dev/null 2>&1
           tmp_log="$(mktemp)"
-          printf 'printf "OTEL_MODE=%%s\n" "$OTEL_MODE"
-          printf "OTEL_GRAFANA_LINK_URL=%%s\n" "$OTEL_GRAFANA_LINK_URL"
+          before="$(git status --porcelain=v1)"
+          printf 'command -v buck2
           exit
           ' | script -qefc '"${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload' "$tmp_log"
-          grep -q '\[otel\] Using .* OTEL stack' "$tmp_log"
-          grep -q '\[otel\] Start with: devenv up' "$tmp_log"
-          grep -q '^OTEL_MODE=' "$tmp_log"
-          grep -q '^OTEL_GRAFANA_LINK_URL=http' "$tmp_log"
+          grep -q '/bin/buck2' "$tmp_log"
+          ! grep -q '\[otel\] Using' "$tmp_log"
+          test "$(git status --porcelain=v1)" = "$before"
           rm -f "$tmp_log"
       - name: Type check
         run: |

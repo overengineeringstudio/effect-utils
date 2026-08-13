@@ -235,24 +235,19 @@ const storybookPreviewCommentBodyPath =
 const storybookPreviewSummaryPath =
   '${{ runner.temp }}/workflow-reports/storybook-preview-summary.md'
 
-/**
- * Verify the lock-pinned devenv rev emits OTEL shell-entry messages under a real PTY.
- * `--no-reload` keeps the probe on the post-init shell-output path we care about
- * without exercising the separate interactive reload loop, which currently
- * panics on the pinned upstream commit.
- */
+/** Verify shell activation is mutation-free and exposes the native Buck command. */
 const verifyOtelShellEntryStep = {
-  name: 'Verify OTEL shell entry',
+  name: 'Verify mutation-free shell entry',
   shell: 'bash' as const,
   run: [
     runDevenvTasksBefore('otel:test'),
     'command -v script >/dev/null 2>&1',
     'tmp_log="$(mktemp)"',
-    `printf 'printf "OTEL_MODE=%%s\\n" "$OTEL_MODE"\nprintf "OTEL_GRAFANA_LINK_URL=%%s\\n" "$OTEL_GRAFANA_LINK_URL"\nexit\n' | script -qefc '"${'${DEVENV_BIN:?DEVENV_BIN not set}'}" shell --no-reload' "$tmp_log"`,
-    'grep -q \'\\[otel\\] Using .* OTEL stack\' "$tmp_log"',
-    'grep -q \'\\[otel\\] Start with: devenv up\' "$tmp_log"',
-    'grep -q \'^OTEL_MODE=\' "$tmp_log"',
-    'grep -q \'^OTEL_GRAFANA_LINK_URL=http\' "$tmp_log"',
+    'before="$(git status --porcelain=v1)"',
+    `printf 'command -v buck2\nexit\n' | script -qefc '"${'${DEVENV_BIN:?DEVENV_BIN not set}'}" shell --no-reload' "$tmp_log"`,
+    'grep -q \'/bin/buck2\' "$tmp_log"',
+    '! grep -q \'\\[otel\\] Using\' "$tmp_log"',
+    'test "$(git status --porcelain=v1)" = "$before"',
     'rm -f "$tmp_log"',
   ].join('\n'),
 } as const

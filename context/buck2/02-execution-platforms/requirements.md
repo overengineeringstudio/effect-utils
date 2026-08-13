@@ -184,6 +184,16 @@ activation. Warm-shell evidence MUST prove zero Buck invocations and zero
 repository setup tasks. Warm-Buck evidence MUST separately prove zero executed
 actions from Buck's own event/receipt authority.
 
+### BUCK.PLAT-R015: durable and identity-bound lazy stage-0 cache
+
+A cached lazy stage-0 projection MUST retain every referenced Nix output with a
+GC root scoped to its semantic fingerprint. Reuse MUST validate the resolver
+ABI, semantic fingerprint, complete expected tool-key set, executable contract,
+and binding between each configured executable and its retained root. Missing,
+stale, copied, or collected state MUST be a cache miss rather than a hit.
+Concurrent resolution MUST single-flight per fingerprint, and semantic-input
+instability during realization MUST fail after a bounded number of retries.
+
 ## Non-goals
 
 - Reimplementing Nix package management inside Buck.
