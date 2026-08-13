@@ -28,7 +28,7 @@ semantics match:
 | `wall-clock`      | `paired`                  | Same PR run, same runner, base/head pairs     | Per-pair delta evidence interval.         |
 | `wall-clock`      | `historical`              | Previous comparable successful artifacts      | Advisory robust bands only.               |
 | `diagnostic`      | none                      | Optional context artifact or trace attachment | Not gateable.                             |
-| `deterministic`   | `assertion`               | No baseline; a typed expected value or range   | Every configured raw sample must satisfy. |
+| `deterministic`   | `assertion`               | No baseline; a typed expected value or range  | Every configured raw sample must satisfy. |
 
 Historical comparison is not a substitute for paired wall-clock evidence.
 Budget comparison is not a substitute for owner-approved semantic budgets.
