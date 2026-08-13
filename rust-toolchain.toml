@@ -1,0 +1,6 @@
+# Repository authority for local Rust tools. Nix builds continue to use
+# pkgs.rustPlatform; Cargo invoked from either external workspace member finds
+# this file by walking to the repository root.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

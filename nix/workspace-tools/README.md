@@ -6,6 +6,13 @@ pure and designed to work in both megarepo workspaces and standalone repos.
 ## Layout
 
 - `lib/`
+  - `buck2-build-product-contract.nix` — pure exact validation and canonical
+    identity for the shared Buck-to-Nix product descriptor.
+  - `buck2-artifact-import.nix` — fail-closed product import entry point; the
+    exact `elf-dynamic/v1` inspector is admitted and other runtimes remain
+    rejected until their inspectors exist.
+  - `buck2-runtime-inspect-elf-dynamic.nix` — observation-only ELF class,
+    machine, interpreter, dependency, and runtime-path verification.
   - `mk-bun-cli.nix` — Bun binary builder (deterministic, local file deps).
   - `mk-pnpm-cli.nix` — pnpm + bun compile builder for workspace CLIs.
   - `mk-pnpm-deps.nix` — FOD helper for preparing relocatable pnpm install trees that downstream builds restore without rerunning `pnpm install`.
