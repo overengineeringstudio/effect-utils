@@ -4,7 +4,7 @@
 
 These requirements define the dependency materialization contract used by
 effect-utils live pnpm tasks, Nix prepared dependency artifacts, CI jobs, and
-future Buck2 dependency evidence.
+declared consumers of immutable dependency closures.
 
 Canonical shared terms and relationships are defined in
 [ontology.md](./ontology.md).
@@ -24,8 +24,6 @@ Subsystem requirements refine this root contract:
   immutable Nix prepared dependency artifacts.
 - [04-store-authority](./04-store-authority/requirements.md) defines shared
   content, repair, prune, and GC authority.
-- [05-buck2-evidence](./05-buck2-evidence/requirements.md) defines the Buck2
-  evidence boundary.
 - [06-observability](./06-observability/requirements.md) defines producer facts
   for materialization telemetry.
 - [07-verification](./07-verification/requirements.md) defines the proof,
@@ -42,9 +40,9 @@ Subsystem requirements refine this root contract:
   binaries that cannot be treated as pure package artifacts are supplied by Nix
   or explicit wrappers, not by pnpm lifecycle scripts.
 - **A03 Materialization Profile consumers:** Prepared dependency artifacts and
-  Buck2 evidence use one immutable Materialization Profile vocabulary for
-  equivalent dependency inputs. Live installs use their declared inputs and
-  install contract directly.
+  external build adapters may use one immutable Materialization Profile
+  vocabulary for equivalent dependency inputs. Live installs use their
+  declared inputs and install contract directly.
 - **A04 Prepared artifacts are data:** Prepared pnpm dependency FODs are data
   artifacts. Build-time executable shims and native/build outputs are
   projection or build-layer concerns unless explicitly modeled as pure package
@@ -104,14 +102,15 @@ Subsystem requirements refine this root contract:
 
 ### Must make materialization identity explicit
 
-- **DMP-R09 Materialization Profile identity:** When prepared dependency or
-  Buck2 evidence groups equivalent immutable dependency work, its stable
+- **DMP-R09 Materialization Profile identity:** When a prepared dependency
+  artifact or external build adapter groups equivalent immutable dependency work, its stable
   Materialization Profile identity must derive from topology, dependency
   inputs, package-manager policy, and toolchain inputs, not physical root or
   storage placement.
 - **DMP-R10 Shared Materialization Profile schema:** Nix prepared dependency
-  artifacts and Buck2 evidence must use the same Materialization Profile fields
-  when describing equivalent dependency work.
+  artifacts and external build adapters must use the same Materialization
+  Profile fields when describing equivalent dependency work. The adapter owns
+  its build-system projection outside this VRS.
 - **DMP-R11 Topology and edge authority:** Each Materialization Root must name
   authoritative workspace topology and one Authoritative Materializer.
   Package-local or sibling-root state must not become authoritative implicitly.

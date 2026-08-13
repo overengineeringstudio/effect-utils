@@ -1,6 +1,9 @@
 # 0002 Effect Utils Fast Task Launcher
 
-Status: accepted
+Status: superseded for the long-term architecture
+
+The launcher remains transitional while the direct-Buck native-evidence
+baseline in [`context/buck2`](../../../../buck2/spec.md) is proved.
 
 ## Context
 

@@ -46,16 +46,6 @@ let
       packageRoot = workspaceRoot + "/buck2-tools/package-evidence";
       workspaceMember = "buck2-tools/package-evidence";
     };
-    portable-toolchain = {
-      package = "buck2-portable-toolchain";
-      packageRoot = workspaceRoot + "/buck2-tools/portable-toolchain";
-      workspaceMember = "buck2-tools/portable-toolchain";
-    };
-    portable-toolchain-fixture = {
-      package = "buck2-portable-toolchain-fixture";
-      packageRoot = workspaceRoot + "/buck2-tools/portable-toolchain-fixture";
-      workspaceMember = "buck2-tools/portable-toolchain-fixture";
-    };
   };
 
   mkTool =
@@ -108,6 +98,4 @@ in
   ) toolDefinitions;
   closure-tool = mkTool toolDefinitions.closure-tool;
   package-evidence = mkTool toolDefinitions.package-evidence;
-  portable-toolchain = mkTool toolDefinitions.portable-toolchain;
-  portable-toolchain-fixture = mkTool toolDefinitions.portable-toolchain-fixture;
 }

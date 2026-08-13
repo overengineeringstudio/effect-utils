@@ -12,8 +12,8 @@ common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
   mkStrictDescriptor = { original, entrypoints }: {
     schema = "buck-build-product/v1";
     name = "fixture-tool";
-    platform = { os = "linux"; architecture = "x86_64"; abi = "musl"; };
-    payload = original.artifact;
+    platform = original.platform;
+    payload = original.payload;
     inherit entrypoints;
     runtime = { kind = "self-contained"; inspectionContract = "elf-static/v1"; };
     semanticProvenance = {
@@ -72,59 +72,11 @@ expect_command_failure() {
   echo "buck2-bridge-test: RED $label"
 }
 
-export_out="$(build_expr "($base_expr).portableExport")"
-descriptor="$export_out/descriptor.json"
-archive="$export_out/artifact.tar"
-
-jq -e '
-  .schemaVersion == 1 and
-  .kind == "buck2-portable-toolchain-artifact" and
-  .name == "fixture-tool" and
-  .artifact.format == "tar" and
-  .artifact.digest.algorithm == "sha256" and
-  .entrypoints == ["bin/fixture-tool"] and
-  .provenance.producer == "effect-utils.buck2-toolchain-export"
-' "$descriptor" >/dev/null
-
-declared_digest="$(jq -r '.artifact.digest.sri' "$descriptor")"
-actual_digest="$(nix hash file --type sha256 --sri "$archive")"
-[ "$declared_digest" = "$actual_digest" ]
-
-# Close the bridge seam: the exact Nix store artifacts and byte identities are
-# configured into Buck, staged by the Nix-realized Rust verifier under hostile
-# PATH, then executed as RunInfo by a second Buck action.
-buck2_bin="${BUCK2_BIN:?BUCK2_BIN is required for the Nix to Buck bridge proof}"
-stage0_config="${BUCK2_STAGE0_CONFIG:?BUCK2_STAGE0_CONFIG is required}"
-bridge_config="$(mktemp)"
-trap 'rm -f "$bridge_config"' EXIT
-cp "$stage0_config" "$bridge_config"
-archive_sha256="$(sha256sum "$archive" | awk '{ print $1 }')"
-descriptor_sha256="$(sha256sum "$descriptor" | awk '{ print $1 }')"
-{
-  printf '\n[buck2_bridge]\n'
-  printf '  archive = %s\n' "$archive"
-  printf '  archive_sha256 = %s\n' "$archive_sha256"
-  printf '  descriptor = %s\n' "$descriptor"
-  printf '  descriptor_sha256 = %s\n' "$descriptor_sha256"
-} >>"$bridge_config"
-buck_output="$("$buck2_bin" build --config-file "$bridge_config" \
-  //buck2/toolchains:configured_nix_export_evidence \
-  --show-full-output --local-only --no-remote-cache)"
-buck_evidence="$(printf '%s\n' "$buck_output" | awk \
-  '$1 == "root//buck2/toolchains:configured_nix_export_evidence" { print $2 }')"
-[ -f "$buck_evidence" ] || {
-  echo "buck2-bridge-test: Buck did not materialize configured Nix export evidence" >&2
-  exit 1
-}
-grep -Fx 'buck2-bridge-ok' "$buck_evidence" >/dev/null || {
-  echo "buck2-bridge-test: configured Nix export did not execute through Buck RunInfo" >&2
-  exit 1
-}
-
-export BUCK2_BRIDGE_EXPORT_OUT="$export_out"
+static_product="$(build_expr "($base_expr).staticElfProduct")"
+export BUCK2_BRIDGE_STATIC_PRODUCT="$static_product"
 unsupported_runtime_expr="let
   $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_STATIC_PRODUCT\");
     original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
     descriptor = mkStrictDescriptor {
       inherit original;
@@ -287,7 +239,7 @@ rm -f "$tampered_archive"
 
 duplicate_import_entrypoint_expr="let
   $common_let
-  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_EXPORT_OUT\");
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
     original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
     descriptor = mkStrictDescriptor {
       inherit original;
@@ -303,41 +255,6 @@ expect_build_failure \
   "duplicate import entrypoint" \
   "descriptor.entrypoints entries must be unique" \
   "$duplicate_import_entrypoint_expr"
-
-expect_build_failure \
-  "store-reference export" \
-  "forbidden Nix store reference" \
-  "($base_expr).storeReferenceExport"
-
-expect_build_failure \
-  "escaping-symlink export" \
-  "symlink escapes artifact root" \
-  "($base_expr).escapingSymlinkExport"
-
-expect_build_failure \
-  "non-canonical entrypoint export" \
-  "entrypoints must be safe relative paths" \
-  "($base_expr).nonCanonicalEntrypointExport"
-
-expect_build_failure \
-  "repeated-separator entrypoint export" \
-  "entrypoints must be safe relative paths" \
-  "($base_expr).repeatedSeparatorEntrypointExport"
-
-expect_build_failure \
-  "backslash entrypoint export" \
-  "entrypoints must be safe relative paths" \
-  "($base_expr).backslashEntrypointExport"
-
-expect_build_failure \
-  "control-character entrypoint export" \
-  "entrypoints must be safe relative paths" \
-  "($base_expr).controlCharacterEntrypointExport"
-
-expect_build_failure \
-  "duplicate entrypoint export" \
-  "entrypoints must be unique" \
-  "($base_expr).duplicateEntrypointExport"
 
 scan_expr="let
   $common_let
@@ -500,4 +417,4 @@ expect_command_failure \
   "$scan_out" archive "$concatenated_root.tar"
 rm -rf "$concatenated_root" "$concatenated_root.tar" "$concatenated_root-second.tar"
 
-echo "buck2-bridge-test: PASS export=$export_out buck_runinfo=executed dynamic_import=$dynamic_import"
+echo "buck2-bridge-test: PASS static_product=$static_product dynamic_import=$dynamic_import"

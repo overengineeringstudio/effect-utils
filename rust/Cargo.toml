@@ -6,8 +6,6 @@ members = [
   "buck2-tools/core",
   "buck2-tools/closure-tool",
   "buck2-tools/package-evidence",
-  "buck2-tools/portable-toolchain",
-  "buck2-tools/portable-toolchain-fixture",
 ]
 
 [workspace.package]
