@@ -200,7 +200,7 @@ describe('mr store gc --generated-artifacts', () => {
     Effect.fnUntraced(
       function* () {
         const f = yield* fixture()
-        const artifact = yield* oldIgnoredArtifact(f.worktree)
+        yield* oldIgnoredArtifact(f.worktree)
         yield* configure({ config: f.config })
         const missing = yield* runGc({
           cwd: f.outside,
@@ -230,7 +230,7 @@ describe('mr store gc --generated-artifacts', () => {
       function* () {
         const f = yield* fixture()
         yield* configure({ config: f.config, manifest: f.manifest })
-        const ignored = yield* oldIgnoredArtifact(f.worktree)
+        yield* oldIgnoredArtifact(f.worktree)
         const fs = yield* FileSystem.FileSystem
         yield* fs.writeFileString(`${f.worktree}/README.md`, 'dirty')
         const dirty = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
