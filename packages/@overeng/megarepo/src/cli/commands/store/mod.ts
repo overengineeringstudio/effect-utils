@@ -11,7 +11,7 @@ import { isAbsolute, normalize } from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Clock, Effect, Option, Schedule, Stream } from 'effect'
+import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -135,6 +135,12 @@ type GeneratedArtifactScan =
       readonly _tag: 'incomplete'
       readonly cause: 'entry-cap' | 'timeout' | 'symlink' | 'not-directory' | 'io'
     }
+
+const AgentLivenessManifest = Schema.Struct({
+  version: Schema.Literal(1),
+  expiresAtMs: Schema.Number,
+  activeWorkspacePaths: Schema.Array(Schema.String),
+})
 
 const scanGeneratedArtifact = ({ path }: { path: string }) =>
   Effect.async<GeneratedArtifactScan>((resume) => {
@@ -1700,31 +1706,20 @@ const storeGcCommand = Cli.Command.make(
                 .readFileString(config.generatedArtifacts.agentLivenessManifest)
                 .pipe(Effect.orElseSucceed(() => undefined))
               if (manifestContent === undefined) return undefined
-              try {
-                const parsed: unknown = JSON.parse(manifestContent)
-                if (
-                  typeof parsed !== 'object' ||
-                  parsed === null ||
-                  !('version' in parsed) ||
-                  parsed.version !== 1 ||
-                  !('activeWorkspacePaths' in parsed) ||
-                  Array.isArray(parsed.activeWorkspacePaths) === false ||
-                  parsed.activeWorkspacePaths.some(
-                    (path) => typeof path !== 'string' || isNormalizedAbsolutePath(path) === false,
-                  ) === true ||
-                  !('expiresAtMs' in parsed) ||
-                  typeof parsed.expiresAtMs !== 'number' ||
-                  Number.isFinite(parsed.expiresAtMs) === false ||
-                  parsed.expiresAtMs < (yield* Clock.currentTimeMillis)
-                ) {
-                  return undefined
-                }
-                return new Set(
-                  parsed.activeWorkspacePaths.map((path) => normalizeStorePath(path as string)),
-                )
-              } catch {
+              const parsed = yield* Schema.decodeUnknown(Schema.parseJson(AgentLivenessManifest))(
+                manifestContent,
+              ).pipe(Effect.orElseSucceed(() => undefined))
+              if (
+                parsed === undefined ||
+                Number.isFinite(parsed.expiresAtMs) === false ||
+                parsed.activeWorkspacePaths.some(
+                  (path) => isNormalizedAbsolutePath(path) === false,
+                ) === true ||
+                parsed.expiresAtMs < (yield* Clock.currentTimeMillis)
+              ) {
                 return undefined
               }
+              return new Set(parsed.activeWorkspacePaths.map(normalizeStorePath))
             })
             for (const { repo, worktrees } of repoWorktrees) {
               discoveredWorktreeCount += worktrees.length
