@@ -185,10 +185,7 @@ export const validateStage0Config = async ({
   try {
     const contents = await readFile(path, 'utf8')
     const metadata = configMetadata(contents)
-    if (
-      metadata?.abi !== stage0ConfigResolverAbi ||
-      metadata.fingerprint !== expectedFingerprint
-    ) {
+    if (metadata?.abi !== stage0ConfigResolverAbi || metadata.fingerprint !== expectedFingerprint) {
       return false
     }
     const values = parseStage0Config(contents)
@@ -199,7 +196,9 @@ export const validateStage0Config = async ({
           const value = values[configKey]!
           if ((await executableExists(value)) === false) return false
           try {
-            return (await realpath(value)) === (await realpath(resolve(roots, configKey, executable)))
+            return (
+              (await realpath(value)) === (await realpath(resolve(roots, configKey, executable)))
+            )
           } catch {
             return false
           }
@@ -291,6 +290,7 @@ const resolveIdentity = async (
   }
 }
 
+/* oxlint-disable eslint/no-await-in-loop -- Each bounded retry must observe the identity after the previous locked realization; parallel attempts would race the same cache entry. */
 export const resolveStage0Config = async (
   request: Stage0ConfigRequest,
 ): Promise<Stage0ConfigResult> => {
@@ -360,6 +360,7 @@ export const resolveStage0Config = async (
   }
   throw new Error(`stage-0 semantic inputs remained unstable after ${maxAttempts} attempts`)
 }
+/* oxlint-enable eslint/no-await-in-loop */
 
 const writeFileAtomic = async ({
   path,

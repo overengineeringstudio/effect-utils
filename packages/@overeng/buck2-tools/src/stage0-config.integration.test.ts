@@ -183,7 +183,10 @@ printf '%s\\n' "$output"
     await chmod(configPath, 0o600)
     await writeFile(
       configPath,
-      original.replace(/^# Semantic fingerprint: .+$/mu, `# Semantic fingerprint: ${'0'.repeat(64)}`),
+      original.replace(
+        /^# Semantic fingerprint: .+$/mu,
+        `# Semantic fingerprint: ${'0'.repeat(64)}`,
+      ),
     )
     const fingerprintRepaired = await runCli({ root, cacheRoot })
     expect(fingerprintRepaired.exitCode).toBe(0)
