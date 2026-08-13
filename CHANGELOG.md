@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Record an aarch64-linux Buck-owned Vite development-launch experiment proving
+  exact closure launch, live local and workspace HMR, external writable caches,
+  concurrent instances, signal teardown, restart, and zero application-local
+  `node_modules`, while keeping Vite transformation and process supervision as
+  separate authorities.
+
 - Fix lazy Buck stage-0 recovery to snapshot only its fingerprinted source inputs, keep unrelated Cargo product manifests out of tool derivations, and retain the observability gate when shell-entry setup is disabled.
 
 - Harden Buck foundation review contracts by recording explicit revision and execution-platform receipt identity, redacting password aliases, validating schema-v3 provenance, preserving mutation-free observability checks, narrowing generated-file markings, and leasing in-flight publications against future collection.
