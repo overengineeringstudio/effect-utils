@@ -310,7 +310,7 @@ let
       if [ "$_tsc_exit" -ne 0 ]; then
         echo "ts: compiler failed (exit=$_tsc_exit bytes=$(wc -c < "$_tsc_output"))" >&2
       fi
-      cat "$_tsc_output"
+      cat "$_tsc_output" >&2
       exit "$_tsc_exit"
     fi
   '';
