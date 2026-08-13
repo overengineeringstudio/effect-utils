@@ -24,6 +24,7 @@ import { countNonEmptyLines, parseMaterializations, summarizeSamples } from './l
 const schema = 'effect-utils-buck2-benchmark/v0'
 const defaultRelevantPath = 'packages/@overeng/tui-core/src/mod.ts'
 const defaultIrrelevantPath = 'context/dependency-materialization/intuition.md'
+const defaultDeclaredUnreachablePath = null
 
 const fail = (message) => {
   console.error(message)
@@ -50,8 +51,11 @@ const parseArgs = (argv) => {
     isolationDir: 'effect-utils-benchmark',
     relevantPath: defaultRelevantPath,
     irrelevantPath: defaultIrrelevantPath,
+    declaredUnreachablePath: defaultDeclaredUnreachablePath,
     output: null,
     buckBin: process.env.BUCK2_BENCH_BUCK_BIN ?? null,
+    buckConfig: [],
+    buckConfigFile: null,
     hostLabel: process.env.BUCK2_BENCH_HOST_LABEL ?? 'redacted-local',
   }
 
@@ -75,8 +79,11 @@ const parseArgs = (argv) => {
     else if (arg === '--isolation-dir') options.isolationDir = take()
     else if (arg === '--relevant-path') options.relevantPath = take()
     else if (arg === '--irrelevant-path') options.irrelevantPath = take()
+    else if (arg === '--declared-unreachable-path') options.declaredUnreachablePath = take()
     else if (arg === '--output') options.output = take()
     else if (arg === '--buck-bin') options.buckBin = take()
+    else if (arg === '--buck-config') options.buckConfig.push(take())
+    else if (arg === '--buck-config-file') options.buckConfigFile = take()
     else if (arg === '--host-label') options.hostLabel = take()
     else if (arg === '--help') {
       console.log(`usage: node benchmark.mjs [options]
@@ -93,9 +100,13 @@ Defaults to a non-executing dry run. Use --execute to run commands.
   --declare-equivalent-work assert the contract covers equivalent work (off by default)
   --buck-incremental-only   skip Devenv and destructive cold/restart Buck phases
   --buck-bin PATH           pinned Buck2 executable
+  --buck-config KEY=VALUE   Buck config value (repeatable)
+  --buck-config-file PATH   exact generated Buck config file
   --isolation-dir NAME      Buck daemon/cache namespace
   --relevant-path PATH      source mutation path
   --irrelevant-path PATH    non-input mutation path
+  --declared-unreachable-path PATH
+                            declared production input not reachable from the entrypoint
   --output PATH             raw JSONL output
   --host-label LABEL        non-sensitive operator-supplied host label`)
       process.exit(0)
@@ -215,6 +226,7 @@ const plan = [
   ['buck2', 'workspace-check', 'daemon-restart-cache-warm'],
   ['buck2', 'workspace-check', 'mtime-only', 'mtime'],
   ['buck2', 'workspace-check', 'relevant-edit', 'relevant'],
+  ['buck2', 'workspace-check', 'declared-unreachable-edit', 'declared-unreachable'],
   ['buck2', 'workspace-check', 'irrelevant-edit', 'irrelevant'],
 ]
 
@@ -380,6 +392,7 @@ const main = async () => {
     },
     mutationPaths: {
       relevant: options.relevantPath,
+      declaredUnreachable: options.declaredUnreachablePath,
       irrelevant: options.irrelevantPath,
     },
   })
@@ -681,6 +694,8 @@ const main = async () => {
       '--isolation-dir',
       options.isolationDir,
       'build',
+      ...(options.buckConfigFile === null ? [] : ['--config-file', options.buckConfigFile]),
+      ...options.buckConfig.flatMap((value) => ['-c', value]),
       options.target,
       '--local-only',
       '--no-remote-cache',
@@ -930,6 +945,29 @@ const main = async () => {
         command: buckBin,
         args: (stem) => makeBuckArgs(stem),
       })
+      if (options.declaredUnreachablePath === null) {
+        emitSkip({
+          engine: 'buck2',
+          surface: 'workspace-check',
+          phase: 'declared-unreachable-edit',
+          mutation: 'declared-unreachable',
+          reason: 'declared-unreachable-path-undeclared',
+        })
+      } else
+        await mutationSeries({
+          engine: 'buck2',
+          surface: 'workspace-check',
+          phase: 'declared-unreachable-edit',
+          mutation: 'declared-unreachable',
+          path: options.declaredUnreachablePath,
+          mutate: (path, index) =>
+            appendFileSync(
+              path,
+              `\nexport type Buck2DeclaredUnreachableBenchmarkProbe${index} = '${runId}'\n`,
+            ),
+          command: buckBin,
+          args: (stem) => makeBuckArgs(stem),
+        })
       await mutationSeries({
         engine: 'buck2',
         surface: 'workspace-check',

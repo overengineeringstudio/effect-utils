@@ -162,7 +162,10 @@ let
       package-evidence effect-utils/buck2-package-evidence/v1 ${
         buck2Stage0Definition."package-evidence"
       }/bin/buck2-package-evidence \
-      product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product
+      product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product \
+      typescript-product effect-utils/buck2-typescript-product/v1 ${
+        buck2Stage0Definition."typescript-product"
+      }/bin/buck2-typescript-product
   '';
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -390,6 +393,10 @@ let
     "context/otel-scrape/telemetry-registry.json"
     "genie/buck2/*.ts"
     "packages/@overeng/buck2-tools/src/**/*.ts"
+    "packages/@overeng/megarepo/bin/**/*.ts"
+    "packages/@overeng/megarepo/buck2/**/*.ts"
+    "packages/@overeng/megarepo/src/**/*.ts"
+    "packages/@overeng/megarepo/src/**/*.tsx"
     "packages/@overeng/tui-core/buck2/target.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.tsx"
@@ -889,6 +896,89 @@ in
     '';
   };
 
+  tasks."buck2:build:megarepo" = {
+    description = "Build the mr product from its exact Buck TypeScript graph";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:build:megarepo" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
+      exec ${pkgs.buck2}/bin/buck2 \
+        build \
+        -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        //packages/@overeng/megarepo:mr --local-only --no-remote-cache
+    '';
+  };
+
+  tasks."buck2:test:typescript-product" = {
+    description = "Run the Rust TypeScript product tool tests";
+    exec = trace.exec "buck2:test:typescript-product" ''
+      set -euo pipefail
+      cd rust
+      exec cargo test --locked --package buck2-typescript-product
+    '';
+  };
+
+  tasks."buck2:e2e:megarepo-contract" = {
+    description = "Build mr and pass its emitted descriptor through the canonical Nix contract";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:e2e:megarepo-contract" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      export BUCK2_PRODUCT_NIXPKGS=${repoFlake.inputs.nixpkgs}
+      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export CP_BIN=${pkgs.coreutils}/bin/cp
+      export DD_BIN=${pkgs.coreutils}/bin/dd
+      export GREP_BIN=${pkgs.gnugrep}/bin/grep
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export MKTEMP_BIN=${pkgs.coreutils}/bin/mktemp
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export RM_BIN=${pkgs.coreutils}/bin/rm
+      exec ${pkgs.bash}/bin/bash scripts/buck2-megarepo-product-e2e.sh \
+        "$root" ${pkgs.buck2}/bin/buck2 //packages/@overeng/megarepo:mr \
+        -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl}
+    '';
+  };
+
+  tasks."buck2:benchmark:megarepo" = {
+    description = "Measure warm, role-excluded, relevant, and coarse mr Buck invalidation boundaries";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:benchmark:megarepo" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      output="$root/tmp/buck2-benchmark/megarepo-mr.jsonl"
+      ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
+        --execute --in-place --buck-incremental-only --buck-bin ${pkgs.buck2}/bin/buck2 \
+        --buck-target //packages/@overeng/megarepo:mr \
+        --buck-config buck2_nix.bun=${pkgs.bun}/bin/bun \
+        --buck-config buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        --buck-config buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        --buck-config buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        --buck-config buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        --buck-config buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        --work-contract megarepo-cli-product/no-equivalent-devenv-lane/v1 \
+        --relevant-path packages/@overeng/megarepo/src/lib/version.ts \
+        --declared-unreachable-path packages/@overeng/megarepo/src/buck2-declared-unreachable-fixture.ts \
+        --irrelevant-path packages/@overeng/megarepo/src/lib/ref.unit.test.ts \
+        --runs 7 --warmups 2 --isolation-dir megarepo-mr-benchmark \
+        --output "$output"
+      exec ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/assert-invalidation.mjs "$output"
+    '';
+  };
+
   tasks."buck2:foundation:graph-check" = {
     description = "Prove the Buck2 foundation has no repo-owned Python or CPython graph edges";
     after = [ "buck2:capabilities:project" ];
@@ -910,6 +1000,7 @@ in
       ${pkgs.nodejs}/bin/node --test \
         scripts/buck2-benchmark/lib.unit.test.mjs \
         scripts/buck2-benchmark/evidence-integrity.unit.test.mjs \
+        scripts/buck2-benchmark/assert-invalidation.unit.test.mjs \
         scripts/buck2-benchmark/dry-run.integration.test.mjs
       ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
         --output "$root/tmp/buck2-benchmark/dry-run.jsonl"
@@ -952,11 +1043,15 @@ in
       "buck2:capabilities:project"
       "buck2:capabilities:test"
       "buck2:build:foundation"
+      "buck2:build:megarepo"
+      "buck2:e2e:megarepo-contract"
       "buck2:test:foundation"
+      "buck2:test:typescript-product"
       "buck2:foundation:graph-check"
       "buck2:e2e:tui-core"
       "buck2:nix-bridge:check"
       "buck2:benchmark:check"
+      "buck2:benchmark:megarepo"
       "buck2:invalidation:e2e"
       "buck2:platform:check"
     ];
