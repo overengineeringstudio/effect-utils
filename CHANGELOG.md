@@ -44,7 +44,9 @@ All notable changes to this project will be documented in this file.
   descriptors, restore in-place mutations across signals, recognize Buck global
   options including attached numeric verbosity, keep host-stamped package actions
   local, structurally redact credential-key values and authorization schemes with
-  their CLI credentials, reject invalid materialization counters, and reject
+  their CLI credentials, including auth and credential-named key segments,
+  reject invalid materialization counters, require every exported symlink target
+  to use the same portable normalized form as the Buck importer, and reject
   unknown descriptor fields, duplicate, control-bearing, or non-canonical
   entrypoints, reserved importer metadata, oversized, non-block-aligned, or sparse
   portable-tool archives, and bytes after the tar end marker.

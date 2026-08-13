@@ -127,6 +127,29 @@ describe('Buck receipt normalization', () => {
     expect(result).toContain('retained-tokenizer')
   })
 
+  it('redacts auth and credential key segments in every supported evidence form', () => {
+    const result = sanitizeEvidenceText(
+      JSON.stringify({
+        auth: 'json-auth-secret',
+        credentials: 'json-credentials-secret',
+        nested: { clientCredential: 'json-credential-secret' },
+      }),
+    )
+    const actions = normalizeActions([
+      { identity: '--auth cli-auth-secret' },
+      { identity: 'credentials=assignment-credentials-secret' },
+      { identity: 'clientCredential: header-credential-secret' },
+    ])
+    const serialized = JSON.stringify({ result, actions })
+
+    expect(serialized).not.toContain('json-auth-secret')
+    expect(serialized).not.toContain('json-credentials-secret')
+    expect(serialized).not.toContain('json-credential-secret')
+    expect(serialized).not.toContain('cli-auth-secret')
+    expect(serialized).not.toContain('assignment-credentials-secret')
+    expect(serialized).not.toContain('header-credential-secret')
+  })
+
   it('requires materialization counters to be nonnegative safe integers', () => {
     const valid = { path: 'buck-out/x', method: 'copy', file_count: 1, total_bytes: 2 }
     for (const invalid of [

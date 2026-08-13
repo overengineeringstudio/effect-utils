@@ -269,6 +269,43 @@ scan_expr="let
   $common_let
 in import (repo + \"/nix/workspace-tools/lib/buck2-artifact-scan.nix\") { inherit pkgs; }"
 scan_out="$(build_expr "$scan_expr")"
+
+portable_symlink_root="$(mktemp -d)"
+mkdir -p "$portable_symlink_root/bin" "$portable_symlink_root/lib"
+printf '%s\n' portable >"$portable_symlink_root/lib/tool"
+ln -s ../lib/tool "$portable_symlink_root/bin/tool"
+"$scan_out" tree "$portable_symlink_root"
+rm -rf "$portable_symlink_root"
+
+for symlink_case in \
+  'backslash|foo\bar|portable POSIX separators' \
+  'repeated-separator|foo//bar|normalized' \
+  'dot-component|foo/./bar|normalized'
+do
+  symlink_label="${symlink_case%%|*}"
+  symlink_remainder="${symlink_case#*|}"
+  symlink_target="${symlink_remainder%%|*}"
+  symlink_diagnostic="${symlink_remainder#*|}"
+  symlink_root="$(mktemp -d)"
+  ln -s "$symlink_target" "$symlink_root/link"
+  expect_command_failure \
+    "$symlink_label symlink target" \
+    "$symlink_diagnostic" \
+    "$scan_out" tree "$symlink_root"
+  rm -rf "$symlink_root"
+done
+
+control_symlink_targets=($'foo\nbar' $'foo\tbar' $'foo\x7fbar')
+for control_index in "${!control_symlink_targets[@]}"; do
+  control_symlink_root="$(mktemp -d)"
+  ln -s "${control_symlink_targets[$control_index]}" "$control_symlink_root/link"
+  expect_command_failure \
+    "control-character-$control_index symlink target" \
+    "control characters" \
+    "$scan_out" tree "$control_symlink_root"
+  rm -rf "$control_symlink_root"
+done
+
 special_root="$(mktemp -d)"
 trap 'rm -rf "$special_root"' EXIT
 mkfifo "$special_root/fixture.fifo"

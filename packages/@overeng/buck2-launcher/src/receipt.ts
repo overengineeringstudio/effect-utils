@@ -593,7 +593,17 @@ export const descriptorForClosureManifest = async (
   }
 }
 
-const sensitiveKeyWords = new Set(['authorization', 'cookie', 'key', 'password', 'secret', 'token'])
+const sensitiveKeyWords = new Set([
+  'auth',
+  'authorization',
+  'cookie',
+  'credential',
+  'credentials',
+  'key',
+  'password',
+  'secret',
+  'token',
+])
 const keyWords = (key: string): ReadonlyArray<string> =>
   key
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')

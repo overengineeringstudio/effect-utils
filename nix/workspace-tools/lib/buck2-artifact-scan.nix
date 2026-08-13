@@ -11,6 +11,26 @@ pkgs.writeShellScript "buck2-artifact-scan" ''
     exit 1
   }
 
+  validate_symlink_target() {
+    local relative="$1"
+    local target="$2"
+
+    [ -n "$target" ] \
+      || fail "symlink target must be non-empty: $relative"
+    case "$target" in
+      *$'\n'*|*$'\r'*) fail "symlink target contains control characters: $relative" ;;
+    esac
+    if printf '%s' "$target" | ${pkgs.gnugrep}/bin/grep -q '[[:cntrl:]]'; then
+      fail "symlink target contains control characters: $relative"
+    fi
+    case "$target" in
+      /*) fail "absolute symlink is not relocatable: $relative -> $target" ;;
+      *\\*) fail "symlink target must use portable POSIX separators: $relative -> $target" ;;
+      "."|./*|*/.|*/./*|*//*|*/) \
+        fail "symlink target must be normalized: $relative -> $target" ;;
+    esac
+  }
+
   scan_tree() {
     local root="$1"
     [ -d "$root" ] || fail "tree does not exist: $root"
@@ -25,11 +45,12 @@ pkgs.writeShellScript "buck2-artifact-scan" ''
       esac
 
       if [ -L "$path" ]; then
-        local target resolved
-        target="$(${pkgs.coreutils}/bin/readlink "$path")"
-        case "$target" in
-          /*) fail "absolute symlink is not relocatable: $relative -> $target" ;;
-        esac
+        local target target_with_sentinel resolved
+        # The sentinel preserves trailing newlines in the link target across
+        # command substitution so the control-character check stays fail-closed.
+        target_with_sentinel="$(${pkgs.coreutils}/bin/readlink -n "$path"; printf x)"
+        target="''${target_with_sentinel%x}"
+        validate_symlink_target "$relative" "$target"
         resolved="$(${pkgs.coreutils}/bin/realpath -m "$(dirname "$path")/$target")"
         case "$resolved" in
           "$canonical_root"|"$canonical_root"/*) ;;
