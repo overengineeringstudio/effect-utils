@@ -1,0 +1,32 @@
+{
+  "name": "@overeng/buck2-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
+  "dependencies": {
+    "effect": "3.21.4"
+  },
+  "devDependencies": {
+    "@overeng/utils-dev": "workspace:^",
+    "@types/node": "26.0.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/buck2-tools",
+      "packages/@overeng/utils-dev"
+    ]
+  }
+}

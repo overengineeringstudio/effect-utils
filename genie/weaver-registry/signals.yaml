@@ -2,7 +2,8 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:5139b4db931b60092da6982c500fe9f1ed3b6bf4a80a3ef2523f3939979678c3
+# fingerprint: sha256:c56d5b1f10ac584c58527fc20deb3a1eeed3af1ae4291aee150e333a0f5c4b98
+# regen: devenv tasks run genie:run
 groups:
   - id: metric.acme.probe.duration
     type: metric
@@ -26,6 +27,16 @@ groups:
         requirement_level: required
       - ref: acme.region
         requirement_level: recommended
+  - id: metric.buck.actions
+    type: metric
+    metric_name: buck.actions
+    instrument: counter
+    unit: '{action}'
+    stability: development
+    brief: Buck action and graph outcomes.
+    attributes:
+      - ref: buck.execution.outcome
+        requirement_level: required
   - id: metric.megarepo.store_gc_rss
     type: metric
     metric_name: megarepo_store_gc_rss_bytes
@@ -129,6 +140,18 @@ groups:
         requirement_level: recommended
       - ref: http.request.method
         requirement_level: recommended
+  - id: span.buck.invocation
+    type: span
+    span_kind: internal
+    stability: development
+    brief: One bounded Buck CLI invocation.
+    attributes:
+      - ref: buck.command
+        requirement_level: required
+      - ref: buck.status
+        requirement_level: required
+      - ref: buck.invocation.id
+        requirement_level: required
   - id: span.ci_tools.deploy
     type: span
     span_kind: internal

@@ -1,0 +1,45 @@
+load(":portable.bzl", "configured_portable_toolchain", "portable_toolchain", "portable_toolchain_fixture", "portable_toolchain_probe")
+
+# Synthetic evidence only: the fixture emits the same archive/descriptor shape
+# as nix/workspace-tools/lib/buck2-toolchain-export.nix. Production consumers
+# must supply reviewed Nix-exported artifacts and their exact byte identities.
+portable_toolchain_fixture(
+    name = "synthetic_nix_export",
+)
+
+portable_toolchain(
+    name = "synthetic_portable_toolchain",
+    archive = ":synthetic_nix_export",
+    archive_sha256 = "e093dbb98f838e82082fc28a5c204dbb1ed758c7dd21d3ddf454d4c71d2d9f0b",
+    descriptor = ":synthetic_nix_export[descriptor]",
+    descriptor_sha256_by_platform = {
+        "aarch64-darwin": "2d3d9a4016ba9d2030b79507a6f291e6e217a79dc88551c54391409331c07779",
+        "aarch64-linux": "bd3345101be98fec5153fc58377413133a7f0c58f402010a3c7c751f493574a5",
+        "x86_64-darwin": "c06f03188b6a97d872f372f068072cb5dabc0a1fa03a031b34a681a946acd3b9",
+        "x86_64-linux": "d8092ec6f82b460b8d19d5f02e504bfd718191851fa33a15b53118f1f34b0244",
+    },
+    entrypoint = "bin/fixture-tool",
+)
+
+portable_toolchain_probe(
+    name = "synthetic_portable_toolchain_evidence",
+    tool = ":synthetic_portable_toolchain",
+    visibility = ["PUBLIC"],
+)
+
+# Isolated Nix -> Buck E2E target. The test supplies exact immutable paths and
+# byte identities with --config-file after realizing the export in Nix.
+configured_portable_toolchain(
+    name = "configured_nix_export",
+    archive_path = read_config("buck2_bridge", "archive", ""),
+    archive_sha256 = read_config("buck2_bridge", "archive_sha256", ""),
+    descriptor_path = read_config("buck2_bridge", "descriptor", ""),
+    descriptor_sha256 = read_config("buck2_bridge", "descriptor_sha256", ""),
+    entrypoint = "bin/fixture-tool",
+)
+
+portable_toolchain_probe(
+    name = "configured_nix_export_evidence",
+    tool = ":configured_nix_export",
+    visibility = ["PUBLIC"],
+)

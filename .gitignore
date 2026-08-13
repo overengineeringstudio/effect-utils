@@ -15,6 +15,16 @@ node_modules
 *.tsbuildinfo
 dist
 
+# Python
+__pycache__/
+*.pyc
+
+# Rust workspace build state
+/rust/target/
+
+# Buck2 daemon and materialized build state
+buck-out/
+
 # Direnv
 repos/
 
@@ -47,7 +57,7 @@ blob-report
 
 devenv.local.*
 
-# Transient plugin-injected oxlint config (written by nix/oxlint-with-plugins.nix during lint)
+# Deterministic plugin-injected oxlint config cache (written by nix/oxlint-with-plugins.nix)
 .oxlint-with-plugins.*
 
 # Agent-session MCP server config (e.g. coord/smalltalk); regenerated per session, not tracked
