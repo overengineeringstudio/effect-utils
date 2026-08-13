@@ -2,7 +2,10 @@
 #
 # Shape validation is not runtime proof. Each accepted tagged runtime dispatches
 # to an exact inspector; all other runtime kinds remain fail closed.
-{ pkgs }:
+{
+  pkgs,
+  inspectElfStatic ? import ./buck2-runtime-inspect-elf-static.nix { inherit pkgs; },
+}:
 
 let
   lib = pkgs.lib;
@@ -24,6 +27,13 @@ let
   };
   checkedPlatform = checkedDescriptor.platform;
   runtimeKind = checkedDescriptor.runtime.kind;
+  runtimeInspector =
+    if runtimeKind == "elf-dynamic" then
+      inspectElfDynamic
+    else if runtimeKind == "self-contained" then
+      inspectElfStatic
+    else
+      throw "buck2-artifact-import: runtime inspector is not available for ${runtimeKind}";
   payload = checkedDescriptor.payload;
   fetchedArtifact =
     if url == null then
@@ -48,42 +58,39 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   url != null || artifact != null
 ) "buck2-artifact-import: a published URL or declared artifact path is required";
-if runtimeKind != "elf-dynamic" then
-  throw "buck2-artifact-import: runtime inspector is not available for ${runtimeKind}"
-else
-  pkgs.runCommand "${checkedDescriptor.name}-buck2-import"
-    {
-      nativeBuildInputs = [ pkgs.openssl ];
-      allowedReferences = [ ];
-      passthru = {
-        descriptorDigest = expectedDescriptorDigest;
-        inherit checkedDescriptor;
-      };
+pkgs.runCommand "${checkedDescriptor.name}-buck2-import"
+  {
+    nativeBuildInputs = [ pkgs.openssl ];
+    allowedReferences = [ ];
+    passthru = {
+      descriptorDigest = expectedDescriptorDigest;
+      inherit checkedDescriptor;
+    };
+  }
+  ''
+    set -euo pipefail
+    archive=${lib.escapeShellArg (toString fetchedArtifact)}
+    actual_size="$(${pkgs.coreutils}/bin/stat --format=%s "$archive")"
+    [ "$actual_size" = ${lib.escapeShellArg (toString payload.sizeBytes)} ] || {
+      echo "buck2-artifact-import: payload size mismatch: expected ${toString payload.sizeBytes}, got $actual_size" >&2
+      exit 1
     }
-    ''
-      set -euo pipefail
-      archive=${lib.escapeShellArg (toString fetchedArtifact)}
-      actual_size="$(${pkgs.coreutils}/bin/stat --format=%s "$archive")"
-      [ "$actual_size" = ${lib.escapeShellArg (toString payload.sizeBytes)} ] || {
-        echo "buck2-artifact-import: payload size mismatch: expected ${toString payload.sizeBytes}, got $actual_size" >&2
-        exit 1
-      }
-      actual_digest="sha256-$(${pkgs.openssl}/bin/openssl dgst -sha256 -binary "$archive" \
-        | ${pkgs.openssl}/bin/openssl base64 -A)"
-      [ "$actual_digest" = ${lib.escapeShellArg payload.digest.sri} ] || {
-        echo "buck2-artifact-import: payload digest mismatch" >&2
-        exit 1
-      }
+    actual_digest="sha256-$(${pkgs.openssl}/bin/openssl dgst -sha256 -binary "$archive" \
+      | ${pkgs.openssl}/bin/openssl base64 -A)"
+    [ "$actual_digest" = ${lib.escapeShellArg payload.digest.sri} ] || {
+      echo "buck2-artifact-import: payload digest mismatch" >&2
+      exit 1
+    }
 
-      ${scan} archive "$archive"
-      mkdir -p "$out"
-      ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
-        --no-same-owner --no-same-permissions
-      ${scan} tree "$out"
-      ${inspectElfDynamic} ${descriptorFile} "$out"
+    ${scan} archive "$archive"
+    mkdir -p "$out"
+    ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
+      --no-same-owner --no-same-permissions
+    ${scan} tree "$out"
+    ${runtimeInspector} ${descriptorFile} "$out"
 
-      ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
-      while IFS= read -r -d "" file; do
-        if [ -x "$file" ]; then chmod 0555 "$file"; else chmod 0444 "$file"; fi
-      done < <(${pkgs.findutils}/bin/find "$out" -type f -print0)
-    ''
+    ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
+    while IFS= read -r -d "" file; do
+      if [ -x "$file" ]; then chmod 0555 "$file"; else chmod 0444 "$file"; fi
+    done < <(${pkgs.findutils}/bin/find "$out" -type f -print0)
+  ''

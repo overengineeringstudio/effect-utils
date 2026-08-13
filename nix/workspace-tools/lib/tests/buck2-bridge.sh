@@ -135,6 +135,31 @@ expect_build_failure \
   "self-contained ELF declares an interpreter" \
   "($base_expr).dynamicElfImport"
 
+needed_only_expr="let
+  $common_let
+  dynamic = builtins.fromJSON (builtins.readFile \"\${test.dynamicExport}/descriptor.json\");
+  descriptor = dynamic // {
+    platform = { os = \"linux\"; architecture = \"x86_64\"; abi = \"musl\"; };
+    runtime = { kind = \"self-contained\"; inspectionContract = \"elf-static/v1\"; };
+  };
+  importArtifact = import (repo + \"/nix/workspace-tools/lib/buck2-artifact-import.nix\") {
+    inherit pkgs;
+    inspectElfStatic = import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-static.nix\") {
+      inherit pkgs;
+      readelf = test.hiddenInterpreterReadelf;
+    };
+  };
+in importArtifact {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = test.dynamicExport + \"/artifact.tar\";
+}"
+expect_build_failure \
+  "self-contained ELF with DT_NEEDED" \
+  "self-contained ELF declares a shared-library dependency" \
+  "$needed_only_expr"
+
 expect_build_failure \
   "store reference in static ELF" \
   "forbidden Nix store reference" \

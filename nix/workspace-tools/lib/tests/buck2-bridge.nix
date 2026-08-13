@@ -166,6 +166,14 @@ let
     exec ${pkgs.binutils}/bin/readelf "$@"
   '';
 
+  hiddenInterpreterReadelf = pkgs.writeShellScript "hidden-interpreter-readelf" ''
+    if [ "''${1-}" = --program-headers ]; then
+      printf '%s\n' 'There are no program headers in this file.'
+      exit 0
+    fi
+    exec ${pkgs.binutils}/bin/readelf "$@"
+  '';
+
   mkExport =
     src:
     exportToolchain {
@@ -196,6 +204,7 @@ let
           pkgs.gnutar
           pkgs.jq
           pkgs.openssl
+          pkgs.patchelf
         ];
         allowedReferences = [ ];
       }
@@ -208,6 +217,16 @@ let
           else
             "-Wl,--dynamic-linker=/lib64/ld-linux-x86-64.so.2 -Wl,--disable-new-dtags"
         } fixture.c -o payload/bin/fixture-tool
+        ${
+          if static then
+            ""
+          else
+            ''
+              patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 \
+                --set-rpath /unused payload/bin/fixture-tool
+              patchelf --remove-rpath payload/bin/fixture-tool
+            ''
+        }
         tar --create --format=gnu --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner \
           --file "$out/artifact.tar" --directory payload .
         digest="sha256-$(openssl dgst -sha256 -binary "$out/artifact.tar" | openssl base64 -A)"
@@ -280,6 +299,7 @@ in
     failingVersionReadelf
     emptyVersionReadelf
     multilineInterpreterReadelf
+    hiddenInterpreterReadelf
     ;
   storeReferenceExport = mkExport storeReferenceSource;
   escapingSymlinkExport = mkExport escapingSymlinkSource;

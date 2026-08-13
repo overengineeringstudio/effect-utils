@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
+repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd -P)}"
 helper="$repo_root/nix/devenv-modules/tasks/shared/buck2-rooted-nix-config.sh"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
