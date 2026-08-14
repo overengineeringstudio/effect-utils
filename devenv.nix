@@ -109,6 +109,7 @@ let
   buck2CapabilityProjectionTools = [
     pkgs.bash
     pkgs.coreutils
+    pkgs.diffutils
     pkgs.findutils
     pkgs.flock
     pkgs.gawk
@@ -777,6 +778,7 @@ in
     description = "Atomically project exact Nix support capabilities for Buck2 analysis";
     exec = trace.exec "buck2:capabilities:project" ''
       set -euo pipefail
+      export BUCK2_BIN=${pkgs.buck2}/bin/buck2
       ${buck2CapabilityProjection}
       ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh --check "$PWD"
     '';
@@ -788,7 +790,8 @@ in
     exec = trace.exec "buck2:capabilities:test" ''
       set -euo pipefail
       export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
-      exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.test.sh "$PWD"
+      exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.test.sh \
+        "$PWD" ${pkgs.buck2}/bin/buck2
     '';
   };
 
