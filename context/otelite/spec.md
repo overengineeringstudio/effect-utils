@@ -281,7 +281,8 @@ optionally, a task profile. The module:
   per-invocation HTTP endpoint over any ambient collector endpoint;
 - emits low-cardinality `devenv.project.name` on effect-utils task spans;
 - provides `otel:profile:<name>` for retained diagnostic captures and
-  `otel:verify:<name>` for a hermetic, automatically cleaned shape check; and
+  `otel:verify:<name>` for a hermetic, automatically cleaned shape check;
+- orders declared profile prerequisites before starting nested devenv evaluation; and
 - optionally composes the existing Collector/Tempo/Grafana module through
   `backend = "auto" | "local" | "system"`.
 

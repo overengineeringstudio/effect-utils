@@ -390,6 +390,7 @@ in
         smokeTask = "genie:check";
         smokeMode = "single";
         bridgeTask = "genie:check";
+        prerequisiteTasks = [ "pnpm:install" ];
       };
       wireInto = [ "check:all" ];
     })
