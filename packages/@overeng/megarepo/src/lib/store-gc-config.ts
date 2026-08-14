@@ -57,6 +57,7 @@ export interface StoreGcConfig {
     readonly retentionMs: number
     readonly allowlist: ReadonlyArray<StoreGcGeneratedArtifact>
     readonly agentLivenessManifest?: string | undefined
+    readonly agentLivenessEpoch?: { readonly catalog: string; readonly host: string } | undefined
   }
 }
 
@@ -83,6 +84,9 @@ const StoreGcConfigOverride = Schema.Struct({
       retentionMs: Schema.optional(Schema.Number),
       allowlist: Schema.optional(Schema.Array(Schema.Literal(...STORE_GC_GENERATED_ARTIFACTS))),
       agentLivenessManifest: Schema.optional(Schema.String),
+      agentLivenessEpoch: Schema.optional(
+        Schema.Struct({ catalog: Schema.String, host: Schema.String }),
+      ),
     }),
   ),
 })
@@ -119,6 +123,14 @@ export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConf
     override.generatedArtifacts?.agentLivenessManifest === undefined
       ? undefined
       : normalizedAbsolutePath(override.generatedArtifacts.agentLivenessManifest)
+  const agentLivenessEpoch = override.generatedArtifacts?.agentLivenessEpoch
+  const validAgentLivenessEpoch =
+    agentLivenessManifest !== undefined &&
+    agentLivenessEpoch !== undefined &&
+    normalizedAbsolutePath(agentLivenessEpoch.catalog) !== undefined &&
+    agentLivenessEpoch.host.length > 0
+      ? agentLivenessEpoch
+      : undefined
   return {
     absenceGraceMs: validDuration({
       value: override.absenceGraceMs,
@@ -145,7 +157,9 @@ export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConf
             DEFAULT_STORE_GC_CONFIG.generatedArtifacts.allowlist,
         ),
       ],
-      ...(agentLivenessManifest === undefined ? {} : { agentLivenessManifest }),
+      ...(validAgentLivenessEpoch === undefined
+        ? {}
+        : { agentLivenessManifest, agentLivenessEpoch: validAgentLivenessEpoch }),
     },
   }
 }

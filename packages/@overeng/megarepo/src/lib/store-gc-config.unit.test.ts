@@ -90,6 +90,7 @@ describe('store-gc-config', () => {
             retentionMs: 42,
             allowlist: ['node_modules', '.direnv'],
             agentLivenessManifest: '/run/megarepo/agent-liveness.json',
+            agentLivenessEpoch: { catalog: '/var/lib/st2/catalog', host: 'dev3' },
           },
         }).generatedArtifacts,
       ).toEqual({
@@ -97,6 +98,7 @@ describe('store-gc-config', () => {
         retentionMs: 42,
         allowlist: ['node_modules', '.direnv'],
         agentLivenessManifest: '/run/megarepo/agent-liveness.json',
+        agentLivenessEpoch: { catalog: '/var/lib/st2/catalog', host: 'dev3' },
       })
     })
 
@@ -110,6 +112,17 @@ describe('store-gc-config', () => {
 
       expect(generatedArtifacts.allowlist).toEqual(['node_modules', '.direnv'])
       expect(generatedArtifacts.agentLivenessManifest).toBeUndefined()
+      expect(generatedArtifacts.agentLivenessEpoch).toBeUndefined()
+    })
+
+    it('requires the manifest and its admitted epoch together', () => {
+      const generatedArtifacts = mergeStoreGcConfig({
+        generatedArtifacts: {
+          agentLivenessManifest: '/run/megarepo/agent-liveness.json',
+        },
+      }).generatedArtifacts
+      expect(generatedArtifacts.agentLivenessManifest).toBeUndefined()
+      expect(generatedArtifacts.agentLivenessEpoch).toBeUndefined()
     })
   })
 
