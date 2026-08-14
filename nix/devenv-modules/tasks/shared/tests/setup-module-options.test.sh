@@ -34,6 +34,31 @@ eval_setup_module_attr() {
   "
 }
 
+eval_observability_module_attr() {
+  local attr_expr="$1"
+
+  nix eval --impure --json --expr "
+    let
+      flake = builtins.getFlake (toString $ROOT);
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      observabilityModule = import $ROOT/nix/devenv-modules/observability.nix {
+        project = \"fixture\";
+        profile = {
+          name = \"fixture\";
+          task = \"fixture:task\";
+          mode = \"single\";
+          smokeTask = \"fixture:task\";
+          smokeMode = \"single\";
+          bridgeTask = \"fixture:task\";
+          prerequisiteTasks = [ \"projection\" ];
+        };
+        wireInto = [ \"check:all\" ];
+      };
+      config = observabilityModule { inherit pkgs; lib = pkgs.lib; };
+    in $attr_expr
+  "
+}
+
 echo "Running setup module option tests..."
 
 disabled_after="$(eval_setup_module_attr false 'evaluated.config.tasks."devenv:enterShell".after')"
@@ -58,6 +83,18 @@ if [[ "$enabled_after" != *'required'* || "$enabled_after" != *'optional@complet
   exit 1
 fi
 
+profile_after="$(eval_observability_module_attr 'config.tasks."otel:profile:fixture".after or [ ]')"
+if [ "$profile_after" != '["projection"]' ]; then
+  echo "FAIL: OTEL profile can start before its required projection: $profile_after" >&2
+  exit 1
+fi
+
+verify_after="$(eval_observability_module_attr 'config.tasks."otel:verify:fixture".after or [ ]')"
+if [ "$verify_after" != '["projection"]' ]; then
+  echo "FAIL: OTEL verification can start before its required projection: $verify_after" >&2
+  exit 1
+fi
+
 # The repository composes mutation-free setup with observability. Its verifier
 # must profile a task that still exists when setup:gate is deliberately absent.
 if ! grep -A 14 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.nix" \
@@ -68,6 +105,11 @@ fi
 if ! grep -A 14 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.nix" \
   | grep -q 'bridgeTask = "genie:check"'; then
   echo "FAIL: mutation-free observability must use an instantiated bridge task" >&2
+  exit 1
+fi
+if ! grep -A 14 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.nix" \
+  | grep -q 'prerequisiteTasks = \[ "pnpm:install" \]'; then
+  echo "FAIL: Genie OTEL verification must wait for the pnpm projection" >&2
   exit 1
 fi
 

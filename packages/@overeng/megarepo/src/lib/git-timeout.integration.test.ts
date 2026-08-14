@@ -72,7 +72,7 @@ const makeCloneSource = Effect.fnUntraced(function* () {
     'base\n',
   )
   yield* git(source, 'add', '-A')
-  yield* git(source, 'commit', '--no-verify', '-m', 'base')
+  yield* git(source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'base')
 
   return { tmp, remote: source }
 })
