@@ -7,6 +7,8 @@
  * unknown/invalid files fall back to the defaults (never fail the gc path).
  */
 
+import { isAbsolute, normalize } from 'node:path'
+
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
@@ -97,6 +99,9 @@ const validDuration = ({
 }): number =>
   value !== undefined && Number.isFinite(value) === true && value >= 0 ? value : fallback
 
+const normalizedAbsolutePath = (path: string): string | undefined =>
+  isAbsolute(path) === true && normalize(path) === path ? path : undefined
+
 /** Relative path of the override file within the store. */
 export const GC_CONFIG_RELATIVE_PATH = '.state/gc-config.json'
 
@@ -109,34 +114,41 @@ const gcConfigPath = (storeBasePath: AbsoluteDirPath) =>
  * Only keys actually present in the override take effect; `undefined` keys keep
  * the default. Pure so it is the unit-tested seam for the merge contract.
  */
-export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConfig => ({
-  absenceGraceMs: validDuration({
-    value: override.absenceGraceMs,
-    fallback: DEFAULT_STORE_GC_CONFIG.absenceGraceMs,
-  }),
-  postMergeGraceMs: validDuration({
-    value: override.postMergeGraceMs,
-    fallback: DEFAULT_STORE_GC_CONFIG.postMergeGraceMs,
-  }),
-  archiveRetentionMs: validDuration({
-    value: override.archiveRetentionMs,
-    fallback: DEFAULT_STORE_GC_CONFIG.archiveRetentionMs,
-  }),
-  generatedArtifacts: {
-    enabled:
-      override.generatedArtifacts?.enabled ?? DEFAULT_STORE_GC_CONFIG.generatedArtifacts.enabled,
-    retentionMs: validDuration({
-      value: override.generatedArtifacts?.retentionMs,
-      fallback: DEFAULT_STORE_GC_CONFIG.generatedArtifacts.retentionMs,
+export const mergeStoreGcConfig = (override: StoreGcConfigOverride): StoreGcConfig => {
+  const agentLivenessManifest =
+    override.generatedArtifacts?.agentLivenessManifest === undefined
+      ? undefined
+      : normalizedAbsolutePath(override.generatedArtifacts.agentLivenessManifest)
+  return {
+    absenceGraceMs: validDuration({
+      value: override.absenceGraceMs,
+      fallback: DEFAULT_STORE_GC_CONFIG.absenceGraceMs,
     }),
-    allowlist:
-      override.generatedArtifacts?.allowlist ??
-      DEFAULT_STORE_GC_CONFIG.generatedArtifacts.allowlist,
-    ...(override.generatedArtifacts?.agentLivenessManifest !== undefined
-      ? { agentLivenessManifest: override.generatedArtifacts.agentLivenessManifest }
-      : {}),
-  },
-})
+    postMergeGraceMs: validDuration({
+      value: override.postMergeGraceMs,
+      fallback: DEFAULT_STORE_GC_CONFIG.postMergeGraceMs,
+    }),
+    archiveRetentionMs: validDuration({
+      value: override.archiveRetentionMs,
+      fallback: DEFAULT_STORE_GC_CONFIG.archiveRetentionMs,
+    }),
+    generatedArtifacts: {
+      enabled:
+        override.generatedArtifacts?.enabled ?? DEFAULT_STORE_GC_CONFIG.generatedArtifacts.enabled,
+      retentionMs: validDuration({
+        value: override.generatedArtifacts?.retentionMs,
+        fallback: DEFAULT_STORE_GC_CONFIG.generatedArtifacts.retentionMs,
+      }),
+      allowlist: [
+        ...new Set(
+          override.generatedArtifacts?.allowlist ??
+            DEFAULT_STORE_GC_CONFIG.generatedArtifacts.allowlist,
+        ),
+      ],
+      ...(agentLivenessManifest === undefined ? {} : { agentLivenessManifest }),
+    },
+  }
+}
 
 /**
  * Load the effective gc config from `$STORE/.state/gc-config.json`.

@@ -99,6 +99,18 @@ describe('store-gc-config', () => {
         agentLivenessManifest: '/run/megarepo/agent-liveness.json',
       })
     })
+
+    it('deduplicates generated classes and rejects non-absolute manifest paths', () => {
+      const generatedArtifacts = mergeStoreGcConfig({
+        generatedArtifacts: {
+          allowlist: ['node_modules', 'node_modules', '.direnv'],
+          agentLivenessManifest: 'agents.json',
+        },
+      }).generatedArtifacts
+
+      expect(generatedArtifacts.allowlist).toEqual(['node_modules', '.direnv'])
+      expect(generatedArtifacts.agentLivenessManifest).toBeUndefined()
+    })
   })
 
   describe('loadStoreGcConfig', () => {

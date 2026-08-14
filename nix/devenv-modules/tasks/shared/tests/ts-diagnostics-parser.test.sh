@@ -153,7 +153,7 @@ grep -q "warning TS377030" "$tmpdir/stdout.txt" \
   || fail "tsgo Effect lint warning was not surfaced to the user"
 
 # 2. Diagnostics scaffolding must be stripped from user output.
-if grep -qE "^(Files:|Parse time:|Total time:|Aggregate)" "$tmpdir/stdout.txt"; then
+if grep -qE "^([[:space:]]*\* .*tsconfig\.json|Building project |Project .* is being forcibly rebuilt|Projects in this build:|Files:|Parse time:|Total time:|Aggregate)" "$tmpdir/stdout.txt"; then
   fail "diagnostics scaffolding leaked into user output"
 fi
 

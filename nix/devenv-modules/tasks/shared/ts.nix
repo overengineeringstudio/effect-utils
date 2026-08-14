@@ -133,7 +133,7 @@ let
       # `Projects in scope:`, `Aggregate ...`).
       filter_diagnostics_noise() {
         sed -E 's/^[0-9]{1,2}:[0-9]{2}:[0-9]{2} (AM|PM) - //' "$1" \
-          | grep -v -E "^(Files:|Lines:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Memory allocs:|Assignability|Identity|Subtype|Strict subtype|I/O|Config time:|BuildInfo read time:|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Changes compute time:|Check time:|Emit time:|Total time:|Build time:|Projects in scope:|Projects built:|Timestamps only updates:|Aggregate)" \
+          | grep -v -E "^([[:space:]]*\* .*tsconfig\.json|Building project |Project .* is being forcibly rebuilt|Files:|Lines:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Memory allocs:|Assignability|Identity|Subtype|Strict subtype|I/O|Config time:|BuildInfo read time:|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Changes compute time:|Check time:|Emit time:|Total time:|Build time:|Projects in this build:|Projects in scope:|Projects built:|Timestamps only updates:|Aggregate)" \
           || true
       }
 

@@ -51,4 +51,28 @@ describe('StoreGcResultRow', () => {
     expect(output).toContain('1 would be removed')
     expect(output).not.toContain('1 kept')
   })
+
+  test('renders failed-closed generated artifacts as unknown', async () => {
+    const unknown = {
+      ...generatedResult,
+      reason: 'agent-liveness-unavailable',
+      outcome: 'unknown',
+    } satisfies StoreGcResult
+    const output = await renderToString({
+      element: (
+        <StoreGcView
+          basePath="/store"
+          results={[unknown]}
+          dryRun={true}
+          showForceHint={false}
+          done={true}
+        />
+      ),
+      options: { width: 200 },
+    })
+
+    expect(output).toContain('(unknown: agent-liveness-unavailable)')
+    expect(output).toContain('1 unknown')
+    expect(output).not.toContain('1 kept')
+  })
 })

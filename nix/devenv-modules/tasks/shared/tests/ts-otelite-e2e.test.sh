@@ -183,7 +183,7 @@ jq -s -e 'any(.[]; .name == "typescript.build.aggregate" and .attrs["span.label"
 
 grep -q "warning TS377030" "$tmpdir/run.stderr" \
   || fail "tsgo warning should surface through the traced path"
-if grep -qE "^(Files:|Parse time:|Total time:|Aggregate)" "$tmpdir/run.stderr"; then
+if grep -qE "^([[:space:]]*\* .*tsconfig\.json|Building project |Project .* is being forcibly rebuilt|Projects in this build:|Files:|Parse time:|Total time:|Aggregate)" "$tmpdir/run.stderr"; then
   fail "diagnostic timing scaffolding leaked into stderr"
 fi
 

@@ -5,7 +5,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import type { Dir } from 'node:fs'
+import type { Dir, Stats } from 'node:fs'
 import { lstat, opendir } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 
@@ -133,7 +133,14 @@ type GeneratedArtifactScan =
   | { readonly _tag: 'complete'; readonly count: number; readonly newestMtimeMs: number }
   | {
       readonly _tag: 'incomplete'
-      readonly cause: 'entry-cap' | 'timeout' | 'symlink' | 'not-directory' | 'io'
+      readonly cause:
+        | 'entry-cap'
+        | 'timeout'
+        | 'symlink'
+        | 'not-directory'
+        | 'device-boundary'
+        | 'concurrent-change'
+        | 'io'
     }
 
 const AgentLivenessManifest = Schema.Struct({
@@ -154,12 +161,18 @@ const planGeneratedArtifacts = ({
   fs,
   liveSet,
   now,
+  onArtifact,
+  onRepoCompleted,
+  readCurrentTimeMillis,
   repoWorktrees,
 }: {
   config: StoreGcConfig
   fs: FileSystem.FileSystem
   liveSet: StoreLiveSet
   now: number
+  onArtifact?: ((result: StoreGcResult) => Effect.Effect<void>) | undefined
+  onRepoCompleted?: (() => Effect.Effect<void>) | undefined
+  readCurrentTimeMillis: Effect.Effect<number>
   repoWorktrees: GeneratedArtifactRepoWorktrees
 }): Effect.Effect<
   { readonly results: ReadonlyArray<StoreGcResult>; readonly planSha256: string },
@@ -168,8 +181,8 @@ const planGeneratedArtifacts = ({
 > =>
   Effect.gen(function* () {
     const generatedResults: StoreGcResult[] = []
-    const readAgentActivePaths: Effect.Effect<ReadonlySet<string> | undefined> = Effect.gen(
-      function* () {
+    const readAgentActivePaths = (atMs: number): Effect.Effect<ReadonlySet<string> | undefined> =>
+      Effect.gen(function* () {
         if (config.generatedArtifacts.agentLivenessManifest === undefined) return undefined
         const manifestContent = yield* fs
           .readFileString(config.generatedArtifacts.agentLivenessManifest)
@@ -183,13 +196,18 @@ const planGeneratedArtifacts = ({
           Number.isFinite(parsed.expiresAtMs) === false ||
           parsed.activeWorkspacePaths.some((path) => isNormalizedAbsolutePath(path) === false) ===
             true ||
-          parsed.expiresAtMs < now
+          parsed.expiresAtMs < atMs
         ) {
           return undefined
         }
-        return new Set(parsed.activeWorkspacePaths.map(normalizeStorePath))
-      },
-    )
+        const canonicalPaths = yield* Effect.forEach(
+          parsed.activeWorkspacePaths,
+          (path) => fs.realPath(path).pipe(Effect.orElseSucceed(() => undefined)),
+          { concurrency: 1 },
+        )
+        if (canonicalPaths.some((path) => path === undefined) === true) return undefined
+        return new Set(canonicalPaths.map((path) => normalizeStorePath(path!)))
+      })
     for (const { repo, worktrees } of repoWorktrees) {
       for (const worktree of worktrees) {
         if (worktree.broken === true) continue
@@ -219,36 +237,106 @@ const planGeneratedArtifacts = ({
             ),
           )
           const megarepoLive = isPathProtected({ liveSet, path: worktree.path })
-          const agentActivePaths = yield* readAgentActivePaths
-          const agentLive = agentActivePaths?.has(normalizeStorePath(worktree.path))
+          const canonicalWorktree = yield* fs
+            .realPath(worktree.path)
+            .pipe(Effect.orElseSucceed(() => undefined))
+          const canonicalArtifact = yield* fs
+            .realPath(artifactPath)
+            .pipe(Effect.orElseSucceed(() => undefined))
+          const expectedCanonicalArtifact =
+            canonicalWorktree === undefined
+              ? undefined
+              : normalizeStorePath(`${canonicalWorktree}/${artifactClass}`)
+          const contained =
+            canonicalArtifact !== undefined &&
+            normalizeStorePath(canonicalArtifact) === expectedCanonicalArtifact
+          const agentActivePaths = yield* readAgentActivePaths(yield* readCurrentTimeMillis)
+          const agentLive =
+            canonicalWorktree === undefined
+              ? undefined
+              : agentActivePaths?.has(normalizeStorePath(canonicalWorktree))
           const cheapReason =
             config.generatedArtifacts.enabled === false
               ? 'generated-artifacts-disabled'
               : agentActivePaths === undefined
                 ? 'agent-liveness-unavailable'
-                : removalStatus._tag === 'unknown'
-                  ? 'cleanliness-unknown'
-                  : removalStatus.status.isDirty === true
-                    ? 'dirty-worktree'
-                    : ignored === 'unknown'
-                      ? 'artifact-ignore-unknown'
-                      : ignored === 'not-ignored'
-                        ? 'artifact-not-ignored'
-                        : megarepoLive === true || agentLive === true
-                          ? 'live'
-                          : undefined
+                : canonicalWorktree === undefined || contained === false
+                  ? 'artifact-scan-incomplete'
+                  : removalStatus._tag === 'unknown'
+                    ? 'cleanliness-unknown'
+                    : removalStatus.status.isDirty === true
+                      ? 'dirty-worktree'
+                      : ignored === 'unknown'
+                        ? 'artifact-ignore-unknown'
+                        : ignored === 'not-ignored'
+                          ? 'artifact-not-ignored'
+                          : megarepoLive === true || agentLive === true
+                            ? 'live'
+                            : undefined
           const traversal =
             cheapReason === undefined
               ? yield* scanGeneratedArtifact({ path: artifactPath })
               : undefined
+          const finalCanonicalWorktree =
+            traversal?._tag === 'complete'
+              ? yield* fs.realPath(worktree.path).pipe(Effect.orElseSucceed(() => undefined))
+              : canonicalWorktree
+          const finalCanonicalArtifact =
+            traversal?._tag === 'complete'
+              ? yield* fs.realPath(artifactPath).pipe(Effect.orElseSucceed(() => undefined))
+              : canonicalArtifact
+          const finalAgentActivePaths =
+            traversal?._tag === 'complete'
+              ? yield* readAgentActivePaths(yield* readCurrentTimeMillis)
+              : agentActivePaths
+          const finalRemovalStatus =
+            traversal?._tag === 'complete'
+              ? yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
+                  Effect.map((status) => ({ _tag: 'known' as const, status })),
+                  Effect.orElseSucceed(() => ({ _tag: 'unknown' as const })),
+                )
+              : removalStatus
+          const finalIgnored =
+            traversal?._tag === 'complete'
+              ? yield* Git.runCommand({
+                  args: ['check-ignore', '--quiet', '--', artifactClass],
+                  cwd: worktree.path,
+                }).pipe(
+                  Effect.as('ignored' as const),
+                  Effect.catchAll((error) =>
+                    Effect.succeed(
+                      error instanceof Git.GitCommandError && error.exitCode === 1
+                        ? ('not-ignored' as const)
+                        : ('unknown' as const),
+                    ),
+                  ),
+                )
+              : ignored
           const mtimeMs = traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
           const reason =
             cheapReason ??
             (traversal?._tag !== 'complete'
               ? 'artifact-scan-incomplete'
-              : now - traversal.newestMtimeMs < config.generatedArtifacts.retentionMs
-                ? 'retention'
-                : 'eligible')
+              : finalCanonicalWorktree === undefined ||
+                  finalCanonicalArtifact === undefined ||
+                  finalCanonicalWorktree !== canonicalWorktree ||
+                  finalCanonicalArtifact !== canonicalArtifact
+                ? 'artifact-scan-incomplete'
+                : finalAgentActivePaths === undefined
+                  ? 'agent-liveness-unavailable'
+                  : finalAgentActivePaths.has(normalizeStorePath(finalCanonicalWorktree)) === true
+                    ? 'live'
+                    : finalRemovalStatus._tag === 'unknown'
+                      ? 'cleanliness-unknown'
+                      : finalRemovalStatus.status.isDirty === true
+                        ? 'dirty-worktree'
+                        : finalIgnored === 'unknown'
+                          ? 'artifact-ignore-unknown'
+                          : finalIgnored === 'not-ignored'
+                            ? 'artifact-not-ignored'
+                            : now - traversal.newestMtimeMs < config.generatedArtifacts.retentionMs
+                              ? 'retention'
+                              : 'eligible')
           const outcome =
             reason === 'eligible'
               ? ('would-delete' as const)
@@ -258,7 +346,7 @@ const planGeneratedArtifacts = ({
                   reason === 'artifact-scan-incomplete'
                 ? ('unknown' as const)
                 : ('keep' as const)
-          generatedResults.push({
+          const result: StoreGcResult = {
             repo: repo.relativePath,
             ref: worktree.ref,
             refType: worktree.refType,
@@ -274,9 +362,12 @@ const planGeneratedArtifacts = ({
               ? { message: `generated artifact scan incomplete: ${traversal.cause}` }
               : {}),
             ...(mtimeMs !== undefined ? { mtimeMs } : {}),
-          })
+          }
+          generatedResults.push(result)
+          if (onArtifact !== undefined) yield* onArtifact(result)
         }
       }
+      if (onRepoCompleted !== undefined) yield* onRepoCompleted()
     }
     const canonicalPlan = generatedResults
       .map((result) => ({
@@ -324,6 +415,7 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
           return
         }
         const pending = [path]
+        const fingerprints = new Map<string, string>()
         let count = 0
         let newestMtimeMs = 0
         while (pending.length > 0 && settled === false) {
@@ -331,6 +423,10 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
           // Sequential traversal is intentional: it bounds filesystem pressure.
           // eslint-disable-next-line no-await-in-loop
           const info = await lstat(current)
+          if (info.dev !== artifactRootInfo.dev) {
+            finish({ _tag: 'incomplete', cause: 'device-boundary' })
+            return
+          }
           count += 1
           if (count > GENERATED_SCAN_ENTRY_CAP) {
             finish({ _tag: 'incomplete', cause: 'entry-cap' })
@@ -340,6 +436,7 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
             finish({ _tag: 'incomplete', cause: 'symlink' })
             return
           }
+          fingerprints.set(current, generatedArtifactFingerprint(info))
           newestMtimeMs = Math.max(newestMtimeMs, info.mtimeMs)
           if (info.isDirectory() === true) {
             // `opendir` consumes one entry at a time, so a huge directory cannot
@@ -362,6 +459,16 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
             await directory.close()
           }
         }
+        for (const [entryPath, fingerprint] of fingerprints) {
+          if (settled === true) return
+          // Sequential verification keeps the same bounded filesystem pressure.
+          // eslint-disable-next-line no-await-in-loop
+          const current = await lstat(entryPath)
+          if (generatedArtifactFingerprint(current) !== fingerprint) {
+            finish({ _tag: 'incomplete', cause: 'concurrent-change' })
+            return
+          }
+        }
         if (settled === false) finish({ _tag: 'complete', count, newestMtimeMs })
       } catch {
         finish({ _tag: 'incomplete', cause: 'io' })
@@ -375,6 +482,9 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
       openDirectories.clear()
     })
   })
+
+const generatedArtifactFingerprint = (info: Stats): string =>
+  `${info.dev}:${info.ino}:${info.mode}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`
 
 const runStoreCommand = ({ output, action }: { output: string; action: StoreAction }) => {
   const visualEffect = run(
@@ -1850,20 +1960,37 @@ const storeGcCommand = Cli.Command.make(
 
           if (generatedArtifacts === true) {
             const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+            discoveredWorktreeCount += repoWorktrees.reduce(
+              (count, repo) => count + repo.worktrees.length,
+              0,
+            )
             const generatedPlan = yield* planGeneratedArtifacts({
               config,
               fs,
               liveSet,
               now,
+              ...(progressive === true
+                ? {
+                    onArtifact: (result: StoreGcResult) =>
+                      Effect.gen(function* () {
+                        results.push(result)
+                        yield* dispatchGc({ done: false })
+                      }),
+                    onRepoCompleted: () =>
+                      Effect.gen(function* () {
+                        completedRepoCount += 1
+                        yield* dispatchGc({ done: false })
+                      }),
+                  }
+                : {}),
+              readCurrentTimeMillis: Clock.currentTimeMillis,
               repoWorktrees,
             })
             planSha256 = generatedPlan.planSha256
-            for (const result of generatedPlan.results) results.push(result)
-            discoveredWorktreeCount += repoWorktrees.reduce(
-              (count, repo) => count + repo.worktrees.length,
-              0,
-            )
-            completedRepoCount += repoWorktrees.length
+            if (progressive === false) {
+              for (const result of generatedPlan.results) results.push(result)
+              completedRepoCount += repoWorktrees.length
+            }
           }
 
           // Default cold reclamation path (decisions 0001–0010): additive third
@@ -2132,12 +2259,23 @@ const storeGcCommand = Cli.Command.make(
         repoTotal: repoCount ?? 0,
         worktreeDiscovered: discoveredWorktreeCount,
         resultTotal: results.length,
-        resultRemoved: results.filter((result) => result.status === 'removed').length,
+        resultRemoved: results.filter(
+          (result) =>
+            result.status === 'removed' ||
+            result.outcome === 'would-delete' ||
+            result.outcome === 'deleted',
+        ).length,
         resultSkippedInUse: results.filter((result) => result.status === 'skipped_in_use').length,
         resultSkippedDirty: results.filter((result) => result.status === 'skipped_dirty').length,
         resultArchived: results.filter((result) => result.status === 'archived').length,
         resultReaped: results.filter((result) => result.status === 'reaped').length,
-        resultKept: results.filter((result) => result.status === 'kept').length,
+        resultKept: results.filter(
+          (result) =>
+            result.status === 'kept' &&
+            result.outcome !== 'would-delete' &&
+            result.outcome !== 'deleted' &&
+            result.outcome !== 'unknown',
+        ).length,
         candidateCommits: results.filter((result) => result.refType === 'commits').length,
         candidateNamedRefs: results.filter(
           (result) => result.refType === 'heads' || result.refType === 'tags',
