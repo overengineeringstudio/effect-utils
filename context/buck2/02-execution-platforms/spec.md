@@ -29,8 +29,19 @@ graph-built support tool -----------------------------------+
 
 Provider descriptors are data read before action execution. They name exact
 entrypoints and content identity; they do not permit actions to evaluate Nix.
-Devenv environment preparation atomically projects a content-addressed
-generation under `.buck2/capabilities/<platform>/<tool>/`. Direct Buck
+Devenv environment preparation projects exact files under the stable
+`.buck2/capabilities/` cell. Complete immutable generations live below
+`generations/<digest>/<platform>/<tool>/`; the authoritative `defs.bzl` is
+atomically replaced only after its generation is complete. This preserves one
+daemon-visible cell identity while concurrent analyses resolve either the
+complete old generation or the complete new generation. Superseded generations
+remain because Buck isolation daemons may still reference them and there is no
+conservative repository-local way to prove that every such daemon has stopped.
+The ignored projection is executor-local state and can be reclaimed only by a
+future lifecycle that owns every isolation daemon. One-time migration from the
+legacy symlink projection stops every discoverable isolation daemon for the
+repository but retains its generation directory for any racing reference.
+Direct Buck
 invocation does not realize or repair Nix: a missing or stale projection fails
 closed. Run `devenv tasks run buck2:capabilities:project` before a direct raw
 Buck invocation; every repository Buck task declares that preparation edge.
@@ -67,11 +78,15 @@ consumer composition supplies the physical immutable provider.
 Interactive host detection may select among these named platforms. Product
 labels and evidence always carry the resolved tuple explicitly. An executable
 producer is configured for its explicit target platform, declares matching
-execution compatibility on the producing action, and returns the resolved
-`ProductPlatformInfo` inside `ProductExecutableInfo`. The language-neutral
-`build_product` rule consumes that typed provider and rejects its own
-`default_target_platform`; it must not independently transition or reinterpret
-the already-produced executable. Thus an ARM producer cannot silently execute
+execution compatibility on the producing action, and copies the resolved
+`ProductPlatformInfo` fields into `ProductExecutableInfo`. A provider value
+obtained from a dependency boundary is not nested into a second provider across
+cells; canonically constructed provenance remains typed. The language-neutral
+`build_product` macro requires the intended product platform explicitly because
+Buck selects configuration before provider analysis. It configures its internal
+target and native execution constraints from that intent, then the rule compares
+all resolved platform fields against `ProductExecutableInfo` before packaging.
+This is a checked join, not a second platform authority. Thus an ARM producer cannot silently execute
 through an x86-only local capability, and packaging cannot relabel its output
 as another target platform.
 

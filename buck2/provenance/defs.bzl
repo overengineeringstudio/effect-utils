@@ -1,6 +1,6 @@
 """Language-neutral provenance propagated by executable producers."""
 
-load("//buck2/platforms:defs.bzl", "ProductPlatformInfo")
+load("@root//buck2/platforms:defs.bzl", "ProductPlatformInfo")
 
 BuildProvenanceInfo = provider(fields = {
     "artifact": Artifact,
@@ -11,7 +11,10 @@ BuildProvenanceInfo = provider(fields = {
 ProductExecutableInfo = provider(fields = {
     "executable": Artifact,
     "provenance": provider_field(BuildProvenanceInfo),
-    "target_platform": provider_field(ProductPlatformInfo),
+    "target_platform_abi": str,
+    "target_platform_architecture": str,
+    "target_platform_os": str,
+    "target_platform_runtime_contract": str,
 })
 
 def product_executable_info(ctx, executable, recipe, toolchain, target_platform):
@@ -33,5 +36,8 @@ def product_executable_info(ctx, executable, recipe, toolchain, target_platform)
     return ProductExecutableInfo(
         executable = executable,
         provenance = provenance,
-        target_platform = target_platform,
+        target_platform_abi = target_platform.abi,
+        target_platform_architecture = target_platform.architecture,
+        target_platform_os = target_platform.os,
+        target_platform_runtime_contract = target_platform.runtime_contract,
     )
