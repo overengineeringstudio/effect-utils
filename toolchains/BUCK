@@ -1,4 +1,7 @@
+load("@root//buck2/platforms:defs.bzl", "host_platform_label")
+load("@root//buck2/toolchains:defs.bzl", "configured_rust_toolchain", "host_rust_target_triple")
 load(":configured.bzl", "support_tool")
+load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
 
 support_tool(
     name = "archive_tool",
@@ -28,4 +31,28 @@ support_tool(
     protocol = "effect-utils/buck2-package-evidence/v1",
     tool_id = "package-evidence",
     visibility = ["PUBLIC"],
+)
+
+# Analysis-only fixture: the rule is loaded into toolchains// but must consume
+# the root cell's exact ProductPlatformInfo identity.
+configured_rust_toolchain(
+    name = "cross_cell_provider_identity",
+    archiver = ":archive_tool",
+    compile_env = {},
+    compiler = ":archive_tool",
+    identity = "cross-cell-provider-identity/v1",
+    linker = ":archive_tool",
+    target_platform = host_platform_label(),
+    target_triple = host_rust_target_triple(),
+)
+
+cross_cell_product_identity(
+    name = "cross_cell_product_identity",
+    target_platform = host_platform_label(),
+)
+
+cross_cell_product_identity(
+    name = "cross_cell_product_mismatch",
+    executable_target_platform = "root//buck2/platforms:macos_aarch64",
+    target_platform = "root//buck2/platforms:linux_x86_64",
 )

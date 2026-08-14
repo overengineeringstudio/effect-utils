@@ -8,11 +8,7 @@
 }:
 
 let
-  mkHash = hashes: {
-    hash =
-      hashes.${pkgs.stdenv.hostPlatform.system}
-        or (throw "ci-tools has no dependency snapshot for ${pkgs.stdenv.hostPlatform.system}");
-  };
+  mkSharedHash = hash: { inherit hash; };
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   unwrapped = mkPnpmCli {
@@ -21,13 +17,11 @@ let
     binaryName = "ci-tools";
     packageDir = "packages/@overeng/ci-tools";
     workspaceRoot = src;
+    # Prepared dependencies exclude optional native packages and normalize the
+    # tree, so one content hash is authoritative across admitted hosts.
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = mkHash {
-        aarch64-darwin = "sha256-zjgi48BGIV6BxsaTfyJhP0jHvmyzPldvSTvU2Q2FvU8=";
-        aarch64-linux = "sha256-Dzxg2BYFIKzeovpHnAdMGG6qO1InF2YOLEKqjDfqqqY=";
-        x86_64-linux = "sha256-zjgi48BGIV6BxsaTfyJhP0jHvmyzPldvSTvU2Q2FvU8=";
-      };
+      "." = mkSharedHash "sha256-Dzxg2BYFIKzeovpHnAdMGG6qO1InF2YOLEKqjDfqqqY=";
     };
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;

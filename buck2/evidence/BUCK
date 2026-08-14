@@ -1,5 +1,5 @@
-load("//buck2:closure.bzl", "closure_probe", "exact_dependency_closure", "package_artifact")
-load("//buck2:package_targets.bzl", "package_task")
+load("@root//buck2:closure.bzl", "closure_probe", "exact_dependency_closure", "package_artifact")
+load("@root//buck2:package_targets.bzl", "package_task")
 
 package_artifact(
     name = "pkg_a",

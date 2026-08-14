@@ -76,6 +76,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Buck2 foundation identity**: keep the executor-capability cell at a stable
+  daemon-visible path with immutable generations, prove same-daemon capability
+  invalidation, and make root provider loads explicit across cells. Model the
+  affected Genie and CI tools prepared-dependency snapshots as platform-neutral;
+  exact aarch64-linux Genie realization remains pending.
 - **Buck2 pnpm prototype scope**: retain the exact lock-derived contextual
   dependency plan for `tui-core` while keeping it explicitly non-admitted. The
   prototype does not fetch, unpack, normalize, or materialize package archives.

@@ -24,9 +24,11 @@ let
     binaryName = "genie";
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
+    # Prepared dependencies exclude optional native packages and normalize the
+    # tree; OpenTUI's host binding is supplied below as a Nix-owned package.
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = mkSharedHash "sha256-JwoeDnoAT1p/Tz2hyuPz8w8ym4BwsiFAxqgqqi69EVg=";
+      "." = mkSharedHash "sha256-oGv4VpaRZ1HrcE3ZiGiViWPXFxoIyEuBLw76UuwqVwE=";
     };
     nativeNodePackages = opentuiCoreNative.packages;
     inherit gitRev commitTs dirty;

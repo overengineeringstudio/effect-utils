@@ -1,6 +1,7 @@
 """Language-neutral portable build-product packaging contract."""
 
-load("//buck2/provenance:defs.bzl", "ProductExecutableInfo")
+load("@root//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints")
+load("@root//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 
 BuildProductInfo = provider(fields = {
     "descriptor": Artifact,
@@ -17,8 +18,22 @@ def _build_product_impl(ctx):
         if component == "" or component == "." or component == "..":
             fail("build_product entrypoint must be a normalized relative path")
     product_executable = ctx.attrs.executable[ProductExecutableInfo]
+    target_platform = ctx.attrs.target_platform[ProductPlatformInfo]
+    actual_platform = (
+        product_executable.target_platform_os,
+        product_executable.target_platform_architecture,
+        product_executable.target_platform_abi,
+        product_executable.target_platform_runtime_contract,
+    )
+    expected_platform = (
+        target_platform.os,
+        target_platform.architecture,
+        target_platform.abi,
+        target_platform.runtime_contract,
+    )
+    if actual_platform != expected_platform:
+        fail("build_product executable platform {} does not match requested target platform {}".format(actual_platform, expected_platform))
     executable = product_executable.executable
-    platform = product_executable.target_platform
     provenance = product_executable.provenance
     payload = ctx.actions.declare_output("artifact.tar")
     descriptor = ctx.actions.declare_output("descriptor.json")
@@ -30,10 +45,10 @@ def _build_product_impl(ctx):
         "--artifact", payload.as_output(),
         "--name", ctx.attrs.product_name,
         "--target", str(ctx.label.raw_target()),
-        "--platform-os", platform.os,
-        "--platform-architecture", platform.architecture,
-        "--platform-abi", platform.abi,
-        "--runtime-contract", platform.runtime_contract,
+        "--platform-os", product_executable.target_platform_os,
+        "--platform-architecture", product_executable.target_platform_architecture,
+        "--platform-abi", product_executable.target_platform_abi,
+        "--runtime-contract", product_executable.target_platform_runtime_contract,
         "--provenance", provenance.artifact,
         "--descriptor", descriptor.as_output(),
     ])
@@ -58,6 +73,7 @@ _build_product = rule(
         "executable": attrs.dep(providers = [ProductExecutableInfo]),
         "product_name": attrs.string(),
         "entrypoint": attrs.string(),
+        "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
         "_descriptor_tool": attrs.default_only(attrs.exec_dep(
             default = "toolchains//:product_tool",
             providers = [RunInfo],
@@ -68,16 +84,18 @@ _build_product = rule(
 def build_product(
         name,
         executable,
+        target_platform,
         product_name,
         entrypoint,
         **kwargs):
     """Packages a payload built under the product's exact target platform."""
-    if "default_target_platform" in kwargs:
-        fail("build_product target platform is inherited from its executable producer")
     _build_product(
         name = name,
         executable = executable,
+        target_platform = target_platform,
         product_name = product_name,
         entrypoint = entrypoint,
+        default_target_platform = target_platform,
+        exec_compatible_with = native_execution_constraints(target_platform),
         **kwargs
     )
