@@ -8,11 +8,31 @@ if find "$repo_root/buck2" -type f -name '*.py' -print -quit | grep -q .; then
   echo "buck2-foundation-graph-check: repository-owned Python remains under buck2/" >&2
   exit 1
 fi
-if rg -n 'python_(binary|library|test)|cpython(_archive)?' \
-  "$repo_root/buck2" "$repo_root/toolchains" --glob 'BUCK' --glob '*.bzl' | grep -q .; then
+if rg -q 'python_(binary|library|test)|cpython(_archive)?' \
+  "$repo_root/buck2" "$repo_root/toolchains" --glob 'BUCK' --glob '*.bzl'; then
   echo "buck2-foundation-graph-check: Python rules or CPython labels remain in the foundation" >&2
   exit 1
 fi
+if rg -q -U 'load\(\s*"(?://buck2(?:/|:)|:)' \
+  "$repo_root/buck2" --glob '*.bzl' --glob 'BUCK'; then
+  echo "buck2-foundation-graph-check: root-owned providers use caller-relative cross-cell loads" >&2
+  exit 1
+fi
+
+$buck2_bin audit providers \
+  --target-platforms root//buck2/platforms:host_platform \
+  toolchains//:cross_cell_provider_identity >/dev/null
+$buck2_bin audit providers \
+  --target-platforms root//buck2/platforms:host_platform \
+  toolchains//:cross_cell_product_identity >/dev/null
+mkdir -p "$repo_root/tmp"
+if $buck2_bin audit providers \
+  --target-platforms root//buck2/platforms:linux_x86_64 \
+  toolchains//:cross_cell_product_mismatch >"$repo_root/tmp/buck2-foundation-platform-mismatch.log" 2>&1; then
+  echo "buck2-foundation-graph-check: mismatched product and executable platforms unexpectedly passed" >&2
+  exit 1
+fi
+rg -F 'build_product executable platform' "$repo_root/tmp/buck2-foundation-platform-mismatch.log" >/dev/null
 
 graph="$($buck2_bin cquery \
   'deps(//:buck2_foundation) + deps(//buck2/evidence:package_evidence)')"

@@ -64,8 +64,8 @@ _support_tool = rule(
 
 def support_tool(name, protocol, tool_id, **kwargs):
     platform = _host_platform()
-    capability = "root//.buck2/capabilities/{}/{}".format(platform, tool_id)
     metadata = CAPABILITIES[platform][tool_id]
+    capability = "root//.buck2/capabilities/generations/{}/{}/{}".format(metadata["generation"], platform, tool_id)
     _support_tool(
         name = name,
         content_digest = metadata["contentDigest"],

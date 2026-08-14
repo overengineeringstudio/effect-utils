@@ -27,6 +27,8 @@ buck-out/
 # Executor-local, Nix-realized Buck capability projection
 /.buck2/capabilities/
 /.buck2/capabilities
+/.buck2/capabilities.candidate.*
+/.buck2/capabilities.lock
 /.buck2/capability-generations/
 
 # Direnv

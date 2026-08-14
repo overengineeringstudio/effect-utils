@@ -1,7 +1,7 @@
 """Configured Rust toolchain interface; realizations are supplied by composition."""
 
 load(
-    "//buck2/platforms:defs.bzl",
+    "@root//buck2/platforms:defs.bzl",
     "ProductPlatformInfo",
     "native_execution_constraints",
     "product_platform_constraints",
@@ -13,9 +13,23 @@ ConfiguredRustToolchainInfo = provider(fields = {
     "compiler": provider_field(RunInfo),
     "identity": provider_field(str),
     "linker": provider_field(RunInfo),
-    "target_platform": provider_field(ProductPlatformInfo),
+    "target_platform_abi": str,
+    "target_platform_architecture": str,
+    "target_platform_os": str,
+    "target_platform_runtime_contract": str,
     "target_triple": provider_field(str),
 })
+
+def host_rust_target_triple():
+    """Returns the Rust target triple for the admitted native host."""
+    host = host_info()
+    if host.os.is_linux and host.arch.is_x86_64:
+        return "x86_64-unknown-linux-gnu"
+    if host.os.is_linux and host.arch.is_aarch64:
+        return "aarch64-unknown-linux-gnu"
+    if host.os.is_macos and host.arch.is_aarch64:
+        return "aarch64-apple-darwin"
+    fail("configured Rust toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
 
 def _configured_rust_toolchain_impl(ctx):
     platform = ctx.attrs.target_platform[ProductPlatformInfo]
@@ -36,7 +50,10 @@ def _configured_rust_toolchain_impl(ctx):
             compiler = ctx.attrs.compiler[RunInfo],
             identity = ctx.attrs.identity,
             linker = ctx.attrs.linker[RunInfo],
-            target_platform = platform,
+            target_platform_abi = platform.abi,
+            target_platform_architecture = platform.architecture,
+            target_platform_os = platform.os,
+            target_platform_runtime_contract = platform.runtime_contract,
             target_triple = ctx.attrs.target_triple,
         ),
     ]
