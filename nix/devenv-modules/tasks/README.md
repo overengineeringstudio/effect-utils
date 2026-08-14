@@ -43,7 +43,8 @@ do not depend on ambient `PATH`; capture tasks also prefer otelite's
 invocation-scoped HTTP endpoint over a repository's ambient collector endpoint.
 The module intentionally avoids the full local observability stack. Override
 `profile` to capture a different task graph, or set `profile = null` when only
-the packages and project attribution are needed.
+the packages and project attribution are needed. Use `profile.prerequisiteTasks`
+for outer tasks that must complete before the nested devenv process can evaluate.
 
 ### Characteristics:
 
