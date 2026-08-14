@@ -423,7 +423,7 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
           // Sequential traversal is intentional: it bounds filesystem pressure.
           // eslint-disable-next-line no-await-in-loop
           const info = await lstat(current)
-          if (info.dev !== artifactRootInfo.dev) {
+          if (info.isDirectory() === true && info.dev !== artifactRootInfo.dev) {
             finish({ _tag: 'incomplete', cause: 'device-boundary' })
             return
           }
@@ -460,7 +460,6 @@ const scanGeneratedArtifact = ({ path }: { path: string }) =>
           }
         }
         for (const [entryPath, fingerprint] of fingerprints) {
-          if (settled === true) return
           // Sequential verification keeps the same bounded filesystem pressure.
           // eslint-disable-next-line no-await-in-loop
           const current = await lstat(entryPath)
