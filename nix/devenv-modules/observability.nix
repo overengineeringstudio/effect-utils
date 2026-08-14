@@ -16,6 +16,7 @@
     smokeTask = "setup:gate";
     smokeMode = "single";
     bridgeTask = "setup:gate";
+    prerequisiteTasks = [ ];
   },
   wireInto ? [ ],
 }:
@@ -135,6 +136,7 @@ let
 
   profileTaskName = if profile == null then null else "otel:profile:${profile.name}";
   verifyTaskName = if profile == null then null else "otel:verify:${profile.name}";
+  profilePrerequisiteTasks = if profile == null then [ ] else profile.prerequisiteTasks or [ ];
   profileTasks =
     if profile == null then
       { }
@@ -142,6 +144,7 @@ let
       {
         "${profileTaskName}" = {
           description = "Capture ${profile.task} with native devenv and effect-utils spans";
+          after = profilePrerequisiteTasks;
           exec = ''
             capture_dir="''${DEVENV_OTEL_CAPTURE_DIR:-$DEVENV_ROOT/tmp/devenv-traces/${profile.name}-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
             exec ${capture}/bin/devenv-otel-capture-${profile.name} \
@@ -154,6 +157,7 @@ let
 
         "${verifyTaskName}" = {
           description = "Verify native devenv and effect-utils ${profile.name} spans form one trace";
+          after = profilePrerequisiteTasks;
           exec = ''
             test_dir="$(mktemp -d)"
             trap 'rm -rf "$test_dir"' EXIT

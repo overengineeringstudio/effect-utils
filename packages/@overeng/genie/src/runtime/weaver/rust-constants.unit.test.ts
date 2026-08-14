@@ -78,6 +78,7 @@ describe('renderSignals signal deprecation', () => {
     const deprecatedStart = yaml.indexOf('  deprecated:')
     const annotationsStart = yaml.indexOf('  annotations:')
 
+    expect(yaml).toContain('# regen: devenv tasks run genie:run')
     expect(deprecatedStart).toBeGreaterThan(-1)
     expect(annotationsStart).toBeGreaterThan(deprecatedStart)
     expect(yaml.match(/\bsince:/g)).toHaveLength(1)
@@ -188,9 +189,10 @@ describe('renderRustConstants (otel-scrape fixture)', () => {
     expect(rust).not.toContain('span.otel_scrape.request')
   })
 
-  it('carries the provenance header (registry-source + fingerprint)', () => {
+  it('carries the actionable provenance header from the shared Weaver banner', () => {
     expect(rust.startsWith(`// registry-source: ${FIXTURE_PROVENANCE.source}\n`)).toBe(true)
     expect(rust).toContain(`// fingerprint: ${FIXTURE_PROVENANCE.fingerprint}`)
+    expect(rust).toContain('// regen: devenv tasks run genie:run')
   })
 
   const rustfmt = onPath('rustfmt')

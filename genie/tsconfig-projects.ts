@@ -1,7 +1,9 @@
+/* oxlint-disable overeng/exports-first -- Exported project registries are derived only after the private path map and coverage assertion are initialized. */
 import effectSocketTsconfig from '../context/effect/socket/tsconfig.json.genie.ts'
 import opentuiTsconfig from '../context/opentui/tsconfig.json.genie.ts'
 import { rootWorkspacePackages } from '../package.json.genie.ts'
 import agentSessionIngestTsconfig from '../packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts'
+import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.genie.ts'
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
 import effectAiClaudeCliTsconfig from '../packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts'
@@ -47,6 +49,7 @@ const workspaceTsconfigsByPath = new Map<string, GenieOutput<TSConfigArgs>>([
   ['context/effect/socket', effectSocketTsconfig],
   ['context/opentui', opentuiTsconfig],
   ['packages/@overeng/agent-session-ingest', agentSessionIngestTsconfig],
+  ['packages/@overeng/buck2-tools', buck2ToolsTsconfig],
   ['packages/@overeng/ci-tools', ciToolsTsconfig],
   ['packages/@overeng/content-address', contentAddressTsconfig],
   ['packages/@overeng/effect-ai-claude-cli', effectAiClaudeCliTsconfig],

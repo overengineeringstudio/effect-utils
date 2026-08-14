@@ -17,9 +17,11 @@ let
     binaryName = "ci-tools";
     packageDir = "packages/@overeng/ci-tools";
     workspaceRoot = src;
+    # Prepared dependencies exclude optional native packages and normalize the
+    # tree, so one content hash is authoritative across admitted hosts.
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = mkSharedHash "sha256-KOHU2Wf4qIAeis7nZKdJRBA192SYTpgn+ztjCEbSVVk=";
+      "." = mkSharedHash "sha256-Dzxg2BYFIKzeovpHnAdMGG6qO1InF2YOLEKqjDfqqqY=";
     };
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;

@@ -66,6 +66,7 @@
             dirty
             ;
         };
+        buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -188,6 +189,10 @@
           // providerCliPackages
           // {
             inherit otelite otel-scrape;
+            buck2-closure-tool = buck2-stage0-tools.closure-tool;
+            buck2-archive-tool = buck2-stage0-tools.archive-tool;
+            buck2-package-evidence = buck2-stage0-tools.package-evidence;
+            buck2-product = buck2-stage0-tools.product;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
@@ -219,6 +224,8 @@
               inherit pkgs oxlintNpm;
             };
             node-pty-native = nodePtyNative;
+          }
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
           };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
@@ -295,6 +302,11 @@
 
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
+
+      # Verify and import a published Buck artifact into a normal Nix output for
+      # wrapping and later Home Manager/system activation.
+      lib.mkBuck2ArtifactImport =
+        { pkgs }: import ./nix/workspace-tools/lib/buck2-artifact-import.nix { inherit pkgs; };
 
       # Shell helper for runtime CLI build stamps.
       lib.cliBuildStamp =

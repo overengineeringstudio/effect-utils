@@ -1,0 +1,3 @@
+load("@root//buck2/toolchains:defs.bzl", "configured_rust_toolchain")
+
+# Public provider API lives in defs.bzl; concrete toolchains belong to composition.
