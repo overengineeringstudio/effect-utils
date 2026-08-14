@@ -484,7 +484,8 @@ const StoreFetchView = ({
 }
 
 /** GC view - show garbage collection results */
-const StoreGcView = ({
+// oxlint-disable-next-line overeng/exports-first -- exported for focused renderer contract tests
+export const StoreGcView = ({
   basePath,
   results,
   dryRun,
@@ -515,12 +516,21 @@ const StoreGcView = ({
   interrupted?: boolean | undefined
   maxInUseToShow?: number
 }) => {
-  const removed = results.filter((r) => r.status === 'removed')
+  const removed = results.filter(
+    (r) => r.status === 'removed' || r.outcome === 'would-delete' || r.outcome === 'deleted',
+  )
   const archived = results.filter((r) => r.status === 'archived')
   const reaped = results.filter((r) => r.status === 'reaped')
   const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
   const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
-  const kept = results.filter((r) => r.status === 'kept')
+  const kept = results.filter(
+    (r) =>
+      r.status === 'kept' &&
+      r.outcome !== 'would-delete' &&
+      r.outcome !== 'deleted' &&
+      r.outcome !== 'unknown',
+  )
+  const unknown = results.filter((r) => r.outcome === 'unknown')
   const errors = results.filter((r) => r.status === 'error')
 
   // Determine which results to show
@@ -567,11 +577,7 @@ const StoreGcView = ({
       ) : (
         <>
           {removed.map((result) => (
-            <StoreGcResultRow
-              key={`${result.repo}-${result.ref}-removed`}
-              result={result}
-              dryRun={dryRun}
-            />
+            <StoreGcResultRow key={`${result.path}-removed`} result={result} dryRun={dryRun} />
           ))}
           {archived.map((result) => (
             <StoreGcResultRow
@@ -604,12 +610,11 @@ const StoreGcView = ({
             ))}
           {showKept &&
             kept.map((result) => (
-              <StoreGcResultRow
-                key={`${result.repo}-${result.ref}-kept`}
-                result={result}
-                dryRun={dryRun}
-              />
+              <StoreGcResultRow key={`${result.path}-kept`} result={result} dryRun={dryRun} />
             ))}
+          {unknown.map((result) => (
+            <StoreGcResultRow key={`${result.path}-unknown`} result={result} dryRun={dryRun} />
+          ))}
           {errors.map((result) => (
             <StoreGcResultRow
               key={`${result.repo}-${result.ref}-error`}
@@ -633,6 +638,7 @@ const StoreGcView = ({
           skippedDirty={skippedDirty.length}
           skippedInUse={skippedInUse.length}
           kept={kept.length}
+          unknown={unknown.length}
           errors={errors.length}
           dryRun={dryRun}
         />
@@ -682,8 +688,23 @@ const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
 }
 
 /** GC Result line component */
-const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: boolean }) => {
+// oxlint-disable-next-line overeng/exports-first -- exported for focused renderer contract tests
+export const StoreGcResultRow = ({
+  result,
+  dryRun,
+}: {
+  result: StoreGcResult
+  dryRun: boolean
+}) => {
+  const isGeneratedDeletion =
+    result.kind === 'generated-artifact' &&
+    (result.outcome === 'would-delete' || result.outcome === 'deleted')
+  const isGeneratedUnknown = result.kind === 'generated-artifact' && result.outcome === 'unknown'
+
   const getSymbol = () => {
+    if (isGeneratedDeletion === true) return <Text color="green">{SYMBOLS.check}</Text>
+    if (isGeneratedUnknown === true) return <Text color="yellow">{SYMBOLS.circle}</Text>
+
     switch (result.status) {
       case 'removed':
         return <Text color="green">{SYMBOLS.check}</Text>
@@ -703,6 +724,13 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
   }
 
   const getStatusText = () => {
+    if (isGeneratedDeletion === true) {
+      return <Text dim> ({result.outcome === 'would-delete' ? 'would delete' : 'deleted'})</Text>
+    }
+    if (isGeneratedUnknown === true) {
+      return <Text color="yellow"> (unknown: {result.reason ?? result.message})</Text>
+    }
+
     switch (result.status) {
       case 'removed':
         return <Text dim> ({dryRun === true ? 'would remove' : 'removed'})</Text>
@@ -726,23 +754,21 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
     }
   }
 
-  const isDim = result.status === 'skipped_in_use' || result.status === 'kept'
+  const isDim =
+    isGeneratedDeletion === false &&
+    (result.status === 'skipped_in_use' || result.status === 'kept')
+  const label =
+    result.kind === 'generated-artifact'
+      ? result.workspacePath === undefined
+        ? result.path
+        : `${result.workspacePath}/${result.artifactClass ?? 'generated artifact'}`
+      : `${result.repo}refs/${result.refType}/${result.ref}`
 
   return (
     <Box flexDirection="column">
       <Box flexDirection="row">
         {getSymbol()}
-        {isDim === true ? (
-          <Text dim>
-            {' '}
-            {result.repo}refs/{result.refType}/{result.ref}{' '}
-          </Text>
-        ) : (
-          <Text>
-            {' '}
-            {result.repo}refs/{result.refType}/{result.ref}{' '}
-          </Text>
-        )}
+        {isDim === true ? <Text dim> {label} </Text> : <Text> {label} </Text>}
         {getStatusText()}
       </Box>
       {result.status === 'archived' && result.recoverPath !== undefined && (
@@ -760,6 +786,7 @@ const StoreGcSummary = ({
   skippedDirty,
   skippedInUse,
   kept,
+  unknown,
   errors,
   dryRun,
 }: {
@@ -769,6 +796,7 @@ const StoreGcSummary = ({
   skippedDirty: number
   skippedInUse: number
   kept: number
+  unknown: number
   errors: number
   dryRun: boolean
 }) => {
@@ -820,6 +848,12 @@ const StoreGcSummary = ({
     parts.push({
       key: 'kept',
       element: <Text>{kept} kept</Text>,
+    })
+  }
+  if (unknown > 0) {
+    parts.push({
+      key: 'unknown',
+      element: <Text color="yellow">{unknown} unknown</Text>,
     })
   }
   if (errors > 0) {

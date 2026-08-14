@@ -69,6 +69,46 @@ my-megarepo/
 
 Branch worktrees use raw Git ref paths in the store, for example `feature/foo` becomes `refs/heads/feature/foo/`.
 
+## Generated artifact cleanup
+
+`mr store gc` can plan old generated directories in registered, clean, inactive store worktrees.
+This first slice is deliberately non-mutating:
+
+```bash
+mr store gc --generated-artifacts --dry-run --output json
+```
+
+Configure the host at `$MEGAREPO_STORE/.state/gc-config.json`:
+
+```json
+{
+  "generatedArtifacts": {
+    "enabled": true,
+    "retentionMs": 86400000,
+    "allowlist": ["node_modules", ".direnv", "target"],
+    "agentLivenessManifest": "/run/megarepo/agent-liveness.json"
+  }
+}
+```
+
+The allowlist may contain only the compiled canonical classes. The liveness manifest is a
+short-lived snapshot produced by the host's agent manager:
+
+```json
+{
+  "version": 1,
+  "expiresAtMs": 1786572000000,
+  "activeWorkspacePaths": ["/absolute/path/to/a/store/worktree"]
+}
+```
+
+Missing, invalid, or expired liveness data produces `unknown`. A candidate
+must also be Git-ignored, older than the retention window, absent from Megarepo's live set, and
+inside a clean registered worktree. A capped, timed recursive scan uses the newest nested mtime;
+symlinks or incomplete scans produce `unknown`. JSON results distinguish
+`would-delete`, `keep`, and `unknown` and include a deterministic `planSha256`. Mutation and
+`--expected-plan` are rejected until the deletion transaction has a separately verified design.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)

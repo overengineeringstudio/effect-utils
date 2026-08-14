@@ -71,6 +71,14 @@ export const StoreGcResult = Schema.Struct({
   pathRef: Schema.optional(Schema.String),
   /** For ref-mismatch archives: the branch actually checked out in the worktree. */
   actualHeadBranch: Schema.optional(Schema.String),
+  /** Additive generated-artifact result fields; absent on legacy worktree rows. */
+  kind: Schema.optional(Schema.Literal('worktree', 'generated-artifact')),
+  artifactClass: Schema.optional(Schema.String),
+  workspacePath: Schema.optional(Schema.String),
+  allocatedBytes: Schema.optional(Schema.Number),
+  exclusiveClosureBytes: Schema.optional(Schema.NullOr(Schema.Number)),
+  outcome: Schema.optional(Schema.Literal('would-delete', 'deleted', 'keep', 'unknown')),
+  mtimeMs: Schema.optional(Schema.Number),
 })
 
 /** Inferred type for a store GC result. */
@@ -163,6 +171,7 @@ export const StoreGcState = Schema.TaggedStruct('Gc', {
   statusMessage: Schema.optional(Schema.String),
   done: Schema.optional(Schema.Boolean),
   interrupted: Schema.optional(Schema.Boolean),
+  planSha256: Schema.optional(Schema.String),
 })
 
 /**
@@ -314,6 +323,7 @@ export const StoreAction = Schema.Union(
     statusMessage: Schema.optional(Schema.String),
     done: Schema.optional(Schema.Boolean),
     interrupted: Schema.optional(Schema.Boolean),
+    planSha256: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('SetAdd', {
     status: Schema.Literal('added', 'already_exists', 'created'),
@@ -394,6 +404,7 @@ export const storeReducer = ({
         statusMessage: action.statusMessage,
         done: action.done,
         interrupted: action.interrupted,
+        planSha256: action.planSha256,
       }
     case 'SetAdd':
       return {

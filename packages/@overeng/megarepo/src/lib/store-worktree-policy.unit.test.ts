@@ -115,6 +115,11 @@ const config: StoreGcConfig = {
   absenceGraceMs: 14 * DAY_MS,
   postMergeGraceMs: 7 * DAY_MS,
   archiveRetentionMs: 30 * DAY_MS,
+  generatedArtifacts: {
+    enabled: false,
+    retentionMs: DAY_MS,
+    allowlist: [],
+  },
 }
 
 const target: StoreWorktreePolicyTarget = { refType: 'heads', path: COLD_PATH }

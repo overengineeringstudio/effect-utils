@@ -132,7 +132,9 @@ let
       # aggregate-summary lines (`Building project`, timestamped project status,
       # `Projects in scope:`, `Aggregate ...`).
       filter_diagnostics_noise() {
-        grep -v -E "^([0-9]{1,2}:[0-9]{2}:[0-9]{2} (AM|PM) - |Files:|Lines:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Memory allocs:|Assignability|Identity|Subtype|Strict subtype|I/O|Config time:|BuildInfo read time:|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Changes compute time:|Check time:|Emit time:|Total time:|Build time:|Projects in scope:|Projects built:|Timestamps only updates:|Aggregate)" "$1" || true
+        sed -E 's/^[0-9]{1,2}:[0-9]{2}:[0-9]{2} (AM|PM) - //' "$1" \
+          | grep -v -E "^([[:space:]]*\* .*tsconfig\.json|Building project |Project .* is being forcibly rebuilt|Files:|Lines:|Lines of|Identifiers:|Symbols:|Types:|Instantiations:|Memory used:|Memory allocs:|Assignability|Identity|Subtype|Strict subtype|I/O|Config time:|BuildInfo read time:|Parse time:|ResolveModule|ResolveTypeReference|ResolveLibrary|Program time:|Bind time:|Changes compute time:|Check time:|Emit time:|Total time:|Build time:|Projects in this build:|Projects in scope:|Projects built:|Timestamps only updates:|Aggregate)" \
+          || true
       }
 
       # Wrap ONLY the compiler with otel-scrape (adapter=none) for a `tsgo`-named
@@ -150,10 +152,14 @@ let
         "''${_otel_instr[@]}" ${compilerBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
       fi
 
-      # Always re-surface compiler errors and lints to the user. The raw output
-      # was captured to a temp file for parsing, so without this the diagnostics
-      # path would suppress everything tsgo prints (notably its Effect lints).
-      filter_diagnostics_noise "$_tsc_output"
+      # Preserve the complete compiler failure stream. Besides making compiler
+      # crashes diagnosable, this avoids mistaking a new diagnostic shape for
+      # timing scaffolding. Successful checks retain the concise filtered view.
+      if [ "$_tsc_exit" -ne 0 ]; then
+        cat "$_tsc_output" >&2
+      else
+        filter_diagnostics_noise "$_tsc_output"
+      fi
 
       if [[ "${tscInvocation}" == --build* ]]; then
         # Parse task-scoped trace context to get trace ID and current task span ID.
@@ -295,8 +301,17 @@ let
 
       exit "$_tsc_exit"
     else
-      # No OTEL: run without diagnostics overhead
-      ${compilerBin} ${tscInvocation} ${extraArgs}
+      # No OTEL: retain the compiler stream and make an otherwise silent
+      # non-zero exit diagnosable in CI.
+      _tsc_output="$(mktemp)"
+      trap 'rm -f "$_tsc_output"' EXIT
+      _tsc_exit=0
+      ${compilerBin} ${tscInvocation} ${extraArgs} > "$_tsc_output" 2>&1 || _tsc_exit=$?
+      if [ "$_tsc_exit" -ne 0 ]; then
+        echo "ts: compiler failed (exit=$_tsc_exit bytes=$(wc -c < "$_tsc_output"))" >&2
+      fi
+      cat "$_tsc_output" >&2
+      exit "$_tsc_exit"
     fi
   '';
 

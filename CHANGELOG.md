@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/megarepo**: add a read-only `mr store gc --generated-artifacts
+--dry-run` planner for safely identifying stale ignored build artifacts. The
+  planner requires external agent-liveness evidence and fails closed on
+  uncertain cleanliness, ignore status, or bounded filesystem traversal.
+
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema

@@ -10,9 +10,11 @@ import { encodeJson } from '../test-utils/mod.ts'
 import {
   DEFAULT_ABSENCE_GRACE_MS,
   DEFAULT_ARCHIVE_RETENTION_MS,
+  DEFAULT_GENERATED_ARTIFACT_RETENTION_MS,
   DEFAULT_POST_MERGE_GRACE_MS,
   DEFAULT_STORE_GC_CONFIG,
   GC_CONFIG_RELATIVE_PATH,
+  STORE_GC_GENERATED_ARTIFACTS,
   loadStoreGcConfig,
   mergeStoreGcConfig,
 } from './store-gc-config.ts'
@@ -24,6 +26,19 @@ describe('store-gc-config', () => {
       expect(DEFAULT_ABSENCE_GRACE_MS).toBe(14 * day)
       expect(DEFAULT_POST_MERGE_GRACE_MS).toBe(7 * day)
       expect(DEFAULT_ARCHIVE_RETENTION_MS).toBe(30 * day)
+      expect(DEFAULT_GENERATED_ARTIFACT_RETENTION_MS).toBe(day)
+      expect(STORE_GC_GENERATED_ARTIFACTS).toEqual([
+        'node_modules',
+        '.devenv/pnpm-store-pure-v1',
+        '.pnpm-store',
+        '.direnv',
+        'target',
+        'buck-out',
+        'dist',
+        'build',
+        '.next',
+        '.turbo',
+      ])
     })
   })
 
@@ -37,17 +52,64 @@ describe('store-gc-config', () => {
         absenceGraceMs: 1000,
         postMergeGraceMs: DEFAULT_POST_MERGE_GRACE_MS,
         archiveRetentionMs: DEFAULT_ARCHIVE_RETENTION_MS,
+        generatedArtifacts: DEFAULT_STORE_GC_CONFIG.generatedArtifacts,
       })
     })
 
     it('overrides all three keys', () => {
       expect(
         mergeStoreGcConfig({ absenceGraceMs: 1, postMergeGraceMs: 2, archiveRetentionMs: 3 }),
-      ).toEqual({ absenceGraceMs: 1, postMergeGraceMs: 2, archiveRetentionMs: 3 })
+      ).toEqual({
+        absenceGraceMs: 1,
+        postMergeGraceMs: 2,
+        archiveRetentionMs: 3,
+        generatedArtifacts: DEFAULT_STORE_GC_CONFIG.generatedArtifacts,
+      })
     })
 
     it('treats an explicit zero as a real override (not falsy fallback)', () => {
       expect(mergeStoreGcConfig({ postMergeGraceMs: 0 }).postMergeGraceMs).toBe(0)
+    })
+
+    it('fails safe to defaults for negative or non-finite durations', () => {
+      const merged = mergeStoreGcConfig({
+        absenceGraceMs: -1,
+        generatedArtifacts: { retentionMs: Number.POSITIVE_INFINITY },
+      })
+      expect(merged.absenceGraceMs).toBe(DEFAULT_STORE_GC_CONFIG.absenceGraceMs)
+      expect(merged.generatedArtifacts.retentionMs).toBe(
+        DEFAULT_STORE_GC_CONFIG.generatedArtifacts.retentionMs,
+      )
+    })
+
+    it('accepts only canonical generated classes and an explicit liveness manifest', () => {
+      expect(
+        mergeStoreGcConfig({
+          generatedArtifacts: {
+            enabled: true,
+            retentionMs: 42,
+            allowlist: ['node_modules', '.direnv'],
+            agentLivenessManifest: '/run/megarepo/agent-liveness.json',
+          },
+        }).generatedArtifacts,
+      ).toEqual({
+        enabled: true,
+        retentionMs: 42,
+        allowlist: ['node_modules', '.direnv'],
+        agentLivenessManifest: '/run/megarepo/agent-liveness.json',
+      })
+    })
+
+    it('deduplicates generated classes and rejects non-absolute manifest paths', () => {
+      const generatedArtifacts = mergeStoreGcConfig({
+        generatedArtifacts: {
+          allowlist: ['node_modules', 'node_modules', '.direnv'],
+          agentLivenessManifest: 'agents.json',
+        },
+      }).generatedArtifacts
+
+      expect(generatedArtifacts.allowlist).toEqual(['node_modules', '.direnv'])
+      expect(generatedArtifacts.agentLivenessManifest).toBeUndefined()
     })
   })
 
@@ -94,6 +156,7 @@ describe('store-gc-config', () => {
             absenceGraceMs: 1234,
             postMergeGraceMs: DEFAULT_POST_MERGE_GRACE_MS,
             archiveRetentionMs: 5678,
+            generatedArtifacts: DEFAULT_STORE_GC_CONFIG.generatedArtifacts,
           })
         },
         Effect.provide(NodeContext.layer),

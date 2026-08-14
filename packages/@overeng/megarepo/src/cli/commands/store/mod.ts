@@ -4,9 +4,14 @@
  * Commands for managing the shared git store.
  */
 
+import { createHash } from 'node:crypto'
+import type { Dir, Stats } from 'node:fs'
+import { lstat, opendir } from 'node:fs/promises'
+import { isAbsolute, normalize } from 'node:path'
+
 import * as Cli from '@effect/cli'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Clock, Effect, Option, Schedule, Stream } from 'effect'
+import { type CommandExecutor, FileSystem, type Error as PlatformError } from '@effect/platform'
+import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -28,7 +33,11 @@ import {
   reapArchive,
   scanArchives,
 } from '../../../lib/store-archive.ts'
-import { loadStoreGcConfig, type StoreGcConfig } from '../../../lib/store-gc-config.ts'
+import {
+  loadStoreGcConfig,
+  type StoreGcConfig,
+  type StoreGcGeneratedArtifact,
+} from '../../../lib/store-gc-config.ts'
 import {
   coldSinceMs as coldSinceMsFor,
   nextObservationLedger,
@@ -118,6 +127,363 @@ const gcRepoConcurrency = (): number => {
 const GC_WORKTREE_CONCURRENCY = 1
 const GC_PROGRESS_BATCH_SIZE = 10
 const STORE_REF_TYPES = ['heads', 'tags', 'commits'] as const
+const GENERATED_SCAN_ENTRY_CAP = 100_000
+const GENERATED_SCAN_TIMEOUT_MS = 30_000
+type GeneratedArtifactScan =
+  | { readonly _tag: 'complete'; readonly count: number; readonly newestMtimeMs: number }
+  | {
+      readonly _tag: 'incomplete'
+      readonly cause:
+        | 'entry-cap'
+        | 'timeout'
+        | 'symlink'
+        | 'not-directory'
+        | 'device-boundary'
+        | 'concurrent-change'
+        | 'io'
+    }
+
+const AgentLivenessManifest = Schema.Struct({
+  version: Schema.Literal(1),
+  expiresAtMs: Schema.Number,
+  activeWorkspacePaths: Schema.Array(Schema.String),
+})
+
+type GeneratedArtifactRepoWorktrees = ReadonlyArray<{
+  readonly repo: { readonly relativePath: string }
+  readonly worktrees: ReadonlyArray<CollectedWorktree>
+}>
+
+const encodeCanonicalPlan = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+
+const planGeneratedArtifacts = ({
+  config,
+  fs,
+  liveSet,
+  now,
+  onArtifact,
+  onRepoCompleted,
+  readCurrentTimeMillis,
+  repoWorktrees,
+}: {
+  config: StoreGcConfig
+  fs: FileSystem.FileSystem
+  liveSet: StoreLiveSet
+  now: number
+  onArtifact?: ((result: StoreGcResult) => Effect.Effect<void>) | undefined
+  onRepoCompleted?: (() => Effect.Effect<void>) | undefined
+  readCurrentTimeMillis: Effect.Effect<number>
+  repoWorktrees: GeneratedArtifactRepoWorktrees
+}): Effect.Effect<
+  { readonly results: ReadonlyArray<StoreGcResult>; readonly planSha256: string },
+  never,
+  CommandExecutor.CommandExecutor
+> =>
+  Effect.gen(function* () {
+    const generatedResults: StoreGcResult[] = []
+    const readAgentActivePaths = (atMs: number): Effect.Effect<ReadonlySet<string> | undefined> =>
+      Effect.gen(function* () {
+        if (config.generatedArtifacts.agentLivenessManifest === undefined) return undefined
+        const manifestContent = yield* fs
+          .readFileString(config.generatedArtifacts.agentLivenessManifest)
+          .pipe(Effect.orElseSucceed(() => undefined))
+        if (manifestContent === undefined) return undefined
+        const parsed = yield* Schema.decodeUnknown(Schema.parseJson(AgentLivenessManifest))(
+          manifestContent,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+        if (
+          parsed === undefined ||
+          Number.isFinite(parsed.expiresAtMs) === false ||
+          parsed.activeWorkspacePaths.some((path) => isNormalizedAbsolutePath(path) === false) ===
+            true ||
+          parsed.expiresAtMs < atMs
+        ) {
+          return undefined
+        }
+        const canonicalPaths = yield* Effect.forEach(
+          parsed.activeWorkspacePaths,
+          (path) => fs.realPath(path).pipe(Effect.orElseSucceed(() => undefined)),
+          { concurrency: 1 },
+        )
+        if (canonicalPaths.some((path) => path === undefined) === true) return undefined
+        return new Set(canonicalPaths.map((path) => normalizeStorePath(path!)))
+      })
+    for (const { repo, worktrees } of repoWorktrees) {
+      for (const worktree of worktrees) {
+        if (worktree.broken === true) continue
+        const removalStatus = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
+          Effect.map((status) => ({ _tag: 'known' as const, status })),
+          Effect.orElseSucceed(() => ({ _tag: 'unknown' as const })),
+        )
+        for (const artifactClass of config.generatedArtifacts.allowlist) {
+          const artifactPath = EffectPath.ops.join(
+            worktree.path,
+            EffectPath.unsafe.relativeDir(`${artifactClass}/`),
+          )
+          if ((yield* fs.exists(artifactPath).pipe(Effect.orElseSucceed(() => false))) === false) {
+            continue
+          }
+          const ignored = yield* Git.runCommand({
+            args: ['check-ignore', '--quiet', '--', artifactClass],
+            cwd: worktree.path,
+          }).pipe(
+            Effect.as('ignored' as const),
+            Effect.catchAll((error) =>
+              Effect.succeed(
+                error instanceof Git.GitCommandError && error.exitCode === 1
+                  ? ('not-ignored' as const)
+                  : ('unknown' as const),
+              ),
+            ),
+          )
+          const megarepoLive = isPathProtected({ liveSet, path: worktree.path })
+          const canonicalWorktree = yield* fs
+            .realPath(worktree.path)
+            .pipe(Effect.orElseSucceed(() => undefined))
+          const canonicalArtifact = yield* fs
+            .realPath(artifactPath)
+            .pipe(Effect.orElseSucceed(() => undefined))
+          const expectedCanonicalArtifact =
+            canonicalWorktree === undefined
+              ? undefined
+              : normalizeStorePath(`${canonicalWorktree}/${artifactClass}`)
+          const contained =
+            canonicalArtifact !== undefined &&
+            normalizeStorePath(canonicalArtifact) === expectedCanonicalArtifact
+          const agentActivePaths = yield* readAgentActivePaths(yield* readCurrentTimeMillis)
+          const agentLive =
+            canonicalWorktree === undefined
+              ? undefined
+              : agentActivePaths?.has(normalizeStorePath(canonicalWorktree))
+          const cheapReason =
+            config.generatedArtifacts.enabled === false
+              ? 'generated-artifacts-disabled'
+              : agentActivePaths === undefined
+                ? 'agent-liveness-unavailable'
+                : canonicalWorktree === undefined || contained === false
+                  ? 'artifact-scan-incomplete'
+                  : removalStatus._tag === 'unknown'
+                    ? 'cleanliness-unknown'
+                    : removalStatus.status.isDirty === true
+                      ? 'dirty-worktree'
+                      : ignored === 'unknown'
+                        ? 'artifact-ignore-unknown'
+                        : ignored === 'not-ignored'
+                          ? 'artifact-not-ignored'
+                          : megarepoLive === true || agentLive === true
+                            ? 'live'
+                            : undefined
+          const traversal =
+            cheapReason === undefined
+              ? yield* scanGeneratedArtifact({ path: artifactPath })
+              : undefined
+          const finalCanonicalWorktree =
+            traversal?._tag === 'complete'
+              ? yield* fs.realPath(worktree.path).pipe(Effect.orElseSucceed(() => undefined))
+              : canonicalWorktree
+          const finalCanonicalArtifact =
+            traversal?._tag === 'complete'
+              ? yield* fs.realPath(artifactPath).pipe(Effect.orElseSucceed(() => undefined))
+              : canonicalArtifact
+          const finalAgentActivePaths =
+            traversal?._tag === 'complete'
+              ? yield* readAgentActivePaths(yield* readCurrentTimeMillis)
+              : agentActivePaths
+          const finalRemovalStatus =
+            traversal?._tag === 'complete'
+              ? yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
+                  Effect.map((status) => ({ _tag: 'known' as const, status })),
+                  Effect.orElseSucceed(() => ({ _tag: 'unknown' as const })),
+                )
+              : removalStatus
+          const finalIgnored =
+            traversal?._tag === 'complete'
+              ? yield* Git.runCommand({
+                  args: ['check-ignore', '--quiet', '--', artifactClass],
+                  cwd: worktree.path,
+                }).pipe(
+                  Effect.as('ignored' as const),
+                  Effect.catchAll((error) =>
+                    Effect.succeed(
+                      error instanceof Git.GitCommandError && error.exitCode === 1
+                        ? ('not-ignored' as const)
+                        : ('unknown' as const),
+                    ),
+                  ),
+                )
+              : ignored
+          const mtimeMs = traversal?._tag === 'complete' ? traversal.newestMtimeMs : undefined
+          const reason =
+            cheapReason ??
+            (traversal?._tag !== 'complete'
+              ? 'artifact-scan-incomplete'
+              : finalCanonicalWorktree === undefined ||
+                  finalCanonicalArtifact === undefined ||
+                  finalCanonicalWorktree !== canonicalWorktree ||
+                  finalCanonicalArtifact !== canonicalArtifact
+                ? 'artifact-scan-incomplete'
+                : finalAgentActivePaths === undefined
+                  ? 'agent-liveness-unavailable'
+                  : finalAgentActivePaths.has(normalizeStorePath(finalCanonicalWorktree)) === true
+                    ? 'live'
+                    : finalRemovalStatus._tag === 'unknown'
+                      ? 'cleanliness-unknown'
+                      : finalRemovalStatus.status.isDirty === true
+                        ? 'dirty-worktree'
+                        : finalIgnored === 'unknown'
+                          ? 'artifact-ignore-unknown'
+                          : finalIgnored === 'not-ignored'
+                            ? 'artifact-not-ignored'
+                            : now - traversal.newestMtimeMs < config.generatedArtifacts.retentionMs
+                              ? 'retention'
+                              : 'eligible')
+          const outcome =
+            reason === 'eligible'
+              ? ('would-delete' as const)
+              : reason === 'agent-liveness-unavailable' ||
+                  reason === 'cleanliness-unknown' ||
+                  reason === 'artifact-ignore-unknown' ||
+                  reason === 'artifact-scan-incomplete'
+                ? ('unknown' as const)
+                : ('keep' as const)
+          const result: StoreGcResult = {
+            repo: repo.relativePath,
+            ref: worktree.ref,
+            refType: worktree.refType,
+            path: artifactPath,
+            status: 'kept',
+            reason,
+            kind: 'generated-artifact',
+            artifactClass: artifactClass satisfies StoreGcGeneratedArtifact,
+            workspacePath: worktree.path,
+            exclusiveClosureBytes: null,
+            outcome,
+            ...(traversal?._tag === 'incomplete'
+              ? { message: `generated artifact scan incomplete: ${traversal.cause}` }
+              : {}),
+            ...(mtimeMs !== undefined ? { mtimeMs } : {}),
+          }
+          generatedResults.push(result)
+          if (onArtifact !== undefined) yield* onArtifact(result)
+        }
+      }
+      if (onRepoCompleted !== undefined) yield* onRepoCompleted()
+    }
+    const canonicalPlan = generatedResults
+      .map((result) => ({
+        repo: result.repo,
+        ref: result.ref,
+        refType: result.refType,
+        artifactClass: result.artifactClass,
+        path: result.path,
+        workspacePath: result.workspacePath,
+        reason: result.reason,
+        outcome: result.outcome,
+        mtimeMs: result.mtimeMs,
+      }))
+      .toSorted((left, right) => compareCanonicalPlanPaths({ left: left.path, right: right.path }))
+    return {
+      results: generatedResults,
+      planSha256: createHash('sha256').update(encodeCanonicalPlan(canonicalPlan)).digest('hex'),
+    }
+  })
+
+const scanGeneratedArtifact = ({ path }: { path: string }) =>
+  Effect.async<GeneratedArtifactScan>((resume) => {
+    let settled = false
+    const openDirectories = new Set<Dir>()
+    const finish = (result: GeneratedArtifactScan) => {
+      if (settled === true) return
+      settled = true
+      clearTimeout(deadline)
+      resume(Effect.succeed(result))
+      for (const directory of openDirectories) void directory.close().catch(() => undefined)
+      openDirectories.clear()
+    }
+    const deadline = setTimeout(
+      () => finish({ _tag: 'incomplete', cause: 'timeout' }),
+      GENERATED_SCAN_TIMEOUT_MS,
+    )
+    void (async () => {
+      try {
+        const artifactRootInfo = await lstat(path)
+        if (
+          artifactRootInfo.isDirectory() === false ||
+          artifactRootInfo.isSymbolicLink() === true
+        ) {
+          finish({ _tag: 'incomplete', cause: 'not-directory' })
+          return
+        }
+        const pending = [path]
+        const fingerprints = new Map<string, string>()
+        let count = 0
+        let newestMtimeMs = 0
+        while (pending.length > 0 && settled === false) {
+          const current = pending.pop()!
+          // Sequential traversal is intentional: it bounds filesystem pressure.
+          // eslint-disable-next-line no-await-in-loop
+          const info = await lstat(current)
+          if (info.isDirectory() === true && info.dev !== artifactRootInfo.dev) {
+            finish({ _tag: 'incomplete', cause: 'device-boundary' })
+            return
+          }
+          count += 1
+          if (count > GENERATED_SCAN_ENTRY_CAP) {
+            finish({ _tag: 'incomplete', cause: 'entry-cap' })
+            return
+          }
+          if (info.isSymbolicLink() === true) {
+            finish({ _tag: 'incomplete', cause: 'symlink' })
+            return
+          }
+          fingerprints.set(current, generatedArtifactFingerprint(info))
+          newestMtimeMs = Math.max(newestMtimeMs, info.mtimeMs)
+          if (info.isDirectory() === true) {
+            // `opendir` consumes one entry at a time, so a huge directory cannot
+            // allocate an unbounded `readdir` array before the cap is enforced.
+            // eslint-disable-next-line no-await-in-loop
+            const directory = await opendir(current)
+            openDirectories.add(directory)
+            while (settled === false) {
+              // eslint-disable-next-line no-await-in-loop
+              const entry = await directory.read()
+              if (entry === null) break
+              pending.push(`${current}/${entry.name}`)
+              if (count + pending.length > GENERATED_SCAN_ENTRY_CAP) {
+                finish({ _tag: 'incomplete', cause: 'entry-cap' })
+                return
+              }
+            }
+            openDirectories.delete(directory)
+            // eslint-disable-next-line no-await-in-loop
+            await directory.close()
+          }
+        }
+        for (const [entryPath, fingerprint] of fingerprints) {
+          // Sequential verification keeps the same bounded filesystem pressure.
+          // eslint-disable-next-line no-await-in-loop
+          const current = await lstat(entryPath)
+          if (generatedArtifactFingerprint(current) !== fingerprint) {
+            finish({ _tag: 'incomplete', cause: 'concurrent-change' })
+            return
+          }
+        }
+        if (settled === false) finish({ _tag: 'complete', count, newestMtimeMs })
+      } catch {
+        finish({ _tag: 'incomplete', cause: 'io' })
+      }
+    })()
+    return Effect.sync(() => {
+      if (settled === true) return
+      settled = true
+      clearTimeout(deadline)
+      for (const directory of openDirectories) void directory.close().catch(() => undefined)
+      openDirectories.clear()
+    })
+  })
+
+const generatedArtifactFingerprint = (info: Stats): string =>
+  `${info.dev}:${info.ino}:${info.mode}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`
 
 const runStoreCommand = ({ output, action }: { output: string; action: StoreAction }) => {
   const visualEffect = run(
@@ -157,6 +523,7 @@ const toStoreGcAction = ({
   activeWorktreeCount,
   statusMessage,
   done,
+  planSha256,
 }: {
   basePath: string
   results: ReadonlyArray<StoreGcResult>
@@ -169,6 +536,7 @@ const toStoreGcAction = ({
   activeWorktreeCount: number
   statusMessage: string | undefined
   done: boolean
+  planSha256?: string | undefined
 }): StoreAction => ({
   _tag: 'SetGc',
   basePath,
@@ -188,6 +556,7 @@ const toStoreGcAction = ({
   activeWorktreeCount,
   statusMessage,
   done,
+  ...(planSha256 !== undefined ? { planSha256 } : {}),
 })
 
 const classifyGcProtection = ({
@@ -505,6 +874,21 @@ const classifyGcWorktree = ({
   )
 
 const normalizeStorePath = (path: string): string => path.replace(/\/+$/, '')
+
+const isNormalizedAbsolutePath = (path: string): boolean =>
+  path.length > 0 &&
+  isAbsolute(path) === true &&
+  normalize(path) === path &&
+  (path === '/' || normalizeStorePath(path) === path)
+
+/** Compare plan paths by their canonical UTF-8 byte representation. */
+export const compareCanonicalPlanPaths = ({
+  left,
+  right,
+}: {
+  left: string
+  right: string
+}): number => Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'))
 
 /** A named (`refs/heads/*`) worktree paired with the repo it belongs to. */
 interface NamedWorktreeTarget {
@@ -1274,8 +1658,16 @@ const storeGcCommand = Cli.Command.make(
       Cli.Options.withDescription('Remove all worktrees (not just unused ones)'),
       Cli.Options.withDefault(false),
     ),
+    generatedArtifacts: Cli.Options.boolean('generated-artifacts').pipe(
+      Cli.Options.withDescription('Plan configured generated-artifact cleanup'),
+      Cli.Options.withDefault(false),
+    ),
+    expectedPlan: Cli.Options.text('expected-plan').pipe(
+      Cli.Options.withDescription('Apply only the exact generated-artifact dry-run plan'),
+      Cli.Options.optional,
+    ),
   },
-  ({ output, dryRun, force, all }) =>
+  ({ output, dryRun, force, all, generatedArtifacts, expectedPlan }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const store = yield* Store
@@ -1287,6 +1679,23 @@ const storeGcCommand = Cli.Command.make(
       let gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined
       let repoCount: number | undefined
       let repoConcurrencyForMetrics = 1
+      let planSha256: string | undefined
+
+      if (generatedArtifacts === true && (all === true || force === true)) {
+        return yield* new StoreCommandError({
+          message: '--generated-artifacts is incompatible with --all and --force',
+        })
+      }
+      if (generatedArtifacts === true && dryRun === false) {
+        return yield* new StoreCommandError({
+          message: '--generated-artifacts currently requires --dry-run',
+        })
+      }
+      if (Option.isSome(expectedPlan) === true) {
+        return yield* new StoreCommandError({
+          message: '--expected-plan is not supported by planning-only GC',
+        })
+      }
 
       const processGcDecision = ({
         decision,
@@ -1446,6 +1855,7 @@ const storeGcCommand = Cli.Command.make(
               activeWorktreeCount,
               statusMessage,
               done,
+              planSha256,
             }),
           )
         })
@@ -1489,9 +1899,13 @@ const storeGcCommand = Cli.Command.make(
           const liveSet = yield* collectStoreLiveSet({
             store,
             ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
-            pruneStaleRegistry: dryRun === false,
-            refreshCurrentWorkspace: dryRun === false,
-            ...(all === false ? { reconcileAllWorkspaces: true } : {}),
+            // Generated-artifact mode is a read-only planner. Do not refresh,
+            // reconcile, or prune the shared liveness registry while planning.
+            pruneStaleRegistry: generatedArtifacts === false && dryRun === false,
+            refreshCurrentWorkspace: generatedArtifacts === false && dryRun === false,
+            ...(all === false && generatedArtifacts === false
+              ? { reconcileAllWorkspaces: true }
+              : {}),
             now,
           }).pipe(Observability.withStoreGcPhaseSpan({ phase: 'collect-liveness' }))
           liveSetForMetrics = liveSet
@@ -1543,10 +1957,45 @@ const storeGcCommand = Cli.Command.make(
             }),
           )
 
+          if (generatedArtifacts === true) {
+            const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+            discoveredWorktreeCount += repoWorktrees.reduce(
+              (count, repo) => count + repo.worktrees.length,
+              0,
+            )
+            const generatedPlan = yield* planGeneratedArtifacts({
+              config,
+              fs,
+              liveSet,
+              now,
+              ...(progressive === true
+                ? {
+                    onArtifact: (result: StoreGcResult) =>
+                      Effect.gen(function* () {
+                        results.push(result)
+                        yield* dispatchGc({ done: false })
+                      }),
+                    onRepoCompleted: () =>
+                      Effect.gen(function* () {
+                        completedRepoCount += 1
+                        yield* dispatchGc({ done: false })
+                      }),
+                  }
+                : {}),
+              readCurrentTimeMillis: Clock.currentTimeMillis,
+              repoWorktrees,
+            })
+            planSha256 = generatedPlan.planSha256
+            if (progressive === false) {
+              for (const result of generatedPlan.results) results.push(result)
+              completedRepoCount += repoWorktrees.length
+            }
+          }
+
           // Default cold reclamation path (decisions 0001–0010): additive third
           // path. Named (`refs/heads/*`/`refs/tags/*`) worktrees are owned here;
           // `--all` removes everything via the legacy stream and skips this.
-          if (all === false) {
+          if (all === false && generatedArtifacts === false) {
             const namedTargets: Array<NamedWorktreeTarget> = []
             for (const { repo, bareRepoPath, worktrees } of repoWorktrees) {
               for (const worktree of worktrees) {
@@ -1662,104 +2111,106 @@ const storeGcCommand = Cli.Command.make(
             )
           }
 
-          yield* Stream.fromIterable(repoWorktrees).pipe(
-            Stream.mapEffect(
-              ({ repo, bareRepoPath, worktrees: allWorktrees }) =>
-                Effect.gen(function* () {
-                  let removedForRepo = 0
-                  // Default mode owns named worktrees in the cold path above; the
-                  // legacy stream only handles commit worktrees (and everything in
-                  // `--all` mode).
-                  const worktrees =
-                    all === false
-                      ? allWorktrees.filter(
-                          (worktree) =>
-                            worktree.broken === true || isNamedRefWorktree(worktree) === false,
-                        )
-                      : allWorktrees
+          if (generatedArtifacts === false) {
+            yield* Stream.fromIterable(repoWorktrees).pipe(
+              Stream.mapEffect(
+                ({ repo, bareRepoPath, worktrees: allWorktrees }) =>
+                  Effect.gen(function* () {
+                    let removedForRepo = 0
+                    // Default mode owns named worktrees in the cold path above; the
+                    // legacy stream only handles commit worktrees (and everything in
+                    // `--all` mode).
+                    const worktrees =
+                      all === false
+                        ? allWorktrees.filter(
+                            (worktree) =>
+                              worktree.broken === true || isNamedRefWorktree(worktree) === false,
+                          )
+                        : allWorktrees
 
-                  yield* Stream.fromIterable(worktrees).pipe(
-                    Stream.mapEffect(
-                      (worktree) =>
-                        Effect.gen(function* () {
-                          discoveredWorktreeCount += 1
-                          activeWorktreeCount += 1
-                          if (progressive === true) {
-                            yield* dispatchGc({ done: false, forceDispatch: true })
-                          }
-                          yield* Effect.gen(function* () {
-                            const decision = yield* classifyGcWorktree({
-                              worktree,
-                              liveSet,
-                              all,
-                            })
-                            const result = yield* processGcDecision({
-                              decision,
-                              repoRelativePath: repo.relativePath,
-                              bareRepoPath,
-                            })
-                            if (result.status === 'removed' && dryRun === false) {
-                              removedForRepo += 1
+                    yield* Stream.fromIterable(worktrees).pipe(
+                      Stream.mapEffect(
+                        (worktree) =>
+                          Effect.gen(function* () {
+                            discoveredWorktreeCount += 1
+                            activeWorktreeCount += 1
+                            if (progressive === true) {
+                              yield* dispatchGc({ done: false, forceDispatch: true })
                             }
-                            results.push(result)
-                          }).pipe(
-                            Effect.ensuring(
-                              Effect.sync(() => {
-                                activeWorktreeCount -= 1
-                              }).pipe(
-                                Effect.zipRight(
-                                  progressive === true
-                                    ? dispatchGc({ done: false, forceDispatch: true })
-                                    : Effect.void,
+                            yield* Effect.gen(function* () {
+                              const decision = yield* classifyGcWorktree({
+                                worktree,
+                                liveSet,
+                                all,
+                              })
+                              const result = yield* processGcDecision({
+                                decision,
+                                repoRelativePath: repo.relativePath,
+                                bareRepoPath,
+                              })
+                              if (result.status === 'removed' && dryRun === false) {
+                                removedForRepo += 1
+                              }
+                              results.push(result)
+                            }).pipe(
+                              Effect.ensuring(
+                                Effect.sync(() => {
+                                  activeWorktreeCount -= 1
+                                }).pipe(
+                                  Effect.zipRight(
+                                    progressive === true
+                                      ? dispatchGc({ done: false, forceDispatch: true })
+                                      : Effect.void,
+                                  ),
                                 ),
                               ),
-                            ),
-                          )
-                        }),
-                      { concurrency: GC_WORKTREE_CONCURRENCY, unordered: true },
-                    ),
-                    Stream.runDrain,
-                  )
-
-                  if (removedForRepo > 0) {
-                    yield* Git.pruneWorktrees(bareRepoPath).pipe(
-                      Effect.catchAll((error) =>
-                        Effect.sync(() => {
-                          results.push({
-                            repo: repo.relativePath,
-                            ref: '.bare',
-                            refType: 'commits',
-                            path: bareRepoPath,
-                            status: 'error',
-                            message:
-                              error instanceof Error === true ? error.message : String(error),
-                          })
-                        }),
+                            )
+                          }),
+                        { concurrency: GC_WORKTREE_CONCURRENCY, unordered: true },
                       ),
+                      Stream.runDrain,
                     )
-                  }
 
-                  completedRepoCount += 1
-                  if (progressive === true) {
-                    yield* dispatchGc({ done: false, forceDispatch: true })
-                  }
-                }).pipe(
-                  Observability.withStoreWorktreeSpan({
-                    name: 'megarepo/store/gc/repo',
-                    repo: repo.relativePath,
-                    refType: 'repo',
-                    ref: Observability.shortPath(repo.relativePath),
-                  }),
-                ),
-              { concurrency: repoConcurrency, unordered: true },
-            ),
-            Stream.runDrain,
-            Observability.withStoreGcPhaseSpan({
-              phase: 'legacy-sweep',
-              repoCount: repoWorktrees.length,
-              repoConcurrency,
-            }),
-          )
+                    if (removedForRepo > 0) {
+                      yield* Git.pruneWorktrees(bareRepoPath).pipe(
+                        Effect.catchAll((error) =>
+                          Effect.sync(() => {
+                            results.push({
+                              repo: repo.relativePath,
+                              ref: '.bare',
+                              refType: 'commits',
+                              path: bareRepoPath,
+                              status: 'error',
+                              message:
+                                error instanceof Error === true ? error.message : String(error),
+                            })
+                          }),
+                        ),
+                      )
+                    }
+
+                    completedRepoCount += 1
+                    if (progressive === true) {
+                      yield* dispatchGc({ done: false, forceDispatch: true })
+                    }
+                  }).pipe(
+                    Observability.withStoreWorktreeSpan({
+                      name: 'megarepo/store/gc/repo',
+                      repo: repo.relativePath,
+                      refType: 'repo',
+                      ref: Observability.shortPath(repo.relativePath),
+                    }),
+                  ),
+                { concurrency: repoConcurrency, unordered: true },
+              ),
+              Stream.runDrain,
+              Observability.withStoreGcPhaseSpan({
+                phase: 'legacy-sweep',
+                repoCount: repoWorktrees.length,
+                repoConcurrency,
+              }),
+            )
+          }
 
           statusMessage = undefined
           if (progressive === true) {
@@ -1787,6 +2238,7 @@ const storeGcCommand = Cli.Command.make(
             activeWorktreeCount,
             statusMessage,
             done: true,
+            planSha256,
           }),
         })
       } else {
@@ -1806,12 +2258,23 @@ const storeGcCommand = Cli.Command.make(
         repoTotal: repoCount ?? 0,
         worktreeDiscovered: discoveredWorktreeCount,
         resultTotal: results.length,
-        resultRemoved: results.filter((result) => result.status === 'removed').length,
+        resultRemoved: results.filter(
+          (result) =>
+            result.status === 'removed' ||
+            result.outcome === 'would-delete' ||
+            result.outcome === 'deleted',
+        ).length,
         resultSkippedInUse: results.filter((result) => result.status === 'skipped_in_use').length,
         resultSkippedDirty: results.filter((result) => result.status === 'skipped_dirty').length,
         resultArchived: results.filter((result) => result.status === 'archived').length,
         resultReaped: results.filter((result) => result.status === 'reaped').length,
-        resultKept: results.filter((result) => result.status === 'kept').length,
+        resultKept: results.filter(
+          (result) =>
+            result.status === 'kept' &&
+            result.outcome !== 'would-delete' &&
+            result.outcome !== 'deleted' &&
+            result.outcome !== 'unknown',
+        ).length,
         candidateCommits: results.filter((result) => result.refType === 'commits').length,
         candidateNamedRefs: results.filter(
           (result) => result.refType === 'heads' || result.refType === 'tags',
