@@ -47,6 +47,7 @@ describe('streaming git parsers', () => {
       yield* git(mainPath, 'init', '-q', '-b', 'main')
       yield* git(mainPath, 'config', 'user.email', 'test@example.com')
       yield* git(mainPath, 'config', 'user.name', 'Test User')
+      yield* git(mainPath, 'config', 'commit.gpgsign', 'false')
       yield* fs.writeFileString(
         EffectPath.ops.join(mainPath, EffectPath.unsafe.relativeFile('a.txt')),
         'a\n',
@@ -98,6 +99,7 @@ describe('streaming git parsers', () => {
       yield* git(work, 'init', '-q', '-b', 'main')
       yield* git(work, 'config', 'user.email', 'test@example.com')
       yield* git(work, 'config', 'user.name', 'Test User')
+      yield* git(work, 'config', 'commit.gpgsign', 'false')
       yield* git(work, 'remote', 'add', 'origin', remote.replace(/\/$/, ''))
       yield* fs.writeFileString(
         EffectPath.ops.join(work, EffectPath.unsafe.relativeFile('base.txt')),

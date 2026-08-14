@@ -59,7 +59,7 @@ const makeWiredBare = Effect.fnUntraced(function* () {
     'base\n',
   )
   yield* git(source, 'add', '-A')
-  yield* git(source, 'commit', '--no-verify', '-m', 'base')
+  yield* git(source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'base')
   yield* git(source, 'remote', 'add', 'origin', upstream)
   yield* git(source, 'push', '-u', 'origin', 'main')
   const baseCommit = yield* git(source, 'rev-parse', 'HEAD')
@@ -124,7 +124,7 @@ describe('store-lossless', () => {
             ),
           ),
         )
-        yield* git(wt, 'commit', '-a', '--no-verify', '-m', 'local-only')
+        yield* git(wt, 'commit', '-a', '--no-gpg-sign', '--no-verify', '-m', 'local-only')
         const wtHead = yield* git(wt, 'rev-parse', 'HEAD')
 
         const count = yield* unpushedCommitCount({ bareRepoPath: bare, worktreeHead: wtHead })
@@ -190,7 +190,7 @@ describe('store-lossless', () => {
           'x\n',
         )
         yield* git(source, 'add', '-A')
-        yield* git(source, 'commit', '--no-verify', '-m', 'c0')
+        yield* git(source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'c0')
         yield* git(source, 'remote', 'add', 'origin', bare)
         yield* git(source, 'push', 'origin', 'main')
         const head = yield* git(bare, 'rev-parse', 'refs/heads/main')

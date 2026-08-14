@@ -71,7 +71,7 @@ export const initGitRepo = (path: AbsoluteDirPath) =>
     const existing = yield* fs.readFileString(configPath)
     yield* fs.writeFileString(
       configPath,
-      `${existing}[user]\n\temail = test@example.com\n\tname = Test User\n`,
+      `${existing}[user]\n\temail = test@example.com\n\tname = Test User\n[commit]\n\tgpgsign = false\n`,
     )
   })
 
