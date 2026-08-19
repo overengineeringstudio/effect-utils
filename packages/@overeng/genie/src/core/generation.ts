@@ -396,19 +396,22 @@ export const getHeaderComment = ({
 }
 
 /**
- * Prepend the generated-file header to content, preserving a leading `#!` shebang line for
- * executable shell scripts (the banner is inserted after the shebang, not before it).
+ * Prepend the generated-file header to content, preserving a leading `#!` shebang line
+ * (the banner is inserted after the shebang, not before it).
+ *
+ * A hashbang is only valid as the very first bytes of a file. That is a hard rule for scripts of any
+ * language, not just `.sh`: putting a comment banner ahead of `#!` in a `.mjs` makes the file a
+ * `SyntaxError` rather than merely mis-executing it. So this keys off the shebang itself, not the
+ * extension.
  */
 export const addHeaderComment = ({
   content,
   header,
-  targetFilePath,
 }: {
   content: string
   header: string
-  targetFilePath: string
 }) => {
-  if (path.extname(targetFilePath) !== '.sh' || content.startsWith('#!') === false) {
+  if (content.startsWith('#!') === false) {
     return header + content
   }
 
@@ -661,7 +664,6 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
     content: addHeaderComment({
       content: formattedContent,
       header,
-      targetFilePath,
     }),
   }
 })
