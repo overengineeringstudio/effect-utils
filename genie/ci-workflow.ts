@@ -149,8 +149,11 @@ export {
   type WorkflowReportPublisherStepOptions,
 } from './ci-workflow/reporting.ts'
 export {
+  prSnapshotForeignEventGuard,
   prSnapshotPackJob,
+  prSnapshotPackJobId,
   prSnapshotReleaseJobs,
+  prSnapshotTrustLabel,
   type PrSnapshotPackJobOptions,
   type PrSnapshotReleaseJobsOptions,
   type PrSnapshotSharedOptions,
@@ -162,6 +165,8 @@ export {
   ciWorkflowNixGcRaceRetryWrapperPath,
   ciWorkflowPrSnapshotArtifactScriptPath,
   ciWorkflowPrSnapshotArtifactTestPath,
+  emittedPrSnapshotValidatorPath,
+  emittedPrSnapshotValidatorTestPath,
   ciWorkflowSupportFiles,
   type CiWorkflowSupportFiles,
 } from './ci-workflow/support-files.ts'

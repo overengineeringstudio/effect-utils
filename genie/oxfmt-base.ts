@@ -24,6 +24,10 @@ export const baseOxfmtOptions = {
 
 /** Standard ignore patterns for oxfmt */
 export const baseOxfmtIgnorePatterns = [
+  // Emitted verbatim from this repo's shared CI scripts. Consumers format at their own print width,
+  // so formatting a generated, read-only validator locally would only make repos disagree on its bytes.
+  '**/.github/scripts/pr-snapshot-artifact.mjs',
+  '**/.github/scripts/pr-snapshot-artifact.test.mjs',
   // Package manager caches and build outputs
   '**/node_modules/**',
   '**/.pnpm/**',

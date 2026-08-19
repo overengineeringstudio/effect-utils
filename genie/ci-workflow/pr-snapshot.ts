@@ -24,6 +24,28 @@
 
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
 import { bashShellDefaults, runDevenvTasksBefore } from './shared.ts'
+import { emittedPrSnapshotValidatorPath, emittedPrSnapshotValidatorTestPath } from './support-files.ts'
+
+/**
+ * Job id of the pack job, and the label granting a fork pull request publishing trust.
+ *
+ * Constants rather than options. Each is duplicated in places a caller cannot reach: `packJobId` is a
+ * job key in one workflow and a `jq` name match in another, and the trust label is also hardcoded
+ * inside the validator's authorization predicate. Making either configurable would let the copies
+ * disagree — and neither disagreement fails loudly; the dispatcher would simply match nothing.
+ */
+export const prSnapshotPackJobId = 'pack-pr-snapshot'
+export const prSnapshotTrustLabel = 'ci:publish-snapshot'
+
+/**
+ * Guard for jobs that existed in a consumer's release workflow before these were added.
+ *
+ * `scheduleTrigger` and `workflowRunTrigger` widen when the workflow runs — on a cron and on every
+ * producer CI completion. Any pre-existing job without a guard then runs on those events too, which
+ * for a build-heavy job means a full toolchain build every few minutes. Apply this to them.
+ */
+export const prSnapshotForeignEventGuard =
+  "github.event_name != 'schedule' && github.event_name != 'workflow_run'" 
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
@@ -32,13 +54,8 @@ type WorkflowStep = WorkflowJob['steps'][number]
 export type PrSnapshotSharedOptions = {
   /** Repo-relative path to the trusted release topology JSON. */
   readonly topologyPath: string
-  /** Repo-relative path to the emitted `pr-snapshot-artifact.mjs`. */
-  readonly validatorScriptPath: string
-  /**
-   * Job id of the pack job. Also matched by name from the release jobs, so this single value has to
-   * feed both workflows.
-   */
-  readonly packJobId?: string
+  /** Repo-relative path to the emitted `pr-snapshot-artifact.mjs`. Defaults to the shared location. */
+  readonly validatorScriptPath?: string
 }
 
 export type PrSnapshotPackJobOptions = PrSnapshotSharedOptions & {
@@ -46,8 +63,8 @@ export type PrSnapshotPackJobOptions = PrSnapshotSharedOptions & {
   readonly setupStepsAfterCheckout: readonly WorkflowStep[]
   /** Devenv task packing tarballs into `$SNAPSHOT_OUT_DIR`. */
   readonly packTask: string
-  /** Repo-relative path to the validator's own boundary suite. */
-  readonly validatorTestPath: string
+  /** Repo-relative path to the emitted boundary suite. Defaults to the shared location. */
+  readonly validatorTestPath?: string
   /** Runner for the untrusted pack job. */
   readonly runsOn?: WorkflowJob['runs-on']
 }
@@ -55,8 +72,6 @@ export type PrSnapshotPackJobOptions = PrSnapshotSharedOptions & {
 export type PrSnapshotReleaseJobsOptions = PrSnapshotSharedOptions & {
   /** in-toto predicate type URI for the candidate attestation. */
   readonly attestationPredicateType: string
-  /** Label granting fork PRs snapshot-publishing trust. */
-  readonly trustLabel?: string
   /** Runner for the trusted jobs. These do no repo build, so the default suits every consumer. */
   readonly runsOn?: WorkflowJob['runs-on']
 }
@@ -68,15 +83,14 @@ export type PrSnapshotReleaseJobsOptions = PrSnapshotSharedOptions & {
 export const prSnapshotPackJob = (opts: PrSnapshotPackJobOptions) => {
   const {
     topologyPath,
-    validatorScriptPath,
-    validatorTestPath,
+    validatorScriptPath = emittedPrSnapshotValidatorPath,
+    validatorTestPath = emittedPrSnapshotValidatorTestPath,
     setupStepsAfterCheckout,
     packTask,
-    packJobId = 'pack-pr-snapshot',
     runsOn = 'ubuntu-24.04',
   } = opts
   return {
-    [packJobId]: {
+    [prSnapshotPackJobId]: {
       // Fork candidates are untrusted data: this job has no secrets or write
       // token, and the main-branch release workflow validates every tarball.
       if: "github.event_name == 'pull_request'",
@@ -139,10 +153,8 @@ export const prSnapshotPackJob = (opts: PrSnapshotPackJobOptions) => {
 export const prSnapshotReleaseJobs = (opts: PrSnapshotReleaseJobsOptions) => {
   const {
     topologyPath,
-    validatorScriptPath,
+    validatorScriptPath = emittedPrSnapshotValidatorPath,
     attestationPredicateType,
-    trustLabel = 'ci:publish-snapshot',
-    packJobId = 'pack-pr-snapshot',
     runsOn = 'ubuntu-24.04',
   } = opts
   return {
@@ -213,7 +225,7 @@ while IFS=$'\t' read -r pr_number head_sha head_repository head_ref fork_label_p
   while IFS= read -r candidate_run_id; do
     [[ "$candidate_run_id" =~ ^[1-9][0-9]*$ ]]
     jobs_json=$(gh api --paginate "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/jobs?filter=all&per_page=100" --slurp)
-    pack_job=$(jq -c '[.[] | .jobs[] | select(.name == "${packJobId}" and .conclusion == "success")] | sort_by(.run_attempt) | last' <<<"$jobs_json")
+    pack_job=$(jq -c '[.[] | .jobs[] | select(.name == "${prSnapshotPackJobId}" and .conclusion == "success")] | sort_by(.run_attempt) | last' <<<"$jobs_json")
     if [ "$pack_job" = null ]; then
       continue
     fi
@@ -290,7 +302,7 @@ while IFS=$'\t' read -r pr_number head_sha head_repository head_ref fork_label_p
     -f head_sha="$head_sha" \
     -f ci_run_id="$selected_run_id"
 done < <(jq -r \
-  '.[][] | select(.draft == false and .base.ref == "main") | [.number, .head.sha, .head.repo.full_name, .head.ref, (any(.labels[]?; .name == "${trustLabel}") | tostring)] | @tsv' \
+  '.[][] | select(.draft == false and .base.ref == "main") | [.number, .head.sha, .head.repo.full_name, .head.ref, (any(.labels[]?; .name == "${prSnapshotTrustLabel}") | tostring)] | @tsv' \
   <<<"$prs_json")
 if [ "$scan_failed" = true ]; then
   exit 1
@@ -369,7 +381,7 @@ fi
 [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
 source_run_url=$(jq -r '.html_url' <<<"$run_json")
 jobs_json=$(gh api --paginate "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?filter=all&per_page=100" --slurp)
-pack_job=$(jq -c '[.[] | .jobs[] | select(.name == "${packJobId}" and .conclusion == "success")] | sort_by(.run_attempt) | last' <<<"$jobs_json")
+pack_job=$(jq -c '[.[] | .jobs[] | select(.name == "${prSnapshotPackJobId}" and .conclusion == "success")] | sort_by(.run_attempt) | last' <<<"$jobs_json")
 test "$pack_job" != null
 run_attempt=$(jq -r '.run_attempt' <<<"$pack_job")
 [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
@@ -564,9 +576,9 @@ if [ "$(jq -r '.state' <<<"$pr_json")" = open ] && \
       authorized=true
       authorized_by='current-head review'
     fi
-  elif jq -e 'any(.labels[]?; .name == "${trustLabel}")' <<<"$pr_json" >/dev/null; then
+  elif jq -e 'any(.labels[]?; .name == "${prSnapshotTrustLabel}")' <<<"$pr_json" >/dev/null; then
     authorized=true
-    authorized_by='${trustLabel} fork trust label'
+    authorized_by='${prSnapshotTrustLabel} fork trust label'
   fi
 fi
 echo "authorized=$authorized" >> "$GITHUB_OUTPUT"
@@ -636,7 +648,7 @@ if [ "$head_repository" = "$GITHUB_REPOSITORY" ]; then
   test "$review_decision" = APPROVED
   jq -e --arg sha "$EXPECTED_HEAD_SHA" 'any(.[]; .state == "APPROVED" and .commit_id == $sha)' <<<"$reviews_json" >/dev/null
 else
-  jq -e 'any(.labels[]?; .name == "${trustLabel}")' <<<"$pr_json" >/dev/null
+  jq -e 'any(.labels[]?; .name == "${prSnapshotTrustLabel}")' <<<"$pr_json" >/dev/null
 fi`,
           },
           {

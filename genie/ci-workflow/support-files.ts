@@ -33,6 +33,13 @@ const sharedScriptArtifact = (repoRelativePath: string): GenieOutput<string> => 
 }
 
 export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
+/**
+ * Where consumers emit the shared validator. Distinct from the `ciWorkflow*` paths below, which name
+ * the source inside this repo: these are the paths in the consuming repository.
+ */
+export const emittedPrSnapshotValidatorPath = '.github/scripts/pr-snapshot-artifact.mjs'
+export const emittedPrSnapshotValidatorTestPath = '.github/scripts/pr-snapshot-artifact.test.mjs'
+
 export const ciWorkflowPrSnapshotArtifactScriptPath = 'genie/ci-scripts/pr-snapshot-artifact.mjs'
 export const ciWorkflowPrSnapshotArtifactTestPath = 'genie/ci-scripts/pr-snapshot-artifact.test.mjs'
 export const ciWorkflowNixGcRaceRetryWrapperPath = 'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
