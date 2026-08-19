@@ -98,6 +98,7 @@ export type {
 } from './reconcile.ts'
 export { NOTION_MD_VERSION } from './version.ts'
 export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
+export { syncTree } from './tree.ts'
 export type { TreeOp, TreeSyncResult } from './tree.ts'
 export { isSingleFileTarget, resolveNmdTargets, runBatchWatch } from './batch.ts'
 export type {
