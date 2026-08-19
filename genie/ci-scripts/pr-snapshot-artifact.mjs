@@ -183,10 +183,12 @@ export const isAuthorizedSnapshotState = ({
   labelNames,
   reviewDecision,
   reviews,
+  trustLabel,
 }) => {
   if (headSha !== currentHeadSha) return false
   if (headRepository !== repository) {
-    return Array.isArray(labelNames) === true && labelNames.includes('ci:publish-snapshot')
+    if (typeof trustLabel !== 'string' || trustLabel === '') fail('Fork trust label is required')
+    return Array.isArray(labelNames) === true && labelNames.includes(trustLabel)
   }
   return isAuthorizedReviewState({ headSha, currentHeadSha, reviewDecision, reviews })
 }
@@ -498,6 +500,43 @@ if (
               packageStates: JSON.parse(await readFile(args['state-file'], 'utf8')),
               hasVerifiedReceipt: args['verified-receipt'] === 'true',
             })
-          : fail(`Unknown mode: ${mode}`)
+          : mode === 'snapshot-identity'
+            ? {
+                version: snapshotVersion({
+                  prNumber: args['pr-number'],
+                  headSha: args['head-sha'],
+                }),
+                npmTag: snapshotTag({ prNumber: args['pr-number'], headSha: args['head-sha'] }),
+              }
+            : mode === 'producer-attempt'
+              ? {
+                  runAttempt: successfulProducerAttempt({
+                    jobs: JSON.parse(await readFile(args['jobs-file'], 'utf8')),
+                    jobName: args['job-name'],
+                  }),
+                }
+              : mode === 'select-producer-run'
+                ? {
+                    run: selectEligibleProducerRun({
+                      runs: JSON.parse(await readFile(args['runs-file'], 'utf8')),
+                      headRepository: args['head-repository'],
+                      headBranch: args['head-branch'],
+                      headSha: args['head-sha'],
+                    }),
+                  }
+                : mode === 'authorize'
+                  ? {
+                      authorized: isAuthorizedSnapshotState({
+                        repository: args.repository,
+                        headRepository: args['head-repository'],
+                        headSha: args['head-sha'],
+                        currentHeadSha: args['current-head-sha'],
+                        labelNames: JSON.parse(args['label-names']),
+                        reviewDecision: args['review-decision'],
+                        reviews: JSON.parse(await readFile(args['reviews-file'], 'utf8')),
+                        trustLabel: args['trust-label'],
+                      }),
+                    }
+                  : fail(`Unknown mode: ${mode}`)
   process.stdout.write(`${JSON.stringify(result)}\n`)
 }
