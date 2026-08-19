@@ -292,11 +292,24 @@ const andonStateLabels: readonly LabelDef[] = [
  * Repo-specific `area:*` labels are added per-repo by spreading additional
  * `LabelDef` literals into the `labels` array.
  */
+/**
+ * CI capability grants. These are not a taxonomy axis like `type:*` or `area:*` — applying one changes
+ * what automation is allowed to do for a pull request, so they are maintainer-managed and revocable.
+ */
+const ciLabels: readonly LabelDef[] = [
+  {
+    name: 'ci:publish-snapshot',
+    color: colors.green,
+    description: 'Trust this fork PR branch for snapshot publishing · Set: manual',
+  },
+]
+
 export const commonLabels: readonly LabelDef[] = [
   ...typeLabels,
   ...stateLabels,
   ...originLabels,
   ...sharedAreaLabels,
+  ...ciLabels,
 ]
 
 /** Andon cross-machine incident state labels. */
