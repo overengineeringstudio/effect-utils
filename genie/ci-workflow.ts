@@ -153,6 +153,8 @@ export {
   ciWorkflowJobLocalRustStateScriptPath,
   ciWorkflowNixGcRaceRetryScriptPath,
   ciWorkflowNixGcRaceRetryWrapperPath,
+  ciWorkflowPrSnapshotArtifactScriptPath,
+  ciWorkflowPrSnapshotArtifactTestPath,
   ciWorkflowSupportFiles,
   type CiWorkflowSupportFiles,
 } from './ci-workflow/support-files.ts'
