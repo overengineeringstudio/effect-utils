@@ -25,6 +25,7 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
 import { bashShellDefaults, runDevenvTasksBefore } from './shared.ts'
 import { emittedPrSnapshotValidatorPath, emittedPrSnapshotValidatorTestPath } from './support-files.ts'
+import { prSnapshotTrustLabel } from '../labels.ts'
 
 /**
  * Job id of the pack job, and the label granting a fork pull request publishing trust.
@@ -35,7 +36,7 @@ import { emittedPrSnapshotValidatorPath, emittedPrSnapshotValidatorTestPath } fr
  * disagree — and neither disagreement fails loudly; the dispatcher would simply match nothing.
  */
 export const prSnapshotPackJobId = 'pack-pr-snapshot'
-export const prSnapshotTrustLabel = 'ci:publish-snapshot'
+export { prSnapshotTrustLabel }
 
 /**
  * Guard for jobs that existed in a consumer's release workflow before these were added.
@@ -45,7 +46,7 @@ export const prSnapshotTrustLabel = 'ci:publish-snapshot'
  * for a build-heavy job means a full toolchain build every few minutes. Apply this to them.
  */
 export const prSnapshotForeignEventGuard =
-  "github.event_name != 'schedule' && github.event_name != 'workflow_run'" 
+  "github.event_name != 'schedule' && github.event_name != 'workflow_run'"
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
