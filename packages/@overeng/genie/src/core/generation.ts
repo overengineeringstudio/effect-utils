@@ -404,13 +404,7 @@ export const getHeaderComment = ({
  * `SyntaxError` rather than merely mis-executing it. So this keys off the shebang itself, not the
  * extension.
  */
-export const addHeaderComment = ({
-  content,
-  header,
-}: {
-  content: string
-  header: string
-}) => {
+export const addHeaderComment = ({ content, header }: { content: string; header: string }) => {
   if (content.startsWith('#!') === false) {
     return header + content
   }

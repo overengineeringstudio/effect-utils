@@ -705,7 +705,9 @@ export const fetchPullRequestHeads = (args: { repoPath: string; remote?: string 
       args: ['fetch', remote, '+refs/pull/*/head:refs/remotes/origin/pr/*'],
       cwd: args.repoPath,
     })
-  }).pipe(Observability.withRepoPathSpan({ name: 'git/fetch-pull-request-heads', path: args.repoPath }))
+  }).pipe(
+    Observability.withRepoPathSpan({ name: 'git/fetch-pull-request-heads', path: args.repoPath }),
+  )
 
 /**
  * Get the default branch name from a remote

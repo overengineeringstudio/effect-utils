@@ -1,4 +1,7 @@
-import { createGenieOutput, type GenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import {
+  createGenieOutput,
+  type GenieOutput,
+} from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 import { resolveDevenvFnScript } from './shared.ts'
 
@@ -21,8 +24,7 @@ const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.met
 export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
 export const ciWorkflowPrSnapshotArtifactScriptPath = 'genie/ci-scripts/pr-snapshot-artifact.mjs'
 export const ciWorkflowPrSnapshotArtifactTestPath = 'genie/ci-scripts/pr-snapshot-artifact.test.mjs'
-export const ciWorkflowNixGcRaceRetryWrapperPath =
-  'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
+export const ciWorkflowNixGcRaceRetryWrapperPath = 'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
 export const ciWorkflowJobLocalRustStateScriptPath =
   'genie/ci-scripts/prepare-job-local-rust-state.sh'
 export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'

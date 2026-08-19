@@ -569,7 +569,9 @@ export const syncMember = <R = never>({
        * it only costs a fetch when the commit is genuinely missing.
        */
       if (commitExists === false) {
-        yield* Git.fetchPullRequestHeads({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+        yield* Git.fetchPullRequestHeads({ repoPath: bareRepoPath }).pipe(
+          Effect.catchAll(() => Effect.void),
+        )
         yield* Observability.annotateSyncMemberAction('fetch-pull-request-heads')
         commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
       }
