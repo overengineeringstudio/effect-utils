@@ -1,4 +1,8 @@
-import { createGenieOutput, type GenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import {
+  createGenieOutput,
+  type GenieOutput,
+} from '../../packages/@overeng/genie/src/runtime/core.ts'
+import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 import { resolveDevenvFnScript } from './shared.ts'
 
 const withTrailingNewline = (content: string) => (content.endsWith('\n') ? content : `${content}\n`)
@@ -10,9 +14,35 @@ const textArtifact = (content: string): GenieOutput<string> =>
     stringify: () => withTrailingNewline(content),
   })
 
+/**
+ * Reads a script that ships as a real file in this repo and emits it verbatim.
+ *
+ * Anchors on this module's own location so the file resolves out of the effect-utils checkout even
+ * when read from a consumer repo, where effect-utils is mirrored under `repos/effect-utils/`. A
+ * cwd-relative `readFileSync` would silently resolve against the consumer's root instead.
+ *
+ * Resolved lazily, not at module scope: this module is reachable from the barrel during genie's cold
+ * bootstrap phase, where touching the filesystem or the repo-context machinery reaches packages that
+ * do not exist yet. Deferring the read until the artifact is actually generated keeps the bootstrap
+ * phase free of that dependency.
+ */
+let repoContext: ReturnType<typeof defineRepoContext> | undefined
+const sharedScriptArtifact = (repoRelativePath: string): GenieOutput<string> => {
+  repoContext ??= defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
+  return textArtifact(repoContext.readText(repoRelativePath))
+}
+
 export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
-export const ciWorkflowNixGcRaceRetryWrapperPath =
-  'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
+/**
+ * Where consumers emit the shared validator. Distinct from the `ciWorkflow*` paths below, which name
+ * the source inside this repo: these are the paths in the consuming repository.
+ */
+export const emittedPrSnapshotValidatorPath = '.github/scripts/pr-snapshot-artifact.mjs'
+export const emittedPrSnapshotValidatorTestPath = '.github/scripts/pr-snapshot-artifact.test.mjs'
+
+export const ciWorkflowPrSnapshotArtifactScriptPath = 'genie/ci-scripts/pr-snapshot-artifact.mjs'
+export const ciWorkflowPrSnapshotArtifactTestPath = 'genie/ci-scripts/pr-snapshot-artifact.test.mjs'
+export const ciWorkflowNixGcRaceRetryWrapperPath = 'genie/ci-scripts/run-with-nix-gc-race-retry.sh'
 export const ciWorkflowJobLocalRustStateScriptPath =
   'genie/ci-scripts/prepare-job-local-rust-state.sh'
 export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'
@@ -195,6 +225,26 @@ export const ciWorkflowSupportFiles = {
   nixGcRaceRetryWrapper: {
     path: ciWorkflowNixGcRaceRetryWrapperPath,
     output: textArtifact(ciWorkflowNixGcRaceRetryWrapperScript),
+  },
+  /**
+   * The PR snapshot artifact validator, and its adversarial boundary suite.
+   *
+   * Read from disk rather than embedded as a template literal: the validator is ~456 lines of real
+   * JavaScript containing 66 `${...}` template expressions, which a `String.raw` literal would require
+   * escaping one by one — unreviewable, and it would stop the shared source being the exact file that
+   * runs. Consumers emit it verbatim, so every repo validates candidates with identical code.
+   */
+  prSnapshotArtifact: {
+    path: ciWorkflowPrSnapshotArtifactScriptPath,
+    get output() {
+      return sharedScriptArtifact(ciWorkflowPrSnapshotArtifactScriptPath)
+    },
+  },
+  prSnapshotArtifactTest: {
+    path: ciWorkflowPrSnapshotArtifactTestPath,
+    get output() {
+      return sharedScriptArtifact(ciWorkflowPrSnapshotArtifactTestPath)
+    },
   },
 } as const
 

@@ -292,11 +292,30 @@ const andonStateLabels: readonly LabelDef[] = [
  * Repo-specific `area:*` labels are added per-repo by spreading additional
  * `LabelDef` literals into the `labels` array.
  */
+/**
+ * CI capability grants. These are not a taxonomy axis like `type:*` or `area:*` — applying one changes
+ * what automation is allowed to do for a pull request, so they are maintainer-managed and revocable.
+ */
+/**
+ * Owned here because this is the label catalogue. The snapshot workflow factory and the candidate
+ * validator both gate on this exact string, so it has one definition and they import it.
+ */
+export const prSnapshotTrustLabel = 'ci:publish-snapshot'
+
+const ciLabels: readonly LabelDef[] = [
+  {
+    name: prSnapshotTrustLabel,
+    color: colors.green,
+    description: 'Trust this fork PR branch for snapshot publishing · Set: manual',
+  },
+]
+
 export const commonLabels: readonly LabelDef[] = [
   ...typeLabels,
   ...stateLabels,
   ...originLabels,
   ...sharedAreaLabels,
+  ...ciLabels,
 ]
 
 /** Andon cross-machine incident state labels. */

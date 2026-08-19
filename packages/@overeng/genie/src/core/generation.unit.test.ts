@@ -29,7 +29,6 @@ describe('getExpectedContent', () => {
   it('keeps shell shebangs before generated provenance', () => {
     expect(
       addHeaderComment({
-        targetFilePath: 'genie/ci-scripts/run.sh',
         header: '# Generated file - DO NOT EDIT\n# Source: run.sh.genie.ts\n\n',
         content: '#!/usr/bin/env bash\nexit 0\n',
       }),
@@ -43,5 +42,33 @@ describe('getExpectedContent', () => {
         '',
       ].join('\n'),
     )
+  })
+
+  it('keeps non-shell shebangs before generated provenance', () => {
+    // A hashbang is only legal as the very first bytes of a file, so a banner emitted ahead of it
+    // turns a `.mjs` into a SyntaxError rather than merely mis-executing it.
+    expect(
+      addHeaderComment({
+        header: '// Generated file - DO NOT EDIT\n// Source: tool.mjs.genie.ts\n',
+        content: '#!/usr/bin/env node\nexport const run = () => {}\n',
+      }),
+    ).toBe(
+      [
+        '#!/usr/bin/env node',
+        '// Generated file - DO NOT EDIT',
+        '// Source: tool.mjs.genie.ts',
+        'export const run = () => {}',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('prepends the banner when there is no shebang', () => {
+    expect(
+      addHeaderComment({
+        header: '// Generated file - DO NOT EDIT\n// Source: mod.ts.genie.ts\n',
+        content: 'export const x = 1\n',
+      }),
+    ).toBe('// Generated file - DO NOT EDIT\n// Source: mod.ts.genie.ts\nexport const x = 1\n')
   })
 })

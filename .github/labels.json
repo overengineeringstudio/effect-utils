@@ -91,6 +91,11 @@
       "description": "TypeScript code, tsconfig, and type definitions · Set: manual"
     },
     {
+      "name": "ci:publish-snapshot",
+      "color": "0e8a16",
+      "description": "Trust this fork PR branch for snapshot publishing · Set: manual"
+    },
+    {
       "name": "close-after-review",
       "color": "ededed",
       "description": "Close after the review/validation artifact has been inspected · Set: manual"

@@ -312,6 +312,7 @@ type SyncMemberAction =
   | 'skip-dry-run'
   | 'fetch'
   | 'fetch-missing-commit'
+  | 'fetch-pull-request-heads'
   | 'noop'
 
 // ANNOTATE-ONLY: member action + result status (rebuilt from the imported catalog schemas).

@@ -687,6 +687,29 @@ export const fetchBare = (args: { repoPath: string; remote?: string }) =>
   }).pipe(Observability.withRepoPathSpan({ name: 'git/fetch-bare', path: args.repoPath }))
 
 /**
+ * Fetch forge pull-request head refs into a bare repo.
+ *
+ * A bare repo created by {@link cloneBare} tracks `+refs/heads/*` only, so a commit that exists solely
+ * on a pull-request head — which is the normal shape when a downstream repo pins an upstream PR branch,
+ * especially a PR opened from a fork — is never fetched and looks unreachable. GitHub-style forges do
+ * expose those commits from the canonical remote under `refs/pull/<n>/head`, so this recovers them.
+ *
+ * Kept separate from {@link fetchBare} rather than folded in as a flag: it is only worth its extra ref
+ * negotiation on the missing-commit recovery path, and repos with many open pull requests would
+ * otherwise pay for it on every ordinary fetch.
+ */
+export const fetchPullRequestHeads = (args: { repoPath: string; remote?: string }) =>
+  Effect.gen(function* () {
+    const remote = args.remote ?? 'origin'
+    yield* runGitCommandWithRetry({
+      args: ['fetch', remote, '+refs/pull/*/head:refs/remotes/origin/pr/*'],
+      cwd: args.repoPath,
+    })
+  }).pipe(
+    Observability.withRepoPathSpan({ name: 'git/fetch-pull-request-heads', path: args.repoPath }),
+  )
+
+/**
  * Get the default branch name from a remote
  * Uses `git ls-remote --symref` to query the remote's HEAD
  */

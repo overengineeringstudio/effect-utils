@@ -560,7 +560,22 @@ export const syncMember = <R = never>({
      * but pinned commit-SHA refs remain hard failures because there is no mutable ref to follow.
      */
     if (dryRun === false && targetCommit !== undefined) {
-      const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+      let commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+
+      /**
+       * Last-resort recovery before declaring the commit unreachable: the locked commit may live only
+       * on a pull-request head, which the bare repo's `+refs/heads/*` refspec never fetches. Placed
+       * here rather than next to the earlier fetch so it also covers a freshly cloned bare repo, and
+       * it only costs a fetch when the commit is genuinely missing.
+       */
+      if (commitExists === false) {
+        yield* Git.fetchPullRequestHeads({ repoPath: bareRepoPath }).pipe(
+          Effect.catchAll(() => Effect.void),
+        )
+        yield* Observability.annotateSyncMemberAction('fetch-pull-request-heads')
+        commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+      }
+
       if (commitExists === false) {
         const shortCommit = targetCommit.slice(0, 8)
 

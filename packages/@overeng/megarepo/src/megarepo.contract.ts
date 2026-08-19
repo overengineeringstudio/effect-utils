@@ -251,6 +251,7 @@ export const MegarepoSyncMemberAction = attr.enum({
     'skip-dry-run',
     'fetch',
     'fetch-missing-commit',
+    'fetch-pull-request-heads',
     'noop',
   ],
   briefs: {
@@ -259,6 +260,8 @@ export const MegarepoSyncMemberAction = attr.enum({
     'skip-dry-run': 'Skipped because the run is a dry run.',
     fetch: 'Fetched into an existing bare repository.',
     'fetch-missing-commit': 'Fetched a specific missing commit.',
+    'fetch-pull-request-heads':
+      'Fetched pull-request head refs to recover a commit outside refs/heads/*.',
     noop: 'No action required.',
   },
   brief: 'The action actually taken for a member sync.',
