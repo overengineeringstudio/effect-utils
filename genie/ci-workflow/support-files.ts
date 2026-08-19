@@ -15,11 +15,22 @@ const textArtifact = (content: string): GenieOutput<string> =>
   })
 
 /**
- * Anchors on this module's own location so the scripts below resolve out of the effect-utils checkout
- * even when read from a consumer repo, where effect-utils is mirrored under `repos/effect-utils/`.
- * A cwd-relative `readFileSync` would silently resolve against the consumer's root instead.
+ * Reads a script that ships as a real file in this repo and emits it verbatim.
+ *
+ * Anchors on this module's own location so the file resolves out of the effect-utils checkout even
+ * when read from a consumer repo, where effect-utils is mirrored under `repos/effect-utils/`. A
+ * cwd-relative `readFileSync` would silently resolve against the consumer's root instead.
+ *
+ * Resolved lazily, not at module scope: this module is reachable from the barrel during genie's cold
+ * bootstrap phase, where touching the filesystem or the repo-context machinery reaches packages that
+ * do not exist yet. Deferring the read until the artifact is actually generated keeps the bootstrap
+ * phase free of that dependency.
  */
-const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
+let repoContext: ReturnType<typeof defineRepoContext> | undefined
+const sharedScriptArtifact = (repoRelativePath: string): GenieOutput<string> => {
+  repoContext ??= defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
+  return textArtifact(repoContext.readText(repoRelativePath))
+}
 
 export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
 export const ciWorkflowPrSnapshotArtifactScriptPath = 'genie/ci-scripts/pr-snapshot-artifact.mjs'
@@ -218,11 +229,15 @@ export const ciWorkflowSupportFiles = {
    */
   prSnapshotArtifact: {
     path: ciWorkflowPrSnapshotArtifactScriptPath,
-    output: textArtifact(repo.readText(ciWorkflowPrSnapshotArtifactScriptPath)),
+    get output() {
+      return sharedScriptArtifact(ciWorkflowPrSnapshotArtifactScriptPath)
+    },
   },
   prSnapshotArtifactTest: {
     path: ciWorkflowPrSnapshotArtifactTestPath,
-    output: textArtifact(repo.readText(ciWorkflowPrSnapshotArtifactTestPath)),
+    get output() {
+      return sharedScriptArtifact(ciWorkflowPrSnapshotArtifactTestPath)
+    },
   },
 } as const
 
