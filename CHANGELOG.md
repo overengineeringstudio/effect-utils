@@ -44,6 +44,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv observability verification**: enable native Devenv task activities
+  during trace capture while preserving task stderr and a diagnostic copy.
+
 - **genie/ci-workflow**: preserve prepared CI helper scripts between workflow
   steps by staging their runtime artifacts in the job workspace without their
   generator sources, and reject retry-helper use when another checkout would

@@ -77,11 +77,18 @@ let
               bash -ceu '
                 export OTEL_EXPORTER_OTLP_ENDPOINT="$OTELITE_HTTP_ENDPOINT"
                 export DEVENV_TUI=false
-                exec devenv tasks run "$1" \
+                exec 3>&2
+                export OTEL_TASK_STDERR_FD=3
+                devenv --verbose tasks run "$1" \
                   --mode "$2" \
                   --no-tui \
-                  --trace-to "otlp-grpc:''${OTELITE_GRPC_ENDPOINT}"
-              ' bash "$target_task" "$task_mode" \
+                  --trace-to "otlp-grpc:''${OTELITE_GRPC_ENDPOINT}" \
+                  2>"$3/devenv-verbose.log" || {
+                    status=$?
+                    cat "$3/devenv-verbose.log" >&2
+                    exit "$status"
+                  }
+              ' bash "$target_task" "$task_mode" "$capture_dir" \
               | tee "$summary_file"
 
           ${otelite}/bin/otelite inspect "$capture_dir/capture" \
@@ -113,17 +120,24 @@ let
             --arg bridge "$bridge_task" \
             --arg project ${lib.escapeShellArg project} '
             ([.[] | select(
-              .service == "devenv"
-              and .name == $bridge
-              and .attrs["devenv.activity.kind"] == "task"
-            )][0].span_id) as $native
-            | $native != null
-              and any(.[];
                 .service == "effect-utils-devenv"
                 and .name == "devenv.task.exec"
                 and .attrs["task.name"] == $bridge
                 and .attrs["devenv.project.name"] == $project
-                and .parent_span_id == $native
+              )][0]) as $effect
+            | $effect != null
+              and any(.[];
+                .service == "devenv"
+                and .name == $bridge
+                and .attrs["devenv.activity.kind"] == "task"
+                and .span_id == $effect.parent_span_id
+                and .trace_id == $effect.trace_id
+              )
+              and any(.[];
+                .service == "devenv"
+                and .name == "execute command"
+                and .parent_span_id == $effect.parent_span_id
+                and .trace_id == $effect.trace_id
               )
           ' "$spans_file" >/dev/null
 
