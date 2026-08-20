@@ -126,6 +126,7 @@ export const prepareCiScriptsStep = {
     'rm -rf "$scripts_dst"',
     'mkdir -p "$scripts_dst"',
     'cp -R "$scripts_src/." "$scripts_dst/"',
+    'rm -f "$scripts_dst"/*.genie.ts',
     'chmod +x "$scripts_dst"/*.sh',
   ].join('\n'),
 } as const
@@ -696,8 +697,8 @@ export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
 }) =>
   [
     checkoutStep(opts?.checkout),
-    prepareCiScriptsStep,
     installNixStep(opts?.installNix),
+    prepareCiScriptsStep,
     preparePinnedDevenvStep,
     nixCacheSetupStep,
     restoreNixCacheStep(opts?.restoreNixCache),

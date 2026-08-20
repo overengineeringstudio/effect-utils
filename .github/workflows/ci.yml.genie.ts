@@ -51,9 +51,9 @@ const workflowReportFlakeRef =
 
 const baseSteps = [
   checkoutStep(),
-  prepareCiScriptsStep,
-  ciMeasurementBaselineCheckoutStep,
   installNixStep(),
+  ciMeasurementBaselineCheckoutStep,
+  prepareCiScriptsStep,
   cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   preparePinnedDevenvStep,
@@ -357,9 +357,9 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
 
 const strictNixJobBaseSteps = [
   checkoutStep(),
-  prepareCiScriptsStep,
-  ciMeasurementBaselineCheckoutStep,
   installNixStep(),
+  ciMeasurementBaselineCheckoutStep,
+  prepareCiScriptsStep,
   cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   validateNixStoreStep,

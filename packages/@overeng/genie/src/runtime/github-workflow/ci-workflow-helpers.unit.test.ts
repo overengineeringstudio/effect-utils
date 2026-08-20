@@ -198,9 +198,10 @@ describe('ci workflow retry helpers', () => {
   it('emits compact calls to the checked-in retry helper script', () => {
     expect(ciWorkflowSource).toContain("defaultCiRuntimeScriptsDir = 'genie/ci-scripts'")
     expect(ciWorkflowSource).toContain(
-      "preparedCiRuntimeScriptsDir = '${{ runner.temp }}/genie-ci-scripts'",
+      "preparedCiRuntimeScriptsDir = '${{ github.workspace }}/.genie-ci-runtime'",
     )
     expect(ciWorkflowSource).toContain('prepareCiScriptsStep')
+    expect(ciWorkflowSource).toContain('rm -f "$scripts_dst"/*.genie.ts')
     expect(ciWorkflowSource).toContain('createRunDevenvTasksBefore')
     expect(ciWorkflowSource).toContain('run-with-nix-gc-race-retry.sh')
     expect(ciWorkflowSource).not.toContain('const nixGcRaceRetryScript = String.raw')
@@ -228,19 +229,22 @@ describe('ci workflow retry helpers', () => {
 
     for (const jobBlock of jobBlocks) {
       const helperIndex = jobBlock.indexOf(
-        '${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh',
+        '${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh',
       )
       if (helperIndex < 0) continue
 
       const checkoutIndex = jobBlock.indexOf('uses: actions/checkout@v6')
+      const installNixIndex = jobBlock.indexOf('uses: DeterminateSystems/determinate-nix-action@v3')
       const prepareIndex = jobBlock.indexOf('Prepare CI helper scripts')
       const baselineCheckoutIndex = jobBlock.indexOf('Checkout CI measurement baseline ref')
       expect(checkoutIndex).toBeGreaterThanOrEqual(0)
       expect(checkoutIndex).toBeLessThan(helperIndex)
+      expect(installNixIndex).toBeGreaterThanOrEqual(0)
+      expect(installNixIndex).toBeLessThan(prepareIndex)
       expect(prepareIndex).toBeGreaterThanOrEqual(0)
       expect(prepareIndex).toBeLessThan(helperIndex)
       if (baselineCheckoutIndex >= 0) {
-        expect(prepareIndex).toBeLessThan(baselineCheckoutIndex)
+        expect(baselineCheckoutIndex).toBeLessThan(prepareIndex)
       }
     }
   })
@@ -524,7 +528,7 @@ printf '%s\\n' "$NIX_OUTPUT"
       '. ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
-      ". '${{ runner.temp }}/genie-ci-scripts/resolve-devenv.sh'",
+      ". '${{ github.workspace }}/.genie-ci-runtime/resolve-devenv.sh'",
     )
     expect(generatedCiWorkflowYamlSource).not.toContain('resolve_devenv_once()')
   })
