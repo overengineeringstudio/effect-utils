@@ -305,6 +305,40 @@ describe('githubWorkflow', () => {
       issues.filter((issue) => issue.rule === 'github-workflow-prepared-ci-retry-script-setup'),
     ).toEqual([])
   })
+
+  it('rejects prepared CI retry script use when a checkout follows preparation', () => {
+    const issues = getWorkflowValidationIssues({
+      name: 'CI',
+      on: { pull_request: githubWorkflowEvent.all },
+      jobs: {
+        test: {
+          'runs-on': 'ubuntu-latest',
+          steps: [
+            {
+              name: 'Prepare CI helper scripts',
+              run: 'echo prepared',
+            },
+            { uses: 'actions/checkout@v6' },
+            {
+              run: [
+                "__genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'",
+                'bash "$__genie_ci_retry_script" test true',
+              ].join('\n'),
+            },
+          ],
+        },
+      },
+    })
+
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        packageName: '.github/workflows/ci.yml',
+        dependency: 'jobs.test.steps[2]',
+        rule: 'github-workflow-prepared-ci-retry-script-setup',
+      }),
+    )
+  })
 })
 
 describe('determinate-nix-action extra-conf validation', () => {

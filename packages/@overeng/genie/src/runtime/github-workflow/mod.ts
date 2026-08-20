@@ -630,6 +630,9 @@ const stepName = (step: Step): string | undefined =>
 const stepRun = (step: Step): string | undefined =>
   'run' in step && typeof step.run === 'string' ? step.run : undefined
 
+const stepUses = (step: Step): string | undefined =>
+  'uses' in step && typeof step.uses === 'string' ? step.uses : undefined
+
 const validatePreparedCiRetryScriptSetup = ({
   args,
   location,
@@ -646,8 +649,14 @@ const validatePreparedCiRetryScriptSetup = ({
 
     if (firstRetryScriptUseIndex < 0) continue
 
-    const prepareIndex = job.steps.findIndex((step) => stepName(step) === prepareCiScriptsStepName)
-    if (prepareIndex >= 0 && prepareIndex < firstRetryScriptUseIndex) continue
+    const stepsBeforeRetryScriptUse = job.steps.slice(0, firstRetryScriptUseIndex)
+    const prepareIndex = stepsBeforeRetryScriptUse.findLastIndex(
+      (step) => stepName(step) === prepareCiScriptsStepName,
+    )
+    const checkoutIndex = stepsBeforeRetryScriptUse.findLastIndex(
+      (step) => stepUses(step)?.startsWith('actions/checkout@') === true,
+    )
+    if (prepareIndex >= 0 && prepareIndex > checkoutIndex) continue
 
     issues.push({
       severity: 'error',
