@@ -210,6 +210,29 @@ test('requires the authoritative required-review decision', () => {
   )
 })
 
+test('a fork label only authorizes when it is the configured trust label', () => {
+  const headSha = 'c'.repeat(40)
+  const forked = {
+    repository: 'livestorejs/livestore',
+    headRepository: 'contributor/livestore',
+    headSha,
+    currentHeadSha: headSha,
+    reviewDecision: 'REVIEW_REQUIRED',
+    reviews: [],
+    trustLabel: 'ci:publish-snapshot',
+  }
+
+  assert.equal(isAuthorizedSnapshotState({ ...forked, labelNames: ['ci:publish-snapshot'] }), true)
+  // A different label — however plausible — grants nothing.
+  assert.equal(isAuthorizedSnapshotState({ ...forked, labelNames: ['ci:deploy-docs'] }), false)
+  // And an empty trust label must fail loudly rather than match nothing silently.
+  assert.throws(
+    () =>
+      isAuthorizedSnapshotState({ ...forked, labelNames: ['ci:publish-snapshot'], trustLabel: '' }),
+    /Fork trust label is required/,
+  )
+})
+
 test('authorizes repository-owned snapshots by review and fork snapshots by live label', () => {
   const headSha = 'a'.repeat(40)
   const common = {
@@ -219,6 +242,7 @@ test('authorizes repository-owned snapshots by review and fork snapshots by live
     labelNames: [],
     reviewDecision: 'APPROVED',
     reviews: [{ state: 'APPROVED', commit_id: headSha }],
+    trustLabel: 'ci:publish-snapshot',
   }
 
   assert.equal(isAuthorizedSnapshotState({ ...common, headRepository: common.repository }), true)

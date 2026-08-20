@@ -30,6 +30,18 @@ All notable changes to this project will be documented in this file.
   provider layer construction/provision, scope teardown, retry behavior, and
   external-store subscriber observations.
 
+### Changed
+
+- **genie/ci-workflow**: decide PR snapshot authorization in the tested
+  predicate. Both the `authorize` and the pre-publish recheck now invoke
+  `isAuthorizedSnapshotState` through a new `authorize` CLI mode instead of
+  restating the decision in bash, so the code gating publication is the code the
+  boundary suite covers. The fork trust label becomes a required
+  `--trust-label` argument rather than a hardcoded constant, and an empty label
+  fails loudly instead of silently matching nothing. The validator is sparse
+  checked out at `github.workflow_sha`, never from the pull request under
+  evaluation.
+
 ### Fixed
 
 - **devenv pnpm installs**: refresh nixpkgs so pnpm runs on Node 24.18.1,

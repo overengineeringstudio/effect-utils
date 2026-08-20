@@ -23,9 +23,12 @@
  */
 
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
-import { bashShellDefaults, runDevenvTasksBefore } from './shared.ts'
-import { emittedPrSnapshotValidatorPath, emittedPrSnapshotValidatorTestPath } from './support-files.ts'
 import { prSnapshotTrustLabel } from '../labels.ts'
+import { bashShellDefaults, runDevenvTasksBefore } from './shared.ts'
+import {
+  emittedPrSnapshotValidatorPath,
+  emittedPrSnapshotValidatorTestPath,
+} from './support-files.ts'
 
 /**
  * Job id of the pack job, and the label granting a fork pull request publishing trust.
@@ -35,6 +38,9 @@ import { prSnapshotTrustLabel } from '../labels.ts'
  * inside the validator's authorization predicate. Making either configurable would let the copies
  * disagree — and neither disagreement fails loudly; the dispatcher would simply match nothing.
  */
+/** Node runtime for the validator and the npm trusted-publishing client. */
+const nodeVersion = '24.15.0'
+
 export const prSnapshotPackJobId = 'pack-pr-snapshot'
 export { prSnapshotTrustLabel }
 
@@ -414,7 +420,7 @@ ${topologyPath}`,
             name: 'Use pinned Node validator runtime',
             uses: 'actions/setup-node@v4',
             with: {
-              'node-version': '24.15.0',
+              'node-version': nodeVersion,
             },
           },
           {
@@ -548,6 +554,22 @@ jq -n \
         defaults: bashShellDefaults,
         steps: [
           {
+            // The authorization decision is made by the validator, so this job needs it — checked out
+            // from the trusted workflow revision, never from the pull request under evaluation.
+            name: 'Checkout trusted validator only',
+            uses: 'actions/checkout@v4',
+            with: {
+              ref: '${{ github.workflow_sha }}',
+              'persist-credentials': false,
+              'sparse-checkout': validatorScriptPath,
+            },
+          },
+          {
+            name: 'Use pinned Node validator runtime',
+            uses: 'actions/setup-node@v4',
+            with: { 'node-version': nodeVersion },
+          },
+          {
             id: 'approval',
             name: 'Require current-head review or fork trust label',
             env: {
@@ -561,25 +583,31 @@ authorized=false
 authorized_by='none'
 if [ "$(jq -r '.state' <<<"$pr_json")" = open ] && \
    [ "$(jq -r '.draft' <<<"$pr_json")" = false ] && \
-   [ "$(jq -r '.base.ref' <<<"$pr_json")" = main ] && \
-   [ "$(jq -r '.head.sha' <<<"$pr_json")" = "$EXPECTED_HEAD_SHA" ]; then
+   [ "$(jq -r '.base.ref' <<<"$pr_json")" = main ]; then
   head_repository=$(jq -r '.head.repo.full_name' <<<"$pr_json")
-  if [ "$head_repository" = "$GITHUB_REPOSITORY" ]; then
-    reviews_json=$(gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews?per_page=100" --slurp | jq -s 'flatten')
-    owner="\${GITHUB_REPOSITORY%%/*}"
-    name="\${GITHUB_REPOSITORY#*/}"
-    review_decision=$(gh api graphql \
-      -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewDecision}}}' \
-      -f owner="$owner" -f name="$name" -F number="$PR_NUMBER" \
-      --jq '.data.repository.pullRequest.reviewDecision')
-    if [ "$review_decision" = APPROVED ] && \
-       jq -e --arg sha "$EXPECTED_HEAD_SHA" 'any(.[]; .state == "APPROVED" and .commit_id == $sha)' <<<"$reviews_json" >/dev/null; then
-      authorized=true
+  reviews_json=$(gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews?per_page=100" --slurp | jq -s 'flatten')
+  owner="\${GITHUB_REPOSITORY%%/*}"
+  name="\${GITHUB_REPOSITORY#*/}"
+  review_decision=$(gh api graphql \
+    -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewDecision}}}' \
+    -f owner="$owner" -f name="$name" -F number="$PR_NUMBER" \
+    --jq '.data.repository.pullRequest.reviewDecision' || echo '')
+  printf '%s' "$reviews_json" > "$RUNNER_TEMP/reviews.json"
+  authorized=$(node ${validatorScriptPath} authorize \
+    --repository="$GITHUB_REPOSITORY" \
+    --head-repository="$head_repository" \
+    --head-sha="$EXPECTED_HEAD_SHA" \
+    --current-head-sha="$(jq -r '.head.sha' <<<"$pr_json")" \
+    --label-names="$(jq -c '[.labels[]?.name]' <<<"$pr_json")" \
+    --review-decision="$review_decision" \
+    --reviews-file="$RUNNER_TEMP/reviews.json" \
+    --trust-label='${prSnapshotTrustLabel}' | jq -r '.authorized')
+  if [ "$authorized" = true ]; then
+    if [ "$head_repository" = "$GITHUB_REPOSITORY" ]; then
       authorized_by='current-head review'
+    else
+      authorized_by='${prSnapshotTrustLabel} fork trust label'
     fi
-  elif jq -e 'any(.labels[]?; .name == "${prSnapshotTrustLabel}")' <<<"$pr_json" >/dev/null; then
-    authorized=true
-    authorized_by='${prSnapshotTrustLabel} fork trust label'
   fi
 fi
 echo "authorized=$authorized" >> "$GITHUB_OUTPUT"
@@ -614,7 +642,18 @@ echo "Snapshot promotion authorized: $authorized ($authorized_by)" >> "$GITHUB_S
             name: 'Use pinned npm trusted-publishing client',
             uses: 'actions/setup-node@v4',
             with: {
-              'node-version': '24.15.0',
+              'node-version': nodeVersion,
+            },
+          },
+          {
+            // Needed for the pre-publication authorization recheck. Taken from the trusted workflow
+            // revision, never from the pull request being published.
+            name: 'Checkout trusted validator only',
+            uses: 'actions/checkout@v4',
+            with: {
+              ref: '${{ github.workflow_sha }}',
+              'persist-credentials': false,
+              'sparse-checkout': validatorScriptPath,
             },
           },
           {
@@ -636,21 +675,26 @@ pr_json=$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
 test "$(jq -r '.state' <<<"$pr_json")" = open
 test "$(jq -r '.draft' <<<"$pr_json")" = false
 test "$(jq -r '.base.ref' <<<"$pr_json")" = main
-test "$(jq -r '.head.sha' <<<"$pr_json")" = "$EXPECTED_HEAD_SHA"
 head_repository=$(jq -r '.head.repo.full_name' <<<"$pr_json")
-if [ "$head_repository" = "$GITHUB_REPOSITORY" ]; then
-  reviews_json=$(gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews?per_page=100" --slurp | jq -s 'flatten')
-  owner="\${GITHUB_REPOSITORY%%/*}"
-  name="\${GITHUB_REPOSITORY#*/}"
-  review_decision=$(gh api graphql \
-    -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewDecision}}}' \
-    -f owner="$owner" -f name="$name" -F number="$PR_NUMBER" \
-    --jq '.data.repository.pullRequest.reviewDecision')
-  test "$review_decision" = APPROVED
-  jq -e --arg sha "$EXPECTED_HEAD_SHA" 'any(.[]; .state == "APPROVED" and .commit_id == $sha)' <<<"$reviews_json" >/dev/null
-else
-  jq -e 'any(.labels[]?; .name == "${prSnapshotTrustLabel}")' <<<"$pr_json" >/dev/null
-fi`,
+reviews_json=$(gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews?per_page=100" --slurp | jq -s 'flatten')
+owner="\${GITHUB_REPOSITORY%%/*}"
+name="\${GITHUB_REPOSITORY#*/}"
+review_decision=$(gh api graphql \
+  -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewDecision}}}' \
+  -f owner="$owner" -f name="$name" -F number="$PR_NUMBER" \
+  --jq '.data.repository.pullRequest.reviewDecision' || echo '')
+printf '%s' "$reviews_json" > "$RUNNER_TEMP/recheck-reviews.json"
+# The same predicate the authorize job used, invoked again rather than restated. This is the
+# time-of-use check, so it must re-read live state — but it must not re-decide differently.
+test "$(node ${validatorScriptPath} authorize \
+  --repository="$GITHUB_REPOSITORY" \
+  --head-repository="$head_repository" \
+  --head-sha="$EXPECTED_HEAD_SHA" \
+  --current-head-sha="$(jq -r '.head.sha' <<<"$pr_json")" \
+  --label-names="$(jq -c '[.labels[]?.name]' <<<"$pr_json")" \
+  --review-decision="$review_decision" \
+  --reviews-file="$RUNNER_TEMP/recheck-reviews.json" \
+  --trust-label='${prSnapshotTrustLabel}' | jq -r '.authorized')" = true`,
           },
           {
             name: 'Verify promotion handoff',
