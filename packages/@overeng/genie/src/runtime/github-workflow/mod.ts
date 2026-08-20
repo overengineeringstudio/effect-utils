@@ -621,7 +621,7 @@ const validateGitHubWorkflowAdmissionSize = ({
 }
 
 const preparedCiRetryScriptPath =
-  '${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'
+  '${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
 const prepareCiScriptsStepName = 'Prepare CI helper scripts'
 
 const stepName = (step: Step): string | undefined =>
@@ -653,7 +653,7 @@ const validatePreparedCiRetryScriptSetup = ({
       severity: 'error',
       packageName: location,
       dependency: `jobs.${jobName}.steps[${firstRetryScriptUseIndex}]`,
-      message: `jobs.${jobName} uses the prepared CI retry helper at ${preparedCiRetryScriptPath} without a preceding "${prepareCiScriptsStepName}" step. Add the CI runtime support preparation step before retry-wrapped commands, especially before any alternate checkout can replace the workspace.`,
+      message: `jobs.${jobName} uses the prepared CI retry helper at ${preparedCiRetryScriptPath} without a preceding "${prepareCiScriptsStepName}" step. Add the CI runtime support preparation step after the final checkout and before retry-wrapped commands.`,
       rule: 'github-workflow-prepared-ci-retry-script-setup',
     })
   }

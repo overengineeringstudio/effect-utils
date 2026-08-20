@@ -258,7 +258,7 @@ describe('githubWorkflow', () => {
             { uses: 'actions/checkout@v6' },
             {
               run: [
-                "__genie_ci_retry_script='${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'",
+                "__genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'",
                 'bash "$__genie_ci_retry_script" test true',
               ].join('\n'),
             },
@@ -292,7 +292,7 @@ describe('githubWorkflow', () => {
             },
             {
               run: [
-                "__genie_ci_retry_script='${{ runner.temp }}/genie-ci-scripts/run-with-nix-gc-race-retry.sh'",
+                "__genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'",
                 'bash "$__genie_ci_retry_script" test true',
               ].join('\n'),
             },

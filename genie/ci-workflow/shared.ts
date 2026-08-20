@@ -373,7 +373,7 @@ export const runDevenvTasksBeforeWithOptions = (
   })
 
 export const defaultCiRuntimeScriptsDir = 'genie/ci-scripts'
-export const preparedCiRuntimeScriptsDir = '${{ runner.temp }}/genie-ci-scripts'
+export const preparedCiRuntimeScriptsDir = '${{ github.workspace }}/.genie-ci-runtime'
 export const prepareJobLocalRustState = `. "${preparedCiRuntimeScriptsDir}/prepare-job-local-rust-state.sh"`
 
 export type GcRaceRetryOptions = {

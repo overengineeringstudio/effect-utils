@@ -696,8 +696,8 @@ export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
 }) =>
   [
     checkoutStep(opts?.checkout),
-    prepareCiScriptsStep,
     installNixStep(opts?.installNix),
+    prepareCiScriptsStep,
     preparePinnedDevenvStep,
     nixCacheSetupStep,
     restoreNixCacheStep(opts?.restoreNixCache),
