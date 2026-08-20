@@ -339,6 +339,64 @@ describe('githubWorkflow', () => {
       }),
     )
   })
+
+  it('rejects every prepared CI retry script use after a destructive checkout', () => {
+    const retryStep = {
+      run: "bash '${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh' test true",
+    }
+    const issues = getWorkflowValidationIssues({
+      name: 'CI',
+      on: { pull_request: githubWorkflowEvent.all },
+      jobs: {
+        test: {
+          'runs-on': 'ubuntu-latest',
+          steps: [
+            { uses: 'actions/checkout@v6' },
+            { name: 'Prepare CI helper scripts', run: 'echo prepared' },
+            retryStep,
+            { uses: 'actions/checkout@v6' },
+            retryStep,
+          ],
+        },
+      },
+    })
+
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        dependency: 'jobs.test.steps[4]',
+        rule: 'github-workflow-prepared-ci-retry-script-setup',
+      }),
+    )
+  })
+
+  it('accepts prepared CI retry script use after non-destructive checkouts', () => {
+    for (const checkout of [
+      { uses: 'actions/checkout@v6', with: { path: 'vendor/tool' } },
+      { uses: 'actions/checkout@v6', with: { clean: false } },
+    ]) {
+      const issues = getWorkflowValidationIssues({
+        name: 'CI',
+        on: { pull_request: githubWorkflowEvent.all },
+        jobs: {
+          test: {
+            'runs-on': 'ubuntu-latest',
+            steps: [
+              { uses: 'actions/checkout@v6' },
+              { name: 'Prepare CI helper scripts', run: 'echo prepared' },
+              checkout,
+              {
+                run: "bash '${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh' test true",
+              },
+            ],
+          },
+        },
+      })
+
+      expect(
+        issues.filter((issue) => issue.rule === 'github-workflow-prepared-ci-retry-script-setup'),
+      ).toEqual([])
+    }
+  })
 })
 
 describe('determinate-nix-action extra-conf validation', () => {

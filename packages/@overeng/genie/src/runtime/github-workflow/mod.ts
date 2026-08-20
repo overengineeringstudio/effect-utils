@@ -633,6 +633,23 @@ const stepRun = (step: Step): string | undefined =>
 const stepUses = (step: Step): string | undefined =>
   'uses' in step && typeof step.uses === 'string' ? step.uses : undefined
 
+const checkoutCleansWorkspaceRoot = (step: Step): boolean => {
+  if (stepUses(step)?.startsWith('actions/checkout@') !== true) return false
+  if (!('with' in step) || step.with === undefined) return true
+
+  const path = step.with.path
+  const clean = step.with.clean
+  const normalizedPath = typeof path === 'string' ? path.trim() : undefined
+  const checkoutAtWorkspaceRoot =
+    normalizedPath === undefined ||
+    normalizedPath === '' ||
+    normalizedPath === '.' ||
+    normalizedPath === './' ||
+    normalizedPath.startsWith('${{')
+  const cleanDisabled = clean === false || clean === 'false'
+  return checkoutAtWorkspaceRoot === true && cleanDisabled === false
+}
+
 const validatePreparedCiRetryScriptSetup = ({
   args,
   location,
@@ -643,28 +660,23 @@ const validatePreparedCiRetryScriptSetup = ({
   const issues: GenieValidationIssue[] = []
 
   for (const [jobName, job] of Object.entries(args.jobs)) {
-    const firstRetryScriptUseIndex = job.steps.findIndex(
-      (step) => stepRun(step)?.includes(preparedCiRetryScriptPath) === true,
-    )
+    let prepareIndex = -1
+    let workspaceCleaningCheckoutIndex = -1
 
-    if (firstRetryScriptUseIndex < 0) continue
+    for (const [index, step] of job.steps.entries()) {
+      if (stepName(step) === prepareCiScriptsStepName) prepareIndex = index
+      if (checkoutCleansWorkspaceRoot(step) === true) workspaceCleaningCheckoutIndex = index
+      if (stepRun(step)?.includes(preparedCiRetryScriptPath) !== true) continue
+      if (prepareIndex >= 0 && prepareIndex > workspaceCleaningCheckoutIndex) continue
 
-    const stepsBeforeRetryScriptUse = job.steps.slice(0, firstRetryScriptUseIndex)
-    const prepareIndex = stepsBeforeRetryScriptUse.findLastIndex(
-      (step) => stepName(step) === prepareCiScriptsStepName,
-    )
-    const checkoutIndex = stepsBeforeRetryScriptUse.findLastIndex(
-      (step) => stepUses(step)?.startsWith('actions/checkout@') === true,
-    )
-    if (prepareIndex >= 0 && prepareIndex > checkoutIndex) continue
-
-    issues.push({
-      severity: 'error',
-      packageName: location,
-      dependency: `jobs.${jobName}.steps[${firstRetryScriptUseIndex}]`,
-      message: `jobs.${jobName} uses the prepared CI retry helper at ${preparedCiRetryScriptPath} without a preceding "${prepareCiScriptsStepName}" step. Add the CI runtime support preparation step after the final checkout and before retry-wrapped commands.`,
-      rule: 'github-workflow-prepared-ci-retry-script-setup',
-    })
+      issues.push({
+        severity: 'error',
+        packageName: location,
+        dependency: `jobs.${jobName}.steps[${index}]`,
+        message: `jobs.${jobName} uses the prepared CI retry helper at ${preparedCiRetryScriptPath} without a preceding "${prepareCiScriptsStepName}" step. Add the CI runtime support preparation step after the final workspace-cleaning checkout and before retry-wrapped commands.`,
+        rule: 'github-workflow-prepared-ci-retry-script-setup',
+      })
+    }
   }
 
   return issues
