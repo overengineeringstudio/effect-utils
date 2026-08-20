@@ -126,6 +126,7 @@ export const prepareCiScriptsStep = {
     'rm -rf "$scripts_dst"',
     'mkdir -p "$scripts_dst"',
     'cp -R "$scripts_src/." "$scripts_dst/"',
+    'rm -f "$scripts_dst"/*.genie.ts',
     'chmod +x "$scripts_dst"/*.sh',
   ].join('\n'),
 } as const

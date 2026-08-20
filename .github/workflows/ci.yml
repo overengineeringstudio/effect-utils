@@ -461,6 +461,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -738,6 +739,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1002,6 +1004,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1263,6 +1266,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1527,6 +1531,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1791,6 +1796,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1970,6 +1976,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -2282,6 +2289,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -2545,6 +2553,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -2806,6 +2815,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -3067,6 +3077,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -3335,6 +3346,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -3606,6 +3618,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -4459,6 +4472,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -7969,6 +7983,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -8233,6 +8248,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -8524,6 +8540,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
         if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Provide cachix CLI from nixpkgs
@@ -8818,6 +8835,7 @@ jobs:
           rm -rf "$scripts_dst"
           mkdir -p "$scripts_dst"
           cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
       - name: Provide cachix CLI from nixpkgs
         shell: bash

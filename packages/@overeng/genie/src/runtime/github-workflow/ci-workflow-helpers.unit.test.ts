@@ -201,6 +201,7 @@ describe('ci workflow retry helpers', () => {
       "preparedCiRuntimeScriptsDir = '${{ github.workspace }}/.genie-ci-runtime'",
     )
     expect(ciWorkflowSource).toContain('prepareCiScriptsStep')
+    expect(ciWorkflowSource).toContain('rm -f "$scripts_dst"/*.genie.ts')
     expect(ciWorkflowSource).toContain('createRunDevenvTasksBefore')
     expect(ciWorkflowSource).toContain('run-with-nix-gc-race-retry.sh')
     expect(ciWorkflowSource).not.toContain('const nixGcRaceRetryScript = String.raw')
