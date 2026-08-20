@@ -171,15 +171,20 @@ let
       if [ -n "''${OTEL_DEVENV_PROJECT:-}" ]; then
         _otel_project_attr=(--attr "devenv.project.name=$OTEL_DEVENV_PROJECT")
       fi
-      OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
-        "''${OTEL_SPAN_BIN:-otel-span}" run "effect-utils-devenv" "devenv.task.exec" \
-        "''${_otel_project_attr[@]}" \
-        --attr "tool.name=devenv" \
-        --attr "task.name=${taskName}" \
-        --attr "task.phase=exec" \
-        --attr "task.cached=false" \
-        --attr "span.label=${taskName}" \
-        -- bash -c ${lib.escapeShellArg execBody}
+      (
+        if [ -n "''${OTEL_TASK_STDERR_FD:-}" ]; then
+          exec 2>&"$OTEL_TASK_STDERR_FD"
+        fi
+        OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+          "''${OTEL_SPAN_BIN:-otel-span}" run "effect-utils-devenv" "devenv.task.exec" \
+          "''${_otel_project_attr[@]}" \
+          --attr "tool.name=devenv" \
+          --attr "task.name=${taskName}" \
+          --attr "task.phase=exec" \
+          --attr "task.cached=false" \
+          --attr "span.label=${taskName}" \
+          -- bash -c ${lib.escapeShellArg execBody}
+      )
     else
       ${execBody}
     fi
