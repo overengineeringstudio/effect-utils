@@ -28,16 +28,19 @@ the design. The authoritative design docs live in
 
 1. [Concepts → Reconciler](./concepts/reconciler.md) — how a render pass
    becomes a sequence of Notion ops.
-2. [Concepts → Theming](./concepts/theming.md) — CSS surface, overrides,
+2. [Concepts → Markdown projection](./concepts/markdown-projection.md) —
+   read-only JSX → Markdown bodies for previews and review artifacts
+   (experimental).
+3. [Concepts → Theming](./concepts/theming.md) — CSS surface, overrides,
    dark mode.
-3. [API overview](./api.md) — the exported surface.
-4. [Cookbook → Custom blocks](./cookbook/custom-blocks.md) — `<Raw>` and
+4. [API overview](./api.md) — the exported surface.
+5. [Cookbook → Custom blocks](./cookbook/custom-blocks.md) — `<Raw>` and
    shaping your own block components.
-5. [Cookbook → Partial trees](./cookbook/partial-trees.md) — rendering a
+6. [Cookbook → Partial trees](./cookbook/partial-trees.md) — rendering a
    subtree without owning the whole page.
-6. [Cookbook → Observing sync](./cookbook/observing-sync.md) — measure
+7. [Cookbook → Observing sync](./cookbook/observing-sync.md) — measure
    HTTP ops, cache efficiency, and batching via the `onEvent` hook.
-7. [Migration notes](./migration.md) — breaking changes between versions.
+8. [Migration notes](./migration.md) — breaking changes between versions.
 
 ### Contributor — "I'm changing the package"
 

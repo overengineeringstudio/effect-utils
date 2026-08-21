@@ -54,6 +54,22 @@ const escapeLinkLabel = (text: string): string => text.replaceAll('[', '\\[').re
 // Inline rich text -> Markdown
 // -----------------------------------------------------------------------------
 
+/**
+ * Resolve the mention discriminator. Authored `<Mention>` envelopes may omit
+ * the API-level `type` key entirely (e.g. `{ user: {... } }`, as used across
+ * the web stories), so fall back to key inference before giving up.
+ */
+const resolveMentionType = (mention: Record<string, unknown>): string | undefined => {
+  if (typeof mention.type === 'string') return mention.type
+  if (mention.user !== undefined) return 'user'
+  if (mention.page !== undefined) return 'page'
+  if (mention.database !== undefined) return 'database'
+  if (mention.date !== undefined) return 'date'
+  if (mention.link_preview !== undefined) return 'link_preview'
+  if (mention.template_mention !== undefined) return 'template_mention'
+  return undefined
+}
+
 const renderMention = (opts: {
   item: Extract<RichTextItem, { type: 'mention' }>
   state: WalkState
@@ -61,17 +77,18 @@ const renderMention = (opts: {
   const { item, state } = opts
   const mention = item.mention as Record<string, unknown>
   const plain = typeof item.plain_text === 'string' ? item.plain_text : ''
-  switch (mention.type) {
+  // Response-shaped rich text carries the resolved link at the item level;
+  // authored mentions have no href and degrade to plain text.
+  const hrefValue = (item as { href?: unknown }).href
+  const href = typeof hrefValue === 'string' ? hrefValue : undefined
+  switch (resolveMentionType(mention)) {
     case 'user':
-      return `@${plain}`
+      // Authored plainText frequently already carries the '@' prefix; never
+      // double it. Bare names get the dialect's '@' prefix.
+      return plain.startsWith('@') || plain === '' ? plain || '@' : `@${plain}`
     case 'page':
-    case 'database': {
-      const href =
-        typeof mention[mention.type] === 'object' && mention[mention.type] !== null
-          ? (mention[mention.type] as { href?: unknown }).href
-          : undefined
+    case 'database':
       return typeof href === 'string' ? `[${plain}](${href})` : plain
-    }
     case 'date': {
       const date = (mention.date ?? {}) as { start?: unknown; end?: unknown }
       const start = typeof date.start === 'string' ? date.start : ''
@@ -81,6 +98,11 @@ const renderMention = (opts: {
     case 'link_preview': {
       const url = (mention.link_preview as { url?: unknown } | undefined)?.url
       return typeof url === 'string' ? `[${plain}](${url})` : plain
+    }
+    case 'template_mention': {
+      const tm = (mention.template_mention ?? {}) as Record<string, unknown>
+      if (tm.template_mention_date !== undefined) return `@${String(tm.template_mention_date)}`
+      return '@me'
     }
     default:
       state.diagnostics.push({
@@ -255,18 +277,20 @@ const renderNode = (opts: {
     case 'heading_4': {
       const level = Number(node.type.slice(-1))
       const heading = `${'#'.repeat(level)} ${renderRichText({ items: richText, state })}`
+      // Emit before the toggleable early-return so colored toggleable
+      // headings still report the dropped color.
+      if (props.color !== undefined) {
+        state.diagnostics.push({
+          kind: 'color-dropped',
+          message: `heading color ${String(props.color)} dropped`,
+        })
+      }
       if (props.is_toggleable === true && node.children.length > 0) {
         state.diagnostics.push({
           kind: 'flattened',
           message: `toggleable heading rendered as flat heading + following content`,
         })
         return [heading, renderNodes({ nodes: node.children, state }).join('\n\n')].join('\n\n')
-      }
-      if (props.color !== undefined) {
-        state.diagnostics.push({
-          kind: 'color-dropped',
-          message: `heading color ${String(props.color)} dropped`,
-        })
       }
       return heading
     }
@@ -304,8 +328,16 @@ const renderNode = (opts: {
     case 'callout': {
       let prefix = ''
       if (node.type === 'callout') {
-        const icon = (props.icon as { emoji?: unknown } | undefined)?.emoji
-        prefix = typeof icon === 'string' ? `${icon} ` : `${DEFAULT_CALLOUT_ICON} `
+        const icon = props.icon as { type?: unknown; emoji?: unknown } | null | undefined
+        if (icon !== null && typeof icon === 'object' && icon.type === 'external') {
+          // An external icon URL has no inline spelling in a blockquote;
+          // dropping it silently would fabricate content (the default icon).
+          state.diagnostics.push({ kind: 'flattened', message: 'callout external icon dropped' })
+          prefix = ''
+        } else {
+          const emoji = icon?.emoji
+          prefix = typeof emoji === 'string' ? `${emoji} ` : `${DEFAULT_CALLOUT_ICON} `
+        }
         if (props.color !== undefined) {
           state.diagnostics.push({
             kind: 'color-dropped',
@@ -317,8 +349,14 @@ const renderNode = (opts: {
       const nested = children(node.children, 0)
       return nested === '' ? own : `${own}\n${quoteLines(nested)}`
     }
-    case 'code':
-      return `\`\`\`${typeof props.language === 'string' ? props.language : ''}\n${renderPlainText(richText)}\n\`\`\``
+    case 'code': {
+      const code = renderPlainText(richText)
+      // CommonMark closes a fence at a backtick run equal to the fence
+      // length, so the fence must be strictly longer than any run inside.
+      const longestRun = Math.max(0, ...[...code.matchAll(/`+/g)].map((m) => m[0].length))
+      const fence = '`'.repeat(Math.max(3, longestRun + 1))
+      return `${fence}${typeof props.language === 'string' ? props.language : ''}\n${code}\n${fence}`
+    }
     case 'divider':
       return '---'
     case 'equation':

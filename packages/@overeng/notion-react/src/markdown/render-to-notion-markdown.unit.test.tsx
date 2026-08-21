@@ -72,6 +72,18 @@ describe('renderToNotionMarkdown', () => {
     )
   })
 
+  it('normalizes authored mention forms (type-less envelopes, pre-prefixed plainText)', () => {
+    const result = renderToNotionMarkdown(
+      <Paragraph>
+        <Mention mention={{ user: { id: 'u1' } }} plainText="@priya" />{' '}
+        <Mention mention={{ page: { id: 'p1' } }} plainText="@Launch Plan" />{' '}
+        <Mention mention={{ date: { start: '2026-04-19' } }} plainText="@2026-04-19" />
+      </Paragraph>,
+    )
+    expect(result.body).toBe('@priya @Launch Plan 2026-04-19')
+    expect(result.diagnostics).toEqual([])
+  })
+
   it('emits a diagnostic when a color annotation is dropped', () => {
     const result = renderToNotionMarkdown(
       <Paragraph>
@@ -160,6 +172,37 @@ describe('renderToNotionMarkdown', () => {
     ])
   })
 
+  it('diagnoses external callout icons instead of fabricating a default', () => {
+    const result = renderToNotionMarkdown(
+      <Callout icon={{ external: 'https://example.com/icon.png' }}>careful</Callout>,
+    )
+    expect(result.body).toBe('> careful')
+    expect(result.diagnostics).toEqual([
+      { kind: 'flattened', message: 'callout external icon dropped' },
+    ])
+  })
+
+  it('reports color loss on toggleable headings with children', () => {
+    const result = renderToNotionMarkdown(
+      <Heading1 color="red" toggleable>
+        Section
+        <Paragraph>inside</Paragraph>
+      </Heading1>,
+    )
+    expect(result.body).toMatchInlineSnapshot(`
+      "# Section
+
+      inside"
+    `)
+    expect(result.diagnostics).toEqual([
+      { kind: 'color-dropped', message: 'heading color red dropped' },
+      {
+        kind: 'flattened',
+        message: 'toggleable heading rendered as flat heading + following content',
+      },
+    ])
+  })
+
   it('renders code fences without inline markdown annotations', () => {
     const result = renderToNotionMarkdown(
       <Code language="ts">
@@ -170,6 +213,18 @@ describe('renderToNotionMarkdown', () => {
       "\`\`\`ts
       const x = 1
       \`\`\`"
+    `)
+  })
+
+  it('lengthens the fence when the code contains backtick runs', () => {
+    const result = renderToNotionMarkdown(<Code language="md">{'# Title\n```\nfenced\n```'}</Code>)
+    expect(result.body).toMatchInlineSnapshot(`
+      "\`\`\`\`md
+      # Title
+      \`\`\`
+      fenced
+      \`\`\`
+      \`\`\`\`"
     `)
   })
 

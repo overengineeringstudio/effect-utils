@@ -34,6 +34,11 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   `blocks.children.list` returns 404 on an archived page.
 - **A10 Title length:** Each title rich_text span is capped at 2000
   characters. Callers that need longer titles must split across spans.
+- **A11 Offline fidelity reference:** Notion's own enhanced-Markdown endpoint
+  output is not available without network access. Projection fidelity is
+  therefore measured against JSX component semantics and the workspace's
+  de-facto enhanced-Markdown dialect (the pull-side renderer and canonicalizer
+  in `@overeng/notion-effect-client`), not against Notion endpoint output.
 - **A02 Effect callers:** Downstream callers run in Effect and can provide
   `NotionConfig` + `HttpClient` in their runtime.
 - **A03 React 19 + react-reconciler:** Rendering uses `react@19` and
@@ -89,6 +94,11 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   page-parented sub-pages. Database parents, custom property schemas, and
   `is_locked`/`erase_content` surfaces are explicitly out of scope but
   must not be precluded by the prop design.
+- **T10 Two Markdown spelling tables:** The read-only projection owns its
+  block→Markdown spellings separately from the pull-side wire renderer.
+  Drift between them is accepted until a second consumer justifies
+  centralization (#1098); golden tests pin the projection dialect in the
+  meantime.
 
 ## Requirements
 
@@ -236,3 +246,29 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
 - **R23 Host-config encapsulation:** All react-reconciler host-config
   details live behind an internal module boundary; downstream callers
   must never need to touch it.
+
+### Must project authored JSX to readable Markdown (experimental)
+
+- **R31 Read-only offline projection:** Rendering JSX through the Markdown
+  entry point must produce a body with no network access, no Notion
+  mutations, and no cache reads or writes.
+- **R32 Shared render semantics:** The projection must consume the same
+  normalized candidate-tree representation that feeds Notion projection —
+  never by scraping rendered HTML and never by reconstructing content from
+  mutation operations.
+- **R33 No silent loss:** Every construct that cannot be represented
+  losslessly must either appear in a documented spelling or produce a typed
+  diagnostic. Unsupported or lossy constructs must not disappear silently,
+  and the body must always be produced (no fail-closed refusal).
+- **R34 Deterministic output:** Identical JSX must produce byte-identical
+  bodies — LF line endings, stable ordering, no ambient state — suitable
+  for reviewed snapshots and diffs.
+- **R35 Envelope composition without reverse coupling:** The returned body
+  must compose with `@overeng/notion-md`'s `renderNmdFile`; production code
+  in this package must not depend on `@overeng/notion-md`, and
+  `@overeng/notion-md` must not depend on this package.
+- **R36 Experimental contract is documented:** Until promoted stable, docs
+  must mark the entry point experimental and distinguish projection
+  fidelity from production reconciliation fidelity and Notion endpoint
+  round-trip fidelity; Markdown equality must not be interpretable as
+  CacheTree identity or sync safety.

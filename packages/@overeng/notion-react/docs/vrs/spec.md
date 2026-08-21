@@ -580,12 +580,12 @@ Contract:
   artifact, not a canonical Notion round-trip representation, and Markdown
   equality must not be read as CacheTree identity or sync safety.
 
-Satisfies the #1097 acceptance criteria: shared tree semantics (no HTML
-scraping), golden tests across headings/rich text/lists/toggles/tables/code/
-callouts/links/nesting, typed diagnostics for lossy constructs, deterministic
-output (LF endings, stable ordering), composition without reverse coupling,
-and documentation distinguishing projection fidelity from reconciliation and
-endpoint round-trip fidelity.
+Satisfies R31–R36: shared tree semantics (R32, no HTML scraping), read-only
+offline operation (R31), no-silent-loss diagnostics (R33), deterministic
+output (R34), envelope composition without reverse coupling (R35), and
+documented experimental status distinguishing projection fidelity from
+reconciliation and endpoint round-trip fidelity (R36). Terminology follows
+[ontology.md](./ontology.md).
 
 ## Extension points
 
