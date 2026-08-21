@@ -57,6 +57,9 @@
       "path": "../notion-effect-schema"
     },
     {
+      "path": "../notion-md"
+    },
+    {
       "path": "../otel-contract"
     },
     {

@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-react**: add an experimental read-only JSX →
+  Notion-enhanced-Markdown projection at the new `@overeng/notion-react/markdown`
+  entry point (#1097). `renderToNotionMarkdown(element)` reuses the production
+  candidate-tree render pass and returns `{ body, diagnostics }`; lossy
+  constructs (colors, upload-only media, flattened columns/child pages,
+  unsupported `Raw` blocks) emit typed diagnostics instead of disappearing
+  silently. The body composes with `@overeng/notion-md`'s `renderNmdFile` for
+  `.nmd` envelopes. Experimental: spellings and the diagnostics contract may
+  change until a real consumer proves the output.
 - **@overeng/utils**: allow shared Playwright web-server configs to pass typed
   environment variables to the server process.
 - **@overeng/megarepo**: add a read-only `mr store gc --generated-artifacts

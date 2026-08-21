@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",
+    "./markdown": "./src/markdown/mod.ts",
     "./o11y": "./src/o11y/mod.ts",
     "./o11y/effect": "./src/o11y/effect-adapter.ts",
     "./o11y/otel": "./src/o11y/otel-adapter.ts",
@@ -18,6 +19,7 @@
     "access": "public",
     "exports": {
       ".": "./dist/mod.js",
+      "./markdown": "./dist/markdown/mod.js",
       "./renderer": "./dist/renderer/mod.js",
       "./o11y": "./dist/o11y/mod.js",
       "./o11y/effect": "./dist/o11y/effect-adapter.js",
@@ -34,6 +36,9 @@
     "test:integration:e2e": "vitest run --config vitest.integration.config.ts e2e"
   },
   "dependencies": {
+    "@effect-atom/atom": "0.5.3",
+    "@effect-atom/atom-react": "0.5.0",
+    "@effect/cli": "0.75.2",
     "@effect/cluster": "0.59.0",
     "@effect/experimental": "0.60.0",
     "@effect/opentelemetry": "0.63.0",
@@ -42,16 +47,25 @@
     "@effect/rpc": "0.75.1",
     "@effect/vitest": "0.29.0",
     "@effect/workflow": "0.18.2",
+    "@opentui/core": "0.4.1",
+    "@opentui/react": "0.4.1",
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "@playwright/test": "1.61.0",
+    "@storybook/react": "10.4.6",
+    "@types/react": "19.2.17",
+    "@types/react-reconciler": "0.33.0",
     "effect": "3.21.4",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-reconciler": "0.33.0",
     "vitest": "4.1.9"
   },
   "devDependencies": {
     "@effect/vitest": "0.29.0",
     "@opentelemetry/api": "1.9.1",
+    "@overeng/notion-md": "workspace:^",
     "@overeng/utils": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
     "@storybook/react": "10.4.6",
@@ -100,8 +114,12 @@
       "packages/@overeng/notion-core",
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",
+      "packages/@overeng/notion-md",
+      "packages/@overeng/notion-property-write",
       "packages/@overeng/notion-react",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]
