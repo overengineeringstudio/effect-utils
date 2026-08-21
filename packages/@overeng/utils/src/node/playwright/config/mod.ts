@@ -21,6 +21,8 @@ export interface WebServerConfig {
   command: string
   /** Working directory for the command */
   cwd?: string
+  /** Additional environment variables for the web server process. */
+  env?: Readonly<Record<string, string>>
   /** Timeout for server startup in ms (default: 30_000) */
   timeout?: number
   /**
@@ -95,6 +97,7 @@ export const createPlaywrightConfig = async (
   const {
     command,
     cwd,
+    env,
     timeout: serverTimeout = 30_000,
     portEnvVar = 'PW_TEST_PORT',
   } = webServerConfig
@@ -142,6 +145,7 @@ export const createPlaywrightConfig = async (
     webServer: {
       command: resolvedCommand,
       ...(cwd !== undefined ? { cwd } : {}),
+      ...(env !== undefined ? { env } : {}),
       url,
       timeout: serverTimeout,
       stdout: 'pipe',
