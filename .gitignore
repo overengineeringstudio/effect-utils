@@ -26,6 +26,7 @@ devenv.local.nix
 # https://github.com/cachix/devenv/issues/2392
 /.devenv.flake.nix
 result
+result-*
 .pre-commit-config.yaml
 
 # Storybook
