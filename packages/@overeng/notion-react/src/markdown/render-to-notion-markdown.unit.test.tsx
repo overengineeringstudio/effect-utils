@@ -16,6 +16,7 @@ import {
   Image,
   LinkToPage,
   NumberedListItem,
+  Page,
   Paragraph,
   Quote,
   Raw,
@@ -82,6 +83,98 @@ describe('renderToNotionMarkdown', () => {
     )
     expect(result.body).toBe('@priya @Launch Plan 2026-04-19')
     expect(result.diagnostics).toEqual([])
+  })
+
+  it('preserves annotations wrapping mentions and equations', () => {
+    const result = renderToNotionMarkdown(
+      <Paragraph>
+        <Bold>
+          <Mention mention={{ type: 'user', user: { id: 'u1' } }} plainText="alice" />
+        </Bold>{' '}
+        <Italic>
+          <InlineEquation expression="E=mc^2" />
+        </Italic>{' '}
+        <Color value="red">
+          <Mention mention={{ type: 'user', user: { id: 'u2' } }} plainText="bob" />
+        </Color>
+      </Paragraph>,
+    )
+    expect(result.body).toBe('**@alice** *$E=mc^2$* @bob')
+    expect(result.diagnostics).toEqual([
+      { kind: 'color-dropped', message: 'text color red dropped' },
+    ])
+  })
+
+  it('escapes authored Markdown metacharacters in literal text', () => {
+    const result = renderToNotionMarkdown(
+      <>
+        <Paragraph># not a heading</Paragraph>
+        <Paragraph>*not italic* and _not italic_</Paragraph>
+        <Paragraph>snake_case and 1. not-a-list</Paragraph>
+      </>,
+    )
+    const [heading, emphasis, plain] = result.body.split('\n\n')
+    expect(heading).toBe('\\# not a heading')
+    expect(emphasis).toBe('\\*not italic\\* and \\_not italic\\_')
+    expect(plain).toBe('snake\\_case and 1. not-a-list')
+  })
+
+  it('renders span-array child-page titles instead of Untitled', () => {
+    const result = renderToNotionMarkdown(
+      <ChildPage
+        title={[
+          { type: 'text', text: { content: 'Deploy' } },
+          { type: 'text', text: { content: ' Guide' } },
+        ]}
+      />,
+    )
+    expect(result.body).toBe('**Deploy Guide** (child page)')
+    expect(result.diagnostics).toEqual([
+      {
+        kind: 'flattened',
+        message:
+          'child page boundary flattened: "Deploy Guide" rendered as bold label + inline content',
+      },
+    ])
+  })
+
+  it('reports row-header semantics loss on tables', () => {
+    const result = renderToNotionMarkdown(
+      <Table hasColumnHeader hasRowHeader>
+        <TableRow cells={['A', 'B']} />
+        <TableRow cells={[1, 2]} />
+      </Table>,
+    )
+    expect(result.diagnostics).toEqual([
+      { kind: 'flattened', message: 'table row-header semantics dropped (no GFM spelling)' },
+    ])
+  })
+
+  it('diagnoses empty toggleable headings as flattened', () => {
+    const result = renderToNotionMarkdown(<Heading2 toggleable>Empty section</Heading2>)
+    expect(result.body).toBe('## Empty section')
+    expect(result.diagnostics).toEqual([
+      {
+        kind: 'flattened',
+        message: 'toggleable heading rendered as flat heading + following content',
+      },
+    ])
+  })
+
+  it('reports root Page metadata omission', () => {
+    const result = renderToNotionMarkdown(
+      <Page title="Review doc">
+        <Paragraph>content</Paragraph>
+      </Page>,
+    )
+    expect(result.body).toBe('content')
+    expect(result.diagnostics).toEqual([
+      {
+        kind: 'flattened',
+        message:
+          'root page metadata (title/icon/cover) omitted from body; carry it in the .nmd envelope or page properties',
+      },
+    ])
   })
 
   it('emits a diagnostic when a color annotation is dropped', () => {

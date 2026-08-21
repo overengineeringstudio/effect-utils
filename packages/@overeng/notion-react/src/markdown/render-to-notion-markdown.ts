@@ -113,25 +113,83 @@ const renderMention = (opts: {
   }
 }
 
+/**
+ * Escape characters that would otherwise be interpreted as Markdown inline
+ * syntax when they appear in authored plain text. Applied to unannotated
+ * text runs before the serializer adds its own wrappers, so authored
+ * literals like `# not a heading` or `*not italic*` survive verbatim.
+ * `$` is deliberately not escaped: stock CommonMark/GFM render it literally,
+ * and escaping every shell-style `$VAR` would destroy review readability.
+ */
+const escapeInlineMetacharacters = (text: string): string =>
+  text.replaceAll(/([\\`*_[\]<>~])/g, '\\$1').replace(/!(?=\[)/g, '\\!')
+
+/**
+ * Escape line-initial block-structure markers (headings, quotes, list items,
+ * thematic breaks) that would restructure the body if left verbatim.
+ */
+const escapeBlockStarts = (text: string): string =>
+  text
+    .split('\n')
+    .map((line) => {
+      const match = line.match(
+        /^(\s*)(#{1,6}(?:\s|$)|>(?:\s|$)|[-*+](?:\s|$)|\d{1,9}[.)](?:\s|$)|[-*_]{3,}\s*$)/,
+      )
+      if (match === null) return line
+      return `${match[1]}\\${match[2]}${line.slice(match[0].length)}`
+    })
+    .join('\n')
+
+/** Apply annotation wrappers + color diagnostics uniformly to any inner string. */
+const wrapWithAnnotations = (opts: {
+  core: string
+  annotations: RichTextItem['annotations']
+  state: WalkState
+}): string => {
+  const { core, annotations, state } = opts
+  if (annotations.color !== 'default') {
+    state.diagnostics.push({
+      kind: 'color-dropped',
+      message: `text color ${String(annotations.color)} dropped`,
+    })
+  }
+  let wrapped = core
+  if (annotations.bold === true) wrapped = `**${wrapped}**`
+  if (annotations.italic === true) wrapped = `*${wrapped}*`
+  if (annotations.strikethrough === true) wrapped = `~~${wrapped}~~`
+  if (annotations.code === true) wrapped = `\`${wrapped}\``
+  if (annotations.underline === true) wrapped = `<u>${wrapped}</u>`
+  return wrapped
+}
+
 const renderInlineItem = (opts: { item: RichTextItem; state: WalkState }): string => {
   const { item, state } = opts
-  if (item.type === 'equation') return `$${item.equation.expression}$`
-  if (item.type === 'mention') return renderMention({ item, state })
+  // Mentions and equations carry their annotation frame on the item itself
+  // (flattenRichText bakes it in), so route through the same wrapper as text.
+  if (item.type === 'equation') {
+    return wrapWithAnnotations({
+      core: `$${item.equation.expression}$`,
+      annotations: item.annotations,
+      state,
+    })
+  }
+  if (item.type === 'mention') {
+    return wrapWithAnnotations({
+      core: renderMention({ item, state }),
+      annotations: item.annotations,
+      state,
+    })
+  }
 
   const [, leading = '', core = '', trailing = ''] =
     item.text.content.match(/^(\s*)([\s\S]*?)(\s*)$/) ?? []
   if (core === '') return item.text.content
 
-  const ann = item.annotations
-  if (ann.color !== 'default') {
-    state.diagnostics.push({ kind: 'color-dropped', message: `text color ${ann.color} dropped` })
-  }
-  let wrapped = core
-  if (ann.bold === true) wrapped = `**${wrapped}**`
-  if (ann.italic === true) wrapped = `*${wrapped}*`
-  if (ann.strikethrough === true) wrapped = `~~${wrapped}~~`
-  if (ann.code === true) wrapped = `\`${wrapped}\``
-  if (ann.underline === true) wrapped = `<u>${wrapped}</u>`
+  const wrapped = wrapWithAnnotations({
+    core: escapeBlockStarts(escapeInlineMetacharacters(core)),
+    annotations: item.annotations,
+    state,
+  })
 
   const withAnnotations = `${leading}${wrapped}${trailing}`
   return item.text.link === null ? withAnnotations : `[${withAnnotations}](${item.text.link.url})`
@@ -210,6 +268,13 @@ const renderResolvedUrl = (opts: { type: string; url: string; caption: string })
 const renderTable = (opts: { node: CandidateNode; state: WalkState }): string => {
   const rows = opts.node.children.filter((child) => child.type === 'table_row')
   if (rows.length === 0) return ''
+  // GFM has no first-column header flag; the authored distinction is lost.
+  if (opts.node.props.has_row_header === true) {
+    opts.state.diagnostics.push({
+      kind: 'flattened',
+      message: 'table row-header semantics dropped (no GFM spelling)',
+    })
+  }
   const cellsOf = (row: CandidateNode): string[] => {
     const cells = Array.isArray(row.props.cells) ? (row.props.cells as RichTextItem[][]) : []
     return cells.map((cell) => escapeTableCell(renderRichText({ items: cell, state: opts.state })))
@@ -285,12 +350,16 @@ const renderNode = (opts: {
           message: `heading color ${String(props.color)} dropped`,
         })
       }
-      if (props.is_toggleable === true && node.children.length > 0) {
+      // The toggle affordance itself is lost even when the heading currently
+      // has no children, so diagnose on is_toggleable alone.
+      if (props.is_toggleable === true) {
         state.diagnostics.push({
           kind: 'flattened',
           message: `toggleable heading rendered as flat heading + following content`,
         })
-        return [heading, renderNodes({ nodes: node.children, state }).join('\n\n')].join('\n\n')
+        if (node.children.length > 0) {
+          return [heading, renderNodes({ nodes: node.children, state }).join('\n\n')].join('\n\n')
+        }
       }
       return heading
     }
@@ -385,13 +454,28 @@ const renderNode = (opts: {
       return renderNodes({ nodes: node.children, state }).join('\n\n')
     default: {
       if (node.nodeKind === 'page') {
-        const title = typeof props.title === 'string' ? props.title : 'Untitled'
+        // Prefer the normalized title spans (covers both string and
+        // span-array authored forms) over the raw prop.
+        const spans = Array.isArray(node.title) ? node.title : undefined
+        const spanText = spans
+          ?.map((span) => {
+            if (typeof span.plain_text === 'string') return span.plain_text
+            const content = (span.text as { content?: unknown } | undefined)?.content
+            return typeof content === 'string' ? content : ''
+          })
+          .join('')
+        const title =
+          spanText !== undefined && spanText !== ''
+            ? spanText
+            : typeof props.title === 'string'
+              ? props.title
+              : 'Untitled'
         state.diagnostics.push({
           kind: 'flattened',
           message: `child page boundary flattened: "${title}" rendered as bold label + inline content`,
         })
         const inner = renderNodes({ nodes: node.children, state })
-        const label = `**${title}** (child page)`
+        const label = `**${escapeInlineMetacharacters(title)}** (child page)`
         return inner.length === 0 ? label : `${label}\n\n${inner.join('\n\n')}`
       }
       if (richText.length > 0 || props.template !== undefined) {
@@ -446,6 +530,15 @@ const renderNodes = (opts: { nodes: readonly CandidateNode[]; state: WalkState }
 export const renderToNotionMarkdown = (element: ReactNode): NotionMarkdownResult => {
   const tree: CandidateTree = buildCandidateTree(element, '__markdown__')
   const state: WalkState = { diagnostics: [] }
+  // Root <Page> metadata belongs to the .nmd envelope / page properties, not
+  // the body; report its omission so the result stays loss-accounted (R33).
+  if (tree.rootPage !== undefined) {
+    state.diagnostics.push({
+      kind: 'flattened',
+      message:
+        'root page metadata (title/icon/cover) omitted from body; carry it in the .nmd envelope or page properties',
+    })
+  }
   const parts = renderNodes({ nodes: tree.children, state })
   return { body: parts.join('\n\n'), diagnostics: state.diagnostics }
 }

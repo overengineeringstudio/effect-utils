@@ -45,21 +45,23 @@ always produced.
 
 ## Fidelity matrix
 
-| Construct                           | Spelling                                                                  |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| Headings, paragraphs                | `#`–`####`, plain paragraphs                                              |
-| Bold / italic / code / strike       | `**` / `*` / backticks / `~~`                                             |
-| Underline                           | `<u>` (no native Markdown)                                                |
-| Links, inline equations             | `[text](url)`, `$expr$`                                                   |
-| Mentions                            | `@name`, dates as `start → end`; href-less mentions degrade to plain text |
-| Bulleted / numbered / to-do lists   | `- `, per-run `1.` counters, `- [x]`                                      |
-| Toggles                             | `<details><summary>` (CommonMark-safe blank lines)                        |
-| Quotes / callouts                   | Blockquotes; emoji icon prefix kept                                       |
-| Code                                | Fenced, fence lengthened past embedded backtick runs                      |
-| Tables                              | GFM with header separator row                                             |
-| Images / media / bookmarks / embeds | `![caption](url)` / `[label](url)`                                        |
-| Equations, dividers, TOC            | `$$ … $$`, `---`, `[TOC]`                                                 |
-| `blockKey`                          | Absent — renderer identity, not content                                   |
+| Construct                           | Spelling                                                                                                                         |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Headings, paragraphs                | `#`–`####`, plain paragraphs                                                                                                     |
+| Bold / italic / code / strike       | `**` / `*` / backticks / `~~`                                                                                                    |
+| Underline                           | `<u>` (no native Markdown)                                                                                                       |
+| Links, inline equations             | `[text](url)`, `$expr$`                                                                                                          |
+| Mentions                            | `@name`, dates as `start → end`; href-less mentions degrade to plain text; annotations wrapping a mention/equation are preserved |
+| Bulleted / numbered / to-do lists   | `- `, per-run `1.` counters, `- [x]`                                                                                             |
+| Toggles                             | `<details><summary>` (CommonMark-safe blank lines)                                                                               |
+| Quotes / callouts                   | Blockquotes; emoji icon prefix kept                                                                                              |
+| Code                                | Fenced, fence lengthened past embedded backtick runs                                                                             |
+| Tables                              | GFM with header separator row                                                                                                    |
+| Images / media / bookmarks / embeds | `![caption](url)` / `[label](url)`                                                                                               |
+| Equations, dividers, TOC            | `$$ … $$`, `---`, `[TOC]`                                                                                                        |
+| Literal Markdown syntax in text     | Escaped (`\#`, `\*`, `\_`, …) so authored text survives verbatim; `$` stays bare (renders literally in stock Markdown)           |
+| `blockKey`                          | Absent — renderer identity, not content                                                                                          |
+| Root `<Page>` title/icon/cover      | Omitted from the body (belongs in the `.nmd` envelope or page properties) with a diagnostic                                      |
 
 ## Composing an `.nmd` file
 
