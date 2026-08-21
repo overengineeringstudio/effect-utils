@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/utils**: allow shared Playwright web-server configs to pass typed
+  environment variables to the server process.
 - **@overeng/megarepo**: add a read-only `mr store gc --generated-artifacts
 --dry-run` planner for safely identifying stale ignored build artifacts. The
   planner requires external agent-liveness evidence and fails closed on
