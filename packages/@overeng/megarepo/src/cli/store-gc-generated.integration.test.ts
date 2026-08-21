@@ -99,19 +99,40 @@ const configure = ({
   config,
   manifest,
   activeWorkspacePaths = [],
-  expiresAtMs = NOW + DAY_MS,
+  expiresAtMs,
+  complete = true,
+  errors = [],
+  epoch = { catalog: '/var/lib/st2/catalog', host: 'test', catalogGeneration: 1 },
 }: {
   config: string
   manifest?: string | undefined
   activeWorkspacePaths?: ReadonlyArray<string>
   expiresAtMs?: number
+  complete?: boolean
+  errors?: ReadonlyArray<string>
+  epoch?: { readonly catalog: string; readonly host: string; readonly catalogGeneration: number }
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     if (manifest !== undefined) {
+      const capturedAtMs = Date.now()
       yield* fs.writeFileString(
         manifest,
-        encodeJson({ version: 1, expiresAtMs, activeWorkspacePaths }),
+        encodeJson({
+          schemaVersion: 'st2.workspace-activity.v1',
+          producer: 'st2',
+          epoch,
+          capturedAt: new Date(capturedAtMs).toISOString(),
+          expiresAt: new Date(expiresAtMs ?? capturedAtMs + 60_000).toISOString(),
+          complete,
+          errors,
+          claims: activeWorkspacePaths.map((workspace) => ({
+            workspace,
+            agents: ['test.agent'],
+            activeRuntimeIds: ['test.agent'],
+            active: true,
+          })),
+        }),
       )
     }
     yield* fs.writeFileString(
@@ -121,7 +142,12 @@ const configure = ({
           enabled: true,
           retentionMs: DAY_MS,
           allowlist: ['node_modules', 'dist'],
-          ...(manifest !== undefined ? { agentLivenessManifest: manifest } : {}),
+          ...(manifest !== undefined
+            ? {
+                agentLivenessManifest: manifest,
+                agentLivenessEpoch: { catalog: '/var/lib/st2/catalog', host: 'test' },
+              }
+            : {}),
         },
       }),
     )
@@ -211,6 +237,58 @@ describe('mr store gc --generated-artifacts', () => {
   )
 
   it.effect(
+    'keeps artifacts in a canonically claimed active workspace',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* oldIgnoredArtifact(f.worktree)
+        const canonicalWorktree = yield* FileSystem.FileSystem.pipe(
+          Effect.flatMap((fs) => fs.realPath(f.worktree)),
+        )
+        yield* configure({
+          config: f.config,
+          manifest: f.manifest,
+          activeWorkspacePaths: [canonicalWorktree],
+        })
+        const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        expect(generated(result.results, 'node_modules')).toMatchObject({
+          outcome: 'keep',
+          reason: 'live',
+        })
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'rejects snapshots from an unadmitted host or catalog',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* oldIgnoredArtifact(f.worktree)
+        for (const epoch of [
+          { catalog: '/var/lib/st2/catalog', host: 'other', catalogGeneration: 1 },
+          { catalog: '/var/lib/st2/other', host: 'test', catalogGeneration: 1 },
+        ]) {
+          yield* configure({ config: f.config, manifest: f.manifest, epoch })
+          const result = yield* runGc({
+            cwd: f.outside,
+            storePath: f.storePath,
+            args: ['--dry-run'],
+          })
+          expect(generated(result.results, 'node_modules')).toMatchObject({
+            outcome: 'unknown',
+            reason: 'agent-liveness-unavailable',
+          })
+        }
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'recent nested activity keeps an old artifact root',
     Effect.fnUntraced(
       function* () {
@@ -252,6 +330,56 @@ describe('mr store gc --generated-artifacts', () => {
         expect(generated(expired.results, 'node_modules')?.reason).toBe(
           'agent-liveness-unavailable',
         )
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'incomplete or erroneous st2 snapshots fail closed',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* oldIgnoredArtifact(f.worktree)
+        for (const snapshot of [
+          { complete: false, errors: [] },
+          { complete: true, errors: ['runtime observation incomplete'] },
+        ]) {
+          yield* configure({ config: f.config, manifest: f.manifest, ...snapshot })
+          const result = yield* runGc({
+            cwd: f.outside,
+            storePath: f.storePath,
+            args: ['--dry-run'],
+          })
+          expect(generated(result.results, 'node_modules')).toMatchObject({
+            outcome: 'unknown',
+            reason: 'agent-liveness-unavailable',
+          })
+        }
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'does not accept the legacy ad-hoc liveness shape',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        yield* oldIgnoredArtifact(f.worktree)
+        yield* configure({ config: f.config, manifest: f.manifest })
+        const fs = yield* FileSystem.FileSystem
+        yield* fs.writeFileString(
+          f.manifest,
+          encodeJson({ version: 1, expiresAtMs: NOW + DAY_MS, activeWorkspacePaths: [] }),
+        )
+        const result = yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
+        expect(generated(result.results, 'node_modules')).toMatchObject({
+          outcome: 'unknown',
+          reason: 'agent-liveness-unavailable',
+        })
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

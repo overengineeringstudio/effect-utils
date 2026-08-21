@@ -143,16 +143,44 @@ type GeneratedArtifactScan =
         | 'io'
     }
 
-const AgentLivenessManifest = Schema.Struct({
-  version: Schema.Literal(1),
-  expiresAtMs: Schema.Number,
-  activeWorkspacePaths: Schema.Array(Schema.String),
+const St2WorkspaceActivitySnapshot = Schema.Struct({
+  schemaVersion: Schema.Literal('st2.workspace-activity.v1'),
+  producer: Schema.Literal('st2'),
+  epoch: Schema.Struct({
+    catalog: Schema.String,
+    host: Schema.String,
+    catalogGeneration: Schema.NullOr(Schema.Number),
+  }),
+  capturedAt: Schema.String,
+  expiresAt: Schema.String,
+  complete: Schema.Boolean,
+  errors: Schema.Array(Schema.String),
+  claims: Schema.Array(
+    Schema.Struct({
+      workspace: Schema.String,
+      agents: Schema.Array(Schema.String),
+      activeRuntimeIds: Schema.Array(Schema.String),
+      active: Schema.Boolean,
+    }),
+  ),
 })
 
 type GeneratedArtifactRepoWorktrees = ReadonlyArray<{
   readonly repo: { readonly relativePath: string }
   readonly worktrees: ReadonlyArray<CollectedWorktree>
 }>
+
+type AdmittedSt2Epoch = {
+  readonly catalog: string
+  readonly host: string
+  readonly catalogGeneration: number | null
+}
+
+const isCanonicalSt2Timestamp = ({ value, epochMs }: { value: string; epochMs: number }): boolean =>
+  Number.isFinite(epochMs) === true && new Date(epochMs).toISOString() === value
+
+const isStrictlySortedUnique = (values: ReadonlyArray<string>): boolean =>
+  values.every((value, index) => index === 0 || values[index - 1]! < value)
 
 const encodeCanonicalPlan = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
 
@@ -181,32 +209,88 @@ const planGeneratedArtifacts = ({
 > =>
   Effect.gen(function* () {
     const generatedResults: StoreGcResult[] = []
-    const readAgentActivePaths = (atMs: number): Effect.Effect<ReadonlySet<string> | undefined> =>
+    const readAgentActivity = ({
+      atMs,
+      admittedEpoch,
+    }: {
+      atMs: number
+      admittedEpoch?: AdmittedSt2Epoch | undefined
+    }): Effect.Effect<
+      { readonly activePaths: ReadonlySet<string>; readonly epoch: AdmittedSt2Epoch } | undefined
+    > =>
       Effect.gen(function* () {
-        if (config.generatedArtifacts.agentLivenessManifest === undefined) return undefined
+        if (
+          config.generatedArtifacts.agentLivenessManifest === undefined ||
+          config.generatedArtifacts.agentLivenessEpoch === undefined
+        ) {
+          return undefined
+        }
         const manifestContent = yield* fs
           .readFileString(config.generatedArtifacts.agentLivenessManifest)
           .pipe(Effect.orElseSucceed(() => undefined))
         if (manifestContent === undefined) return undefined
-        const parsed = yield* Schema.decodeUnknown(Schema.parseJson(AgentLivenessManifest))(
+        const parsed = yield* Schema.decodeUnknown(Schema.parseJson(St2WorkspaceActivitySnapshot))(
           manifestContent,
         ).pipe(Effect.orElseSucceed(() => undefined))
+        const capturedAtMs = parsed === undefined ? Number.NaN : Date.parse(parsed.capturedAt)
+        const expiresAtMs = parsed === undefined ? Number.NaN : Date.parse(parsed.expiresAt)
         if (
           parsed === undefined ||
-          Number.isFinite(parsed.expiresAtMs) === false ||
-          parsed.activeWorkspacePaths.some((path) => isNormalizedAbsolutePath(path) === false) ===
-            true ||
-          parsed.expiresAtMs < atMs
+          parsed.complete === false ||
+          parsed.errors.length > 0 ||
+          isCanonicalSt2Timestamp({ value: parsed.capturedAt, epochMs: capturedAtMs }) === false ||
+          isCanonicalSt2Timestamp({ value: parsed.expiresAt, epochMs: expiresAtMs }) === false ||
+          parsed.epoch.catalog !== config.generatedArtifacts.agentLivenessEpoch.catalog ||
+          parsed.epoch.host !== config.generatedArtifacts.agentLivenessEpoch.host ||
+          (parsed.epoch.catalogGeneration !== null &&
+            (Number.isSafeInteger(parsed.epoch.catalogGeneration) === false ||
+              parsed.epoch.catalogGeneration < 0)) ||
+          (admittedEpoch !== undefined &&
+            (parsed.epoch.catalog !== admittedEpoch.catalog ||
+              parsed.epoch.host !== admittedEpoch.host ||
+              parsed.epoch.catalogGeneration !== admittedEpoch.catalogGeneration)) ||
+          capturedAtMs > atMs ||
+          expiresAtMs < capturedAtMs ||
+          expiresAtMs - capturedAtMs > 5 * 60 * 1_000 ||
+          expiresAtMs <= atMs ||
+          isStrictlySortedUnique(parsed.claims.map((claim) => claim.workspace)) === false ||
+          parsed.claims.some(
+            (claim) =>
+              isNormalizedAbsolutePath(claim.workspace) === false ||
+              claim.agents.length === 0 ||
+              isStrictlySortedUnique(claim.agents) === false ||
+              isStrictlySortedUnique(claim.activeRuntimeIds) === false ||
+              claim.active !== claim.activeRuntimeIds.length > 0,
+          ) === true
         ) {
           return undefined
         }
         const canonicalPaths = yield* Effect.forEach(
-          parsed.activeWorkspacePaths,
-          (path) => fs.realPath(path).pipe(Effect.orElseSucceed(() => undefined)),
+          parsed.claims,
+          (claim) =>
+            fs.realPath(claim.workspace).pipe(
+              Effect.map((path) => ({ claim, path })),
+              Effect.orElseSucceed(() => undefined),
+            ),
           { concurrency: 1 },
         )
-        if (canonicalPaths.some((path) => path === undefined) === true) return undefined
-        return new Set(canonicalPaths.map((path) => normalizeStorePath(path!)))
+        if (
+          canonicalPaths.some(
+            (entry) =>
+              entry === undefined ||
+              normalizeStorePath(entry.path) !== normalizeStorePath(entry.claim.workspace),
+          ) === true
+        ) {
+          return undefined
+        }
+        return {
+          activePaths: new Set(
+            canonicalPaths.flatMap((entry) =>
+              entry?.claim.active === true ? [normalizeStorePath(entry.path)] : [],
+            ),
+          ),
+          epoch: parsed.epoch,
+        }
       })
     for (const { repo, worktrees } of repoWorktrees) {
       for (const worktree of worktrees) {
@@ -250,15 +334,17 @@ const planGeneratedArtifacts = ({
           const contained =
             canonicalArtifact !== undefined &&
             normalizeStorePath(canonicalArtifact) === expectedCanonicalArtifact
-          const agentActivePaths = yield* readAgentActivePaths(yield* readCurrentTimeMillis)
+          const agentActivity = yield* readAgentActivity({
+            atMs: yield* readCurrentTimeMillis,
+          })
           const agentLive =
             canonicalWorktree === undefined
               ? undefined
-              : agentActivePaths?.has(normalizeStorePath(canonicalWorktree))
+              : agentActivity?.activePaths.has(normalizeStorePath(canonicalWorktree))
           const cheapReason =
             config.generatedArtifacts.enabled === false
               ? 'generated-artifacts-disabled'
-              : agentActivePaths === undefined
+              : agentActivity === undefined
                 ? 'agent-liveness-unavailable'
                 : canonicalWorktree === undefined || contained === false
                   ? 'artifact-scan-incomplete'
@@ -285,10 +371,13 @@ const planGeneratedArtifacts = ({
             traversal?._tag === 'complete'
               ? yield* fs.realPath(artifactPath).pipe(Effect.orElseSucceed(() => undefined))
               : canonicalArtifact
-          const finalAgentActivePaths =
+          const finalAgentActivity =
             traversal?._tag === 'complete'
-              ? yield* readAgentActivePaths(yield* readCurrentTimeMillis)
-              : agentActivePaths
+              ? yield* readAgentActivity({
+                  atMs: yield* readCurrentTimeMillis,
+                  admittedEpoch: agentActivity?.epoch,
+                })
+              : agentActivity
           const finalRemovalStatus =
             traversal?._tag === 'complete'
               ? yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
@@ -322,9 +411,11 @@ const planGeneratedArtifacts = ({
                   finalCanonicalWorktree !== canonicalWorktree ||
                   finalCanonicalArtifact !== canonicalArtifact
                 ? 'artifact-scan-incomplete'
-                : finalAgentActivePaths === undefined
+                : finalAgentActivity === undefined
                   ? 'agent-liveness-unavailable'
-                  : finalAgentActivePaths.has(normalizeStorePath(finalCanonicalWorktree)) === true
+                  : finalAgentActivity.activePaths.has(
+                        normalizeStorePath(finalCanonicalWorktree),
+                      ) === true
                     ? 'live'
                     : finalRemovalStatus._tag === 'unknown'
                       ? 'cleanliness-unknown'

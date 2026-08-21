@@ -86,28 +86,45 @@ Configure the host at `$MEGAREPO_STORE/.state/gc-config.json`:
     "enabled": true,
     "retentionMs": 86400000,
     "allowlist": ["node_modules", ".direnv", "target"],
-    "agentLivenessManifest": "/run/megarepo/agent-liveness.json"
+    "agentLivenessManifest": "/run/megarepo/st2-workspace-activity.json",
+    "agentLivenessEpoch": { "catalog": "/var/lib/st2/catalog", "host": "dev3" }
   }
 }
 ```
 
-The allowlist may contain only the compiled canonical classes. The liveness manifest is a
-short-lived snapshot produced by the host's agent manager:
+The allowlist may contain only the compiled canonical classes. The liveness manifest must be a
+native, short-lived `st2 workspace-activity --json` snapshot:
 
 ```json
 {
-  "version": 1,
-  "expiresAtMs": 1786572000000,
-  "activeWorkspacePaths": ["/absolute/path/to/a/store/worktree"]
+  "schemaVersion": "st2.workspace-activity.v1",
+  "producer": "st2",
+  "epoch": { "catalog": "/absolute/catalog", "host": "dev3", "catalogGeneration": 42 },
+  "capturedAt": "2026-08-14T08:00:00.000Z",
+  "expiresAt": "2026-08-14T08:01:00.000Z",
+  "complete": true,
+  "errors": [],
+  "claims": [
+    {
+      "workspace": "/absolute/path/to/a/store/worktree",
+      "agents": ["dev3.example.agent"],
+      "activeRuntimeIds": ["dev3.example.agent"],
+      "active": true
+    }
+  ]
 }
 ```
 
-Missing, invalid, or expired liveness data produces `unknown`. A candidate
+Missing, invalid, incomplete, erroneous, expired, or non-canonical liveness data produces
+`unknown`. The configured catalog and host admit the expected epoch; its catalog generation must
+remain unchanged across the pre-scan and post-scan reads. A candidate
 must also be Git-ignored, older than the retention window, absent from Megarepo's live set, and
 inside a clean registered worktree. A capped, timed recursive scan uses the newest nested mtime;
 symlinks or incomplete scans produce `unknown`. JSON results distinguish
 `would-delete`, `keep`, and `unknown` and include a deterministic `planSha256`. Mutation and
 `--expected-plan` are rejected until the deletion transaction has a separately verified design.
+The snapshot is planning evidence, not deletion authority; a future mutation path must independently
+revalidate process and filesystem liveness immediately before changing data.
 
 ## Documentation
 
