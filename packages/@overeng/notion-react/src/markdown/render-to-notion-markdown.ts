@@ -356,8 +356,19 @@ const renderNode = (opts: {
   const richText = Array.isArray(props.rich_text) ? (props.rich_text as RichTextItem[]) : []
 
   switch (node.type) {
-    case 'paragraph':
-      return renderRichText({ items: richText, state })
+    case 'paragraph': {
+      const own = renderRichText({ items: richText, state })
+      if (node.children.length === 0) return own
+      // Notion paragraphs can carry nested blocks; Markdown has no spelling
+      // for "block nested under a paragraph", so children follow as sibling
+      // blocks and the hierarchy loss is diagnosed (R33).
+      state.diagnostics.push({
+        kind: 'flattened',
+        message: 'paragraph child blocks rendered as sibling blocks',
+      })
+      const inner = renderNodes({ nodes: node.children, state })
+      return inner.length === 0 ? own : [own, ...inner].filter((s) => s !== '').join('\n\n')
+    }
     case 'heading_1':
     case 'heading_2':
     case 'heading_3':
@@ -365,8 +376,9 @@ const renderNode = (opts: {
       const level = Number(node.type.slice(-1))
       const heading = `${'#'.repeat(level)} ${renderRichText({ items: richText, state })}`
       // Emit before the toggleable early-return so colored toggleable
-      // headings still report the dropped color.
-      if (props.color !== undefined) {
+      // headings still report the dropped color. Explicit 'default' has
+      // nothing to lose and must not be diagnosed.
+      if (props.color !== undefined && props.color !== 'default') {
         state.diagnostics.push({
           kind: 'color-dropped',
           message: `heading color ${String(props.color)} dropped`,
@@ -388,9 +400,11 @@ const renderNode = (opts: {
     case 'bulleted_list_item': {
       const marker = '- '
       const nested = children(node.children, marker.length)
+      // Blank line before nested content: without it CommonMark treats the
+      // first child as lazy continuation of the item's paragraph.
       return nested === ''
         ? `${marker}${renderRichText({ items: richText, state })}`
-        : `${marker}${renderRichText({ items: richText, state })}\n${nested}`
+        : `${marker}${renderRichText({ items: richText, state })}\n\n${nested}`
     }
     case 'numbered_list_item': {
       const n = ordinal ?? 1
@@ -398,7 +412,7 @@ const renderNode = (opts: {
       const nested = children(node.children, marker.length)
       return nested === ''
         ? `${marker}${renderRichText({ items: richText, state })}`
-        : `${marker}${renderRichText({ items: richText, state })}\n${nested}`
+        : `${marker}${renderRichText({ items: richText, state })}\n\n${nested}`
     }
     case 'to_do': {
       const checkbox = props.checked === true ? '[x]' : '[ ]'
@@ -406,7 +420,7 @@ const renderNode = (opts: {
       const nested = children(node.children, marker.length)
       return nested === ''
         ? `${marker}${renderRichText({ items: richText, state })}`
-        : `${marker}${renderRichText({ items: richText, state })}\n${nested}`
+        : `${marker}${renderRichText({ items: richText, state })}\n\n${nested}`
     }
     case 'toggle': {
       const title = renderRichText({ items: richText, state })
@@ -429,7 +443,7 @@ const renderNode = (opts: {
           const emoji = icon?.emoji
           prefix = typeof emoji === 'string' ? `${emoji} ` : `${DEFAULT_CALLOUT_ICON} `
         }
-        if (props.color !== undefined) {
+        if (props.color !== undefined && props.color !== 'default') {
           state.diagnostics.push({
             kind: 'color-dropped',
             message: `callout color ${String(props.color)} dropped`,
@@ -438,7 +452,9 @@ const renderNode = (opts: {
       }
       const own = quoteLines(`${prefix}${renderRichText({ items: richText, state })}`)
       const nested = children(node.children, 0)
-      return nested === '' ? own : `${own}\n${quoteLines(nested)}`
+      // '>' separator line splits quoted child blocks into distinct
+      // paragraphs instead of one soft-wrapped quote paragraph.
+      return nested === '' ? own : `${own}\n>\n${quoteLines(nested)}`
     }
     case 'code': {
       const code = renderPlainText(richText)

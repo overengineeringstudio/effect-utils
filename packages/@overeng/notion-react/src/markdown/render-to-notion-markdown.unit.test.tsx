@@ -156,6 +156,49 @@ describe('renderToNotionMarkdown', () => {
     expect(result.diagnostics).toEqual([])
   })
 
+  it('renders paragraph child blocks as diagnosed siblings', () => {
+    const result = renderToNotionMarkdown(
+      <Paragraph>
+        parent
+        <Paragraph>child</Paragraph>
+      </Paragraph>,
+    )
+    expect(result.body).toMatchInlineSnapshot(`
+      "parent
+
+      child"
+    `)
+    expect(result.diagnostics).toEqual([
+      { kind: 'flattened', message: 'paragraph child blocks rendered as sibling blocks' },
+    ])
+  })
+
+  it('separates quoted child blocks with a blank quote line', () => {
+    const result = renderToNotionMarkdown(
+      <Quote>
+        parent
+        <Paragraph>child</Paragraph>
+      </Quote>,
+    )
+    expect(result.body).toMatchInlineSnapshot(`
+      "> parent
+      >
+      > child"
+    `)
+  })
+
+  it('treats explicit default colors as lossless', () => {
+    const result = renderToNotionMarkdown(
+      <>
+        <Callout color="default" icon="ℹ️">
+          plain
+        </Callout>
+        <Heading1 color="default">head</Heading1>
+      </>,
+    )
+    expect(result.diagnostics).toEqual([])
+  })
+
   it('renders span-array child-page titles instead of Untitled', () => {
     const result = renderToNotionMarkdown(
       <ChildPage
@@ -241,6 +284,7 @@ describe('renderToNotionMarkdown', () => {
       "1. first
 
       2. second
+
          - nested bullet
 
       3. third"
