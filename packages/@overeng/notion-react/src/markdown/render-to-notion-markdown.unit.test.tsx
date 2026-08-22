@@ -199,6 +199,45 @@ describe('renderToNotionMarkdown', () => {
     expect(result.diagnostics).toEqual([])
   })
 
+  it('preserves absent callout icons and escapes entity-like ampersands', () => {
+    const iconless = renderToNotionMarkdown(<Callout>plain note</Callout>)
+    expect(iconless.body).toBe('> plain note')
+    expect(iconless.diagnostics).toEqual([])
+    const entities = renderToNotionMarkdown(
+      <Paragraph>{'use &copy; and &#35; but a & bare'}</Paragraph>,
+    )
+    expect(entities.body).toBe('use \\&copy; and \\&#35; but a & bare')
+    expect(entities.diagnostics).toEqual([])
+  })
+
+  it('escapes mention labels interpolated into link syntax', () => {
+    const result = renderToNotionMarkdown(
+      <Paragraph>
+        <Mention mention={{ page: { id: 'p1' } }} plainText="[Q3]" />{' '}
+        <Mention mention={{ type: 'user', user: { id: 'u1' } }} plainText="*ops*" />
+      </Paragraph>,
+    )
+    expect(result.body).toBe('[\\[Q3\\]](https://notion.so/p1) @\\*ops\\*')
+  })
+
+  it('does not double-escape media caption labels', () => {
+    const result = renderToNotionMarkdown(<Image url="https://example.com/cat.png" caption="a]b" />)
+    expect(result.body).toBe('![a\\]b](https://example.com/cat.png)')
+  })
+
+  it('emits one diagnostic per lossy construct inside tables', () => {
+    const result = renderToNotionMarkdown(
+      <Table hasColumnHeader>
+        <TableRow cells={[<Color key="a" value="red">A</Color>, 'B']} />
+        <TableRow cells={[1, 2]} />
+        <TableRow cells={[3, 4]} />
+      </Table>,
+    )
+    expect(result.diagnostics).toEqual([
+      { kind: 'color-dropped', message: 'text color red dropped' },
+    ])
+  })
+
   it('renders span-array child-page titles instead of Untitled', () => {
     const result = renderToNotionMarkdown(
       <ChildPage

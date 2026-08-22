@@ -31,8 +31,6 @@ interface WalkState {
   readonly diagnostics: MarkdownDiagnostic[]
 }
 
-const DEFAULT_CALLOUT_ICON = '\u2139\uFE0F'
-
 const indentLines = ({ text, spaces }: { text: string; spaces: number }): string =>
   text
     .split('\n')
@@ -76,7 +74,10 @@ const renderMention = (opts: {
 }): string => {
   const { item, state } = opts
   const mention = item.mention as Record<string, unknown>
-  const plain = typeof item.plain_text === 'string' ? item.plain_text : ''
+  // Escape before any branch interpolates the label into Markdown syntax so
+  // authored punctuation like '[Q3]' or '*ops*' survives verbatim.
+  const rawPlain = typeof item.plain_text === 'string' ? item.plain_text : ''
+  const plain = escapeInlineMetacharacters(rawPlain)
   // Response-shaped rich text carries the resolved link at the item level;
   // authored mentions have no href and degrade to plain text.
   const hrefValue = (item as { href?: unknown }).href
@@ -129,7 +130,12 @@ const renderMention = (opts: {
  * and escaping every shell-style `$VAR` would destroy review readability.
  */
 const escapeInlineMetacharacters = (text: string): string =>
-  text.replaceAll(/([\\`*_[\]<>~])/g, '\\$1').replace(/!(?=\[)/g, '\\!')
+  text
+    .replaceAll(/([\\`*_[\]<>~])/g, '\\$1')
+    .replace(/!(?=\[)/g, '\\!')
+    // Neutralize entity-looking sequences so '&copy;' stays literal; a bare
+    // '&' that cannot begin an entity renders fine and stays untouched.
+    .replace(/&(?=[a-zA-Z]+;|#\d+;|#[xX][0-9a-fA-F]+;)/g, '\\&')
 
 /**
  * Escape line-initial block-structure markers (headings, quotes, list items,
@@ -266,7 +272,9 @@ const renderUrlBlock = (opts: { node: CandidateNode; state: WalkState }): string
 
 const renderResolvedUrl = (opts: { type: string; url: string; caption: string }): string => {
   const { type, url, caption } = opts
-  const label = caption !== '' ? escapeLinkLabel(caption) : null
+  // Caption text already flowed through renderRichText, which escapes
+  // Markdown metacharacters; escaping again would double the backslashes.
+  const label = caption !== '' ? caption : null
   switch (type) {
     case 'image':
       return `![${label ?? ''}](${url})`
@@ -279,7 +287,7 @@ const renderResolvedUrl = (opts: { type: string; url: string; caption: string })
     case 'file':
       return `[${label ?? 'File'}](${url})`
     case 'bookmark':
-      return `[${label ?? url}](${url})`
+      return `[${label ?? escapeLinkLabel(url)}](${url})`
     case 'embed':
       return `[${label ?? 'Embed'}](${url})`
     default:
@@ -301,8 +309,10 @@ const renderTable = (opts: { node: CandidateNode; state: WalkState }): string =>
     const cells = Array.isArray(row.props.cells) ? (row.props.cells as RichTextItem[][]) : []
     return cells.map((cell) => escapeTableCell(renderRichText({ items: cell, state: opts.state })))
   }
-  const firstRow = cellsOf(rows[0]!)
-  const columnCount = Math.max(...rows.map((row) => cellsOf(row).length))
+  // Render each row exactly once — cell rendering emits diagnostics, and
+  // re-rendering for width/header derivation would duplicate them.
+  const renderedRows = rows.map(cellsOf)
+  const columnCount = Math.max(...renderedRows.map((cells) => cells.length))
   const pad = (cells: string[]): string[] => {
     const padded = [...cells]
     while (padded.length < columnCount) padded.push('')
@@ -310,13 +320,9 @@ const renderTable = (opts: { node: CandidateNode; state: WalkState }): string =>
   }
   const hasColumnHeader = opts.node.props.has_column_header !== false
   const header = pad(
-    hasColumnHeader
-      ? firstRow
-      : columnCount > 0
-        ? Array.from({ length: columnCount }, () => '')
-        : [],
+    hasColumnHeader ? renderedRows[0]! : Array.from({ length: columnCount }, () => ''),
   )
-  const bodyRows = (hasColumnHeader ? rows.slice(1) : rows).map((row) => pad(cellsOf(row)))
+  const bodyRows = (hasColumnHeader ? renderedRows.slice(1) : renderedRows).map(pad)
   const lines = [
     `| ${header.join(' | ')} |`,
     `| ${header.map(() => '---').join(' | ')} |`,
@@ -441,7 +447,9 @@ const renderNode = (opts: {
           prefix = ''
         } else {
           const emoji = icon?.emoji
-          prefix = typeof emoji === 'string' ? `${emoji} ` : `${DEFAULT_CALLOUT_ICON} `
+          // Absent icons stay absent — the candidate carries no icon and
+          // inventing a default would fabricate authored content.
+          prefix = typeof emoji === 'string' ? `${emoji} ` : ''
         }
         if (props.color !== undefined && props.color !== 'default') {
           state.diagnostics.push({
