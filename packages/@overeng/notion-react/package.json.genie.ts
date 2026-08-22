@@ -9,6 +9,7 @@ import {
 } from '../../../genie/internal.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
+import notionMdPkg from '../notion-md/package.json.genie.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -23,7 +24,7 @@ const workspaceDeps = catalog.compose({
     external: catalog.pick('@effect/platform'),
   },
   devDependencies: {
-    workspace: [utilsDevPkg, utilsPkg],
+    workspace: [notionMdPkg, utilsDevPkg, utilsPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,
@@ -56,6 +57,7 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './markdown': exportEntry('./src/markdown/mod.ts', { environment: 'node' }),
       './renderer': exportEntry('./src/renderer/mod.ts', { environment: 'browser' }),
       './o11y': exportEntry('./src/o11y/mod.ts', { environment: 'browser' }),
       './o11y/effect': exportEntry('./src/o11y/effect-adapter.ts', { environment: 'browser' }),
@@ -72,6 +74,7 @@ export default packageJson(
       access: 'public',
       exports: {
         '.': './dist/mod.js',
+        './markdown': './dist/markdown/mod.js',
         './renderer': './dist/renderer/mod.js',
         './o11y': './dist/o11y/mod.js',
         './o11y/effect': './dist/o11y/effect-adapter.js',
