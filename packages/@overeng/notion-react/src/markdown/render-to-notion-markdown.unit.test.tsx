@@ -228,7 +228,14 @@ describe('renderToNotionMarkdown', () => {
   it('emits one diagnostic per lossy construct inside tables', () => {
     const result = renderToNotionMarkdown(
       <Table hasColumnHeader>
-        <TableRow cells={[<Color key="a" value="red">A</Color>, 'B']} />
+        <TableRow
+          cells={[
+            <Color key="a" value="red">
+              A
+            </Color>,
+            'B',
+          ]}
+        />
         <TableRow cells={[1, 2]} />
         <TableRow cells={[3, 4]} />
       </Table>,
