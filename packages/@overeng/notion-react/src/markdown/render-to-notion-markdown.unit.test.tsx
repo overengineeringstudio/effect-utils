@@ -81,7 +81,7 @@ describe('renderToNotionMarkdown', () => {
         <Mention mention={{ date: { start: '2026-04-19' } }} plainText="@2026-04-19" />
       </Paragraph>,
     )
-    expect(result.body).toBe('@priya @Launch Plan 2026-04-19')
+    expect(result.body).toBe('@priya [@Launch Plan](https://notion.so/p1) 2026-04-19')
     expect(result.diagnostics).toEqual([])
   })
 
@@ -117,6 +117,43 @@ describe('renderToNotionMarkdown', () => {
     expect(heading).toBe('\\# not a heading')
     expect(emphasis).toBe('\\*not italic\\* and \\_not italic\\_')
     expect(plain).toBe('snake\\_case and 1. not-a-list')
+  })
+
+  it('serializes inline code from raw content with a safe delimiter', () => {
+    const result = renderToNotionMarkdown(
+      <Paragraph>
+        <InlineCode>file_upload</InlineCode> and <InlineCode>a`b</InlineCode> and{' '}
+        <Bold>
+          <InlineCode>*raw*</InlineCode>
+        </Bold>
+      </Paragraph>,
+    )
+    expect(result.body).toBe('`file_upload` and ``a`b`` and **`*raw*`**')
+    expect(result.diagnostics).toEqual([])
+  })
+
+  it('falls back to typed labels and offline links for mentions without plainText', () => {
+    const result = renderToNotionMarkdown(
+      <Paragraph>
+        <Mention mention={{ page: { id: '5c2a3b4d-0000-4000-8000-000000000000' } }} /> and{' '}
+        <Mention mention={{ database: { id: 'db1' } }} /> and{' '}
+        <Mention mention={{ user: { id: 'u1' } }} />
+      </Paragraph>,
+    )
+    expect(result.body).toBe(
+      '[@page](https://notion.so/5c2a3b4d000040008000000000000000) and [@database](https://notion.so/db1) and @user',
+    )
+    expect(result.diagnostics).toEqual([])
+  })
+
+  it('does not diagnose metadata-free root Page wrappers', () => {
+    const result = renderToNotionMarkdown(
+      <Page>
+        <Paragraph>content</Paragraph>
+      </Page>,
+    )
+    expect(result.body).toBe('content')
+    expect(result.diagnostics).toEqual([])
   })
 
   it('renders span-array child-page titles instead of Untitled', () => {

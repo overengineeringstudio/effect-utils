@@ -81,14 +81,21 @@ const renderMention = (opts: {
   // authored mentions have no href and degrade to plain text.
   const hrefValue = (item as { href?: unknown }).href
   const href = typeof hrefValue === 'string' ? hrefValue : undefined
-  switch (resolveMentionType(mention)) {
+  const type = resolveMentionType(mention)
+  switch (type) {
     case 'user':
       // Authored plainText frequently already carries the '@' prefix; never
       // double it. Bare names get the dialect's '@' prefix.
-      return plain.startsWith('@') || plain === '' ? plain || '@' : `@${plain}`
+      return plain.startsWith('@') || plain === '' ? plain || '@user' : `@${plain}`
     case 'page':
-    case 'database':
-      return typeof href === 'string' ? `[${plain}](${href})` : plain
+    case 'database': {
+      const label = plain !== '' ? plain : `@${type}`
+      if (typeof href === 'string') return `[${label}](${href})`
+      // Authored mentions carry an id but no href; resolve a deterministic
+      // notion.so URL offline so the mention's identity survives.
+      const id = (mention[type] as { id?: unknown } | undefined)?.id
+      return typeof id === 'string' && id !== '' ? `[${label}](${notionObjectUrl(id)})` : label
+    }
     case 'date': {
       const date = (mention.date ?? {}) as { start?: unknown; end?: unknown }
       const start = typeof date.start === 'string' ? date.start : ''
@@ -143,21 +150,35 @@ const escapeBlockStarts = (text: string): string =>
 /** Apply annotation wrappers + color diagnostics uniformly to any inner string. */
 const wrapWithAnnotations = (opts: {
   core: string
+  /** Unescaped source text; used verbatim inside code spans (backslashes are literal there). */
+  rawCore?: string
   annotations: RichTextItem['annotations']
   state: WalkState
 }): string => {
-  const { core, annotations, state } = opts
+  const { core, rawCore, annotations, state } = opts
   if (annotations.color !== 'default') {
     state.diagnostics.push({
       kind: 'color-dropped',
       message: `text color ${String(annotations.color)} dropped`,
     })
   }
-  let wrapped = core
+  let wrapped: string
+  if (annotations.code === true) {
+    // CommonMark renders backslashes literally inside code spans and closes
+    // the span at an equal-length backtick run, so use the raw source and a
+    // delimiter strictly longer than any embedded run. Content that starts or
+    // ends with a backtick needs padding spaces to stay inside the span.
+    const raw = rawCore ?? core
+    const longestRun = Math.max(0, ...[...raw.matchAll(/`+/g)].map((m) => m[0].length))
+    const delim = '`'.repeat(Math.max(1, longestRun + 1))
+    const padded = raw.startsWith('`') || raw.endsWith('`') ? ` ${raw} ` : raw
+    wrapped = `${delim}${padded}${delim}`
+  } else {
+    wrapped = core
+  }
   if (annotations.bold === true) wrapped = `**${wrapped}**`
   if (annotations.italic === true) wrapped = `*${wrapped}*`
   if (annotations.strikethrough === true) wrapped = `~~${wrapped}~~`
-  if (annotations.code === true) wrapped = `\`${wrapped}\``
   if (annotations.underline === true) wrapped = `<u>${wrapped}</u>`
   return wrapped
 }
@@ -187,6 +208,7 @@ const renderInlineItem = (opts: { item: RichTextItem; state: WalkState }): strin
 
   const wrapped = wrapWithAnnotations({
     core: escapeBlockStarts(escapeInlineMetacharacters(core)),
+    rawCore: core,
     annotations: item.annotations,
     state,
   })
@@ -532,7 +554,14 @@ export const renderToNotionMarkdown = (element: ReactNode): NotionMarkdownResult
   const state: WalkState = { diagnostics: [] }
   // Root <Page> metadata belongs to the .nmd envelope / page properties, not
   // the body; report its omission so the result stays loss-accounted (R33).
-  if (tree.rootPage !== undefined) {
+  // buildCandidateTree records an empty rootPage for a bare <Page> wrapper,
+  // so only diagnose when an actual metadata field was authored.
+  const hasRootMetadata =
+    tree.rootPage !== undefined &&
+    (tree.rootPage.title !== undefined ||
+      tree.rootPage.icon !== undefined ||
+      tree.rootPage.cover !== undefined)
+  if (hasRootMetadata) {
     state.diagnostics.push({
       kind: 'flattened',
       message:
