@@ -14,6 +14,7 @@ import {
   Heading1,
   Heading2,
   Image,
+  Video,
   LinkToPage,
   NumberedListItem,
   Page,
@@ -197,6 +198,62 @@ describe('renderToNotionMarkdown', () => {
       </>,
     )
     expect(result.diagnostics).toEqual([])
+  })
+
+  it('escapes link destinations and flattens caption links once per construct', () => {
+    const linked = renderToNotionMarkdown(
+      <Paragraph>
+        <Link href="https://example.com/a)b">doc</Link>
+      </Paragraph>,
+    )
+    expect(linked.body).toBe('[doc](https://example.com/a\\)b)')
+    const media = renderToNotionMarkdown(
+      <Video
+        url="https://example.com/v.mp4"
+        caption={<Link href="https://example.com/src">source</Link>}
+      />,
+    )
+    expect(media.body).toBe('[source](https://example.com/v.mp4)')
+    expect(media.diagnostics).toEqual([
+      { kind: 'flattened', message: 'video caption link flattened to plain text' },
+    ])
+  })
+
+  it('keeps newline-terminated code exact and diagnoses formatting inside fences', () => {
+    const trailing = renderToNotionMarkdown(<Code language="txt">{'x\n'}</Code>)
+    expect(trailing.body).toBe('```txt\nx\n```')
+    expect(trailing.diagnostics).toEqual([])
+    const annotated = renderToNotionMarkdown(
+      <Code language="txt">
+        <Bold>bold</Bold>
+      </Code>,
+    )
+    expect(annotated.body).toBe('```txt\nbold\n```')
+    expect(annotated.diagnostics).toEqual([
+      { kind: 'flattened', message: 'inline formatting dropped inside code block' },
+    ])
+  })
+
+  it('gives link-preview mentions a visible fallback', () => {
+    const result = renderToNotionMarkdown(
+      <Paragraph>
+        <Mention mention={{ type: 'link_preview', link_preview: { url: 'https://example.com' } }} />
+      </Paragraph>,
+    )
+    expect(result.body).toBe('[https://example.com](https://example.com)')
+    expect(result.diagnostics).toEqual([])
+  })
+
+  it('diagnoses empty paragraphs instead of erasing them', () => {
+    const result = renderToNotionMarkdown(
+      <>
+        <Paragraph>before</Paragraph>
+        <Paragraph />
+        <Paragraph>after</Paragraph>
+      </>,
+    )
+    expect(result.body).toBe('before\n\nafter')
+    expect(result.diagnostics).toEqual([{ kind: 'flattened', message: 'empty paragraph dropped' }])
   })
 
   it('preserves absent callout icons and escapes entity-like ampersands', () => {

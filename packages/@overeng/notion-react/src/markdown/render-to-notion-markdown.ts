@@ -48,6 +48,17 @@ const escapeTableCell = (text: string): string =>
 
 const escapeLinkLabel = (text: string): string => text.replaceAll('[', '\\[').replaceAll(']', '\\]')
 
+/**
+ * Escape a Markdown link destination so an unbalanced parenthesis or space
+ * cannot terminate it early. Parentheses are backslash-escaped (CommonMark
+ * decodes them back into the URL); destinations containing whitespace are
+ * angle-wrapped with inner `<`, `>`, `\` escaped.
+ */
+const escapeLinkDestination = (url: string): string =>
+  /\s/.test(url)
+    ? `<${url.replace(/([<>\\])/g, '\\$1')}>`
+    : url.replaceAll('(', '\\(').replaceAll(')', '\\)')
+
 // -----------------------------------------------------------------------------
 // Inline rich text -> Markdown
 // -----------------------------------------------------------------------------
@@ -91,11 +102,13 @@ const renderMention = (opts: {
     case 'page':
     case 'database': {
       const label = plain !== '' ? plain : `@${type}`
-      if (typeof href === 'string') return `[${label}](${href})`
+      if (typeof href === 'string') return `[${label}](${escapeLinkDestination(href)})`
       // Authored mentions carry an id but no href; resolve a deterministic
       // notion.so URL offline so the mention's identity survives.
       const id = (mention[type] as { id?: unknown } | undefined)?.id
-      return typeof id === 'string' && id !== '' ? `[${label}](${notionObjectUrl(id)})` : label
+      return typeof id === 'string' && id !== ''
+        ? `[${label}](${escapeLinkDestination(notionObjectUrl(id))})`
+        : label
     }
     case 'date': {
       const date = (mention.date ?? {}) as { start?: unknown; end?: unknown }
@@ -105,7 +118,9 @@ const renderMention = (opts: {
     }
     case 'link_preview': {
       const url = (mention.link_preview as { url?: unknown } | undefined)?.url
-      return typeof url === 'string' ? `[${plain}](${url})` : plain
+      if (typeof url !== 'string') return plain
+      const label = plain !== '' ? plain : url || '@link_preview'
+      return `[${label}](${escapeLinkDestination(url)})`
     }
     case 'template_mention': {
       const tm = (mention.template_mention ?? {}) as Record<string, unknown>
@@ -220,13 +235,29 @@ const renderInlineItem = (opts: { item: RichTextItem; state: WalkState }): strin
   })
 
   const withAnnotations = `${leading}${wrapped}${trailing}`
-  return item.text.link === null ? withAnnotations : `[${withAnnotations}](${item.text.link.url})`
+  return item.text.link === null
+    ? withAnnotations
+    : `[${withAnnotations}](${escapeLinkDestination(item.text.link.url)})`
 }
 
 const renderRichText = (opts: { items: readonly RichTextItem[]; state: WalkState }): string =>
   opts.items.map((item) => renderInlineItem({ item, state: opts.state })).join('')
 
 /** Plain-text concatenation for contexts where Markdown annotations must not apply (code fences). */
+/** Does this item carry formatting a code fence cannot represent? */
+const hasCodeUnrepresentableFormatting = (item: RichTextItem): boolean => {
+  if (item.type !== 'text') return true
+  if (item.text.link !== null) return true
+  const ann = item.annotations
+  return (
+    ann.bold === true ||
+    ann.italic === true ||
+    ann.strikethrough === true ||
+    ann.underline === true ||
+    ann.color !== 'default'
+  )
+}
+
 const renderPlainText = (items: readonly RichTextItem[]): string =>
   items
     .map((item) => {
@@ -245,7 +276,24 @@ const renderUrlBlock = (opts: { node: CandidateNode; state: WalkState }): string
   const captionItems = Array.isArray(node.props.caption)
     ? (node.props.caption as RichTextItem[])
     : []
-  const caption = renderRichText({ items: captionItems, state })
+  // Markdown links cannot nest, so caption links flatten to their inner text
+  // before the caption becomes a label of the media link.
+  let captionHadLink = false
+  const caption = captionItems
+    .map((item) => {
+      if (item.type === 'text' && item.text.link !== null) {
+        captionHadLink = true
+        return renderInlineItem({ item: { ...item, text: { ...item.text, link: null } }, state })
+      }
+      return renderInlineItem({ item, state })
+    })
+    .join('')
+  if (captionHadLink) {
+    state.diagnostics.push({
+      kind: 'flattened',
+      message: `${node.type} caption link flattened to plain text`,
+    })
+  }
   const url = typeof node.props.url === 'string' ? node.props.url : undefined
 
   if (url === undefined && node.props.file_upload !== undefined) {
@@ -277,21 +325,21 @@ const renderResolvedUrl = (opts: { type: string; url: string; caption: string })
   const label = caption !== '' ? caption : null
   switch (type) {
     case 'image':
-      return `![${label ?? ''}](${url})`
+      return `![${label ?? ''}](${escapeLinkDestination(url)})`
     case 'video':
-      return `[${label ?? 'Video'}](${url})`
+      return `[${label ?? 'Video'}](${escapeLinkDestination(url)})`
     case 'audio':
-      return `[${label ?? 'Audio'}](${url})`
+      return `[${label ?? 'Audio'}](${escapeLinkDestination(url)})`
     case 'pdf':
-      return `[${label ?? 'PDF'}](${url})`
+      return `[${label ?? 'PDF'}](${escapeLinkDestination(url)})`
     case 'file':
-      return `[${label ?? 'File'}](${url})`
+      return `[${label ?? 'File'}](${escapeLinkDestination(url)})`
     case 'bookmark':
-      return `[${label ?? escapeLinkLabel(url)}](${url})`
+      return `[${label ?? escapeLinkLabel(url)}](${escapeLinkDestination(url)})`
     case 'embed':
-      return `[${label ?? 'Embed'}](${url})`
+      return `[${label ?? 'Embed'}](${escapeLinkDestination(url)})`
     default:
-      return `[${label ?? type}](${url})`
+      return `[${label ?? type}](${escapeLinkDestination(url)})`
   }
 }
 
@@ -364,7 +412,18 @@ const renderNode = (opts: {
   switch (node.type) {
     case 'paragraph': {
       const own = renderRichText({ items: richText, state })
-      if (node.children.length === 0) return own
+      if (node.children.length === 0) {
+        // Empty paragraphs are deliberate blank blocks in Notion; Markdown
+        // has no content spelling for one, so report the drop instead of
+        // silently erasing it.
+        if (own === '') {
+          state.diagnostics.push({
+            kind: 'flattened',
+            message: 'empty paragraph dropped',
+          })
+        }
+        return own
+      }
       // Notion paragraphs can carry nested blocks; Markdown has no spelling
       // for "block nested under a paragraph", so children follow as sibling
       // blocks and the hierarchy loss is diagnosed (R33).
@@ -466,11 +525,21 @@ const renderNode = (opts: {
     }
     case 'code': {
       const code = renderPlainText(richText)
+      // Fenced Markdown cannot preserve inline formatting; report its loss.
+      if (richText.some(hasCodeUnrepresentableFormatting)) {
+        state.diagnostics.push({
+          kind: 'flattened',
+          message: 'inline formatting dropped inside code block',
+        })
+      }
       // CommonMark closes a fence at a backtick run equal to the fence
       // length, so the fence must be strictly longer than any run inside.
       const longestRun = Math.max(0, ...[...code.matchAll(/`+/g)].map((m) => m[0].length))
       const fence = '`'.repeat(Math.max(3, longestRun + 1))
-      return `${fence}${typeof props.language === 'string' ? props.language : ''}\n${code}\n${fence}`
+      // Newline-terminated content already separates from the closing fence;
+      // appending another would add an empty line to the literal code.
+      const body = code.endsWith('\n') ? code : `${code}\n`
+      return `${fence}${typeof props.language === 'string' ? props.language : ''}\n${body}${fence}`
     }
     case 'divider':
       return '---'
@@ -487,7 +556,7 @@ const renderNode = (opts: {
     case 'embed':
       return renderUrlBlock({ node, state })
     case 'link_to_page':
-      return `[Link to page](${notionObjectUrl(typeof props.page_id === 'string' ? props.page_id : '')})`
+      return `[Link to page](${escapeLinkDestination(notionObjectUrl(typeof props.page_id === 'string' ? props.page_id : ''))})`
     case 'table':
       return renderTable({ node, state })
     case 'column_list':
