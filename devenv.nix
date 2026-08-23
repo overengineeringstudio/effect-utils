@@ -938,44 +938,12 @@ in
     exec = trace.exec "buck2:platform:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      isolation="platform-check-$$-$RANDOM"
-      stderr_file="$(${pkgs.coreutils}/bin/mktemp "''${TMPDIR:-/tmp}/buck2-platform-check.XXXXXX")"
-      cleanup() {
-        ${pkgs.buck2}/bin/buck2 --isolation-dir "$isolation" kill >/dev/null 2>&1 || true
-        ${pkgs.coreutils}/bin/rm -f "$stderr_file"
-      }
-      trap cleanup EXIT
-      trap 'exit 130' INT
-      trap 'exit 143' TERM
-      fail_with_evidence() {
-        ${pkgs.coreutils}/bin/cat "$stderr_file" >&2
-        ${pkgs.coreutils}/bin/mkdir -p "$root/tmp"
-        ${pkgs.coreutils}/bin/mv -f "$stderr_file" "$root/tmp/buck2-platform-mismatch.log"
-        exit 1
-      }
-
-      if ${pkgs.buck2}/bin/buck2 \
-        --isolation-dir "$isolation" \
-        build --fake-arch aarch64 \
-        //packages/@overeng/tui-core:typescript_input_plan \
-        --local-only --no-remote-cache \
-        >/dev/null 2>"$stderr_file"; then
-        echo "buck2:platform:check: mismatched platform unexpectedly built" >&2
-        fail_with_evidence
-      fi
-      actual="$(${pkgs.gawk}/bin/awk '
-        /error: fail: package_task platform mismatch:/ {
-          sub(/^.*error: fail: package_task platform mismatch: /, "")
-          print
-          exit
-        }
-      ' "$stderr_file")"
-      expected="target requires x86_64-linux, local-only execution host is aarch64-linux"
-      if [ "$actual" != "$expected" ]; then
-        echo "buck2:platform:check: unexpected diagnostic: $actual" >&2
-        fail_with_evidence
-      fi
-      echo "buck2:platform:check: PASS diagnostic=$actual"
+      ${buck2CapabilityGateBinExports}
+      exec ${pkgs.bash}/bin/bash scripts/buck2-platform-check.sh \
+        "$root" ${pkgs.buck2}/bin/buck2 \
+        package-evidence effect-utils/buck2-package-evidence/v1 ${
+          buck2Stage0Definition."package-evidence"
+        }/bin/buck2-package-evidence
     '';
   };
 
