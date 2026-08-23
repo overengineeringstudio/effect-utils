@@ -28,10 +28,12 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   follow-up `blocks.children.append` calls. Per-request child count is
   capped at 100 for both `pages.create` and `blocks.children.append`.
 - **A09 No idempotency primitive:** The Notion API exposes no idempotency
-  key or client token. Recovery from partial failure is archive-and-retry,
-  keyed by correlating JSX identity to page ids through the cache. Archived
-  pages remain retrievable via `pages.retrieve` / `blocks.retrieve`; only
-  `blocks.children.list` returns 404 on an archived page.
+  key or client token. A successful `pages.create` is therefore an
+  irreversible identity allocation: recovery depends on durably correlating
+  JSX identity to the returned page id before any subsequent remote read or
+  mutation. Archived pages remain retrievable via `pages.retrieve` /
+  `blocks.retrieve`; only `blocks.children.list` returns 404 on an archived
+  page.
 - **A10 Title length:** Each title rich_text span is capped at 2000
   characters. Callers that need longer titles must split across spans.
 - **A11 Offline fidelity reference:** Notion's own enhanced-Markdown endpoint
@@ -69,13 +71,11 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
 - **T05 Web renderer is not API-stable:** The companion web renderer exists
   for preview/Storybook only. Its output DOM, CSS hooks, and component
   props may change without deprecation.
-- **T06 Archive-on-partial-failure:** Per A09, mid-flight sub-page creation
-  that fails after `pages.create` leaves an archived orphan rather than
-  attempting a speculative block-level cleanup. The next sync reconciles
-  by id — the orphan is either rehydrated (if JSX still contains the
-  `<ChildPage>`) or stays archived. Acceptable because archived pages are
-  trash-recoverable and the alternative (block-by-block rollback) is not
-  transactional anyway.
+- **T06 Additional create checkpoint:** Per A09, sub-page creation performs an
+  extra cache save immediately after `pages.create`, before retrieving inline
+  descendants. This additional write is accepted because preserving the
+  server-minted page identity across process death is more important than
+  minimizing local cache writes.
 - **T07 No cross-page op batching:** Block ops are batched up to 100
   children per `NotionBlocks.append` call; page ops (`createPage`,
   `updatePage`, `archivePage`) are always individual requests. Sub-page
@@ -193,7 +193,7 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   production target (per T05).
 - **R21a Page-op scenario suite:** Page-level mutations (root metadata
   change, sub-page create, sub-page rename, sub-page icon/cover change,
-  sub-page archive, sub-page reparent via `move`, partial-failure archive
+  sub-page archive, sub-page reparent via `move`, interrupted-create adoption
   &amp; resync) must each be covered by an e2e test that asserts API
   op-counts meet R24–R28. Cache v2→v3 migration, >100 children under a
   newly created sub-page, and inline-depth-3 subtree splitting must also
@@ -224,11 +224,13 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   through a holding parent. Default stays off — unretained
   same-parent-reshuffle siblings still flow through `movePage` and the
   API rejection is swallowed, matching the pre-phase-4d contract.
-- **R28 Partial-failure archive & reconcile:** If a `pages.create` succeeds
-  but subsequent child ops fail, the driver must archive the orphan via
-  `in_trash:true` before surfacing the error. The next `sync()` with the
-  same JSX reconciles by re-creating from scratch — archived orphans stay
-  archived.
+- **R28 Interrupted-create identity recovery:** After `pages.create`
+  succeeds, the driver must durably save the returned page id and immutable
+  create-time inline descriptors before any operation that can fail. A retry
+  with the same keyed `<ChildPage>` must adopt that page and its inline
+  descendants without another page create or duplicated body. If current JSX
+  changed after interruption, the retry must first adopt the create-time live
+  state and then reconcile the current candidate normally.
 - **R29 SyncResult exposes page op counts:** `SyncResult` must carry
   `pages: { creates, updates, archives, moves }` alongside existing block
   counts. `SyncEvent` gains `PageOpIssued` / `PageOpApplied` variants.

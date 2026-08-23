@@ -13,6 +13,10 @@
   (diff, cache snapshot, Markdown projector) reads.
 - **CacheTree:** The persisted counterpart of a CandidateTree (`NotionCache`
   backends), carrying resolved Notion block ids and schema version.
+- **Pending inline resolution:** A temporary CacheTree state for a newly
+  created page whose server-minted page id is durable while block ids created
+  inline with that page still require observation and adoption. It preserves
+  create-time identity evidence; it is not a second candidate tree.
 - **blockKey:** Author-supplied identity hint for stable sibling matching
   across renders. Renderer-level only: never projected into Notion payloads
   and never emitted into Markdown bodies.

@@ -265,6 +265,13 @@ additionally carry `titleHash`, `iconHash`, `coverHash` (djb2 of
 response-normalized projections per A07) and recurse into their own
 `children` with their own key namespace.
 
+A newly created page may temporarily carry `pendingInlineResolution`: an
+immutable tree of create-time inline `(key, type, hash, children)` descriptors.
+The page id is already authoritative at that point; the marker records that
+the inline block ids auto-created by `pages.create` must still be observed and
+adopted before normal diffing. It is removed only after adoption and another
+successful cache save (R28).
+
 `FsCache` treats missing files, malformed payloads, and schema mismatches as
 cache misses by returning `undefined` from `load`. The sync driver then runs a
 cold diff against an empty tree. Cache backends that can retain old payloads for
@@ -412,12 +419,15 @@ sync(element, { pageId, cache }):
   5. apply block ops under the root page id (existing driver)
   6. for each <ChildPage> candidate in order:
        - createPage / movePage / archivePage as dictated by diffOp
-       - if createPage: persist tmp→real id; insert new
-         CacheNode with nodeKind='page' at the correct key
+       - if createPage: insert a page CacheNode carrying the real id and
+         create-time inline descriptors, then save the cache before retrieval
+       - retrieve the page's live inline descendants, validate their types,
+         adopt their ids, clear the pending marker, and save again
        - recurse: sync(childElement, { pageId: real, cache: cache.pages[real] })
   7. on any error mid-recursion:
-       - if a page was created this run but its children failed mid-apply,
-         issue pages.update {in_trash:true} on the partial page (T06/R28)
+       - preserve the most recent successful checkpoint; never discard a
+         created page id or archive-and-recreate merely because resolution or
+         later child work failed (T06/R28)
        - propagate NotionSyncError with fallbackReason when applicable
   8. checkpoint cache after every successful page-level step
   9. SyncResult includes pages: { creates, updates, archives, moves }
@@ -426,6 +436,10 @@ sync(element, { pageId, cache }):
 Ordering invariants:
 
 - `createPage` must complete before any block op scoped to its id.
+- The returned page id and pending inline descriptors must be saved before the
+  first post-create retrieval. On retry, pending inline resolution runs before
+  candidate diffing. Type disagreement between a descriptor and the live block
+  fails closed; it never guesses an id mapping.
 - `archivePage` (emitted for removed `<ChildPage>`) is applied after block
   ops that touch its parent (so the parent's child_page block disappears
   from the parent's children list in the same sync pass).
@@ -483,17 +497,17 @@ Third-party backends (SQLite, Redis, …) implement `NotionCache` directly
 
 ## Fallback decision table (R16)
 
-| Trigger                                              | Behaviour                                                      | `fallbackReason`        |
-| ---------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
-| No cache file                                        | Cold diff against empty tree                                   | `"cold-cache"`          |
-| `FsCache` persisted schema mismatch                  | `FsCache.load` returns `undefined`; sync runs cold diff        | `"cold-cache"`          |
-| Prior tree `schemaVersion !== CACHE_SCHEMA_VERSION`  | Abort stale-tree diff from backends that return old trees      | `"schema-mismatch"`     |
-| Cache `rootId !== opts.pageId`                       | Cold diff against empty tree                                   | `"page-id-drift"`       |
-| `NotionBlocks.update` returns 404/archived           | Emit structural rebuild of that subtree                        | `"block-missing"`       |
-| Cached page id → `pages.retrieve` 404                | Drop cached subtree, recreate if JSX has it, else no-op        | `"page-missing"`        |
-| Cached page id is archived on server                 | Treat as removed; if JSX still has `<ChildPage>`, create fresh | `"page-archived"`       |
-| `pages.create` succeeds but child ops fail mid-apply | Archive orphan page; surface `NotionSyncError`                 | `"partial-page-create"` |
-| Diff produces malformed op-plan (invariant break)    | Abort; propagate `NotionSyncError`                             | n/a (error)             |
+| Trigger                                             | Behaviour                                                      | `fallbackReason`     |
+| --------------------------------------------------- | -------------------------------------------------------------- | -------------------- |
+| No cache file                                       | Cold diff against empty tree                                   | `"cold-cache"`       |
+| `FsCache` persisted schema mismatch                 | `FsCache.load` returns `undefined`; sync runs cold diff        | `"cold-cache"`       |
+| Prior tree `schemaVersion !== CACHE_SCHEMA_VERSION` | Abort stale-tree diff from backends that return old trees      | `"schema-mismatch"`  |
+| Cache `rootId !== opts.pageId`                      | Cold diff against empty tree                                   | `"page-id-drift"`    |
+| `NotionBlocks.update` returns 404/archived          | Emit structural rebuild of that subtree                        | `"block-missing"`    |
+| Cached page id → `pages.retrieve` 404               | Drop cached subtree, recreate if JSX has it, else no-op        | `"page-missing"`     |
+| Cached page id is archived on server                | Treat as removed; if JSX still has `<ChildPage>`, create fresh | `"page-archived"`    |
+| Post-create inline retrieval or later work fails    | Preserve identity checkpoint; retry adopts live inline ids     | n/a (original error) |
+| Diff produces malformed op-plan (invariant break)   | Abort; propagate `NotionSyncError`                             | n/a (error)          |
 
 v0.1 implements `cold-cache`, `schema-mismatch`, and `page-id-drift`
 (via a pre-flight `NotionBlocks.retrieve(cache.rootId)`). `block-missing`
