@@ -31,7 +31,9 @@ It does not define:
 - Markdown endpoint completeness, `.nmd` clean-base adoption, or datasource-sync
   body guards — those live in `@overeng/notion-core`,
   `@overeng/notion-effect-client`, `@overeng/notion-md`, and
-  `@overeng/notion-datasource-sync`.
+  `@overeng/notion-datasource-sync`. (The read-only Markdown _projection_
+  defined here is a local serialization of authored JSX; it performs no
+  endpoint round-trip and no body settlement.)
 - The web renderer's DOM output — see that package's own docs (it is a
   non-normative preview per T05).
 - The pixeltrail migration plan — tracked in pixeltrail issues.
@@ -528,6 +530,62 @@ The host-config already stubs the React 19 Suspense entries
 `maySuspendCommit` will return true when the registry misses for a
 hash. r3f's `useLoader` + `<Suspense>` (`pmndrs/react-three-fiber`
 PR #3224) is the reference implementation pattern.
+
+## Markdown projection (read-only, experimental)
+
+See `src/markdown/`. Entry point: `@overeng/notion-react/markdown`.
+
+`renderToNotionMarkdown(element)` reuses the production render pass —
+`buildCandidateTree` over the same reconciler host-config that feeds Notion
+projection — and serializes the resulting `CandidateTree` to a readable
+Notion-enhanced-Markdown body. It is pure, synchronous, network-free, and
+performs no Notion mutation, no cache read/write, and no diff.
+
+```ts
+const { body, diagnostics } = renderToNotionMarkdown(<Instructions />)
+```
+
+Contract:
+
+- **Shared semantics, separate serializer.** The projection shares the
+  normalized instance/CandidateTree representation with the Notion path but
+  owns its block→Markdown spellings. It deliberately does not delegate to
+  `NotionMarkdown.treeToMarkdown` in `@overeng/notion-effect-client`: that
+  renderer is the pull-side wire serializer (no diagnostics channel, silent
+  unknown-type drop, hardcoded list numbering, non-GFM table output), and
+  modifying it for review-artifact needs would risk `.nmd` wire-format drift.
+  Spellings align with the pull-side dialect where sound (`<details>` toggles,
+  blockquote callouts, `[TOC]`, fenced code). Drift between the two spelling
+  tables is mitigated by golden tests; centralization is deferred until a
+  second consumer justifies it (decision 0001).
+- **Diagnostics, not silence.** Constructs that cannot survive projection
+  emit a typed `MarkdownDiagnostic` (`unsupported-block`,
+  `media-without-url`, `color-dropped`, `flattened`) alongside the body.
+  Nothing disappears silently; nothing fails hard either — the body is always
+  produced.
+- **Fidelity policy.** Colors and other unrepresentable attributes are
+  dropped with diagnostics. `blockKey` is absent from the body (renderer
+  identity, consistent with the Notion payload projection). Toggleable
+  headings flatten to heading + following content. `<ChildPage>` flattens to
+  a bold label + inline content. Unsupported/`Raw` blocks emit an HTML-comment
+  placeholder. Media referencing `file_upload` (no offline-resolvable URL)
+  emits a placeholder + diagnostic.
+- **Composition.** The body is a plain string and composes with
+  `@overeng/notion-md`'s `renderNmdFile({ frontmatter, body })` at the
+  caller's discretion. `@overeng/notion-react` holds only a devDependency on
+  `@overeng/notion-md` for the composition test; production code never
+  imports it, and the forbidden reverse dependency does not exist.
+- **Status.** Experimental (#1097): spellings and the diagnostics contract may
+  change until a real consumer proves the output. The body is a review
+  artifact, not a canonical Notion round-trip representation, and Markdown
+  equality must not be read as CacheTree identity or sync safety.
+
+Satisfies R31–R36: shared tree semantics (R32, no HTML scraping), read-only
+offline operation (R31), no-silent-loss diagnostics (R33), deterministic
+output (R34), envelope composition without reverse coupling (R35), and
+documented experimental status distinguishing projection fidelity from
+reconciliation and endpoint round-trip fidelity (R36). Terminology follows
+[ontology.md](./ontology.md).
 
 ## Extension points
 

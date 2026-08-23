@@ -8,14 +8,28 @@ map, not the reference.
 
 ```ts
 import { renderToNotion, sync } from '@overeng/notion-react'
+import { renderToNotionMarkdown } from '@overeng/notion-react/markdown'
 ```
 
-| Export           | Source                                                                | Purpose                                                                                                 |
-| ---------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `renderToNotion` | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts) | Cold-start append; no cache. Returns `Effect<SyncResult, NotionSyncError, NotionConfig \| HttpClient>`. |
-| `sync`           | [`renderer/sync.ts`](../src/renderer/sync.ts)                         | Incremental cache-backed sync. Same return type. See [sync options](#sync-options).                     |
-| `collectOps`     | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts) | Collect an `OpBuffer` from a one-shot render. Exposed for tests.                                        |
-| `SyncResult`     | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts) | `{ appends, updates, removes, inserts, fallbackReason? }`                                               |
+| Export                   | Source                                                                                  | Purpose                                                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `renderToNotion`         | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | Cold-start append; no cache. Returns `Effect<SyncResult, NotionSyncError, NotionConfig \| HttpClient>`.                                      |
+| `sync`                   | [`renderer/sync.ts`](../src/renderer/sync.ts)                                           | Incremental cache-backed sync. Same return type. See [sync options](#sync-options).                                                          |
+| `collectOps`             | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | Collect an `OpBuffer` from a one-shot render. Exposed for tests.                                                                             |
+| `SyncResult`             | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | `{ appends, updates, removes, inserts, fallbackReason? }`                                                                                    |
+| `renderToNotionMarkdown` | [`markdown/render-to-notion-markdown.ts`](../src/markdown/render-to-notion-markdown.ts) | **Experimental.** Read-only JSX → Notion-enhanced-Markdown body + diagnostics. See [Markdown projection](./concepts/markdown-projection.md). |
+
+## Markdown projection options
+
+`renderToNotionMarkdown(element)` is pure and synchronous — no options, no
+Effect, no network. Returns:
+
+```ts
+{
+  body: string                              // Notion-enhanced-Markdown body
+  diagnostics: readonly MarkdownDiagnostic[] // typed loss notices (see concepts doc)
+}
+```
 
 ## Sync options
 
