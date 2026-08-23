@@ -2981,6 +2981,11 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   resolving inline descendants, then checkpoint the resolved subtree, so a
   crash after `pages.create` retries with the same stable page id instead of
   creating a duplicate.
+- **Buck2 gate hermeticity**: resolve every external tool invoked by the
+  capability-projection, projection-test, and foundation graph-check gates via
+  explicit `_BIN` bindings exported from Nix store paths instead of ambient
+  `PATH` lookup, and retain Buck stderr evidence when the foundation
+  platform-mismatch audit fails so the rejection reason stays diagnosable.
 
 - **Buck2 gate hermeticity**: resolve every external tool invoked by the
   capability-projection, projection-test, and foundation graph-check gates via
