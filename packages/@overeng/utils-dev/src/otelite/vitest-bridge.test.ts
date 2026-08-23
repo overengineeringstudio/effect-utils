@@ -1,8 +1,8 @@
-import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it, layer } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 
 import { Otelite } from './Otelite.ts'
 import { otlpTracesUrl } from './otlp-url.ts'
@@ -85,10 +85,10 @@ layer(CaptureLayer, { excludeTestServices: true })('OteliteCapture bridge', (it)
  * nothing lands. The contrasting suffixed path is the main bridge test above
  * (which DOES capture). Together they prove the suffix is load-bearing.
  */
-const BareTestLayer = Otelite.Default.pipe(Layer.provideMerge(NodeContext.layer))
+const BareTestLayer = Otelite.layer.pipe(Layer.provideMerge(NodeServices.layer))
 
 describe('OteliteCapture bridge — suffix regression', () => {
-  it.scopedLive(
+  it.live(
     'a bare (un-suffixed) exporter URL captures nothing',
     () =>
       Effect.gen(function* () {

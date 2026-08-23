@@ -1,9 +1,9 @@
 import { access } from 'node:fs/promises'
 
-import { Command } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Schema } from 'effect'
+import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 
 import { SERVICE_NAME, SPAN_NAME } from './emitter.ts'
 import {
@@ -43,13 +43,13 @@ const captureSpanPayload = (name: string, service: string) =>
   })
 
 /** Real otelite binary (from `PATH`, see README) + Node platform layer. */
-const TestLayer = Otelite.Default.pipe(Layer.provideMerge(NodeContext.layer))
+const TestLayer = Otelite.layer.pipe(Layer.provideMerge(NodeServices.layer))
 
 const tracesFixture = new URL('./fixtures/traces.ndjson', import.meta.url).pathname
 const emitter = new URL('./emitter.ts', import.meta.url).pathname
 
 describe('Otelite', () => {
-  it.scoped('run() yields a decoded otelite.summary/v1 for a successful child', () =>
+  it.effect('run() yields a decoded otelite.summary/v1 for a successful child', () =>
     Effect.gen(function* () {
       const otelite = yield* Otelite
       const summary = yield* otelite.run({ command: ['true'] })
@@ -62,7 +62,7 @@ describe('Otelite', () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 
-  it.scoped('a non-zero child surfaces as the tagged OteliteChildFailed error', () =>
+  it.effect('a non-zero child surfaces as the tagged OteliteChildFailed error', () =>
     Effect.gen(function* () {
       const otelite = yield* Otelite
       const exit = yield* otelite.run({ command: ['false'] }).pipe(Effect.exit)
@@ -74,7 +74,7 @@ describe('Otelite', () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 
-  it.scoped('the scoped out-dir is released after the run scope closes', () =>
+  it.effect('the scoped out-dir is released after the run scope closes', () =>
     Effect.gen(function* () {
       const otelite = yield* Otelite
       // Capture the minted dir from within a child scope; the finalizer removes
@@ -147,7 +147,7 @@ describe('Otelite', () => {
   // emitter POSTs a known OTLP/JSON span to the receiver otelite injects, and we
   // assert it round-trips back out through the typed `inspect`. No fixtures —
   // the span travels the real wire.
-  it.scoped('run(emitter) captures a live OTLP span that round-trips through typed inspect', () =>
+  it.effect('run(emitter) captures a live OTLP span that round-trips through typed inspect', () =>
     Effect.gen(function* () {
       const otelite = yield* Otelite
       const summary = yield* otelite.run({ command: ['bun', emitter] })
@@ -200,7 +200,7 @@ describe('Otelite.capture', () => {
   // assert the typed row round-trips through the handle's `inspect`. The bounded
   // retry inside `inspect` absorbs any sub-ms visibility lag; running this a few
   // times exercises that it doesn't flake.
-  it.scoped('capture() serves a live receiver: a raw OTLP POST round-trips through inspect', () =>
+  it.effect('capture() serves a live receiver: a raw OTLP POST round-trips through inspect', () =>
     Effect.gen(function* () {
       const otelite = yield* Otelite
       const handle = yield* otelite.capture()
@@ -259,7 +259,8 @@ describe('Otelite.capture', () => {
       )
       expect(exists).toBe(false)
 
-      const psOut = yield* Command.string(Command.make('ps', '-eo', 'args'))
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+      const psOut = yield* spawner.string(ChildProcess.make('ps', ['-eo', 'args']))
       const orphaned = psOut
         .split('\n')
         .some((line) => line.includes('otelite') && line.includes(outDir))

@@ -12,7 +12,7 @@ export class OteliteSpawnError extends Schema.TaggedError<OteliteSpawnError>(
 )('OteliteSpawnError', {
   /** The full argv otelite was invoked with. */
   argv: Schema.Array(Schema.String),
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
     return `failed to spawn otelite (${this.argv.join(' ')})`
@@ -48,7 +48,7 @@ export class OteliteCliError extends Schema.TaggedError<OteliteCliError>(
   /** The raw otelite exit code (one of the `sysexits.h` values). */
   exitCode: Schema.Int,
   /** Symbolic reason mapped from the exit code, or `unknown`. */
-  reason: Schema.Literal(
+  reason: Schema.Literals([
     'usage', // 64
     'data-err', // 65 — decode error
     'no-input', // 66 — inspect source missing
@@ -58,7 +58,7 @@ export class OteliteCliError extends Schema.TaggedError<OteliteCliError>(
     'software', // 70 — internal otelite bug
     'unimplemented', // 69
     'unknown',
-  ),
+  ]),
   argv: Schema.Array(Schema.String),
   stderr: Schema.optional(Schema.String),
 }) {
@@ -72,7 +72,7 @@ export class OteliteDecodeError extends Schema.TaggedError<OteliteDecodeError>(
   '@overeng/utils-dev/otelite/OteliteDecodeError',
 )('OteliteDecodeError', {
   /** Which CLI output we tried to decode. */
-  kind: Schema.Literal(
+  kind: Schema.Literals([
     'summary',
     'span',
     'metric',
@@ -80,10 +80,10 @@ export class OteliteDecodeError extends Schema.TaggedError<OteliteDecodeError>(
     'trace-summary',
     'metric-summary',
     'log-summary',
-  ),
+  ]),
   /** The raw line/stdout that failed to decode. */
   raw: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
     return `failed to decode otelite ${this.kind} output`

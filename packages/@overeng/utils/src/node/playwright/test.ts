@@ -7,30 +7,30 @@
  * @module
  */
 
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import type { BrowserContext, Page } from '@playwright/test'
 import { test } from '@playwright/test'
-import { ConfigProvider, Effect, Layer, Logger, LogLevel, type Config } from 'effect'
+import { ConfigProvider, Effect, Layer, Logger, References, type Config } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 import { OtelPlaywrightLive } from './otel.ts'
 import { PwBrowserContext, PwPage } from './tags.ts'
 
-/** Config provider for Playwright tests (constant-case environment variables). */
-const testEnvConfigProvider = ConfigProvider.fromEnv({
-  pathDelim: '_',
-  seqDelim: ',',
-})
+/** Config provider for Playwright tests (environment variables). */
+const testEnvConfigProvider = ConfigProvider.fromEnv()
 
 /** Layer that installs the Playwright test config provider. */
-export const TestEnvConfigLive = testEnvConfigProvider.pipe(Layer.setConfigProvider)
+export const TestEnvConfigLive = ConfigProvider.layer(testEnvConfigProvider)
 
 /**
  * Load a config schema from process.env in Playwright tests.
+ *
+ * v4 note: `Config.Config` is itself an `Effect`, so "loading" means parsing it
+ * against the env provider explicitly.
  */
-export const loadEnvConfig = Effect.fn('pw.loadEnvConfig')(<TA>(config: Config.Config<TA>) =>
-  testEnvConfigProvider.load(config),
-)
+export const loadEnvConfig = <TA>(
+  config: Config.Config<TA>,
+): Effect.Effect<TA, Config.ConfigError> => config.parse(testEnvConfigProvider)
 
 /** Playwright test fixtures passed to each test function. */
 export interface PlaywrightFixtures {
@@ -76,7 +76,7 @@ export interface WithTestCtxParams<ROut, E1> {
 /**
  * Platform layers for filesystem, path, and HTTP client access.
  */
-const DefaultLayers = Layer.mergeAll(NodeContext.layer, FetchHttpClient.layer, TestEnvConfigLive)
+const DefaultLayers = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, TestEnvConfigLive)
 
 /** Default timeout for Playwright tests (2 minutes). */
 const DEFAULT_TIMEOUT_MS = 120_000
@@ -185,14 +185,16 @@ const runWithTestCtx = <ROut, E1, A, E, R>(
   // Use pretty logger in VS Code for better readability (VSCODE_PID is set by VS Code extensions)
   const usePrettyLogger = prettyLoggerOption ?? process.env.VSCODE_PID !== undefined
 
+  // v4: minimum level is a `References.MinimumLogLevel` reference; replacing the
+  // logger is `Logger.layer([...], { mergeWithExisting: false })`.
   const loggerLayer =
     debugLogs === true
       ? usePrettyLogger === true
         ? Layer.mergeAll(
-            Logger.minimumLogLevel(LogLevel.Debug),
-            Logger.replace(Logger.defaultLogger, Logger.prettyLogger()),
+            Layer.succeed(References.MinimumLogLevel, 'Debug'),
+            Logger.layer([Logger.consolePretty()], { mergeWithExisting: false }),
           )
-        : Logger.minimumLogLevel(LogLevel.Debug)
+        : Layer.succeed(References.MinimumLogLevel, 'Debug')
       : Layer.empty
 
   const combinedLayer = Layer.mergeAll(

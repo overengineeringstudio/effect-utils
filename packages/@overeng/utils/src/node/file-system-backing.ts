@@ -1,5 +1,4 @@
-import { FileSystem, Path } from '@effect/platform'
-import { Cause, Data, Duration, Effect, Layer, Option, Schema, Stream } from 'effect'
+import { Cause, Data, Duration, Effect, FileSystem, Layer, Option, Path, Result, Schema, Stream } from 'effect'
 
 import {
   DistributedSemaphoreBacking,
@@ -58,7 +57,11 @@ const getHolderPath = (opts: { lockDir: string; key: string; holderId: string })
 const isNotFoundError = (cause: unknown): boolean => {
   if (typeof cause !== 'object' || cause === null) return false
   const record = cause as Record<string, unknown>
-  if (record._tag === 'SystemError' && record.reason === 'NotFound') return true
+  // v4: platform operations fail with a `PlatformError` wrapper; inspect its reason
+  if (record._tag === 'PlatformError') {
+    const reason = record.reason as Record<string, unknown> | undefined
+    if (typeof reason === 'object' && reason !== null && reason._tag === 'NotFound') return true
+  }
   if (record.code === 'ENOENT') return true
   return false
 }
@@ -74,13 +77,17 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
   const fs = yield* FileSystem.FileSystem
 
   const content = yield* fs.readFileString(filePath).pipe(
-    Effect.catchAllCause((cause) => {
-      const failure = Cause.failureOption(cause).pipe(Option.getOrUndefined)
+    Effect.catchCause((cause) => {
+      // v4: platform operations fail with a `PlatformError` wrapper; inspect its reason
+      const failure = Cause.findErrorOption(cause).pipe(Option.getOrUndefined)
       if (failure !== undefined && isNotFoundError(failure) === true) {
         return Effect.void
       }
 
-      const defect = Cause.dieOption(cause).pipe(Option.getOrUndefined)
+      const defect = Option.map(
+        Result.getSuccess(Cause.findDie(cause)),
+        (die) => die.defect,
+      ).pipe(Option.getOrUndefined)
       if (defect !== undefined && isNotFoundError(defect) === true) {
         return Effect.void
       }
@@ -105,7 +112,7 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
     return undefined
   }
 
-  const parsed = yield* Schema.decodeUnknown(Schema.parseJson(HolderLockSchema))(content).pipe(
+  const parsed = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(HolderLockSchema))(content).pipe(
     Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'parseJson', cause })),
   )
 
@@ -138,7 +145,7 @@ const writeHolderLock = Effect.fn('FileSystemBacking.writeHolderLock')(function*
       Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'makeDirectory', cause })),
     )
 
-  const json = yield* Schema.encode(Schema.parseJson(HolderLockSchema))(content).pipe(
+  const json = yield* Schema.encodeEffect(Schema.fromJsonString(HolderLockSchema))(content).pipe(
     Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'encodeJson', cause })),
   )
 
@@ -376,7 +383,7 @@ export const layer = (
         return fs.watch(keyDir).pipe(
           Stream.filter((event) => event._tag === 'Update' || event._tag === 'Remove'),
           Stream.map((): void => undefined),
-          Stream.catchAll(() => Stream.empty),
+          Stream.catch(() => Stream.empty),
         )
       }),
     )

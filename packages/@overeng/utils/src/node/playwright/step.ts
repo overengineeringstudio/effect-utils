@@ -42,7 +42,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Schema<any>>({
     operation,
     attributes,
   }: {
@@ -78,7 +78,7 @@ export const step: {
   2,
   <A, E, R>(self: Effect.Effect<A, E, R>, name: string): Effect.Effect<A, E, R> =>
     Effect.gen(function* () {
-      const runtime = yield* Effect.runtime<R>()
+      const context = yield* Effect.context<R>()
       const parentSpan = yield* Effect.currentSpan.pipe(Effect.option)
 
       const run =
@@ -95,12 +95,12 @@ export const step: {
         }),
       )
 
-      return yield* Effect.async<A, E>((resume) => {
+      return yield* Effect.callback<A, E>((resume) => {
         void test
           .step(name, async () => {
-            const exit = await Effect.runPromiseExit(traced.pipe(Effect.provide(runtime)))
+            const exit = await Effect.runPromiseExit(traced.pipe(Effect.provide(context)))
             resume(
-              Exit.matchEffect(exit, {
+              Exit.match(exit, {
                 onFailure: (cause) => Effect.failCause(cause),
                 onSuccess: (value) => Effect.succeed(value),
               }),

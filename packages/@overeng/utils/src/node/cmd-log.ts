@@ -38,7 +38,7 @@ export const prepareCmdLogging: (
     const archivedBase = `${path.parse(logFileName).name}-${safeIso}.log`
     const archivedLog = path.join(archiveDir, archivedBase)
     yield* Effect.try(() => fs.renameSync(currentLogPath, archivedLog)).pipe(
-      Effect.catchAll(() =>
+      Effect.catch(() =>
         Effect.try(() => {
           fs.copyFileSync(currentLogPath, archivedLog)
           fs.truncateSync(currentLogPath, 0)

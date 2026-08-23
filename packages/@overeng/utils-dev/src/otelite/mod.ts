@@ -3,12 +3,12 @@
  * `otelite` CLI (the Rust local-OTLP-capture binary in this repo).
  *
  * The CLI's machine-readable JSON output is the single source of truth: this
- * package shells out via `@effect/platform` `Command`, decodes the contract
- * with `Schema`, and exposes it as an `Effect.Service` with tagged errors on
+ * package shells out via the Effect `ChildProcessSpawner`, decodes the contract
+ * with `Schema`, and exposes it as a `Context.Service` with tagged errors on
  * the error channel. It never reimplements capture/inspect logic.
  *
- * Requires a `CommandExecutor` + `FileSystem` in context (e.g.
- * `NodeContext.layer` from `@effect/platform-node`) and the `otelite` binary on
+ * Requires a `ChildProcessSpawner` + `FileSystem` in context (e.g.
+ * `NodeServices.layer` from `@effect/platform-node`) and the `otelite` binary on
  * `PATH`, or an absolute binary path in `OTELITE_BIN`.
  */
 export { Otelite } from './Otelite.ts'

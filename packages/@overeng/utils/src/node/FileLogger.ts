@@ -2,18 +2,7 @@ import * as fs from 'node:fs'
 import path from 'node:path'
 import util from 'node:util'
 
-import {
-  Cause,
-  Effect,
-  FiberId,
-  HashMap,
-  Inspectable,
-  Layer,
-  List,
-  Logger,
-  type LogLevel,
-  LogSpan,
-} from 'effect'
+import { Cause, Effect, Inspectable, Logger, References, Redactable, type LogLevel } from 'effect'
 import * as EffectArray from 'effect/Array'
 
 /**
@@ -54,7 +43,7 @@ export interface MakeFileLoggerOptions {
 
 /** Creates a Layer that replaces the default logger with a pretty-printed file logger */
 export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLoggerOptions) =>
-  Layer.unwrapScoped(
+  Logger.layer([
     Effect.gen(function* () {
       yield* Effect.sync(() => fs.mkdirSync(path.dirname(logFilePath), { recursive: true }))
 
@@ -63,17 +52,14 @@ export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLogg
         (fd) => Effect.sync(() => fs.closeSync(fd)),
       )
 
-      return Logger.replace(
-        Logger.defaultLogger,
-        prettyLoggerTty({
-          colors: colors ?? false,
-          stderr: false,
-          formatDate: (date) => `${defaultDateFormat(date)} ${threadName ?? ''}`,
-          onLog: (str) => fs.writeSync(logFile, str),
-        }),
-      )
+      return prettyLoggerTty({
+        colors: colors ?? false,
+        stderr: false,
+        formatDate: (date) => `${defaultDateFormat(date)} ${threadName ?? ''}`,
+        onLog: (str) => fs.writeSync(logFile, str),
+      })
     }),
-  )
+  ])
 
 const withColor = (text: string, ...colors: readonly string[]) => {
   let out = ''
@@ -97,16 +83,22 @@ const colors = {
   bgBrightRed: '101',
 } as const
 
-const logLevelColors: Record<LogLevel.LogLevel['_tag'], readonly string[]> = {
-  None: [],
+const logLevelColors: Record<LogLevel.LogLevel, readonly string[]> = {
   All: [],
+  None: [],
   Trace: [colors.gray],
   Debug: [colors.blue],
   Info: [colors.green],
-  Warning: [colors.yellow],
+  Warn: [colors.yellow],
   Error: [colors.red],
   Fatal: [colors.bgBrightRed, colors.black],
 }
+
+/** v4 Cause has no isEmpty; emptiness means no fail, die, or interrupt reasons */
+const isNonEmptyCause = (cause: Cause.Cause<unknown>): boolean =>
+  Cause.hasFails(cause) === true ||
+  Cause.hasDies(cause) === true ||
+  Cause.hasInterrupts(cause) === true
 
 /** Formats date as HH:MM:SS.mmm (24-hour local time with milliseconds) */
 export const defaultDateFormat = (date: Date): string =>
@@ -124,7 +116,7 @@ export const structuredMessage = (input: unknown): unknown => {
       return String(input)
     }
     default: {
-      return Inspectable.toJSON(input)
+      return Inspectable.toJson(input)
     }
   }
 }
@@ -149,6 +141,23 @@ const consoleLogToString = (...inputs: any[]) => {
 }
 
 /**
+ * Explicit log fields used by the pretty formatter.
+ *
+ * v4 loggers only receive `{ message, logLevel, cause, fiber, date }`; spans and
+ * annotations live on fiber references. This shape lets non-Effect callers (e.g.
+ * `cmd.ts` subprocess mirroring) format entries without fabricating a Fiber.
+ */
+export interface PrettyLogEntry {
+  readonly date: Date
+  readonly logLevel: LogLevel.LogLevel
+  readonly message: ReadonlyArray<unknown>
+  readonly cause: Cause.Cause<unknown>
+  readonly fiberId?: number | undefined
+  readonly spans?: ReadonlyArray<readonly [label: string, timestamp: number]> | undefined
+  readonly annotations?: Readonly<Record<string, unknown>> | undefined
+}
+
+/**
  * Creates a pretty-printing logger suitable for TTY or file output.
  *
  * This is a lower-level building block used by `makeFileLogger`. Use this directly
@@ -166,85 +175,107 @@ export const prettyLoggerTty = (options: {
   readonly onLog?: (str: string) => void
 }) => {
   const color = options.colors === true ? withColor : withColorNoop
-  return Logger.make<unknown, string>(
-    ({ annotations, cause, date, fiberId, logLevel, message: message_, spans }) => {
-      let str = ''
+  return Logger.make<unknown, string>(({ cause, date, fiber, logLevel, message }) =>
+    formatPrettyEntry(options)({
+      cause,
+      date,
+      fiberId: fiber.id,
+      logLevel,
+      message: EffectArray.ensure(message),
+      spans: fiber.getRef(References.CurrentLogSpans),
+      annotations: fiber.getRef(References.CurrentLogAnnotations),
+    }),
+  )
+}
 
-      const log = (...inputs: any[]) => {
-        str += `${consoleLogToString(...inputs)}\n`
-        options.onLog?.(str)
+/**
+ * Formats a single log entry with explicit fields, without requiring an Effect Logger.
+ *
+ * Use this when you need the pretty format for entries that did not originate from
+ * `Effect.log` (e.g. mirrored subprocess output).
+ */
+export const formatPrettyEntry =
+  (options: {
+    readonly colors: boolean
+    readonly formatDate: (date: Date) => string
+    readonly onLog?: (str: string) => void
+  }) =>
+  (entry: PrettyLogEntry): string => {
+    const color = options.colors === true ? withColor : withColorNoop
+    const { annotations, cause, date, fiberId, logLevel, message, spans } = entry
+
+    let str = ''
+
+    const log = (...inputs: any[]) => {
+      str += `${consoleLogToString(...inputs)}\n`
+      options.onLog?.(str)
+    }
+
+    const logIndented = (...inputs: any[]) => {
+      str += `${consoleLogToString(...inputs).replace(/^/gm, '  ')}\n`
+      options.onLog?.(str)
+    }
+
+    let firstLine =
+      color(`[${options.formatDate(date)}]`, colors.white) +
+      ` ${color(logLevel, ...logLevelColors[logLevel])}` +
+      ` (#${fiberId ?? 0})`
+
+    if (spans !== undefined && spans.length > 0) {
+      const now = date.getTime()
+      for (const [label, timestamp] of spans) {
+        firstLine += ` ${label} (${now - timestamp}ms)`
       }
+    }
 
-      const logIndented = (...inputs: any[]) => {
-        str += `${consoleLogToString(...inputs).replace(/^/gm, '  ')}\n`
-        options.onLog?.(str)
+    firstLine += ':'
+    let messageIndex = 0
+    if (message.length > 0) {
+      const firstMaybeString = structuredMessage(message[0])
+      if (typeof firstMaybeString === 'string') {
+        firstLine += ` ${color(firstMaybeString, colors.bold, colors.cyan)}`
+        messageIndex++
       }
+    }
 
-      const message = EffectArray.ensure(message_)
+    log(firstLine)
 
-      let firstLine =
-        color(`[${options.formatDate(date)}]`, colors.white) +
-        ` ${color(logLevel.label, ...logLevelColors[logLevel._tag])}` +
-        ` (${FiberId.threadName(fiberId)})`
+    if (isNonEmptyCause(cause) === true) {
+      logIndented(Cause.pretty(cause))
+    }
 
-      if (List.isCons(spans) === true) {
-        const now = date.getTime()
-        const render = LogSpan.render(now)
-        for (const span of spans) {
-          firstLine += ` ${render(span)}`
+    if (messageIndex < message.length) {
+      for (; messageIndex < message.length; messageIndex++) {
+        const msg = message[messageIndex]
+        if (typeof msg === 'object' && msg !== null) {
+          logIndented(
+            util.inspect(structuredMessage(msg), {
+              depth: 3,
+              colors: false,
+              compact: false,
+              breakLength: 120,
+            }),
+          )
+        } else {
+          logIndented(Redactable.redact(msg))
         }
       }
+    }
 
-      firstLine += ':'
-      let messageIndex = 0
-      if (message.length > 0) {
-        const firstMaybeString = structuredMessage(message[0])
-        if (typeof firstMaybeString === 'string') {
-          firstLine += ` ${color(firstMaybeString, colors.bold, colors.cyan)}`
-          messageIndex++
-        }
-      }
-
-      log(firstLine)
-
-      if (Cause.isEmpty(cause) === false) {
-        logIndented(Cause.pretty(cause, { renderErrorCause: true }))
-      }
-
-      if (messageIndex < message.length) {
-        for (; messageIndex < message.length; messageIndex++) {
-          const msg = message[messageIndex]
-          if (typeof msg === 'object' && msg !== null) {
-            logIndented(
-              util.inspect(structuredMessage(msg), {
+    if (annotations !== undefined && Object.keys(annotations).length > 0) {
+      for (const [key, value] of Object.entries(annotations)) {
+        const formattedValue =
+          typeof value === 'object' && value !== null
+            ? util.inspect(structuredMessage(value), {
                 depth: 3,
                 colors: false,
                 compact: false,
                 breakLength: 120,
-              }),
-            )
-          } else {
-            logIndented(Inspectable.redact(msg))
-          }
-        }
+              })
+            : Redactable.redact(value)
+        logIndented(color(`${key}:`, colors.bold, colors.white), formattedValue)
       }
+    }
 
-      if (HashMap.size(annotations) > 0) {
-        for (const [key, value] of annotations) {
-          const formattedValue =
-            typeof value === 'object' && value !== null
-              ? util.inspect(structuredMessage(value), {
-                  depth: 3,
-                  colors: false,
-                  compact: false,
-                  breakLength: 120,
-                })
-              : Inspectable.redact(value)
-          logIndented(color(`${key}:`, colors.bold, colors.white), formattedValue)
-        }
-      }
-
-      return str
-    },
-  )
-}
+    return str
+  }

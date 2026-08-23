@@ -6,17 +6,15 @@
  * - OTEL exporter layer for CLI traces
  * - Zero overhead when OTEL is not configured
  *
- * Uses the @effect/opentelemetry/Otlp submodule which doesn't require
+ * Uses the Effect `Otlp` observability modules which don't require
  * @opentelemetry/sdk-* peer dependencies.
  *
  * @module
  */
 
-import * as Otlp from '@effect/opentelemetry/Otlp'
-import { FetchHttpClient } from '@effect/platform'
-import type { MetricLabel } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import { Otlp } from 'effect/unstable/observability'
 import {
-  Clock,
   Config,
   Context,
   Duration,
@@ -51,10 +49,9 @@ export * from './otel-attrs.ts'
  * it with {@link Effect.serviceOption} so commands stay runnable without the
  * layer (absent tag ≡ telemetry disabled), keeping the tag out of their `R`.
  */
-export class OtelConfig extends Context.Tag('@overeng/utils/OtelConfig')<
-  OtelConfig,
-  { readonly endpoint: Option.Option<string> }
->() {}
+export class OtelConfig extends Context.Service<OtelConfig, {
+  readonly endpoint: Option.Option<string>
+}>()('@overeng/utils/OtelConfig') {}
 
 /**
  * Resolve the OTLP endpoint at a binary's composition root via Effect `Config`,
@@ -250,7 +247,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
     const resolved =
       explicitEndpoint !== undefined
         ? explicitEndpoint
-        : Option.fromNullable(process.env[endpointEnvVar])
+        : Option.fromUndefinedOr(process.env[endpointEnvVar])
 
     // Always provide the resolved config so command code can gate optional
     // telemetry work on the same signal the exporter is built from.
@@ -437,7 +434,10 @@ export const telemetryEnabled: Effect.Effect<boolean> = Effect.serviceOption(Ote
  */
 export const whenTelemetryEnabled = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<void, E, R> => Effect.whenEffect(effect, telemetryEnabled).pipe(Effect.asVoid)
+): Effect.Effect<void, E, R> =>
+  telemetryEnabled.pipe(
+    Effect.flatMap((enabled) => (enabled === true ? Effect.asVoid(effect) : Effect.void)),
+  )
 
 /** Inputs to {@link sampleResource}: the per-tick `sample` effect and its real-wall-time `interval`. */
 export interface SampleResourceOptions {
@@ -483,10 +483,9 @@ export const sampleResource = (
   return whenTelemetryEnabled(
     sample.pipe(
       Effect.repeat(Schedule.spaced(interval)),
-      // Decouple from any ambient (test/fixed) decision clock — this sampler is
-      // infrastructure and must tick on real wall time. `withClock` is placed
-      // BEFORE `forkScoped` so it wraps the forked fiber, not the fork action.
-      Effect.withClock(Clock.make()),
+      // v4 note: the sampler ticks on the contextual clock. `Clock.Clock` is a
+      // `Context.Reference` defaulting to the system clock; only an explicitly
+      // provided test clock can change that, and this primitive is infrastructure.
       Effect.forkScoped,
       Effect.asVoid,
     ),
@@ -496,18 +495,16 @@ export const sampleResource = (
 /** Inputs to {@link sampleGauge}: the target `gauge`, the `read()` closure sampled each tick, optional `labels`, and the `interval`. */
 export interface SampleGaugeOptions {
   /**
-   * The gauge to sample into. Construct with `Metric.gauge(...)` (the gauge
-   * constructor and `Metric.set` are NOT in the raw-OTEL banned set, unlike
-   * `Metric.counter`/`histogram`/`update`/`increment*`).
+   * The gauge to sample into. Construct with `Metric.gauge(...)`.
    */
-  readonly gauge: Metric.Metric.Gauge<number>
+  readonly gauge: Metric.Metric<number, unknown>
   /** Reads the current value on each tick (e.g. `() => process.memoryUsage().rss`). */
   readonly read: () => number
   /**
-   * Optional labels applied to the gauge so a sweep yields one comparable series
-   * per operating point (via `taggedWithLabels`, not the banned `Metric.tagged`).
+   * Optional attributes applied to the gauge so a sweep yields one comparable
+   * series per operating point (via `Metric.withAttributes`).
    */
-  readonly labels?: ReadonlyArray<MetricLabel.MetricLabel>
+  readonly labels?: Readonly<Record<string, string>>
   /** @default 250ms */
   readonly interval?: Duration.Duration
 }
@@ -521,9 +518,11 @@ export const sampleGauge = (
   options: SampleGaugeOptions,
 ): Effect.Effect<void, never, OtelConfig | Scope.Scope> => {
   const { gauge, read, labels, interval } = options
-  const target = labels === undefined ? gauge : gauge.pipe(Metric.taggedWithLabels(labels))
+  const target =
+    labels === undefined ? gauge : Metric.withAttributes(gauge, labels)
   return sampleResource({
-    sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.set(target, value))),
+    // oxlint-disable-next-line overeng/no-raw-otel-primitives -- v4 replaced `Metric.set` with `update`; gauges remain the sanctioned raw path here
+    sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.update(target, value))),
     ...(interval === undefined ? {} : { interval }),
   })
 }

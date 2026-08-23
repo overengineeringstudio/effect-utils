@@ -9,8 +9,8 @@
  * layer-scoped program never silently drops its last span batch.
  */
 
-import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer, Scope } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, Exit, Layer, Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { Otelite } from '../otelite/mod.ts'
@@ -49,12 +49,12 @@ describe('makeOtelVitestLayer — flush on shutdown', () => {
         .pipe(Effect.orElseSucceed(() => []))
 
       // Close the layer scope → the exporter's flush finalizer runs here.
-      yield* Scope.close(layerScope, Effect.void as never)
+      yield* Scope.close(layerScope, Exit.succeed(undefined))
 
       const post = yield* cap.inspect({ signal: 'traces', service: SERVICE, name: SPAN })
 
       return { pre: pre.length, post: post.length }
-    }).pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer)))
+    }).pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Otelite.layer, NodeServices.layer)))
 
     const { pre, post } = await Effect.runPromise(program)
     expect(pre).toBe(0)
