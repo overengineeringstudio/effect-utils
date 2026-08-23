@@ -121,6 +121,15 @@ All notable changes to this project will be documented in this file.
   explicit `_BIN` bindings exported from Nix store paths instead of ambient
   `PATH` lookup, and retain Buck stderr evidence when the foundation
   platform-mismatch audit fails so the rejection reason stays diagnosable.
+- **Buck2 platform-mismatch proof**: run the local-only host rejection gate as a
+  disposable-probe script instead of against the shared repository tree. The
+  probe builds a throwaway Buck project outside the repository (an ancestor
+  `.buckconfig` otherwise claims the project root), projects simulated
+  aarch64-linux executor capabilities into it from the exact Nix stage0
+  realizations, and asserts that analyzing a package target declared
+  `x86_64-linux` under `--fake-arch aarch64` fails with the exact package_task
+  mismatch diagnostic before any action executes, retaining stderr evidence on
+  any other outcome.
 
 - **devenv observability verification**: enable native Devenv task activities
   during trace capture while preserving task stderr and a diagnostic copy.
