@@ -2,6 +2,7 @@
   "contract": "fixture/pnpm-install-contract",
   "workspaceManifestContract": {
     "sourceInputPaths": [
+      "repos/effect-utils/packages/@overeng/genie",
       "repos/effect-utils/packages/@overeng/utils"
     ],
     "sourceInputStagePath": ".devenv/pnpm-source-inputs/current"

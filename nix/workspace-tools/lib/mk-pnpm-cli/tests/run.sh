@@ -305,11 +305,35 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-workspace-source-input-file-links"
 
+  echo "Check: prepared workspace projects staged source locators onto the logical closure"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-workspace-staged-source-projection"
+
+  echo "Check: pnpmfile checksum sanitization preserves present root and nested authority"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-workspace-pnpmfile-checksum"
+
+  echo "Check: workspace policy locator manifests validate identity and deduplicate"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-workspace-policy-locator-validation"
+
   echo "Check: downstream staged pnpm-workspace.yaml strips live-worktree pnpm settings"
   local deps_src
   deps_src="$(nix build --no-link --no-write-lock-file --print-out-paths \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#packages.$SYSTEM.mk-pnpm-cli-pure-eval-fixture.passthru.depsSrcByInstallRoot.root")"
+  if grep -q '^pnpmfileChecksum:' "$deps_src/pnpm-lock.yaml"; then
+    echo "error: staged lockfile retained pnpmfileChecksum without a staged .pnpmfile.cjs" >&2
+    exit 1
+  fi
+  test "$(rg '^packageExtensionsChecksum:' "$deps_src/pnpm-lock.yaml")" = \
+    'packageExtensionsChecksum: sha256-fixture-package-extensions-checksum'
+  test -f "$deps_src/repos/effect-utils/packages/@overeng/genie/package.json"
+  test "$(jq -r .name "$deps_src/repos/effect-utils/packages/@overeng/genie/package.json")" = "@overeng/genie"
+  test ! -e "$deps_src/repos/effect-utils/packages/@overeng/genie/src"
   for key in \
     enableGlobalVirtualStore \
     globalVirtualStoreDir \

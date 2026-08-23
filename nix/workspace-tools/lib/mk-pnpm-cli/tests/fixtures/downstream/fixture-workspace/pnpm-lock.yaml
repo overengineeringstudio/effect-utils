@@ -1,5 +1,8 @@
 lockfileVersion: '9.0'
 
+pnpmfileChecksum: sha256-fixture-stale-checksum
+packageExtensionsChecksum: sha256-fixture-package-extensions-checksum
+
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false

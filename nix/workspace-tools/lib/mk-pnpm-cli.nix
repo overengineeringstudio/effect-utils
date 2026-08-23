@@ -568,7 +568,6 @@ let
       '') declaredSourceInputPathsValidated
     )
   );
-
   # Read workspace closure dirs from the generated package.json ($genie.workspaceClosureDirs).
   # Pre-computed by genie at generation time, avoiding import-from-derivation (IFD).
   # Future alternative: NixOS/nix#15380 (builtins.wasm) could compute this natively at eval time.
@@ -792,6 +791,52 @@ let
     workspaceSuffixLines rootPnpmWorkspaceYaml
   );
 
+  workspacePolicyFileLocators =
+    let
+      normalizeLine = lib.replaceStrings [ ".devenv/pnpm-source-inputs/current/" ] [ "" ];
+      locatorFromLine =
+        line:
+        let
+          matched = builtins.match "[[:space:]]*'?([^']+)'?:[[:space:]]*'?file:((\.\./)*)(repos/[A-Za-z0-9@._/+~-]+).*" (
+            normalizeLine line
+          );
+        in
+        if matched == null then
+          null
+        else
+          {
+            expectedName = lib.trim (builtins.elemAt matched 0);
+            dir = builtins.elemAt matched 3;
+          };
+    in
+    builtins.filter (locator: locator != null) (
+      map locatorFromLine (lib.splitString "\n" rootPnpmWorkspaceYaml)
+    );
+  workspacePolicyFileLocatorDirs = lib.unique (
+    map (
+      locator:
+      let
+        manifestPath = resolveEvalSourceFor "${locator.dir}/package.json";
+        manifest =
+          if !builtins.pathExists manifestPath then
+            throw "mk-pnpm-cli: workspace policy file locator target is missing: ${locator.dir}"
+          else
+            builtins.fromJSON (builtins.readFile manifestPath);
+      in
+      if (manifest.name or null) != locator.expectedName then
+        throw "mk-pnpm-cli: workspace policy file locator ${locator.dir} expected ${locator.expectedName}, found ${
+          toString (manifest.name or null)
+        }"
+      else
+        locator.dir
+    ) workspacePolicyFileLocators
+  );
+  workspacePolicyOnlyFileLocatorDirs = builtins.filter (
+    dir:
+    !(lib.elem dir workspaceClosureDirs)
+    && (!hasDeclaredSourceInputPaths || lib.elem dir declaredSourceInputPaths)
+  ) workspacePolicyFileLocatorDirs;
+
   # These are the files that define dependency identity for the aggregate root.
   # Keep this list narrow so source-only edits do not invalidate prepared deps,
   # but broad enough that any manifest / workspace policy drift still does.
@@ -801,6 +846,7 @@ let
   ];
   optionalRootWorkspaceFiles = [
     ".npmrc"
+    ".pnpmfile.cjs"
     "pnpm-install-contract.json"
     "tsconfig.base.json"
   ];
@@ -1045,6 +1091,24 @@ let
       cp ${workspaceYamlFile} "$out/${targetPath}"
     '';
 
+  sanitizeLockfileConfigScript = pkgs.writeShellScript "sanitize-pnpm-lockfile-config" ''
+    set -euo pipefail
+    staged_root="$1"
+    install_dir="$2"
+    if [ "$install_dir" = "." ]; then
+      install_root="$staged_root"
+    else
+      install_root="$staged_root/$install_dir"
+    fi
+    if [ ! -f "$install_root/.pnpmfile.cjs" ]; then
+      ${pkgs.perl}/bin/perl -0pi -e 's/^pnpmfileChecksum:[^\n]*\n//m' "$install_root/pnpm-lock.yaml"
+    fi
+  '';
+
+  sanitizeLockfileConfigCmd = installDir: ''
+    ${sanitizeLockfileConfigScript} "$out" ${lib.escapeShellArg installDir}
+  '';
+
   /**
     Parse patch file paths from pnpm-workspace.yaml (pnpm 11+ format).
     In pnpm 11, patchedDependencies are declared in pnpm-workspace.yaml as:
@@ -1173,6 +1237,9 @@ let
     + builtins.concatStringsSep "\n" (
       map (dir: copyFileCmd "${dir}/package.json") aggregateOwnedWorkspaceClosureDirs
     )
+    + builtins.concatStringsSep "\n" (
+      map (dir: copyFileCmd "${dir}/package.json") workspacePolicyOnlyFileLocatorDirs
+    )
     + copyResolvedPatchFilesCmd {
       sourcePrefix = "";
       workspaceYamlContent = rootPnpmWorkspaceYaml;
@@ -1180,6 +1247,7 @@ let
     }
     + builtins.concatStringsSep "\n" (map stageExternalInstallRootManifestOnlyCmd externalInstallRoots)
     + stageRootSourceInputManifestAliasesCmd
+    + sanitizeLockfileConfigCmd "."
   );
 
   # Each external install root gets its own manifest-only derivation and its
@@ -1206,6 +1274,7 @@ let
           cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-lock.yaml"))} "$out/.root-patch-authority/pnpm-lock.yaml"
           cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-workspace.yaml"))} "$out/.root-patch-authority/pnpm-workspace.yaml"
         ''
+        + sanitizeLockfileConfigCmd root.installDir
       );
       lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
       depsBuild = pnpmDepsHelper.mkDeps {
@@ -1536,6 +1605,9 @@ pkgs.stdenv.mkDerivation {
       dependencyMaterializationProfiles
       fodHashRepairTargets
       inheritRootPatchedDependenciesScript
+      sanitizeLockfileConfigScript
+      workspacePolicyFileLocatorDirs
+      workspacePolicyOnlyFileLocatorDirs
       ;
     installRoots = map (root: {
       inherit (root) attrName installDir lockfilePath;

@@ -207,6 +207,38 @@ mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$w
 echo "Preflight: pnpmPkg is exec-only guard backing, not a profile package"
 assert_eq 1 "$(eval_pnpm_package_count)" "pnpm module packages should contain the pnpm guard only"
 
+echo "Preflight: Nix-built pnpm wrapper closes over source-input staging modules"
+wrapper_closure_expr="$tmpdir/pnpm-wrapper-closure.nix"
+cat > "$wrapper_closure_expr" <<'EOF'
+let
+  root = /. + builtins.getEnv "EFFECT_UTILS_TEST_ROOT";
+  flake = builtins.getFlake (toString root);
+  pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+  module = (import (root + "/nix/devenv-modules/tasks/shared/pnpm.nix") {
+    packages = [ ];
+    sourceInputPaths = [ "repos/demo" ];
+    pnpmPkg = pkgs.writeShellScriptBin "pnpm" "exit 0";
+  }) {
+    inherit pkgs;
+    lib = pkgs.lib;
+    config = { devenv.root = "/build/workspace"; };
+  };
+  wrapper = pkgs.writeShellScript "pnpm-install-wrapper" module.tasks."pnpm:install".exec;
+in
+pkgs.runCommand "pnpm-source-input-staging-wrapper-closure" {
+  nativeBuildInputs = [ pkgs.nodejs pkgs.gnugrep ];
+} ''
+  workspace="$PWD/workspace"
+  mkdir -p "$workspace/repos/demo"
+  printf '%s\n' '{"name":"demo"}' > "$workspace/repos/demo/package.json"
+  stager=$(grep -oE "/nix/store/[^'[:space:]]*stage-pnpm-source-inputs.mjs" ${wrapper} | head -n 1)
+  node "$stager" publish "$workspace" .devenv/pnpm-source-inputs repos/demo
+  test -f "$workspace/.devenv/pnpm-source-inputs/current/repos/demo/package.json"
+  touch "$out"
+''
+EOF
+EFFECT_UTILS_TEST_ROOT="$ROOT" nix build --no-link --impure --file "$wrapper_closure_expr"
+
 cat > "$workspace/package.json" <<'EOF'
 {"name":"smoke-workspace","private":true}
 EOF

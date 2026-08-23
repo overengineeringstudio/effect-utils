@@ -89,6 +89,30 @@
           };
           smokeTestArgs = [ ];
         };
+        manifestMismatchEvaluation =
+          let
+            mismatchFixture = mkPnpmCli {
+              name = "mk-pnpm-cli-manifest-mismatch-fixture";
+              binaryName = "mk-pnpm-cli-manifest-mismatch-fixture";
+              entry = "app/src/mod.ts";
+              packageDir = "app";
+              workspaceRoot = ./fixture-workspace;
+              workspaceSources = {
+                "repos/effect-utils" = effectUtilsSource;
+                "repos/effect-utils/packages/@overeng/genie" = effectUtilsSource + "/packages/@overeng/utils";
+              };
+              depsBuilds = {
+                "." = {
+                  hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+                };
+                "repos/effect-utils" = {
+                  hash = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+                };
+              };
+              smokeTestArgs = [ ];
+            };
+          in
+          builtins.tryEval (builtins.deepSeq mismatchFixture.passthru.workspacePolicyFileLocatorDirs true);
         # Two consumers that differ ONLY in `name` but share the same external
         # install-root profile. Their prepared deps for that shared root must
         # collapse to one in-store derivation (profileKey dedup), while their
@@ -417,6 +441,125 @@
               test -f "$package_target/src/example.js"
 
               touch "$out"
+            '';
+        checks.prepared-workspace-staged-source-projection =
+          pkgs.runCommand "mk-pnpm-cli-prepared-workspace-staged-source-projection"
+            {
+              nativeBuildInputs = [ pkgs.nodejs ];
+            }
+            ''
+              fixture="$PWD/fixture"
+              mkdir -p "$fixture/repos/effect-utils/packages/@overeng/utils"
+              cat > "$fixture/pnpm-workspace.yaml" <<'YAML'
+              overrides:
+                '@overeng/utils': 'file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils'
+              YAML
+              cat > "$fixture/repos/effect-utils/packages/@overeng/utils/package.json" <<'JSON'
+              {"name":"@overeng/utils"}
+              JSON
+
+              ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.projectStagedSourceInputsScript} "$fixture"
+
+              projection="$fixture/.devenv/pnpm-source-inputs/current"
+              test -L "$projection"
+              test -f "$projection/repos/effect-utils/packages/@overeng/utils/package.json"
+
+              # The lock/workspace bytes remain untouched, preserving pnpm's
+              # packageExtensionsChecksum authority across the projection.
+              grep -qF 'file:.devenv/pnpm-source-inputs/current/repos/effect-utils' \
+                "$fixture/pnpm-workspace.yaml"
+
+              ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.purgePreparedWorkspaceStateScript} "$fixture"
+              test ! -e "$fixture/.devenv"
+
+              alias_manifest="$fixture/.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils/package.json"
+              mkdir -p "$(dirname "$alias_manifest")"
+              ln -s "$(realpath --relative-to="$(dirname "$alias_manifest")" "$fixture/repos/effect-utils/packages/@overeng/utils/package.json")" \
+                "$alias_manifest"
+              ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.projectStagedSourceInputsScript} "$fixture"
+              test ! -L "$fixture/.devenv/pnpm-source-inputs/current"
+              test "$(realpath "$alias_manifest")" = \
+                "$(realpath "$fixture/repos/effect-utils/packages/@overeng/utils/package.json")"
+
+              wrong="$PWD/wrong-existing-alias"
+              cp -R "$fixture" "$wrong"
+              mkdir -p "$wrong/repos/wrong"
+              printf '%s\n' '{"name":"wrong"}' > "$wrong/repos/wrong/package.json"
+              rm "$wrong/.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils/package.json"
+              ln -s "$(realpath --relative-to="$wrong/.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils" "$wrong/repos/wrong/package.json")" \
+                "$wrong/.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils/package.json"
+              if ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.projectStagedSourceInputsScript} "$wrong" 2> "$wrong.log"; then
+                echo "mismatched existing staged projection was accepted" >&2
+                exit 1
+              fi
+              grep -q 'does not select its logical manifest' "$wrong.log"
+
+              missing="$PWD/missing"
+              mkdir -p "$missing"
+              cp "$fixture/pnpm-workspace.yaml" "$missing/pnpm-workspace.yaml"
+              if ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.projectStagedSourceInputsScript} "$missing" 2>/dev/null; then
+                echo "missing staged locator target was accepted" >&2
+                exit 1
+              fi
+              test ! -e "$missing/.devenv"
+
+              escaped="$PWD/escaped"
+              mkdir -p "$escaped"
+              cat > "$escaped/pnpm-workspace.yaml" <<'YAML'
+              overrides:
+                bad: 'file:.devenv/pnpm-source-inputs/current/../outside'
+              YAML
+              if ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.projectStagedSourceInputsScript} "$escaped" 2>/dev/null; then
+                echo "escaping staged locator target was accepted" >&2
+                exit 1
+              fi
+              test ! -e "$escaped/.devenv"
+              touch "$out"
+            '';
+        checks.prepared-workspace-pnpmfile-checksum =
+          pkgs.runCommand "mk-pnpm-cli-prepared-workspace-pnpmfile-checksum" { }
+            ''
+              fixture="$PWD/fixture"
+              mkdir -p "$fixture/repos/nested"
+              for install_root in "$fixture" "$fixture/repos/nested"; do
+                cat > "$install_root/pnpm-lock.yaml" <<'YAML'
+              lockfileVersion: '9.0'
+              packageExtensionsChecksum: sha256-package-extensions-byte-identity
+              pnpmfileChecksum: sha256-pnpmfile-byte-identity
+              YAML
+                : > "$install_root/.pnpmfile.cjs"
+                cp "$install_root/pnpm-lock.yaml" "$install_root/pnpm-lock.yaml.before"
+              done
+
+              ${pureEvalFixture.passthru.sanitizeLockfileConfigScript} "$fixture" .
+              ${pureEvalFixture.passthru.sanitizeLockfileConfigScript} "$fixture" repos/nested
+              cmp "$fixture/pnpm-lock.yaml.before" "$fixture/pnpm-lock.yaml"
+              cmp "$fixture/repos/nested/pnpm-lock.yaml.before" "$fixture/repos/nested/pnpm-lock.yaml"
+
+              rm "$fixture/repos/nested/.pnpmfile.cjs"
+              ${pureEvalFixture.passthru.sanitizeLockfileConfigScript} "$fixture" repos/nested
+              grep -q '^packageExtensionsChecksum: sha256-package-extensions-byte-identity$' \
+                "$fixture/repos/nested/pnpm-lock.yaml"
+              if grep -q '^pnpmfileChecksum:' "$fixture/repos/nested/pnpm-lock.yaml"; then
+                echo "nested lock retained pnpmfileChecksum without pnpmfile" >&2
+                exit 1
+              fi
+              touch "$out"
+            '';
+        checks.prepared-workspace-policy-locator-validation =
+          pkgs.runCommand "mk-pnpm-cli-prepared-workspace-policy-locator-validation" { }
+            ''
+              if [ ${lib.escapeShellArg (builtins.toJSON manifestMismatchEvaluation.success)} != false ]; then
+                  echo "workspace policy locator manifest-name mismatch was accepted" >&2
+                  exit 1
+                fi
+                actual='${builtins.toJSON pureEvalFixture.passthru.workspacePolicyFileLocatorDirs}'
+                expected='["repos/effect-utils/packages/@overeng/utils","repos/effect-utils/packages/@overeng/genie"]'
+                if [ "$actual" != "$expected" ]; then
+                  echo "workspace policy locator targets were not deduplicated: $actual" >&2
+                  exit 1
+                fi
+                touch "$out"
             '';
       }
     );

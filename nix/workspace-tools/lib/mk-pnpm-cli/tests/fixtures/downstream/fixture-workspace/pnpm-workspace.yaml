@@ -3,6 +3,12 @@ packages:
 
 overrides:
   '@overeng/utils': file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils
+  '@overeng/genie': file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/genie
+
+packageExtensions:
+  fixture@1:
+    dependencies:
+      '@overeng/genie': file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/genie
 
 packageExtensions:
   fixture-package@1.0.0:

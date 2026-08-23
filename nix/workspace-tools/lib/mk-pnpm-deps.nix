@@ -480,6 +480,101 @@ let
 
     rewriteBinScripts(workspaceTarget);
   '';
+
+  projectStagedSourceInputsScript = pkgs.writeShellScript "project-staged-source-inputs" ''
+    set -euo pipefail
+
+    workspace_root="''${1:-.}"
+    staged_prefix=".devenv/pnpm-source-inputs/current/"
+
+    if ! ${pkgs.gnugrep}/bin/grep -RqsF \
+      --include=pnpm-lock.yaml \
+      --include=pnpm-workspace.yaml \
+      --include=package.json \
+      "$staged_prefix" \
+      "$workspace_root"; then
+      exit 0
+    fi
+
+    ${pnpmNodejs}/bin/node - "$workspace_root" <<'JS'
+    const fs = require("fs");
+    const path = require("path");
+
+    const workspaceRoot = path.resolve(process.argv[2]);
+    const authorityFiles = ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"];
+    const stagedLocator = /\.devenv\/pnpm-source-inputs\/current\/([^\s'"),]+?)(?=\([^/]|[\s'"),]|$)/g;
+    const pending = [workspaceRoot];
+    const targets = new Set();
+
+    while (pending.length > 0) {
+      const directory = pending.pop();
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        if (entry.name === ".devenv" || entry.name === "node_modules") continue;
+        const entryPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          pending.push(entryPath);
+        } else if (entry.isFile() && authorityFiles.includes(entry.name)) {
+          const source = fs.readFileSync(entryPath, "utf8");
+          for (const match of source.matchAll(stagedLocator)) targets.add(match[1]);
+        }
+      }
+    }
+
+    for (const target of targets) {
+      const resolved = path.resolve(workspaceRoot, target);
+      const relative = path.relative(workspaceRoot, resolved);
+      if (relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+        throw new Error(`staged source-input locator escaped logical closure: ''${target}`);
+      }
+      if (!fs.existsSync(resolved)) {
+        throw new Error(`staged source-input locator is absent from logical closure: ''${target}`);
+      }
+    }
+
+    const projection = path.join(workspaceRoot, ".devenv/pnpm-source-inputs/current");
+    const projectionExists = (() => {
+      try {
+        fs.lstatSync(projection);
+        return true;
+      } catch (error) {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      }
+    })();
+    if (projectionExists) {
+      for (const target of targets) {
+        const logicalManifest = path.join(workspaceRoot, target, "package.json");
+        const aliasManifest = path.join(projection, target, "package.json");
+        if (
+          !fs.existsSync(logicalManifest) ||
+          !fs.existsSync(aliasManifest) ||
+          fs.realpathSync(aliasManifest) !== fs.realpathSync(logicalManifest)
+        ) {
+          throw new Error(`existing staged source-input alias does not select its logical manifest: ''${target}`);
+        }
+      }
+    }
+    JS
+
+    projection="$workspace_root/.devenv/pnpm-source-inputs/current"
+    mkdir -p "$(dirname "$projection")"
+    if [ ! -e "$projection" ] && [ ! -L "$projection" ]; then
+      # Live installs resolve composed sources through a generation-switched
+      # `.devenv` path. The prepared source contains the same closure at its
+      # logical `repos/*` paths, while `.devenv` is intentionally excluded from
+      # the artifact. Recreate only the locator namespace for pnpm's frozen
+      # install; the normal prepared-output purge removes it afterwards.
+      ln -s ../.. "$projection"
+    fi
+  '';
+
+  purgePreparedWorkspaceStateScript = pkgs.writeShellScript "purge-prepared-workspace-state" ''
+    set -euo pipefail
+    workspace_root="''${1:-.}"
+    ${pkgs.findutils}/bin/find "$workspace_root" \
+      \( -type d -name .devenv -o -type d -name '.pnpm-store*' -o -type d -name '.pnpm-home*' \) \
+      -prune -exec rm -rf {} +
+  '';
 in
 {
   # Create a fixed-output derivation that prepares a workspace install tree.
@@ -692,6 +787,8 @@ in
 
                 ${preInstall}
 
+                ${projectStagedSourceInputsScript} .
+
                 # pnpm still mutates store metadata (for example index.db and
                 # projects/*), so the Nix build must use a private writable HOME/store
                 # even though the final archive is immutable.
@@ -829,9 +926,7 @@ in
                 # Live-worktree pnpm store state is mutable and path-sensitive.
                 # Prepared deps FODs own their private store through env/.npmrc
                 # and must archive only the materialized dependency graph.
-                find . \
-                  \( -type d -name .devenv -o -type d -name '.pnpm-store*' -o -type d -name '.pnpm-home*' \) \
-                  -prune -exec rm -rf {} +
+                ${purgePreparedWorkspaceStateScript} .
                 rm -f .pnpm-install-roots.txt
 
                 ${pnpmNodejs}/bin/node ${lib.escapeShellArg normalizePreparedTreeScript} .
@@ -886,7 +981,11 @@ in
       outputHash = pnpmDepsHash;
 
       passthru = {
-        inherit rewritePreparedWorkspaceScript;
+        inherit
+          projectStagedSourceInputsScript
+          purgePreparedWorkspaceStateScript
+          rewritePreparedWorkspaceScript
+          ;
       };
     };
 

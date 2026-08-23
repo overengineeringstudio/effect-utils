@@ -104,9 +104,12 @@ let
   nodeModulesProjectionScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
-  stageSourceInputsScript = pkgs.writeText "stage-pnpm-source-inputs.mjs" (
-    builtins.readFile ./stage-pnpm-source-inputs.mjs
-  );
+  sourceInputStagingScripts = pkgs.runCommand "pnpm-source-input-staging" { } ''
+    mkdir -p "$out"
+    cp ${./stage-pnpm-source-inputs.mjs} "$out/stage-pnpm-source-inputs.mjs"
+    cp ${./source-input-staging-fs.mjs} "$out/source-input-staging-fs.mjs"
+  '';
+  stageSourceInputsScript = "${sourceInputStagingScripts}/stage-pnpm-source-inputs.mjs";
   sourceStagePath = ".devenv/pnpm-source-inputs";
   pnpmInstallPolicy = import ../../../workspace-tools/lib/pnpm-install-policy.nix { inherit lib; };
   effectivePnpmLockMutatorPkg =
