@@ -151,6 +151,11 @@
       "description": "@overeng/agent-session-ingest package · Set: manual"
     },
     {
+      "name": "system:buck2-launcher",
+      "color": "a371f7",
+      "description": "@overeng/buck2-launcher package · Set: manual"
+    },
+    {
       "name": "system:buck2-tools",
       "color": "a371f7",
       "description": "@overeng/buck2-tools package · Set: manual"
