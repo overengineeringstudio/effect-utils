@@ -3,6 +3,8 @@ import * as Fs from 'node:fs/promises'
 import * as Path from 'node:path'
 import process from 'node:process'
 
+import { removeStagingTree } from './source-input-staging-fs.mjs'
+
 const [mode, workspaceArg, stageArg, ...sourcePaths] = process.argv.slice(2)
 if (
   !['check', 'gc', 'publish'].includes(mode) ||
@@ -180,6 +182,7 @@ try {
 
 await Fs.mkdir(generationsRoot, { recursive: true })
 const nextRoot = await Fs.mkdtemp(Path.join(generationsRoot, '.next-'))
+let unpublishedRoot = nextRoot
 try {
   for (const [sourcePath, sourceRoot] of sourceRoots) {
     const target = Path.join(nextRoot, sourcePath)
@@ -206,16 +209,13 @@ try {
   const generationRoot = Path.join(generationsRoot, `${before.identity}-${Crypto.randomUUID()}`)
   await Fs.rename(nextRoot, generationRoot)
   await Fs.chmod(generationRoot, 0o555)
+  unpublishedRoot = generationRoot
   const pointer = Path.join(stageRoot, `.current-${process.pid}-${Crypto.randomUUID()}`)
   await Fs.symlink(Path.relative(stageRoot, generationRoot), pointer)
   await Fs.rename(pointer, currentPath)
+  unpublishedRoot = undefined
   await validatePublished(before)
 } catch (error) {
-  try {
-    await makeWritable(nextRoot)
-  } catch (cleanupError) {
-    if (cleanupError?.code !== 'ENOENT') throw cleanupError
-  }
-  await Fs.rm(nextRoot, { force: true, recursive: true })
+  if (unpublishedRoot !== undefined) await removeStagingTree(unpublishedRoot)
   throw error
 }
