@@ -5,6 +5,22 @@ import type { CacheError } from '../renderer/errors.ts'
 /** Current on-disk schema version. Bumping invalidates all cached trees. */
 export const CACHE_SCHEMA_VERSION = 3 as const
 
+export interface PendingInlineNode {
+  readonly key: string
+  readonly type: string
+  readonly hash: string
+  readonly children: readonly PendingInlineNode[]
+}
+
+export const PendingInlineNode: Schema.Schema<PendingInlineNode> = Schema.suspend(() =>
+  Schema.Struct({
+    key: Schema.String,
+    type: Schema.String,
+    hash: Schema.String,
+    children: Schema.Array(PendingInlineNode),
+  }),
+)
+
 export interface CacheNode {
   readonly key: string
   readonly blockId: string
@@ -39,6 +55,11 @@ export interface CacheNode {
    * Hash of the page's `cover` property. See {@link CacheNode.titleHash}.
    */
   readonly coverHash?: string | undefined
+  /**
+   * The page identity is durable, but block ids created inline with the page
+   * still need to be observed and adopted before normal diffing can resume.
+   */
+  readonly pendingInlineResolution?: readonly PendingInlineNode[] | undefined
 }
 
 /**
@@ -56,6 +77,7 @@ interface CacheNodeEncoded {
   readonly titleHash?: string | undefined
   readonly iconHash?: string | undefined
   readonly coverHash?: string | undefined
+  readonly pendingInlineResolution?: readonly PendingInlineNode[] | undefined
 }
 
 export const CacheNode: Schema.Schema<CacheNode, CacheNodeEncoded> = Schema.suspend(() =>
@@ -74,6 +96,7 @@ export const CacheNode: Schema.Schema<CacheNode, CacheNodeEncoded> = Schema.susp
     titleHash: Schema.optional(Schema.String),
     iconHash: Schema.optional(Schema.String),
     coverHash: Schema.optional(Schema.String),
+    pendingInlineResolution: Schema.optional(Schema.Array(PendingInlineNode)),
   }),
 )
 

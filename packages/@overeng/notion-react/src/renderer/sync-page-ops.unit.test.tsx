@@ -85,6 +85,102 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     expect(after.filter((r) => r.method !== 'GET')).toEqual([])
   })
 
+  it('inline retrieval fails after pages.create: retry retains the checkpointed page id', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage blockKey="child" title="child">
+          <Paragraph blockKey="body">body</Paragraph>
+        </ChildPage>
+      </Page>
+    )
+    let failFirstInlineRetrieve = true
+    fake.failOn((request) => {
+      if (
+        failFirstInlineRetrieve &&
+        request.method === 'GET' &&
+        request.path !== `/v1/blocks/${ROOT}/children`
+      ) {
+        failFirstInlineRetrieve = false
+        return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
+      }
+      return undefined
+    })
+
+    const first = await Effect.runPromiseExit(
+      sync(tree, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.provide(fake.layer)),
+    )
+
+    expect(first._tag).toBe('Failure')
+    expect(fake.pages.size).toBe(1)
+    const createdId = [...fake.pages.keys()][0]!
+    const checkpoint = await Effect.runPromise(cache.load)
+    expect(checkpoint?.children).toMatchObject([
+      {
+        blockId: createdId,
+        nodeKind: 'page',
+        children: [],
+      },
+    ])
+    expect(checkpoint?.children[0]?.pendingInlineResolution).toHaveLength(1)
+
+    const retry = await runSync(fake, tree, cache)
+    expect(retry.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(retry.appends + retry.inserts + retry.updates + retry.removes).toBe(0)
+    expect(fake.pages.size).toBe(1)
+    expect([...fake.pages.keys()]).toEqual([createdId])
+    expect(fake.childrenOf(createdId).filter((block) => block.type === 'paragraph')).toHaveLength(1)
+  })
+
+  it('changed JSX after interrupted create reconciles from the persisted create-time intent', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    let failFirstInlineRetrieve = true
+    fake.failOn((request) => {
+      if (
+        failFirstInlineRetrieve &&
+        request.method === 'GET' &&
+        request.path !== `/v1/blocks/${ROOT}/children`
+      ) {
+        failFirstInlineRetrieve = false
+        return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
+      }
+      return undefined
+    })
+
+    const first = await Effect.runPromiseExit(
+      sync(
+        <Page>
+          <ChildPage blockKey="child" title="child">
+            <Paragraph blockKey="body">before</Paragraph>
+          </ChildPage>
+        </Page>,
+        { pageId: ROOT, cache },
+      ).pipe(Effect.provide(fake.layer)),
+    )
+    expect(first._tag).toBe('Failure')
+    const createdId = [...fake.pages.keys()][0]!
+
+    const retry = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="child" title="child">
+          <Paragraph blockKey="body">after</Paragraph>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(retry.pages.creates).toBe(0)
+    expect(retry.updates).toBe(1)
+    expect(retry.appends + retry.inserts + retry.removes).toBe(0)
+    expect([...fake.pages.keys()]).toEqual([createdId])
+    expect(fake.childrenOf(createdId).filter((block) => block.type === 'paragraph')).toHaveLength(1)
+  })
+
   it('root-page metadata: <Page title> change → 1 updatePage on root, 0 block ops', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
