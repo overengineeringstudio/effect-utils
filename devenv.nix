@@ -114,11 +114,43 @@ let
     pkgs.flock
     pkgs.gawk
     pkgs.gnugrep
+    pkgs.gnused
     pkgs.jq
   ];
+  buck2CapabilityGateBins = {
+    AWK_BIN = "${pkgs.gawk}/bin/awk";
+    GAWK_BIN = "${pkgs.gawk}/bin/gawk";
+    SED_BIN = "${pkgs.gnused}/bin/sed";
+    GREP_BIN = "${pkgs.gnugrep}/bin/grep";
+    RG_BIN = rg;
+    FIND_BIN = "${pkgs.findutils}/bin/find";
+    XARGS_BIN = "${pkgs.findutils}/bin/xargs";
+    JQ_BIN = "${pkgs.jq}/bin/jq";
+    FLOCK_BIN = "${pkgs.flock}/bin/flock";
+    DIFF_BIN = "${pkgs.diffutils}/bin/diff";
+    CMP_BIN = "${pkgs.diffutils}/bin/cmp";
+    BASH_BIN = "${pkgs.bash}/bin/bash";
+    MKTEMP_BIN = "${pkgs.coreutils}/bin/mktemp";
+    UNAME_BIN = "${pkgs.coreutils}/bin/uname";
+    MKDIR_BIN = "${pkgs.coreutils}/bin/mkdir";
+    RM_BIN = "${pkgs.coreutils}/bin/rm";
+    MV_BIN = "${pkgs.coreutils}/bin/mv";
+    LN_BIN = "${pkgs.coreutils}/bin/ln";
+    CP_BIN = "${pkgs.coreutils}/bin/cp";
+    CAT_BIN = "${pkgs.coreutils}/bin/cat";
+    READLINK_BIN = "${pkgs.coreutils}/bin/readlink";
+    DIRNAME_BIN = "${pkgs.coreutils}/bin/dirname";
+    BASENAME_BIN = "${pkgs.coreutils}/bin/basename";
+    SHA256_BIN = "${pkgs.coreutils}/bin/sha256sum";
+    SORT_BIN = "${pkgs.coreutils}/bin/sort";
+  };
+  buck2CapabilityGateBinExports = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (name: path: "export ${name}=${path}") buck2CapabilityGateBins
+  );
   buck2CapabilityProjection = pkgs.writeShellScript "buck2-capability-projection" ''
     set -euo pipefail
     export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
+    ${buck2CapabilityGateBinExports}
     exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh \
       "''${DEVENV_ROOT:-$PWD}" ${lib.escapeShellArg buck2ExecutionPlatform} \
       archive-tool effect-utils/buck2-archive-tool/v1 ${
@@ -779,6 +811,7 @@ in
     exec = trace.exec "buck2:capabilities:project" ''
       set -euo pipefail
       export BUCK2_BIN=${pkgs.buck2}/bin/buck2
+      ${buck2CapabilityGateBinExports}
       ${buck2CapabilityProjection}
       ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh --check "$PWD"
     '';
@@ -790,6 +823,7 @@ in
     exec = trace.exec "buck2:capabilities:test" ''
       set -euo pipefail
       export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
+      ${buck2CapabilityGateBinExports}
       exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.test.sh \
         "$PWD" ${pkgs.buck2}/bin/buck2
     '';
@@ -861,6 +895,7 @@ in
     exec = trace.exec "buck2:foundation:graph-check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      ${buck2CapabilityGateBinExports}
       exec ${pkgs.bash}/bin/bash scripts/buck2-foundation-graph-check.sh \
         "$PWD" ${pkgs.buck2}/bin/buck2
     '';
@@ -911,6 +946,12 @@ in
       trap cleanup EXIT
       trap 'exit 130' INT
       trap 'exit 143' TERM
+      fail_with_evidence() {
+        ${pkgs.coreutils}/bin/cat "$stderr_file" >&2
+        ${pkgs.coreutils}/bin/mkdir -p "$root/tmp"
+        ${pkgs.coreutils}/bin/mv -f "$stderr_file" "$root/tmp/buck2-platform-mismatch.log"
+        exit 1
+      }
 
       if ${pkgs.buck2}/bin/buck2 \
         --isolation-dir "$isolation" \
@@ -919,7 +960,7 @@ in
         --local-only --no-remote-cache \
         >/dev/null 2>"$stderr_file"; then
         echo "buck2:platform:check: mismatched platform unexpectedly built" >&2
-        exit 1
+        fail_with_evidence
       fi
       actual="$(${pkgs.gawk}/bin/awk '
         /error: fail: package_task platform mismatch:/ {
@@ -931,7 +972,7 @@ in
       expected="target requires x86_64-linux, local-only execution host is aarch64-linux"
       if [ "$actual" != "$expected" ]; then
         echo "buck2:platform:check: unexpected diagnostic: $actual" >&2
-        exit 1
+        fail_with_evidence
       fi
       echo "buck2:platform:check: PASS diagnostic=$actual"
     '';
