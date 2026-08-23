@@ -1,4 +1,4 @@
-import { Either, Schema } from 'effect'
+import { Exit, Schema } from 'effect'
 
 import type { LogRow, MetricRow } from './schema.ts'
 
@@ -103,22 +103,22 @@ export const telemetryAttr = {
     description,
     predicate,
   }),
-  schema: <Row, A, I>(
-    schema: Schema.Schema<A, I, never>,
-    description = String(schema.ast.annotations.identifier ?? 'schema'),
+  schema: <Row, S extends Schema.ConstraintDecoder<unknown>>(
+    schema: S,
+    description = String(schema.ast.annotations?.identifier ?? 'schema'),
   ): TelemetryAttrMatcher<Row> => ({
     _tag: 'Schema',
     description,
-    matches: (actual) => Either.isRight(Schema.decodeUnknownEither(schema)(actual)),
+    matches: (actual) => Exit.isSuccess(Schema.decodeUnknownExit(schema)(actual)),
   }),
-  json: <Row, A, I>(
-    schema: Schema.Schema<A, I, never>,
-    description = String(schema.ast.annotations.identifier ?? 'json schema'),
+  json: <Row, S extends Schema.ConstraintDecoder<unknown>>(
+    schema: S,
+    description = String(schema.ast.annotations?.identifier ?? 'json schema'),
   ): TelemetryAttrMatcher<Row> => ({
     _tag: 'Schema',
     description,
     matches: (actual) =>
-      Either.isRight(Schema.decodeUnknownEither(Schema.parseJson(schema))(actual)),
+      Exit.isSuccess(Schema.decodeUnknownExit(Schema.fromJsonString(schema))(actual)),
   }),
 } as const
 

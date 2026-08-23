@@ -1,8 +1,7 @@
-import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
-import * as Otlp from '@effect/opentelemetry/Otlp'
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer, type Scope } from 'effect'
+import type { Scope } from 'effect'
+import { Context, Effect, Layer, Semaphore } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import { Otlp, OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 
 import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './errors.ts'
 import { withOteliteLabelSpan, withOteliteRootSpan } from './otel.ts'
@@ -107,7 +106,7 @@ export interface OteliteTestHandle {
   ) => Effect.Effect<TraceExpect, E | OteliteSpawnError | OteliteCliError | OteliteDecodeError, R>
 }
 
-const envSemaphore = Effect.unsafeMakeSemaphore(1)
+const envSemaphore = Semaphore.makeUnsafe(1)
 
 const scopedEnv = (
   values: Readonly<Record<string, string | undefined>>,
@@ -197,13 +196,25 @@ const makeInProcessAllSignalsLayer = (
     }).pipe(Layer.provide(FetchHttpClient.layer)),
   )
 
-/** Effect service whose `capture` boots a scoped otelite receiver and yields an {@link OteliteTestHandle}; provides its own `Otelite.Default`. */
-export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
-  '@overeng/utils-dev/otelite/OteliteTestHarness',
-  {
-    accessors: true,
-    effect: Effect.gen(function* () {
-      const otelite = yield* Otelite
+/** The test-harness service shape exposed by {@link OteliteTestHarness}. */
+export interface OteliteTestHarnessService {
+  /** Boot a scoped otelite receiver plus the in-process exporter layers bound to it. */
+  readonly capture: (
+    options: OteliteTestHarnessOptions,
+  ) => Effect.Effect<
+    OteliteTestHandle,
+    OteliteSpawnError | OteliteCliError | OteliteDecodeError,
+    Scope.Scope
+  >
+}
+
+/** Effect service whose `capture` boots a scoped otelite receiver and yields an {@link OteliteTestHandle}; provides its own `Otelite` dependency. */
+export class OteliteTestHarness extends Context.Service<
+  OteliteTestHarness,
+  OteliteTestHarnessService
+>()('@overeng/utils-dev/otelite/OteliteTestHarness', {
+  make: Effect.gen(function* () {
+    const otelite = yield* Otelite
 
       const capture = (
         options: OteliteTestHarnessOptions,
@@ -259,7 +270,7 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
                     captureHandle.endpoints.http,
                   [envOptions.serviceNameVar ?? 'OTEL_SERVICE_NAME']: options.serviceName,
                   ...envOptions.extra,
-                }).pipe(Effect.zipRight(effect)),
+                }).pipe(Effect.andThen(effect)),
               ),
             )
 
@@ -278,8 +289,8 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             R
           > =>
             runInProcess(effect).pipe(
-              Effect.zipRight(flushCaptureSpans({ exportInterval })),
-              Effect.zipRight(trace(traceOptions)),
+              Effect.andThen(flushCaptureSpans({ exportInterval })),
+              Effect.andThen(trace(traceOptions)),
             )
 
           const runInProcessAllSignals = <A, E, R>(
@@ -332,8 +343,8 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             R
           > =>
             withEnv(effect, envOptions).pipe(
-              Effect.zipRight(flushCaptureSpans({ exportInterval })),
-              Effect.zipRight(trace(traceOptions)),
+              Effect.andThen(flushCaptureSpans({ exportInterval })),
+              Effect.andThen(trace(traceOptions)),
             )
 
           return {
@@ -353,20 +364,24 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
           } satisfies OteliteTestHandle
         }).pipe(withOteliteLabelSpan('otelite.test-harness.capture', 'test-harness.capture'))
 
-      return { capture } as const
+      return { capture } satisfies OteliteTestHarnessService
     }),
-    dependencies: [Otelite.Default.pipe(Layer.provide(NodeContext.layer))],
   },
-) {}
+) {
+  /** Provides {@link OteliteTestHarness}, wiring its `Otelite` dependency. */
+  static readonly layer = Layer.effect(this, this.make).pipe(Layer.provide(Otelite.layer))
+}
 
-/** Scoped one-shot {@link OteliteTestHandle}: provides `OteliteTestHarness.Default` so callers needn't wire the layer. */
+/** Scoped one-shot {@link OteliteTestHandle}: provides `OteliteTestHarness.layer` so callers needn't wire the layer. */
 export const captureTest = (
   options: OteliteTestHarnessOptions,
 ): Effect.Effect<
   OteliteTestHandle,
   OteliteSpawnError | OteliteCliError | OteliteDecodeError,
   Scope.Scope
-> => OteliteTestHarness.capture(options).pipe(Effect.provide(OteliteTestHarness.Default))
+> =>
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  OteliteTestHarness.use((harness) => harness.capture(options)).pipe(Effect.provide(OteliteTestHarness.layer))
 
 /** All-in-one: boot a capture, run `effect` through the in-process traces exporter, flush, and return a {@link TraceExpect}. */
 export const captureInProcessTrace = <A, E, R>(

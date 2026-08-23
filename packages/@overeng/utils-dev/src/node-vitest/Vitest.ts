@@ -11,20 +11,19 @@
 
 import * as inspector from 'node:inspector'
 
-import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
-import { FetchHttpClient } from '@effect/platform'
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
 import {
   type Cause,
   Effect,
-  type FastCheck as FC,
   identity,
   Layer,
-  Predicate,
   type Schema,
   type Scope,
 } from 'effect'
+import type * as FC from 'effect/testing/FastCheck'
+import { FetchHttpClient } from 'effect/unstable/http'
+import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 
 import { otlpTracesUrl } from '../otelite/otlp-url.ts'
 
@@ -119,7 +118,7 @@ export type WithTestCtxParams<ROut, E1, RIn> = {
   /** Factory to create a layer for the test. */
   makeLayer?: (testContext: Vitest.TestContext) => Layer.Layer<ROut, E1, RIn | Scope.Scope>
   /** Test timeout. @default 60_000ms in CI, 10_000ms locally */
-  timeout?: Duration.DurationInput
+  timeout?: Duration.Input
   /** Force OTEL tracing even when not in debugger. @default false */
   forceOtel?: boolean
 }
@@ -150,7 +149,7 @@ export const makeWithTestCtx: <ROut = never, E1 = never, RIn = never>(
   self: Effect.Effect<A, E, R>,
 ) => Effect.Effect<
   A,
-  E | E1 | Cause.TimeoutException,
+  E | E1 | Cause.TimeoutError,
   // Exclude dependencies provided by `withTestCtx` from the layer dependencies
   | Exclude<RIn, Scope.Scope>
   // Exclude dependencies provided by `withTestCtx` **and** dependencies produced
@@ -176,7 +175,7 @@ export const withTestCtx =
       self: Effect.Effect<A, E, R>,
     ): Effect.Effect<
       A,
-      E | E1 | Cause.TimeoutException,
+      E | E1 | Cause.TimeoutError,
       // Exclude dependencies provided internally from the provided layer's dependencies
       | Exclude<RIn, Scope.Scope>
       // Exclude dependencies provided internally **and** dependencies produced by the
@@ -235,23 +234,31 @@ export type EnhancedTestContext =
     })
 
 /**
+ * The decoded value produced for each property by `@effect/vitest`'s `prop`:
+ * a FastCheck arbitrary yields its generated `T`, a `Schema` decodes to its `Type`.
+ * (Mirrors the conditional mapping inside `@effect/vitest`'s `prop` signature.)
+ */
+type PropertyValue<Arb> =
+  Arb extends FC.Arbitrary<infer T> ? T : Arb extends Schema.Schema<infer T> ? T : never
+
+/** The properties object handed to a `prop` test body, keyed by arbitrary name. */
+type PropertyValues<Arbs extends Vitest.Vitest.Arbitraries> = {
+  [K in keyof Arbs]: PropertyValue<Arbs[K]>
+}
+
+/** vitest test options plus the FastCheck parameters accepted by `prop`. */
+type FastCheckOptions<Arbs extends Vitest.Vitest.Arbitraries> = Vitest.TestOptions & {
+  fastCheck?: FC.Parameters<PropertyValues<Arbs>>
+}
+
+/**
  * Normalizes propOptions to ensure @effect/vitest receives correct fastCheck structure.
  */
 const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
-  propOptions:
-    | number
-    | (Vitest.TestOptions & {
-        fastCheck?: FC.Parameters<{
-          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
-        }>
-      }),
-): Vitest.TestOptions & {
-  fastCheck?: FC.Parameters<{
-    [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
-  }>
-} => {
+  propOptions: number | FastCheckOptions<Arbs>,
+): FastCheckOptions<Arbs> => {
   // If it's a number, treat as timeout and add our default fastCheck
-  if (Predicate.isObject(propOptions) === false) {
+  if (typeof propOptions === 'number') {
     return {
       timeout: propOptions,
       fastCheck: { numRuns: 100 },
@@ -267,7 +274,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }
 
   // If fastCheck exists but no numRuns, add our default
-  if (propOptions.fastCheck !== undefined && propOptions.fastCheck.numRuns == null) {
+  if (propOptions.fastCheck.numRuns == null) {
     return {
       ...propOptions,
       fastCheck: {
@@ -319,21 +326,9 @@ export const asProp = <Arbs extends Vitest.Vitest.Arbitraries, A, E, R>(
     A,
     E,
     R,
-    [
-      {
-        [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
-      },
-      Vitest.TestContext,
-      EnhancedTestContext,
-    ]
+    [PropertyValues<Arbs>, Vitest.TestContext, EnhancedTestContext]
   >,
-  propOptions:
-    | number
-    | (Vitest.TestOptions & {
-        fastCheck?: FC.Parameters<{
-          [K in keyof Arbs]: Arbs[K] extends FC.Arbitrary<infer T> ? T : Schema.Schema.Type<Arbs[K]>
-        }>
-      }),
+  propOptions: number | FastCheckOptions<Arbs>,
 ) => {
   const normalizedPropOptions = normalizePropOptions(propOptions)
   const numRuns = normalizedPropOptions.fastCheck?.numRuns ?? 100

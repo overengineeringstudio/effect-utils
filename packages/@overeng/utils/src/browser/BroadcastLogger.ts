@@ -72,11 +72,11 @@
 import {
   Cause,
   Effect,
-  FiberId,
-  HashMap,
   Layer,
   Logger,
   LogLevel,
+  Option,
+  References,
   Schema,
   Scope,
   Stream,
@@ -106,7 +106,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Schema<any>>({
     operation,
     attributes,
   }: {
@@ -158,7 +158,7 @@ export class BroadcastLogEntry extends Schema.Class<BroadcastLogEntry>('Broadcas
   message: Schema.Array(Schema.Unknown),
   fiberId: Schema.String,
   spans: Schema.Array(Schema.String),
-  annotations: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  annotations: Schema.Record(Schema.String, Schema.Unknown),
   cause: Schema.UndefinedOr(Schema.String),
   /** Identifies the source (e.g., SharedWorker name or tab ID) */
   source: Schema.UndefinedOr(Schema.String),
@@ -176,18 +176,30 @@ const makeBroadcastLoggerFromChannel = ({
   channel,
   source,
 }: MakeBroadcastLoggerFromChannelOptions) =>
-  Logger.make<unknown, void>(({ annotations, cause, date, fiberId, logLevel, message, spans }) => {
+  Logger.make<unknown, void>(({ cause, date, fiber, logLevel, message }) => {
     const entry = new BroadcastLogEntry({
       _tag: 'BroadcastLogEntry',
       timestamp: date.getTime(),
-      level: logLevel.label,
+      // v4 `LogLevel` is a plain string union (e.g. `'Info'`), no `.label`.
+      level: logLevel,
       message: (Array.isArray(message) === true ? message : [message]).map(sanitizeForBroadcast),
-      fiberId: FiberId.threadName(fiberId),
-      spans: [...spans].map((span) => span.label),
+      fiberId: String(fiber.id),
+      spans: fiber
+        .getRef(References.CurrentLogSpans)
+        .map(([label]) => label)
+        .reverse(),
       annotations: Object.fromEntries(
-        HashMap.toEntries(annotations).map(([k, v]) => [k, sanitizeForBroadcast(v)]),
+        Object.entries(fiber.getRef(References.CurrentLogAnnotations)).map(([k, v]) => [
+          k,
+          sanitizeForBroadcast(v),
+        ]),
       ),
-      cause: Cause.isEmpty(cause) === true ? undefined : Cause.pretty(cause),
+      cause:
+        Cause.hasFails(cause) === false &&
+        Cause.hasDies(cause) === false &&
+        Cause.hasInterrupts(cause) === false
+          ? undefined
+          : Cause.pretty(cause),
       source,
     })
 
@@ -213,12 +225,17 @@ export const makeBroadcastLogger = (source?: string) => {
  * @param source - Optional identifier for the log source (e.g., worker name)
  */
 export const BroadcastLoggerLive = (source?: string) =>
-  Logger.replaceScoped(
-    Logger.defaultLogger,
-    Effect.acquireRelease(
-      Effect.sync(() => new BroadcastChannel(BROADCAST_CHANNEL_NAME)),
-      (channel) => Effect.sync(() => channel.close()),
-    ).pipe(Effect.map((channel) => makeBroadcastLoggerFromChannel({ channel, source }))),
+  Layer.unwrap(
+    Effect.map(
+      Effect.acquireRelease(
+        Effect.sync(() => new BroadcastChannel(BROADCAST_CHANNEL_NAME)),
+        (channel) => Effect.sync(() => channel.close()),
+      ),
+      (channel) =>
+        Logger.layer([makeBroadcastLoggerFromChannel({ channel, source })], {
+          mergeWithExisting: false,
+        }),
+    ),
   )
 
 /**
@@ -243,35 +260,27 @@ export const BroadcastLoggerLive = (source?: string) =>
  * )
  * ```
  */
-export const logStream: Stream.Stream<BroadcastLogEntry, never, Scope.Scope> =
-  Stream.asyncScoped<BroadcastLogEntry>((emit) =>
-    Effect.gen(function* () {
-      const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME)
-      const scope = yield* Effect.scope
+export const logStream: Stream.Stream<BroadcastLogEntry, never, Scope.Scope> = Stream.scoped(
+  Stream.unwrap(
+    trustedWith({
+      operation: BroadcastLoggerLogStreamSetupOperation,
+      attributes: { label: 'setup' },
+    })(
+      Effect.gen(function* () {
+        const channel = yield* Effect.acquireRelease(
+          Effect.sync(() => new BroadcastChannel(BROADCAST_CHANNEL_NAME)),
+          (channel) => Effect.sync(() => channel.close()),
+        )
 
-      const handler = (event: MessageEvent<unknown>) => {
-        const decoded = decodeBroadcastLogEntry(event.data)
-        if (decoded._tag === 'Some') {
-          emit.single(decoded.value)
-        }
-      }
-
-      channel.addEventListener('message', handler)
-
-      yield* Scope.addFinalizer(
-        scope,
-        Effect.sync(() => {
-          channel.removeEventListener('message', handler)
-          channel.close()
-        }),
-      )
-    }).pipe(
-      trustedWith({
-        operation: BroadcastLoggerLogStreamSetupOperation,
-        attributes: { label: 'setup' },
+        return Stream.fromEventListener<MessageEvent<unknown>>(channel, 'message').pipe(
+          Stream.map((event) => decodeBroadcastLogEntry(event.data)),
+          Stream.filter(Option.isSome),
+          Stream.map((option) => option.value),
+        )
       }),
     ),
-  )
+  ),
+)
 
 /** Options for creating a log bridge layer. */
 export interface LogBridgeOptions {
@@ -307,10 +316,8 @@ export interface LogBridgeOptions {
  * timestamp=2024-01-15T10:30:45.789Z level=INFO fiber=#0 message="Syncing records" broadcastSource=sync-worker broadcastFiberId=#5 broadcastSpans="sync-operation"
  * ```
  */
-export const makeLogBridgeLive = (
-  options?: LogBridgeOptions,
-): Layer.Layer<never, never, Scope.Scope> =>
-  Layer.scopedDiscard(
+export const makeLogBridgeLive = (options?: LogBridgeOptions): Layer.Layer<never> =>
+  Layer.effectDiscard(
     logStream.pipe(
       Stream.filter((entry) => {
         if (options?.sources !== undefined && options.sources.length > 0) {
@@ -321,20 +328,10 @@ export const makeLogBridgeLive = (
       Stream.runForEach((entry) => {
         const msg = entry.message.join(' ')
 
-        return Effect.logWithLevel(
-          entry.level === 'FATAL'
-            ? LogLevel.Fatal
-            : entry.level === 'ERROR'
-              ? LogLevel.Error
-              : entry.level === 'WARNING'
-                ? LogLevel.Warning
-                : entry.level === 'DEBUG'
-                  ? LogLevel.Debug
-                  : entry.level === 'TRACE'
-                    ? LogLevel.Trace
-                    : LogLevel.Info,
-          msg,
-        ).pipe(
+        // v4 `LogLevel` is a plain string union; narrow to a `Severity` for `logWithLevel`.
+        const severity = LogLevelSeverity[entry.level as keyof typeof LogLevelSeverity] ?? 'Info'
+
+        return Effect.logWithLevel(severity)(msg).pipe(
           Effect.annotateLogs({
             broadcastSource: entry.source ?? 'unknown',
             broadcastFiberId: entry.fiberId,
@@ -344,8 +341,21 @@ export const makeLogBridgeLive = (
           }),
         )
       }),
+      Effect.scoped,
     ),
   )
+
+/** Broadcast levels are v4 `LogLevel` strings; map them onto the `Severity` subset accepted by `logWithLevel`. */
+const LogLevelSeverity = {
+  All: 'Info',
+  Fatal: 'Fatal',
+  Error: 'Error',
+  Warn: 'Warn',
+  Info: 'Info',
+  Debug: 'Debug',
+  Trace: 'Trace',
+  None: 'Info',
+} as const satisfies Record<string, LogLevel.Severity>
 
 /**
  * Formats a log entry for display.

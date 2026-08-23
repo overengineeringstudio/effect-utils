@@ -8,10 +8,10 @@ import { shouldNeverHappen } from '../isomorphic/mod.ts'
 export type WorkspaceInfo = string
 
 /** Current working directory. */
-export class CurrentWorkingDirectory extends Context.Tag('CurrentWorkingDirectory')<
+export class CurrentWorkingDirectory extends Context.Service<
   CurrentWorkingDirectory,
   WorkspaceInfo
->() {
+>()('CurrentWorkingDirectory') {
   /** Layer that captures the process cwd once. */
   static live = Layer.effect(
     CurrentWorkingDirectory,
@@ -23,10 +23,10 @@ export class CurrentWorkingDirectory extends Context.Tag('CurrentWorkingDirector
 }
 
 /** Workspace root (env required). */
-export class EffectUtilsWorkspace extends Context.Tag('EffectUtilsWorkspace')<
+export class EffectUtilsWorkspace extends Context.Service<
   EffectUtilsWorkspace,
   WorkspaceInfo
->() {
+>()('EffectUtilsWorkspace') {
   /** Resolve from WORKSPACE_ROOT env. */
   static live = Layer.effect(
     EffectUtilsWorkspace,

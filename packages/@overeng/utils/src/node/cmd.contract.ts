@@ -64,7 +64,7 @@ export const CmdArgs = OtelAttr.json({
   key: 'cmd.args',
   schema: Schema.Array(Schema.String),
   metadata: { cardinality: 'high' },
-}).annotations({
+}).annotate({
   [WeaverAttrAnnotationId]: {
     brief: 'Command arguments (JSON-encoded array of strings).',
     stability: 'development',

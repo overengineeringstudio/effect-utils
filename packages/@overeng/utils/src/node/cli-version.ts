@@ -7,7 +7,7 @@ export interface CliVersionInfo {
 }
 
 /** CLI identity and version, provided at startup for error diagnostics. */
-export class CliVersion extends Context.Tag('CliVersion')<CliVersion, CliVersionInfo>() {
+export class CliVersion extends Context.Service<CliVersion, CliVersionInfo>()('CliVersion') {
   /**
    * Yield a version suffix for use in error messages.
    * Returns e.g. `" (genie 0.1.0+abc123)"` or `""` if `CliVersion` is not provided.

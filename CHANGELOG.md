@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **@overeng/utils-dev, @overeng/utils**: finish the effect@4.0.0-rc.111 migration
+  for `utils-dev` and the residual `utils` sources/tests. Highlights: OTLP moved
+  from `@effect/opentelemetry` to `effect/unstable/observability`
+  (`OtlpTracer`/`OtlpSerialization`/`Otlp.layerJson`); `@effect/platform`
+  surfaces moved into Effect core (`effect/unstable/http`,
+  `effect/unstable/process`, `effect/FileSystem`) with `NodeContext.layer`
+  replaced by `NodeServices.layer` and platform `Command` replaced by
+  `ChildProcessSpawner`; services migrated from `Effect.Service` (accessors,
+  `.Default`) to `Context.Service` with explicit static layers; FastCheck now
+  imports from `effect/testing/FastCheck`; schema codecs renamed per v4
+  (`decodeUnknownEffect`, `fromJsonString`, `Literals`, `.annotate`);
+  `Duration.Input`, `Cause.TimeoutError`, `Effect.callback`/`forkChild`/
+  `andThen`/`catch`, string-union `LogLevel`, and `Metric.update`/
+  `withAttributes` replace their removed v3 counterparts.
+
 ### Added
 
 - **devenv pnpm / Genie**: add root-local, read-only source generations for
