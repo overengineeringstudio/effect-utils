@@ -18,6 +18,10 @@
   globalCache ? true,
   frozenInCi ? true,
   installFlags ? [ ],
+  # Canonical package-source directories consumed from outside this
+  # Materialization Root. Each path is staged once under root-owned `.devenv`
+  # state before pnpm realizes Package Instances from it.
+  sourceInputPaths ? [ ],
   preInstall ? "",
   # Root-owned immutable projections that must be part of the authoritative
   # materialized topology. Runs after pnpm and its base health oracle, before
@@ -100,6 +104,10 @@ let
   nodeModulesProjectionScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
+  stageSourceInputsScript = pkgs.writeText "stage-pnpm-source-inputs.mjs" (
+    builtins.readFile ./stage-pnpm-source-inputs.mjs
+  );
+  sourceStagePath = ".devenv/pnpm-source-inputs";
   pnpmInstallPolicy = import ../../../workspace-tools/lib/pnpm-install-policy.nix { inherit lib; };
   effectivePnpmLockMutatorPkg =
     if pnpmLockMutatorPkg != null then
@@ -162,6 +170,25 @@ let
     builtins.filter (p: p != null) (map (name: packageNameToPath.${name} or null) injectedNames);
 
   injectedSourcePaths = lib.unique (lib.concatMap getInjectedDeps packages);
+
+  normalizedSourceInputPaths = map (
+    path:
+    assert lib.assertMsg (
+      path != ""
+      && path != "."
+      && !(lib.hasPrefix "/" path)
+      && !(lib.hasPrefix "../" path)
+      && !(lib.hasInfix "/../" path)
+      && !(lib.hasSuffix "/.." path)
+    ) "sourceInputPaths entries must be non-empty relative paths without parent traversal";
+    path
+  ) (lib.unique sourceInputPaths);
+  sourceInputPathsOverlap = lib.any (
+    left:
+    lib.any (
+      right: left != right && (lib.hasPrefix "${left}/" right || lib.hasPrefix "${right}/" left)
+    ) normalizedSourceInputPaths
+  ) normalizedSourceInputPaths;
 
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
   packageNodeModulesPaths = map (
@@ -235,6 +262,28 @@ let
       ${lib.escapeShellArg workspaceRootAbs}
   '';
 
+  stageSourceInputs = lib.optionalString (normalizedSourceInputPaths != [ ]) ''
+    ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stageSourceInputsScript} \
+      publish \
+      ${lib.escapeShellArg workspaceRootAbs} \
+      ${lib.escapeShellArg sourceStagePath} \
+      ${lib.escapeShellArgs normalizedSourceInputPaths}
+  '';
+  checkSourceInputs = lib.optionalString (normalizedSourceInputPaths != [ ]) ''
+    ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stageSourceInputsScript} \
+      check \
+      ${lib.escapeShellArg workspaceRootAbs} \
+      ${lib.escapeShellArg sourceStagePath} \
+      ${lib.escapeShellArgs normalizedSourceInputPaths}
+  '';
+  gcSourceInputs = lib.optionalString (normalizedSourceInputPaths != [ ]) ''
+    ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stageSourceInputsScript} \
+      gc \
+      ${lib.escapeShellArg workspaceRootAbs} \
+      ${lib.escapeShellArg sourceStagePath} \
+      ${lib.escapeShellArgs normalizedSourceInputPaths}
+  '';
+
   computeWorkspaceStateHash = ''
     compute_workspace_state_hash() {
       {
@@ -254,6 +303,7 @@ let
         for injected_dir in ${lib.concatMapStringsSep " " (path: ''"${path}"'') injectedSourcePaths}; do
           emit_dir_state "$injected_dir"
         done
+
       } | compute_hash
     }
   '';
@@ -271,6 +321,7 @@ let
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
         printf '%s\n' ${lib.escapeShellArg preInstall}
         printf '%s\n' ${lib.escapeShellArg postInstallProjection}
+        printf '%s\n' ${lib.escapeShellArg (builtins.toJSON normalizedSourceInputPaths)}
       } | compute_hash
     }
   '';
@@ -514,6 +565,7 @@ let
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
         ${computeProjectionStateHashFn}
+        ${stageSourceInputs}
         ${preInstall}
         ${runPnpmInstallFn}
 
@@ -546,6 +598,8 @@ let
           echo "[pnpm] node_modules projection is still unhealthy after install" >&2
           exit 1
         fi
+
+        ${gcSourceInputs}
 
         ${postInstallProjection}
 
@@ -597,6 +651,15 @@ let
           emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "bootstrap"
           exit 1
         fi
+
+        ${lib.optionalString (normalizedSourceInputPaths != [ ]) ''
+          if ! (
+            ${checkSourceInputs}
+          ); then
+            emit_pnpm_install_miss_span ${lib.escapeShellArg installTaskName} "source_inputs"
+            exit 1
+          fi
+        ''}
 
         current_storage_state="$(printf '%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD")"
         if [ "$current_storage_state" != "$(cat "$storage_state_file")" ]; then
@@ -650,6 +713,7 @@ let
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${managedPnpmMutationPrologue}
+        ${stageSourceInputs}
         ${runPnpmLockMutatorFn}
         ${lib.optionalString (workspaceRoot == ".") ''
           # Projection can change the catalog that the lockfile must satisfy.
@@ -661,6 +725,7 @@ let
         ${lib.optionalString (workspaceRoot == ".") ''
           genie --check
         ''}
+        ${gcSourceInputs}
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -677,9 +742,11 @@ let
         set -euo pipefail
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${managedPnpmMutationPrologue}
+        ${stageSourceInputs}
         pnpm dedupe ${liveRealizationPolicyFlagsString} \
           --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
           --config.store-dir="$npm_config_store_dir"
+        ${gcSourceInputs}
         echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
     };
@@ -771,6 +838,7 @@ assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
   Set a derivation versioned as the verified-safe pnpm 11.5.1 pin;
   other versions require explicit verification and an allowlist change.
 '';
+assert lib.assertMsg (!sourceInputPathsOverlap) "sourceInputPaths entries must not overlap";
 {
   packages = cliGuard.fromTasks {
     tasks = allTasks;

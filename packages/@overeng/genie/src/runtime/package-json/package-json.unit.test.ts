@@ -8,6 +8,7 @@ import {
   definePackageJson,
   exportEntry,
   packageJson,
+  workspaceClosureReference,
   type GenieContext,
   type PackageInfo,
 } from '../mod.ts'
@@ -102,6 +103,52 @@ describe('packageJson', () => {
     const parsed = JSON.parse(result.stringify(mockGenieContext))
 
     expect(parsed.$genie.workspaceClosureDirs).toEqual(['packages/app', 'packages/lib'])
+  })
+
+  it('projects recursive closure references without inheriting package behavior', () => {
+    const nestedComposition = testCatalog.compose({
+      workspace: workspace({ repoName: 'source', memberPath: 'packages/nested' }),
+      peerDependencies: { external: testCatalog.peers('react') },
+    })
+    const nestedPkg = packageJson(
+      {
+        name: '@test/nested',
+        pnpm: { patchedDependencies: { react: 'patches/react.patch' } },
+      },
+      nestedComposition,
+    )
+    const sourceComposition = testCatalog.compose({
+      workspace: workspace({ repoName: 'source', memberPath: 'packages/source' }),
+      dependencies: { workspace: [nestedPkg] },
+      peerDependencies: { external: testCatalog.peers('effect') },
+    })
+    const sourcePkg = packageJson({ name: '@test/source' }, sourceComposition)
+
+    const reference = workspaceClosureReference(sourcePkg)
+
+    expect(reference.data).toEqual({ name: '@test/source' })
+    expect(reference.meta.workspace.deps[0]?.data).toEqual({ name: '@test/nested' })
+    expect(reference.meta.workspace.deps[0]?.meta.workspace.deps).toEqual([])
+  })
+
+  it('rejects an unnamed package anywhere in a closure reference', () => {
+    const unnamedNested = packageJson(
+      {},
+      testCatalog.compose({
+        workspace: workspace({ repoName: 'source', memberPath: 'packages/unnamed' }),
+      }),
+    )
+    const namedPkg = packageJson(
+      { name: '@test/source' },
+      testCatalog.compose({
+        workspace: workspace({ repoName: 'source', memberPath: 'packages/source' }),
+        dependencies: { workspace: [unnamedNested] },
+      }),
+    )
+
+    expect(() => workspaceClosureReference(namedPkg)).toThrow(
+      'workspaceClosureReference requires every package in the closure to have a name',
+    )
   })
 
   it('sorts dependencies alphabetically', () => {

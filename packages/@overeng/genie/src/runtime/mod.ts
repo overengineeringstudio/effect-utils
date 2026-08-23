@@ -26,6 +26,7 @@ export {
   definePackageJson,
   exportEntry,
   packageJson,
+  workspaceClosureReference,
   type AggregatePackageJsonData,
   type Catalog,
   type CatalogInput,
@@ -35,6 +36,7 @@ export {
   type ExportEnvironmentName,
   type ExportTypeProofMode,
   type ExtendedOverridesInput,
+  type NamedWorkspacePackageLike,
   type OverridesInput,
   type PackageJsonData,
   type PackageJsonExportEnvironmentContractValidationOptions,
@@ -53,6 +55,8 @@ export {
 } from './package-json/mod.ts'
 export {
   pnpmWorkspaceYaml,
+  pnpmSourceInputStagePath,
+  projectPnpmSourceInputs,
   type PnpmSettings,
   type PnpmWorkspaceData,
 } from './pnpm-workspace/mod.ts'

@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv pnpm / Genie**: add root-local, read-only source generations for
+  composed workspaces. Aggregate roots declare cross-repository source inputs,
+  Genie projects matching `file:` overrides, and the shared pnpm transaction
+  publishes and validates one bounded generation without mutating canonical
+  repository source.
+
 - **@overeng/notion-react**: add an experimental read-only JSX →
   Notion-enhanced-Markdown projection at the new `@overeng/notion-react/markdown`
   entry point (#1097). `renderToNotionMarkdown(element)` reuses the production
@@ -54,6 +60,12 @@ All notable changes to this project will be documented in this file.
   evaluation.
 
 ### Fixed
+
+- **Nix prepared dependencies**: normalize ordinary, non-injected local
+  `file:` packages through pnpm's exact package-map locator before removing
+  transient Source Input aliases. Restored CLI workspaces now resolve the
+  logical package manifest and source instead of an empty virtual-store target;
+  the prepared artifact layout advances to `v19`.
 
 - **devenv observability verification**: enable native Devenv task activities
   during trace capture while preserving task stderr and a diagnostic copy.

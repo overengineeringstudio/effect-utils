@@ -33,6 +33,9 @@ parallel Dependency Graph.
 - **T03 Shared cache with local graphs:** Mutually trusted local development
   roots may share a pnpm Store Cache while keeping graph, projection, and
   repair authority root-local.
+- **T04 Materialization-bound source freshness:** A composed root may continue
+  using its last complete source generation between managed materialization or
+  readiness boundaries. A standalone root retains direct source feedback.
 
 ## Requirements
 
@@ -47,9 +50,10 @@ parallel Dependency Graph.
   composed workspace.
   Refines: DMP-R11, DMP-R16.
 - **DMP.LIVE-R03 Composed validity:** A composed workspace must use its own
-  generated or declared aggregate topology and must not mutate nested repo
-  lockfiles as a side effect.
-  Refines: DMP-R11.
+  generated or declared aggregate topology. Aggregate materialization must not
+  mutate a nested repository's canonical package sources, lockfile, or
+  standalone realization state.
+  Refines: DMP-R11, DMP-R12.
 - **DMP.LIVE-R04 Nested roots:** Nested authoritative install roots must be
   modeled as explicit Materialization Roots with separate mutable realization
   state and root-local virtual topology. Equivalent roots may share immutable
@@ -62,8 +66,11 @@ parallel Dependency Graph.
   equivalent Dependency Edges for the same physical source must target one
   Package Instance.
   Refines: DMP-R11.
-- **DMP.LIVE-R06 Local source linkage:** Workspace and cross-repo local
-  dependencies must resolve to live source when that is the selected topology.
+- **DMP.LIVE-R06 Local source selection:** Workspace and cross-repo local
+  dependencies must resolve to the source content selected by the topology. A
+  standalone topology selects its canonical working source directly; a
+  composed topology may select its currently published complete source
+  generation.
   Refines: DMP-R11.
 - **DMP.LIVE-R07 Dependency truthfulness:** Every realized Dependency Edge must
   target the Package Instance selected by pnpm, including its resolved version
@@ -99,3 +106,17 @@ parallel Dependency Graph.
   concurrency model, and disposable historical cache state must never become a
   correctness or availability dependency.
   Refines: DMP-R02, DMP-R11, DMP-R12.
+- **DMP.LIVE-R13 Root-scoped source isolation:** When a composed topology
+  consumes canonical source owned by another Materialization Root, the
+  aggregate root must expose one read-only, validated source generation to its Package
+  Instances. Writes through a consumer must not alter canonical source, and
+  writable source-generation state must not be shared across Materialization
+  Roots or create consumer-scoped materialization authority.
+  Refines: DMP-R11, DMP-R12, DMP-R23.
+- **DMP.LIVE-R14 Boundary-convergent source refresh:** Managed readiness,
+  install, update, and deduplicate entrypoints must derive source-generation
+  identity from the complete declared source set and canonical content.
+  Readiness must report an identity change or drift as unhealthy; a mutating
+  entrypoint must then atomically publish a complete matching generation before
+  pnpm consumes it.
+  Refines: DMP-R15, DMP-R20.

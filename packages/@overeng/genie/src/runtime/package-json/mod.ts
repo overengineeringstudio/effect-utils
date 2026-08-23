@@ -426,6 +426,44 @@ export type WorkspacePackageLike = {
   meta: WorkspaceMeta
 }
 
+/** Workspace package whose emitted dependency identity is statically present. */
+export type NamedWorkspacePackageLike<Name extends string = string> = WorkspacePackageLike & {
+  data: PackageJsonData & { name: Name }
+}
+
+const projectWorkspaceClosureReference = (pkg: WorkspacePackageLike): NamedWorkspacePackageLike => {
+  if (pkg.data.name === undefined) {
+    throw new Error(
+      'workspaceClosureReference requires every package in the closure to have a name',
+    )
+  }
+
+  return {
+    data: { name: pkg.data.name },
+    meta: {
+      workspace: {
+        ...pkg.meta.workspace,
+        deps: pkg.meta.workspace.deps.map(projectWorkspaceClosureReference),
+      },
+    },
+  }
+}
+
+/**
+ * Project a package into a workspace-closure reference.
+ *
+ * The reference keeps only the package name needed to emit the direct
+ * workspace dependency plus the recursive workspace graph needed by
+ * projections. Package behavior such as peer contracts and pnpm patch metadata
+ * deliberately does not flow through this edge.
+ */
+export const workspaceClosureReference = <const Name extends string>(
+  pkg: NamedWorkspacePackageLike<Name>,
+): NamedWorkspacePackageLike<Name> => {
+  const reference = projectWorkspaceClosureReference(pkg)
+  return { ...reference, data: { name: pkg.data.name } }
+}
+
 /** Package.json genie output that carries workspace-composition metadata. */
 export type WorkspacePackage = GenieOutput<PackageJsonData, WorkspaceMeta>
 
@@ -849,6 +887,11 @@ function createPackageJson<const T extends PackageJsonInputData>(
 function createPackageJson<const T extends PackageJsonInputData>(
   data: Strict<T, PackageJsonInputData>,
 ): GenieOutput<PackageJsonData, PackageJsonValidationMeta>
+function createPackageJson<const T extends PackageJsonComposedInputData & { name: string }>(
+  data: Strict<T, PackageJsonComposedInputData>,
+  composition: PackageJsonComposition,
+  options?: PackageJsonOptions,
+): GenieOutput<PackageJsonData & { name: T['name'] }, WorkspaceMeta & PackageJsonValidationMeta>
 function createPackageJson<const T extends PackageJsonComposedInputData>(
   data: Strict<T, PackageJsonComposedInputData>,
   composition: PackageJsonComposition,

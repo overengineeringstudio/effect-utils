@@ -82,6 +82,23 @@ projection semantics from
   makes an opted-in root's artifact complete; it does not detect a root that
   ought to have opted in but did not — that gap is a downstream build concern.
   Refines: DMP-R04, DMP-R09, DMP.NIX-R04.
+- **DMP.NIX-R12 Prepared source locator compatibility:** When canonical topology
+  inputs name root-local live Source Input locators, a prepared install root
+  must resolve those locators to the same declared logical manifest sources
+  inside its immutable filtered snapshot while preserving the canonical frozen
+  lock and workspace policy. Any compatibility aliases must be transient and
+  absent from the prepared artifact. The boundary must not import live
+  `.devenv` state, widen dependency freshness to source-only content, leave
+  broken references, or select a different Dependency Edge.
+  Refines: DMP-R05, DMP-R11, DMP-R21, DMP.LIVE-R13.
+- **DMP.NIX-R13 Ordinary local-file source completeness:** After downstream
+  overlay, every ordinary (non-injected) local `file:` Dependency Edge selected
+  through a prepared Source Input locator must resolve to the restored logical
+  package's manifest and source content, not an empty or manifest-only copy of
+  the transient alias. The target mapping must preserve pnpm's selected locator
+  identity, including peer-context variants, without introducing a second
+  package-name selector.
+  Refines: DMP-R05, DMP-R09, DMP-R11, DMP-R21.
 
 ### Must remain operational
 

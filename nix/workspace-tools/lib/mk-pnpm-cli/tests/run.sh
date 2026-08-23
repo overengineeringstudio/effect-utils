@@ -244,6 +244,16 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-derived-workspace-root"
 
+  echo "Check: prepared source-input locators resolve through transient manifest aliases"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-source-input-manifest-aliases"
+
+  echo "Check: non-canonical source-input stage paths fail evaluation"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.invalid-source-input-stage-path"
+
   echo "Build: downstream pure-eval profile-dedup regression (standalone effect-utils path)"
   nix build --no-link --no-write-lock-file \
     --override-input effect-utils "path:$WORKSPACE_REAL/effect-utils" \
@@ -289,6 +299,11 @@ run_downstream_pure_eval_regression() {
   nix build --no-link --no-write-lock-file \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-workspace-injected-locator-identity"
+
+  echo "Check: restored ordinary source-input file links expose logical source content"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-workspace-source-input-file-links"
 
   echo "Check: downstream staged pnpm-workspace.yaml strips live-worktree pnpm settings"
   local deps_src

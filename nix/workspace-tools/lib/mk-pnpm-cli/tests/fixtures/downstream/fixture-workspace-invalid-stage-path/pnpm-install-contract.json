@@ -1,0 +1,7 @@
+{
+  "contract": "fixture/pnpm-install-contract",
+  "workspaceManifestContract": {
+    "sourceInputPaths": [],
+    "sourceInputStagePath": ".devenv/pnpm-source-inputs/not-current"
+  }
+}

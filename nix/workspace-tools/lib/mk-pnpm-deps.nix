@@ -123,6 +123,11 @@ let
         if (entry.isDirectory()) {
           normalize(entryPath, root);
           fs.chmodSync(entryPath, 0o755);
+        } else if (entry.isSymbolicLink()) {
+          const target = fs.readlinkSync(entryPath);
+          if (target.includes(".devenv/pnpm-source-inputs")) {
+            throw new Error(`prepared workspace retained a transient source-input alias reference: ''${relativePath} -> ''${target}`);
+          }
         } else if (entry.isFile()) {
           if (shouldDelete(relativePath)) {
             fs.rmSync(entryPath, { force: true });
@@ -163,6 +168,7 @@ let
 
     const workspaceRoot = process.cwd();
     const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+    const sourceInputLocatorPrefix = "file:.devenv/pnpm-source-inputs/current/";
 
     const rewriteTextFile = (filePath, transform) => {
       if (!fs.existsSync(filePath)) {
@@ -184,7 +190,67 @@ let
         (!relativePath.startsWith(`..''${path.sep}`) && relativePath !== ".." && !path.isAbsolute(relativePath));
     };
 
-    const relinkInjectedPackages = (dirPath, relinkedTargets = new Map()) => {
+    const sourceProjectDirForLocator = (lockfileDir, locator) => {
+      const locatorIndex = locator.lastIndexOf(sourceInputLocatorPrefix);
+      if (locatorIndex === -1) {
+        return null;
+      }
+
+      // pnpm appends a parenthesized peer-context suffix to the directory
+      // locator. The declared source path itself is the prefix before it.
+      const sourcePathWithPeerContext = locator.slice(
+        locatorIndex + sourceInputLocatorPrefix.length
+      );
+      const sourcePath = sourcePathWithPeerContext.replace(/\([^/()]*\)$/, "");
+      const sourceInputStageRoot = path.resolve(
+        lockfileDir,
+        ".devenv/pnpm-source-inputs/current"
+      );
+      const sourceProjectAliasDir = path.resolve(
+        sourceInputStageRoot,
+        sourcePath
+      );
+      if (
+        sourceProjectAliasDir === sourceInputStageRoot ||
+        !isWithin(sourceInputStageRoot, sourceProjectAliasDir)
+      ) {
+        throw new Error(`source-input package locator escaped its stage root: ''${locator}`);
+      }
+
+      const sourceProjectAliasManifest = path.join(sourceProjectAliasDir, "package.json");
+      if (!fs.existsSync(sourceProjectAliasManifest)) {
+        throw new Error(`source-input package alias is missing package.json: ''${sourceProjectAliasDir}`);
+      }
+      const sourceProjectDir = path.resolve(lockfileDir, sourcePath);
+      if (!isWithin(workspaceRoot, sourceProjectDir)) {
+        throw new Error(`source-input logical package escaped prepared workspace: ''${sourceProjectDir}`);
+      }
+      const sourceProjectManifest = path.join(sourceProjectDir, "package.json");
+      if (!fs.existsSync(sourceProjectManifest)) {
+        throw new Error(`source-input logical package is missing package.json: ''${sourceProjectDir}`);
+      }
+      const sourceProjectRealManifest = fs.realpathSync(sourceProjectManifest);
+      if (fs.realpathSync(sourceProjectAliasManifest) !== sourceProjectRealManifest) {
+        throw new Error(`source-input package alias does not select its declared logical manifest: ''${locator}`);
+      }
+      const sourceProjectRealDir = path.dirname(sourceProjectRealManifest);
+      if (!isWithin(workspaceRoot, sourceProjectRealDir)) {
+        throw new Error(`source-input logical package resolved outside prepared workspace: ''${sourceProjectDir}`);
+      }
+      return sourceProjectRealDir;
+    };
+
+    const registerRelink = (relinkedTargets, packageDir, sourceProjectDir, locator) => {
+      const previousSource = relinkedTargets.get(packageDir);
+      if (previousSource && previousSource !== sourceProjectDir) {
+        throw new Error(
+          `conflicting pnpm locators for ''${packageDir}: ''${previousSource} and ''${sourceProjectDir} (''${locator})`
+        );
+      }
+      relinkedTargets.set(packageDir, sourceProjectDir);
+    };
+
+    const relinkLocalSourcePackages = (dirPath, relinkedTargets = new Map()) => {
       for (const entry of sortedDirEntries(dirPath)) {
         if (!entry.isDirectory()) {
           continue;
@@ -210,20 +276,43 @@ let
           const injectedDeps = modulesManifest.injectedDeps ?? {};
           const lockfileDir = path.dirname(entryPath);
 
+          // Ordinary `file:` dependencies do not appear in injectedDeps.
+          // `.package-map.json` is pnpm's exact locator-to-package-target map,
+          // including peer-context variants, so it extends the same selector
+          // without falling back to a package-name or virtual-dir scan.
+          const packageMapPath = path.join(entryPath, ".package-map.json");
+          const packageMap = fs.existsSync(packageMapPath)
+            ? JSON.parse(fs.readFileSync(packageMapPath, "utf8"))
+            : { packages: {} };
+          for (const [locator, packageRecord] of Object.entries(packageMap.packages ?? {})) {
+            const sourceProjectDir = sourceProjectDirForLocator(lockfileDir, locator);
+            if (sourceProjectDir === null) continue;
+            if (!packageRecord || typeof packageRecord.url !== "string") {
+              throw new Error(`source-input package locator has no target URL: ''${locator}`);
+            }
+            const packageDir = path.resolve(entryPath, packageRecord.url);
+            if (packageDir === entryPath || !isWithin(entryPath, packageDir)) {
+              throw new Error(`source-input package target escaped prepared node_modules: ''${packageDir}`);
+            }
+            registerRelink(relinkedTargets, packageDir, sourceProjectDir, locator);
+          }
+
           for (const [sourceProjectId, targetIds] of Object.entries(injectedDeps)) {
             if (!Array.isArray(targetIds)) {
               throw new Error(`invalid injectedDeps targets for ''${sourceProjectId}: ''${modulesManifestPath}`);
             }
 
-            const sourceProjectDir = path.resolve(lockfileDir, sourceProjectId);
+            const sourceProjectAliasDir = path.resolve(lockfileDir, sourceProjectId);
+            if (!isWithin(workspaceRoot, sourceProjectAliasDir)) {
+              throw new Error(`injected dependency source escaped prepared workspace: ''${sourceProjectAliasDir}`);
+            }
+            const sourceProjectAliasManifest = path.join(sourceProjectAliasDir, "package.json");
+            if (!fs.existsSync(sourceProjectAliasManifest)) {
+              throw new Error(`injected dependency source is missing package.json: ''${sourceProjectAliasDir}`);
+            }
+            const sourceProjectDir = path.dirname(fs.realpathSync(sourceProjectAliasManifest));
             if (!isWithin(workspaceRoot, sourceProjectDir)) {
-              throw new Error(`injected dependency source escaped prepared workspace: ''${sourceProjectDir}`);
-            }
-            if (!fs.existsSync(path.join(sourceProjectDir, "package.json"))) {
-              throw new Error(`injected dependency source is missing package.json: ''${sourceProjectDir}`);
-            }
-            if (!isWithin(workspaceRoot, fs.realpathSync(sourceProjectDir))) {
-              throw new Error(`injected dependency source resolved outside prepared workspace: ''${sourceProjectDir}`);
+              throw new Error(`injected dependency source resolved outside prepared workspace: ''${sourceProjectAliasDir}`);
             }
 
             for (const targetId of targetIds) {
@@ -236,29 +325,27 @@ let
                 throw new Error(`injected dependency target escaped prepared node_modules: ''${packageDir}`);
               }
 
-              const previousSource = relinkedTargets.get(packageDir);
-              if (previousSource && previousSource !== sourceProjectDir) {
-                throw new Error(
-                  `conflicting injected dependency locators for ''${packageDir}: ''${previousSource} and ''${sourceProjectDir}`
-                );
-              }
-              relinkedTargets.set(packageDir, sourceProjectDir);
-
-              if (!fs.existsSync(packageDir)) {
-                throw new Error(`injected dependency target is missing: ''${packageDir}`);
-              }
-
-              fs.rmSync(packageDir, { recursive: true, force: true });
-              fs.symlinkSync(path.relative(path.dirname(packageDir), sourceProjectDir), packageDir, "dir");
+              registerRelink(relinkedTargets, packageDir, sourceProjectDir, sourceProjectId);
             }
           }
+
+          for (const [packageDir, sourceProjectDir] of relinkedTargets) {
+            if (!fs.existsSync(packageDir)) {
+              throw new Error(`selected local dependency target is missing: ''${packageDir}`);
+            }
+            if (fs.realpathSync(packageDir) === sourceProjectDir) {
+              continue;
+            }
+            fs.rmSync(packageDir, { recursive: true, force: true });
+            fs.symlinkSync(path.relative(path.dirname(packageDir), sourceProjectDir), packageDir, "dir");
+          }
         } else {
-          relinkInjectedPackages(entryPath, relinkedTargets);
+          relinkLocalSourcePackages(entryPath, relinkedTargets);
         }
       }
     };
 
-    relinkInjectedPackages(workspaceRoot);
+    relinkLocalSourcePackages(workspaceRoot);
 
     const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
       let realDirPath;
@@ -474,7 +561,7 @@ in
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v18";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v19";
       version = "0.0.0";
 
       inherit src sourceRoot;

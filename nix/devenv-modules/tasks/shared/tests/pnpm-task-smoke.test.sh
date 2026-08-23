@@ -191,6 +191,7 @@ rewrite_unrealized_tool_paths() {
     s#/nix/store/[^"\s]*-pnpm-11\.5\.1/bin/pnpm#'"$tmpdir"'/bin/pnpm-lock-mutator#g;
     s#/nix/store/[^"\s]*-pnpm-task-helpers\.sh#'"$ROOT"'/nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh#g;
     s#/nix/store/[^"\s]*-check-node-modules-projection-health\.cjs#'"$ROOT"'/nix/devenv-modules/tasks/shared/check-node-modules-projection-health.cjs#g;
+    s#/nix/store/[^"\s]*-stage-pnpm-source-inputs\.mjs#'"$ROOT"'/nix/devenv-modules/tasks/shared/stage-pnpm-source-inputs.mjs#g;
   ' "$script_path"
 }
 
@@ -198,7 +199,7 @@ echo "Running pnpm task smoke test..."
 echo ""
 
 tmpdir="$(mktemp -d)"
-trap 'if [ "${KEEP_PNPM_SMOKE_TMP:-0}" = "1" ]; then echo "pnpm smoke tmp: $tmpdir" >&2; else rm -rf "$tmpdir"; fi' EXIT
+trap 'if [ "${KEEP_PNPM_SMOKE_TMP:-0}" = "1" ]; then echo "pnpm smoke tmp: $tmpdir" >&2; else chmod -R u+w "$tmpdir" 2>/dev/null || true; rm -rf "$tmpdir"; fi' EXIT
 
 workspace="$tmpdir/workspace"
 mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
@@ -381,6 +382,8 @@ cat > "$workspace/packages/demo/node_modules/.bin/storybook" <<'EOF'
 printf 'storybook-shim:%s\n' "$*"
 EOF
 chmod +x "$workspace/packages/demo/node_modules/.bin/storybook"
+mkdir -p "$workspace/repos/source/packages/pkg"
+printf 'source-v1\n' > "$workspace/repos/source/packages/pkg/value.txt"
 
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";'
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";'
@@ -389,6 +392,10 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair.exec.sh" 'packages 
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update.exec.sh" 'packages = [ ];' "pnpm:update"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-dedupe.exec.sh" 'packages = [ ];' "pnpm:dedupe"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-source-install.exec.sh" 'packages = [ ]; sourceInputPaths = [ "repos/source/packages/pkg" ];'
+extract_task_script "$workspace" "status" "$tmpdir/pnpm-source-install.status.sh" 'packages = [ ]; sourceInputPaths = [ "repos/source/packages/pkg" ];'
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-source-update.exec.sh" 'packages = [ ]; sourceInputPaths = [ "repos/source/packages/pkg" ];' "pnpm:update"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-source-dedupe.exec.sh" 'packages = [ ]; sourceInputPaths = [ "repos/source/packages/pkg" ];' "pnpm:dedupe"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update-nested.exec.sh" 'packages = [ ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:update:nested"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
@@ -422,6 +429,10 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-repair.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-clean.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-update.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-dedupe.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-source-install.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-source-install.status.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-source-update.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-source-dedupe.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-update-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
@@ -532,6 +543,32 @@ echo "Test 2c: lockfile mutation entrypoints preserve the live topology policy"
   grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-update.exec.sh"
   ! grep -qF "migrate_legacy_pnpm_store" "$tmpdir/pnpm-dedupe.exec.sh"
   grep -qF "assert_pnpm_storage_capacity" "$tmpdir/pnpm-dedupe.exec.sh"
+)
+
+echo "Test 2d: source-input publication has mutation parity and bounded generations"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  bash "$tmpdir/pnpm-source-install.exec.sh"
+  published=".devenv/pnpm-source-inputs/current/repos/source/packages/pkg/value.txt"
+  grep -qxF source-v1 "$published"
+  bash "$tmpdir/pnpm-source-install.status.sh" 2>/dev/null
+  bash "$tmpdir/pnpm-source-update.exec.sh"
+  bash "$tmpdir/pnpm-source-dedupe.exec.sh"
+  test "$(find .devenv/pnpm-source-inputs/generations -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 1
+
+  printf 'source-v2\n' > repos/source/packages/pkg/value.txt
+  set +e
+  bash "$tmpdir/pnpm-source-install.status.sh" 2>/dev/null
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "source change should invalidate install status"
+  bash "$tmpdir/pnpm-source-install.exec.sh"
+  grep -qxF source-v2 "$published"
+  bash "$tmpdir/pnpm-source-install.status.sh"
+  test "$(find .devenv/pnpm-source-inputs/generations -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 1
+  bash "$tmpdir/pnpm-install.exec.sh"
 )
 
 echo "Test 3: status hits after install with the same root-local virtual topology"

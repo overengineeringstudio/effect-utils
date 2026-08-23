@@ -21,11 +21,11 @@ This spec defines:
 | Section                       | Requirements                                       |
 | ----------------------------- | -------------------------------------------------- |
 | Pipeline                      | DMP.NIX-R01, DMP.NIX-R04, DMP.NIX-R05, DMP.NIX-R07 |
-| Staged Inputs                 | DMP.NIX-R02, DMP.NIX-R06                           |
+| Staged Inputs                 | DMP.NIX-R02, DMP.NIX-R06, DMP.NIX-R12, DMP.NIX-R13 |
 | Install Policy                | DMP.NIX-R01                                        |
 | Optional Binding Opt-In       | DMP.NIX-R11                                        |
 | Normalization And Purity Scan | DMP.NIX-R03, DMP.NIX-R04                           |
-| Restore                       | DMP.NIX-R05, DMP.NIX-R07                           |
+| Restore                       | DMP.NIX-R05, DMP.NIX-R07, DMP.NIX-R13              |
 | Evidence                      | DMP.NIX-R08, DMP.NIX-R09, DMP.NIX-R10              |
 
 ## Pipeline
@@ -43,6 +43,16 @@ canonical topology inputs
 
 ## Staged Inputs
 
+```text
+canonical lock + workspace policy
+  + generated Source Input path contract
+  + immutable filtered logical sources
+  -> transient staged-path aliases to logical manifests
+  -> frozen dependency preparation
+  -> canonicalized injected and ordinary file links
+  -> transient-alias removal
+```
+
 The staged workspace contains only dependency-relevant inputs:
 
 - authoritative lockfile;
@@ -53,6 +63,34 @@ The staged workspace contains only dependency-relevant inputs:
 
 Source-only edits outside this boundary must not invalidate the prepared
 dependency artifact.
+
+When canonical live topology uses root-local Source Input generation locators,
+the Nix source-staging derivation creates transient alias directories at those
+staged paths. Each alias contains only a `package.json` symlink to the
+corresponding logical manifest already in the filtered snapshot, so source
+descendants are not reachable through the compatibility tree. The mapping
+comes only from the generated install
+contract's `workspaceManifestContract.sourceInputStagePath` and
+`workspaceManifestContract.sourceInputPaths`. The stage root must be exactly
+`.devenv/pnpm-source-inputs/current`, matching cleanup authority, and only
+declared paths with a present logical `package.json` receive an alias.
+
+The frozen lockfile and workspace policy remain byte-consistent, including raw
+`directory:` resolutions and `packageExtensionsChecksum`. After pnpm resolves
+them, prepared-workspace normalization relinks local packages to the validated
+real logical directory rather than the transient alias:
+
+- injected packages use pnpm's `injectedDeps` locator mapping;
+- ordinary `file:` packages use pnpm's `.package-map.json`
+  locator-to-target mapping, which retains the exact peer-context variant.
+
+Both paths consume pnpm's selected locator identity. Package-name or virtual
+directory scans are not selectors. For an ordinary `file:` target, this relink
+is required because pnpm accepts the manifest-only alias for frozen resolution
+but materializes no package source bytes from it. `.devenv` is then removed,
+and the prepared output must contain neither alias state nor broken references.
+This compatibility bridge does not run the live Source Input publisher, copy
+its generations, or add source-only files to manifest freshness.
 
 ## Install Policy
 
@@ -119,6 +157,13 @@ fixed-output contract.
 Downstream builds restore prepared data into the staged source build workspace.
 They then run pure projections, graft explicit native integrations, and build
 the final package.
+
+The full logical source snapshot is present before prepared dependency data is
+overlaid. Relinked injected and ordinary local-file package targets therefore
+resolve through the same logical source directories after overlay. The focused
+`prepared-workspace-source-input-file-links` regression covers an ordinary
+locator with a peer-context suffix, verifies the exact package-map target is
+relinked, removes the transient alias, and still resolves package source bytes.
 
 Downstream restore must not use pnpm to reconstruct dependency state.
 

@@ -1,6 +1,14 @@
 packages:
   - app
 
+overrides:
+  '@overeng/utils': file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils
+
+packageExtensions:
+  fixture-package@1.0.0:
+    dependencies:
+      '@overeng/utils': file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils
+
 enableGlobalVirtualStore: true
 globalVirtualStoreDir: .devenv/pnpm-gvs
 storeDir: .devenv/pnpm-store-pure-v1
