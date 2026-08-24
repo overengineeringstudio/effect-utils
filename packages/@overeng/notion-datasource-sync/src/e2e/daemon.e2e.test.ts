@@ -1164,7 +1164,10 @@ describe('watch daemon surface', () => {
     const queryContract = {
       ...defaultQueryContract(),
       pageSize: 1,
-      highWatermark: decode({ schema: Schema.DateTimeUtcFromString, value: '2026-05-24T23:59:00.000Z' }),
+      highWatermark: decode({
+        schema: Schema.DateTimeUtcFromString,
+        value: '2026-05-24T23:59:00.000Z',
+      }),
     }
     const baselineGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
     const soakGateway = makeFakeGatewayHarness({
@@ -1463,7 +1466,10 @@ describe('watch daemon surface', () => {
     const queryContract = {
       ...defaultQueryContract(),
       pageSize: 1,
-      highWatermark: decode({ schema: Schema.DateTimeUtcFromString, value: '2026-05-24T23:59:00.000Z' }),
+      highWatermark: decode({
+        schema: Schema.DateTimeUtcFromString,
+        value: '2026-05-24T23:59:00.000Z',
+      }),
     }
     const thirdPageId = decode({ schema: PageId, value: 'page-3' })
     const pages = [
@@ -2449,9 +2455,7 @@ describe('watch daemon surface', () => {
     const fiber = Effect.runFork(notifier.awaitWake(5_000))
     // A blocked awaitWake never settles: racing its completion against a short
     // timeout fails with TimeoutError while the waiter stays registered.
-    const early = await Effect.runPromise(
-      Effect.exit(Fiber.await(fiber).pipe(Effect.timeout(20))),
-    )
+    const early = await Effect.runPromise(Effect.exit(Fiber.await(fiber).pipe(Effect.timeout(20))))
     expect(early._tag === 'Failure').toBe(true) // still blocked — pendingWake was fully consumed above
 
     // A fresh single wake() unblocks the waiting fiber

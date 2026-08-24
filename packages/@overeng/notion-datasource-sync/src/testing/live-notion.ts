@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
+import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { HttpClient } from 'effect/unstable/http/HttpClient'
-import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
 import {
   NOTION_API_VERSION,
@@ -1095,9 +1095,7 @@ const formatDemoVerificationBlocks = (result: LiveNotionDemoShowcaseResult) => [
 ]
 
 const collectBlocks = (pageId: string) =>
-  NotionBlocks.retrieveChildrenStream({ blockId: pageId, pageSize: 100 }).pipe(
-    Stream.runCollect,
-  )
+  NotionBlocks.retrieveChildrenStream({ blockId: pageId, pageSize: 100 }).pipe(Stream.runCollect)
 
 const archiveDemoDatabase = (databaseId: string) =>
   NotionDatabases.archive({ databaseId }).pipe(
@@ -1243,9 +1241,7 @@ const patchDemoDataSourceMetadata = ({
   Effect.gen(function* () {
     const notionConfig = yield* NotionConfig
     const httpClient = yield* HttpClient
-    const provideClientEnv = <A, E>(
-      effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
-    ) =>
+    const provideClientEnv = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) =>
       effect.pipe(
         Effect.provideService(NotionConfig, notionConfig),
         Effect.provideService(HttpClient, httpClient),

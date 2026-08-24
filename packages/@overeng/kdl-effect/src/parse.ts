@@ -16,28 +16,30 @@ import { objectToKdlDocument } from './encode.ts'
  */
 const ParseKdl = Schema.String.annotate({
   description: 'a KDL string to be decoded',
-}).pipe(
-  Schema.decodeTo(Schema.Unknown, {
-    decode: SchemaGetter.transformOrFail((text) =>
-      Effect.try({
-        try: () => kdlToObject(parse(text)),
-        catch: (e) =>
-          new SchemaIssue.InvalidValue({
-            message: e instanceof Error ? e.message : String(e),
-          }),
-      }),
-    ),
-    encode: SchemaGetter.transformOrFail((value) =>
-      Effect.try({
-        try: () => format(objectToKdlDocument(value as Record<string, unknown>)),
-        catch: (e) =>
-          new SchemaIssue.InvalidValue({
-            message: e instanceof Error ? e.message : String(e),
-          }),
-      }),
-    ),
-  }),
-).annotate({ title: 'parseKdl' })
+})
+  .pipe(
+    Schema.decodeTo(Schema.Unknown, {
+      decode: SchemaGetter.transformOrFail((text) =>
+        Effect.try({
+          try: () => kdlToObject(parse(text)),
+          catch: (e) =>
+            new SchemaIssue.InvalidValue({
+              message: e instanceof Error ? e.message : String(e),
+            }),
+        }),
+      ),
+      encode: SchemaGetter.transformOrFail((value) =>
+        Effect.try({
+          try: () => format(objectToKdlDocument(value as Record<string, unknown>)),
+          catch: (e) =>
+            new SchemaIssue.InvalidValue({
+              message: e instanceof Error ? e.message : String(e),
+            }),
+        }),
+      ),
+    }),
+  )
+  .annotate({ title: 'parseKdl' })
 
 /**
  * Create a Schema that decodes KDL text into the target type.
@@ -54,8 +56,10 @@ export const parseKdl = <S extends Schema.Codec<any, any, any, any>>(
     encode: SchemaGetter.transform((value) => value),
   })(Schema.Unknown)
 
-  return ParseKdl.pipe(
-    Schema.decodeTo(normalizedKdl),
-    Schema.decodeTo(schema),
-  ) as Schema.Codec<S['Type'], string, S['DecodingServices'], S['EncodingServices']>
+  return ParseKdl.pipe(Schema.decodeTo(normalizedKdl), Schema.decodeTo(schema)) as Schema.Codec<
+    S['Type'],
+    string,
+    S['DecodingServices'],
+    S['EncodingServices']
+  >
 }

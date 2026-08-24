@@ -15,9 +15,9 @@
  *   bun examples/viewport-overflow-stress.tsx footer 200 10    # 200 files, 10ms delay
  */
 
-import type { Atom } from 'effect/unstable/reactivity'
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
+import type { Atom } from 'effect/unstable/reactivity'
 import React, { useMemo } from 'react'
 
 import { createTuiApp, run, Box, Text, Spinner, useViewport, useTuiAtomValue } from '../src/mod.tsx'

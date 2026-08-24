@@ -3,9 +3,9 @@ import { Schema } from 'effect'
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import type { PropertyWriteClassType } from '@overeng/notion-effect-schema'
 import { propertyWriteGuardNames } from '@overeng/notion-property-write'
-import { NonEmptyTrimmedString } from './domain.ts'
 
 import type { QueryRowsPage } from './commands.ts'
+import { NonEmptyTrimmedString } from './domain.ts'
 import type {
   BodyAdapterMutationSurface,
   BodySafetySnapshot,

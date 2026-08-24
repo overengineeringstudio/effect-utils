@@ -4,13 +4,18 @@
  * Adds a new member repository to the megarepo configuration.
  */
 
-import * as Cli from 'effect/unstable/cli'
 import { Effect, Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
 
-import { MegarepoConfig, parseSourceString, readMegarepoConfig, writeMegarepoConfig } from '../../lib/config.ts'
+import {
+  MegarepoConfig,
+  parseSourceString,
+  readMegarepoConfig,
+  writeMegarepoConfig,
+} from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'

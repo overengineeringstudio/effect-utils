@@ -108,13 +108,14 @@ export type MegarepoSyncTree = {
 }
 
 /** Recursive schema for nested megarepo sync results. */
-export const MegarepoSyncTree: Schema.Codec<MegarepoSyncTree, MegarepoSyncTree> = Schema.suspend(() =>
-  Schema.Struct({
-    root: Schema.String,
-    results: Schema.Array(MemberSyncResult),
-    nestedMegarepos: Schema.Array(Schema.String),
-    nestedResults: Schema.Array(MegarepoSyncTree),
-  }),
+export const MegarepoSyncTree: Schema.Codec<MegarepoSyncTree, MegarepoSyncTree> = Schema.suspend(
+  () =>
+    Schema.Struct({
+      root: Schema.String,
+      results: Schema.Array(MemberSyncResult),
+      nestedMegarepos: Schema.Array(Schema.String),
+      nestedResults: Schema.Array(MegarepoSyncTree),
+    }),
 )
 
 /** Flattened error item (includes nested megarepo root). */

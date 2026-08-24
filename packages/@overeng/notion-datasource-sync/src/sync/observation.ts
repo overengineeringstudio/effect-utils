@@ -206,8 +206,7 @@ const defaultBodyPathForPage = (pageId: PageIdType): WorkspaceRelativePath => {
 
 const collectStream = <TValue, TError>(
   stream: Stream.Stream<TValue, TError>,
-): Effect.Effect<ReadonlyArray<TValue>, TError> =>
-  stream.pipe(Stream.runCollect)
+): Effect.Effect<ReadonlyArray<TValue>, TError> => stream.pipe(Stream.runCollect)
 
 const maxObservedHighWatermark = ({
   initial,

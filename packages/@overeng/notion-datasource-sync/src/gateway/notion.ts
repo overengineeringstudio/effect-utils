@@ -1,5 +1,5 @@
-import { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Context, Effect, Layer, Option, Schema, type Scope, Stream } from 'effect'
+import { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import {
   type DatabaseFilter,
@@ -216,12 +216,8 @@ export const makeThrottledProvideClientEnv = (
   options: NotionThrottleOptions = DEFAULT_NOTION_GATEWAY_THROTTLE,
 ): Effect.Effect<
   (
-    base: <A, E>(
-      effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
-    ) => Effect.Effect<A, E>,
-  ) => <A, E>(
-    effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
-  ) => Effect.Effect<A, E>,
+    base: <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) => Effect.Effect<A, E>,
+  ) => <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) => Effect.Effect<A, E>,
   never,
   Scope.Scope
 > =>
@@ -759,20 +755,23 @@ export const dataSourceOperationsToNotion = (
     )
   }
 
-  return Effect.reduce(operations, () => ({}) as Record<string, unknown>, (properties, operation) =>
-    schemaOperationToProperty(operation).pipe(
-      Effect.flatMap(([key, value]) =>
-        Object.prototype.hasOwnProperty.call(properties, key) === true
-          ? Effect.fail(
-              unsupportedOperation({
-                operation: 'patchDataSourceSchema',
-                capability: 'schema_update',
-                message: `Schema patch contains multiple operations targeting the same property key: ${key}`,
-              }),
-            )
-          : Effect.succeed({ ...properties, [key]: value }),
+  return Effect.reduce(
+    operations,
+    () => ({}) as Record<string, unknown>,
+    (properties, operation) =>
+      schemaOperationToProperty(operation).pipe(
+        Effect.flatMap(([key, value]) =>
+          Object.prototype.hasOwnProperty.call(properties, key) === true
+            ? Effect.fail(
+                unsupportedOperation({
+                  operation: 'patchDataSourceSchema',
+                  capability: 'schema_update',
+                  message: `Schema patch contains multiple operations targeting the same property key: ${key}`,
+                }),
+              )
+            : Effect.succeed({ ...properties, [key]: value }),
+        ),
       ),
-    ),
   )
 }
 
@@ -1596,9 +1595,7 @@ export const NotionDataSourceGatewayLive: Layer.Layer<
   Effect.gen(function* () {
     const config = yield* NotionConfig
     const httpClient = yield* HttpClient
-    const provideClientEnv = <A, E>(
-      effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
-    ) =>
+    const provideClientEnv = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) =>
       effect.pipe(
         Effect.provideService(NotionConfig, config),
         Effect.provideService(HttpClient, httpClient),

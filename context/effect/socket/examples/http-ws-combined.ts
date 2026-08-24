@@ -3,13 +3,13 @@ import { createServer } from 'node:http'
 import { NodeRuntime } from '@effect/platform-node'
 import { layer as nodeHttpLayer } from '@effect/platform-node/NodeHttpServer'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
+import { Effect, Layer, Stream } from 'effect'
 import * as HttpRouter from 'effect/unstable/http/HttpRouter'
 import { text } from 'effect/unstable/http/HttpServerResponse'
 import type { CloseEvent, Socket as SocketType } from 'effect/unstable/socket/Socket'
 import { toChannelString } from 'effect/unstable/socket/Socket'
 import type { Address } from 'effect/unstable/socket/SocketServer'
 import { SocketServer } from 'effect/unstable/socket/SocketServer'
-import { Effect, Layer, Stream } from 'effect'
 
 /**
  * Example: HTTP + WebSocket in one Effect runtime.
@@ -72,9 +72,7 @@ const program = Effect.gen(function* () {
   return yield* socketServer.run(handleConnection)
 }).pipe(
   Effect.withSpan('ws.server'),
-  Effect.provide(
-    Layer.mergeAll(layerWebSocket({ port: wsPort }), HttpRouter.layer, httpServer),
-  ),
+  Effect.provide(Layer.mergeAll(layerWebSocket({ port: wsPort }), HttpRouter.layer, httpServer)),
 )
 
 /**
@@ -84,5 +82,3 @@ const program = Effect.gen(function* () {
  * - ws recv hello
  */
 NodeRuntime.runMain(program)
-
-

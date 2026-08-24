@@ -2581,7 +2581,10 @@ describe('CLI command surface', () => {
                 pageId: testIds.pageId,
                 path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
                 contentHash: hash('body-local'),
-                observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
+                observedAt: decode({
+                  schema: Schema.DateTimeUtcFromString,
+                  value: fixedObservedAt,
+                }),
               }),
             ],
           }).workspace,
@@ -2625,7 +2628,10 @@ describe('CLI command surface', () => {
                 pageId: testIds.pageId,
                 path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
                 contentHash: hash('body-local'),
-                observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
+                observedAt: decode({
+                  schema: Schema.DateTimeUtcFromString,
+                  value: fixedObservedAt,
+                }),
               }),
             ],
           }).workspace,

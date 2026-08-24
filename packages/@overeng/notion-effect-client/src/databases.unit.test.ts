@@ -1,5 +1,5 @@
-import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { Effect } from 'effect'
+import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

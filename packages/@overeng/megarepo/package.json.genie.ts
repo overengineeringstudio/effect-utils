@@ -15,10 +15,7 @@ import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-const peerDepNames = [
-  '@effect/platform-node',
-  'effect',
-] as const
+const peerDepNames = ['@effect/platform-node', 'effect'] as const
 
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/megarepo' }),

@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { NodeServices } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { Deferred, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -1407,7 +1407,12 @@ describe('notion-md e2e prototype', () => {
 
       expect(result).toMatchObject({
         _tag: 'Failure',
-        failure: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
+        failure: {
+          _tag: 'NmdSchemaDriftError',
+          page_id: pageId,
+          data_source_id: dataSourceId,
+          path,
+        },
       })
       if (result._tag !== 'Failure') throw new Error('Expected pushPage to fail on schema drift')
       expect(result.failure).toBeInstanceOf(NmdSchemaDriftError)
@@ -1475,7 +1480,12 @@ describe('notion-md e2e prototype', () => {
 
       expect(result).toMatchObject({
         _tag: 'Failure',
-        failure: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
+        failure: {
+          _tag: 'NmdSchemaDriftError',
+          page_id: pageId,
+          data_source_id: dataSourceId,
+          path,
+        },
       })
       if (result._tag !== 'Failure') throw new Error('Expected pushPage to fail on schema drift')
       expect(result.failure).toBeInstanceOf(NmdSchemaDriftError)
@@ -2043,7 +2053,9 @@ describe('notion-md e2e prototype', () => {
       expect(errResult._tag).toBe('Failure')
       if (errResult._tag !== 'Failure') throw new Error('expected failure')
       expect(errResult.failure).toBeInstanceOf(NmdDestructiveBodyBlockedError)
-      expect((errResult.failure as NmdDestructiveBodyBlockedError).guard).toBe('UnknownBlockDeletion')
+      expect((errResult.failure as NmdDestructiveBodyBlockedError).guard).toBe(
+        'UnknownBlockDeletion',
+      )
       expect((errResult.failure as NmdDestructiveBodyBlockedError).allowFlag).toBe(
         '--allow-delete-unknown-blocks',
       )

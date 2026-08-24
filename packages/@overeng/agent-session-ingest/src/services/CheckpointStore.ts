@@ -15,10 +15,7 @@ export const buildCheckpointKey = (
 export class CheckpointStore extends Context.Service<
   CheckpointStore,
   {
-    readonly list: Effect.Effect<
-      ReadonlyArray<IngestionCheckpoint>,
-      SessionCheckpointDecodeError
-    >
+    readonly list: Effect.Effect<ReadonlyArray<IngestionCheckpoint>, SessionCheckpointDecodeError>
     readonly saveAll: (
       checkpoints: ReadonlyArray<IngestionCheckpoint>,
     ) => Effect.Effect<void, SessionCheckpointWriteError>
@@ -31,52 +28,52 @@ export const makeFileCheckpointStore = (options: { path: string }) =>
     const fs = yield* FileSystem.FileSystem
 
     const list = Effect.gen(function* () {
-        const exists = yield* fs.exists(options.path)
-        if (exists !== true) return [] as Array<IngestionCheckpoint>
+      const exists = yield* fs.exists(options.path)
+      if (exists !== true) return [] as Array<IngestionCheckpoint>
 
-        const content = yield* fs.readFileString(options.path).pipe(
+      const content = yield* fs.readFileString(options.path).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SessionCheckpointDecodeError({
+              message: 'Failed to read checkpoint file',
+              path: options.path,
+              cause,
+            }),
+        ),
+      )
+
+      const lines = content
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+
+      const checkpoints: Array<IngestionCheckpoint> = []
+      for (const line of lines) {
+        const decoded = yield* Schema.decodeUnknownEffect(IngestionCheckpointJsonLine)(line).pipe(
           Effect.mapError(
             (cause) =>
               new SessionCheckpointDecodeError({
-                message: 'Failed to read checkpoint file',
+                message: 'Failed to decode checkpoint entry',
                 path: options.path,
                 cause,
               }),
           ),
         )
+        checkpoints.push(decoded)
+      }
 
-        const lines = content
-          .split('\n')
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0)
-
-        const checkpoints: Array<IngestionCheckpoint> = []
-        for (const line of lines) {
-          const decoded = yield* Schema.decodeUnknownEffect(IngestionCheckpointJsonLine)(line).pipe(
-            Effect.mapError(
-              (cause) =>
-                new SessionCheckpointDecodeError({
-                  message: 'Failed to decode checkpoint entry',
-                  path: options.path,
-                  cause,
-                }),
-            ),
-          )
-          checkpoints.push(decoded)
-        }
-
-        return checkpoints
-      }).pipe(
-        Effect.mapError((cause) =>
-          cause instanceof SessionCheckpointDecodeError
-            ? cause
-            : new SessionCheckpointDecodeError({
-                message: 'Failed to load checkpoints',
-                path: options.path,
-                cause,
-              }),
-        ),
-      )
+      return checkpoints
+    }).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof SessionCheckpointDecodeError
+          ? cause
+          : new SessionCheckpointDecodeError({
+              message: 'Failed to load checkpoints',
+              path: options.path,
+              cause,
+            }),
+      ),
+    )
 
     return {
       list,

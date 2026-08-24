@@ -1,6 +1,6 @@
+import { Effect, Layer, Redacted } from 'effect'
 import { layer as fetchHttpClientLayer } from 'effect/unstable/http/FetchHttpClient'
 import type { HttpClient } from 'effect/unstable/http/HttpClient'
-import { Effect, Layer, Redacted } from 'effect'
 
 import { NotionBlocks } from '../../blocks.ts'
 import { NotionConfig } from '../../config.ts'

@@ -4,13 +4,14 @@
  * Commands to pin and unpin members to specific refs.
  */
 
-import * as Cli from 'effect/unstable/cli'
-import * as FileSystem from 'effect/FileSystem'
 import { Clock, Effect, Layer, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
+
 import {
   buildSourceStringWithRef,
   MegarepoConfig,
@@ -244,9 +245,7 @@ export const pinCommand = Cli.Command.make(
               yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
             } else {
               // Fetch to ensure we have the latest refs
-              yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
-                Effect.catch(() => Effect.void),
-              )
+              yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catch(() => Effect.void))
             }
 
             // Resolve commit

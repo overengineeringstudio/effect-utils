@@ -1,10 +1,10 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
+import { Effect, Fiber, PubSub, Stream } from 'effect'
 import type { CloseEvent, Socket as SocketType } from 'effect/unstable/socket/Socket'
 import { toChannelString } from 'effect/unstable/socket/Socket'
 import type { Address } from 'effect/unstable/socket/SocketServer'
 import { SocketServer } from 'effect/unstable/socket/SocketServer'
-import { Effect, Fiber, PubSub, Stream } from 'effect'
 
 /**
  * Example: WebSocket broadcast server.
@@ -29,7 +29,9 @@ const handleConnection = (pubsub: PubSub.PubSub<string>) =>
         /** Each client gets its own subscription queue. */
         const subscription = yield* PubSub.subscribe(pubsub)
 
-        yield* Effect.addFinalizer(() => PubSub.publish(pubsub, `[system] ${id} left`).pipe(Effect.asVoid))
+        yield* Effect.addFinalizer(() =>
+          PubSub.publish(pubsub, `[system] ${id} left`).pipe(Effect.asVoid),
+        )
 
         yield* PubSub.publish(pubsub, `[system] ${id} joined`).pipe(Effect.asVoid)
 

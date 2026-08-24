@@ -1,7 +1,6 @@
 import { basename, dirname, resolve } from 'node:path'
 
-import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
-import { FetchHttpClient } from 'effect/unstable/http'
+import { NodePath } from '@effect/platform-node'
 import {
   Cause,
   Console,
@@ -15,8 +14,8 @@ import {
   Schema,
   Stream,
 } from 'effect'
-
-import { NodePath } from '@effect/platform-node'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 import {
   NMD_SYNC_DIRECTORY,
@@ -102,7 +101,6 @@ const trackOutPathArg = Args.string('path').pipe(
   Args.withSchema(NonEmptyCliText),
   Args.optional,
 )
-
 
 const trackAsOption = Options.choice('as', ['local', 'remote', 'shared']).pipe(
   Options.withDescription(

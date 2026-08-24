@@ -1,8 +1,8 @@
 import { Schema } from 'effect'
 
 import { DataSourceId, PageId } from './domain.ts'
-import { SyncRootId } from './events.ts'
 import { NonEmptyTrimmedString, NonNegativeInt } from './domain.ts'
+import { SyncRootId } from './events.ts'
 
 /** Stable local identifier for a durable wake signal in the SQLite inbox. */
 export const SignalId = NonEmptyTrimmedString.pipe(
@@ -32,12 +32,7 @@ export const SignalKind = Schema.Literal('remote-change').annotate({
 export type SignalKind = typeof SignalKind.Type
 
 /** Durable inbox lifecycle for signal processing. */
-export const SignalState = Schema.Literals([
-'pending',
-'claimed',
-'processed',
-'failed',
-]).annotate({
+export const SignalState = Schema.Literals(['pending', 'claimed', 'processed', 'failed']).annotate({
   identifier: 'NotionDatasourceSync.SignalState',
 })
 export type SignalState = typeof SignalState.Type

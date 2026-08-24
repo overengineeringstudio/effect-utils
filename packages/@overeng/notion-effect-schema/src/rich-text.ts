@@ -403,11 +403,10 @@ export type RichTextArray = typeof RichTextArray.Type
  * Transform rich text array to plain string.
  */
 export const RichTextArrayAsString = RichTextArray.pipe(
-  Schema.decodeTo(
-    Schema.String,
-    {
-      decode: SchemaGetter.transform((richText) => richText.map((rt) => rt.plain_text).join('')),
-      encode: SchemaGetter.transform((str): RichTextArray => [
+  Schema.decodeTo(Schema.String, {
+    decode: SchemaGetter.transform((richText) => richText.map((rt) => rt.plain_text).join('')),
+    encode: SchemaGetter.transform(
+      (str): RichTextArray => [
         {
           type: 'text',
           text: { content: str, link: null },
@@ -422,9 +421,9 @@ export const RichTextArrayAsString = RichTextArray.pipe(
           plain_text: str,
           href: null,
         },
-      ]),
-    },
-  ),
+      ],
+    ),
+  }),
 ).annotate({
   identifier: 'Notion.RichTextArrayAsString',
   title: 'Rich Text as String',

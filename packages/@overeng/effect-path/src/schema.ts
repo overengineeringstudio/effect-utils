@@ -49,10 +49,13 @@ const PathStringSchema = Schema.String.check(
   Schema.makeFilter((s: string) => s.length <= MAX_PATH_LENGTH, {
     message: `Path exceeds maximum length of ${MAX_PATH_LENGTH} characters`,
   }),
-  Schema.makeFilter((s: string) => {
-    const segments = toSegments(s)
-    return !segments.some(isWindowsReservedName)
-  }, { message: 'Path contains Windows reserved name' }),
+  Schema.makeFilter(
+    (s: string) => {
+      const segments = toSegments(s)
+      return !segments.some(isWindowsReservedName)
+    },
+    { message: 'Path contains Windows reserved name' },
+  ),
 )
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -298,8 +301,8 @@ const createPathInfoSchema = <B extends Abs | Rel, T extends File | Dir>(args: {
       decode: SchemaGetter.transform<PathInfo<B, T>, string & B & T>((s) =>
         buildPathInfoPure<B, T>({ original: s, isFile: args.isFile }),
       ),
-      encode: SchemaGetter.transform<string & B & T, PathInfo<B, T>>((info) =>
-        (encodeAs === 'original' ? info.original : info.normalized) as string & B & T,
+      encode: SchemaGetter.transform<string & B & T, PathInfo<B, T>>(
+        (info) => (encodeAs === 'original' ? info.original : info.normalized) as string & B & T,
       ),
     }),
   )

@@ -137,11 +137,13 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(Effect.sync(() => {
-          expect(capturedOutput).toHaveLength(1)
-          const parsed = decodeState(capturedOutput[0]!)
-          expect(parsed).toEqual({ _tag: 'Complete', total: 10 })
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(1)
+            const parsed = decodeState(capturedOutput[0]!)
+            expect(parsed).toEqual({ _tag: 'Complete', total: 10 })
+          }),
+        ),
       ),
     )
 
@@ -149,11 +151,13 @@ describe('createTuiApp', () => {
       TestApp.run().pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(Effect.sync(() => {
-          expect(capturedOutput).toHaveLength(1)
-          const parsed = decodeState(capturedOutput[0]!)
-          expect(parsed).toEqual({ _tag: 'Idle' })
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(1)
+            const parsed = decodeState(capturedOutput[0]!)
+            expect(parsed).toEqual({ _tag: 'Idle' })
+          }),
+        ),
       ),
     )
   })
@@ -170,23 +174,25 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
-        Effect.andThen(Effect.sync(() => {
-          // Initial snapshot + one line per state change. No trailing envelope.
-          expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
+        Effect.andThen(
+          Effect.sync(() => {
+            // Initial snapshot + one line per state change. No trailing envelope.
+            expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
-          // The point of this assertion is that each line is raw parseable JSON
-          // (wire-format check), not that it matches a schema.
-          // @effect-diagnostics-next-line preferSchemaOverJson:off -- deliberately asserting raw JSON validity of the NDJSON wire format
-          for (const line of capturedOutput) {
-            expect(() => JSON.parse(line)).not.toThrow()
-          }
+            // The point of this assertion is that each line is raw parseable JSON
+            // (wire-format check), not that it matches a schema.
+            // @effect-diagnostics-next-line preferSchemaOverJson:off -- deliberately asserting raw JSON validity of the NDJSON wire format
+            for (const line of capturedOutput) {
+              expect(() => JSON.parse(line)).not.toThrow()
+            }
 
-          const firstParsed = decodeState(capturedOutput[0]!)
-          expect(firstParsed._tag).toBe('Idle')
+            const firstParsed = decodeState(capturedOutput[0]!)
+            expect(firstParsed._tag).toBe('Idle')
 
-          const lastParsed = decodeState(capturedOutput[capturedOutput.length - 1]!)
-          expect(lastParsed._tag).toBe('Complete')
-        })),
+            const lastParsed = decodeState(capturedOutput[capturedOutput.length - 1]!)
+            expect(lastParsed._tag).toBe('Complete')
+          }),
+        ),
       ),
     )
   })
@@ -200,9 +206,11 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('log')),
-        Effect.andThen(Effect.sync(() => {
-          expect(capturedOutput).toHaveLength(0)
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(0)
+          }),
+        ),
       ),
     )
   })
@@ -224,9 +232,11 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('log')),
-        Effect.andThen(Effect.sync(() => {
-          expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
+          }),
+        ),
       )
     })
   })

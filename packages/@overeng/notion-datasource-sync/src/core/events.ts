@@ -17,8 +17,8 @@ import {
   SupportedNotionApiVersion,
   ViewId,
 } from './domain.ts'
-import { GuardName } from './guards.ts'
 import { NonEmptyTrimmedString, NonNegativeBigInt, NonNegativeInt } from './domain.ts'
+import { GuardName } from './guards.ts'
 
 /** Branded unique identifier for a single event in the sync event log. */
 export const SyncEventId = NonEmptyTrimmedString.pipe(
@@ -42,20 +42,20 @@ export type EventCodecVersion = typeof EventCodecVersion.Type
 
 /** High-level classification of a sync event; used for filtering and projection without needing to decode the full payload. */
 export const EventFamily = Schema.Literals([
-'RemoteObserved',
-'SyncRootBound',
-'CompatibilityChecked',
-'QueryScanRecorded',
-'LocalIntentAccepted',
-'CommandEnqueued',
-'CommandAttempted',
-'CommandSettled',
-'ConflictDetected',
-'ConflictResolved',
-'TombstoneClassified',
-'GuardBlocked',
-'RepairObserved',
-'StorageMigrated',
+  'RemoteObserved',
+  'SyncRootBound',
+  'CompatibilityChecked',
+  'QueryScanRecorded',
+  'LocalIntentAccepted',
+  'CommandEnqueued',
+  'CommandAttempted',
+  'CommandSettled',
+  'ConflictDetected',
+  'ConflictResolved',
+  'TombstoneClassified',
+  'GuardBlocked',
+  'RepairObserved',
+  'StorageMigrated',
 ]).annotate({ identifier: 'NotionDatasourceSync.EventFamily' })
 export type EventFamily = typeof EventFamily.Type
 
@@ -204,13 +204,7 @@ export const RemoteWriteAttempted = Schema.TaggedStruct('RemoteWriteAttempted', 
   ...eventEnvelopeFields({ family: 'CommandAttempted', eventType: 'RemoteWriteAttempted' }),
   commandId: CommandId,
   attempt: NonNegativeInt,
-  attemptState: Schema.Literals([
-'running',
-'retryable',
-'blocked',
-'fenced',
-'ambiguous',
-]),
+  attemptState: Schema.Literals(['running', 'retryable', 'blocked', 'fenced', 'ambiguous']),
   leaseToken: Schema.optional(NonEmptyTrimmedString),
   guard: Schema.optional(GuardName),
   retryAfterMillis: Schema.optional(NonNegativeInt),
@@ -227,10 +221,7 @@ export const RemoteWriteSettled = Schema.TaggedStruct('RemoteWriteSettled', {
   observedHash: Hash,
   bodyPointer: Schema.optional(BodyPointer),
   createdPageId: Schema.optional(PageId),
-  settlementKind: Schema.Literals([
-'verified-success',
-'verified-no-op',
-]),
+  settlementKind: Schema.Literals(['verified-success', 'verified-no-op']),
 }).annotate({ identifier: 'NotionDatasourceSync.RemoteWriteSettled' })
 export type RemoteWriteSettled = typeof RemoteWriteSettled.Type
 
@@ -388,27 +379,27 @@ export type GuardBlocked = typeof GuardBlocked.Type
 
 /** Discriminated union of all events persisted to the sync event log; the `_tag` field is the event type discriminator. */
 export const SyncEvent = Schema.Union([
-SyncBindingRecorded,
-ApiContractObserved,
-DataSourceObserved,
-DataSourceSchemaObserved,
-DataSourceMetadataObserved,
-DataSourceViewObserved,
-RowObserved,
-LocalIntentAccepted,
-RemoteWritePlanned,
-RemoteWriteAttempted,
-RemoteWriteSettled,
-ConflictRaised,
-ConflictResolved,
-TombstoneRecorded,
-TombstoneCandidateObserved,
-CapabilityPreflightChecked,
-QueryScanCheckpointRecorded,
-PagePropertyCheckpointRecorded,
-PathClaimed,
-RowForgotten,
-DecodeDriftBlocked,
-GuardBlocked,
+  SyncBindingRecorded,
+  ApiContractObserved,
+  DataSourceObserved,
+  DataSourceSchemaObserved,
+  DataSourceMetadataObserved,
+  DataSourceViewObserved,
+  RowObserved,
+  LocalIntentAccepted,
+  RemoteWritePlanned,
+  RemoteWriteAttempted,
+  RemoteWriteSettled,
+  ConflictRaised,
+  ConflictResolved,
+  TombstoneRecorded,
+  TombstoneCandidateObserved,
+  CapabilityPreflightChecked,
+  QueryScanCheckpointRecorded,
+  PagePropertyCheckpointRecorded,
+  PathClaimed,
+  RowForgotten,
+  DecodeDriftBlocked,
+  GuardBlocked,
 ]).annotate({ identifier: 'NotionDatasourceSync.SyncEvent' })
 export type SyncEvent = typeof SyncEvent.Type

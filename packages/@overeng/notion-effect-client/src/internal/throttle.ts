@@ -63,24 +63,23 @@ export const NotionThrottleLive = (options: NotionThrottleOptions): Layer.Layer<
             /* `onExceeded: 'delay'` delays instead of failing, so the limiter's
              * `RateLimiterError` channel is statically unreachable here; a
              * store failure surfaces as a defect rather than being swallowed. */
-            const throttled: Effect.Effect<A, E | RateLimiter.RateLimiterError, R> =
-              withLimiter({
-                key: '@overeng/notion-effect-client/throttle',
-                limit: burst,
-                window: Duration.millis(burst * Math.ceil(1000 / options.requestsPerSecond)),
-                algorithm: options.algorithm ?? 'token-bucket',
-                onExceeded: 'delay',
-              })(
-                Effect.gen(function* () {
-                  const waitMs = (yield* Clock.currentTimeMillis) - before
-                  yield* annotateNotionRateLimitWaitSpan(waitMs)
-                  yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({
-                    labels: {},
-                    value: waitMs,
-                  })
-                  return yield* effect
-                }),
-              )
+            const throttled: Effect.Effect<A, E | RateLimiter.RateLimiterError, R> = withLimiter({
+              key: '@overeng/notion-effect-client/throttle',
+              limit: burst,
+              window: Duration.millis(burst * Math.ceil(1000 / options.requestsPerSecond)),
+              algorithm: options.algorithm ?? 'token-bucket',
+              onExceeded: 'delay',
+            })(
+              Effect.gen(function* () {
+                const waitMs = (yield* Clock.currentTimeMillis) - before
+                yield* annotateNotionRateLimitWaitSpan(waitMs)
+                yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({
+                  labels: {},
+                  value: waitMs,
+                })
+                return yield* effect
+              }),
+            )
             /* `onExceeded: 'delay'` delays instead of failing, so the limiter's
              * `RateLimiterError` channel is statically unreachable here; a
              * store failure surfaces as a defect rather than being swallowed. */
@@ -93,7 +92,4 @@ export const NotionThrottleLive = (options: NotionThrottleOptions): Layer.Layer<
           }),
       }
     }),
-  ).pipe(
-    Layer.provide(RateLimiter.layer),
-    Layer.provide(RateLimiter.layerStoreMemory),
-  )
+  ).pipe(Layer.provide(RateLimiter.layer), Layer.provide(RateLimiter.layerStoreMemory))

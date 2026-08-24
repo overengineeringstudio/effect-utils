@@ -72,8 +72,7 @@ export const Checkbox = {
     Schema.decodeTo(Schema.Boolean, {
       decode: SchemaGetter.transform((prop) => prop.checkbox),
       encode: SchemaGetter.forbidden(
-        () =>
-          'Checkbox.raw encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
+        () => 'Checkbox.raw encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
       ),
     }),
   ),

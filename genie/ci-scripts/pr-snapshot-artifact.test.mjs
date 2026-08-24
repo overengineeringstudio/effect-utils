@@ -117,9 +117,7 @@ const fixture = async () => {
       ]),
     }
   })
-  await Promise.all(
-    files.map(({ file, bytes }) => writeFile(path.join(artifactDir, file), bytes)),
-  )
+  await Promise.all(files.map(({ file, bytes }) => writeFile(path.join(artifactDir, file), bytes)))
   return { dir: artifactDir, topologyPath, headSha, version }
 }
 

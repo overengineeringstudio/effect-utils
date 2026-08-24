@@ -1,10 +1,10 @@
 import { Schema } from 'effect'
 
-const NonEmptyWebhookString = Schema.NonEmptyString.pipe(
-  Schema.check(Schema.isTrimmed()),
-).annotate({
-  identifier: 'NotionWebhook.NonEmptyString',
-})
+const NonEmptyWebhookString = Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())).annotate(
+  {
+    identifier: 'NotionWebhook.NonEmptyString',
+  },
+)
 
 /** Entity reference carried on a Notion webhook event. */
 export const NotionWebhookEntity = Schema.Struct({
@@ -43,9 +43,7 @@ export const NotionWebhookPayload = Schema.Struct({
   timestamp: Schema.optional(NonEmptyWebhookString),
   created_time: Schema.optional(NonEmptyWebhookString),
   api_version: Schema.optional(NonEmptyWebhookString),
-  attempt_number: Schema.optional(
-    Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-  ),
+  attempt_number: Schema.optional(Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)))),
   subscription_id: Schema.optional(NonEmptyWebhookString),
   workspace_id: Schema.optional(NonEmptyWebhookString),
   integration_id: Schema.optional(NonEmptyWebhookString),

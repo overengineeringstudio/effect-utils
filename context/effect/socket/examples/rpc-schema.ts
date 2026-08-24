@@ -1,6 +1,6 @@
+import { Schema } from 'effect'
 import { make as makeRpc } from 'effect/unstable/rpc/Rpc'
 import { make as makeRpcGroup } from 'effect/unstable/rpc/RpcGroup'
-import { Schema } from 'effect'
 
 /**
  * Example: shared RPC schema for WS client + server.

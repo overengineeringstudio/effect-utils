@@ -1,4 +1,16 @@
-import { Cause, Data, Duration, Effect, FileSystem, Layer, Option, Path, Result, Schema, Stream } from 'effect'
+import {
+  Cause,
+  Data,
+  Duration,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  Result,
+  Schema,
+  Stream,
+} from 'effect'
 
 import {
   DistributedSemaphoreBacking,
@@ -84,10 +96,9 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
         return Effect.void
       }
 
-      const defect = Option.map(
-        Result.getSuccess(Cause.findDie(cause)),
-        (die) => die.defect,
-      ).pipe(Option.getOrUndefined)
+      const defect = Option.map(Result.getSuccess(Cause.findDie(cause)), (die) => die.defect).pipe(
+        Option.getOrUndefined,
+      )
       if (defect !== undefined && isNotFoundError(defect) === true) {
         return Effect.void
       }
@@ -112,9 +123,9 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
     return undefined
   }
 
-  const parsed = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(HolderLockSchema))(content).pipe(
-    Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'parseJson', cause })),
-  )
+  const parsed = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(HolderLockSchema))(
+    content,
+  ).pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'parseJson', cause })))
 
   // Check if expired
   if (parsed.expiresAt <= now) {

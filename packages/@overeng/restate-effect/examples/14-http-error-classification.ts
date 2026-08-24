@@ -1,3 +1,6 @@
+import { Effect, Schema, SchemaIssue } from 'effect'
+import { HttpClient } from 'effect/unstable/http/HttpClient'
+import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 /**
  * Classifying real HTTP outcomes from an `HttpClient` call (Molty consumer recipe
  * #3 — the union-member classification, made concrete). A handler that calls an
@@ -37,9 +40,6 @@
  * right channel. Skips when no native server is available.
  */
 import type * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
-import { HttpClient } from 'effect/unstable/http/HttpClient'
-import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
-import { Effect, Schema, SchemaIssue } from 'effect'
 
 import { Restate, RestateService } from '../src/mod.ts'
 
@@ -154,8 +154,7 @@ const decodeWidget = (
     Effect.catch(
       (e) =>
         new MalformedUpstream({
-          detail:
-            SchemaIssue.isIssue(e) === true ? 'body did not match Widget schema' : String(e),
+          detail: SchemaIssue.isIssue(e) === true ? 'body did not match Widget schema' : String(e),
         }),
     ),
   )

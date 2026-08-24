@@ -423,10 +423,9 @@ const BlockBase = Schema.Struct({
  *
  * @see https://developers.notion.com/reference/block
  */
-export const Block = Schema.StructWithRest(
-  BlockBase,
-  [Schema.Record(Schema.String, Schema.Unknown)],
-).annotate({
+export const Block = Schema.StructWithRest(BlockBase, [
+  Schema.Record(Schema.String, Schema.Unknown),
+]).annotate({
   identifier: 'Notion.Block',
   [docsPath]: 'block',
 })

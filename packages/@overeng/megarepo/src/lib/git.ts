@@ -4,8 +4,8 @@
  * Provides Effect-wrapped git operations for cloning, fetching, and managing worktrees.
  */
 
-import * as Command from 'effect/unstable/process/ChildProcess'
 import { Cause, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
+import * as Command from 'effect/unstable/process/ChildProcess'
 
 import * as Observability from './observability.ts'
 
@@ -982,8 +982,10 @@ export const getWorktreeStatus = (worktreePath: string) =>
     const changesCount = yield* streamGitCommandLines({
       args: ['status', '--porcelain', '--untracked-files=all'],
       cwd: worktreePath,
-      sink: Sink.fold<number, string>(() => 0, () => true, (count, line) =>
-          Effect.succeed(line.trim() !== '' ? count + 1 : count),
+      sink: Sink.fold<number, string>(
+        () => 0,
+        () => true,
+        (count, line) => Effect.succeed(line.trim() !== '' ? count + 1 : count),
       ),
     })
     const isDirty = changesCount > 0
@@ -1019,8 +1021,10 @@ export const getWorktreeRemovalStatus = (worktreePath: string) =>
       cwd: worktreePath,
       // `=normal` collapses large untracked dirs to one entry, but stream-count
       // anyway so the dirty preflight stays constant-memory regardless of tree.
-      sink: Sink.fold<number, string>(() => 0, () => true, (count, line) =>
-          Effect.succeed(line.trim() !== '' ? count + 1 : count),
+      sink: Sink.fold<number, string>(
+        () => 0,
+        () => true,
+        (count, line) => Effect.succeed(line.trim() !== '' ? count + 1 : count),
       ),
     }).pipe(
       Observability.withWorktreePathSpan({

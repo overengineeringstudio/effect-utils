@@ -6,10 +6,10 @@
 
 import { resolve } from 'node:path'
 
-import * as Cli from 'effect/unstable/cli'
+import { Context, Effect, Layer, Option } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
-import { Context, Effect, Layer, Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 

@@ -10,15 +10,13 @@
  */
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Command as Cli, Flag } from 'effect/unstable/cli'
 import { Cause, Duration, Effect, Option, Schedule } from 'effect'
+import { Command as Cli, Flag } from 'effect/unstable/cli'
 
 import { readPlan, verifyPlan, type VerifyFailure } from './verify.ts'
 
 const planOption = Flag.file('plan').pipe(
-  Flag.withDescription(
-    'Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }',
-  ),
+  Flag.withDescription('Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }'),
 )
 
 const registryOption = Flag.string('registry').pipe(

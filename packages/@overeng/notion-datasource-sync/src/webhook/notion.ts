@@ -1,13 +1,14 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 import { Result, Schema } from 'effect'
-import { NonEmptyTrimmedString } from '../core/domain.ts'
 
 import {
   type NotionWebhookPayload,
   NotionWebhookPayloadSchema,
   notionWebhookDecodeOptions,
 } from '@overeng/notion-effect-schema'
+
+import { NonEmptyTrimmedString } from '../core/domain.ts'
 
 /** Lower-case HTTP header name carrying Notion's HMAC-SHA256 webhook signature. */
 export const notionSignatureHeader = 'x-notion-signature'
@@ -110,7 +111,8 @@ export const parseNotionWebhookVerification = (
   | NotionWebhookVerification
   | { readonly _tag: 'NotionWebhookRejected'; readonly reason: NotionWebhookRejectionReason } => {
   const jsonResult = decodeJson(rawBodyText(rawBody))
-  if (Result.isFailure(jsonResult) === true) return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
+  if (Result.isFailure(jsonResult) === true)
+    return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
   const verResult = decodeVerification(jsonResult.success)
   if (Result.isFailure(verResult) === true) {
     return { _tag: 'NotionWebhookRejected', reason: 'missing-verification-token' }
@@ -248,7 +250,8 @@ export const parseNotionWebhookRequest = ({
 }: NotionWebhookRequestInput): NotionWebhookParseResult => {
   // Step 1: JSON parse
   const jsonResult = decodeJson(rawBodyText(rawBody))
-  if (Result.isFailure(jsonResult) === true) return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
+  if (Result.isFailure(jsonResult) === true)
+    return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
   const jsonValue = jsonResult.success
 
   // Step 2: unauthenticated verification-token branch

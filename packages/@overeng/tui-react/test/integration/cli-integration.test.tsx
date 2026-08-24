@@ -13,12 +13,7 @@ import { detectOutputMode } from '../../src/effect/OutputMode.node.ts'
 import { createTuiApp, run, useTuiAtomValue, Box, Text, testModeLayer } from '../../src/mod.tsx'
 
 const parseJson = (json: string) =>
-  Schema.decodeSync(
-    Schema.fromJsonString(
-      Schema.Record(Schema.String, Schema.Unknown,
-      ),
-    ),
-  )(json)
+  Schema.decodeSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(json)
 
 // =============================================================================
 // Test State Schema (simulating a deploy command)

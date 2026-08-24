@@ -20,9 +20,9 @@
  * directly with fake gh output so no real `gh`/network is needed.
  */
 
+import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
 import * as Command from 'effect/unstable/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
-import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
 
 import type { RelativeDirPath } from '@overeng/effect-path'
 
@@ -68,9 +68,9 @@ export interface PrStateResolverService {
 }
 
 /** PR-state resolver service tag. */
-export class PrStateResolver
-  extends Context.Service<PrStateResolver, PrStateResolverService>()('megarepo/PrStateResolver')
-{}
+export class PrStateResolver extends Context.Service<PrStateResolver, PrStateResolverService>()(
+  'megarepo/PrStateResolver',
+) {}
 
 // =============================================================================
 // Pure seams (unit-tested directly with fake gh output)
@@ -208,21 +208,18 @@ export const makePrStateResolverLayer = ({
         Effect.gen(function* () {
           const raw = yield* spawner
             .string(
-              Command.make(
-                'gh',
-                [
-                  'pr',
-                  'list',
-                  '--repo',
-                  `${owner}/${repo}`,
-                  '--state',
-                  'all',
-                  '--limit',
-                  String(limit),
-                  '--json',
-                  'number,state,headRefName,mergedAt,closedAt',
-                ],
-              ),
+              Command.make('gh', [
+                'pr',
+                'list',
+                '--repo',
+                `${owner}/${repo}`,
+                '--state',
+                'all',
+                '--limit',
+                String(limit),
+                '--json',
+                'number,state,headRefName,mergedAt,closedAt',
+              ]),
             )
             .pipe(
               Effect.timeout(timeout),

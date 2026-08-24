@@ -1,17 +1,9 @@
 import fs from 'node:fs'
 
+import type { Scope } from 'effect'
+import { Cause, type Duration, Effect, Fiber, Option, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Process from 'effect/unstable/process'
-import type { Scope } from 'effect'
-import {
-  Cause,
-  type Duration,
-  Effect,
-  Fiber,
-  Option,
-  Schema,
-  Stream,
-} from 'effect'
 
 import { type OtelAttrEncodeError, type OtelOperationDefinition } from '@overeng/otel-contract'
 
@@ -26,7 +18,8 @@ import * as FileLogger from './FileLogger.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
 // Branded zero value so we can compare exit codes without touching internals.
-const SUCCESS_EXIT_CODE: Process.ChildProcessSpawner.ExitCode = 0 as Process.ChildProcessSpawner.ExitCode
+const SUCCESS_EXIT_CODE: Process.ChildProcessSpawner.ExitCode =
+  0 as Process.ChildProcessSpawner.ExitCode
 
 // Runtime spans DERIVED from the registered seam contract (`./cmd.contract.ts`, namespace `cmd`),
 // the single SSOT for the Weaver registry projection AND these runtime encoders (SC-R13/R14).
@@ -206,9 +199,7 @@ export const cmdStart: (
 ) => Effect.Effect<
   Process.ChildProcessSpawner.ChildProcessHandle,
   PlatformError,
-  | Process.ChildProcessSpawner.ChildProcessSpawner
-  | CurrentWorkingDirectory
-  | Scope.Scope
+  Process.ChildProcessSpawner.ChildProcessSpawner | CurrentWorkingDirectory | Scope.Scope
 > = Effect.fn('cmdStart')(function* (commandInput, options) {
   const cwd = yield* CurrentWorkingDirectory
 
@@ -387,7 +378,6 @@ export const cmdCollect = <R = never>(opts: {
                 onOutput !== undefined ? onOutput('stdout', line) : Effect.void,
               ),
               Stream.runCollect,
-
             ),
             stderr: proc.stderr.pipe(
               Stream.decodeText({ encoding: 'utf8' }),
@@ -396,7 +386,6 @@ export const cmdCollect = <R = never>(opts: {
                 onOutput !== undefined ? onOutput('stderr', line) : Effect.void,
               ),
               Stream.runCollect,
-
             ),
             exitCode: proc.exitCode,
           },
@@ -491,7 +480,10 @@ const runWithLogging = ({
   Effect.scoped(
     Effect.gen(function* () {
       const inheritedEnv = env ?? process.env
-      const envWithColor = inheritedEnv.FORCE_COLOR === undefined ? { ...inheritedEnv, FORCE_COLOR: '1' } : inheritedEnv
+      const envWithColor =
+        inheritedEnv.FORCE_COLOR === undefined
+          ? { ...inheritedEnv, FORCE_COLOR: '1' }
+          : inheritedEnv
 
       const logFile = yield* Effect.acquireRelease(
         Effect.sync(() => fs.openSync(logPath, 'a', 0o666)),

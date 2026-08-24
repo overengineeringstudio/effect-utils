@@ -45,7 +45,9 @@ const stableStringify = (value: unknown): string => {
 /** Extracts the typed error channel from a failed `Effect.runPromiseExit` result (v4 Cause shape). */
 const exitError = (exit: Exit.Exit<unknown, unknown>): CanonicalEncodeError | undefined =>
   Exit.isFailure(exit) === true
-    ? Option.getOrUndefined(Cause.findErrorOption(exit.cause) as Option.Option<CanonicalEncodeError>)
+    ? Option.getOrUndefined(
+        Cause.findErrorOption(exit.cause) as Option.Option<CanonicalEncodeError>,
+      )
     : undefined
 
 const canonicalHash = (value: unknown): string =>

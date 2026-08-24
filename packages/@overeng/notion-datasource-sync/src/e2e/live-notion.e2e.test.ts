@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
+import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { type HttpClient } from 'effect/unstable/http/HttpClient'
-import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -2444,9 +2444,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               /* Explicit ~3 rps throttle so this live path mirrors production pacing. */
               const withThrottle = yield* makeThrottledProvideClientEnv()
               const baseClient = makeNotionEffectClientGatewayClient(
-                withThrottle(
-                  <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) =>
-                    effect.pipe(Effect.provide(liveLayer(token))),
+                withThrottle(<A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) =>
+                  effect.pipe(Effect.provide(liveLayer(token))),
                 ),
               )
               const gateway = makeNotionDataSourceGatewayFromClient({
@@ -3248,7 +3247,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             NotionDatabases.queryStream({
               dataSourceId: dataSource.dataSourceId,
               pageSize: 100,
-            }).pipe(Stream.runCollect, Effect.map((rows) => rows.length)),
+            }).pipe(
+              Stream.runCollect,
+              Effect.map((rows) => rows.length),
+            ),
           )
           return {
             title: remote.title?.map((part) => part.plain_text ?? '').join('') ?? '',

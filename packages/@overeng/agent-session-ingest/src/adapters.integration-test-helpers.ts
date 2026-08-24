@@ -1,8 +1,8 @@
 import { appendFile } from 'node:fs/promises'
 import * as nodePath from 'node:path'
 
-import { Effect, FileSystem, Schema } from 'effect'
 import { NodeServices as NodeContext } from '@effect/platform-node'
+import { Effect, FileSystem, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import type { SessionSourceAdapter } from './schema/core.ts'

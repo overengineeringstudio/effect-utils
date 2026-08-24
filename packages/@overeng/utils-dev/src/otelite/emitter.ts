@@ -11,11 +11,7 @@
  * 32-hex `traceId`, 16-hex `spanId`, integer `kind`, string int64 nanos.
  */
 import { Effect } from 'effect'
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientRequest,
-} from 'effect/unstable/http'
+import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/unstable/http'
 
 /** Distinctive span name so the test's assertion is unambiguous. */
 export const SPAN_NAME = 'otelite-effect-e2e-span'

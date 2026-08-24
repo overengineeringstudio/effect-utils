@@ -1,5 +1,5 @@
-import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { Effect, Result } from 'effect'
+import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { describe, expect, it } from 'vitest'
 
 import type { Block } from '@overeng/notion-effect-schema'

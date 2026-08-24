@@ -72,12 +72,10 @@ export const effectSerde = <A, I>({
    * an empty body is rejected as "Empty body not allowed"). Mirror that: a
    * `VoidKeyword`/`UndefinedKeyword` schema defaults to no content type. */
   const isVoid = schema.ast._tag === 'Void' || schema.ast._tag === 'Undefined'
-  const contentType = Option.flatMap(overrides, (o) =>
-    Option.fromUndefinedOr(o.contentType),
-  ).pipe(Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')))
-  const jsonSchema = Option.flatMap(overrides, (o) =>
-    Option.fromUndefinedOr(o.jsonSchema),
-  ).pipe(
+  const contentType = Option.flatMap(overrides, (o) => Option.fromUndefinedOr(o.contentType)).pipe(
+    Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')),
+  )
+  const jsonSchema = Option.flatMap(overrides, (o) => Option.fromUndefinedOr(o.jsonSchema)).pipe(
     Option.getOrElse(
       () =>
         Schema.toStandardJSONSchemaV1(schema)['~standard'].jsonSchema.input({

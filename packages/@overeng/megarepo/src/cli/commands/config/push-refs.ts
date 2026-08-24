@@ -6,9 +6,9 @@
  * Matching is done by canonical URL (org/repo), not by member name.
  */
 
-import * as Cli from 'effect/unstable/cli'
-import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'

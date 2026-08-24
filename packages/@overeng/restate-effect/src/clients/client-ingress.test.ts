@@ -66,7 +66,10 @@ describe('RestateIngress auth (decision 0016)', () => {
   })
 
   it('layerConfig reads RESTATE_INGRESS_URL + RESTATE_INGRESS_KEY from Config', async () => {
-    const provider = ConfigProvider.fromEnvRecord({ RESTATE_INGRESS_URL: 'https://cloud.example/ingress', RESTATE_INGRESS_KEY: 'sk_from_env' })
+    const provider = ConfigProvider.fromEnvRecord({
+      RESTATE_INGRESS_URL: 'https://cloud.example/ingress',
+      RESTATE_INGRESS_KEY: 'sk_from_env',
+    })
     await build(RestateIngress.layerConfig().pipe(Layer.provide(ConfigProvider.layer(provider))))
     expect(captured[0]!.url).toBe('https://cloud.example/ingress')
     expect(captured[0]!.headers).toStrictEqual({ Authorization: 'Bearer sk_from_env' })

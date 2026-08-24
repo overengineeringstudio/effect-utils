@@ -16,9 +16,9 @@
  *   bun examples/03-effect-integration/counter.tsx --help
  */
 
-import { Command } from 'effect/unstable/cli'
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
+import { Command } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'

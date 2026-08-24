@@ -193,4 +193,6 @@ export interface NotionMdGatewayShape {
 }
 
 /** Effect service tag for Notion Markdown sync operations. */
-export class NotionMdGateway extends Context.Service<NotionMdGateway, NotionMdGatewayShape>()('NotionMdGateway') {}
+export class NotionMdGateway extends Context.Service<NotionMdGateway, NotionMdGatewayShape>()(
+  'NotionMdGateway',
+) {}

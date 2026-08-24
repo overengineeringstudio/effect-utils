@@ -307,7 +307,9 @@ const decodeSyncEventId = Schema.decodeSync(SyncEventId)
 const decodeDataSourceProjectionPayload = Schema.decodeUnknownSync(
   Schema.fromJsonString(DataSourceProjectionPayload),
 )
-const decodeRowProjectionPayload = Schema.decodeUnknownSync(Schema.fromJsonString(RowProjectionPayload))
+const decodeRowProjectionPayload = Schema.decodeUnknownSync(
+  Schema.fromJsonString(RowProjectionPayload),
+)
 const decodeBodyProjectionPayload = Schema.decodeUnknownSync(
   Schema.fromJsonString(BodyProjectionPayload),
 )
@@ -433,7 +435,14 @@ const readTombstoneClassification = ({
   readonly key: string
 }): TombstoneProjectionRow['classification'] =>
   Schema.decodeUnknownSync(
-    Schema.Literals(['unclassified', 'remote_trash', 'moved_out', 'moved_between_tracked_sources', 'inaccessible', 'unknown']),
+    Schema.Literals([
+      'unclassified',
+      'remote_trash',
+      'moved_out',
+      'moved_between_tracked_sources',
+      'inaccessible',
+      'unknown',
+    ]),
   )(readString({ row, key }))
 
 const readSignalState = ({
@@ -886,7 +895,9 @@ export class NotionSyncStore {
       cappedAtLimit: readBoolean({ row: row, key: 'capped_at_limit' }),
       contractChanged: readBoolean({ row: row, key: 'contract_changed' }),
       highWatermark:
-        highWatermark === undefined ? null : Schema.decodeSync(Schema.DateTimeUtcFromString)(highWatermark),
+        highWatermark === undefined
+          ? null
+          : Schema.decodeSync(Schema.DateTimeUtcFromString)(highWatermark),
       eventId: decodeSyncEventId(readString({ row: row, key: 'event_id' })),
     }
   }
@@ -930,7 +941,9 @@ export class NotionSyncStore {
       cappedAtLimit: readBoolean({ row: row, key: 'capped_at_limit' }),
       contractChanged: readBoolean({ row: row, key: 'contract_changed' }),
       highWatermark:
-        highWatermark === undefined ? null : Schema.decodeSync(Schema.DateTimeUtcFromString)(highWatermark),
+        highWatermark === undefined
+          ? null
+          : Schema.decodeSync(Schema.DateTimeUtcFromString)(highWatermark),
       eventId: decodeSyncEventId(readString({ row: row, key: 'event_id' })),
     }
   }
@@ -1521,7 +1534,14 @@ export class NotionSyncStore {
             baseHash: decodeHash(readString({ row: row, key: 'base_hash' })),
             remoteHash: decodeHash(readString({ row: row, key: 'remote_hash' })),
             availability: Schema.decodeUnknownSync(
-              Schema.Literals(['complete', 'computed', 'unsupported', 'paginated-incomplete', 'relation-target-inaccessible', 'related-data-source-unshared']),
+              Schema.Literals([
+                'complete',
+                'computed',
+                'unsupported',
+                'paginated-incomplete',
+                'relation-target-inaccessible',
+                'related-data-source-unshared',
+              ]),
             )(readString({ row: row, key: 'availability' })),
             pendingLocal: pendingProperties.get(`${pageId}\0${propertyId}`),
           }
@@ -2275,7 +2295,15 @@ CREATE TABLE _nds_conflict (
                   ? classification
                   : 'not-run'
             : Schema.decodeUnknownSync(
-                Schema.Literals(['not-run', 'accessible', 'in-trash', 'moved-out', 'permission-ambiguous', 'inaccessible', 'unknown']),
+                Schema.Literals([
+                  'not-run',
+                  'accessible',
+                  'in-trash',
+                  'moved-out',
+                  'permission-ambiguous',
+                  'inaccessible',
+                  'unknown',
+                ]),
               )(readString({ row: row, key: 'direct_retrieve' }))
 
         return {
@@ -2342,7 +2370,15 @@ CREATE TABLE _nds_conflict (
           )(readString({ row: row, key: 'membership_scope' })),
           filtered: readBoolean({ row: row, key: 'filtered' }),
           directRetrieve: Schema.decodeUnknownSync(
-            Schema.Literals(['not-run', 'accessible', 'in-trash', 'moved-out', 'permission-ambiguous', 'inaccessible', 'unknown']),
+            Schema.Literals([
+              'not-run',
+              'accessible',
+              'in-trash',
+              'moved-out',
+              'permission-ambiguous',
+              'inaccessible',
+              'unknown',
+            ]),
           )(readString({ row: row, key: 'direct_retrieve' })),
         },
       }))

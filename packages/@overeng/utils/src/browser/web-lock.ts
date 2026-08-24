@@ -43,10 +43,9 @@ export const withLock =
     const { lockName, onTaken, options } = lockOptions
     return Effect.gen(function* () {
       if (isWebLocksSupported() === false) {
-        return yield* Effect.fail(WebLockNotSupportedError.notAvailable) as unknown as Effect.Effect<
-          A | undefined,
-          E | E2
-        >
+        return yield* Effect.fail(
+          WebLockNotSupportedError.notAvailable,
+        ) as unknown as Effect.Effect<A | undefined, E | E2>
       }
 
       const context = yield* Effect.context<Ctx>()

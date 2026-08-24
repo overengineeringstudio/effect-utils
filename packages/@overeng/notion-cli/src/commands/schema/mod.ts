@@ -5,9 +5,9 @@
 import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { Effect, FileSystem, Layer, Option, Schema } from 'effect'
 import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
 import { FetchHttpClient } from 'effect/unstable/http'
-import { Effect, FileSystem, Layer, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -73,7 +73,9 @@ const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const pkgJsonPath = fileURLToPath(new URL('../../../package.json', import.meta.url))
   const content = yield* fs.readFileString(pkgJsonPath)
-  const pkg = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(GeneratorPackageJsonSchema))(content)
+  const pkg = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(GeneratorPackageJsonSchema))(
+    content,
+  )
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 

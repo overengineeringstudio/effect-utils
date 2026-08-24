@@ -133,7 +133,7 @@ export const DateProp = {
     schema: DateProperty.pipe(
       Schema.decodeTo(Schema.Option(DateValue), {
         decode: SchemaGetter.transform((prop) =>
-          prop.date === null ? Option.none() : Option.some(prop.date)
+          prop.date === null ? Option.none() : Option.some(prop.date),
         ),
         encode: SchemaGetter.forbidden(
           () => 'DateProp.asOption encode is not supported. Use DateWrite / DateWriteFromStart.',
@@ -148,7 +148,7 @@ export const DateProp = {
     schema: DateProperty.pipe(
       Schema.decodeTo(Schema.toType(Schema.Option(Schema.Date)), {
         decode: SchemaGetter.transform((prop) =>
-          prop.date === null ? Option.none() : Option.some(new Date(prop.date.start))
+          prop.date === null ? Option.none() : Option.some(new Date(prop.date.start)),
         ),
         encode: SchemaGetter.forbidden(
           () => 'DateProp.asDate encode is not supported. Use DateWrite / DateWriteFromStart.',

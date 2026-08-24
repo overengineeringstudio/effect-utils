@@ -1,5 +1,5 @@
-import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 import { Effect, Exit, Schema } from 'effect'
+import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { encodeExit, decodeExit, makeEffectLoaderResult } from './router.ts'

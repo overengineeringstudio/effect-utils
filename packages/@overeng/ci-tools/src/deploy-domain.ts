@@ -60,7 +60,9 @@ export type DeployAlias = typeof DeployAlias.Type
 
 export const DeployHostname = NonEmptyTrimmedString.pipe(
   Schema.check(
-    Schema.isPattern(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u),
+    Schema.isPattern(
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u,
+    ),
   ),
   Schema.annotate({ identifier: 'CiTools.Deploy.Hostname' }),
 )
@@ -80,7 +82,9 @@ export type RelativeHttpPath = typeof RelativeHttpPath.Type
 
 export const HttpsUrl = Schema.URLFromString.pipe(
   Schema.check(
-    Schema.makeFilter((url: URL) => (url.protocol === 'https:' ? undefined : 'URL must use https:')),
+    Schema.makeFilter((url: URL) =>
+      url.protocol === 'https:' ? undefined : 'URL must use https:',
+    ),
   ),
   Schema.annotate({ identifier: 'CiTools.Deploy.HttpsUrl' }),
 )
@@ -274,7 +278,14 @@ export class ProviderOperationFailed extends Schema.TaggedError<ProviderOperatio
   '@overeng/ci-tools/deploy/ProviderOperationFailed',
 )('ProviderOperationFailed', {
   ...DeployFailureFields,
-  operation: Schema.Literals(['resolve-project', 'prepare', 'deploy', 'alias', 'verify', 'cleanup']),
+  operation: Schema.Literals([
+    'resolve-project',
+    'prepare',
+    'deploy',
+    'alias',
+    'verify',
+    'cleanup',
+  ]),
   transient: Schema.Boolean,
 }) {
   override get message(): string {

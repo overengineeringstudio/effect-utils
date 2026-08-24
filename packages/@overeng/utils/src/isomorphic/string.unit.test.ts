@@ -31,7 +31,6 @@ Vitest.describe('formatReasonMessage', () => {
     )
   })
 
-
   /* Effect 4 defect shapes can reach `cause` without a primitive conversion
    * path (null-prototype objects); `String()` throws on them, which used to
    * crash every consumer's `get message()` (CI: "Cannot convert object to

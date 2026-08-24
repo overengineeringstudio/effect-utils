@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { NodeServices } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { Effect, Layer, Path, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -62,7 +62,9 @@ describe('notion-md state store path safety', () => {
 const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 const runStore = <A, E>(effect: Effect.Effect<A, E, NodeServicesEnv | NmdStateStore>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeServices.layer))))
+  Effect.runPromise(
+    effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeServices.layer))),
+  )
 
 const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), 'notion-md-state-store-'))
@@ -105,18 +107,24 @@ const strictParse = {
 } as const
 
 const SyncStateV1Codec: JsonCodec<NmdSyncStateV1> = {
-  encode: (value) => Schema.encodeSync(Schema.fromJsonString(NmdSyncStateV1Schema, { space: 2 }))(value),
-  decode: (input) => Schema.decodeUnknownSync(Schema.fromJsonString(NmdSyncStateV1Schema), strictParse)(input),
+  encode: (value) =>
+    Schema.encodeSync(Schema.fromJsonString(NmdSyncStateV1Schema, { space: 2 }))(value),
+  decode: (input) =>
+    Schema.decodeUnknownSync(Schema.fromJsonString(NmdSyncStateV1Schema), strictParse)(input),
 }
 
 const BaseSnapshotV2Codec: JsonCodec<NmdBaseSnapshotV2> = {
-  encode: (value) => Schema.encodeSync(Schema.fromJsonString(NmdBaseSnapshotV2, { space: 2 }))(value),
-  decode: (input) => Schema.decodeUnknownSync(Schema.fromJsonString(NmdBaseSnapshotV2), strictParse)(input),
+  encode: (value) =>
+    Schema.encodeSync(Schema.fromJsonString(NmdBaseSnapshotV2, { space: 2 }))(value),
+  decode: (input) =>
+    Schema.decodeUnknownSync(Schema.fromJsonString(NmdBaseSnapshotV2), strictParse)(input),
 }
 
 const StorageObjectV2Codec: JsonCodec<NmdStorageObjectV2> = {
-  encode: (value) => Schema.encodeSync(Schema.fromJsonString(NmdStorageObjectV2, { space: 2 }))(value),
-  decode: (input) => Schema.decodeUnknownSync(Schema.fromJsonString(NmdStorageObjectV2), strictParse)(input),
+  encode: (value) =>
+    Schema.encodeSync(Schema.fromJsonString(NmdStorageObjectV2, { space: 2 }))(value),
+  decode: (input) =>
+    Schema.decodeUnknownSync(Schema.fromJsonString(NmdStorageObjectV2), strictParse)(input),
 }
 
 const TreeIndexCodec: JsonCodec<TreeIndex> = {

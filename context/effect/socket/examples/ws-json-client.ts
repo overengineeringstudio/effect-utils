@@ -1,4 +1,5 @@
 import { NodeRuntime } from '@effect/platform-node'
+import { Duration, Effect, Fiber, Schema, Stream } from 'effect'
 import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
 import {
   CloseEvent,
@@ -6,7 +7,6 @@ import {
   makeWebSocket,
   toChannelString,
 } from 'effect/unstable/socket/Socket'
-import { Duration, Effect, Fiber, Schema, Stream } from 'effect'
 
 /**
  * Example: WebSocket JSON client with schema validation.
@@ -57,9 +57,9 @@ const encodeClientMessage = Effect.fn('ws-json.encode')(function* (message: Clie
 
 /** Decode a JSON string into a typed server response. */
 const decodeServerMessage = Effect.fn('ws-json.decode')(function* (raw: string) {
-  const message: ServerMessage = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ServerMessageSchema))(
-    raw,
-  )
+  const message: ServerMessage = yield* Schema.decodeUnknownEffect(
+    Schema.fromJsonString(ServerMessageSchema),
+  )(raw)
   return message
 })
 
@@ -93,9 +93,7 @@ const runClient = Effect.gen(function* () {
         Stream.mapEffect((text) =>
           decodeServerMessage(text).pipe(
             Effect.tap((decoded) => Effect.log(decoded)),
-            Effect.catch((error) =>
-              Effect.logError({ message: 'invalid server message', error }),
-            ),
+            Effect.catch((error) => Effect.logError({ message: 'invalid server message', error })),
           ),
         ),
         Stream.runDrain,

@@ -19,9 +19,7 @@ export const NonEmptyTrimmedString = Schema.NonEmptyString.pipe(Schema.check(Sch
 export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Type
 
 /** Integer greater than zero. */
-export const PositiveInt = Schema.Finite.pipe(
-  Schema.check(Schema.isInt(), Schema.isGreaterThan(0)),
-)
+export const PositiveInt = Schema.Finite.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThan(0)))
 export type PositiveInt = typeof PositiveInt.Type
 
 /** Integer greater than or equal to zero. */
@@ -132,10 +130,7 @@ export const BodyEvidenceFingerprint = ContentDigest.pipe(
 export type BodyEvidenceFingerprint = typeof BodyEvidenceFingerprint.Type
 
 /** Completeness classification carried by a remote body evidence-backed identity. */
-export const BodyCompletenessEvidence = Schema.Literals([
-'complete',
-'lossy',
-]).annotate({
+export const BodyCompletenessEvidence = Schema.Literals(['complete', 'lossy']).annotate({
   identifier: 'NotionDatasourceSync.BodyCompletenessEvidence',
 })
 export type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type
@@ -173,17 +168,17 @@ export type NotionPageSize = typeof NotionPageSize.Type
 
 /** Named Notion API capability checked during preflight; governs which operations the sync engine may attempt. */
 export const CapabilityName = Schema.Literals([
-'data_source_retrieve',
-'data_source_query',
-'data_source_metadata_update',
-'view_list',
-'page_retrieve',
-'page_property_paginate',
-'page_property_update',
-'page_create',
-'schema_update',
-'page_trash',
-'page_restore',
+  'data_source_retrieve',
+  'data_source_query',
+  'data_source_metadata_update',
+  'view_list',
+  'page_retrieve',
+  'page_property_paginate',
+  'page_property_update',
+  'page_create',
+  'schema_update',
+  'page_trash',
+  'page_restore',
 ]).annotate({ identifier: 'NotionDatasourceSync.CapabilityName' })
 export type CapabilityName = typeof CapabilityName.Type
 
@@ -213,9 +208,9 @@ export type CapabilityPreflightResult = typeof CapabilityPreflightResult.Type
 
 /** Observed write behavior for a Notion data-source property. */
 export const DataSourcePropertyWriteClass = Schema.Literals([
-'writable',
-'computed',
-'unsupported',
+  'writable',
+  'computed',
+  'unsupported',
 ]).annotate({ identifier: 'NotionDatasourceSync.DataSourcePropertyWriteClass' })
 export type DataSourcePropertyWriteClass = typeof DataSourcePropertyWriteClass.Type
 
@@ -274,10 +269,10 @@ export type PageSnapshot = typeof PageSnapshot.Type
 
 /** Reason why a body block could not be fully represented during observation; drives body-safety guard decisions. */
 export const BodyUnknownBlockCause = Schema.Literals([
-'truncation',
-'permission',
-'unsupported',
-'unknown',
+  'truncation',
+  'permission',
+  'unsupported',
+  'unknown',
 ]).annotate({ identifier: 'NotionDatasourceSync.BodyUnknownBlockCause' })
 export type BodyUnknownBlockCause = typeof BodyUnknownBlockCause.Type
 
@@ -288,15 +283,15 @@ export type BodyUnknownBlockCause = typeof BodyUnknownBlockCause.Type
  * touched any surface other than `'body'`.
  */
 export const BodyAdapterMutationSurface = Schema.Literals([
-'body',
-'row-property',
-'schema',
-'title',
-'trash',
-'icon',
-'cover',
-'page-metadata',
-'membership',
+  'body',
+  'row-property',
+  'schema',
+  'title',
+  'trash',
+  'icon',
+  'cover',
+  'page-metadata',
+  'membership',
 ]).annotate({ identifier: 'NotionDatasourceSync.BodyAdapterMutationSurface' })
 export type BodyAdapterMutationSurface = typeof BodyAdapterMutationSurface.Type
 
@@ -304,10 +299,7 @@ export type BodyAdapterMutationSurface = typeof BodyAdapterMutationSurface.Type
 export const BodySafetySnapshot = Schema.Struct({
   truncated: Schema.Boolean,
   unknownBlockCause: Schema.optional(BodyUnknownBlockCause),
-  selection: Schema.Literals([
-'safe',
-'ambiguous',
-]),
+  selection: Schema.Literals(['safe', 'ambiguous']),
   wouldDeleteChildren: Schema.Boolean,
   syncedPageUnsupported: Schema.Boolean,
   adapterConflict: Schema.Boolean,
@@ -331,8 +323,8 @@ export type EvidenceBackedBodyIdentity = typeof EvidenceBackedBodyIdentity.Type
 
 /** Typed page-body identity used for body stale-base guards, settlement, replay, and telemetry. */
 export const BodyIdentity = Schema.Union([
-RenderedBodyIdentity,
-EvidenceBackedBodyIdentity,
+  RenderedBodyIdentity,
+  EvidenceBackedBodyIdentity,
 ]).annotate({
   identifier: 'NotionDatasourceSync.BodyIdentity',
 })
@@ -454,10 +446,7 @@ export const LocalArtifactObservation = Schema.TaggedStruct('LocalArtifactObserv
   contentHash: Hash,
   bodyContent: Schema.optional(Schema.String),
   observedAt: Schema.DateTimeUtcFromString,
-  state: Schema.Literals([
-'present',
-'delete-candidate',
-]),
+  state: Schema.Literals(['present', 'delete-candidate']),
   ownWriteSuppressionToken: Schema.optional(OwnWriteSuppressionToken),
 }).annotate({ identifier: 'NotionDatasourceSync.LocalArtifactObservation' })
 export type LocalArtifactObservation = typeof LocalArtifactObservation.Type
@@ -471,11 +460,11 @@ export type PathClaimPlan = typeof PathClaimPlan.Type
 
 /** Outcome of a path-claim attempt — either `'claimed'` (path is now owned by this page) or `'conflict'` (path already held by another page). */
 export const PathClaimResult = Schema.Union([
-Schema.TaggedStruct('claimed', {
+  Schema.TaggedStruct('claimed', {
     pageId: PageId,
     path: WorkspaceRelativePath,
   }),
-Schema.TaggedStruct('conflict', {
+  Schema.TaggedStruct('conflict', {
     pageId: PageId,
     requestedPath: WorkspaceRelativePath,
     existingPageId: PageId,
@@ -497,9 +486,7 @@ export const MaterializePlan = Schema.TaggedStruct('MaterializePlan', {
    * that do not supply schema/cell evidence), which keeps the empty-`properties`
    * behavior.
    */
-  writableProperties: Schema.optional(
-    Schema.Record(Schema.String, NmdWritablePropertyValueSchema),
-  ),
+  writableProperties: Schema.optional(Schema.Record(Schema.String, NmdWritablePropertyValueSchema)),
 }).annotate({ identifier: 'NotionDatasourceSync.MaterializePlan' })
 export type MaterializePlan = typeof MaterializePlan.Type
 

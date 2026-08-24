@@ -1,9 +1,9 @@
 import path from 'node:path'
 
-import type { PlatformError } from 'effect/PlatformError'
-import type * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
 import { Effect, FileSystem, Option, PubSub } from 'effect'
 import type { Path } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import type * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
 
 import {
   type GenieGenerateResult,

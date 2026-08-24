@@ -1,4 +1,5 @@
 import { NodeRuntime } from '@effect/platform-node'
+import { Duration, Effect, Fiber, Stream } from 'effect'
 import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
 import {
   CloseEvent,
@@ -6,7 +7,6 @@ import {
   makeWebSocket,
   toChannelString,
 } from 'effect/unstable/socket/Socket'
-import { Duration, Effect, Fiber, Stream } from 'effect'
 
 /**
  * Example: WebSocket echo client.

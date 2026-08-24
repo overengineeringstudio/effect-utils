@@ -1,7 +1,7 @@
-import { Command } from 'effect/unstable/cli'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
+import { Command } from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { generateCommand } from './mod.ts'

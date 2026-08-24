@@ -1,5 +1,5 @@
-import { Effect, FileSystem, Layer, Ref, Schema } from 'effect'
 import { NodeServices as NodeContext } from '@effect/platform-node'
+import { Effect, FileSystem, Layer, Ref, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

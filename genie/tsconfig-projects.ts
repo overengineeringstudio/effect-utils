@@ -82,7 +82,9 @@ export const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/utils': utilsTsconfig,
     'packages/@overeng/utils-dev': utilsDevTsconfig,
   }
-  const rootWorkspacePackagePaths = rootWorkspacePackages.map((pkg) => pkg.meta.workspace.memberPath)
+  const rootWorkspacePackagePaths = rootWorkspacePackages.map(
+    (pkg) => pkg.meta.workspace.memberPath,
+  )
   const missingTsconfigPaths = rootWorkspacePackagePaths.filter(
     (path) => workspaceTsconfigsByPath[path] === undefined,
   )

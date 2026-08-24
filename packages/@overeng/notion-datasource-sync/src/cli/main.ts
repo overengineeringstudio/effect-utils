@@ -5,12 +5,11 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { NonEmptyTrimmedString } from '../core/domain.ts'
 
-import { FetchHttpClient } from 'effect/unstable/http'
 import { NodeRuntime } from '@effect/platform-node'
 import * as NodeContext from '@effect/platform-node/NodeServices'
 import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 
 import {
   NOTION_API_VERSION,
@@ -36,6 +35,7 @@ import {
   makeNotionMdPageBodySyncPort,
 } from '../body/notion-md.ts'
 import { CanonicalPropertyValue, QueryContract } from '../core/commands.ts'
+import { NonEmptyTrimmedString } from '../core/domain.ts'
 import {
   AbsolutePath,
   DatabaseId,

@@ -14,9 +14,9 @@
  *   bun examples/01-basic/hello-world.tsx --help
  */
 
-import { Command, Flag as Options } from 'effect/unstable/cli'
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'

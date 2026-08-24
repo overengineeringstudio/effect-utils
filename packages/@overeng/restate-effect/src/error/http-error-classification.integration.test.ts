@@ -19,9 +19,9 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient'
 import { it } from '@effect/vitest'
 import { Effect } from 'effect'
+import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient'
 import { afterAll, beforeAll, describe, expect } from 'vitest'
 
 import {

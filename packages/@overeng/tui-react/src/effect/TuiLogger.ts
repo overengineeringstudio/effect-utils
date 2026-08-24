@@ -161,28 +161,26 @@ export const createTuiLogger = (
     const runtime = yield* Effect.context<never>()
 
     // Create the TUI logger
-    const tuiLogger = Logger.make<unknown, void>(
-      ({ logLevel, message, date, fiber }) => {
-        // Check minimum level
-        if (LogLevel.isGreaterThanOrEqualTo(logLevel, minLevel) === true) {
-          const spans = fiber.getRef(References.CurrentLogSpans)
-          const annotations = fiber.getRef(References.CurrentLogAnnotations)
-          const spanLabel = spans.length > 0 ? (spans[0]?.[0] ?? undefined) : undefined
-          const entry: TuiLogEntry = {
-            id: ++logEntryId,
-            level: logLevel,
-            message: String(message),
-            timestamp: date,
-            fiberId: String(fiber.id),
-            annotations,
-            ...(spanLabel !== undefined ? { span: spanLabel } : {}),
-          }
-
-          // Fire and forget - we don't want logging to block
-          void Effect.runForkWith(runtime)(appendLog(entry))
+    const tuiLogger = Logger.make<unknown, void>(({ logLevel, message, date, fiber }) => {
+      // Check minimum level
+      if (LogLevel.isGreaterThanOrEqualTo(logLevel, minLevel) === true) {
+        const spans = fiber.getRef(References.CurrentLogSpans)
+        const annotations = fiber.getRef(References.CurrentLogAnnotations)
+        const spanLabel = spans.length > 0 ? (spans[0]?.[0] ?? undefined) : undefined
+        const entry: TuiLogEntry = {
+          id: ++logEntryId,
+          level: logLevel,
+          message: String(message),
+          timestamp: date,
+          fiberId: String(fiber.id),
+          annotations,
+          ...(spanLabel !== undefined ? { span: spanLabel } : {}),
         }
-      },
-    )
+
+        // Fire and forget - we don't want logging to block
+        void Effect.runForkWith(runtime)(appendLog(entry))
+      }
+    })
 
     // Create the layer - either TUI only or combined with console
     const layer =

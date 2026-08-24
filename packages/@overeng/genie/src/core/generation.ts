@@ -5,11 +5,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { Duration, Effect, FileSystem, Option, Result, Schema, Stream } from 'effect'
+import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/unstable/process/ChildProcess'
 import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
-import { Duration, Effect, FileSystem, Option, Result, Schema, Stream } from 'effect'
-import type { Path } from 'effect'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'

@@ -1,3 +1,5 @@
+import { Effect, Fiber, Metric, Redacted, Schema, Tracer } from 'effect'
+import { adjust as testClockAdjust } from 'effect/testing/TestClock'
 /**
  * Deterministic e2e coverage for the rate-limit PRESSURE signals (decision 0017
  * Half 2, #775). The fake gateway in `@overeng/notion-datasource-sync` never
@@ -24,8 +26,6 @@
  * may read raw `Metric` values to assert the OtelMetric-emitted counters moved.
  */
 import { HttpClient } from 'effect/unstable/http/HttpClient'
-import { Effect, Fiber, Metric, Redacted, Schema, Tracer } from 'effect'
-import { adjust as testClockAdjust } from 'effect/testing/TestClock'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

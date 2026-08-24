@@ -73,9 +73,7 @@ const resourceAttrsBySignal = (
     const out: Record<string, Record<string, string>> = {}
     // @effect-diagnostics-next-line schemaSyncInEffect:off -- reads the tool's own capture ndjson in a controlled test env; a malformed line is a scaffolding bug, so a thrown defect is correct (this helper is annotated `Effect<..., never, FileSystem>`).
     const parseLine = Schema.decodeUnknownSync(
-      Schema.fromJsonString(
-        Schema.Record(Schema.String, Schema.Array(Schema.Any)),
-      ),
+      Schema.fromJsonString(Schema.Record(Schema.String, Schema.Array(Schema.Any))),
     )
     for (const [signal, resourceKey] of files) {
       const raw = yield* fs

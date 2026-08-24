@@ -6,10 +6,10 @@
 
 import os from 'node:os'
 
+import { Effect, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import * as Command from 'effect/unstable/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
-import * as FileSystem from 'effect/FileSystem'
-import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -197,9 +197,9 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     // Effect v4 class schemas require a real instance on the encode side — a
     // plain literal fails `SchemaError: Expected MegarepoConfig`.
     const config = new MegarepoConfig({ members: fixture?.members ?? {} })
-    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
-      config,
-    )
+    const configContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(config)
     yield* fs.writeFileString(
       EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
       configContent + '\n',

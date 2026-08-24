@@ -31,10 +31,9 @@ export const QuarantineEntry = Schema.Struct({
 export type QuarantineEntry = typeof QuarantineEntry.Type
 
 /** Every currently-tolerated test failure in a repository, keyed by quarantine key. */
-export const QuarantineLedger = Schema.Record(
-  Schema.String,
-  QuarantineEntry,
-).annotate({ identifier: 'CiTools.Quarantine.Ledger' })
+export const QuarantineLedger = Schema.Record(Schema.String, QuarantineEntry).annotate({
+  identifier: 'CiTools.Quarantine.Ledger',
+})
 export type QuarantineLedger = typeof QuarantineLedger.Type
 
 /** Parses ledger JSON, rejecting entries that omit a target, reason, issue, or expiry. */

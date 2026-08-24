@@ -70,7 +70,9 @@ export const writeGithubDeployOutputs = Effect.fn('ci-tools.deploy.io.write-gith
   }) {
     const finalUrl = opts.result.finalUrl.toString()
     const rawDeployUrl = opts.result.rawDeployUrl.toString()
-    const deployedAtUtc = yield* Schema.encodeEffect(Schema.DateTimeUtcFromString)(opts.result.endedAtUtc)
+    const deployedAtUtc = yield* Schema.encodeEffect(Schema.DateTimeUtcFromString)(
+      opts.result.endedAtUtc,
+    )
 
     yield* Effect.sync(() => {
       if (opts.githubOutputFile !== undefined) {

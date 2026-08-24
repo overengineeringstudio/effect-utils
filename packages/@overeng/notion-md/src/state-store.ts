@@ -64,8 +64,12 @@ const strictOptions = {
 const encodeStorageObjectJson = Schema.encodeSync(
   Schema.fromJsonString(NmdStorageObjectV2, { space: 2 }),
 )
-const encodeBaseSnapshotJson = Schema.encodeSync(Schema.fromJsonString(NmdBaseSnapshotV2, { space: 2 }))
-const encodeSyncStateJson = Schema.encodeSync(Schema.fromJsonString(NmdSyncStateV1Schema, { space: 2 }))
+const encodeBaseSnapshotJson = Schema.encodeSync(
+  Schema.fromJsonString(NmdBaseSnapshotV2, { space: 2 }),
+)
+const encodeSyncStateJson = Schema.encodeSync(
+  Schema.fromJsonString(NmdSyncStateV1Schema, { space: 2 }),
+)
 const decodeStorageObjectJson = Schema.decodeUnknownEffect(
   Schema.fromJsonString(NmdStorageObjectV2),
   strictOptions,

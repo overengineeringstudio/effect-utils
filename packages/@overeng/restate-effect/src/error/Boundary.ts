@@ -151,8 +151,7 @@ export const classifyOutcome = ({
     }
 
     const errorCode = classification?._tag === 'terminal' ? classification.errorCode : 500
-    const body =
-      encoded !== undefined && Exit.isSuccess(encoded) === true ? encoded.value : error
+    const body = encoded !== undefined && Exit.isSuccess(encoded) === true ? encoded.value : error
     return {
       _tag: 'terminal',
       errorTag: tag,

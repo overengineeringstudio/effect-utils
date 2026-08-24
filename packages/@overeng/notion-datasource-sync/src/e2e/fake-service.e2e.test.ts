@@ -64,8 +64,7 @@ import {
 
 const collectStream = <TValue, TError>(
   stream: Stream.Stream<TValue, TError>,
-): Promise<ReadonlyArray<TValue>> =>
-  Effect.runPromise(stream.pipe(Stream.runCollect))
+): Promise<ReadonlyArray<TValue>> => Effect.runPromise(stream.pipe(Stream.runCollect))
 
 const expectGatewayFailure = (
   result: Awaited<ReturnType<typeof Effect.runPromiseExit>>,

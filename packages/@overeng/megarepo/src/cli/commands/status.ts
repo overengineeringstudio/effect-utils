@@ -4,11 +4,11 @@
  * Show workspace status and member states.
  */
 
-import * as Cli from 'effect/unstable/cli'
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import { Clock, Effect, Option, type Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Clock, Effect, Option, type Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

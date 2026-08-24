@@ -1,7 +1,7 @@
-import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { it as effectIt } from '@effect/vitest'
 import { Effect } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'

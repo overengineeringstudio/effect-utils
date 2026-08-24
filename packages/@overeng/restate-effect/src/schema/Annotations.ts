@@ -29,9 +29,7 @@ import * as SchemaAST from 'effect/SchemaAST'
  * mirroring `idempotencyKey` (decision 0011, #3). The projection returns
  * `undefined` to fall back to Restate's default backoff for that instance.
  */
-export type RetryAfter =
-  | Duration.Input
-  | ((error: unknown) => Duration.Input | undefined)
+export type RetryAfter = Duration.Input | ((error: unknown) => Duration.Input | undefined)
 
 /**
  * The error-boundary classification for a domain `Schema.TaggedError`, read by
@@ -100,13 +98,7 @@ export const Restate = {
    * `errorCode` (e.g. 404/409). Default classification — `toTerminal` falls
    * back to `terminal` + 500 when no annotation is present.
    */
-  terminal: <S extends Schema.Top>({
-    self,
-    errorCode,
-  }: {
-    self: S
-    errorCode?: number
-  }): S =>
+  terminal: <S extends Schema.Top>({ self, errorCode }: { self: S; errorCode?: number }): S =>
     annotate<ErrorClass>(ErrorClassId)({
       self,
       value: { _tag: 'terminal', errorCode: errorCode ?? 500 },
@@ -126,9 +118,7 @@ export const Restate = {
     retryAfter,
   }: {
     self: S
-    retryAfter?:
-      | Duration.Input
-      | ((error: Schema.Schema.Type<S>) => Duration.Input | undefined)
+    retryAfter?: Duration.Input | ((error: Schema.Schema.Type<S>) => Duration.Input | undefined)
   }): S =>
     annotate<ErrorClass>(ErrorClassId)({
       self,
@@ -139,13 +129,8 @@ export const Restate = {
     }),
 
   /** Override the serde `contentType` / `jsonSchema` for a value schema. */
-  serde: <S extends Schema.Top>({
-    self,
-    options,
-  }: {
-    self: S
-    options: SerdeOptions
-  }): S => annotate<SerdeOptions>(SerdeId)({ self, value: options }),
+  serde: <S extends Schema.Top>({ self, options }: { self: S; options: SerdeOptions }): S =>
+    annotate<SerdeOptions>(SerdeId)({ self, value: options }),
 
   /**
    * Mark an input-struct FIELD as the idempotency-key source (decision 0011). Its
@@ -163,13 +148,8 @@ export const Restate = {
    * to setting the matching builder `options`, but kept WITH the schema so the
    * fact has one home. Builder `options` win when both are present.
    */
-  retention: <S extends Schema.Top>({
-    self,
-    options,
-  }: {
-    self: S
-    options: RetentionOptions
-  }): S => annotate<RetentionOptions>(RetentionId)({ self, value: options }),
+  retention: <S extends Schema.Top>({ self, options }: { self: S; options: RetentionOptions }): S =>
+    annotate<RetentionOptions>(RetentionId)({ self, value: options }),
 
   /**
    * Mark a struct FIELD `sensitive` (alias `redacted`): `effectSerde` consumes it

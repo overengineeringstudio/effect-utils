@@ -93,9 +93,7 @@ export type StateValueType<F> = F extends { readonly Type: infer A } ? A : never
 export const normalizeStateSchema = (
   field: Schema.Schema<any> | Schema.optional<Schema.Codec<any>>,
 ): Schema.Codec<any, any> => {
-  if (
-    (field as { readonly '~type.optionality'?: string })['~type.optionality'] !== 'optional'
-  ) {
+  if ((field as { readonly '~type.optionality'?: string })['~type.optionality'] !== 'optional') {
     return field as Schema.Codec<any, any>
   }
   /* An optional field's `.schema` is the `value | undefined` union codec; the

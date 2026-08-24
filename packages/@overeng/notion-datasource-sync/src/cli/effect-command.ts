@@ -1,5 +1,5 @@
-import { Argument as Args, Command, Completions, Flag as Options } from 'effect/unstable/cli'
 import { Effect } from 'effect'
+import { Argument as Args, Command, Completions, Flag as Options } from 'effect/unstable/cli'
 
 /** Handler used by the import-safe command descriptor for executable leaf commands. */
 export type DatasourceDbCommandHandler = (command: string) => Effect.Effect<void>
@@ -140,7 +140,10 @@ export const makeDatasourceDbSubcommands = (
       'Reconcile an established workspace, or run the watch daemon with --watch',
     ),
   )
-  register({ name: 'sync', description: 'Reconcile an established workspace, or run the watch daemon with --watch' })
+  register({
+    name: 'sync',
+    description: 'Reconcile an established workspace, or run the watch daemon with --watch',
+  })
 
   const conflictsCommand = Command.make('conflicts').pipe(
     Command.withSubcommands([
@@ -203,7 +206,10 @@ export const makeDatasourceDbSubcommands = (
     },
     () => handler('track'),
   ).pipe(Command.withDescription('Adopt a Notion data source into a workspace (the adoption verb)'))
-  register({ name: 'track', description: 'Adopt a Notion data source into a workspace (the adoption verb)' })
+  register({
+    name: 'track',
+    description: 'Adopt a Notion data source into a workspace (the adoption verb)',
+  })
 
   register({ name: 'export', description: 'Export rows, schema, and sync metadata from SQLite' })
   register({ name: 'status', description: 'Print workspace sync status' })
@@ -318,17 +324,13 @@ export const renderDatasourceSyncCompletions = ({
   readonly programName: string
   readonly shell: CompletionShell
 }) => {
-  const completionScript = Completions.generate(
-    programName,
-    shell === 'sh' ? 'bash' : shell,
-    {
-      name: 'db',
-      description: 'Notion database replica sync',
-      flags: [],
-      arguments: [],
-      subcommands: commandRegistry.map((command) => toCompletionDescriptor(command)),
-    },
-  )
+  const completionScript = Completions.generate(programName, shell === 'sh' ? 'bash' : shell, {
+    name: 'db',
+    description: 'Notion database replica sync',
+    flags: [],
+    arguments: [],
+    subcommands: commandRegistry.map((command) => toCompletionDescriptor(command)),
+  })
 
   return Effect.succeed(`${completionScript}\n`)
 }

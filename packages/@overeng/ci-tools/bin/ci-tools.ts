@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
-import * as Cli from 'effect/unstable/cli'
-import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient'
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
+import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'

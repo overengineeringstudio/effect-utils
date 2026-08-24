@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { PlatformError } from 'effect/PlatformError'
 import { Effect, FileSystem, Option, Path } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 import * as Observability from './observability.ts'
@@ -202,8 +202,8 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
       }),
     )
 
-  const walk: (currentDir: string) => Effect.Effect<string[], PlatformError> =
-    Effect.fnUntraced(function* (currentDir: string) {
+  const walk: (currentDir: string) => Effect.Effect<string[], PlatformError> = Effect.fnUntraced(
+    function* (currentDir: string) {
       const entries = yield* fs.readDirectory(currentDir)
       const results: string[] = []
 
@@ -248,7 +248,8 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
       }
 
       return results
-    })
+    },
+  )
 
   const files = gitFiles ?? (yield* walk(rootDir))
   const seen = new Set<string>()

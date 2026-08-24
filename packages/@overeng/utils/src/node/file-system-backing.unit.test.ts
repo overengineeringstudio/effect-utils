@@ -544,15 +544,15 @@ Vitest.describe('FileSystemBacking', () => {
           expect(entries).toEqual(['holder-a.lock', 'holder-b.lock'])
 
           // Verify lock file content
-          const holderAContent = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LockFileContent))(
-            fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'),
-          )
+          const holderAContent = yield* Schema.decodeUnknownEffect(
+            Schema.fromJsonString(LockFileContent),
+          )(fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'))
           expect(holderAContent.permits).toBe(2)
           expect(typeof holderAContent.expiresAt).toBe('number')
 
-          const holderBContent = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LockFileContent))(
-            fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'),
-          )
+          const holderBContent = yield* Schema.decodeUnknownEffect(
+            Schema.fromJsonString(LockFileContent),
+          )(fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'))
           expect(holderBContent.permits).toBe(1)
         }).pipe(Effect.provide(backingLayer))
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
@@ -779,7 +779,9 @@ Vitest.describe('FileSystemBacking', () => {
         const now = Date.now()
 
         yield* fsService.makeDirectory(keyDir, { recursive: true })
-        const expiredLockContent = yield* Schema.encodeEffect(Schema.fromJsonString(LockFileContent))({
+        const expiredLockContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(LockFileContent),
+        )({
           permits: 2,
           expiresAt: now - 60_000,
         }).pipe(Effect.orDie)
@@ -787,7 +789,9 @@ Vitest.describe('FileSystemBacking', () => {
           `${keyDir}/${encodeURIComponent('holder-expired')}.lock`,
           expiredLockContent,
         )
-        const activeLockContent = yield* Schema.encodeEffect(Schema.fromJsonString(LockFileContent))({
+        const activeLockContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(LockFileContent),
+        )({
           permits: 3,
           expiresAt: now + 60_000,
         }).pipe(Effect.orDie)

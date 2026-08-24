@@ -2,8 +2,8 @@
  * Client-side RPC client using idiomatic @effect/rpc patterns
  */
 
-import { RpcClient, type RpcClientError } from 'effect/unstable/rpc'
 import { Effect } from 'effect'
+import { RpcClient, type RpcClientError } from 'effect/unstable/rpc'
 
 import { layerClient } from '../../../../src/client.ts'
 import { type User, UserApi, type UserNotFoundError } from './api.ts'

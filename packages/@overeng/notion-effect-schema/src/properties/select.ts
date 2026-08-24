@@ -55,32 +55,34 @@ export const SelectWrite = Schema.Struct({
 export type SelectWrite = typeof SelectWrite.Type
 
 /** Transforms option name (or null) into a select write payload */
-export const SelectWriteFromName = Schema.NullOr(Schema.String).pipe(
-  Schema.decodeTo(
-    SelectWrite,
-    SchemaTransformation.transform<Schema.Codec.Encoded<typeof SelectWrite>, string | null>({
-      decode: (name) => ({
-        select: name === null ? null : { name },
+export const SelectWriteFromName = Schema.NullOr(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      SelectWrite,
+      SchemaTransformation.transform<Schema.Codec.Encoded<typeof SelectWrite>, string | null>({
+        decode: (name) => ({
+          select: name === null ? null : { name },
+        }),
+        encode: (write) => {
+          if (write.select === null) {
+            return null
+          }
+
+          if ('name' in write.select) {
+            return write.select.name
+          }
+
+          return shouldNeverHappen('SelectWriteFromName cannot encode option referenced by id.')
+        },
       }),
-      encode: (write) => {
-        if (write.select === null) {
-          return null
-        }
-
-        if ('name' in write.select) {
-          return write.select.name
-        }
-
-        return shouldNeverHappen('SelectWriteFromName cannot encode option referenced by id.')
-      },
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.SelectWriteFromName',
-  title: 'Select (Write) From Name',
-  description: 'Transform an option name (or null) into a select write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.SelectWriteFromName',
+    title: 'Select (Write) From Name',
+    description: 'Transform an option name (or null) into a select write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 const isAllowedName = <TName extends string>(options: {
   nameSchema: Schema.Codec<TName, TName>
@@ -116,7 +118,7 @@ export const Select = {
       schema: SelectProperty.pipe(
         Schema.decodeTo(Schema.Option(SelectOption), {
           decode: SchemaGetter.transform((prop) =>
-            prop.select === null ? Option.none() : Option.some(prop.select)
+            prop.select === null ? Option.none() : Option.some(prop.select),
           ),
           encode: SchemaGetter.forbidden(
             () => 'Select.asOption encode is not supported. Use SelectWrite / SelectWriteFromName.',
@@ -155,7 +157,7 @@ export const Select = {
           ),
           Schema.decodeTo(Schema.Option(optionSchema), {
             decode: SchemaGetter.transform((prop) =>
-              prop.select === null ? Option.none() : Option.some(prop.select)
+              prop.select === null ? Option.none() : Option.some(prop.select),
             ),
             encode: SchemaGetter.forbidden(
               () =>
@@ -180,7 +182,7 @@ export const Select = {
         ),
         Schema.decodeTo(Schema.Option(nameSchema), {
           decode: SchemaGetter.transform((prop) =>
-            prop.select === null ? Option.none() : Option.some(prop.select.name)
+            prop.select === null ? Option.none() : Option.some(prop.select.name),
           ),
           encode: SchemaGetter.forbidden(
             () => 'Select.asName encode is not supported. Use SelectWrite / SelectWriteFromName.',
@@ -195,7 +197,7 @@ export const Select = {
     schema: SelectProperty.pipe(
       Schema.decodeTo(Schema.Option(Schema.String), {
         decode: SchemaGetter.transform((prop) =>
-          prop.select === null ? Option.none() : Option.some(prop.select.name)
+          prop.select === null ? Option.none() : Option.some(prop.select.name),
         ),
         encode: SchemaGetter.forbidden(
           () => 'Select.asString encode is not supported. Use SelectWrite / SelectWriteFromName.',
@@ -256,32 +258,36 @@ export const MultiSelectWrite = Schema.Struct({
 export type MultiSelectWrite = typeof MultiSelectWrite.Type
 
 /** Transforms option names array into a multi-select write payload */
-export const MultiSelectWriteFromNames = Schema.Array(Schema.String).pipe(
-  Schema.decodeTo(
-    MultiSelectWrite,
-    SchemaTransformation.transform<
-      Schema.Codec.Encoded<typeof MultiSelectWrite>,
-      ReadonlyArray<string>
-    >({
-      decode: (names) => ({
-        multi_select: names.map((name) => ({ name })),
-      }),
-      encode: (write) =>
-        write.multi_select.map((opt) => {
-          if ('name' in opt) {
-            return opt.name
-          }
-
-          return shouldNeverHappen('MultiSelectWriteFromNames cannot encode option referenced by id.')
+export const MultiSelectWriteFromNames = Schema.Array(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      MultiSelectWrite,
+      SchemaTransformation.transform<
+        Schema.Codec.Encoded<typeof MultiSelectWrite>,
+        ReadonlyArray<string>
+      >({
+        decode: (names) => ({
+          multi_select: names.map((name) => ({ name })),
         }),
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.MultiSelectWriteFromNames',
-  title: 'Multi-Select (Write) From Names',
-  description: 'Transform option names into a multi-select write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+        encode: (write) =>
+          write.multi_select.map((opt) => {
+            if ('name' in opt) {
+              return opt.name
+            }
+
+            return shouldNeverHappen(
+              'MultiSelectWriteFromNames cannot encode option referenced by id.',
+            )
+          }),
+      }),
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.MultiSelectWriteFromNames',
+    title: 'Multi-Select (Write) From Names',
+    description: 'Transform option names into a multi-select write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for MultiSelect property. */
 export const MultiSelect = {
@@ -323,11 +329,8 @@ export const MultiSelect = {
       ),
       Schema.decodeTo(Schema.Array(nameSchema), {
         decode: SchemaGetter.transform(
-          (
-            prop: {
-              multi_select: ReadonlyArray<{ name: TName }>
-            },
-          ): ReadonlyArray<TName> => prop.multi_select.map((opt) => opt.name),
+          (prop: { multi_select: ReadonlyArray<{ name: TName }> }): ReadonlyArray<TName> =>
+            prop.multi_select.map((opt) => opt.name),
         ),
         encode: SchemaGetter.forbidden(
           () =>
@@ -426,32 +429,34 @@ export const StatusWrite = Schema.Struct({
 export type StatusWrite = typeof StatusWrite.Type
 
 /** Transforms status name (or null) into a status write payload */
-export const StatusWriteFromName = Schema.NullOr(Schema.String).pipe(
-  Schema.decodeTo(
-    StatusWrite,
-    SchemaTransformation.transform<Schema.Codec.Encoded<typeof StatusWrite>, string | null>({
-      decode: (name) => ({
-        status: name === null ? null : { name },
+export const StatusWriteFromName = Schema.NullOr(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      StatusWrite,
+      SchemaTransformation.transform<Schema.Codec.Encoded<typeof StatusWrite>, string | null>({
+        decode: (name) => ({
+          status: name === null ? null : { name },
+        }),
+        encode: (write) => {
+          if (write.status === null) {
+            return null
+          }
+
+          if ('name' in write.status) {
+            return write.status.name
+          }
+
+          return shouldNeverHappen('StatusWriteFromName cannot encode option referenced by id.')
+        },
       }),
-      encode: (write) => {
-        if (write.status === null) {
-          return null
-        }
-
-        if ('name' in write.status) {
-          return write.status.name
-        }
-
-        return shouldNeverHappen('StatusWriteFromName cannot encode option referenced by id.')
-      },
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.StatusWriteFromName',
-  title: 'Status (Write) From Name',
-  description: 'Transform a status name (or null) into a status write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.StatusWriteFromName',
+    title: 'Status (Write) From Name',
+    description: 'Transform a status name (or null) into a status write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for Status property. */
 export const Status = {
@@ -474,7 +479,7 @@ export const Status = {
       schema: StatusProperty.pipe(
         Schema.decodeTo(Schema.Option(SelectOption), {
           decode: SchemaGetter.transform((prop) =>
-            prop.status === null ? Option.none() : Option.some(prop.status)
+            prop.status === null ? Option.none() : Option.some(prop.status),
           ),
           encode: SchemaGetter.forbidden(
             () => 'Status.asOption encode is not supported. Use StatusWrite / StatusWriteFromName.',
@@ -504,7 +509,7 @@ export const Status = {
     schema: StatusProperty.pipe(
       Schema.decodeTo(Schema.Option(Schema.String), {
         decode: SchemaGetter.transform((prop) =>
-          prop.status === null ? Option.none() : Option.some(prop.status.name)
+          prop.status === null ? Option.none() : Option.some(prop.status.name),
         ),
         encode: SchemaGetter.forbidden(
           () => 'Status.asString encode is not supported. Use StatusWrite / StatusWriteFromName.',
@@ -528,7 +533,7 @@ export const Status = {
           ),
           Schema.decodeTo(Schema.Option(optionSchema), {
             decode: SchemaGetter.transform((prop) =>
-              prop.status === null ? Option.none() : Option.some(prop.status)
+              prop.status === null ? Option.none() : Option.some(prop.status),
             ),
             encode: SchemaGetter.forbidden(
               () =>
@@ -553,7 +558,7 @@ export const Status = {
         ),
         Schema.decodeTo(Schema.Option(nameSchema), {
           decode: SchemaGetter.transform((prop) =>
-            prop.status === null ? Option.none() : Option.some(prop.status.name)
+            prop.status === null ? Option.none() : Option.some(prop.status.name),
           ),
           encode: SchemaGetter.forbidden(
             () => 'Status.asName encode is not supported. Use StatusWrite / StatusWriteFromName.',

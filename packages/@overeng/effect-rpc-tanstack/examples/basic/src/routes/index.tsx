@@ -1,5 +1,5 @@
-import type { RpcClientError } from 'effect/unstable/rpc'
 import { Effect } from 'effect'
+import type { RpcClientError } from 'effect/unstable/rpc'
 import { useState, type SyntheticEvent } from 'react'
 
 import {

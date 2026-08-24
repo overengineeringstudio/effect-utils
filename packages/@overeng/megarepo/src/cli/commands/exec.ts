@@ -4,11 +4,11 @@
  * Execute a command in member directories.
  */
 
+import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import * as Cli from 'effect/unstable/cli'
 import * as Command from 'effect/unstable/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
-import * as FileSystem from 'effect/FileSystem'
-import { Effect, Option } from 'effect'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'

@@ -3747,7 +3747,18 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
     ).map((row) => ({
       changeId: readString({ row, key: 'change_id' }),
       kind: Schema.decodeUnknownSync(
-        Schema.Literals(['cell_patch', 'row_archive', 'row_restore', 'row_create', 'body_patch', 'metadata_patch', 'schema_patch', 'file_attach', 'view_change', 'conflict_resolution']),
+        Schema.Literals([
+          'cell_patch',
+          'row_archive',
+          'row_restore',
+          'row_create',
+          'body_patch',
+          'metadata_patch',
+          'schema_patch',
+          'file_attach',
+          'view_change',
+          'conflict_resolution',
+        ]),
       )(readString({ row, key: 'kind' })),
       dataSourceId: readString({ row, key: 'data_source_id' }),
       pageId: readOptionalString({ row, key: 'page_id' }),
@@ -4668,9 +4679,9 @@ export const replicaChangesToPlannerIntents = ({
         try {
           dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
           baseMetadataHash = decode({ schema: Hash, value: change.baseHash })
-          currentMetadata = Schema.decodeUnknownSync(Schema.fromJsonString(CanonicalDataSourceMetadata))(
-            metadataJson,
-          )
+          currentMetadata = Schema.decodeUnknownSync(
+            Schema.fromJsonString(CanonicalDataSourceMetadata),
+          )(metadataJson)
         } catch {
           markChange({
             replicaPath,

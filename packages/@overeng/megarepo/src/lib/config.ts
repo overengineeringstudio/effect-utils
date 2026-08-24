@@ -13,8 +13,8 @@
  * - Local path: "./path", "../path", "/absolute/path"
  */
 
-import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 
 import {
   EffectPath,
@@ -289,7 +289,9 @@ export const writeMegarepoConfig = ({
     const content =
       format === 'kdl'
         ? yield* Schema.encodeEffect(MegarepoConfigFromKdl)(config)
-        : (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) + '\n'
+        : (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            config,
+          )) + '\n'
 
     yield* fs.writeFileString(configPath, content)
   })

@@ -4,8 +4,8 @@
  * Print environment variables for shell integration.
  */
 
-import * as Cli from 'effect/unstable/cli'
 import { Effect } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'

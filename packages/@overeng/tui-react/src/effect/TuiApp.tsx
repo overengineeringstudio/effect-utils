@@ -41,7 +41,6 @@
 
 import { Console as NodeConsole } from 'node:console'
 
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import type { Scope } from 'effect'
 import {
   Cause,
@@ -56,6 +55,7 @@ import {
   Schema,
   Stream,
 } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'
@@ -744,9 +744,9 @@ const setupProgressiveJsonWithAtom = <S,>({
 
     // Initial snapshot for bootstrapping.
     const initialState = registry.get(stateAtom)
-    const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(initialState).pipe(
-      Effect.orDie,
-    )
+    const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
+      initialState,
+    ).pipe(Effect.orDie)
     yield* Console.log(initialJson)
 
     // Subscribe to subsequent state changes.
@@ -788,9 +788,9 @@ const setupProgressiveJsonWithEvents = <S, E>({
     const { eventSchema, fromAction } = ndjsonConfig
 
     const initialState = registry.get(stateAtom)
-    const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(initialState).pipe(
-      Effect.orDie,
-    )
+    const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
+      initialState,
+    ).pipe(Effect.orDie)
     yield* Console.log(initialJson)
 
     const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
@@ -892,8 +892,7 @@ export interface RunResultOptions<O> {
 }
 
 /** Check if schema resolves to a plain string type */
-const isStringSchema = (schema: Schema.Schema<unknown>): boolean =>
-  schema.ast._tag === 'String'
+const isStringSchema = (schema: Schema.Schema<unknown>): boolean => schema.ast._tag === 'String'
 
 /**
  * Build an Effect `Console` service bound to a single Node `WriteStream`.

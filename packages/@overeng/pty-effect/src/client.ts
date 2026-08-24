@@ -725,9 +725,11 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
     const waitForText: PtyClientSession['waitForText'] = ({ needle, schedule }) =>
       pipe(
         Stream.fromEffectSchedule(screenshot, schedule ?? defaultPollSchedule),
-        Stream.filterMap(Filter.fromPredicateOption((ss) =>
-          matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
-        )),
+        Stream.filterMap(
+          Filter.fromPredicateOption((ss) =>
+            matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
+          ),
+        ),
         Stream.runHead,
         Effect.flatMap(
           Option.match({
@@ -748,9 +750,11 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
     const waitForAbsent: PtyClientSession['waitForAbsent'] = ({ needle, schedule }) =>
       pipe(
         Stream.fromEffectSchedule(screenshot, schedule ?? defaultPollSchedule),
-        Stream.filterMap(Filter.fromPredicateOption((ss) =>
-          matches({ haystack: ss.text, needle }) === false ? Option.some(ss) : Option.none(),
-        )),
+        Stream.filterMap(
+          Filter.fromPredicateOption((ss) =>
+            matches({ haystack: ss.text, needle }) === false ? Option.some(ss) : Option.none(),
+          ),
+        ),
         Stream.runHead,
         Effect.flatMap(
           Option.match({

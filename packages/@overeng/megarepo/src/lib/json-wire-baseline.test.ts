@@ -38,32 +38,35 @@ const decodeFailure = <A, I>(schema: Schema.Codec<A, I>, encoded: string) => {
 describe('megarepo wire baselines (cross-major invariant)', () => {
   it('captures megarepo config JSON bytes and failure partition', () => {
     expect(
-      roundTrip(MegarepoConfig, new MegarepoConfig({
-        $schema: 'https://example.invalid/megarepo.schema.json',
-        members: {
-          '': './empty-name',
-          'unicode-ß': 'https://github.com/example/unicode#feature/ß',
-          windows: '../windows\r\npath',
-        },
-        generators: {
-          vscode: {
-            enabled: true,
-            exclude: ['tmp', 'unicode-ß'],
-            color: '#123abc',
-            colorEnvVar: 'MEGAREPO_COLOR',
-            settings: {
-              'editor.formatOnSave': true,
-              'terminal.integrated.defaultProfile.linux': 'bash\r\nzsh',
-              nullable: null,
+      roundTrip(
+        MegarepoConfig,
+        new MegarepoConfig({
+          $schema: 'https://example.invalid/megarepo.schema.json',
+          members: {
+            '': './empty-name',
+            'unicode-ß': 'https://github.com/example/unicode#feature/ß',
+            windows: '../windows\r\npath',
+          },
+          generators: {
+            vscode: {
+              enabled: true,
+              exclude: ['tmp', 'unicode-ß'],
+              color: '#123abc',
+              colorEnvVar: 'MEGAREPO_COLOR',
+              settings: {
+                'editor.formatOnSave': true,
+                'terminal.integrated.defaultProfile.linux': 'bash\r\nzsh',
+                nullable: null,
+              },
             },
           },
-        },
-        lockSync: {
-          enabled: false,
-          exclude: ['unicode-ß'],
-          sharedInputSource: 'nixpkgs',
-        },
-      })),
+          lockSync: {
+            enabled: false,
+            exclude: ['unicode-ß'],
+            sharedInputSource: 'nixpkgs',
+          },
+        }),
+      ),
     ).toMatchSnapshot()
 
     expect({
@@ -75,25 +78,28 @@ describe('megarepo wire baselines (cross-major invariant)', () => {
 
   it('captures megarepo lock JSON bytes and failure partition', () => {
     expect(
-      roundTrip(LockFile, new LockFile({
-        version: 1,
-        members: {
-          'unicode-ß': new LockedMember({
-            url: 'https://github.com/example/unicode',
-            ref: 'feature/ß',
-            commit: '0123456789abcdef0123456789abcdef01234567',
-            pinned: true,
-            lockedAt: '2026-07-28T11:50:00.000Z',
-          }),
-          'out-of-range-date-string': new LockedMember({
-            url: 'git@github.com:example/out-of-range.git',
-            ref: 'main',
-            commit: 'ffffffffffffffffffffffffffffffffffffffff',
-            pinned: false,
-            lockedAt: '99999-99-99T99:99:99.999Z',
-          }),
-        },
-      })),
+      roundTrip(
+        LockFile,
+        new LockFile({
+          version: 1,
+          members: {
+            'unicode-ß': new LockedMember({
+              url: 'https://github.com/example/unicode',
+              ref: 'feature/ß',
+              commit: '0123456789abcdef0123456789abcdef01234567',
+              pinned: true,
+              lockedAt: '2026-07-28T11:50:00.000Z',
+            }),
+            'out-of-range-date-string': new LockedMember({
+              url: 'git@github.com:example/out-of-range.git',
+              ref: 'main',
+              commit: 'ffffffffffffffffffffffffffffffffffffffff',
+              pinned: false,
+              lockedAt: '99999-99-99T99:99:99.999Z',
+            }),
+          },
+        }),
+      ),
     ).toMatchSnapshot()
 
     expect({

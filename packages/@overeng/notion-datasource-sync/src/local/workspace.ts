@@ -288,7 +288,8 @@ export const classifyLocalDelete = ({
   remoteTrash: 'blocked-by-default',
 })
 
-const observedAtNow = () => decode({ schema: Schema.DateTimeUtcFromString, value: new Date().toISOString() })
+const observedAtNow = () =>
+  decode({ schema: Schema.DateTimeUtcFromString, value: new Date().toISOString() })
 
 const FilesystemPathClaim = Schema.Struct({
   pageId: PageId,

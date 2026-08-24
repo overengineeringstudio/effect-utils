@@ -333,13 +333,15 @@ describe('Interrupt Handling', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('log')),
-        Effect.andThen(Effect.sync(() => {
-          // After scope closes, Interrupted should have been dispatched
-          // The finalizer dispatches Interrupted, so the last state should have interrupted: true
-          // Note: We need to check the final state after the effect completes
-          expect(states[0]!.interrupted).toBe(false)
-          expect(states[1]!.value).toBe('updated')
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            // After scope closes, Interrupted should have been dispatched
+            // The finalizer dispatches Interrupted, so the last state should have interrupted: true
+            // Note: We need to check the final state after the effect completes
+            expect(states[0]!.interrupted).toBe(false)
+            expect(states[1]!.value).toBe('updated')
+          }),
+        ),
       )
     })
 
@@ -355,10 +357,12 @@ describe('Interrupt Handling', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('log')),
-        Effect.andThen(Effect.sync(() => {
-          // Should not have interrupted state since schema doesn't have Interrupted
-          expect(states.every((s) => s.interrupted === false)).toBe(true)
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            // Should not have interrupted state since schema doesn't have Interrupted
+            expect(states.every((s) => s.interrupted === false)).toBe(true)
+          }),
+        ),
       )
     })
   })
@@ -428,13 +432,15 @@ describe('Final state output', () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(testModeLayer('json')),
-      Effect.andThen(Effect.sync(() => {
-        expect(capturedOutput).toHaveLength(1)
-        const state = decodeTestState(capturedOutput[0]!)
-        // Flat contract: stdout is raw state, no envelope.
-        expect(state.value).toBe('final')
-        expect(state.interrupted).toBe(false)
-      })),
+      Effect.andThen(
+        Effect.sync(() => {
+          expect(capturedOutput).toHaveLength(1)
+          const state = decodeTestState(capturedOutput[0]!)
+          // Flat contract: stdout is raw state, no envelope.
+          expect(state.value).toBe('final')
+          expect(state.interrupted).toBe(false)
+        }),
+      ),
     ),
   )
 
@@ -472,14 +478,16 @@ describe('Final state output', () => {
       yield* Fiber.interruptAs(fiber, fiber.id)
       const _ = yield* Fiber.await(fiber)
     }).pipe(
-      Effect.andThen(Effect.sync(() => {
-        // Interrupt still emits the final state (no envelope). The interrupt
-        // signal itself rides the Effect channel, not stdout.
-        expect(capturedOutput).toHaveLength(1)
-        const state = decodeTestState(capturedOutput[0]!)
-        expect(state).toBeDefined()
-        expect(state).toHaveProperty('value')
-      })),
+      Effect.andThen(
+        Effect.sync(() => {
+          // Interrupt still emits the final state (no envelope). The interrupt
+          // signal itself rides the Effect channel, not stdout.
+          expect(capturedOutput).toHaveLength(1)
+          const state = decodeTestState(capturedOutput[0]!)
+          expect(state).toBeDefined()
+          expect(state).toHaveProperty('value')
+        }),
+      ),
     )
   })
 })
@@ -509,13 +517,15 @@ describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(testModeLayer('json')),
-      Effect.andThen(Effect.sync(() => {
-        expect(capturedOutput).toMatchInlineSnapshot(`
+      Effect.andThen(
+        Effect.sync(() => {
+          expect(capturedOutput).toMatchInlineSnapshot(`
           [
             "{"_tag":"WireState","phase":"done","text":"Line 1\\r\\nLine 2 世界 NaN 2026-02-31","nullable":null,"note":"","items":[{"id":"α","value":""},{"id":"big","value":"9007199254740991"}]}",
           ]
         `)
-      })),
+        }),
+      ),
     ),
   )
 
@@ -528,12 +538,14 @@ describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(testModeLayer('ndjson')),
-      Effect.andThen(Effect.sync(() => {
-        expect(capturedOutput.join('\n')).toMatchInlineSnapshot(`
+      Effect.andThen(
+        Effect.sync(() => {
+          expect(capturedOutput.join('\n')).toMatchInlineSnapshot(`
           "{"_tag":"WireState","phase":"idle","text":"","nullable":null,"items":[]}
           {"_tag":"WireState","phase":"done","text":"Line 1\\r\\nLine 2 世界 NaN 2026-02-31","nullable":null,"note":"","items":[{"id":"α","value":""},{"id":"big","value":"9007199254740991"}]}"
         `)
-      })),
+        }),
+      ),
     ),
   )
 
@@ -546,12 +558,14 @@ describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(testModeLayer('ndjson')),
-      Effect.andThen(Effect.sync(() => {
-        expect(capturedOutput.join('\n')).toMatchInlineSnapshot(`
+      Effect.andThen(
+        Effect.sync(() => {
+          expect(capturedOutput.join('\n')).toMatchInlineSnapshot(`
           "{"_tag":"WireState","phase":"idle","text":"","nullable":null,"items":[]}
           {"_tag":"WireEvent","from":"idle","to":"done","text":"Line 1\\r\\nLine 2 世界 NaN 2026-02-31"}"
         `)
-      })),
+        }),
+      ),
     ),
   )
 

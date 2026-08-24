@@ -193,19 +193,21 @@ const WatchDaemonStateSchema = Schema.Struct({
   lastStartedAt: Schema.optional(Schema.String),
   lastCompletedAt: Schema.optional(Schema.String),
   repair: Schema.Union([
-Schema.TaggedStruct('none', {}),
-Schema.TaggedStruct('retry', {
+    Schema.TaggedStruct('none', {}),
+    Schema.TaggedStruct('retry', {
       reason: Schema.String,
       retryAfterMillis: Schema.Finite,
       failedCycle: Schema.Finite,
     }),
-]),
+  ]),
   lastStatus: Schema.optional(Schema.Unknown),
 }).annotate({ identifier: 'NotionDatasourceSync.WatchDaemonState' })
 
 const decodeState = Schema.decodeUnknownSync(WatchDaemonStateSchema)
 const decodeStateJson = Schema.decodeUnknownSync(Schema.fromJsonString(WatchDaemonStateSchema))
-const encodeStateJson = Schema.encodeSync(Schema.fromJsonString(WatchDaemonStateSchema, { space: 2 }))
+const encodeStateJson = Schema.encodeSync(
+  Schema.fromJsonString(WatchDaemonStateSchema, { space: 2 }),
+)
 
 const modeBackoffMillis = (mode: WatchDaemonMode): number => {
   switch (mode) {

@@ -12,8 +12,6 @@
  * @module
  */
 
-import { FetchHttpClient } from 'effect/unstable/http'
-import { Otlp } from 'effect/unstable/observability'
 import {
   Config,
   Context,
@@ -25,6 +23,8 @@ import {
   type Scope,
   Tracer,
 } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import { Otlp } from 'effect/unstable/observability'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
 
@@ -48,9 +48,12 @@ export * from './otel-attrs.ts'
  * it with {@link Effect.serviceOption} so commands stay runnable without the
  * layer (absent tag ≡ telemetry disabled), keeping the tag out of their `R`.
  */
-export class OtelConfig extends Context.Service<OtelConfig, {
-  readonly endpoint: Option.Option<string>
-}>()('@overeng/utils/OtelConfig') {}
+export class OtelConfig extends Context.Service<
+  OtelConfig,
+  {
+    readonly endpoint: Option.Option<string>
+  }
+>()('@overeng/utils/OtelConfig') {}
 
 /**
  * Resolve the OTLP endpoint at a binary's composition root via Effect `Config`,
@@ -247,19 +250,18 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
       explicitEndpoint !== undefined
         ? explicitEndpoint
         : Option.fromUndefinedOr(process.env[endpointEnvVar])
-  // The typed `identity`'s name/namespace/version flow onto every signal's
-  // resource. `OTEL_RESOURCE_ATTRIBUTES` env attrs are merged in as well so
-  // runtime provenance (e.g. deployment.environment) survives — the explicit
-  // identity wins on collision, env-only attrs are preserved.
-  const resource = {
-    serviceName: identity.name,
-    serviceVersion: identity.version,
-    attributes: {
-      ...parseOtelResourceAttributes(process.env.OTEL_RESOURCE_ATTRIBUTES),
-      'service.namespace': identity.namespace,
-    },
-  }
-
+    // The typed `identity`'s name/namespace/version flow onto every signal's
+    // resource. `OTEL_RESOURCE_ATTRIBUTES` env attrs are merged in as well so
+    // runtime provenance (e.g. deployment.environment) survives — the explicit
+    // identity wins on collision, env-only attrs are preserved.
+    const resource = {
+      serviceName: identity.name,
+      serviceVersion: identity.version,
+      attributes: {
+        ...parseOtelResourceAttributes(process.env.OTEL_RESOURCE_ATTRIBUTES),
+        'service.namespace': identity.namespace,
+      },
+    }
 
     // Always provide the resolved config so command code can gate optional
     // telemetry work on the same signal the exporter is built from.
@@ -530,8 +532,7 @@ export const sampleGauge = (
   options: SampleGaugeOptions,
 ): Effect.Effect<void, never, OtelConfig | Scope.Scope> => {
   const { gauge, read, labels, interval } = options
-  const target =
-    labels === undefined ? gauge : Metric.withAttributes(gauge, labels)
+  const target = labels === undefined ? gauge : Metric.withAttributes(gauge, labels)
   return sampleResource({
     // oxlint-disable-next-line overeng/no-raw-otel-primitives -- v4 replaced `Metric.set` with `update`; gauges remain the sanctioned raw path here
     sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.update(target, value))),

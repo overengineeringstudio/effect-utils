@@ -1,4 +1,4 @@
-import { Effect, Layer, Redacted, Schema, Stream } from "effect"
+import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
 import { HttpClient, make as makeHttpClient } from 'effect/unstable/http/HttpClient'
 import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
@@ -38,8 +38,7 @@ export const createMockHttpClient = (
 /** Create a Layer with mock HttpClient */
 export const mockHttpClientLayer = (
   handler: (request: HttpClientRequest.HttpClientRequest) => MockResponse,
-): Layer.Layer<HttpClient> =>
-  Layer.succeed(HttpClient, createMockHttpClient(handler))
+): Layer.Layer<HttpClient> => Layer.succeed(HttpClient, createMockHttpClient(handler))
 
 /** Create a Layer with NotionConfig for testing */
 export const testConfigLayer = (

@@ -8,11 +8,11 @@
  * source of truth for dependency versions.
  */
 
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Effect, Option, Schema } from 'effect'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -921,11 +921,7 @@ const syncMemberRefs = ({
 }: {
   memberPath: AbsoluteDirPath
   megarepoMembers: Record<string, LockedMember>
-}): Effect.Effect<
-  ReadonlyArray<NixLockSyncFileResult>,
-  PlatformError,
-  FileSystem.FileSystem
-> =>
+}): Effect.Effect<ReadonlyArray<NixLockSyncFileResult>, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const results: NixLockSyncFileResult[] = []

@@ -1,6 +1,6 @@
-import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

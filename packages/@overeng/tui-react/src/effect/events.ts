@@ -102,7 +102,7 @@ export type KeyEvent = Schema.Schema.Type<typeof KeyEvent>
 /**
  * Encoded type for KeyEvent (for JSON)
  */
-export type KeyEventEncoded = (typeof KeyEvent)["Encoded"]
+export type KeyEventEncoded = (typeof KeyEvent)['Encoded']
 
 // =============================================================================
 // Resize Event
@@ -142,7 +142,7 @@ export type ResizeEvent = Schema.Schema.Type<typeof ResizeEvent>
 /**
  * Encoded type for ResizeEvent (for JSON)
  */
-export type ResizeEventEncoded = (typeof ResizeEvent)["Encoded"]
+export type ResizeEventEncoded = (typeof ResizeEvent)['Encoded']
 
 // =============================================================================
 // Focus Event
@@ -175,7 +175,7 @@ export type FocusEvent = Schema.Schema.Type<typeof FocusEvent>
 /**
  * Encoded type for FocusEvent (for JSON)
  */
-export type FocusEventEncoded = (typeof FocusEvent)["Encoded"]
+export type FocusEventEncoded = (typeof FocusEvent)['Encoded']
 
 // =============================================================================
 // Mouse Event (for future use)
@@ -253,7 +253,7 @@ export type MouseEvent = Schema.Schema.Type<typeof MouseEvent>
 /**
  * Encoded type for MouseEvent (for JSON)
  */
-export type MouseEventEncoded = (typeof MouseEvent)["Encoded"]
+export type MouseEventEncoded = (typeof MouseEvent)['Encoded']
 
 // =============================================================================
 // Input Event Union
@@ -291,7 +291,7 @@ export type InputEvent = Schema.Schema.Type<typeof InputEvent>
 /**
  * Encoded type for InputEvent (for JSON)
  */
-export type InputEventEncoded = (typeof InputEvent)["Encoded"]
+export type InputEventEncoded = (typeof InputEvent)['Encoded']
 
 // =============================================================================
 // Helper Functions

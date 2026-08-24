@@ -1,5 +1,5 @@
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Chunk, Effect, Option, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import { type Comment, CommentSchema } from '@overeng/notion-effect-schema'
 
@@ -116,27 +116,29 @@ export const list = (
 export const listStream = (
   opts: Omit<ListCommentsOptions, 'startCursor'>,
 ): Stream.Stream<Comment, NotionApiError, NotionConfig | HttpClient> =>
-  Stream.flattenIterable(Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
-    Option.match(maybeNextCursor, {
-      // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
-      onNone: () => Effect.succeed(undefined),
-      onSome: (cursor) => {
-        const listOpts: ListCommentsOptions =
-          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
-        return listRaw(listOpts).pipe(
-          Effect.map((result) => {
-            const chunk = Chunk.fromIterable(result.results)
+  Stream.flattenIterable(
+    Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
+      Option.match(maybeNextCursor, {
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
+        onNone: () => Effect.succeed(undefined),
+        onSome: (cursor) => {
+          const listOpts: ListCommentsOptions =
+            Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
+          return listRaw(listOpts).pipe(
+            Effect.map((result) => {
+              const chunk = Chunk.fromIterable(result.results)
 
-            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-              return [chunk, Option.none()] as const
-            }
+              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
+                return [chunk, Option.none()] as const
+              }
 
-            return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
-          }),
-        )
-      },
-    }),
-  ))
+              return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
+            }),
+          )
+        },
+      }),
+    ),
+  )
 
 // -----------------------------------------------------------------------------
 // Namespace Export

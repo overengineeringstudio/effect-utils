@@ -31,15 +31,7 @@
  */
 
 import type { Layer, Scope } from 'effect'
-import {
-  Effect,
-  Fiber,
-  Inspectable,
-  Logger,
-  References,
-  Stream,
-  SubscriptionRef,
-} from 'effect'
+import { Effect, Fiber, Inspectable, Logger, References, Stream, SubscriptionRef } from 'effect'
 import React, { createContext, type ReactNode } from 'react'
 
 import { useContext, useSyncExternalStore } from './hooks.tsx'
@@ -195,23 +187,21 @@ export const createLogCapture = (options?: {
     }
 
     // Create Effect Logger that captures instead of printing
-    const capturingLogger = Logger.make<unknown, void>(
-      ({ logLevel, message, date, fiber }) => {
-        const spans = fiber.getRef(References.CurrentLogSpans)
-        const annotations = fiber.getRef(References.CurrentLogAnnotations)
-        const spanLabel = spans.length > 0 ? (spans[0]?.[0] ?? undefined) : undefined
-        const entry: TuiLogEntry = {
-          id: ++logCaptureEntryId,
-          level: logLevel,
-          message: String(message),
-          timestamp: date,
-          fiberId: String(fiber.id),
-          annotations,
-          ...(spanLabel !== undefined ? { span: spanLabel } : {}),
-        }
-        appendLogSync(entry)
-      },
-    )
+    const capturingLogger = Logger.make<unknown, void>(({ logLevel, message, date, fiber }) => {
+      const spans = fiber.getRef(References.CurrentLogSpans)
+      const annotations = fiber.getRef(References.CurrentLogAnnotations)
+      const spanLabel = spans.length > 0 ? (spans[0]?.[0] ?? undefined) : undefined
+      const entry: TuiLogEntry = {
+        id: ++logCaptureEntryId,
+        level: logLevel,
+        message: String(message),
+        timestamp: date,
+        fiberId: String(fiber.id),
+        annotations,
+        ...(spanLabel !== undefined ? { span: spanLabel } : {}),
+      }
+      appendLogSync(entry)
+    })
 
     const loggerLayer = Logger.layer([capturingLogger], { mergeWithExisting: false })
 

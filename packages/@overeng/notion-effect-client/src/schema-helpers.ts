@@ -196,7 +196,9 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
     const meta =
       annotations === undefined
         ? Option.none()
-        : Schema.decodeUnknownOption(PropertySchemaCodec)(Reflect.get(annotations, notionPropertyMeta))
+        : Schema.decodeUnknownOption(PropertySchemaCodec)(
+            Reflect.get(annotations, notionPropertyMeta),
+          )
     if (Option.isSome(meta) === true) {
       required.push({ name: prop.name, tag: meta.value._tag })
     } else {
@@ -216,11 +218,7 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
 
 /** Validates database properties using metadata extracted from a Schema.Struct */
 export const validatePropertiesFromSchema = Effect.fn('SchemaHelpers.validatePropertiesFromSchema')(
-  function* (args: {
-    schema: Schema.Schema<any>
-    databaseId: string
-    schemaSource: SchemaSource
-  }) {
+  function* (args: { schema: Schema.Schema<any>; databaseId: string; schemaSource: SchemaSource }) {
     const required = yield* getRequiredPropertiesFromSchema(args.schema)
     return yield* validateProperties({
       schema: args.schemaSource,

@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
-import { NonNegativeInt } from './domain.ts'
 
+import { NonNegativeInt } from './domain.ts'
 import { CommandId, DataSourceId, PageId, SupportedNotionApiVersion } from './domain.ts'
 import { GuardName } from './guards.ts'
 
@@ -75,7 +75,11 @@ export class SyncGuardError extends Schema.TaggedError<SyncGuardError>()('SyncGu
 export class WorkspaceNamespaceError extends Schema.TaggedError<WorkspaceNamespaceError>()(
   'WorkspaceNamespaceError',
   {
-    guard: Schema.Literals(['UnknownWorkspaceNamespace', 'MixedWorkspaceNamespace', 'InvalidLinkedView']),
+    guard: Schema.Literals([
+      'UnknownWorkspaceNamespace',
+      'MixedWorkspaceNamespace',
+      'InvalidLinkedView',
+    ]),
     message: Schema.String,
   },
 ) {}

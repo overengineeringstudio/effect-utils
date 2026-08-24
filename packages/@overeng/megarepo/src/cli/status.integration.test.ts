@@ -7,11 +7,11 @@
  * - commitDrift field
  */
 
-import * as Cli from 'effect/unstable/cli'
-import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -86,10 +86,10 @@ const createTestWorkspace = (args: {
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: MegarepoConfig = new MegarepoConfig({ members: args.members, })
-    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
-      config,
-    )
+    const config: MegarepoConfig = new MegarepoConfig({ members: args.members })
+    const configContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(config)
     yield* fs.writeFileString(
       EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
       configContent + '\n',
@@ -108,8 +108,7 @@ const createTestWorkspace = (args: {
         })
       }
 
-      const lockFile: LockFile = new LockFile({ version: 1,
-      members, })
+      const lockFile: LockFile = new LockFile({ version: 1, members })
 
       const lockPath = EffectPath.ops.join(
         workspacePath,

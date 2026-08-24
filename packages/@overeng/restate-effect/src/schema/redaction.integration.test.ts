@@ -134,7 +134,9 @@ describe.skipIf(!serverAvailable)('sensitive-field redaction on the wire (real s
         const decrypted = new TextDecoder().decode(
           cipher.decrypt(Buffer.from(wire.token, 'base64')),
         )
-        expect(yield* Schema.decodeEffect(Schema.fromJsonString(Schema.String))(decrypted)).toBe(PLAINTEXT)
+        expect(yield* Schema.decodeEffect(Schema.fromJsonString(Schema.String))(decrypted)).toBe(
+          PLAINTEXT,
+        )
       }),
     )
   })

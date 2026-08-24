@@ -7,8 +7,8 @@
  * - ndjson: Timeline events as newline-delimited JSON
  */
 
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import { Effect, Schema } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import React from 'react'
 
 import {

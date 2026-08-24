@@ -470,9 +470,7 @@ describe('SM5d property materialization (real pull → materialized .nmd frontma
           gateway: fakeNotionMdGateway(),
           stateStore,
         })
-        return yield* workspace
-          .scan(root)
-          .pipe(Stream.runCollect)
+        return yield* workspace.scan(root).pipe(Stream.runCollect)
       }).pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
     )
 

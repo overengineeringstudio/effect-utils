@@ -36,7 +36,6 @@ const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => v
   onExit(editorExitCode(exit))
 }
 
-
 const identity = Schema.decodeSync(ServiceIdentity)({
   name: 'notion-md-cli',
   namespace: 'overeng',

@@ -5,7 +5,18 @@ import { Box, Text, createTuiApp, useTuiAtomValue, type TuiApp } from '@overeng/
 
 import type { SyncProgressEvent, SyncProgressPhase } from '../core/progress.ts'
 
-const Phase = Schema.Literals(['preparing', 'pulling', 'querying', 'hydrating', 'planning', 'pushing', 'executing', 'projecting', 'watching', 'complete'])
+const Phase = Schema.Literals([
+  'preparing',
+  'pulling',
+  'querying',
+  'hydrating',
+  'planning',
+  'pushing',
+  'executing',
+  'projecting',
+  'watching',
+  'complete',
+])
 
 const SyncProgressState = Schema.Struct({
   command: Schema.String,
@@ -27,10 +38,10 @@ const SyncProgressState = Schema.Struct({
 export type SyncProgressState = typeof SyncProgressState.Type
 
 const SyncProgressAction = Schema.Union([
-Schema.TaggedStruct('SetState', {
+  Schema.TaggedStruct('SetState', {
     state: SyncProgressState,
   }),
-Schema.TaggedStruct('ApplyEvent', {
+  Schema.TaggedStruct('ApplyEvent', {
     event: Schema.Any,
   }),
 ])

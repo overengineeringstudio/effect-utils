@@ -1,5 +1,5 @@
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Effect, Schema } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import {
   classifyBodyCompleteness,

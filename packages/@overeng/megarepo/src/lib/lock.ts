@@ -9,9 +9,9 @@
  * Note: Local path sources are NOT in the lock file - they're already local.
  */
 
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Effect, Option, Schema } from 'effect'
 
 import type { AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -92,14 +92,12 @@ export const writeLockFile = ({
 }: {
   lockPath: AbsoluteFilePath
   lockFile: LockFile
-}): Effect.Effect<
-  void,
-  PlatformError | Schema.SchemaError,
-  FileSystem.FileSystem
-> =>
+}): Effect.Effect<void, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const content = yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(lockFile)
+    const content = yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(
+      lockFile,
+    )
     yield* fs.writeFileString(lockPath, content + '\n')
   })
 

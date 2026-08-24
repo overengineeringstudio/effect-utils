@@ -132,11 +132,13 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(Effect.sync(() => {
-          expect(capturedOutput).toHaveLength(1)
-          const state = decodeJson(CounterState, capturedOutput[0]!)
-          expect(state).toEqual({ count: 2 })
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(1)
+            const state = decodeJson(CounterState, capturedOutput[0]!)
+            expect(state).toEqual({ count: 2 })
+          }),
+        ),
       ),
     )
 
@@ -147,11 +149,13 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(Effect.sync(() => {
-          expect(capturedOutput).toHaveLength(1)
-          const state = decodeJson(CounterState, capturedOutput[0]!)
-          expect(state).toEqual({ count: 100 })
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(1)
+            const state = decodeJson(CounterState, capturedOutput[0]!)
+            expect(state).toEqual({ count: 100 })
+          }),
+        ),
       ),
     )
   })
@@ -168,17 +172,19 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
-        Effect.andThen(Effect.sync(() => {
-          // Initial snapshot + one line per state change. No trailing envelope.
-          expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
+        Effect.andThen(
+          Effect.sync(() => {
+            // Initial snapshot + one line per state change. No trailing envelope.
+            expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
-          const initialState = decodeJson(CounterState, capturedOutput[0]!)
-          expect(initialState).toEqual({ count: 0 })
+            const initialState = decodeJson(CounterState, capturedOutput[0]!)
+            expect(initialState).toEqual({ count: 0 })
 
-          // Last emitted line is the authoritative end state.
-          const finalState = decodeJson(CounterState, capturedOutput[capturedOutput.length - 1]!)
-          expect(finalState).toEqual({ count: 2 })
-        })),
+            // Last emitted line is the authoritative end state.
+            const finalState = decodeJson(CounterState, capturedOutput[capturedOutput.length - 1]!)
+            expect(finalState).toEqual({ count: 2 })
+          }),
+        ),
       ),
     )
   })
@@ -222,20 +228,22 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
-        Effect.andThen(Effect.sync(() => {
-          // Line 1: initial full state snapshot
-          const initialState = decodeJson(CounterState, capturedOutput[0]!)
-          expect(initialState).toEqual({ count: 0 })
+        Effect.andThen(
+          Effect.sync(() => {
+            // Line 1: initial full state snapshot
+            const initialState = decodeJson(CounterState, capturedOutput[0]!)
+            expect(initialState).toEqual({ count: 0 })
 
-          // Subsequent lines: events (not full state). No trailing envelope.
-          const event1 = decodeJson(CounterEvent, capturedOutput[1]!)
-          expect(event1).toEqual({ _tag: 'Incremented', newCount: 1 })
+            // Subsequent lines: events (not full state). No trailing envelope.
+            const event1 = decodeJson(CounterEvent, capturedOutput[1]!)
+            expect(event1).toEqual({ _tag: 'Incremented', newCount: 1 })
 
-          const event2 = decodeJson(CounterEvent, capturedOutput[2]!)
-          expect(event2).toEqual({ _tag: 'Incremented', newCount: 2 })
+            const event2 = decodeJson(CounterEvent, capturedOutput[2]!)
+            expect(event2).toEqual({ _tag: 'Incremented', newCount: 2 })
 
-          expect(capturedOutput).toHaveLength(3)
-        })),
+            expect(capturedOutput).toHaveLength(3)
+          }),
+        ),
       ),
     )
 
@@ -260,11 +268,13 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
-        Effect.andThen(Effect.sync(() => {
-          // Only initial state snapshot — no intermediate events, no envelope.
-          expect(capturedOutput).toHaveLength(1)
-          expect(decodeJson(CounterState, capturedOutput[0]!)).toEqual({ count: 0 })
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            // Only initial state snapshot — no intermediate events, no envelope.
+            expect(capturedOutput).toHaveLength(1)
+            expect(decodeJson(CounterState, capturedOutput[0]!)).toEqual({ count: 0 })
+          }),
+        ),
       )
     })
 
@@ -294,18 +304,20 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
-        Effect.andThen(Effect.sync(() => {
-          // Initial + 2 events from 1 action. No trailing envelope.
-          expect(capturedOutput).toHaveLength(3)
-          expect(decodeJson(CounterEvent, capturedOutput[1]!)).toEqual({
-            _tag: 'Decremented',
-            newCount: 0,
-          })
-          expect(decodeJson(CounterEvent, capturedOutput[2]!)).toEqual({
-            _tag: 'Incremented',
-            newCount: 1,
-          })
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            // Initial + 2 events from 1 action. No trailing envelope.
+            expect(capturedOutput).toHaveLength(3)
+            expect(decodeJson(CounterEvent, capturedOutput[1]!)).toEqual({
+              _tag: 'Decremented',
+              newCount: 0,
+            })
+            expect(decodeJson(CounterEvent, capturedOutput[2]!)).toEqual({
+              _tag: 'Incremented',
+              newCount: 1,
+            })
+          }),
+        ),
       )
     })
   })
@@ -492,16 +504,15 @@ describe('Issue #129: typed errors do not mask final state', () => {
           // Exit code signals failure; the error details live in `cause` and
           // are surfaced via `formatError` → stderr.
           expect(capturedOutput).toHaveLength(1)
-          const state = decodeJson(
-            Schema.Record(Schema.String, Schema.Unknown),
-            capturedOutput[0]!,
-          )
+          const state = decodeJson(Schema.Record(Schema.String, Schema.Unknown), capturedOutput[0]!)
           expect(state.count).toBe(42)
           expect(state._tag).toBeUndefined()
 
           // Typed error still propagates via the Effect channel.
           const error = Cause.findError(cause)
-          expect(Result.isSuccess(error) === true && error.success instanceof GenerationFailed).toBe(true)
+          expect(
+            Result.isSuccess(error) === true && error.success instanceof GenerationFailed,
+          ).toBe(true)
         }),
       ),
     ),
@@ -531,7 +542,9 @@ describe('Issue #129: typed errors do not mask final state', () => {
 
           // Typed error still propagates via the Effect channel.
           const error = Cause.findError(cause)
-          expect(Result.isSuccess(error) === true && error.success instanceof GenerationFailed).toBe(true)
+          expect(
+            Result.isSuccess(error) === true && error.success instanceof GenerationFailed,
+          ).toBe(true)
         }),
       ),
     ),
@@ -627,11 +640,13 @@ describe('run (standalone dual API)', () => {
       }),
     ).pipe(
       Effect.provide(testModeLayer('json')),
-      Effect.andThen(Effect.sync(() => {
-        expect(capturedOutput).toHaveLength(1)
-        const state = decodeJson(CounterState, capturedOutput[0]!)
-        expect(state).toEqual({ count: 77 })
-      })),
+      Effect.andThen(
+        Effect.sync(() => {
+          expect(capturedOutput).toHaveLength(1)
+          const state = decodeJson(CounterState, capturedOutput[0]!)
+          expect(state).toEqual({ count: 77 })
+        }),
+      ),
     ),
   )
 
@@ -698,12 +713,14 @@ describe('runResult', () => {
         { result: Schema.String },
       ).pipe(
         Effect.provide(testModeLayer('json')),
-        Effect.andThen((result) => Effect.sync(() => {
-          expect(result).toBe('my-secret-value')
-          const stdout = capturedStdout.join('')
-          expect(stdout).toBe('my-secret-value\n')
-          expect(capturedConsole).toHaveLength(0)
-        })),
+        Effect.andThen((result) =>
+          Effect.sync(() => {
+            expect(result).toBe('my-secret-value')
+            const stdout = capturedStdout.join('')
+            expect(stdout).toBe('my-secret-value\n')
+            expect(capturedConsole).toHaveLength(0)
+          }),
+        ),
       ),
     )
 
@@ -718,12 +735,14 @@ describe('runResult', () => {
         { result: Schema.String },
       ).pipe(
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(Effect.sync(() => {
-          const allOutput = capturedStdout.join('') + capturedConsole.join('')
-          expect(allOutput).not.toContain('Success')
-          expect(allOutput).not.toContain('Failure')
-          expect(allOutput).toContain('the-output')
-        })),
+        Effect.andThen(
+          Effect.sync(() => {
+            const allOutput = capturedStdout.join('') + capturedConsole.join('')
+            expect(allOutput).not.toContain('Success')
+            expect(allOutput).not.toContain('Failure')
+            expect(allOutput).toContain('the-output')
+          }),
+        ),
       ),
     )
 
@@ -738,17 +757,19 @@ describe('runResult', () => {
         { result: Schema.String, view: <CounterView /> },
       ).pipe(
         Effect.provide(testModeLayer('log')),
-        Effect.andThen((result) => Effect.sync(() => {
-          expect(result).toBe('the-secret')
-          // stdout is byte-for-byte the result (plus a trailing newline).
-          const stdout = capturedStdout.join('')
-          expect(stdout).toBe('the-secret\n')
-          // stderr carries the rendered view so the channel is not lost.
-          const stderr = capturedStderr.join('')
-          expect(stderr).toContain('55')
-          // The result never leaks into the view channel.
-          expect(stderr).not.toContain('the-secret')
-        })),
+        Effect.andThen((result) =>
+          Effect.sync(() => {
+            expect(result).toBe('the-secret')
+            // stdout is byte-for-byte the result (plus a trailing newline).
+            const stdout = capturedStdout.join('')
+            expect(stdout).toBe('the-secret\n')
+            // stderr carries the rendered view so the channel is not lost.
+            const stderr = capturedStderr.join('')
+            expect(stderr).toContain('55')
+            // The result never leaks into the view channel.
+            expect(stderr).not.toContain('the-secret')
+          }),
+        ),
       ),
     )
 
@@ -763,12 +784,14 @@ describe('runResult', () => {
         { result: Schema.String, view: <CounterView /> },
       ).pipe(
         Effect.provide(testModeLayer('tty')),
-        Effect.andThen((result) => Effect.sync(() => {
-          expect(result).toBe('tty-secret')
-          const stdout = capturedStdout.join('')
-          expect(stdout).toBe('tty-secret\n')
-          expect(stdout).not.toContain('\u001b[') // no ANSI on stdout
-        })),
+        Effect.andThen((result) =>
+          Effect.sync(() => {
+            expect(result).toBe('tty-secret')
+            const stdout = capturedStdout.join('')
+            expect(stdout).toBe('tty-secret\n')
+            expect(stdout).not.toContain('\u001b[') // no ANSI on stdout
+          }),
+        ),
       ),
     )
   })
@@ -790,15 +813,17 @@ describe('runResult', () => {
         { result: ResultSchema },
       ).pipe(
         Effect.provide(testModeLayer('json')),
-        Effect.andThen((result) => Effect.sync(() => {
-          expect(result).toEqual({ items: ['a', 'b', 'c'], total: 3 })
-          // `runResult` writes structured results directly via process.stdout
-          // (not Effect.Console) so handler-emitted logs can be routed to
-          // stderr without interfering with the result channel.
-          const stdout = capturedStdout.join('')
-          // @effect-diagnostics-next-line preferSchemaOverJson:off -- asserting the byte-exact JSON serialization written to stdout; re-encoding via Schema would use the implementation's own serializer (tautology)
-          expect(stdout).toBe(JSON.stringify({ items: ['a', 'b', 'c'], total: 3 }) + '\n')
-        })),
+        Effect.andThen((result) =>
+          Effect.sync(() => {
+            expect(result).toEqual({ items: ['a', 'b', 'c'], total: 3 })
+            // `runResult` writes structured results directly via process.stdout
+            // (not Effect.Console) so handler-emitted logs can be routed to
+            // stderr without interfering with the result channel.
+            const stdout = capturedStdout.join('')
+            // @effect-diagnostics-next-line preferSchemaOverJson:off -- asserting the byte-exact JSON serialization written to stdout; re-encoding via Schema would use the implementation's own serializer (tautology)
+            expect(stdout).toBe(JSON.stringify({ items: ['a', 'b', 'c'], total: 3 }) + '\n')
+          }),
+        ),
       ),
     )
   })
@@ -819,15 +844,17 @@ describe('runResult', () => {
         { result: Schema.String, view: <CounterView /> },
       ).pipe(
         Effect.provide(testModeLayer('log')),
-        Effect.andThen((result) => Effect.sync(() => {
-          expect(result).toBe('the-clean-payload')
-          // stdout must be byte-clean: only the result + trailing newline.
-          const stdout = capturedStdout.join('')
-          expect(stdout).toBe('the-clean-payload\n')
-          // Any Effect.log / Console.log lines should not appear on stdout.
-          expect(stdout).not.toContain('progress')
-          expect(stdout).not.toContain('console:')
-        })),
+        Effect.andThen((result) =>
+          Effect.sync(() => {
+            expect(result).toBe('the-clean-payload')
+            // stdout must be byte-clean: only the result + trailing newline.
+            const stdout = capturedStdout.join('')
+            expect(stdout).toBe('the-clean-payload\n')
+            // Any Effect.log / Console.log lines should not appear on stdout.
+            expect(stdout).not.toContain('progress')
+            expect(stdout).not.toContain('console:')
+          }),
+        ),
       ),
     )
   })

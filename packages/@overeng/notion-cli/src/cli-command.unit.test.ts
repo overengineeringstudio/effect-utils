@@ -1,5 +1,5 @@
-import { Command } from 'effect/unstable/cli'
 import { Effect } from 'effect'
+import { Command } from 'effect/unstable/cli'
 import { describe, expect, it } from 'vitest'
 
 import { makeNotionRootCommand } from './cli.ts'

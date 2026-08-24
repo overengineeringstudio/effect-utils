@@ -57,25 +57,27 @@ export const PeopleWrite = Schema.Struct({
 export type PeopleWrite = typeof PeopleWrite.Type
 
 /** Transforms user IDs array into a people write payload */
-export const PeopleWriteFromIds = Schema.Array(NotionUUID).pipe(
-  Schema.decodeTo(
-    PeopleWrite,
-    SchemaTransformation.transform<
-      Schema.Codec.Encoded<typeof PeopleWrite>,
-      ReadonlyArray<string>
-    >({
-      decode: (ids) => ({
-        people: ids.map((id) => ({ id })),
+export const PeopleWriteFromIds = Schema.Array(NotionUUID)
+  .pipe(
+    Schema.decodeTo(
+      PeopleWrite,
+      SchemaTransformation.transform<
+        Schema.Codec.Encoded<typeof PeopleWrite>,
+        ReadonlyArray<string>
+      >({
+        decode: (ids) => ({
+          people: ids.map((id) => ({ id })),
+        }),
+        encode: (write) => write.people.map((p) => p.id),
       }),
-      encode: (write) => write.people.map((p) => p.id),
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.PeopleWriteFromIds',
-  title: 'People (Write) From IDs',
-  description: 'Transform user IDs into a people write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.PeopleWriteFromIds',
+    title: 'People (Write) From IDs',
+    description: 'Transform user IDs into a people write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for People property. */
 export const People = {
@@ -167,25 +169,27 @@ export const RelationWrite = Schema.Struct({
 export type RelationWrite = typeof RelationWrite.Type
 
 /** Transforms page IDs array into a relation write payload */
-export const RelationWriteFromIds = Schema.Array(NotionUUID).pipe(
-  Schema.decodeTo(
-    RelationWrite,
-    SchemaTransformation.transform<
-      Schema.Codec.Encoded<typeof RelationWrite>,
-      ReadonlyArray<string>
-    >({
-      decode: (ids) => ({
-        relation: ids.map((id) => ({ id })),
+export const RelationWriteFromIds = Schema.Array(NotionUUID)
+  .pipe(
+    Schema.decodeTo(
+      RelationWrite,
+      SchemaTransformation.transform<
+        Schema.Codec.Encoded<typeof RelationWrite>,
+        ReadonlyArray<string>
+      >({
+        decode: (ids) => ({
+          relation: ids.map((id) => ({ id })),
+        }),
+        encode: (write) => write.relation.map((r) => r.id),
       }),
-      encode: (write) => write.relation.map((r) => r.id),
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.RelationWriteFromIds',
-  title: 'Relation (Write) From IDs',
-  description: 'Transform page IDs into a relation write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.RelationWriteFromIds',
+    title: 'Relation (Write) From IDs',
+    description: 'Transform page IDs into a relation write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for Relation property. */
 export const Relation = {
@@ -204,10 +208,9 @@ export const Relation = {
 
   /** Transform to a single relation object (fails if not exactly one). */
   asSingle: RelationProperty.pipe(
-    Schema.refine(
-      (p): p is typeof p & { relation: [{ id: string }] } => p.relation.length === 1,
-      { message: 'Relation must have exactly one item' },
-    ),
+    Schema.refine((p): p is typeof p & { relation: [{ id: string }] } => p.relation.length === 1, {
+      message: 'Relation must have exactly one item',
+    }),
     Schema.decodeTo(Schema.Struct({ id: NotionUUID }), {
       decode: SchemaGetter.transform((prop) => prop.relation[0]),
       encode: SchemaGetter.forbidden(
@@ -219,10 +222,9 @@ export const Relation = {
 
   /** Transform to a single related page ID (fails if not exactly one). */
   asSingleId: RelationProperty.pipe(
-    Schema.refine(
-      (p): p is typeof p & { relation: [{ id: string }] } => p.relation.length === 1,
-      { message: 'Relation must have exactly one item' },
-    ),
+    Schema.refine((p): p is typeof p & { relation: [{ id: string }] } => p.relation.length === 1, {
+      message: 'Relation must have exactly one item',
+    }),
     Schema.decodeTo(NotionUUID, {
       decode: SchemaGetter.transform((prop) => prop.relation[0].id),
       encode: SchemaGetter.forbidden(
@@ -376,25 +378,30 @@ export const FilesWrite = Schema.Struct({
 export type FilesWrite = typeof FilesWrite.Type
 
 /** Transforms external URLs array into a files write payload */
-export const FilesWriteFromUrls = Schema.Array(Schema.String).pipe(
-  Schema.decodeTo(
-    FilesWrite,
-    SchemaTransformation.transform<Schema.Codec.Encoded<typeof FilesWrite>, ReadonlyArray<string>>({
-      decode: (urls) => ({
-        files: urls.map((url) => ({
-          type: 'external' as const,
-          external: { url },
-        })),
+export const FilesWriteFromUrls = Schema.Array(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      FilesWrite,
+      SchemaTransformation.transform<
+        Schema.Codec.Encoded<typeof FilesWrite>,
+        ReadonlyArray<string>
+      >({
+        decode: (urls) => ({
+          files: urls.map((url) => ({
+            type: 'external' as const,
+            external: { url },
+          })),
+        }),
+        encode: (write) => write.files.map((f) => f.external.url),
       }),
-      encode: (write) => write.files.map((f) => f.external.url),
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.FilesWriteFromUrls',
-  title: 'Files (Write) From URLs',
-  description: 'Transform external URLs into a files write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.FilesWriteFromUrls',
+    title: 'Files (Write) From URLs',
+    description: 'Transform external URLs into a files write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for Files property. */
 export const Files = {
@@ -415,7 +422,7 @@ export const Files = {
   asUrls: FilesProperty.pipe(
     Schema.decodeTo(Schema.Array(Schema.String), {
       decode: SchemaGetter.transform((prop) =>
-        prop.files.map((f) => (f.type === 'external' ? f.external.url : f.file.url))
+        prop.files.map((f) => (f.type === 'external' ? f.external.url : f.file.url)),
       ),
       encode: SchemaGetter.forbidden(
         () => 'Files.asUrls encode is not supported. Use FilesWrite / FilesWriteFromUrls.',

@@ -9,9 +9,9 @@
 
 import { createHash } from 'node:crypto'
 
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Effect, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -240,9 +240,9 @@ export const refreshWorkspaceRegistry = ({
 
     const registryDir = workspaceRegistryDir(store)
     yield* fs.makeDirectory(registryDir, { recursive: true })
-    const content = yield* Schema.encodeEffect(Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }))(
-      record,
-    )
+    const content = yield* Schema.encodeEffect(
+      Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }),
+    )(record)
     // Atomic (write-temp-then-rename): a concurrent reader (e.g. an under-lock
     // reconcile in another gc process) must never observe a half-written record
     // and silently drop this workspace's live-set veto (decision 0010).
@@ -345,9 +345,9 @@ const readRegistryRecords = ({
           updatedAt: new Date(reconcile.now).toISOString(),
           livePaths: [...reconciled.paths].toSorted(),
         }
-        const content = yield* Schema.encodeEffect(Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }))(
-          record,
-        )
+        const content = yield* Schema.encodeEffect(
+          Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }),
+        )(record)
         // Atomic rewrite so a concurrent reader never sees a torn record and
         // drops a live workspace's veto right before deletion (decision 0010).
         yield* writeFileAtomic({ path: recordPath, content: content + '\n' })

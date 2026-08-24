@@ -120,7 +120,9 @@ describe('PropertyIdentityEvidenceSource', () => {
 
   it('rejects an unknown evidence source', () => {
     expect(
-      isFailure(decode(Schema.decodeUnknownEffect(PropertyIdentityEvidenceSource)({ _tag: 'remote' }))),
+      isFailure(
+        decode(Schema.decodeUnknownEffect(PropertyIdentityEvidenceSource)({ _tag: 'remote' })),
+      ),
     ).toBe(true)
   })
 })

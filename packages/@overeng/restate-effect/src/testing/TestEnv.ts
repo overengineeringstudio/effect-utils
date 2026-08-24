@@ -316,16 +316,16 @@ const mockStateProxy = <S extends StateSchemas>({
           )
         : // @effect-diagnostics-next-line effectSucceedWithVoid:off -- `get` returns a meaningful `StateValueType | undefined` union (undefined = key absent), not void; `Effect.void` would break the `StateProxy.get` signature.
           Effect.succeed(undefined),
-    getAll:
-      Effect.forEach([...state.entries()], ([k, v]) =>
-        Schema.decodeUnknownEffect(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),
-      ).pipe(
-        Effect.map(
-          (pairs) =>
-            Object.fromEntries(pairs) as { readonly [K in keyof S]?: StateValueType<S[K]> },
-        ),
-        Effect.mapError(stateErr(`stateOf(${contract.name}).getAll`)),
+    getAll: Effect.forEach([...state.entries()], ([k, v]) =>
+      Schema.decodeUnknownEffect(schemaFor(k))(v).pipe(
+        Effect.map((decoded) => [k, decoded] as const),
       ),
+    ).pipe(
+      Effect.map(
+        (pairs) => Object.fromEntries(pairs) as { readonly [K in keyof S]?: StateValueType<S[K]> },
+      ),
+      Effect.mapError(stateErr(`stateOf(${contract.name}).getAll`)),
+    ),
     set: ({ key, value }) =>
       /* `set(key, undefined)` on an OPTIONAL field REMOVES the key (≡ `clear`),
        * matching the in-handler `State.set` semantics: an absent key reads back as

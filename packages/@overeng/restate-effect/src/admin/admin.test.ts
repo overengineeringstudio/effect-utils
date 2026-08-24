@@ -1,3 +1,4 @@
+import { Cause, ConfigProvider, Effect, Exit, Layer, Redacted, Schema } from 'effect'
 /**
  * Server-free assertions for the `./admin` management surface (decision 0018,
  * docs/vrs/10-admin/spec.md): each operation hits the right admin REST endpoint with the right method /
@@ -7,7 +8,6 @@
  * `RestateError`. We stub `globalThis.fetch` to capture the requests.
  */
 import type * as ConfigError from 'effect/Config'
-import { Cause, ConfigProvider, Effect, Exit, Layer, Redacted, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RestateAdmin, type RestateAdminService } from './admin.ts'
@@ -187,7 +187,10 @@ describe('RestateAdmin auth + config', () => {
   })
 
   it('layerConfig reads RESTATE_ADMIN_URL / RESTATE_ADMIN_KEY', async () => {
-    const provider = ConfigProvider.fromEnvRecord({ RESTATE_ADMIN_URL: 'http://admin.local:9070', RESTATE_ADMIN_KEY: 'k3y' })
+    const provider = ConfigProvider.fromEnvRecord({
+      RESTATE_ADMIN_URL: 'http://admin.local:9070',
+      RESTATE_ADMIN_KEY: 'k3y',
+    })
     await run(
       (a) => a.cancel('inv_1'),
       RestateAdmin.layerConfig().pipe(Layer.provide(ConfigProvider.layer(provider))),

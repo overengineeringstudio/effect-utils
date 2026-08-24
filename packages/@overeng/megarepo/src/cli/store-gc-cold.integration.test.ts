@@ -26,13 +26,13 @@
  * (`status`/`reason` in the JSON document and the on-disk effect).
  */
 
-import * as Cli from 'effect/unstable/cli'
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
-import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Clock, Duration, Effect, Exit, Layer, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect, vi } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
@@ -78,11 +78,11 @@ const liveClock: Clock.Clock = {
   currentTimeNanos: Effect.sync(() => BigInt(Date.now()) * 1_000_000n),
   monotonicTimeNanosUnsafe: () => process.hrtime.bigint(),
   monotonicTimeNanos: Effect.sync(() => process.hrtime.bigint()),
-    sleep: (duration) =>
-      Effect.callback((resume) => {
-        const timer = setTimeout(() => resume(Effect.void), Duration.toMillis(duration))
-        timer.unref?.()
-      }),
+  sleep: (duration) =>
+    Effect.callback((resume) => {
+      const timer = setTimeout(() => resume(Effect.void), Duration.toMillis(duration))
+      timer.unref?.()
+    }),
 }
 
 /**
@@ -148,7 +148,12 @@ const runGc = ({
     const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(
-        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now), NodeServices.layer),
+        Layer.mergeAll(
+          consoleLayer,
+          makeStubPrStateResolverLayer(prRepos),
+          fixedClockLayer(now),
+          NodeServices.layer,
+        ),
       ),
       Effect.exit,
     )

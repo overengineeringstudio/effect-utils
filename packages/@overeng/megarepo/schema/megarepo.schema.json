@@ -156,9 +156,7 @@
           ]
         }
       },
-      "required": [
-        "members"
-      ],
+      "required": ["members"],
       "additionalProperties": false
     }
   }

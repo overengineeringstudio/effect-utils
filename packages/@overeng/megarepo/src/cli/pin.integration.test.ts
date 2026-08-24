@@ -5,10 +5,10 @@
  * These tests use direct function calls instead of CLI subprocess to avoid timeouts.
  */
 
-import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -47,12 +47,14 @@ const createMinimalTestSetup = () =>
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: MegarepoConfig = new MegarepoConfig({ members: {
-      'test-repo': 'test-owner/test-repo',
-    }, })
-    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
-      config,
-    )
+    const config: MegarepoConfig = new MegarepoConfig({
+      members: {
+        'test-repo': 'test-owner/test-repo',
+      },
+    })
+    const configContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(config)
     yield* fs.writeFileString(
       EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
       configContent + '\n',
@@ -126,12 +128,16 @@ describe('mr config pin', () => {
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
 
-          const config1: MegarepoConfig = new MegarepoConfig({ members: {
-            'test-repo': 'test-owner/test-repo#feature-branch',
-          }, })
+          const config1: MegarepoConfig = new MegarepoConfig({
+            members: {
+              'test-repo': 'test-owner/test-repo#feature-branch',
+            },
+          })
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config1)) + '\n',
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+              config1,
+            )) + '\n',
           )
 
           // Now switch to main
@@ -170,8 +176,7 @@ describe('mr config pin', () => {
           const newRef = 'feature-branch'
           const commit = 'abc123def456789012345678901234567890abcd'
 
-          const lockFile: LockFile = new LockFile({ version: 1,
-          members: {}, })
+          const lockFile: LockFile = new LockFile({ version: 1, members: {} })
 
           const updatedLockFile = updateLockedMember({
             lockFile,
@@ -214,15 +219,17 @@ describe('mr config pin', () => {
 
           // Create initial lock file
           const initialCommit = 'abc123def456789012345678901234567890abcd'
-          const initialLockFile: LockFile = new LockFile({ version: 1,
-          members: {
-            'test-repo': createLockedMember({
-              url: 'https://github.com/test-owner/test-repo',
-              ref: 'main',
-              commit: initialCommit,
-              pinned: false,
-            }),
-          }, })
+          const initialLockFile: LockFile = new LockFile({
+            version: 1,
+            members: {
+              'test-repo': createLockedMember({
+                url: 'https://github.com/test-owner/test-repo',
+                ref: 'main',
+                commit: initialCommit,
+                pinned: false,
+              }),
+            },
+          })
           yield* writeLockFile({ lockPath, lockFile: initialLockFile })
 
           // Switch to feature branch

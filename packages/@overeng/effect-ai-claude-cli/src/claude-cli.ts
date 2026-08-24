@@ -1,3 +1,5 @@
+import { Effect, Exit, flow, Layer, Ref, Schema, Scope, Stream } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
 /**
  * Claude CLI LanguageModel provider for Effect AI
  *
@@ -7,8 +9,6 @@
 import { AiError, LanguageModel, type Prompt, type Response } from 'effect/unstable/ai'
 import * as Command from 'effect/unstable/process/ChildProcess'
 import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
-import type { PlatformError } from 'effect/PlatformError'
-import { Effect, Exit, flow, Layer, Ref, Schema, Scope, Stream } from 'effect'
 
 import {
   ClaudeCliAuthError,
@@ -363,10 +363,9 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
         const scope = yield* Scope.make()
         const startEmittedRef = yield* Ref.make(false)
 
-        const process = yield* spawner.spawn(command).pipe(
-          Effect.provideService(Scope.Scope, scope),
-          Effect.mapError(platformToAiError),
-        )
+        const process = yield* spawner
+          .spawn(command)
+          .pipe(Effect.provideService(Scope.Scope, scope), Effect.mapError(platformToAiError))
 
         // Write prompt to stdin
         yield* Stream.make(new TextEncoder().encode(promptText)).pipe(

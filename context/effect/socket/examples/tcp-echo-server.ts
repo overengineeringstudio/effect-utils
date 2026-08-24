@@ -1,9 +1,9 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { layer } from '@effect/platform-node/NodeSocketServer'
+import { Effect } from 'effect'
 import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
 import type { Address } from 'effect/unstable/socket/SocketServer'
 import { SocketServer } from 'effect/unstable/socket/SocketServer'
-import { Effect } from 'effect'
 
 /**
  * Example: TCP echo server.

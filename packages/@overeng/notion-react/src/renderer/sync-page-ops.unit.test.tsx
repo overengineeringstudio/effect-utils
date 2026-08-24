@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import type { ReactNode } from 'react'
 import type { HttpClient } from 'effect/unstable/http/HttpClient'
+import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'

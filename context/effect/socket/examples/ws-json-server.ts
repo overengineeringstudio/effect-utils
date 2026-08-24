@@ -1,10 +1,10 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
+import { Effect, Schema, Stream } from 'effect'
 import type { CloseEvent, Socket as SocketType } from 'effect/unstable/socket/Socket'
 import { toChannelString } from 'effect/unstable/socket/Socket'
 import type { Address } from 'effect/unstable/socket/SocketServer'
 import { SocketServer } from 'effect/unstable/socket/SocketServer'
-import { Effect, Schema, Stream } from 'effect'
 
 /**
  * Example: WebSocket JSON server with schema validation.

@@ -2,9 +2,9 @@
  * Database subcommand - database information plus Node-backed replica commands.
  */
 
+import { Effect, Layer } from 'effect'
 import { Argument as Args, Command } from 'effect/unstable/cli'
 import { FetchHttpClient } from 'effect/unstable/http'
-import { Effect, Layer } from 'effect'
 import React from 'react'
 
 import {

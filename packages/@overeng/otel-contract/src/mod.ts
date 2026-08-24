@@ -442,9 +442,7 @@ export interface OtelHistogramDefinition<
 }
 
 /** Metric definition narrowed to a gauge (instantaneous last-set value, no boundaries). */
-export interface OtelGaugeDefinition<
-  S extends Schema.Codec<any>,
-> extends OtelMetricDefinition<S> {
+export interface OtelGaugeDefinition<S extends Schema.Codec<any>> extends OtelMetricDefinition<S> {
   readonly instrument: 'gauge'
 }
 
@@ -499,12 +497,12 @@ export interface OtelEffectGauge<S extends Schema.Codec<any>> {
   }) => Effect.Effect<void>
 }
 
-const getAttrMetadata = (
-  annotated: { readonly annotations?: object | undefined },
-): OtelAttrMetadata | undefined =>
-  (annotated.annotations as Record<symbol, unknown> | undefined)?.[
-    OtelAttrAnnotationId
-  ] as OtelAttrMetadata | undefined
+const getAttrMetadata = (annotated: {
+  readonly annotations?: object | undefined
+}): OtelAttrMetadata | undefined =>
+  (annotated.annotations as Record<symbol, unknown> | undefined)?.[OtelAttrAnnotationId] as
+    | OtelAttrMetadata
+    | undefined
 
 const getAttrMetadataDeep = (ast: AST.AST): OtelAttrMetadata | undefined => {
   const metadata = getAttrMetadata(ast)
@@ -565,7 +563,8 @@ export const OtelAttr = {
   }: {
     key: string
     metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
-  }): Schema.Codec<string, string, never, never> => Schema.String.pipe(OtelAttr.key({ ...metadata, key })),
+  }): Schema.Codec<string, string, never, never> =>
+    Schema.String.pipe(OtelAttr.key({ ...metadata, key })),
   boolean: ({
     key,
     metadata = {},
@@ -580,8 +579,9 @@ export const OtelAttr = {
   }: {
     key: string
     metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
-  // @effect-diagnostics-next-line schemaNumber:off -- generic number attribute helper; non-finite rejection is handled by the OTEL encode layer, not the schema
-  }): Schema.Codec<number, number, never, never> => Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
+    // @effect-diagnostics-next-line schemaNumber:off -- generic number attribute helper; non-finite rejection is handled by the OTEL encode layer, not the schema
+  }): Schema.Codec<number, number, never, never> =>
+    Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
   literal: <const Literals extends readonly [AST.LiteralValue, ...Array<AST.LiteralValue>]>(
     key: string,
     ...values: Literals
@@ -601,8 +601,7 @@ export const OtelAttr = {
     schema: S
     metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
   }): S => schema.pipe(OtelAttr.key({ ...metadata, key, encode: 'json' })) as S,
-  drop: <S extends Schema.Codec<any>>(schema: S): S =>
-    schema.pipe(OtelAttr.encode('drop')) as S,
+  drop: <S extends Schema.Codec<any>>(schema: S): S => schema.pipe(OtelAttr.encode('drop')) as S,
 } as const
 
 const unsupported = ({
@@ -710,7 +709,8 @@ const typeConstructorParametersDeep = (ast: AST.AST): ReadonlyArray<AST.AST> => 
 }
 
 const isUndefinedAst = (ast: AST.AST): boolean =>
-  ast._tag === 'Undefined' || (ast._tag === 'Union' && ast.types.some((member) => isUndefinedAst(member)))
+  ast._tag === 'Undefined' ||
+  (ast._tag === 'Union' && ast.types.some((member) => isUndefinedAst(member)))
 
 const isPrimitiveAst = (ast: AST.AST): boolean => {
   switch (ast._tag) {
@@ -721,9 +721,7 @@ const isPrimitiveAst = (ast: AST.AST): boolean => {
     case 'Literal':
       return isPrimitive(ast.literal)
     case 'Union':
-      return ast.types
-        .filter((member) => isUndefinedAst(member) === false)
-        .every(isPrimitiveAst)
+      return ast.types.filter((member) => isUndefinedAst(member) === false).every(isPrimitiveAst)
     case 'TemplateLiteral':
       return true
     default:
@@ -799,9 +797,7 @@ const compileAutoEncoder = ({
         }),
       )
     }
-    return Effect.succeed((value) =>
-      Effect.succeed(Duration.toMillis(value as Duration.Input)),
-    )
+    return Effect.succeed((value) => Effect.succeed(Duration.toMillis(value as Duration.Input)))
   }
   if (tag === 'effect/schema/DateTimeUtc') {
     return Effect.succeed((value) => Effect.succeed(DateTime.formatIso(value as DateTime.Utc)))
@@ -896,7 +892,9 @@ const compilePolicyEncoder = ({
 const compileField = (
   field: AST.PropertySignature,
 ): Effect.Effect<FieldPlan, OtelAttrPlanError> => {
-  const metadata = getAttrMetadataDeep(field.type) ?? getAttrMetadata({ annotations: field.type.context?.annotations })
+  const metadata =
+    getAttrMetadataDeep(field.type) ??
+    getAttrMetadata({ annotations: field.type.context?.annotations })
   const fieldSchema = Schema.make<Schema.Codec<unknown, unknown, never, never>>(field.type)
   return Effect.gen(function* () {
     const attrKey = yield* decodeAttributeKey(metadata?.key ?? String(field.name))
@@ -978,9 +976,7 @@ const compilePlan = (
 
 /** Constructors for schema-backed OTEL attribute contracts. */
 export const OtelAttrs = {
-  define<S extends Schema.Codec<any>>(
-    schema: S,
-  ): Effect.Effect<OtelAttrs<S>, OtelAttrPlanError> {
+  define<S extends Schema.Codec<any>>(schema: S): Effect.Effect<OtelAttrs<S>, OtelAttrPlanError> {
     return Effect.gen(function* () {
       const plan = yield* compilePlan(schema)
       const encode = (value: Schema.Schema.Type<S>) =>

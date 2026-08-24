@@ -1,19 +1,30 @@
 import { Result, Schema } from 'effect'
+
 import { NonEmptyTrimmedString } from '../core/domain.ts'
 
 /** Stable keys for the durable Notion datasource-sync demo domains. */
-export const NotionDatasourceSyncDemoDataSourceKey = Schema.Literals(['projects', 'incidents', 'customers', 'activity'])
+export const NotionDatasourceSyncDemoDataSourceKey = Schema.Literals([
+  'projects',
+  'incidents',
+  'customers',
+  'activity',
+])
 
 export type NotionDatasourceSyncDemoDataSourceKey =
   typeof NotionDatasourceSyncDemoDataSourceKey.Type
 
 /** Separates read-only verification from the guarded public synthetic fixture provisioner. */
-export const NotionDatasourceSyncLiveFixtureLane = Schema.Literals(['read-only-verifier', 'provisioner'])
+export const NotionDatasourceSyncLiveFixtureLane = Schema.Literals([
+  'read-only-verifier',
+  'provisioner',
+])
 
 export type NotionDatasourceSyncLiveFixtureLane = typeof NotionDatasourceSyncLiveFixtureLane.Type
 
 const NotionId = Schema.String.check(
-  Schema.isPattern(/^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+  Schema.isPattern(
+    /^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  ),
 )
 
 const NotionUrl = Schema.String.check(Schema.isPattern(/^https:\/\/www\.notion\.so\//))
@@ -77,7 +88,9 @@ const decodeNotionApiFailureBody = (
   body: string | undefined,
 ): typeof NotionApiFailureBodySchema.Type | undefined => {
   if (body === undefined) return undefined
-  const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(NotionApiFailureBodySchema))(body)
+  const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(NotionApiFailureBodySchema))(
+    body,
+  )
   return Result.isSuccess(decoded) === true ? decoded.success : undefined
 }
 

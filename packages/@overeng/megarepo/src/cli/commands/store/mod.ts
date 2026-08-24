@@ -9,11 +9,11 @@ import type { Dir, Stats } from 'node:fs'
 import { lstat, opendir } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 
-import * as Cli from 'effect/unstable/cli'
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'
+import * as Cli from 'effect/unstable/cli'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -190,9 +190,9 @@ const planGeneratedArtifacts = ({
           .readFileString(config.generatedArtifacts.agentLivenessManifest)
           .pipe(Effect.orElseSucceed(() => undefined))
         if (manifestContent === undefined) return undefined
-        const parsed = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(AgentLivenessManifest))(
-          manifestContent,
-        ).pipe(Effect.orElseSucceed(() => undefined))
+        const parsed = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(AgentLivenessManifest),
+        )(manifestContent).pipe(Effect.orElseSucceed(() => undefined))
         if (
           parsed === undefined ||
           Number.isFinite(parsed.expiresAtMs) === false ||
@@ -1923,9 +1923,9 @@ const storeGcCommand = Cli.Command.make(
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
-          const repos = yield* store
-            .listRepos
-            .pipe(Observability.withStoreGcPhaseSpan({ phase: 'list-repos' }))
+          const repos = yield* store.listRepos.pipe(
+            Observability.withStoreGcPhaseSpan({ phase: 'list-repos' }),
+          )
           repoCount = repos.length
           statusMessage = 'checking worktrees'
           if (progressive === true) {

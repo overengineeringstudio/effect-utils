@@ -1,8 +1,8 @@
 import path from 'node:path'
 
-import * as Cli from 'effect/unstable/cli'
-import type { PlatformError } from 'effect/PlatformError'
 import { Effect, FileSystem, Fiber, Option, pipe, PubSub, Result, Stream } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
@@ -236,7 +236,9 @@ export const genieCommand = Cli.Command.make(
 
                         if (result._tag === 'Success') {
                           const message =
-                            result.success._tag === 'updated' ? result.success.diffSummary : undefined
+                            result.success._tag === 'updated'
+                              ? result.success.diffSummary
+                              : undefined
                           tui.dispatch({
                             _tag: 'FileCompleted',
                             path: genieFilePath,
@@ -263,24 +265,25 @@ export const genieCommand = Cli.Command.make(
                           }
                         }
 
-                        const watchSummary: GenieSummary = result._tag === 'Success'
-                          ? {
-                              created: result.success._tag === 'created' ? 1 : 0,
-                              updated: result.success._tag === 'updated' ? 1 : 0,
-                              unchanged:
-                                newGenieFiles.length -
-                                1 +
-                                (result.success._tag === 'unchanged' ? 1 : 0),
-                              skipped: result.success._tag === 'skipped' ? 1 : 0,
-                              failed: 0,
-                            }
-                          : {
-                              created: 0,
-                              updated: 0,
-                              unchanged: newGenieFiles.length - 1,
-                              skipped: 0,
-                              failed: 1,
-                            }
+                        const watchSummary: GenieSummary =
+                          result._tag === 'Success'
+                            ? {
+                                created: result.success._tag === 'created' ? 1 : 0,
+                                updated: result.success._tag === 'updated' ? 1 : 0,
+                                unchanged:
+                                  newGenieFiles.length -
+                                  1 +
+                                  (result.success._tag === 'unchanged' ? 1 : 0),
+                                skipped: result.success._tag === 'skipped' ? 1 : 0,
+                                failed: 0,
+                              }
+                            : {
+                                created: 0,
+                                updated: 0,
+                                unchanged: newGenieFiles.length - 1,
+                                skipped: 0,
+                                failed: 1,
+                              }
 
                         tui.dispatch({ _tag: 'Complete', summary: watchSummary })
                       })

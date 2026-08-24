@@ -23,9 +23,9 @@
  * conservatively re-arms all grace windows.
  */
 
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -105,19 +105,15 @@ const writeObservationLedger = ({
 }: {
   storeBasePath: AbsoluteDirPath
   ledger: GcObservationLedger
-}): Effect.Effect<
-  void,
-  PlatformError | Schema.SchemaError,
-  FileSystem.FileSystem
-> =>
+}): Effect.Effect<void, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = ledgerPath(storeBasePath)
     const stateDir = EffectPath.ops.join(storeBasePath, EffectPath.unsafe.relativeDir('.state/'))
     yield* fs.makeDirectory(stateDir, { recursive: true })
-    const content = yield* Schema.encodeEffect(Schema.fromJsonString(GcObservationLedger, { space: 2 }))(
-      ledger,
-    )
+    const content = yield* Schema.encodeEffect(
+      Schema.fromJsonString(GcObservationLedger, { space: 2 }),
+    )(ledger)
     yield* writeFileAtomic({ path, content: content + '\n' })
   }).pipe(
     Observability.withLabelSpan({
@@ -143,11 +139,7 @@ export const recordObservations = ({
   coldPaths: ReadonlyArray<string>
   uncleanReconcilePaths?: ReadonlyArray<string> | undefined
   now: number
-}): Effect.Effect<
-  GcObservationLedger,
-  PlatformError | Schema.SchemaError,
-  FileSystem.FileSystem
-> =>
+}): Effect.Effect<GcObservationLedger, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const current = yield* readObservationLedger({ storeBasePath })
     const next = nextObservationLedger({ current, coldPaths, uncleanReconcilePaths, now })

@@ -6,11 +6,11 @@
  * - `runCommand` — CLI orchestration: TUI rendering, fetch-before-apply, error merging
  */
 
-import { Prompt } from 'effect/unstable/cli'
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import { Clock, Effect, Option, type Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Clock, Effect, Option, type Schema } from 'effect'
+import { Prompt } from 'effect/unstable/cli'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -592,9 +592,7 @@ const createMissingRefPrompt = (
       ],
     })
 
-    return yield* prompt.pipe(
-      Effect.catchTag('QuitError', () => Effect.succeed('abort' as const)),
-    )
+    return yield* prompt.pipe(Effect.catchTag('QuitError', () => Effect.succeed('abort' as const)))
   })
 
 /** Execute a megarepo command with the given CLI options, rendering progress via TUI or structured output. */

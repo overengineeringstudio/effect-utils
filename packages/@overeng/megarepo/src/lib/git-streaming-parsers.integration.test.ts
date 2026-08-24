@@ -11,12 +11,12 @@
  * helper is proven separately by `git-memory.integration.test.ts`.
  */
 
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
-import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

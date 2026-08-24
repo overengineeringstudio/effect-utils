@@ -5,7 +5,12 @@ import * as path from 'node:path'
 import { Effect, Schema } from 'effect'
 
 import { CacheError } from '../renderer/errors.ts'
-import { CACHE_SCHEMA_VERSION, CacheTree, type CacheTree as CacheTreeValue, type NotionCache } from './types.ts'
+import {
+  CACHE_SCHEMA_VERSION,
+  CacheTree,
+  type CacheTree as CacheTreeValue,
+  type NotionCache,
+} from './types.ts'
 
 /**
  * Parse the raw file contents as JSON only (no schema shape check yet) so a
@@ -21,7 +26,8 @@ const parseJson = (contents: string): Effect.Effect<unknown, CacheError> =>
 const decode = Schema.decodeUnknownEffect(CacheTree)
 
 /** Encode a `CacheTree` to its on-disk JSON string (compact, schema field order). */
-const encodeJson = (tree: CacheTreeValue): string => JSON.stringify(Schema.encodeSync(CacheTree)(tree))
+const encodeJson = (tree: CacheTreeValue): string =>
+  JSON.stringify(Schema.encodeSync(CacheTree)(tree))
 
 const readIfExists = (filePath: string): Effect.Effect<string | undefined, CacheError> =>
   Effect.tryPromise({

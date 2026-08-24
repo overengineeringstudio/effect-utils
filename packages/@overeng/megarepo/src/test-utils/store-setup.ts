@@ -4,8 +4,8 @@
  * Provides helpers for creating test stores with bare repos and worktrees.
  */
 
-import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -19,8 +19,8 @@ import {
   readLockFile,
   writeLockFile,
 } from '../lib/lock.ts'
-import { refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
 import * as Observability from '../lib/observability.ts'
+import { refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
 
 // =============================================================================
 // Types
@@ -389,9 +389,9 @@ export const createWorkspaceWithLock = (args: {
     // Effect v4 class schemas require a real instance on the encode side — a
     // plain literal fails `SchemaError: Expected MegarepoConfig`.
     const config = new MegarepoConfig({ members: args.members })
-    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
-      config,
-    )
+    const configContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(config)
     yield* fs.writeFileString(
       EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
       configContent + '\n',

@@ -202,10 +202,12 @@ describe('createLogCapture', () => {
       yield* Fiber.join(fiber)
     }).pipe(
       Effect.scoped,
-      Effect.andThen(Effect.sync(() => {
-        // The Effect.log message should not appear as direct stdout output
-        expect(printed.filter((p) => p.includes('should not print'))).toHaveLength(0)
-      })),
+      Effect.andThen(
+        Effect.sync(() => {
+          // The Effect.log message should not appear as direct stdout output
+          expect(printed.filter((p) => p.includes('should not print'))).toHaveLength(0)
+        }),
+      ),
     )
   })
 })
@@ -249,12 +251,14 @@ describe('log capture integration', () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(testModeLayer('json')),
-      Effect.andThen(Effect.sync(() => {
-        // JSON mode should still output to console.log (our captured output)
-        expect(capturedOutput).toHaveLength(1)
-        const state = Schema.decodeSync(Schema.fromJsonString(CountState))(capturedOutput[0]!)
-        expect(state).toEqual({ count: 1 })
-      })),
+      Effect.andThen(
+        Effect.sync(() => {
+          // JSON mode should still output to console.log (our captured output)
+          expect(capturedOutput).toHaveLength(1)
+          const state = Schema.decodeSync(Schema.fromJsonString(CountState))(capturedOutput[0]!)
+          expect(state).toEqual({ count: 1 })
+        }),
+      ),
     ),
   )
 })

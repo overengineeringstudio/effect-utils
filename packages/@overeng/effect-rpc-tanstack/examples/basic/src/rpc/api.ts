@@ -2,8 +2,8 @@
  * Shared RPC API definitions using idiomatic @effect/rpc patterns
  */
 
-import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 import { Schema } from 'effect'
+import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 
 /**
  * User domain model

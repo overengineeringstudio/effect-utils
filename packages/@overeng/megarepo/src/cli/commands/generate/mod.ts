@@ -4,8 +4,8 @@
  * Commands for generating configuration files.
  */
 
-import * as Cli from 'effect/unstable/cli'
 import { Effect, Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'

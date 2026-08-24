@@ -10,9 +10,9 @@
  *   bun examples/06-log-capture/log-capture.tsx --output json
  */
 
-import { Command } from 'effect/unstable/cli'
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
+import { Command } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'

@@ -20,9 +20,7 @@ export const lockCommand = Cli.Command.make(
     ),
     force: Cli.Flag.boolean('force').pipe(
       Cli.Flag.withAlias('f'),
-      Cli.Flag.withDescription(
-        'Force lock operation even when members are pinned or need repair',
-      ),
+      Cli.Flag.withDescription('Force lock operation even when members are pinned or need repair'),
       Cli.Flag.withDefault(false),
     ),
     all: Cli.Flag.boolean('all').pipe(

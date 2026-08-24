@@ -86,5 +86,4 @@ export const collectWorkspaceScan = ({
 }: {
   readonly workspace: LocalWorkspacePortShape
   readonly root: AbsolutePath
-}) =>
-  Effect.runPromise(workspace.scan(root).pipe(Stream.runCollect))
+}) => Effect.runPromise(workspace.scan(root).pipe(Stream.runCollect))

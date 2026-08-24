@@ -49,7 +49,10 @@ export type NamedKey = typeof NamedKey.Type
  * checked by upstream's `resolveKey` (which throws on unknown specs —
  * we surface that as a `WriteFailed` PtyError).
  */
-export const Key = Schema.String.pipe(Schema.check(Schema.isMinLength(1)), Schema.brand('@overeng/pty-effect/Key'))
+export const Key = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1)),
+  Schema.brand('@overeng/pty-effect/Key'),
+)
 export type Key = typeof Key.Type
 
 /** Helper to construct a Key from a string literal at call sites. */

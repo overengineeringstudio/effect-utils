@@ -31,10 +31,10 @@
  * on this persistence path.
  */
 
-import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import { Effect, Option } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Effect, Option } from 'effect'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 

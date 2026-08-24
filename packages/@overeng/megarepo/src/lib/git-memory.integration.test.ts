@@ -22,11 +22,11 @@ import { platform } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 /** Files in the untracked tree. Large enough that the old O(n²) concat balloons

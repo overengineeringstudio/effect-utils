@@ -1,4 +1,4 @@
-import { Effect, Option, Schema, Stream } from "effect"
+import { Effect, Option, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

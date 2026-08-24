@@ -1,7 +1,18 @@
 import { Context, Effect, Option, Schema } from 'effect'
 
 /** Coarse operation phases emitted by sync code for CLI/TUI progress. */
-export const SyncProgressPhase = Schema.Literals(['preparing', 'pulling', 'querying', 'hydrating', 'planning', 'pushing', 'executing', 'projecting', 'watching', 'complete'])
+export const SyncProgressPhase = Schema.Literals([
+  'preparing',
+  'pulling',
+  'querying',
+  'hydrating',
+  'planning',
+  'pushing',
+  'executing',
+  'projecting',
+  'watching',
+  'complete',
+])
 
 export type SyncProgressPhase = typeof SyncProgressPhase.Type
 
@@ -46,7 +57,9 @@ export type SyncProgressReporter = {
 }
 
 /** Optional Effect service used by CLI/TUI surfaces to observe sync progress. */
-export class SyncProgress extends Context.Service<SyncProgress, SyncProgressReporter>()('@overeng/notion-datasource-sync/SyncProgress') {}
+export class SyncProgress extends Context.Service<SyncProgress, SyncProgressReporter>()(
+  '@overeng/notion-datasource-sync/SyncProgress',
+) {}
 
 /** Emits a sync progress event when the optional progress service is available. */
 export const reportSyncProgress = (event: SyncProgressEvent): Effect.Effect<void> =>

@@ -126,9 +126,7 @@ export const make = (
         }),
         Schedule.spaced(refreshInterval),
       ).pipe(
-        Effect.andThen(
-          Effect.die('Invariant violated: `keepAlive` should never return a value'),
-        ),
+        Effect.andThen(Effect.die('Invariant violated: `keepAlive` should never return a value')),
       )
 
     const tryTake = (

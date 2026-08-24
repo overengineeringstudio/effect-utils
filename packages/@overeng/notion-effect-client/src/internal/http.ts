@@ -1,17 +1,8 @@
-import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
+import { Cause, Context, Duration, Effect, Option, Redacted, Schedule, Schema } from 'effect'
 import { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { HttpClientError } from 'effect/unstable/http/HttpClientError'
+import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import type { HttpClientResponse } from 'effect/unstable/http/HttpClientResponse'
-import {
-  Cause,
-  Context,
-  Duration,
-  Effect,
-  Option,
-  Redacted,
-  Schedule,
-  Schema,
-} from 'effect'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
@@ -616,11 +607,8 @@ export interface GetRequestOptions<A, I, R> {
 export const get = <A, I, R>({
   path,
   responseSchema,
-}: GetRequestOptions<A, I, R>): Effect.Effect<
-  A,
-  NotionApiError,
-  NotionConfig | HttpClient | R
-> => executeRequest({ method: 'GET', path, responseSchema })
+}: GetRequestOptions<A, I, R>): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient | R> =>
+  executeRequest({ method: 'GET', path, responseSchema })
 
 /**
  * POST request helper.
@@ -629,11 +617,8 @@ export const post = <A, I, R>({
   path,
   body,
   responseSchema,
-}: PostRequestOptions<A, I, R>): Effect.Effect<
-  A,
-  NotionApiError,
-  NotionConfig | HttpClient | R
-> => executeRequest({ method: 'POST', path, responseSchema, body })
+}: PostRequestOptions<A, I, R>): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient | R> =>
+  executeRequest({ method: 'POST', path, responseSchema, body })
 
 /**
  * PATCH request helper.
@@ -642,11 +627,8 @@ export const patch = <A, I, R>({
   path,
   body,
   responseSchema,
-}: PatchRequestOptions<A, I, R>): Effect.Effect<
-  A,
-  NotionApiError,
-  NotionConfig | HttpClient | R
-> => executeRequest({ method: 'PATCH', path, responseSchema, body })
+}: PatchRequestOptions<A, I, R>): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient | R> =>
+  executeRequest({ method: 'PATCH', path, responseSchema, body })
 
 /** Options for DELETE request */
 export interface DeleteRequestOptions<A, I, R> {

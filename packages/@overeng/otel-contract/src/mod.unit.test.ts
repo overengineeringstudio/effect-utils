@@ -130,9 +130,9 @@ describe('ServiceNameFromParts', () => {
     )
     expect(name).toBe('my-project-worker')
     // The result is a real OtelServiceName (decodes through the brand unchanged).
-    await expect(Effect.runPromise(Schema.decodeUnknownEffect(OtelServiceName)(name))).resolves.toBe(
-      'my-project-worker',
-    )
+    await expect(
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelServiceName)(name)),
+    ).resolves.toBe('my-project-worker')
   })
 
   it('rejects an empty or whitespace part as a decode failure', async () => {
@@ -155,7 +155,9 @@ describe('ServiceNameFromParts', () => {
     // A leading digit project breaks the brand's `^[A-Za-z]` law once joined.
     await expect(
       Effect.runPromise(
-        Effect.result(Schema.decodeEffect(ServiceNameFromParts)({ project: '1bad', role: 'worker' })),
+        Effect.result(
+          Schema.decodeEffect(ServiceNameFromParts)({ project: '1bad', role: 'worker' }),
+        ),
       ),
     ).resolves.toMatchObject({ _tag: 'Failure' })
   })
@@ -952,9 +954,9 @@ describe('OtelMetric', () => {
       }),
     })
     expect(Gauge.name).toBe('store_gc_rss_bytes')
-    await expect(Effect.runPromise(Schema.decodeUnknownEffect(OtelMetricName)(Gauge.name))).resolves.toBe(
-      'store_gc_rss_bytes',
-    )
+    await expect(
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelMetricName)(Gauge.name)),
+    ).resolves.toBe('store_gc_rss_bytes')
     expect(() => OtelMetric.gauge({ name: ' ', labels: Schema.Struct({}) })).toThrow()
   })
 

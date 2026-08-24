@@ -1,8 +1,8 @@
 import { join } from 'node:path'
 
+import { Console, Effect, FileSystem } from 'effect'
 import * as ChildProcess from 'effect/unstable/process/ChildProcess'
 import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
-import { Console, Effect, FileSystem } from 'effect'
 
 import { describeBodyLossyRefusal } from '@overeng/notion-core'
 import type { Sha256Digest } from '@overeng/notion-effect-client'
@@ -330,11 +330,7 @@ export interface EditOptions {
    */
   readonly runEditor?: (opts: {
     readonly filePath: string
-  }) => Effect.Effect<
-    number,
-    NmdGatewayError,
-    ChildProcessSpawner | FileSystem.FileSystem
-  >
+  }) => Effect.Effect<number, NmdGatewayError, ChildProcessSpawner | FileSystem.FileSystem>
 }
 
 /** Outcome of an `edit` session: pushed, no-op, or relocated-conflict. */
@@ -492,11 +488,7 @@ export interface ReadOnlyEditOptions {
    */
   readonly runEditor?: (opts: {
     readonly filePath: string
-  }) => Effect.Effect<
-    number,
-    NmdGatewayError,
-    ChildProcessSpawner | FileSystem.FileSystem
-  >
+  }) => Effect.Effect<number, NmdGatewayError, ChildProcessSpawner | FileSystem.FileSystem>
 }
 
 /** Outcome of a read-only `edit --read-only` session (always a discarding no-op). */

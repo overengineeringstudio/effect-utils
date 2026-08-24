@@ -4,11 +4,11 @@
  * Tests the store GC, ls, and fetch commands with realistic store fixtures.
  */
 
-import * as Cli from 'effect/unstable/cli'
-import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Option, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

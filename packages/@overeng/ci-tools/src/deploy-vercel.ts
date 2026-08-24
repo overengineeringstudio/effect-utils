@@ -15,9 +15,9 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { Effect, Result, Schema } from 'effect'
 import * as HttpClient from 'effect/unstable/http/HttpClient'
 import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
-import { Effect, Result, Schema } from 'effect'
 
 import {
   DeployInputV1,
@@ -233,14 +233,16 @@ const fetchVercelJson = Effect.fn('ci-tools.deploy.vercel.fetch-json')(function*
       Effect.flatMap((response) =>
         response.text.pipe(Effect.map((text) => ({ status: response.status, text }))),
       ),
-      Effect.catchTag('HttpClientError', (cause) =>
+      Effect.catchTag(
+        'HttpClientError',
+        (cause) =>
           new ProviderProjectLookupFailed({
             provider: 'vercel',
             target: opts.target,
             transient: true,
             message: cause.message,
-          })),
-
+          }),
+      ),
     )
 })
 
@@ -296,7 +298,9 @@ const resolveVercelProject = Effect.fn('ci-tools.deploy.vercel.resolve-project')
     })
   }
 
-  const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(VercelProjectJson))(response.text)
+  const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(VercelProjectJson))(
+    response.text,
+  )
   if (Result.isFailure(decoded) === true) {
     return yield* new ProviderProjectLookupFailed({
       provider: 'vercel',
@@ -654,7 +658,9 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
     Effect.flatMap((result) =>
       result.text.pipe(Effect.map((text) => ({ status: result.status, text }))),
     ),
-    Effect.catchTag('HttpClientError', (cause) =>
+    Effect.catchTag(
+      'HttpClientError',
+      (cause) =>
         new VerificationFailed({
           provider: 'vercel',
           target: opts.target,
@@ -662,8 +668,8 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
           transient: true,
           message: cause.message,
           diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
-        })),
-
+        }),
+    ),
   )
 
   if (response.status < 200 || response.status >= 300) {

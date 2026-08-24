@@ -1,5 +1,5 @@
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
@@ -87,11 +87,8 @@ const searchRaw = Effect.fn('NotionSearch.search')(function* (opts: SearchOption
  */
 export const search = (
   opts: SearchOptions = {},
-): Effect.Effect<
-  PaginatedResult<SearchResult>,
-  NotionApiError,
-  NotionConfig | HttpClient
-> => searchRaw(opts)
+): Effect.Effect<PaginatedResult<SearchResult>, NotionApiError, NotionConfig | HttpClient> =>
+  searchRaw(opts)
 
 /**
  * Search pages and databases with automatic pagination.
@@ -103,27 +100,29 @@ export const search = (
 export const searchStream = (
   opts: Omit<SearchOptions, 'startCursor'> = {},
 ): Stream.Stream<SearchResult, NotionApiError, NotionConfig | HttpClient> =>
-  Stream.flattenIterable(Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
-    Option.match(maybeNextCursor, {
-      // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
-      onNone: () => Effect.succeed(undefined),
-      onSome: (cursor) => {
-        const searchOpts: SearchOptions =
-          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
-        return searchRaw(searchOpts).pipe(
-          Effect.map((result) => {
-            const chunk = Chunk.fromIterable(result.results)
+  Stream.flattenIterable(
+    Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
+      Option.match(maybeNextCursor, {
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
+        onNone: () => Effect.succeed(undefined),
+        onSome: (cursor) => {
+          const searchOpts: SearchOptions =
+            Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
+          return searchRaw(searchOpts).pipe(
+            Effect.map((result) => {
+              const chunk = Chunk.fromIterable(result.results)
 
-            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-              return [chunk, Option.none()] as const
-            }
+              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
+                return [chunk, Option.none()] as const
+              }
 
-            return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
-          }),
-        )
-      },
-    }),
-  ))
+              return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
+            }),
+          )
+        },
+      }),
+    ),
+  )
 
 // -----------------------------------------------------------------------------
 // Namespace Export

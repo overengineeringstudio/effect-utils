@@ -1,5 +1,5 @@
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Effect, Option, type Schema, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import type { DataSourceSchema, Page } from '@overeng/notion-effect-schema'
 import {
@@ -415,14 +415,13 @@ export function queryStream<TProperties, I, R>(
   NotionApiError | PageDecodeError,
   NotionConfig | HttpClient | R
 > {
-  const baseStream: Stream.Stream<Page, NotionApiError, NotionConfig | HttpClient> =
-    paginate(
-      (cursor) =>
-        queryRaw(
-          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts },
-        ),
-      { emit: { _tag: 'items' } },
-    )
+  const baseStream: Stream.Stream<Page, NotionApiError, NotionConfig | HttpClient> = paginate(
+    (cursor) =>
+      queryRaw(
+        Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts },
+      ),
+    { emit: { _tag: 'items' } },
+  )
 
   if (opts.schema !== undefined) {
     const schema = opts.schema

@@ -14,12 +14,12 @@
  * used to break for large members.
  */
 
-import * as Command from 'effect/unstable/process/ChildProcess'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
-import * as FileSystem from 'effect/FileSystem'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'

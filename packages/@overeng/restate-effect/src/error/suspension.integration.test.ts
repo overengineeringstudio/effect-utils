@@ -45,7 +45,12 @@ import {
   result as ingressResult,
   State,
 } from '../mod.ts'
-import { liveSleep, RestateTestHarness, type RestateTestHarnessService, serverAvailable } from '../testing/testing.ts'
+import {
+  liveSleep,
+  RestateTestHarness,
+  type RestateTestHarnessService,
+  serverAvailable,
+} from '../testing/testing.ts'
 
 /* ── awakeable suspension: create, store id, await; resolved from ingress ──── */
 

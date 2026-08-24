@@ -769,7 +769,10 @@ describe('realistic offline workflow E2E matrix', () => {
                 pageId: testIds.pageId,
                 path: bodyPath,
                 contentHash: hash('body-a'),
-                observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
+                observedAt: decode({
+                  schema: Schema.DateTimeUtcFromString,
+                  value: fixedObservedAt,
+                }),
                 state: 'delete-candidate',
               },
             ],

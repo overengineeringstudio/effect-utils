@@ -4,10 +4,10 @@
  * @since 0.1.0
  */
 
+import { Layer } from 'effect'
 import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient'
 import type * as HttpClient from 'effect/unstable/http/HttpClient'
 import { RpcClient, RpcSerialization } from 'effect/unstable/rpc'
-import { Layer } from 'effect'
 
 type FetchLike = typeof globalThis.fetch
 

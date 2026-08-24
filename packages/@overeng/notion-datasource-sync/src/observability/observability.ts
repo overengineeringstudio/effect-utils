@@ -1,5 +1,4 @@
 import { Effect, Schema, Stream } from 'effect'
-import { NonNegativeInt } from '../core/domain.ts'
 
 import {
   OtelAttr,
@@ -10,6 +9,7 @@ import {
   type OtelAttributeValue,
 } from '@overeng/otel-contract'
 
+import { NonNegativeInt } from '../core/domain.ts'
 import type { OneShotStatusState, OneShotSyncStatus } from '../core/status.ts'
 import {
   gatewayOperationNames,
@@ -72,11 +72,7 @@ type SpanAttributesWithLabel = SpanAttributesInput & {
 /** Identifies the kind of process emitting a span, recorded on `spanAttr.processRole`. */
 export type ProcessRole = 'cli' | 'daemon' | 'fake-gateway' | 'library'
 
-const SpanAttributeValueSchema = Schema.Union([
-Schema.String,
-Schema.Finite,
-Schema.Boolean,
-])
+const SpanAttributeValueSchema = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])
 
 const optionalAttr = (key: SpanAttributeKey) =>
   Schema.optional(SpanAttributeValueSchema.pipe(OtelAttr.key({ key })))
@@ -162,19 +158,11 @@ const StatusSpanAttributesSchema = Schema.Struct({
   ),
   blockedCount: NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.blockedCount })),
   conflictCount: NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.conflictCount })),
-  outboxAmbiguousCount: NonNegativeInt.pipe(
-    OtelAttr.key({ key: spanAttr.outboxAmbiguousCount }),
-  ),
-  outboxBlockedCount: NonNegativeInt.pipe(
-    OtelAttr.key({ key: spanAttr.outboxBlockedCount }),
-  ),
+  outboxAmbiguousCount: NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.outboxAmbiguousCount })),
+  outboxBlockedCount: NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.outboxBlockedCount })),
   outboxQueuedCount: NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.outboxQueuedCount })),
-  outboxRetryableCount: NonNegativeInt.pipe(
-    OtelAttr.key({ key: spanAttr.outboxRetryableCount }),
-  ),
-  outboxRunningCount: NonNegativeInt.pipe(
-    OtelAttr.key({ key: spanAttr.outboxRunningCount }),
-  ),
+  outboxRetryableCount: NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.outboxRetryableCount })),
+  outboxRunningCount: NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.outboxRunningCount })),
 })
 
 /** Schema-backed contract for status summary attributes emitted on sync result spans. */

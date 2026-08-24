@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import * as Cli from 'effect/unstable/cli'
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
 import { runTuiMain } from '@overeng/tui-react/node'
@@ -68,7 +68,9 @@ const program = Effect.gen(function* () {
     metricsExportInterval: 1000,
   })
 
-  yield* Cli.Command.runWith(mrCommand, { version })(rewriteHelpSubcommand(process.argv).slice(2)).pipe(
+  yield* Cli.Command.runWith(mrCommand, { version })(
+    rewriteHelpSubcommand(process.argv).slice(2),
+  ).pipe(
     Effect.scoped,
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'mr', version }),

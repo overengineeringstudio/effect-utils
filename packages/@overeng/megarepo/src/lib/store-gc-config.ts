@@ -9,9 +9,9 @@
 
 import { isAbsolute, normalize } from 'node:path'
 
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 

@@ -1,3 +1,7 @@
+import { RegistryContext, useAtomValue } from '@effect/atom-react'
+import { createCliRenderer } from '@opentui/core'
+import { createRoot } from '@opentui/react'
+import { Cause, Context, Effect, Fiber, Layer, ManagedRuntime } from 'effect'
 /**
  * TUI with Effect atoms, keyboard input, and Effect runtime integration.
  *
@@ -10,10 +14,6 @@
  * Run: bun examples/effect-atoms-keyboard.tsx
  */
 import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
-import { RegistryContext, useAtomValue } from '@effect/atom-react'
-import { createCliRenderer } from '@opentui/core'
-import { createRoot } from '@opentui/react'
-import { Cause, Context, Effect, Fiber, Layer, ManagedRuntime } from 'effect'
 
 // -----------------------------------------------------------------------------
 // Services (Layer-based dependencies)

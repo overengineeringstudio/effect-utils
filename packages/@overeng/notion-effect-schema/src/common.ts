@@ -194,7 +194,13 @@ export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
 // Composable helpers
 // ---------------------------------------------------------------------------
 
-const getAnnotationValue = <A>({ ast, key }: { ast: SchemaAST.AST; key: symbol }): A | undefined => {
+const getAnnotationValue = <A>({
+  ast,
+  key,
+}: {
+  ast: SchemaAST.AST
+  key: symbol
+}): A | undefined => {
   const annotations = SchemaAST.resolve(ast) as { [key: symbol]: unknown } | undefined
   return annotations?.[key] as A | undefined
 }
@@ -202,7 +208,10 @@ const getAnnotationValue = <A>({ ast, key }: { ast: SchemaAST.AST; key: symbol }
 const getOptionValueSchema = <TValue>(
   schema: Schema.Schema<Option.Option<TValue>>,
 ): Schema.Codec<TValue, TValue> => {
-  const annotated = getAnnotationValue<Schema.Codec<TValue, TValue>>({ ast: schema.ast, key: optionValueSchema })
+  const annotated = getAnnotationValue<Schema.Codec<TValue, TValue>>({
+    ast: schema.ast,
+    key: optionValueSchema,
+  })
 
   if (annotated !== undefined) {
     return annotated
@@ -216,7 +225,10 @@ const getOptionValueSchema = <TValue>(
 const getOptionNameSchema = <TName extends string, TValue>(
   schema: Schema.Schema<TValue>,
 ): Schema.Decoder<TName> => {
-  const annotated = getAnnotationValue<Schema.Decoder<TName>>({ ast: schema.ast, key: optionNameSchema })
+  const annotated = getAnnotationValue<Schema.Decoder<TName>>({
+    ast: schema.ast,
+    key: optionNameSchema,
+  })
 
   if (annotated !== undefined) {
     return annotated
@@ -228,12 +240,10 @@ const getOptionNameSchema = <TName extends string, TValue>(
 }
 
 /** Annotates an Option schema with its inner value schema for extraction */
-export const withOptionValueSchema = <TValue>(
-  options: {
-    schema: Schema.Decoder<Option.Option<TValue>>
-    valueSchema: Schema.Decoder<TValue>
-  },
-) => options.schema.annotate({ [optionValueSchema]: options.valueSchema })
+export const withOptionValueSchema = <TValue>(options: {
+  schema: Schema.Decoder<Option.Option<TValue>>
+  valueSchema: Schema.Decoder<TValue>
+}) => options.schema.annotate({ [optionValueSchema]: options.valueSchema })
 
 /** Annotates a schema with the name schema for select/status option extraction */
 export const withOptionNameSchema = <TValue, TName extends string>(options: {
@@ -259,18 +269,14 @@ export const asName = <TName extends string, TOption extends { name: TName }>(
 
   return withOptionValueSchema({
     schema: schema.pipe(
-      Schema.decodeTo(
-        Schema.Option(nameSchema),
-        {
-          decode: SchemaGetter.transform((opt: Option.Option<TOption>) =>
-            Option.map(opt, (value) => value.name)
-          ),
-          encode: SchemaGetter.forbidden(
-            () =>
-              'NotionSchema.asName encode is not supported. Use the write helpers for updates.',
-          ),
-        },
-      ),
+      Schema.decodeTo(Schema.Option(nameSchema), {
+        decode: SchemaGetter.transform((opt: Option.Option<TOption>) =>
+          Option.map(opt, (value) => value.name),
+        ),
+        encode: SchemaGetter.forbidden(
+          () => 'NotionSchema.asName encode is not supported. Use the write helpers for updates.',
+        ),
+      }),
     ),
     valueSchema: nameSchema,
   })
@@ -293,18 +299,14 @@ export const asNames = <TName extends string, TOption extends { name: TName }>(
   const nameSchema = getOptionNameSchema<TName, ReadonlyArray<TOption>>(schema)
 
   return schema.pipe(
-    Schema.decodeTo(
-      Schema.Array(nameSchema),
-      {
-        decode: SchemaGetter.transform((options: ReadonlyArray<TOption>) =>
-          options.map((option) => option.name)
-        ),
-        encode: SchemaGetter.forbidden(
-          () =>
-            'NotionSchema.asNames encode is not supported. Use the write helpers for updates.',
-        ),
-      },
-    ),
+    Schema.decodeTo(Schema.Array(nameSchema), {
+      decode: SchemaGetter.transform((options: ReadonlyArray<TOption>) =>
+        options.map((option) => option.name),
+      ),
+      encode: SchemaGetter.forbidden(
+        () => 'NotionSchema.asNames encode is not supported. Use the write helpers for updates.',
+      ),
+    }),
   )
 }
 
@@ -317,15 +319,12 @@ export const asNullable = <TValue>(schema: Schema.Decoder<Option.Option<TValue>>
   const valueSchema = getOptionValueSchema(schema)
 
   return schema.pipe(
-    Schema.decodeTo(
-      Schema.NullOr(valueSchema),
-      {
-        decode: SchemaGetter.transform((opt: Option.Option<TValue>) => Option.getOrNull(opt)),
-        encode: SchemaGetter.transform((value: TValue | null) =>
-          value === null ? Option.none() : Option.some(value)
-        ),
-      },
-    ),
+    Schema.decodeTo(Schema.NullOr(valueSchema), {
+      decode: SchemaGetter.transform((opt: Option.Option<TValue>) => Option.getOrNull(opt)),
+      encode: SchemaGetter.transform((value: TValue | null) =>
+        value === null ? Option.none() : Option.some(value),
+      ),
+    }),
   )
 }
 
@@ -341,15 +340,10 @@ export const Required = {
             message,
           }),
         ),
-        Schema.decodeTo(
-          valueSchema,
-          {
-            decode: SchemaGetter.transform((opt: Option.Option<TValue>) =>
-              Option.getOrThrow(opt)
-            ),
-            encode: SchemaGetter.transform((value: TValue) => Option.some(value)),
-          },
-        ),
+        Schema.decodeTo(valueSchema, {
+          decode: SchemaGetter.transform((opt: Option.Option<TValue>) => Option.getOrThrow(opt)),
+          encode: SchemaGetter.transform((value: TValue) => Option.some(value)),
+        }),
       )
     },
   nullable:

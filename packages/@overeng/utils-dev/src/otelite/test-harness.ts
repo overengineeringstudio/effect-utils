@@ -216,158 +216,157 @@ export class OteliteTestHarness extends Context.Service<
   make: Effect.gen(function* () {
     const otelite = yield* Otelite
 
-      const capture = (
-        options: OteliteTestHarnessOptions,
-      ): Effect.Effect<
-        OteliteTestHandle,
-        OteliteSpawnError | OteliteCliError | OteliteDecodeError,
-        Scope.Scope
-      > =>
-        Effect.gen(function* () {
-          const exportInterval = options.exportInterval ?? 100
-          const rootSpanName = options.rootSpanName ?? `${options.serviceName}.test`
-          const rootSpanLabel = options.rootSpanLabel ?? options.serviceName
-          const captureHandle = yield* otelite.capture(options)
-          const inProcessLayer = makeInProcessLayer(captureHandle, {
-            serviceName: options.serviceName,
-            exportInterval,
-          })
-          const inProcessAllSignalsLayer = makeInProcessAllSignalsLayer(captureHandle, {
-            serviceName: options.serviceName,
-            exportInterval,
-          })
-          const endpointEnv = {
-            OTEL_EXPORTER_OTLP_ENDPOINT: captureHandle.endpoints.http,
-            OTEL_SERVICE_NAME: options.serviceName,
-          } as const
+    const capture = (
+      options: OteliteTestHarnessOptions,
+    ): Effect.Effect<
+      OteliteTestHandle,
+      OteliteSpawnError | OteliteCliError | OteliteDecodeError,
+      Scope.Scope
+    > =>
+      Effect.gen(function* () {
+        const exportInterval = options.exportInterval ?? 100
+        const rootSpanName = options.rootSpanName ?? `${options.serviceName}.test`
+        const rootSpanLabel = options.rootSpanLabel ?? options.serviceName
+        const captureHandle = yield* otelite.capture(options)
+        const inProcessLayer = makeInProcessLayer(captureHandle, {
+          serviceName: options.serviceName,
+          exportInterval,
+        })
+        const inProcessAllSignalsLayer = makeInProcessAllSignalsLayer(captureHandle, {
+          serviceName: options.serviceName,
+          exportInterval,
+        })
+        const endpointEnv = {
+          OTEL_EXPORTER_OTLP_ENDPOINT: captureHandle.endpoints.http,
+          OTEL_SERVICE_NAME: options.serviceName,
+        } as const
 
-          const inspect = captureHandle.inspect
+        const inspect = captureHandle.inspect
 
-          const inspectTraces = (inspectOptions: TraceInspectOptions = {}) =>
-            inspect({ ...inspectOptions, signal: 'traces' })
+        const inspectTraces = (inspectOptions: TraceInspectOptions = {}) =>
+          inspect({ ...inspectOptions, signal: 'traces' })
 
-          const trace = (traceOptions: OteliteTraceOptions = {}) =>
-            Effect.gen(function* () {
-              const spans = yield* inspectTraces({
-                service: options.serviceName,
-                ...traceOptions.inspect,
-              })
-              const traceExpect = expectTrace(spans)
-              if ((traceOptions.spanLabelPolicy ?? 'required') === 'required') {
-                traceExpect.expectSpanLabels()
-              }
-              return traceExpect
+        const trace = (traceOptions: OteliteTraceOptions = {}) =>
+          Effect.gen(function* () {
+            const spans = yield* inspectTraces({
+              service: options.serviceName,
+              ...traceOptions.inspect,
             })
+            const traceExpect = expectTrace(spans)
+            if ((traceOptions.spanLabelPolicy ?? 'required') === 'required') {
+              traceExpect.expectSpanLabels()
+            }
+            return traceExpect
+          })
 
-          const withEnv = <A, E, R>(
-            effect: Effect.Effect<A, E, R>,
-            envOptions: OteliteEnvOptions = {},
-          ): Effect.Effect<A, E, R> =>
-            envSemaphore.withPermits(1)(
-              Effect.scoped(
-                scopedEnv({
-                  [envOptions.endpointVar ?? 'OTEL_EXPORTER_OTLP_ENDPOINT']:
-                    captureHandle.endpoints.http,
-                  [envOptions.serviceNameVar ?? 'OTEL_SERVICE_NAME']: options.serviceName,
-                  ...envOptions.extra,
-                }).pipe(Effect.andThen(effect)),
-              ),
-            )
+        const withEnv = <A, E, R>(
+          effect: Effect.Effect<A, E, R>,
+          envOptions: OteliteEnvOptions = {},
+        ): Effect.Effect<A, E, R> =>
+          envSemaphore.withPermits(1)(
+            Effect.scoped(
+              scopedEnv({
+                [envOptions.endpointVar ?? 'OTEL_EXPORTER_OTLP_ENDPOINT']:
+                  captureHandle.endpoints.http,
+                [envOptions.serviceNameVar ?? 'OTEL_SERVICE_NAME']: options.serviceName,
+                ...envOptions.extra,
+              }).pipe(Effect.andThen(effect)),
+            ),
+          )
 
-          const runInProcess = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-            effect.pipe(
+        const runInProcess = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+          effect.pipe(
+            withOteliteRootSpan({ name: rootSpanName, label: rootSpanLabel }),
+            Effect.provide(inProcessLayer),
+          )
+
+        const runInProcessTrace = <A, E, R>(
+          effect: Effect.Effect<A, E, R>,
+          traceOptions?: OteliteTraceOptions,
+        ): Effect.Effect<
+          TraceExpect,
+          E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
+          R
+        > =>
+          runInProcess(effect).pipe(
+            Effect.andThen(flushCaptureSpans({ exportInterval })),
+            Effect.andThen(trace(traceOptions)),
+          )
+
+        const runInProcessAllSignals = <A, E, R>(
+          effect: Effect.Effect<A, E, R>,
+          allSignalsOptions?: OteliteAllSignalsOptions,
+        ): Effect.Effect<
+          AllSignalsExpect,
+          E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
+          R
+        > =>
+          Effect.gen(function* () {
+            // Scope-close on the all-signals layer force-flushes every signal's
+            // final batch, so the inspects below see the full capture.
+            yield* effect.pipe(
               withOteliteRootSpan({ name: rootSpanName, label: rootSpanLabel }),
-              Effect.provide(inProcessLayer),
+              Effect.provide(inProcessAllSignalsLayer),
             )
+            yield* flushCaptureSpans({ exportInterval })
 
-          const runInProcessTrace = <A, E, R>(
-            effect: Effect.Effect<A, E, R>,
-            traceOptions?: OteliteTraceOptions,
-          ): Effect.Effect<
-            TraceExpect,
-            E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
-            R
-          > =>
-            runInProcess(effect).pipe(
-              Effect.andThen(flushCaptureSpans({ exportInterval })),
-              Effect.andThen(trace(traceOptions)),
-            )
-
-          const runInProcessAllSignals = <A, E, R>(
-            effect: Effect.Effect<A, E, R>,
-            allSignalsOptions?: OteliteAllSignalsOptions,
-          ): Effect.Effect<
-            AllSignalsExpect,
-            E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
-            R
-          > =>
-            Effect.gen(function* () {
-              // Scope-close on the all-signals layer force-flushes every signal's
-              // final batch, so the inspects below see the full capture.
-              yield* effect.pipe(
-                withOteliteRootSpan({ name: rootSpanName, label: rootSpanLabel }),
-                Effect.provide(inProcessAllSignalsLayer),
-              )
-              yield* flushCaptureSpans({ exportInterval })
-
-              const traceOptions = allSignalsOptions?.trace
-              const spans: ReadonlyArray<SpanRow> = yield* inspectTraces({
-                service: options.serviceName,
-                ...traceOptions?.inspect,
-              })
-              const metricRows: ReadonlyArray<MetricRow> = yield* inspect({
-                signal: 'metrics',
-                service: options.serviceName,
-                ...allSignalsOptions?.metricsInspect,
-              })
-              const logRows: ReadonlyArray<LogRow> = yield* inspect({
-                signal: 'logs',
-                service: options.serviceName,
-                ...allSignalsOptions?.logsInspect,
-              })
-
-              const trace = expectTrace(spans)
-              if ((traceOptions?.spanLabelPolicy ?? 'required') === 'required') {
-                trace.expectSpanLabels()
-              }
-              return { trace, metrics: expectMetrics(metricRows), logs: expectLogs(logRows) }
+            const traceOptions = allSignalsOptions?.trace
+            const spans: ReadonlyArray<SpanRow> = yield* inspectTraces({
+              service: options.serviceName,
+              ...traceOptions?.inspect,
+            })
+            const metricRows: ReadonlyArray<MetricRow> = yield* inspect({
+              signal: 'metrics',
+              service: options.serviceName,
+              ...allSignalsOptions?.metricsInspect,
+            })
+            const logRows: ReadonlyArray<LogRow> = yield* inspect({
+              signal: 'logs',
+              service: options.serviceName,
+              ...allSignalsOptions?.logsInspect,
             })
 
-          const withEnvTrace = <A, E, R>(
-            effect: Effect.Effect<A, E, R>,
-            envOptions?: OteliteEnvOptions,
-            traceOptions?: OteliteTraceOptions,
-          ): Effect.Effect<
-            TraceExpect,
-            E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
-            R
-          > =>
-            withEnv(effect, envOptions).pipe(
-              Effect.andThen(flushCaptureSpans({ exportInterval })),
-              Effect.andThen(trace(traceOptions)),
-            )
+            const trace = expectTrace(spans)
+            if ((traceOptions?.spanLabelPolicy ?? 'required') === 'required') {
+              trace.expectSpanLabels()
+            }
+            return { trace, metrics: expectMetrics(metricRows), logs: expectLogs(logRows) }
+          })
 
-          return {
-            capture: captureHandle,
-            inProcessLayer,
-            endpointEnv,
-            flush: flushCaptureSpans({ exportInterval }),
-            inspect,
-            inspectTraces,
-            trace,
-            runInProcess,
-            runInProcessTrace,
-            runInProcessAllSignals,
-            provideInProcess: runInProcess,
-            withEnv,
-            withEnvTrace,
-          } satisfies OteliteTestHandle
-        }).pipe(withOteliteLabelSpan('otelite.test-harness.capture', 'test-harness.capture'))
+        const withEnvTrace = <A, E, R>(
+          effect: Effect.Effect<A, E, R>,
+          envOptions?: OteliteEnvOptions,
+          traceOptions?: OteliteTraceOptions,
+        ): Effect.Effect<
+          TraceExpect,
+          E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
+          R
+        > =>
+          withEnv(effect, envOptions).pipe(
+            Effect.andThen(flushCaptureSpans({ exportInterval })),
+            Effect.andThen(trace(traceOptions)),
+          )
 
-      return { capture } satisfies OteliteTestHarnessService
-    }),
-  },
-) {
+        return {
+          capture: captureHandle,
+          inProcessLayer,
+          endpointEnv,
+          flush: flushCaptureSpans({ exportInterval }),
+          inspect,
+          inspectTraces,
+          trace,
+          runInProcess,
+          runInProcessTrace,
+          runInProcessAllSignals,
+          provideInProcess: runInProcess,
+          withEnv,
+          withEnvTrace,
+        } satisfies OteliteTestHandle
+      }).pipe(withOteliteLabelSpan('otelite.test-harness.capture', 'test-harness.capture'))
+
+    return { capture } satisfies OteliteTestHarnessService
+  }),
+}) {
   /** Provides {@link OteliteTestHarness}, wiring its `Otelite` dependency. */
   static readonly layer = Layer.effect(this, this.make).pipe(Layer.provide(Otelite.layer))
 }
@@ -381,7 +380,9 @@ export const captureTest = (
   Scope.Scope
 > =>
   // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
-  OteliteTestHarness.use((harness) => harness.capture(options)).pipe(Effect.provide(OteliteTestHarness.layer))
+  OteliteTestHarness.use((harness) => harness.capture(options)).pipe(
+    Effect.provide(OteliteTestHarness.layer),
+  )
 
 /** All-in-one: boot a capture, run `effect` through the in-process traces exporter, flush, and return a {@link TraceExpect}. */
 export const captureInProcessTrace = <A, E, R>(

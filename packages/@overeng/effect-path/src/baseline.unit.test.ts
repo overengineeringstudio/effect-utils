@@ -1,5 +1,5 @@
-import { Effect, FileSystem, type PlatformError, Result, Schema } from 'effect'
 import { NodeServices as NodeContext } from '@effect/platform-node'
+import { Effect, FileSystem, type PlatformError, Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -128,7 +128,9 @@ describe('effect-path baselines (cross-major invariant)', () => {
       Effect.gen(function* () {
         const normalizedSchema = EffectPath.schema.AbsoluteFileInfo()
         const originalSchema = EffectPath.schema.AbsoluteFileInfo({ encodeAs: 'original' })
-        const decoded = yield* Schema.decodeUnknownEffect(normalizedSchema)('/repo//pkg/archive.tar.gz')
+        const decoded = yield* Schema.decodeUnknownEffect(normalizedSchema)(
+          '/repo//pkg/archive.tar.gz',
+        )
 
         return {
           decoded: summarizeFileInfo(decoded),

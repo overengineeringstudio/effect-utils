@@ -14,12 +14,12 @@ export interface PendingInlineNode {
 
 export const PendingInlineNode: Schema.Codec<PendingInlineNode, PendingInlineNode> = Schema.suspend(
   (): Schema.Codec<PendingInlineNode, PendingInlineNode> =>
-  Schema.Struct({
-    key: Schema.String,
-    type: Schema.String,
-    hash: Schema.String,
-    children: Schema.Array(PendingInlineNode),
-  }),
+    Schema.Struct({
+      key: Schema.String,
+      type: Schema.String,
+      hash: Schema.String,
+      children: Schema.Array(PendingInlineNode),
+    }),
 )
 
 export interface CacheNode {
@@ -81,24 +81,25 @@ interface CacheNodeEncoded {
   readonly pendingInlineResolution?: readonly PendingInlineNode[] | undefined
 }
 
-export const CacheNode = Schema.suspend((): Schema.Codec<CacheNode, CacheNodeEncoded> =>
-  Schema.Struct({
-    key: Schema.String,
-    blockId: Schema.String,
-    type: Schema.String,
-    hash: Schema.String,
-    children: Schema.Array(CacheNode),
-    // `optionalWith({ default })` keeps existing v2 caches decodable: entries
-    // serialized before this field existed default to `'block'`, which matches
-    // the legacy "every cache node is a block" invariant.
-    nodeKind: Schema.Literals(['block', 'page']).pipe(
-      Schema.withDecodingDefault(Effect.succeed('block')),
-    ),
-    titleHash: Schema.optional(Schema.String),
-    iconHash: Schema.optional(Schema.String),
-    coverHash: Schema.optional(Schema.String),
-    pendingInlineResolution: Schema.optional(Schema.Array(PendingInlineNode)),
-  }),
+export const CacheNode = Schema.suspend(
+  (): Schema.Codec<CacheNode, CacheNodeEncoded> =>
+    Schema.Struct({
+      key: Schema.String,
+      blockId: Schema.String,
+      type: Schema.String,
+      hash: Schema.String,
+      children: Schema.Array(CacheNode),
+      // `optionalWith({ default })` keeps existing v2 caches decodable: entries
+      // serialized before this field existed default to `'block'`, which matches
+      // the legacy "every cache node is a block" invariant.
+      nodeKind: Schema.Literals(['block', 'page']).pipe(
+        Schema.withDecodingDefault(Effect.succeed('block')),
+      ),
+      titleHash: Schema.optional(Schema.String),
+      iconHash: Schema.optional(Schema.String),
+      coverHash: Schema.optional(Schema.String),
+      pendingInlineResolution: Schema.optional(Schema.Array(PendingInlineNode)),
+    }),
 )
 
 export const CacheTree = Schema.Struct({

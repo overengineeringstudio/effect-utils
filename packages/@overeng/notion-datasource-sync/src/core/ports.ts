@@ -108,10 +108,9 @@ export type PageBodySyncPortShape = {
 }
 
 /** Effect service tag for the page body sync adapter; implementations translate between `BodyPointer` and the actual file/Notion content representation. */
-export class PageBodySyncPort extends Context.Service<
-  PageBodySyncPort,
-  PageBodySyncPortShape
->()('@overeng/notion-datasource-sync/PageBodySyncPort') {}
+export class PageBodySyncPort extends Context.Service<PageBodySyncPort, PageBodySyncPortShape>()(
+  '@overeng/notion-datasource-sync/PageBodySyncPort',
+) {}
 
 /** Contract for local filesystem interactions: scan for artifact observations, claim paths for pages, and materialize body content as files. */
 export type LocalWorkspacePortShape = {
@@ -135,7 +134,6 @@ export type SyncEventStoreShape = {
 }
 
 /** Effect service tag for the sync event store; the store is the authoritative source of truth for all sync state. */
-export class SyncEventStore extends Context.Service<
-  SyncEventStore,
-  SyncEventStoreShape
->()('@overeng/notion-datasource-sync/SyncEventStore') {}
+export class SyncEventStore extends Context.Service<SyncEventStore, SyncEventStoreShape>()(
+  '@overeng/notion-datasource-sync/SyncEventStore',
+) {}

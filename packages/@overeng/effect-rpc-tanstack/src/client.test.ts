@@ -1,5 +1,5 @@
-import { Rpc, RpcGroup, RpcClient } from 'effect/unstable/rpc'
 import { Effect, Schema, Stream } from 'effect'
+import { Rpc, RpcGroup, RpcClient } from 'effect/unstable/rpc'
 import { describe, expect, it, vi } from 'vitest'
 
 import { layerClient, fetchFromWebHandler } from './client.ts'

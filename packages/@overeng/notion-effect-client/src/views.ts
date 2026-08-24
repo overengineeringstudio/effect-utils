@@ -1,5 +1,5 @@
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Effect, Option, Schema, type Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import { type View, type ViewType, ViewSchema } from '@overeng/notion-effect-schema'
 
@@ -78,8 +78,7 @@ const listRaw = Effect.fn('NotionViews.list')(function* (opts: ListViewsOptions)
  */
 export const list = (
   opts: ListViewsOptions,
-): Effect.Effect<PaginatedResult<View>, NotionApiError, NotionConfig | HttpClient> =>
-  listRaw(opts)
+): Effect.Effect<PaginatedResult<View>, NotionApiError, NotionConfig | HttpClient> => listRaw(opts)
 
 /**
  * List all views with automatic pagination.

@@ -48,20 +48,22 @@ export const NumberWrite = Schema.Struct({
 export type NumberWrite = typeof NumberWrite.Type
 
 /** Transform schema for converting number to NumberWrite payload */
-export const NumberWriteFromNumber = Schema.NullOr(Schema.Finite).pipe(
-  Schema.decodeTo(
-    NumberWrite,
-    SchemaTransformation.transform({
-      decode: (number) => ({ number }),
-      encode: (write) => write.number,
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.NumberWriteFromNumber',
-  title: 'Number (Write) From Number',
-  description: 'Transform a number (or null) into a number write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+export const NumberWriteFromNumber = Schema.NullOr(Schema.Finite)
+  .pipe(
+    Schema.decodeTo(
+      NumberWrite,
+      SchemaTransformation.transform({
+        decode: (number) => ({ number }),
+        encode: (write) => write.number,
+      }),
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.NumberWriteFromNumber',
+    title: 'Number (Write) From Number',
+    description: 'Transform a number (or null) into a number write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for Number property. */
 export const Num = {
@@ -83,7 +85,7 @@ export const Num = {
     schema: NumberProperty.pipe(
       Schema.decodeTo(Schema.toType(Schema.Option(Schema.Finite)), {
         decode: SchemaGetter.transform((prop) =>
-          prop.number === null ? Option.none() : Option.some(prop.number)
+          prop.number === null ? Option.none() : Option.some(prop.number),
         ),
         encode: SchemaGetter.forbidden(
           () => 'Num.asOption encode is not supported. Use NumberWrite / NumberWriteFromNumber.',

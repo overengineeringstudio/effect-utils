@@ -1,5 +1,5 @@
-import type { Atom } from 'effect/unstable/reactivity'
 import type { Meta, StoryObj } from '@storybook/react'
+import type { Atom } from 'effect/unstable/reactivity'
 import React from 'react'
 
 import { Box, createTuiApp, Text } from '@overeng/tui-react'

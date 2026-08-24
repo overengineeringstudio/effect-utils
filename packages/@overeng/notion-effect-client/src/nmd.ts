@@ -208,11 +208,9 @@ export const NmdNotionFile = Schema.Struct({
 export type NmdNotionFile = typeof NmdNotionFile.Type
 
 /** Page cover state preserved outside the Markdown body. */
-export const NmdPageCover = Schema.NullOr(Schema.Union([NmdExternalFile, NmdNotionFile])).annotate(
-  {
-    identifier: 'NotionMd.PageCover',
-  },
-)
+export const NmdPageCover = Schema.NullOr(Schema.Union([NmdExternalFile, NmdNotionFile])).annotate({
+  identifier: 'NotionMd.PageCover',
+})
 
 export type NmdPageCover = typeof NmdPageCover.Type
 
@@ -501,7 +499,7 @@ const NmdFrontmatterBody = Schema.Struct({
             path: ['page_id'],
             issue: `source: ${body.source} requires a page_id (only source: local may be unbound / create-on-push)`,
           }
-        : undefined
+        : undefined,
     ),
   ),
 )
@@ -543,7 +541,10 @@ export const nmdStrictParseOptions = {
 } as const
 
 /** Decode `.nmd` frontmatter with strict excess-property checks. */
-export const decodeNmdFrontmatterV1 = Schema.decodeUnknownEffect(NmdFrontmatterV1, nmdStrictParseOptions)
+export const decodeNmdFrontmatterV1 = Schema.decodeUnknownEffect(
+  NmdFrontmatterV1,
+  nmdStrictParseOptions,
+)
 
 /** Synchronous strict decoder for tests and CLI preflight paths. */
 export const decodeNmdFrontmatterV1Sync = Schema.decodeUnknownSync(
@@ -552,7 +553,10 @@ export const decodeNmdFrontmatterV1Sync = Schema.decodeUnknownSync(
 )
 
 /** Decode V2 frontmatter with strict excess-property checks. */
-export const decodeNmdFrontmatterV2 = Schema.decodeUnknownEffect(NmdFrontmatterV2, nmdStrictParseOptions)
+export const decodeNmdFrontmatterV2 = Schema.decodeUnknownEffect(
+  NmdFrontmatterV2,
+  nmdStrictParseOptions,
+)
 
 /** Synchronous strict decoder for V2 frontmatter. */
 export const decodeNmdFrontmatterV2Sync = Schema.decodeUnknownSync(
@@ -561,7 +565,10 @@ export const decodeNmdFrontmatterV2Sync = Schema.decodeUnknownSync(
 )
 
 /** Decode sidecar sync state with strict excess-property checks. */
-export const decodeNmdSyncStateV1 = Schema.decodeUnknownEffect(NmdSyncStateV1, nmdStrictParseOptions)
+export const decodeNmdSyncStateV1 = Schema.decodeUnknownEffect(
+  NmdSyncStateV1,
+  nmdStrictParseOptions,
+)
 
 /**
  * Result of pairing a decoded `.nmd` frontmatter with its (optional) page-id

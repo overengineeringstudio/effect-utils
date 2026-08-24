@@ -1,3 +1,4 @@
+import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 /**
  * Server-free observability test (docs/vrs/08-observability/spec.md, decision 0014): span ATTRIBUTES + the
  * replay-aware METRICS path, proving the package is operable from Grafana.
@@ -18,7 +19,6 @@
  *    emission does NOT increment (no double-count across attempts).
  */
 import * as Resource from '@effect/opentelemetry/Resource'
-import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 import { context, trace } from '@opentelemetry/api'
 import {
   AggregationTemporality,

@@ -3,9 +3,9 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
+import { Effect, Result, Schema } from 'effect'
 import * as HttpClient from 'effect/unstable/http/HttpClient'
 import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
-import { Effect, Result, Schema } from 'effect'
 
 import {
   DeployInputV1,
@@ -182,14 +182,16 @@ const fetchNetlifyJson = Effect.fn('ci-tools.deploy.netlify.fetch-json')(functio
       Effect.flatMap((response) =>
         response.text.pipe(Effect.map((text) => ({ status: response.status, text }))),
       ),
-      Effect.catchTag('HttpClientError', (cause) =>
+      Effect.catchTag(
+        'HttpClientError',
+        (cause) =>
           new ProviderProjectLookupFailed({
             provider: 'netlify',
             target: opts.target,
             transient: true,
             message: cause.message,
-          })),
-
+          }),
+      ),
     )
 })
 
@@ -355,7 +357,9 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.netlify.verify-once')(func
       Effect.flatMap((result) =>
         result.text.pipe(Effect.map((text) => ({ status: result.status, text }))),
       ),
-      Effect.catchTag('HttpClientError', (cause) =>
+      Effect.catchTag(
+        'HttpClientError',
+        (cause) =>
           new VerificationFailed({
             provider: 'netlify',
             target: opts.target,
@@ -363,8 +367,8 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.netlify.verify-once')(func
             transient: true,
             message: cause.message,
             diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
-          })),
-
+          }),
+      ),
     )
 
   if (response.status < 200 || response.status >= 300) {
@@ -545,7 +549,10 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
     apiBaseUrl: options.netlifyApiBaseUrl,
   }).pipe(Effect.result)
   if (Result.isFailure(resolvedSiteResult) === true) {
-    if (resolvedSiteResult.failure._tag === 'Unauthorized' && options.unauthorizedPolicy === 'skip') {
+    if (
+      resolvedSiteResult.failure._tag === 'Unauthorized' &&
+      options.unauthorizedPolicy === 'skip'
+    ) {
       yield* skipWithRecord(
         `Skipping ${options.target} deploy because the configured Netlify credentials cannot retrieve the project.`,
       )

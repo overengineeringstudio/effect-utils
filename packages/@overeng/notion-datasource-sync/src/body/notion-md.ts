@@ -68,7 +68,8 @@ const decode = <TSchema extends Schema.Codec<any, any, never>>({
 
 const hashFromNotionMdDigest = (value: string): Hash => decode({ schema: Hash, value })
 
-const observedAtNow = () => decode({ schema: Schema.DateTimeUtcFromString, value: new Date().toISOString() })
+const observedAtNow = () =>
+  decode({ schema: Schema.DateTimeUtcFromString, value: new Date().toISOString() })
 
 /** Structural (duck-typed) view of NotionMD fidelity info, decoupling this adapter from the exact upstream `@overeng/notion-md` body type. */
 export type NotionBodyFidelityLike = {

@@ -2,9 +2,9 @@ import * as crypto from 'node:crypto'
 import * as os from 'node:os'
 import nodePath from 'node:path'
 
-import * as Command from 'effect/unstable/process/ChildProcess'
 import { NodeServices } from '@effect/platform-node'
 import { Effect, FileSystem, Path, Schema, Stream } from 'effect'
+import * as Command from 'effect/unstable/process/ChildProcess'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -17,7 +17,9 @@ const GeneratedPackageJson = Schema.Struct({
   dependencies: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 })
 
-const decodeGeneratedPackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(GeneratedPackageJson))
+const decodeGeneratedPackageJson = Schema.decodeUnknownSync(
+  Schema.fromJsonString(GeneratedPackageJson),
+)
 
 type TestEnv = {
   root: string
@@ -443,12 +445,12 @@ export default {
             // This is the scenario that previously caused the bug
             const cliPath = new URL('./mod.ts', import.meta.url).pathname
             const command = Command.make('bun', [cliPath, '--cwd', symlinkPath], {
-            cwd: symlinkPath,
-            stdout: 'pipe',
-            stderr: 'pipe',
-          })
+              cwd: symlinkPath,
+              stdout: 'pipe',
+              stderr: 'pipe',
+            })
 
-          const process = yield* command
+            const process = yield* command
             const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
               Stream.runCollect(process.stdout),
               Stream.runCollect(process.stderr),
@@ -618,12 +620,12 @@ export default {
             const outerRoot = pathSvc.join(env.root, 'outer')
             const cliPath = new URL('./mod.ts', import.meta.url).pathname
             const command = Command.make('bun', [cliPath, '--cwd', outerRoot], {
-            cwd: outerRoot,
-            stdout: 'pipe',
-            stderr: 'pipe',
-          })
+              cwd: outerRoot,
+              stdout: 'pipe',
+              stderr: 'pipe',
+            })
 
-          const process = yield* command
+            const process = yield* command
             const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
               Stream.runCollect(process.stdout),
               Stream.runCollect(process.stderr),

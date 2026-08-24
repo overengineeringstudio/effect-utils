@@ -3,8 +3,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-import { Command, Flag as Options } from 'effect/unstable/cli'
 import { Effect, Option } from 'effect'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 
 import { runNetlifyDeploy } from './deploy-netlify.ts'
 import { runVercelDeploy } from './deploy-vercel.ts'

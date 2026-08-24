@@ -71,9 +71,9 @@ export const parentSpanFromEnv: (
     const raw = process.env[envVar]
     if (raw === undefined) return undefined
 
-    const ctx = yield* Schema.decodeUnknownEffect(
-      Schema.fromJsonString(ParentSpanContextSchema),
-    )(raw).pipe(Effect.orDie)
+    const ctx = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ParentSpanContextSchema))(
+      raw,
+    ).pipe(Effect.orDie)
     return Tracer.externalSpan({
       traceId: ctx.traceId,
       spanId: ctx.spanId,

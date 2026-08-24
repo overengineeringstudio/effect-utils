@@ -108,25 +108,29 @@ export const paginate = <Page extends PaginatedResult<unknown>, Out, E, R>(
   fetchPage: FetchPage<Page, E, R>,
   options: PaginateOptions<Page, Out>,
 ): Stream.Stream<Out, E, R> =>
-  Stream.flattenIterable(Stream.unfold(Option.some(options.startCursor ?? Option.none<string>()), (state) =>
-    Option.match(state, {
-      // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
-      onNone: () => Effect.succeed(undefined),
-      onSome: (cursor) =>
-        fetchPage(cursor).pipe(
-          Effect.map((page): readonly [Chunk.Chunk<Out>, Option.Option<Option.Option<string>>] => {
-            const chunk =
-              options.emit._tag === 'items'
-                ? // In 'items' mode `Out` is the page's element type, but the
-                  // tag union prevents TS from narrowing it here.
-                  (Chunk.fromIterable(page.results) as unknown as Chunk.Chunk<Out>)
-                : Chunk.of(options.emit.map(page))
-            const done = page.hasMore === false || Option.isNone(page.nextCursor) === true
-            return [
-              chunk,
-              done === true ? Option.none() : Option.some(Option.some(page.nextCursor.value)),
-            ]
-          }),
-        ),
-    }),
-  ))
+  Stream.flattenIterable(
+    Stream.unfold(Option.some(options.startCursor ?? Option.none<string>()), (state) =>
+      Option.match(state, {
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
+        onNone: () => Effect.succeed(undefined),
+        onSome: (cursor) =>
+          fetchPage(cursor).pipe(
+            Effect.map(
+              (page): readonly [Chunk.Chunk<Out>, Option.Option<Option.Option<string>>] => {
+                const chunk =
+                  options.emit._tag === 'items'
+                    ? // In 'items' mode `Out` is the page's element type, but the
+                      // tag union prevents TS from narrowing it here.
+                      (Chunk.fromIterable(page.results) as unknown as Chunk.Chunk<Out>)
+                    : Chunk.of(options.emit.map(page))
+                const done = page.hasMore === false || Option.isNone(page.nextCursor) === true
+                return [
+                  chunk,
+                  done === true ? Option.none() : Option.some(Option.some(page.nextCursor.value)),
+                ]
+              },
+            ),
+          ),
+      }),
+    ),
+  )

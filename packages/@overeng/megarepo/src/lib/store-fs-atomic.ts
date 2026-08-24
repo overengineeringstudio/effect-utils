@@ -10,9 +10,9 @@
 
 import { randomBytes } from 'node:crypto'
 
+import { Effect } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Effect } from 'effect'
 
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 

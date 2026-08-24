@@ -1,5 +1,5 @@
-import { Effect, FileSystem, Result, Schema } from 'effect'
 import { NodeServices as NodeContext } from '@effect/platform-node'
+import { Effect, FileSystem, Result, Schema } from 'effect'
 import { expect, it } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -335,7 +335,9 @@ Vitest.describe('schema', () => {
   Vitest.describe('AbsoluteDirPath', () => {
     Vitest.it.effect('decodes valid absolute directory path', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteDirPath)('/home/user/')
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteDirPath)(
+          '/home/user/',
+        )
         expect(result).toBe('/home/user/')
       }),
     )
@@ -353,7 +355,9 @@ Vitest.describe('schema', () => {
   Vitest.describe('RelativeFilePath', () => {
     Vitest.it.effect('decodes valid relative file path', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.RelativeFilePath)('src/mod.ts')
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.RelativeFilePath)(
+          'src/mod.ts',
+        )
         expect(result).toBe('src/mod.ts')
       }),
     )

@@ -25,7 +25,7 @@ const normalizeOutput = (output: string) =>
   stripAnsi(output)
     // v4 stderr embeds stack frames with absolute checkout paths; normalize so
     // baselines stay stable across checkouts (same as genie's contract test).
-    .replaceAll(fileURLToPath(new URL('../../../../..', import.meta.url)), '<repo>')
+    .replaceAll(fileURLToPath(new URL('../../../..', import.meta.url)), '<repo>')
     .replace(/ — running from local source \([^)]+\)/gu, '')
     .replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\]/gmu, '[time]')
 // LIVE-MIGRATION END effect-3-4

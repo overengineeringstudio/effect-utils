@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { NodeServices } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 

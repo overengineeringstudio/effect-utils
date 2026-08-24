@@ -23,10 +23,9 @@ export class CurrentWorkingDirectory extends Context.Service<
 }
 
 /** Workspace root (env required). */
-export class EffectUtilsWorkspace extends Context.Service<
-  EffectUtilsWorkspace,
-  WorkspaceInfo
->()('EffectUtilsWorkspace') {
+export class EffectUtilsWorkspace extends Context.Service<EffectUtilsWorkspace, WorkspaceInfo>()(
+  'EffectUtilsWorkspace',
+) {
   /** Resolve from WORKSPACE_ROOT env. */
   static live = Layer.effect(
     EffectUtilsWorkspace,

@@ -13,14 +13,7 @@ import * as inspector from 'node:inspector'
 
 import type * as Vitest from '@effect/vitest'
 import type { Duration } from 'effect'
-import {
-  type Cause,
-  Effect,
-  identity,
-  Layer,
-  type Schema,
-  type Scope,
-} from 'effect'
+import { type Cause, Effect, identity, Layer, type Schema, type Scope } from 'effect'
 import type * as FC from 'effect/testing/FastCheck'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'

@@ -283,10 +283,9 @@ export class OutputModeTag extends Context.Service<OutputModeTag, OutputMode>()(
  * and `process.stderr` qualify). Default and stderr layers are in the Node
  * entry point (`OutputMode.node.ts`) to keep this module browser-safe.
  */
-export class ViewOutputStreamTag extends Context.Service<
-  ViewOutputStreamTag,
-  NodeJS.WriteStream
->()('@overeng/tui-react/ViewOutputStream') {}
+export class ViewOutputStreamTag extends Context.Service<ViewOutputStreamTag, NodeJS.WriteStream>()(
+  '@overeng/tui-react/ViewOutputStream',
+) {}
 
 // =============================================================================
 // Environment Helpers (browser-safe — use typeof process guards)

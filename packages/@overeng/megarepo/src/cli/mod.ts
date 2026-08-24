@@ -6,7 +6,6 @@
 
 import * as Cli from 'effect/unstable/cli'
 
-
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 
 import { MR_VERSION } from '../lib/version.ts'
@@ -73,4 +72,7 @@ export const mrCommand = Cli.Command.make('mr').pipe(
 )
 
 /** Exported CLI for external use */
-export const cli = (args: ReadonlyArray<string>) => Cli.Command.runWith(mrCommand, { version: MR_VERSION })(rewriteHelpSubcommand(["mr", ...args]).slice(1))
+export const cli = (args: ReadonlyArray<string>) =>
+  Cli.Command.runWith(mrCommand, { version: MR_VERSION })(
+    rewriteHelpSubcommand(['mr', ...args]).slice(1),
+  )

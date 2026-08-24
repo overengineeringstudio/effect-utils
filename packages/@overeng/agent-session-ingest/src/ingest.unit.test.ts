@@ -1,7 +1,7 @@
 import * as nodePath from 'node:path'
 
-import { Effect, FileSystem } from 'effect'
 import { NodeServices as NodeContext } from '@effect/platform-node'
+import { Effect, FileSystem } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'

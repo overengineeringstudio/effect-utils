@@ -48,20 +48,22 @@ export const UrlWrite = Schema.Struct({
 export type UrlWrite = typeof UrlWrite.Type
 
 /** Transforms URL string (or null) into a URL write payload */
-export const UrlWriteFromString = Schema.NullOr(Schema.String).pipe(
-  Schema.decodeTo(
-    UrlWrite,
-    SchemaTransformation.transform({
-      decode: (url) => ({ url }),
-      encode: (write) => write.url,
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.UrlWriteFromString',
-  title: 'URL (Write) From String',
-  description: 'Transform a URL string (or null) into a URL write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+export const UrlWriteFromString = Schema.NullOr(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      UrlWrite,
+      SchemaTransformation.transform({
+        decode: (url) => ({ url }),
+        encode: (write) => write.url,
+      }),
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.UrlWriteFromString',
+    title: 'URL (Write) From String',
+    description: 'Transform a URL string (or null) into a URL write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for URL property. */
 export const Url = {
@@ -96,7 +98,7 @@ export const Url = {
     schema: UrlProperty.pipe(
       Schema.decodeTo(Schema.toType(Schema.Option(Schema.String)), {
         decode: SchemaGetter.transform((prop) =>
-          prop.url === null ? Option.none() : Option.some(prop.url)
+          prop.url === null ? Option.none() : Option.some(prop.url),
         ),
         encode: SchemaGetter.forbidden(
           () => 'Url.asOption encode is not supported. Use UrlWrite / UrlWriteFromString.',
@@ -158,20 +160,22 @@ export const EmailWrite = Schema.Struct({
 export type EmailWrite = typeof EmailWrite.Type
 
 /** Transforms email string (or null) into an email write payload */
-export const EmailWriteFromString = Schema.NullOr(Schema.String).pipe(
-  Schema.decodeTo(
-    EmailWrite,
-    SchemaTransformation.transform({
-      decode: (email) => ({ email }),
-      encode: (write) => write.email,
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.EmailWriteFromString',
-  title: 'Email (Write) From String',
-  description: 'Transform an email string (or null) into an email write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+export const EmailWriteFromString = Schema.NullOr(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      EmailWrite,
+      SchemaTransformation.transform({
+        decode: (email) => ({ email }),
+        encode: (write) => write.email,
+      }),
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.EmailWriteFromString',
+    title: 'Email (Write) From String',
+    description: 'Transform an email string (or null) into an email write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for Email property. */
 export const Email = {
@@ -206,7 +210,7 @@ export const Email = {
     schema: EmailProperty.pipe(
       Schema.decodeTo(Schema.toType(Schema.Option(Schema.String)), {
         decode: SchemaGetter.transform((prop) =>
-          prop.email === null ? Option.none() : Option.some(prop.email)
+          prop.email === null ? Option.none() : Option.some(prop.email),
         ),
         encode: SchemaGetter.forbidden(
           () => 'Email.asOption encode is not supported. Use EmailWrite / EmailWriteFromString.',
@@ -268,20 +272,22 @@ export const PhoneNumberWrite = Schema.Struct({
 export type PhoneNumberWrite = typeof PhoneNumberWrite.Type
 
 /** Transforms phone number string (or null) into a phone number write payload */
-export const PhoneNumberWriteFromString = Schema.NullOr(Schema.String).pipe(
-  Schema.decodeTo(
-    PhoneNumberWrite,
-    SchemaTransformation.transform({
-      decode: (phone_number) => ({ phone_number }),
-      encode: (write) => write.phone_number,
-    }),
-  ),
-).annotate({
-  identifier: 'Notion.PhoneNumberWriteFromString',
-  title: 'Phone Number (Write) From String',
-  description: 'Transform a phone number string (or null) into a phone number write payload.',
-  [docsPath]: 'page#page-property-value',
-})
+export const PhoneNumberWriteFromString = Schema.NullOr(Schema.String)
+  .pipe(
+    Schema.decodeTo(
+      PhoneNumberWrite,
+      SchemaTransformation.transform({
+        decode: (phone_number) => ({ phone_number }),
+        encode: (write) => write.phone_number,
+      }),
+    ),
+  )
+  .annotate({
+    identifier: 'Notion.PhoneNumberWriteFromString',
+    title: 'Phone Number (Write) From String',
+    description: 'Transform a phone number string (or null) into a phone number write payload.',
+    [docsPath]: 'page#page-property-value',
+  })
 
 /** Transforms for PhoneNumber property. */
 export const PhoneNumber = {
@@ -319,7 +325,7 @@ export const PhoneNumber = {
     schema: PhoneNumberProperty.pipe(
       Schema.decodeTo(Schema.toType(Schema.Option(Schema.String)), {
         decode: SchemaGetter.transform((prop) =>
-          prop.phone_number === null ? Option.none() : Option.some(prop.phone_number)
+          prop.phone_number === null ? Option.none() : Option.some(prop.phone_number),
         ),
         encode: SchemaGetter.forbidden(
           () =>

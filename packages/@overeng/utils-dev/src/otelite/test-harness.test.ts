@@ -162,10 +162,7 @@ describe('OteliteTestHarness', () => {
 
       const workload = Effect.gen(function* () {
         yield* Metric.update(counter, 1)
-        yield* Metric.update(
-          Metric.withAttributes(gauge, { queue: 'primary' }),
-          7,
-        )
+        yield* Metric.update(Metric.withAttributes(gauge, { queue: 'primary' }), 7)
         yield* Effect.log('all-signals demo log line')
       }).pipe(Effect.withSpan(`${service}.child`, { attributes: { 'span.label': 'child' } }))
 

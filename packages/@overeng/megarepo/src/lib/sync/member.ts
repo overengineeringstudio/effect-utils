@@ -6,8 +6,8 @@
 
 import path from 'node:path'
 
-import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -707,17 +707,13 @@ export const syncMember = <R = never>({
             resolvedCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/tags/${targetRef}`,
-            }).pipe(
-              Effect.catch(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
-            )
+            }).pipe(Effect.catch(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
           } else if (refInfo.type === 'branch') {
             resolvedRefType = 'branch'
             resolvedCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/remotes/origin/${targetRef}`,
-            }).pipe(
-              Effect.catch(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
-            )
+            }).pipe(Effect.catch(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
           } else {
             const heuristicType = classifyRef(targetRef)
             resolvedRefType = heuristicType

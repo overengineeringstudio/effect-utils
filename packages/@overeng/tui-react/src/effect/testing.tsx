@@ -19,9 +19,9 @@
  * ```
  */
 
-import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import type { Scope } from 'effect'
 import { Console, Effect, Exit, Layer, PubSub, Schema, Stream } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 
 import {
   type OutputMode,

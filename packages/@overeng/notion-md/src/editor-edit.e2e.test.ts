@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { NodeServices } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { Effect, FileSystem, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -187,7 +187,8 @@ class ReadOnlyFakeGateway {
         return pull(this.state)
       }),
     updateMarkdown: () => Effect.die(new Error('read-only must never call updateMarkdown')),
-    updatePageProperties: () => Effect.die(new Error('read-only must never call updatePageProperties')),
+    updatePageProperties: () =>
+      Effect.die(new Error('read-only must never call updatePageProperties')),
     retrieveDataSource: () => Effect.die(new Error('unexpected retrieveDataSource')),
     updatePageMetadata: () => Effect.die(new Error('read-only must never call updatePageMetadata')),
     listChildPages: () => Effect.succeed([]),

@@ -16,9 +16,9 @@
  *   bun examples/03-cli/deploy/main.ts --help
  */
 
-import { Command, Flag as Options } from 'effect/unstable/cli'
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 
 import { outputOption, outputModeLayer } from '../../../src/node/mod.ts'
 import { DeployError, runDeploy } from './deploy.tsx'
