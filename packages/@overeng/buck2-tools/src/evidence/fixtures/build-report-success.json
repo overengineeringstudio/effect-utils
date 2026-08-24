@@ -1,16 +1,19 @@
 {
-  "version": "3",
-  "outcome": "SUCCESS",
-  "targets": {
-    "//apps/demo:bin": {
-      "outcome": "SUCCESS",
-      "outputs": [
-        {
-          "label": "bin",
-          "path": "buck-out/v2/bin/apps/demo/a1/bin",
-          "digest_sha256": "5d41402abc4b2a76b9719d911017c59200000000000000000000000000000000"
-        }
-      ]
+  "trace_id": "04d053cf-5c94-4c26-87bb-be6ed815fb33",
+  "success": true,
+  "results": {
+    "root//:succ": {
+      "success": "SUCCESS",
+      "outputs": {
+        "DEFAULT": [
+          "buck-out/v2/art/root/__succ__/hello.txt"
+        ]
+      },
+      "errors": []
     }
-  }
+  },
+  "failures": {},
+  "project_root": "/home/dev/effect-utils",
+  "truncated": false,
+  "strings": {}
 }

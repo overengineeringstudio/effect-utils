@@ -19,9 +19,6 @@ const stableCauseFor = (evidence: DecodedEvidence): NoVerdictCause | null => {
 const richCauseFor = (evidence: DecodedEvidence): NoVerdictCause | null => {
   if (evidence.eventLog == null) return 'missing-event-log'
   if (evidence.eventLog._tag === 'MalformedEventLog') return 'malformed-event-log'
-  if (evidence.eventLog._tag === 'UnsupportedEventLogVersion') {
-    return 'unsupported-event-log-version'
-  }
   return null
 }
 
@@ -50,8 +47,7 @@ export const verdictFor = ({
     return { _tag: 'NO_VERDICT', cause: richCause }
   }
   const report = (evidence.buildReport as { _tag: 'Decoded'; report: StableBuildReport }).report
-  const held =
-    predicate === undefined ? report.outcome === 'SUCCESS' : predicate(report) === true
+  const held = predicate === undefined ? report.success === true : predicate(report) === true
   return held === true
     ? { _tag: 'PASS' }
     : { _tag: 'FAIL', reason: 'stable build-report predicate did not hold' }
