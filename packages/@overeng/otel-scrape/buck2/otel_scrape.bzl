@@ -19,6 +19,9 @@ def otel_scrape_targets(binary_name, binary_path, dev_deps, edition, library_nam
         "edition": edition,
         "exec_compatible_with": _EXECUTION,
         "target_compatible_with": _TARGET,
+        # Prelude leaves CRT linkage to the target default; the admission
+        # contract requires a fully static musl binary, so pin it explicitly.
+        "rustc_flags": ["-C", "target-feature=+crt-static"],
     }
     compile_env = {
         "CARGO_PKG_NAME": package_name,
