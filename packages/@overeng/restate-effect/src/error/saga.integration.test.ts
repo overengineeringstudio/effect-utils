@@ -52,10 +52,12 @@ const ChargeLive = RestateService.implement<typeof Charge>({
 
         if (Exit.isFailure(payExit) === true) {
           /* The failure rode as a `Cause.Die` carrying the wrapper `RestateError`
-           * (a durable-op infra defect, not a domain `E`). The saga seam: read it. */
+           * (a durable-op infra defect, not a domain `E`). The saga seam: read it.
+           * (v4: `findDie` yields a `Result<Die, Cause>` whose success is the `Die`
+           * reason — the raw defect rides on `.defect`.) */
           const die = Cause.findDie(payExit.cause)
           const isRestateDefect =
-            Result.isSuccess(die) === true && die.success instanceof RestateError
+            Result.isSuccess(die) === true && die.success.defect instanceof RestateError
 
           /* Compensate with a durable `refund` step, then report. */
           yield* Restate.run({ name: 'refund', effect: Effect.succeed('refunded') }).pipe(

@@ -196,8 +196,16 @@ const sharedLayer = (config: OtelLayerConfig): Layer.Layer<never, never, never> 
             ? { attributes: config.resource.attributes }
             : {}),
         })
-        const tracerLayer = EffectTracer.layerTracer.pipe(
-          Layer.provide(Layer.succeed(EffectTracer.OtelTracerProvider, provider)),
+        /* v4 split the old `Tracer.layer` in two: `layerTracer` only CREATES the
+         * `OtelTracer` service from the provider; `layerWithoutOtelTracer` is what
+         * INSTALLS it as Effect's `Tracer.Tracer`. Without the second half, handler
+         * fibers keep Effect's default tracer and no Effect span reaches OTel. */
+        const tracerLayer = EffectTracer.layerWithoutOtelTracer.pipe(
+          Layer.provide(
+            EffectTracer.layerTracer.pipe(
+              Layer.provide(Layer.succeed(EffectTracer.OtelTracerProvider, provider)),
+            ),
+          ),
         )
         const metricReader = resolveMetricReader(config)
         const metricsLayer =
