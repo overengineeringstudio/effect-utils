@@ -12,12 +12,12 @@ Decision records Q1 (`0z3yqi`), Q2/Q3 (`j4ueu1`/`78nvqy`, duplicate record), Q4 
 
 ## Options
 
-| Option | Tradeoff | Outcome |
-| --- | --- | --- |
-| Merge foundation immediately, replay after | Fastest first merge, but products stay unproven against the contracts they must validate | Rejected (Q1) |
-| Parallel replay converging on a vertical slice; Darwin lane in phase; OTelite-local evidence | Slower first merge, but every merge-blocking claim is proven end-to-end; lanes isolate risk | Accepted |
-| Defer Mach-O behind visible-unsupported marker | Smaller surface now, but primary fleet stays outside the admitted set | Rejected (Q2) |
-| Full D milestone including managed Tempo/Mimir proof | Strongest claim, but pulls parked dotfiles dependencies into the critical path | Rejected (Q4) |
+| Option                                                                                       | Tradeoff                                                                                    | Outcome       |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------- |
+| Merge foundation immediately, replay after                                                   | Fastest first merge, but products stay unproven against the contracts they must validate    | Rejected (Q1) |
+| Parallel replay converging on a vertical slice; Darwin lane in phase; OTelite-local evidence | Slower first merge, but every merge-blocking claim is proven end-to-end; lanes isolate risk | Accepted      |
+| Defer Mach-O behind visible-unsupported marker                                               | Smaller surface now, but primary fleet stays outside the admitted set                       | Rejected (Q2) |
+| Full D milestone including managed Tempo/Mimir proof                                         | Strongest claim, but pulls parked dotfiles dependencies into the critical path              | Rejected (Q4) |
 
 ## Decision
 
