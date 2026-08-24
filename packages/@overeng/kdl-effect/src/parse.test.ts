@@ -49,12 +49,12 @@ describe('parseKdl', () => {
 
       expect(() => Schema.decodeUnknownSync(parseKdl(MySchema))('{')).toThrow()
 
-      /* Verify it's a ParseError, not an InvalidKdlError */
+      /* Verify it's a SchemaError (v4 renamed ParseError), not an InvalidKdlError */
       try {
         Schema.decodeUnknownSync(parseKdl(MySchema))('{')
       } catch (e) {
         expect(e).toBeInstanceOf(Error)
-        expect((e as Error).name).toBe('ParseError')
+        expect((e as Error).name).toBe('SchemaError')
       }
     })
 

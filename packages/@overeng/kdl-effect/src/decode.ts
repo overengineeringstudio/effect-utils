@@ -131,9 +131,14 @@ export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown =>
     }
 
     case 'Declaration': {
-      // Declarations like Schema.Array use typeParameters
+      // Under Effect v4, class schemas are Declarations whose concrete type
+      // lives on `encoding[0].to` (e.g. an Objects node). Resolve it first —
+      // the legacy typeParameters array heuristic must not touch them.
+      if (ast.encoding !== undefined) {
+        return normalizeForSchema(obj, ast.encoding[0].to)
+      }
+      // Non-class declarations like Schema.Array use typeParameters
       if (ast.typeParameters.length > 0) {
-        // Check if this is array-like by seeing if the input should be an array
         if (!Array.isArray(obj)) {
           return [obj]
         }
