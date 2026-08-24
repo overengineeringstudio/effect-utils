@@ -107,10 +107,9 @@ def _rust_local_store_toolchain_impl(ctx):
     _require_nix_tool_path(ctx.attrs.tool_path)
     _require_identity(ctx.attrs.config_integrity_identity, "config_integrity_identity")
     _require_identity(ctx.attrs.compile_identity, "compile_identity")
-    if ctx.attrs.config_integrity_material != _config_integrity_material(ctx):
-        fail("Rust config-integrity material does not match the configured fields")
-    if ctx.attrs.compile_identity_material != _compile_identity_material(ctx):
-        fail("Rust compile-identity material does not match the configured fields")
+    # Declared contract semantics are validated before aggregate integrity so a
+    # tampered semantic field reports its specific rejection instead of being
+    # masked by the material-equality check that also covers it.
     if ctx.attrs.contract != _CONTRACT:
         fail("unsupported Rust toolchain contract: {}".format(ctx.attrs.contract))
     if ctx.attrs.execution_platform != _EXECUTION_PLATFORM:
@@ -119,6 +118,10 @@ def _rust_local_store_toolchain_impl(ctx):
         fail("Rust toolchain target platform mismatch: {}".format(ctx.attrs.target_platform))
     if ctx.attrs.target_triple != _TARGET_TRIPLE:
         fail("the prototype admits only {}".format(_TARGET_TRIPLE))
+    if ctx.attrs.config_integrity_material != _config_integrity_material(ctx):
+        fail("Rust config-integrity material does not match the configured fields")
+    if ctx.attrs.compile_identity_material != _compile_identity_material(ctx):
+        fail("Rust compile-identity material does not match the configured fields")
     return [
         DefaultInfo(),
         RustLocalStoreToolchainInfo(
