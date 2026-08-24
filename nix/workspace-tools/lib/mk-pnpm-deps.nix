@@ -196,12 +196,13 @@ let
         return null;
       }
 
-      // pnpm appends a parenthesized peer-context suffix to the directory
-      // locator. The declared source path itself is the prefix before it.
+      // pnpm appends one parenthesized group per resolved peer to the directory
+      // locator. The declared source path itself is the prefix before the
+      // complete adjacent suffix.
       const sourcePathWithPeerContext = locator.slice(
         locatorIndex + sourceInputLocatorPrefix.length
       );
-      const sourcePath = sourcePathWithPeerContext.replace(/\([^/()]*\)$/, "");
+      const sourcePath = sourcePathWithPeerContext.replace(/(?:\([^/()]*\))+$/, "");
       const sourceInputStageRoot = path.resolve(
         lockfileDir,
         ".devenv/pnpm-source-inputs/current"

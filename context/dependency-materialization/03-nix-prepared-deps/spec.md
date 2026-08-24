@@ -162,8 +162,9 @@ The full logical source snapshot is present before prepared dependency data is
 overlaid. Relinked injected and ordinary local-file package targets therefore
 resolve through the same logical source directories after overlay. The focused
 `prepared-workspace-source-input-file-links` regression covers an ordinary
-locator with a peer-context suffix, verifies the exact package-map target is
-relinked, removes the transient alias, and still resolves package source bytes.
+locator with several adjacent peer-context groups, verifies the exact
+package-map target is relinked, removes the transient alias, and still resolves
+package source bytes.
 
 Downstream restore must not use pnpm to reconstruct dependency state.
 

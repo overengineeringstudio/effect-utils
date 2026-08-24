@@ -65,7 +65,8 @@ All notable changes to this project will be documented in this file.
   `file:` packages through pnpm's exact package-map locator before removing
   transient Source Input aliases. Restored CLI workspaces now resolve the
   logical package manifest and source instead of an empty virtual-store target;
-  the prepared artifact layout advances to `v19`.
+  repeated peer-context groups are normalized as one locator suffix, and the
+  prepared artifact layout advances to `v19`.
 
 - **devenv observability verification**: enable native Devenv task activities
   during trace capture while preserving task stderr and a diagnostic copy.
