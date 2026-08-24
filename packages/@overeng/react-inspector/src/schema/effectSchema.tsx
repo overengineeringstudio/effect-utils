@@ -237,6 +237,22 @@ export const getConstraintsFromJSONSchema = (
     const constraint = asRecord(arbitrary?.constraint)
     if (constraint !== undefined) Object.assign(constraints, constraint)
 
+    // rc.111 emits check data on `annotations.arbitrary.constraint` (handled
+    // above) with these shapes: `patterns: string[]`, `ordered:
+    // { minimum, maximum }`. Normalize them into the flat keys the render
+    // rules expect; `meta._tag` cases cover older/alternate shapes.
+    const patterns = constraints.patterns
+    if (Array.isArray(patterns) === true && patterns.length > 0) {
+      constraints.pattern = patterns[0]
+    }
+    const ordered = asRecord(constraints.ordered)
+    if (ordered !== undefined) {
+      constraints[ordered.exclusiveMinimum === true ? 'exclusiveMinimum' : 'minimum'] =
+        ordered.minimum
+      constraints[ordered.exclusiveMaximum === true ? 'exclusiveMaximum' : 'maximum'] =
+        ordered.maximum
+    }
+
     const meta = asRecord(check.annotations?.meta)
     switch (meta?._tag) {
       case 'isMinLength':
@@ -257,6 +273,10 @@ export const getConstraintsFromJSONSchema = (
         break
     }
   }
+  delete constraints.patterns
+  delete constraints.ordered
+  delete constraints.noInfinity
+  delete constraints.noNaN
   return constraintRules.flatMap(([key, render]) => {
     if (!(key in constraints)) return []
     const rendered = render(constraints[key])

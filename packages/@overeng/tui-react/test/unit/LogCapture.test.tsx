@@ -255,6 +255,7 @@ describe('log capture integration', () => {
         Effect.sync(() => {
           // JSON mode should still output to console.log (our captured output)
           expect(capturedOutput).toHaveLength(1)
+          // @effect-diagnostics-next-line schemaSyncInEffect:off -- asserting the captured NDJSON wire payload inside a scoped assertion block
           const state = Schema.decodeSync(Schema.fromJsonString(CountState))(capturedOutput[0]!)
           expect(state).toEqual({ count: 1 })
         }),

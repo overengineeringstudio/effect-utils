@@ -579,8 +579,8 @@ export const OtelAttr = {
   }: {
     key: string
     metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
-    // @effect-diagnostics-next-line schemaNumber:off -- generic number attribute helper; non-finite rejection is handled by the OTEL encode layer, not the schema
   }): Schema.Codec<number, number, never, never> =>
+    // @effect-diagnostics-next-line schemaNumber:off -- generic number attribute helper; non-finite rejection is handled by the OTEL encode layer, not the schema
     Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
   literal: <const Literals extends readonly [AST.LiteralValue, ...Array<AST.LiteralValue>]>(
     key: string,

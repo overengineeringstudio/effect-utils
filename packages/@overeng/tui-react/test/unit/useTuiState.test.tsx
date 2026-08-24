@@ -181,7 +181,6 @@ describe('createTuiApp', () => {
 
             // The point of this assertion is that each line is raw parseable JSON
             // (wire-format check), not that it matches a schema.
-            // @effect-diagnostics-next-line preferSchemaOverJson:off -- deliberately asserting raw JSON validity of the NDJSON wire format
             for (const line of capturedOutput) {
               expect(() => JSON.parse(line)).not.toThrow()
             }

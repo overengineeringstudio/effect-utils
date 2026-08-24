@@ -16,6 +16,7 @@ const makeTestLogger = Effect.fnUntraced(function* () {
 
   const logger = Logger.make<unknown, void>(({ message }) => {
     const msg = Array.isArray(message) === true ? message.join(' ') : String(message)
+    // @effect-diagnostics-next-line runEffectInsideEffect:off -- Logger.make callback is not logically inside an Effect; synchronous capture is required here
     Effect.runSync(Ref.update(logs, Chunk.append(msg)))
   })
 

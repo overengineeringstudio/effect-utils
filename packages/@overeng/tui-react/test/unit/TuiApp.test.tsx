@@ -535,7 +535,6 @@ describe('Issue #129: typed errors do not mask final state', () => {
         Effect.sync(() => {
           // Every state change before the error is on stdout as raw JSON.
           // No trailing Failure envelope — exit code + stderr carry error info.
-          // @effect-diagnostics-next-line preferSchemaOverJson:off -- lines are asserted as untyped wire JSON (including absence of a Failure envelope), so decoding into CounterState would break `s._tag` checks
           const states = capturedOutput.map((line) => JSON.parse(line))
           expect(states.some((s) => s.count === 42)).toBe(true)
           expect(states.every((s) => s._tag !== 'Failure')).toBe(true)
