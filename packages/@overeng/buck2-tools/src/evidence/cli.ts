@@ -16,9 +16,9 @@
  */
 import { readFileSync } from 'node:fs'
 
-import { Effect, Exit, Ref } from 'effect'
+import { Data, Effect, Exit, Ref, Schema } from 'effect'
 
-import { captureTest } from '@overeng/utils-dev/otelite'
+import { captureTest, SpanRow } from '@overeng/utils-dev/otelite'
 
 import { decodeEventLogText } from './decoder.ts'
 import {
@@ -33,6 +33,14 @@ import {
 import { SpanAttrKeys, SpanNames } from './telemetry.ts'
 
 const SERVICE = 'effect-utils-buck2-e2e'
+
+/** Tagged driver failure — keeps the Effect error channel non-global. */
+class DriverError extends Data.TaggedError('DriverError')<{
+  readonly message: string
+}> {}
+
+/** Span-row serialization for leak assertions — never raw JSON.stringify. */
+const SpanRowsJson = Schema.parseJson(Schema.Array(SpanRow))
 
 interface DriverArgs {
   readonly buildReportPath: string
@@ -63,6 +71,16 @@ const parseArgs = (argv: ReadonlyArray<string>): DriverArgs => {
   return parsed as DriverArgs
 }
 
+/** Compact diagnostic rendering of a Verdict — no raw JSON serialization. */
+const renderVerdict = (
+  verdict: Parameters<typeof verdictFor>[0] extends never ? never : ReturnType<typeof verdictFor>,
+): string =>
+  verdict._tag === 'NO_VERDICT'
+    ? `NO_VERDICT(${verdict.cause})`
+    : verdict._tag === 'FAIL'
+      ? `FAIL(${verdict.reason})`
+      : 'PASS'
+
 /** Corrupt a COPY of the real event log text: truncate mid-stream + splice an unterminated JSON fragment. */
 const corruptEventLog = (bytes: Uint8Array): string => {
   // Inflate the INTACT capture first (handles gzip transparently); corrupting
@@ -76,12 +94,12 @@ const program = Effect.gen(function* () {
   const args = parseArgs(process.argv.slice(2))
   const buildReportText = yield* Effect.try({
     try: () => readFileSync(args.buildReportPath, 'utf8'),
-    catch: (cause) => new Error(`cannot read build report: ${String(cause)}`),
+    catch: (cause) => new DriverError({ message: `cannot read build report: ${String(cause)}` }),
   })
   const eventLogBytes = new Uint8Array(
     yield* Effect.try({
       try: () => readFileSync(args.eventLogPath),
-      catch: (cause) => new Error(`cannot read event log: ${String(cause)}`),
+      catch: (cause) => new DriverError({ message: `cannot read event log: ${String(cause)}` }),
     }),
   )
 
@@ -102,7 +120,9 @@ const program = Effect.gen(function* () {
   const evidence = decodeEvidence({ buildReportText, eventLogInput: eventLogBytes })
   const verdict = verdictFor({ evidence })
   if (verdict._tag !== 'PASS') {
-    throw new Error(`expected PASS from real report.success=true, got ${JSON.stringify(verdict)}`)
+    return yield* new DriverError({
+      message: `expected PASS from real report.success=true, got ${renderVerdict(verdict)}`,
+    })
   }
 
   const recordedResult = yield* Ref.make({ exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
@@ -118,27 +138,34 @@ const program = Effect.gen(function* () {
 
   const root = trace.expectOne({ name: `${SERVICE}.root` })
   const rootSpanId = root.span_id
-  if (rootSpanId === null) throw new Error('harness root span missing span_id')
+  if (rootSpanId === null) {
+    return yield* new DriverError({ message: 'harness root span missing span_id' })
+  }
   const invocation = expectExactlyOneInvocation({ trace, options: { parentSpanId: rootSpanId } })
   if (invocation.status_code !== 1) {
-    throw new Error(`invocation span status ${invocation.status_code}, expected OK(1)`)
+    return yield* new DriverError({
+      message: `invocation span status ${invocation.status_code}, expected OK(1)`,
+    })
   }
   if (invocation.attrs[SpanAttrKeys.verdict] !== 'PASS') {
-    throw new Error(
-      `invocation span verdict ${String(invocation.attrs[SpanAttrKeys.verdict])}, expected PASS`,
-    )
+    return yield* new DriverError({
+      message: `invocation span verdict ${String(invocation.attrs[SpanAttrKeys.verdict])}, expected PASS`,
+    })
   }
 
-  // Sanitized export (R07): no raw host paths survive on any span.
-  for (const raw of [JSON.stringify(invocation)]) {
-    if (raw.includes(args.workspaceRoot) === true) {
-      throw new Error('sanitization leak: workspace root survived on the invocation span')
-    }
+  // Sanitized export (R07): no raw host paths survive on any span row.
+  const invocationJson = yield* Schema.encode(SpanRowsJson)([invocation])
+  if (invocationJson.includes(args.workspaceRoot) === true) {
+    return yield* new DriverError({
+      message: 'sanitization leak: workspace root survived on the invocation span',
+    })
   }
 
   // Rich tier from the REAL event log produced action spans.
   if (trace.expectSome({ name: SpanNames.action }).length < 1) {
-    throw new Error('real event log admitted but produced no action spans')
+    return yield* new DriverError({
+      message: 'real event log admitted but produced no action spans',
+    })
   }
 
   // Independent import span LINKS to the invocation over W3C ids.
@@ -146,12 +173,18 @@ const program = Effect.gen(function* () {
   const links = readSpanLinksFromCapture(
     readFileSync(`${otel.capture.outDir}/traces.ndjson`, 'utf8'),
   ).filter((link) => link.spanName === SpanNames.import)
-  if (links.length !== 1) throw new Error(`expected exactly one import link, got ${links.length}`)
+  if (links.length !== 1) {
+    return yield* new DriverError({
+      message: `expected exactly one import link, got ${links.length}`,
+    })
+  }
   if (
     links[0]?.linkTraceId !== importSpan.trace_id ||
     links[0]?.linkSpanId !== invocation.span_id
   ) {
-    throw new Error('import link does not reference the invocation span ids')
+    return yield* new DriverError({
+      message: 'import link does not reference the invocation span ids',
+    })
   }
 
   guardMetricCardinality(metrics.metrics)
@@ -167,9 +200,9 @@ const program = Effect.gen(function* () {
   })
   const negativeVerdict = verdictFor({ evidence: malformedEvidence })
   if (negativeVerdict._tag !== 'NO_VERDICT' || negativeVerdict.cause !== 'malformed-event-log') {
-    throw new Error(
-      `corrupted event log must yield NO_VERDICT(malformed-event-log), got ${JSON.stringify(negativeVerdict)}`,
-    )
+    return yield* new DriverError({
+      message: `corrupted event log must yield NO_VERDICT(malformed-event-log), got ${renderVerdict(negativeVerdict)}`,
+    })
   }
 
   const negative = yield* captureTest({ serviceName: SERVICE, exportInterval: 50 })
@@ -179,13 +212,15 @@ const program = Effect.gen(function* () {
 
   const negInvocation = negSignals.trace.expectOne({ name: SpanNames.invocation })
   if (negInvocation.attrs[SpanAttrKeys.verdict] !== 'NO_VERDICT') {
-    throw new Error(
-      `negative invocation span verdict ${String(negInvocation.attrs[SpanAttrKeys.verdict])}, expected NO_VERDICT`,
-    )
+    return yield* new DriverError({
+      message: `negative invocation span verdict ${String(negInvocation.attrs[SpanAttrKeys.verdict])}, expected NO_VERDICT`,
+    })
   }
   const decodeSpan = negSignals.trace.expectOne({ name: SpanNames.evidenceDecode })
   if (String(decodeSpan.attrs[SpanAttrKeys.verdict]).includes('malformed-event-log') !== true) {
-    throw new Error('decode span did not surface malformed-event-log cause')
+    return yield* new DriverError({
+      message: 'decode span did not surface malformed-event-log cause',
+    })
   }
   expectNoRichSpans(negSignals.trace)
 
@@ -198,7 +233,9 @@ const program = Effect.gen(function* () {
   // R08: telemetry never rewrote the recorded Buck result.
   const after = yield* Ref.get(recordedResult)
   if (after.exitCode !== 0 || after.stdout !== 'BUCK_STDOUT_MARKER') {
-    throw new Error('recorded Buck result was mutated by the evidence pipeline')
+    return yield* new DriverError({
+      message: 'recorded Buck result was mutated by the evidence pipeline',
+    })
   }
 })
 
