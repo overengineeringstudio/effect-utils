@@ -35,11 +35,6 @@ packages:
   '@opentui/core-linux-x64@0.4.1':
     cpu: [x64]
     os: [linux]
-  '@parcel/watcher-linux-x64-glibc@2.5.1':
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-  '@parcel/watcher@2.5.1': {}
   '@myobie/pty@0.1.0': {}
   esbuild@0.27.7: {}
   fsevents@2.3.3:
@@ -59,7 +54,6 @@ packages:
   '@rollup/rollup-linux-x64-gnu@4.60.2':
     cpu: [x64]
     os: [linux]
-  '@parcel/watcher@2.5.1': {}
   '@myobie/pty@0.1.0': {}
   esbuild@0.27.7: {}
   fsevents@2.3.3:
@@ -87,7 +81,6 @@ packages:
   '@opentui/core-linux-x64@0.4.1':
     cpu: [x64]
     os: [linux]
-  '@parcel/watcher@2.5.1': {}
   '@myobie/pty@0.1.0': {}
   fsevents@2.3.3:
     os: [darwin]

@@ -44,7 +44,6 @@ export type NativeDependencyPolicyEntry =
 export const nativeDependencyPolicy = {
   // Lifecycle-built native addons denied a pnpm build. Order mirrors the
   // historical `allowBuilds` literal so the derived denylist stays byte-stable.
-  '@parcel/watcher': { _tag: 'denied-lifecycle-build' },
   '@myobie/pty': { _tag: 'denied-lifecycle-build' },
   esbuild: { _tag: 'denied-lifecycle-build' },
   fsevents: { _tag: 'denied-lifecycle-build' },
