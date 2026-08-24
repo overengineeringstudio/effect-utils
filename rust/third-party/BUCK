@@ -2589,6 +2589,11 @@ cargo.rust_library(
     crate = "serde_derive",
     crate_root = "serde_derive-1.0.229.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "229",
+    },
     features = ["default"],
     proc_macro = True,
     visibility = [],
