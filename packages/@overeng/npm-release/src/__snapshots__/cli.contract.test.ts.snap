@@ -4,10 +4,29 @@ exports[`npm-release CLI contract baselines (status/signal invariant, prose owne
 {
   "signal": null,
   "status": 1,
-  "stderr": "'nope' is not a integer
-
+  "stderr": "
+ERROR
+  Invalid value for flag --attempts: "nope". Expected a string representing a finite number
 ",
-  "stdout": "[time] ERROR (#17): [object Object]
+  "stdout": "DESCRIPTION
+  Verify that the registry serves the release described by a plan: version visibility, tarball digest, and dist-tag target.
+
+USAGE
+  npm-release verify [flags]
+
+FLAGS
+  --plan file                Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }
+  --registry string          Registry to query
+  --attempts integer         How many times to re-check a package that has not converged
+  --delay-seconds integer    Seconds to wait between convergence checks
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+[time] ERROR (#2): ~effect/cli/CliError/ShowHelp: Help requested
 ",
 }
 `;
@@ -16,10 +35,29 @@ exports[`npm-release CLI contract baselines (status/signal invariant, prose owne
 {
   "signal": null,
   "status": 1,
-  "stderr": "Expected to find option: '--plan'
-
+  "stderr": "
+ERROR
+  Missing required flag: --plan
 ",
-  "stdout": "[time] ERROR (#17): [object Object]
+  "stdout": "DESCRIPTION
+  Verify that the registry serves the release described by a plan: version visibility, tarball digest, and dist-tag target.
+
+USAGE
+  npm-release verify [flags]
+
+FLAGS
+  --plan file                Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }
+  --registry string          Registry to query
+  --attempts integer         How many times to re-check a package that has not converged
+  --delay-seconds integer    Seconds to wait between convergence checks
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+[time] ERROR (#2): ~effect/cli/CliError/ShowHelp: Help requested
 ",
 }
 `;
@@ -29,60 +67,18 @@ exports[`npm-release CLI contract baselines (status/signal invariant, prose owne
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "[0;1m[0;37;1mnpm-release[0;1m[0m
+  "stdout": "USAGE
+  npm-release <subcommand> [flags]
 
-npm-release 0.1.0
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
-[0;1mUSAGE[0m
-
-$ npm-release
-
-[0;1mOPTIONS[0m
-
-[0;1m--completions sh | bash | fish | zsh[0m
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
-[0;1m--log-level all | trace | debug | info | warning | error | fatal | none[0m
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-[0;1m(-h, --help)[0m
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
-[0;1m--wizard[0m
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
-[0;1m--version[0m
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
-[0;1mCOMMANDS[0m
-
-  - verify --plan file [--registry text] [--attempts integer] [--delay-seconds integer]  Verify that the registry serves the release described by a plan: version visibility, tarball digest, and dist-tag target.
-
+SUBCOMMANDS
+  verify    Verify that the registry serves the release described by a plan: version visibility, tarball digest, and dist-tag target.
 ",
 }
 `;
@@ -92,90 +88,24 @@ exports[`npm-release CLI contract baselines (status/signal invariant, prose owne
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "[0;1m[0;37;1mnpm-release[0;1m[0m
+  "stdout": "DESCRIPTION
+  Verify that the registry serves the release described by a plan: version visibility, tarball digest, and dist-tag target.
 
-npm-release 0.1.0
+USAGE
+  npm-release verify [flags]
 
-[0;1mUSAGE[0m
+FLAGS
+  --plan file                Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }
+  --registry string          Registry to query
+  --attempts integer         How many times to re-check a package that has not converged
+  --delay-seconds integer    Seconds to wait between convergence checks
 
-$ verify --plan file [--registry text] [--attempts integer] [--delay-seconds integer]
-
-[0;1mDESCRIPTION[0m
-
-Verify that the registry serves the release described by a plan: version visibility, tarball digest, and dist-tag target.
-
-[0;1mOPTIONS[0m
-
-[0;1m--plan file[0m
-
-  A file.
-
-  Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }
-
-[0;1m--registry text[0m
-
-  A user-defined piece of text.
-
-  Registry to query
-
-  This setting is optional.
-
-[0;1m--attempts integer[0m
-
-  An integer.
-
-  How many times to re-check a package that has not converged
-
-  This setting is optional.
-
-[0;1m--delay-seconds integer[0m
-
-  An integer.
-
-  Seconds to wait between convergence checks
-
-  This setting is optional.
-
-[0;1m--completions sh | bash | fish | zsh[0m
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
-[0;1m--log-level all | trace | debug | info | warning | error | fatal | none[0m
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-[0;1m(-h, --help)[0m
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
-[0;1m--wizard[0m
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
-[0;1m--version[0m
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 ",
 }
 `;
@@ -185,8 +115,7 @@ exports[`npm-release CLI contract baselines (status/signal invariant, prose owne
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "0.1.0
-
+  "stdout": "npm-release v0.1.0
 ",
 }
 `;

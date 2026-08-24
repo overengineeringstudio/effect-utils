@@ -199,7 +199,7 @@ describe('OteliteTestHarness', () => {
             // LOGS: the Effect.log line bridged to OTLP, correlated to the child span.
             const log = logs.expectOne({
               service,
-              severityText: 'INFO',
+              severityText: 'Info',
               body: 'all-signals demo log line',
             })
             expect(log.span_id).toBe(child.span_id)

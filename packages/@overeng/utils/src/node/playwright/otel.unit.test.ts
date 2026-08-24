@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema, Tracer } from 'effect'
+import { Effect, Layer, Result, Schema, Tracer } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -49,7 +49,7 @@ Vitest.describe('playwright/otel', () => {
         const result = yield* Schema.decodeUnknownEffect(ParentSpanContextSchema)(invalidContext).pipe(
           Effect.result,
         )
-        expect(result._tag).toBe('Left')
+        expect(Result.isFailure(result)).toBe(true)
       }),
     )
 
@@ -63,7 +63,7 @@ Vitest.describe('playwright/otel', () => {
         const result = yield* Schema.decodeUnknownEffect(ParentSpanContextSchema)(invalidContext).pipe(
           Effect.result,
         )
-        expect(result._tag).toBe('Left')
+        expect(Result.isFailure(result)).toBe(true)
       }),
     )
   })

@@ -27,6 +27,7 @@ import {
   updateTags as upstreamUpdateTags,
   validateName,
 } from '@myobie/pty/client'
+import type { Cause } from 'effect'
 import {
   Context,
   Deferred,
@@ -635,7 +636,7 @@ const kill = (input: { readonly name: PtyName }) =>
 
 const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, Scope.Scope> =>
   Effect.gen(function* () {
-    const queue = yield* Queue.bounded<Uint8Array>(1024)
+    const queue = yield* Queue.bounded<Uint8Array, Cause.Done>(1024)
     const exitDeferred = yield* Deferred.make<{ readonly code: number }, PtyError>()
     const context = yield* Effect.context<Scope.Scope>()
     const enc = new TextEncoder()
@@ -661,7 +662,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       runAsync(Queue.offer(queue, enc.encode(chunk)))
     })
     conn.on('exit', (code: number) => {
-      runAsync(Deferred.succeed(exitDeferred, { code }).pipe(Effect.andThen(Queue.shutdown(queue))))
+      runAsync(Deferred.succeed(exitDeferred, { code }).pipe(Effect.andThen(Queue.end(queue))))
     })
     conn.on('error', (err: Error) => {
       runAsync(
@@ -673,7 +674,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
             name: spec.name,
             cause: err,
           }),
-        ).pipe(Effect.andThen(Queue.shutdown(queue))),
+        ).pipe(Effect.andThen(Queue.end(queue))),
       )
     })
     conn.on('close', () => {
@@ -681,7 +682,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
         Deferred.fail(
           exitDeferred,
           new PtyError({ reason: 'Closed', method: 'attach.close', name: spec.name }),
-        ).pipe(Effect.andThen(Queue.shutdown(queue))),
+        ).pipe(Effect.andThen(Queue.end(queue))),
       )
     })
 

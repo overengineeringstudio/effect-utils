@@ -80,7 +80,7 @@ Vitest.describe('withTelemetry — typed front door', () => {
       // Logs: the Effect.log line bridged to OTLP.
       expectLogs(logs).expectOne({
         service: SERVICE,
-        severityText: 'INFO',
+        severityText: 'Info',
         body: 'telemetry demo log line',
       })
 

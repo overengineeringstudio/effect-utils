@@ -22,7 +22,6 @@ import {
   Layer,
   Metric,
   Option,
-  Schedule,
   type Scope,
   Tracer,
 } from 'effect'
@@ -182,6 +181,28 @@ export interface OtelCliLayerConfig {
 const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 10_000 : 30_000)
 
 /**
+ * Parse `OTEL_RESOURCE_ATTRIBUTES` (comma-separated `key=value` pairs with
+ * percent-encoded values, per the OpenTelemetry spec) into a plain record.
+ * Malformed pairs are skipped rather than failing the whole resource.
+ */
+const parseOtelResourceAttributes = (raw: string | undefined): Record<string, string> => {
+  if (raw === undefined || raw.trim() === '') return {}
+  const entries = raw.split(',').flatMap((pair) => {
+    const trimmed = pair.trim()
+    if (trimmed === '') return []
+    const eq = trimmed.indexOf('=')
+    const key = eq === -1 ? trimmed : trimmed.slice(0, eq)
+    const value = eq === -1 ? '' : trimmed.slice(eq + 1)
+    try {
+      return [[decodeURIComponent(key), decodeURIComponent(value)] as const]
+    } catch {
+      return [[key, value] as const]
+    }
+  })
+  return Object.fromEntries(entries)
+}
+
+/**
  * Creates an OTEL layer for Effect CLI applications.
  *
  * Features:
@@ -205,18 +226,6 @@ const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 
  * const identity = Schema.decodeSync(ServiceIdentity)({
  *   name: 'my-cli', namespace: 'overeng', version,
  * })
- * const baseLayer = Layer.mergeAll(
- *   NodeContext.layer,
- *   makeOtelCliLayer({ identity }),
- * )
- *
- * Cli.Command.run(command, { name: 'my-cli', version })
- *   (process.argv).pipe(
- *     Effect.scoped,
- *     Effect.provide(baseLayer),
- *     runTuiMain(NodeRuntime),
- *   )
- * ```
  */
 export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelConfig> => {
   const {
@@ -228,16 +237,6 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
     shutdownTimeout = defaultShutdownTimeoutMs(),
   } = config
 
-  // The typed `identity`'s name/namespace/version flow onto every signal's
-  // resource. The `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME` env attrs are
-  // still merged in by `@effect/opentelemetry` (explicit wins on collision,
-  // env-only attrs are preserved), so runtime provenance is intact.
-  const resource = {
-    serviceName: identity.name,
-    serviceVersion: identity.version,
-    attributes: { 'service.namespace': identity.namespace },
-  }
-
   // Use Layer.suspend instead of Layer.unwrapEffect to ensure proper scope propagation.
   // Layer.unwrapEffect doesn't properly chain scopes, causing OTEL exporter finalizers
   // (which flush spans via HTTP) to not be awaited on shutdown.
@@ -248,6 +247,19 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
       explicitEndpoint !== undefined
         ? explicitEndpoint
         : Option.fromUndefinedOr(process.env[endpointEnvVar])
+  // The typed `identity`'s name/namespace/version flow onto every signal's
+  // resource. `OTEL_RESOURCE_ATTRIBUTES` env attrs are merged in as well so
+  // runtime provenance (e.g. deployment.environment) survives — the explicit
+  // identity wins on collision, env-only attrs are preserved.
+  const resource = {
+    serviceName: identity.name,
+    serviceVersion: identity.version,
+    attributes: {
+      ...parseOtelResourceAttributes(process.env.OTEL_RESOURCE_ATTRIBUTES),
+      'service.namespace': identity.namespace,
+    },
+  }
+
 
     // Always provide the resolved config so command code can gate optional
     // telemetry work on the same signal the exporter is built from.
@@ -462,12 +474,10 @@ export interface SampleResourceOptions {
  *    {@link OtelConfig} marker), so when no endpoint is configured the fiber is
  *    never forked — "zero overhead when unset" means not paying the periodic cost,
  *    not merely a metric going nowhere.
- * 2. **Ticks on real wall time.** `Effect.withClock(Clock.make())` overrides the
- *    contextual (possibly test/fixed) decision clock that `Schedule.spaced`
- *    resolves through — placed BEFORE `forkScoped` so it wraps the forked fiber,
- *    not the fork action. `provideService` does NOT work for `Clock` (it is a
- *    default service read via `clockWith`, not from `R`). Without this, a
- *    zero-sleep decision clock turns the sampler into a hot loop.
+ * 2. **Ticks on real wall time.** Sampling sleeps through `Effect.sleep` on the
+ *    contextual clock (a `Context.Reference` defaulting to the system clock);
+ *    only an explicitly provided test clock can change that, and this primitive
+ *    is infrastructure.
  *
  * @example
  * ```typescript
@@ -481,13 +491,15 @@ export const sampleResource = (
 ): Effect.Effect<void, never, OtelConfig | Scope.Scope> => {
   const { sample, interval = Duration.millis(250) } = options
   return whenTelemetryEnabled(
-    sample.pipe(
-      Effect.repeat(Schedule.spaced(interval)),
-      // v4 note: the sampler ticks on the contextual clock. `Clock.Clock` is a
-      // `Context.Reference` defaulting to the system clock; only an explicitly
-      // provided test clock can change that, and this primitive is infrastructure.
-      Effect.forkScoped,
-      Effect.asVoid,
+    // First sample runs inline so a short-lived process always lands at least
+    // one reading before its scope closes — a forked fiber's first tick races
+    // scope close and can be interrupted before it ever runs. The forked loop
+    // then sleeps `interval` between subsequent samples.
+    Effect.andThen(
+      sample,
+      Effect.asVoid(
+        Effect.forkScoped(Effect.forever(Effect.flatMap(Effect.sleep(interval), () => sample))),
+      ),
     ),
   )
 }

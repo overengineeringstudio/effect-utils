@@ -143,15 +143,16 @@ export const cmd: (
     shell: useShell,
   })
 
-  const baseArgs = {
+  const baseArgs: TRunBaseArgs = {
     commandInput: finalInput,
     cwd,
-    env: options?.env ?? {},
+    // v4 spawner treats an explicit env as authoritative; undefined inherits.
+    env: options?.env,
     stdoutMode,
     stderrMode,
     useShell,
     killTimeout: options?.killTimeout,
-  } as const
+  }
 
   const exitCode = yield* isNotUndefined(logPath) === true
     ? Effect.gen(function* () {
@@ -249,7 +250,7 @@ export const cmdStart: (
     input: normalizedInput,
     useShell,
     cwd,
-    env: options?.env ?? {},
+    ...(options?.env !== undefined ? { env: options.env } : {}),
     stdin: 'inherit',
     stdout: options?.stdout ?? 'inherit',
     stderr: options?.stderr ?? 'inherit',
@@ -311,7 +312,7 @@ export const cmdText: (
       cwd,
       // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
       stderr: options?.stderr ?? 'inherit',
-      env: options?.env ?? {},
+      ...(options?.env !== undefined ? { env: options.env } : {}),
     }),
   )
 })
@@ -370,7 +371,7 @@ export const cmdCollect = <R = never>(opts: {
       cwd,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: opts.env ?? {},
+      ...(opts.env !== undefined ? { env: opts.env } : {}),
     })
 
     const { onOutput } = opts
@@ -435,7 +436,7 @@ export class CmdError extends Schema.TaggedError<CmdError>()('CmdError', {
 type TRunBaseArgs = {
   readonly commandInput: string | string[]
   readonly cwd: string
-  readonly env: Record<string, string | undefined>
+  readonly env: Record<string, string | undefined> | undefined
   readonly stdoutMode: 'inherit' | 'pipe'
   readonly stderrMode: 'inherit' | 'pipe'
   readonly useShell: boolean
@@ -456,7 +457,7 @@ const runWithoutLogging = ({
         input: commandInput,
         useShell,
         cwd,
-        env,
+        ...(env !== undefined ? { env } : {}),
         stdin: 'inherit',
         stdout: stdoutMode,
         stderr: stderrMode,
@@ -489,7 +490,8 @@ const runWithLogging = ({
 }: TRunWithLoggingArgs) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const envWithColor = env.FORCE_COLOR === undefined ? { ...env, FORCE_COLOR: '1' } : env
+      const inheritedEnv = env ?? process.env
+      const envWithColor = inheritedEnv.FORCE_COLOR === undefined ? { ...inheritedEnv, FORCE_COLOR: '1' } : inheritedEnv
 
       const logFile = yield* Effect.acquireRelease(
         Effect.sync(() => fs.openSync(logPath, 'a', 0o666)),
@@ -673,7 +675,9 @@ const buildCommand = (
   }
 
   // Single-string form is tokenized on whitespace at execution time.
-  return Process.ChildProcess.make(input, {
+  const [command, ...args] = input.trim().split(/\s+/)
+  if (command === undefined || command === '') throw new Error('Command cannot be empty')
+  return Process.ChildProcess.make(command, args, {
     ...(useShell === true ? { shell: true } : {}),
     ...options,
   })

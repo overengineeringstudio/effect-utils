@@ -1,6 +1,7 @@
 import { it as fcIt } from '@effect/vitest'
 import * as restate from '@restatedev/restate-sdk'
 import { Schema } from 'effect'
+import * as FastCheck from 'effect/testing/FastCheck'
 import { describe, expect, it } from 'vitest'
 
 import { normalizeStateSchema } from '../authoring/RestateContext.ts'
@@ -25,7 +26,7 @@ describe('effectSerde', () => {
   it('handles a transformed schema where encoded ≠ decoded', () => {
     /* Date <-> ISO string: encode produces the wire (`I`) shape, decode
      * reconstructs the rich (`A`) value. */
-    const schema = Schema.Struct({ at: Schema.Date })
+    const schema = Schema.Struct({ at: Schema.DateFromString })
     const serde = effectSerde({ schema })
     const value = { at: new Date('2026-06-08T12:00:00.000Z') }
 
@@ -81,7 +82,7 @@ describe('effectSerde', () => {
 
 describe('effectSerde wire baselines (cross-major invariant)', () => {
   const WireBaseline = Schema.Struct({
-    at: Schema.Date,
+    at: Schema.DateFromString,
     note: Schema.optional(Schema.String),
     nullable: Schema.NullOr(Schema.String),
     empty: Schema.String,
@@ -92,7 +93,6 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     }),
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; use the approved DateFromString mapping to preserve the ISO wire bytes instead of refreshing this baseline.
   it('serializes representative input bytes with stable key order and null/absent partition', () => {
     const serde = effectSerde({ schema: WireBaseline })
     const value = {
@@ -151,7 +151,7 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     expect(failures).toMatchInlineSnapshot(`
       {
         "malformedJson": "{"code":400,"message":"serde decode failed: Unexpected end of JSON input","metadata":{}}",
-        "wrongType": "{"code":400,"message":"serde decode failed: { readonly n: number }\\n└─ [\\"n\\"]\\n   └─ Expected number, actual \\"not-a-number\\"","metadata":{}}",
+        "wrongType": "{"code":400,"message":"serde decode failed: Expected number\\n  at [\\"n\\"]","metadata":{}}",
       }
     `)
   })
@@ -170,7 +170,7 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
           message: error instanceof Error ? error.message : String(error),
         }),
       ).toMatchInlineSnapshot(
-        `"{"terminal":false,"message":"{ readonly n: number }\\n└─ [\\"n\\"]\\n   └─ Expected number, actual \\"not-a-number\\""}"`,
+        `"{"terminal":false,"message":"Expected number\\n  at [\\"n\\"]"}"`,
       )
     }
   })
@@ -209,7 +209,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     active: Schema.Boolean,
     tags: Schema.Array(Schema.String),
   })
-  fcIt.prop('round-trips a plain struct', [Plain], ([value]) => {
+  fcIt.prop('round-trips a plain struct', [Schema.toArbitrary(Plain)(FastCheck)], ([value]) => {
     const serde = effectSerde({ schema: Plain })
     const eq = Schema.toEquivalence(Plain)
     expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
@@ -219,10 +219,10 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const UserId = Schema.String.pipe(Schema.brand('UserId'))
   const Transformed = Schema.Struct({
     id: UserId,
-    createdAt: Schema.Date,
-    score: Schema.BigInt,
+    createdAt: Schema.DateFromString,
+    score: Schema.BigIntFromString,
   })
-  fcIt.prop('round-trips a transformed schema (encoded ≠ decoded)', [Transformed], ([value]) => {
+  fcIt.prop('round-trips a transformed schema (encoded ≠ decoded)', [Schema.toArbitrary(Transformed)(FastCheck)], ([value]) => {
     const serde = effectSerde({ schema: Transformed })
     const eq = Schema.toEquivalence(Transformed)
     expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
@@ -237,7 +237,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const OptionalState = normalizeStateSchema(Schema.optional(FiniteValue))
   fcIt.prop(
     'round-trips an optional state field value (normalizeStateSchema)',
-    [FiniteValue],
+    [Schema.toArbitrary(FiniteValue)(FastCheck)],
     ([value]) => {
       const serde = effectSerde({ schema: OptionalState })
       const eq = Schema.toEquivalence(OptionalState)
@@ -258,7 +258,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const cipher = aesGcmCipher(new Uint8Array(32).fill(7))
   fcIt.prop(
     'round-trips the redaction transform by value (encrypt∘decrypt ≡ id)',
-    [Redacted],
+    [Schema.toArbitrary(Redacted)(FastCheck)],
     ([value]) => {
       const serde = effectSerde({ schema: Redacted, slot: 'internal', redaction: cipher })
       const eq = Schema.toEquivalence(Redacted)

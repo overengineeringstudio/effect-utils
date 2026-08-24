@@ -7,18 +7,8 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
   "stderr": "
 ERROR
   Invalid value for flag --width: "nope". Expected a string representing a finite number
-TypeError: Attempted to assign to readonly property.
-    at assign (unknown)
-    at ~effect/Utils/internal (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/Utils.js:85:16)
-    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:721:53)
-    at runLoop (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:462:98)
-    at evaluate (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:422:23)
-    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:2263:9)
-    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/Runtime.js:130:66)
-    at runTuiMainImpl (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/packages/@overeng/tui-react/src/effect/cli.tsx:357:10)
-    at /home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/packages/@overeng/tui-stories/bin/tui-stories.tsx:22:99
-    at asyncModuleEvaluation (native:2)
-    at processTicksAndRejections (native:7:39)
+~effect/cli/CliError/ShowHelp: Help requested (tui-stories 0.1.0)
+    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
   "stdout": "DESCRIPTION
   Render a story to terminal output
@@ -80,18 +70,8 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
   "stderr": "
 ERROR
   Missing required flag: --path
-TypeError: Attempted to assign to readonly property.
-    at assign (unknown)
-    at ~effect/Utils/internal (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/Utils.js:85:16)
-    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:721:53)
-    at runLoop (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:462:98)
-    at evaluate (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:422:23)
-    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:2263:9)
-    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/Runtime.js:130:66)
-    at runTuiMainImpl (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/packages/@overeng/tui-react/src/effect/cli.tsx:357:10)
-    at /home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/packages/@overeng/tui-stories/bin/tui-stories.tsx:22:99
-    at asyncModuleEvaluation (native:2)
-    at processTicksAndRejections (native:7:39)
+~effect/cli/CliError/ShowHelp: Help requested (tui-stories 0.1.0)
+    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
   "stdout": "DESCRIPTION
   List all discovered stories

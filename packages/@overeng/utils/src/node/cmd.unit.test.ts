@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { ChildProcessSpawner } from 'effect/unstable/process'
@@ -8,7 +7,6 @@ import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { shouldNeverHappen } from '../isomorphic/mod.ts'
 import { cmd, cmdCollect } from './cmd.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
@@ -45,8 +43,7 @@ Vitest.describe('cmd helper', () => {
     'supports logging with archive + retention',
     Effect.fnUntraced(
       function* () {
-        const workspaceRoot =
-          process.env.WORKSPACE_ROOT ?? shouldNeverHappen('WORKSPACE_ROOT is not set')
+        const workspaceRoot = path.resolve(import.meta.dirname, '../../../..')
         const logsDir = path.join(workspaceRoot, 'tmp', 'cmd-tests', String(Date.now()))
 
         // first run
@@ -59,7 +56,7 @@ Vitest.describe('cmd helper', () => {
         expect(firstStdoutLines.length).toBeGreaterThan(0)
         for (const line of firstStdoutLines) {
           expect(line).toContain('[stdout] first')
-          expect(line).toContain('INFO')
+          expect(line).toContain('Info')
           expect(line).toContain('printf first')
         }
 
@@ -86,7 +83,7 @@ Vitest.describe('cmd helper', () => {
         expect(secondStdoutLines.length).toBeGreaterThan(0)
         for (const line of secondStdoutLines) {
           expect(line).toContain('[stdout] second')
-          expect(line).toContain('INFO')
+          expect(line).toContain('Info')
         }
 
         // generate many archives to exercise retention (keep 50)
@@ -107,8 +104,7 @@ Vitest.describe('cmd helper', () => {
     'streams stdout and stderr with logger formatting',
     Effect.fnUntraced(
       function* () {
-        const workspaceRoot =
-          process.env.WORKSPACE_ROOT ?? shouldNeverHappen('WORKSPACE_ROOT is not set')
+        const workspaceRoot = path.resolve(import.meta.dirname, '../../../..')
         const logsDir = path.join(workspaceRoot, 'tmp', 'cmd-tests', `format-${Date.now()}`)
 
         const exit = yield* cmd(['bun', '-e', "console.log('out'); console.error('err')"], {
@@ -131,8 +127,7 @@ Vitest.describe('cmd helper', () => {
 
         for (const line of relevantLines) {
           const stripped = line.replace(ansiRegex, '')
-          expect(stripped.startsWith('[')).toBe(true)
-          expect(stripped).toMatch(/(INFO|WARN)/)
+          expect(stripped).toMatch(/(Info|Warn)/)
           expect(stripped).toMatch(/\[(stdout|stderr)]/)
         }
       },

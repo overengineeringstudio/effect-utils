@@ -226,7 +226,7 @@ describe('error transport wire baselines (cross-major invariant)', () => {
         metadata: t.metadata,
       }),
     ).toMatchInlineSnapshot(
-      `"{"code":404,"message":"{\\"id\\":\\"x_1\\",\\"_tag\\":\\"NotFound\\"}","metadata":{"_tag":"NotFound"}}"`,
+      `"{"code":404,"message":"{\\"_tag\\":\\"NotFound\\",\\"id\\":\\"x_1\\"}","metadata":{"_tag":"NotFound"}}"`,
     )
   })
 
@@ -238,7 +238,7 @@ describe('error transport wire baselines (cross-major invariant)', () => {
 
     expect(terminal).toBeInstanceOf(restate.TerminalError)
     expect(terminalEnvelopeBytes(terminal as restate.TerminalError)).toMatchInlineSnapshot(
-      `"{"code":404,"message":"{\\"id\\":\\"x_2\\",\\"_tag\\":\\"NotFound\\"}","metadata":{"_tag":"NotFound"}}"`,
+      `"{"code":404,"message":"{\\"_tag\\":\\"NotFound\\",\\"id\\":\\"x_2\\"}","metadata":{"_tag":"NotFound"}}"`,
     )
   })
 

@@ -65,7 +65,7 @@ tsRuleTester.run('no-external-imports: invalid value imports from npm', rule, {
     {
       code: `import { FileSystem } from 'effect/FileSystem'
 import { Path } from 'effect/Path'`,
-      errors: [{ messageId: 'noExternalImport' }],
+      errors: [{ messageId: 'noExternalImport' }, { messageId: 'noExternalImport' }],
     },
     {
       code: `import React from 'react'`,
