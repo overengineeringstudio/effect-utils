@@ -42,6 +42,7 @@ export const makeConsoleCapture = Effect.sync(() => {
   // TUI JSON/final output bypasses Console and writes directly to
   // ViewOutputStreamTag (defaulting to process.stdout), so bind it to a
   // capturing stream too.
+  // Only `.write()` is consumed, but the service type is NodeJS.WriteStream; narrow the capture.
   const viewStream = new Writable({
     write(chunk, _encoding, callback) {
       for (const line of String(chunk).split('\n')) {
@@ -49,7 +50,7 @@ export const makeConsoleCapture = Effect.sync(() => {
       }
       callback()
     },
-  })
+  }) as unknown as NodeJS.WriteStream
 
   return {
     consoleLayer: Layer.mergeAll(
