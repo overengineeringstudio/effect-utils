@@ -292,7 +292,11 @@ export const genieCommand = Cli.Command.make(
                 Effect.ensuring(
                   Effect.gen(function* () {
                     const _ = yield* Fiber.interrupt(consumerFiber)
-                    const pendingEvents = yield* PubSub.takeAll(sub)
+                    // Drain any events published but not yet consumed. Must be non-blocking:
+                    // `PubSub.takeAll` suspends when the subscription is empty, which deadlocks
+                    // the finalizer (and the whole CLI) whenever the consumer fiber already
+                    // drained every event before the scope closed.
+                    const pendingEvents = yield* PubSub.takeUpTo(sub, Number.MAX_SAFE_INTEGER)
                     for (const event of pendingEvents) {
                       yield* Effect.sync(() => dispatchEvent(tui, event))
                     }
