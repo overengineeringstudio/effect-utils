@@ -672,19 +672,15 @@ in
     exec = trace.exec "cargo:check" ''
       set -euo pipefail
       export CARGO_TARGET_DIR="$(${./nix/devenv-modules/tasks/shared/cargo-target-dir.sh} \
-        "$PWD" \
+        ${lib.escapeShellArg config.devenv.root} \
         cargo-check \
         "''${XDG_CACHE_HOME:-$HOME/.cache}")"
       mkdir -p "$CARGO_TARGET_DIR"
       ${lib.concatMapStringsSep "\n" (crate: ''
         echo "::group::${crate.name}"
-        (
-          cd "${crate.path}"
-          cargo build --release
-          cargo test
-          cargo clippy -- -D warnings
-          cargo fmt --check
-        )
+        ${./nix/devenv-modules/tasks/shared/cargo-check-crate.sh} \
+          ${lib.escapeShellArg config.devenv.root} \
+          ${lib.escapeShellArg crate.path}
         echo "::endgroup::"
       '') rustCrates}
     '';
