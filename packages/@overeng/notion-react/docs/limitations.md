@@ -81,15 +81,16 @@ See [Cookbook → Sub-page creation → Reordering](./cookbook/sub-page-creation
 The Notion API exposes no idempotency key or client request token. If a
 sync is interrupted mid-flight:
 
-- `pages.create` succeeded but the follow-up block ops fail → the
-  newly-created page is archived and the error surfaces with
-  `fallbackReason: "partial-page-create"`. The next sync reconciles by
-  id; the orphan stays archived.
+- `pages.create` succeeded but inline-id retrieval or follow-up work fails →
+  the cache retains the server-minted page id plus immutable create-time
+  inline descriptors. The next sync adopts those live block ids before
+  diffing, preserving the page id and avoiding a duplicate body.
 - Any other partial failure → checkpointed cache reflects exactly what
   landed on the server; the next sync diffs against reality.
 
 You cannot atomically create "this page plus all its content" — the
-surface is coarsely best-effort and the recovery story is archive-and-retry.
+surface is coarsely best-effort, so a durable cache backend is load-bearing
+for identity-preserving recovery.
 
 ### No cross-page op batching (T07)
 

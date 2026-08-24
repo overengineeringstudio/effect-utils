@@ -67,6 +67,10 @@ All notable changes to this project will be documented in this file.
   logical package manifest and source instead of an empty virtual-store target;
   the declared alias manifest owns the source-path boundary while nested peer
   context remains opaque, and the prepared artifact layout advances to `v19`.
+- **@overeng/notion-react**: checkpoint each successful sub-page identity before
+  resolving inline descendants, then checkpoint the resolved subtree, so a
+  crash after `pages.create` retries with the same stable page id instead of
+  creating a duplicate.
 
 - **devenv observability verification**: enable native Devenv task activities
   during trace capture while preserving task stderr and a diagnostic copy.

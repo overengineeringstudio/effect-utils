@@ -9,7 +9,7 @@ import {
   type NotionConfig,
 } from '@overeng/notion-effect-client'
 
-import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
+import type { CacheNode, CacheTree, NotionCache, PendingInlineNode } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import { NotionSyncError } from './errors.ts'
 import type { PageOp } from './op-buffer.ts'
@@ -68,6 +68,22 @@ const resolveTreeIds = (tree: CandidateTree, idMap: ReadonlyMap<string, string>)
   for (const c of tree.children) walk(c)
 }
 
+const pendingInlineFromCandidates = (
+  nodes: readonly CandidateNode[],
+): readonly PendingInlineNode[] =>
+  nodes.flatMap((node) =>
+    node.nodeKind === 'page'
+      ? []
+      : [
+          {
+            key: node.key,
+            type: node.type,
+            hash: node.hash,
+            children: pendingInlineFromCandidates(node.children),
+          },
+        ],
+  )
+
 const appendBody = (type: string, props: Record<string, unknown>): Record<string, unknown> => ({
   object: 'block',
   type,
@@ -101,6 +117,7 @@ interface WorkingNode {
   titleHash?: string | undefined
   iconHash?: string | undefined
   coverHash?: string | undefined
+  pendingInlineResolution?: readonly PendingInlineNode[] | undefined
 }
 
 interface WorkingCache {
@@ -122,6 +139,9 @@ const cacheNodeToWorking = (n: CacheNode): WorkingNode => ({
   ...(n.titleHash !== undefined ? { titleHash: n.titleHash } : {}),
   ...(n.iconHash !== undefined ? { iconHash: n.iconHash } : {}),
   ...(n.coverHash !== undefined ? { coverHash: n.coverHash } : {}),
+  ...(n.pendingInlineResolution !== undefined
+    ? { pendingInlineResolution: n.pendingInlineResolution }
+    : {}),
 })
 
 const workingToCacheNode = (n: WorkingNode): CacheNode => {
@@ -147,6 +167,9 @@ const workingToCacheNode = (n: WorkingNode): CacheNode => {
     ...(n.titleHash !== undefined ? { titleHash: n.titleHash } : {}),
     ...(n.iconHash !== undefined ? { iconHash: n.iconHash } : {}),
     ...(n.coverHash !== undefined ? { coverHash: n.coverHash } : {}),
+    ...(n.pendingInlineResolution !== undefined
+      ? { pendingInlineResolution: n.pendingInlineResolution }
+      : {}),
   }
 }
 
@@ -1146,7 +1169,7 @@ export const sync = (
     onUploadIdRejected: opts.onUploadIdRejected,
   }
   return Effect.gen(function* () {
-    const prior = yield* opts.cache.load.pipe(
+    let prior = yield* opts.cache.load.pipe(
       Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-load-failed', cause })),
     )
     const candidate = buildCandidateTree(element, opts.pageId)
@@ -1158,6 +1181,138 @@ export const sync = (
           at: Date.now(),
         }),
       )
+    }
+
+    const adoptInlineChildren = (
+      parentId: string,
+      nodes: readonly PendingInlineNode[],
+    ): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+      Effect.gen(function* () {
+        const live = yield* Stream.runCollect(
+          NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
+        ).pipe(
+          Effect.mapError(
+            (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
+          ),
+        )
+        const liveBlocks = Chunk.toReadonlyArray(live)
+        const adopted: CacheNode[] = []
+        let liveIdx = 0
+        for (const node of nodes) {
+          const server = liveBlocks[liveIdx]
+          if (server === undefined) break
+          liveIdx += 1
+          if (server.type !== node.type) {
+            return yield* new NotionSyncError({
+              reason: 'notion-retrieve-failed',
+              cause: `pending inline type mismatch: expected ${node.type}, got ${server.type}`,
+            })
+          }
+          const children =
+            node.children.length === 0 ? [] : yield* adoptInlineChildren(server.id, node.children)
+          adopted.push({
+            key: node.key,
+            blockId: server.id,
+            type: node.type,
+            hash: node.hash,
+            children,
+            nodeKind: 'block',
+          })
+        }
+        // Live children beyond the persisted create-time intent mean another
+        // client wrote under the half-created page between the crashed sync
+        // and this retry. Adopting only the prefix would strand those blocks
+        // forever (drift detection is root-shallow), so fail loudly instead —
+        // failing before the cache save keeps the pending marker intact for a
+        // clean retry once the untracked content is removed.
+        if (liveIdx < liveBlocks.length) {
+          return yield* new NotionSyncError({
+            reason: 'notion-retrieve-failed',
+            cause:
+              `pending inline adoption found ${liveBlocks.length - liveIdx} untracked block(s) ` +
+              `under ${parentId} beyond the persisted create-time intent (${nodes.length} expected); ` +
+              `remove them or reset the cache to recover`,
+          })
+        }
+        return adopted
+      })
+
+    // A checkpointed page may have moved to another parent in the retry JSX,
+    // so resolvePendingPages' sibling-local lookup would miss it and leave the
+    // marker unresolved — the subsequent movePage diff then re-appends the
+    // already-created inline descendants from an empty cache subtree. Index
+    // all page-kind candidates once so recovery can adopt the identity before
+    // the relocation is diffed.
+    const candidatePageByKey = new Map<string, CandidateNode>()
+    const indexCandidatePages = (nodes: readonly CandidateNode[]): void => {
+      for (const node of nodes) {
+        if (node.nodeKind === 'page') candidatePageByKey.set(node.key, node)
+        indexCandidatePages(node.children)
+      }
+    }
+    indexCandidatePages(candidate.children)
+
+    const resolvePendingPages = (
+      cached: readonly CacheNode[],
+      candidates: readonly CandidateNode[],
+    ): Effect.Effect<
+      { readonly nodes: readonly CacheNode[]; readonly changed: boolean },
+      NotionSyncError,
+      NotionConfig | HttpClient.HttpClient
+    > =>
+      Effect.gen(function* () {
+        let changed = false
+        const nodes: CacheNode[] = []
+        for (const cachedNode of cached) {
+          let candidateNode = candidates.find(
+            (node) => node.key === cachedNode.key && node.nodeKind === cachedNode.nodeKind,
+          )
+          if (
+            candidateNode === undefined &&
+            cachedNode.nodeKind === 'page' &&
+            cachedNode.pendingInlineResolution !== undefined
+          ) {
+            // Cross-parent fallback: resolve the pending inline descendants
+            // against the old location so the move diff sees adopted children
+            // instead of duplicating the server-side subtree.
+            candidateNode = candidatePageByKey.get(cachedNode.key)
+          }
+          if (candidateNode === undefined || cachedNode.nodeKind !== 'page') {
+            nodes.push(cachedNode)
+            continue
+          }
+          candidateNode.blockId = cachedNode.blockId
+          if (cachedNode.pendingInlineResolution !== undefined) {
+            const children = yield* adoptInlineChildren(
+              cachedNode.blockId,
+              cachedNode.pendingInlineResolution,
+            )
+            nodes.push({ ...cachedNode, children, pendingInlineResolution: undefined })
+            changed = true
+            continue
+          }
+          const nested = yield* resolvePendingPages(cachedNode.children, candidateNode.children)
+          nodes.push(nested.changed ? { ...cachedNode, children: nested.nodes } : cachedNode)
+          changed = changed || nested.changed
+        }
+        return { nodes, changed }
+      })
+
+    // Pending recovery retrieves against page ids recorded under prior.rootId.
+    // When the cache was written for a different page (page-id drift) those
+    // retrievals can fail on ids that are stale or no longer accessible, so
+    // skip recovery and let the documented cold-start path handle the
+    // mismatch.
+    if (prior !== undefined && prior.rootId === opts.pageId) {
+      const resolvedPending = yield* resolvePendingPages(prior.children, candidate.children)
+      if (resolvedPending.changed) {
+        prior = { ...prior, children: resolvedPending.nodes }
+        yield* opts.cache
+          .save(prior)
+          .pipe(
+            Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
+          )
+      }
     }
 
     const coldBaseline: ColdBaseline = opts.coldBaseline ?? 'clean'
@@ -1288,7 +1443,7 @@ export const sync = (
         : emptyCache(opts.pageId)
       : drifted
         ? driftedBase(opts.pageId, liveTopLevelIds, prior)
-        : prior
+        : (prior ?? emptyCache(opts.pageId))
     /* Working base mirrors diffBase for warm drift (no ghost leakage risk —
        we only copy prior entries whose blockIds are still live server-side,
        so they're real confirmed entries). For cold paths we stay empty. */
@@ -1300,7 +1455,7 @@ export const sync = (
             rootId: opts.pageId,
             children: diffBase.children.filter((c) => !c.key.startsWith('drift:')),
           }
-        : prior
+        : (prior ?? emptyCache(opts.pageId))
     const fallbackReason: SyncFallbackReason | undefined = pageIdDrift
       ? 'page-id-drift'
       : drifted
@@ -1353,6 +1508,12 @@ export const sync = (
       for (const c of prior.children) indexHash(c)
     }
     const idMap = new Map<string, string>()
+    const candidateByPlaceholderId = new Map<string, CandidateNode>()
+    const indexCandidate = (node: CandidateNode): void => {
+      if (node.blockId !== undefined) candidateByPlaceholderId.set(node.blockId, node)
+      for (const child of node.children) indexCandidate(child)
+    }
+    for (const child of candidate.children) indexCandidate(child)
     // Working copy of the cache tree — updated after each successful op,
     // flushed to the backend as a per-batch checkpoint (#102). On
     // mid-sync failure the cache reflects server state up to the last
@@ -1595,7 +1756,43 @@ export const sync = (
         }
         idMap.set(op.tmpPageId, createdId)
         const inlineCands = (op.inlineCandidates ?? []) as readonly CandidateNode[]
-        yield* resolveInlineChildrenIds(createdId, op, inlineCands, idMap)
+        const pageCandidate = candidateByPlaceholderId.get(op.tmpPageId)
+        if (pageCandidate === undefined) {
+          return yield* new NotionSyncError({
+            reason: 'notion-page-create-failed',
+            cause: `missing candidate for ${op.tmpPageId}`,
+          })
+        }
+        const pageNode = buildSubtreeFromCandidate(pageCandidate)
+        if (pageNode === undefined) {
+          return yield* new NotionSyncError({
+            reason: 'notion-page-create-failed',
+            cause: `unresolved created page ${op.tmpPageId}`,
+          })
+        }
+        if (inlineCands.length > 0) {
+          pageNode.pendingInlineResolution = pendingInlineFromCandidates(inlineCands)
+        }
+        workingAppend(working, resolvedParentId, pageNode, undefined)
+        yield* flushCheckpoint
+
+        // pages.create is an irreversible identity allocation, so the page id
+        // is durable before the retrieval needed to resolve inline block ids.
+        // Once those descendants resolve, replace the identity-only node with
+        // the complete materialized subtree and checkpoint again.
+        if (inlineCands.length > 0) {
+          yield* resolveInlineChildrenIds(createdId, op, inlineCands, idMap)
+          const pageWithInlineChildren = buildSubtreeFromCandidate(pageCandidate)
+          if (pageWithInlineChildren === undefined) {
+            return yield* new NotionSyncError({
+              reason: 'notion-page-create-failed',
+              cause: `unresolved created page ${op.tmpPageId}`,
+            })
+          }
+          workingRemove(working, createdId)
+          workingAppend(working, resolvedParentId, pageWithInlineChildren, undefined)
+          yield* flushCheckpoint
+        }
 
         if (onEvent !== undefined) {
           onEvent(

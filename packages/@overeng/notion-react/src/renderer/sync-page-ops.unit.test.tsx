@@ -1,5 +1,6 @@
 import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
@@ -7,7 +8,12 @@ import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
 import { ChildPage, Page, Paragraph, Toggle } from '../components/blocks.ts'
-import { createFakeNotion, FakeNotionResponseError, type FakeNotion } from '../test/mock-client.ts'
+import {
+  createFakeNotion,
+  FakeNotionResponseError,
+  type FakeBlock,
+  type FakeNotion,
+} from '../test/mock-client.ts'
 import { NotionSyncError } from './errors.ts'
 import { normalizeCover, projectCover } from './icons.ts'
 import { sync } from './sync.ts'
@@ -31,6 +37,40 @@ const runSync = async (
   cache = InMemoryCache.make(),
 ) => {
   return await runWith(fake, sync(element, { pageId: ROOT, cache }))
+}
+
+const CRASH_TREE = (
+  <Page>
+    <ChildPage blockKey="child" title="child">
+      <Paragraph blockKey="body">body</Paragraph>
+    </ChildPage>
+  </Page>
+)
+
+/**
+ * Crash a sync right after `pages.create` but before the inline-descendant
+ * retrieval lands, leaving a pending page checkpoint in the cache.
+ */
+const crashMidCreate = async (preamble?: ReactNode) => {
+  const fake = createFakeNotion()
+  const cache = InMemoryCache.make()
+  if (preamble !== undefined) await runSync(fake, preamble, cache)
+  let tripped = false
+  fake.failOn((request) => {
+    if (!tripped && request.method === 'GET' && request.path !== `/v1/blocks/${ROOT}/children`) {
+      tripped = true
+      return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
+    }
+    return undefined
+  })
+  const first = await Effect.runPromiseExit(
+    sync(CRASH_TREE, { pageId: ROOT, cache }).pipe(Effect.provide(fake.layer)),
+  )
+  expect(first._tag).toBe('Failure')
+  const checkpoint = await Effect.runPromise(cache.load)
+  const pendingNode = checkpoint?.children.find((n) => n.pendingInlineResolution !== undefined)
+  expect(pendingNode?.pendingInlineResolution).toHaveLength(1)
+  return { fake, cache, createdId: pendingNode!.blockId }
 }
 
 describe('sync() page ops (issue #618 phase 3b)', () => {
@@ -83,6 +123,182 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     // Only the pre-flight drift GET should hit the wire on a clean resync.
     const after = fake.requests.slice(before)
     expect(after.filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  it('inline retrieval fails after pages.create: retry retains the checkpointed page id', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage blockKey="child" title="child">
+          <Paragraph blockKey="body">body</Paragraph>
+        </ChildPage>
+      </Page>
+    )
+    let failFirstInlineRetrieve = true
+    fake.failOn((request) => {
+      if (
+        failFirstInlineRetrieve &&
+        request.method === 'GET' &&
+        request.path !== `/v1/blocks/${ROOT}/children`
+      ) {
+        failFirstInlineRetrieve = false
+        return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
+      }
+      return undefined
+    })
+
+    const first = await Effect.runPromiseExit(
+      sync(tree, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.provide(fake.layer)),
+    )
+
+    expect(first._tag).toBe('Failure')
+    expect(fake.pages.size).toBe(1)
+    const createdId = [...fake.pages.keys()][0]!
+    const checkpoint = await Effect.runPromise(cache.load)
+    expect(checkpoint?.children).toMatchObject([
+      {
+        blockId: createdId,
+        nodeKind: 'page',
+        children: [],
+      },
+    ])
+    expect(checkpoint?.children[0]?.pendingInlineResolution).toHaveLength(1)
+
+    const retry = await runSync(fake, tree, cache)
+    expect(retry.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(retry.appends + retry.inserts + retry.updates + retry.removes).toBe(0)
+    expect(fake.pages.size).toBe(1)
+    expect([...fake.pages.keys()]).toEqual([createdId])
+    expect(fake.childrenOf(createdId).filter((block) => block.type === 'paragraph')).toHaveLength(1)
+  })
+
+  it('changed JSX after interrupted create reconciles from the persisted create-time intent', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    let failFirstInlineRetrieve = true
+    fake.failOn((request) => {
+      if (
+        failFirstInlineRetrieve &&
+        request.method === 'GET' &&
+        request.path !== `/v1/blocks/${ROOT}/children`
+      ) {
+        failFirstInlineRetrieve = false
+        return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
+      }
+      return undefined
+    })
+
+    const first = await Effect.runPromiseExit(
+      sync(
+        <Page>
+          <ChildPage blockKey="child" title="child">
+            <Paragraph blockKey="body">before</Paragraph>
+          </ChildPage>
+        </Page>,
+        { pageId: ROOT, cache },
+      ).pipe(Effect.provide(fake.layer)),
+    )
+    expect(first._tag).toBe('Failure')
+    const createdId = [...fake.pages.keys()][0]!
+
+    const retry = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="child" title="child">
+          <Paragraph blockKey="body">after</Paragraph>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(retry.pages.creates).toBe(0)
+    expect(retry.updates).toBe(1)
+    expect(retry.appends + retry.inserts + retry.removes).toBe(0)
+    expect([...fake.pages.keys()]).toEqual([createdId])
+    expect(fake.childrenOf(createdId).filter((block) => block.type === 'paragraph')).toHaveLength(1)
+  })
+
+  it('retry JSX moving the checkpointed page adopts pending descendants before the move', async () => {
+    // Wrapper exists before the crash so the retry relocates the checkpointed
+    // page under an existing parent.
+    const { fake, cache, createdId } = await crashMidCreate(
+      <Page>
+        <ChildPage blockKey="wrapper" title="wrapper" />
+      </Page>,
+    )
+
+    const retry = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="wrapper" title="wrapper">
+          <ChildPage blockKey="child" title="child">
+            <Paragraph blockKey="body">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+
+    // The checkpointed child page is moved under the wrapper and its
+    // already-created inline paragraph is adopted — not duplicated.
+    expect(retry.pages).toMatchObject({ creates: 0, moves: 1 })
+    expect(fake.pages.size).toBe(2)
+    expect(fake.childrenOf(createdId).filter((block) => block.type === 'paragraph')).toHaveLength(1)
+  })
+
+  it('untracked live blocks under a checkpointed page abort adoption instead of being stranded', async () => {
+    const { fake, cache, createdId } = await crashMidCreate()
+
+    // Another client appends a stray block under the half-created page
+    const strayId = '22222222-2222-4222-8222-000000000009'
+    ;(fake.blocks as Map<string, FakeBlock>).set(strayId, {
+      id: strayId,
+      type: 'paragraph',
+      parent: createdId,
+      payload: { rich_text: [] },
+      archived: false,
+      children: [],
+    })
+    fake.blocks.get(createdId)!.children.push(strayId)
+
+    const error = await Effect.runPromise(
+      sync(CRASH_TREE, { pageId: ROOT, cache }).pipe(Effect.flip, Effect.provide(fake.layer)),
+    )
+    expect(error.reason).toBe('notion-retrieve-failed')
+    expect(String(error.cause)).toContain('untracked block(s)')
+
+    // Failing before the cache save keeps the pending marker intact so a
+    // clean retry (after the stray content is removed) can adopt.
+    const checkpoint = await Effect.runPromise(cache.load)
+    expect(checkpoint?.children[0]?.pendingInlineResolution).toHaveLength(1)
+  })
+
+  it('pending recovery is skipped on page-id drift instead of retrieving against the old root', async () => {
+    const OTHER_ROOT = '99999999-9999-4999-8999-999999999999'
+    // The crash left the pending checkpoint written against ROOT; reusing the
+    // same cache with a different target page must not retrieve stale ids.
+    const { fake, cache, createdId } = await crashMidCreate()
+
+    // Recovery against the old root would GET the stale checkpointed page's
+    // children; block exactly that so the drift path must be taken instead.
+    fake.failOn((request) =>
+      request.method === 'GET' && request.path === `/v1/blocks/${createdId}/children`
+        ? new FakeNotionResponseError(404, 'object_not_found', 'stale page')
+        : undefined,
+    )
+    const before = fake.requests.length
+    const retry = await runWith(fake, sync(CRASH_TREE, { pageId: OTHER_ROOT, cache }))
+    // Documented cold-start path: rebuild under the new root without ever
+    // touching the stale ids from the old root's pending checkpoint.
+    expect(retry.fallbackReason).toBe('page-id-drift')
+    expect(retry.pages.creates).toBe(1)
+    const staleRetrievals = fake.requests
+      .slice(before)
+      .filter((request) => request.path.includes(createdId))
+    expect(staleRetrievals).toEqual([])
   })
 
   it('root-page metadata: <Page title> change → 1 updatePage on root, 0 block ops', async () => {
