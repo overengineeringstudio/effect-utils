@@ -298,8 +298,15 @@ export const writeMegarepoConfig = ({
 // JSON Schema Generation
 // =============================================================================
 
-/** Generate JSON Schema from Effect Schema */
-export const generateJsonSchema = () => Schema.toJsonSchemaDocument(MegarepoConfig)
+/** Generate JSON Schema (draft 2020-12) from the Effect Schema, for editor support */
+export const generateJsonSchema = (): Record<string, unknown> => {
+  const doc = Schema.toJsonSchemaDocument(MegarepoConfig)
+  return {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    ...doc.schema,
+    $defs: doc.definitions,
+  }
+}
 
 // =============================================================================
 // Member Name Validation

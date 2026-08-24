@@ -8,6 +8,7 @@ import { resolve } from 'node:path'
 
 import * as Cli from 'effect/unstable/cli'
 import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 import { Context, Effect, Layer, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -42,53 +43,80 @@ export class Cwd extends Context.Service<Cwd, AbsoluteDirPath>()('megarepo/Cwd')
     }),
   )
 
+  /** Validate a path exists and is a directory, resolving it against $PWD */
+  static resolvePath = (
+    path: string,
+  ): Effect.Effect<AbsoluteDirPath, InvalidCwdError | PlatformError, FileSystem.FileSystem> =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+
+      // Use $PWD (logical path) as base for relative path resolution,
+      // consistent with Cwd.live's symlink-aware behavior
+      const base =
+        process.env.PWD !== undefined && process.env.PWD.length > 0
+          ? process.env.PWD
+          : process.cwd()
+      const resolved = resolve(base, path)
+      const resolvedDir = resolved.endsWith('/') === true ? resolved : `${resolved}/`
+
+      // Validate the path exists
+      const exists = yield* fs.exists(resolvedDir)
+      if (exists === false) {
+        return yield* new InvalidCwdError({
+          path: resolvedDir,
+          message: `--cwd directory does not exist: ${resolvedDir}`,
+        })
+      }
+
+      // Validate it's a directory
+      const info = yield* fs.stat(resolvedDir)
+      if (info.type !== 'Directory') {
+        return yield* new InvalidCwdError({
+          path: resolvedDir,
+          message: `--cwd path is not a directory: ${resolvedDir}`,
+        })
+      }
+
+      return EffectPath.unsafe.absoluteDir(resolvedDir)
+    })
+
   /** Create a Cwd layer from a specific path, validating it exists and is a directory */
-  static fromPath = (path: string) =>
-    Layer.effect(
-      Cwd,
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-
-        // Use $PWD (logical path) as base for relative path resolution,
-        // consistent with Cwd.live's symlink-aware behavior
-        const base =
-          process.env.PWD?.length !== undefined && process.env.PWD?.length > 0
-            ? process.env.PWD
-            : process.cwd()
-        const resolved = resolve(base, path)
-        const resolvedDir = resolved.endsWith('/') === true ? resolved : `${resolved}/`
-
-        // Validate the path exists
-        const exists = yield* fs.exists(resolvedDir)
-        if (exists === false) {
-          return yield* new InvalidCwdError({
-            path: resolvedDir,
-            message: `--cwd directory does not exist: ${resolvedDir}`,
-          })
-        }
-
-        // Validate it's a directory
-        const info = yield* fs.stat(resolvedDir)
-        if (info.type !== 'Directory') {
-          return yield* new InvalidCwdError({
-            path: resolvedDir,
-            message: `--cwd path is not a directory: ${resolvedDir}`,
-          })
-        }
-
-        return EffectPath.unsafe.absoluteDir(resolvedDir)
-      }),
-    )
+  static fromPath = (path: string) => Layer.effect(Cwd, Cwd.resolvePath(path))
 }
-
 // =============================================================================
 // Common Options
 // =============================================================================
 
-/** Override the working directory */
-export const cwdOption = Cli.Flag.string('cwd').pipe(
-  Cli.Flag.withDescription('Override the working directory'),
-  Cli.Flag.optional,
+/**
+ * Global `--cwd` flag overriding the working directory.
+ *
+ * Under Effect v4, flags declared on a parent command are no longer visible to
+ * subcommand parsers, so `--cwd` must be registered as a global setting flag.
+ * The runner provides the parsed value into the handler context, where
+ * `CwdFromGlobalFlag` picks it up.
+ */
+export const cwdGlobalFlag = Cli.GlobalFlag.setting('megarepo/cwd')({
+  flag: Cli.Flag.string('cwd').pipe(
+    Cli.Flag.withDescription('Override the working directory'),
+    Cli.Flag.optional,
+  ),
+})
+
+/** Cwd layer resolved from the global `--cwd` flag, falling back to the process cwd */
+export const CwdFromGlobalFlag = Layer.effect(
+  Cwd,
+  Effect.gen(function* () {
+    const setting = yield* Effect.serviceOption(cwdGlobalFlag)
+    const override = Option.isSome(setting) === true ? setting.value : Option.none()
+    if (Option.isSome(override) === true) {
+      return yield* Cwd.resolvePath(override.value)
+    }
+    // Prefer $PWD (logical path) over process.cwd() (physical path)
+    // to support running commands from inside symlinked members
+    const pwd = process.env.PWD
+    const cwd = pwd !== undefined && pwd.length > 0 === true ? pwd : process.cwd()
+    return EffectPath.unsafe.absoluteDir(cwd.endsWith('/') === true ? cwd : `${cwd}/`)
+  }),
 )
 
 /** JSON output format option */

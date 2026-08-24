@@ -477,12 +477,12 @@ describe('config', () => {
     it('should generate valid JSON schema', () => {
       const schema = generateJsonSchema() as unknown as Record<string, unknown>
       expect(schema).toBeDefined()
-      expect(schema['$schema']).toBe('http://json-schema.org/draft-07/schema#')
-      expect(schema['$ref']).toBe('#/$defs/MegarepoConfig')
+      expect(schema['$schema']).toBe('https://json-schema.org/draft/2020-12/schema')
+      expect(schema['$ref']).toBe('#/$defs/MegarepoConfigEncoded')
       expect(schema['$defs']).toBeDefined()
       const defs = schema['$defs'] as Record<string, Record<string, unknown>>
-      expect(defs['MegarepoConfig']).toBeDefined()
-      expect(defs['MegarepoConfig']?.['type']).toBe('object')
+      expect(defs['MegarepoConfigEncoded']).toBeDefined()
+      expect(defs['MegarepoConfigEncoded']?.['type']).toBe('object')
     })
   })
 

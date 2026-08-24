@@ -17,7 +17,7 @@ import { expect } from 'vitest'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
-import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
+import { createLockedMember, LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   addCommit,
@@ -86,9 +86,7 @@ const createTestWorkspace = (args: {
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: MegarepoConfig = {
-      members: args.members,
-    }
+    const config: MegarepoConfig = new MegarepoConfig({ members: args.members, })
     const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
@@ -110,10 +108,8 @@ const createTestWorkspace = (args: {
         })
       }
 
-      const lockFile: LockFile = {
-        version: 1,
-        members,
-      }
+      const lockFile: LockFile = new LockFile({ version: 1,
+      members, })
 
       const lockPath = EffectPath.ops.join(
         workspacePath,
@@ -535,7 +531,7 @@ describe('mr status --output json', () => {
             Effect.gen(function* () {
               const configContent = yield* Schema.encodeEffect(
                 Schema.fromJsonString(MegarepoConfig, { space: 2 }),
-              )({ members })
+              )(new MegarepoConfig({ members }))
               yield* fs.writeFileString(
                 EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
                 `${configContent}\n`,

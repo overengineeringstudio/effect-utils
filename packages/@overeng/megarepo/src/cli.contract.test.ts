@@ -17,22 +17,24 @@ afterAll(() => {
 /**
  * CLI contract capture: `status` and `signal` are cross-major invariants; stdout/stderr help,
  * usage, and error prose are captured for review but may be re-baselined by the megarepo owner
- * during Effect 4 repair with an alignment-register entry.
+ * with an alignment-register entry.
  * ANSI control bytes are normalized, so colour/styling changes are not gated by this baseline.
  * The local-source version suffix is normalized, so version-string content is not gated by this
  * baseline.
+ * Stack-trace frames are normalized, so effect-internal line numbers are not gated by this
+ * baseline.
  */
-// LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
 const stripAnsi = (output: string) =>
   output.replace(
-    // eslint-disable-next-line no-control-regex -- CLI contract snapshots intentionally normalize terminal control bytes.
+    // oxlint-disable-next-line no-control-regex -- CLI contract snapshots intentionally normalize terminal control bytes.
     /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/gu,
     '',
   )
 
 const normalizeOutput = (output: string) =>
-  stripAnsi(output).replace(/ — running from local source \([^)]+\)/gu, '')
-// LIVE-MIGRATION END effect-3-4
+  stripAnsi(output)
+    .replace(/ — running from local source \([^)]+\)/gu, '')
+    .replace(/^ +at <anonymous> .+$/gmu, '')
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {
@@ -43,12 +45,37 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
-    // LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
     stdout: normalizeOutput(result.stdout),
     stderr: normalizeOutput(result.stderr),
-    // LIVE-MIGRATION END effect-3-4
   }
 }
+
+/**
+ * The `mr add` help document, printed on stdout when argument validation fails
+ * (Effect v4 renders help on stdout and diagnostics on stderr).
+ */
+const addHelpDoc = `DESCRIPTION
+  Add a new member repository
+
+USAGE
+  mr add [flags] <repo>
+
+ARGUMENTS
+  repo string    Repository reference (github shorthand, URL, or path)
+
+FLAGS
+  --name, -n string      Override the member name (defaults to repo name)
+  --sync, -s             Sync the added repo immediately
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+  --cwd string                                                        Override the working directory
+`
 
 describe('megarepo CLI contract baselines (status/signal invariant, prose owner-rebaselinable)', () => {
   it.each([
@@ -67,41 +94,38 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
       args: ['add', '--', '--not-a-flag'],
       stdout:
         '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --not-a-flag"}\n',
-      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n',
+      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n\n',
     },
     {
       name: 'parent flag-name collision',
       args: ['add', '--', '--cwd'],
       stdout: '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --cwd"}\n',
-      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n',
+      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n\n',
     },
     {
       name: 'subcommand flag-name collision',
       args: ['add', '--', '--name'],
       stdout:
         '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --name"}\n',
-      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n',
+      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n\n',
     },
     {
       name: 'multiple operands preserve order until positional arity is exhausted',
       args: ['add', '--', '--first', '--name', '--last'],
-      stdout: '',
+      stdout: addHelpDoc,
       stderr:
-        `Received unknown argument: '--name'\n\n` +
-        `Error: {"_tag":"InvalidValue","error":{"_tag":"Paragraph","value":` +
-        `{"_tag":"Text","value":"Received unknown argument: '--name'"}}}\n`,
+        '\nERROR\n  Unexpected positional arguments: "--name", "--last"\n' +
+        '~effect/cli/CliError/ShowHelp: Help requested (mr 0.1.0)\n\n',
     },
     {
       name: 'empty trailing operands',
       args: ['add', '--'],
-      stdout: '',
+      stdout: addHelpDoc,
       stderr:
-        'Missing argument <repo>\n\nError: {"_tag":"MissingValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"Missing argument <repo>"}}}\n',
+        '\nERROR\n  Missing required argument: repo\n' +
+        '~effect/cli/CliError/ShowHelp: Help requested (mr 0.1.0)\n\n',
     },
   ])('retains nested terminator argv: $name', ({ args, stdout, stderr }) => {
-    // TODO(live-migration:effect-3-4): v4 beta.102 drops argv after `--` for nested commands
-    // (effect#6690). Do NOT rebaseline — this failing is the gate working. Resolve by landing the
-    // upstream fix or the local parser patch, then re-run; the values here should be unchanged.
     expect(runCli('--cwd', workspaceRoot, ...args)).toEqual({
       status: 1,
       signal: null,

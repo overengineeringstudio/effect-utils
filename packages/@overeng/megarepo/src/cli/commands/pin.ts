@@ -11,9 +11,9 @@ import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
-
 import {
   buildSourceStringWithRef,
+  MegarepoConfig,
   getMemberPath,
   getSourceUrl,
   parseSourceString,
@@ -217,13 +217,13 @@ export const pinCommand = Cli.Command.make(
             }
 
             // Actually perform the changes
-            config = {
+            config = new MegarepoConfig({
               ...config,
               members: {
                 ...config.members,
                 [member]: newSourceString,
               },
-            }
+            })
 
             // Write updated config (preserves format)
             yield* writeMegarepoConfig({ configPath: configPath, config: config })

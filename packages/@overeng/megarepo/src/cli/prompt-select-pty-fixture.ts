@@ -27,13 +27,16 @@ const prompt = (message: string) =>
     ],
   })
 
+// Under Effect v4 the Node terminal is a scoped resource: raw mode is restored when the
+// providing scope closes, so the trace must be measured outside `Effect.scoped`.
 const run = (caseId: string): Effect.Effect<PromptTrace, QuitError, never> =>
   caseId === 'select'
-    ? Prompt.run(prompt('Choose missing-ref action')).pipe(
-        Effect.map((result) => ({ case: 'select', result, rawAfter: isRaw() }) as const),
-        Effect.provide(NodeServices.layer),
-      )
-    : Prompt.run(prompt('Abort missing-ref action')).pipe(
+    ? Effect.scoped(
+        Prompt.run(prompt('Choose missing-ref action')).pipe(Effect.provide(NodeServices.layer)),
+      ).pipe(Effect.map((result) => ({ case: 'select', result, rawAfter: isRaw() }) as const))
+    : Effect.scoped(
+        Prompt.run(prompt('Abort missing-ref action')).pipe(Effect.provide(NodeServices.layer)),
+      ).pipe(
         Effect.map(
           () =>
             ({
@@ -45,7 +48,6 @@ const run = (caseId: string): Effect.Effect<PromptTrace, QuitError, never> =>
         Effect.catchTag('QuitError', () =>
           Effect.succeed({ case: 'interrupt', exit: 'Quit', rawAfter: isRaw() } as const),
         ),
-        Effect.provide(NodeServices.layer),
       )
 
 const trace: PromptTrace = await Effect.runPromise(run(process.argv[2] ?? ''))

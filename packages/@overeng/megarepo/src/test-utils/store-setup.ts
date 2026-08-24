@@ -12,15 +12,15 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { MegarepoConfig } from '../lib/config.ts'
 import * as Git from '../lib/git.ts'
 import {
+  LockFile,
   createLockedMember,
-  type LockFile,
   type LockedMember,
   LOCK_FILE_NAME,
   readLockFile,
   writeLockFile,
 } from '../lib/lock.ts'
-import * as Observability from '../lib/observability.ts'
 import { refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
+import * as Observability from '../lib/observability.ts'
 
 // =============================================================================
 // Types
@@ -411,10 +411,10 @@ export const createWorkspaceWithLock = (args: {
         })
       }
 
-      const lockFile: LockFile = {
+      const lockFile: LockFile = new LockFile({
         version: 1,
         members,
-      }
+      })
 
       const lockPath = EffectPath.ops.join(
         workspacePath,
@@ -486,7 +486,7 @@ export const repinWorkspace = ({
         commit: lockEntry.commit,
         ...(lockEntry.pinned !== undefined ? { pinned: lockEntry.pinned } : {}),
       })
-      const lockFile: LockFile = { version: 1, members }
+      const lockFile: LockFile = new LockFile({ version: 1, members })
       yield* writeLockFile({ lockPath, lockFile })
     }
   })

@@ -76,11 +76,9 @@ describe('mr init', () => {
         expect(yield* fs.exists(configPath)).toBe(false)
 
         // Simulate init: create initial config
-        const initialConfig: MegarepoConfig = {
-          $schema:
-            'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
-          members: {},
-        }
+        const initialConfig: MegarepoConfig = new MegarepoConfig({ $schema:
+          'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
+        members: {}, })
         const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           initialConfig,
         )
@@ -112,9 +110,7 @@ describe('mr init', () => {
         yield* initGitRepo(workDir)
 
         // Create existing config with a member
-        const existingConfig: MegarepoConfig = {
-          members: { 'existing-lib': 'owner/existing-lib' },
-        }
+        const existingConfig: MegarepoConfig = new MegarepoConfig({ members: { 'existing-lib': 'owner/existing-lib' }, })
         const configPath = EffectPath.ops.join(
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
@@ -282,7 +278,7 @@ describe('mr add', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const initialConfig: MegarepoConfig = { members: {} }
+        const initialConfig: MegarepoConfig = new MegarepoConfig({ members: {} })
         const initialContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           initialConfig,
         )
@@ -294,10 +290,10 @@ describe('mr add', () => {
 
         // Simulate add: update config
         const config = yield* readConfig(workDir)
-        const updatedConfig = {
+        const updatedConfig = new MegarepoConfig({
           ...config,
           members: { ...config.members, [memberName]: memberSource },
-        }
+          })
         const updatedContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           updatedConfig,
         )
@@ -335,10 +331,10 @@ describe('mr add', () => {
         const memberSource = 'effect-ts/effect#v3.0.0'
 
         const config = yield* readConfig(workDir)
-        const updatedConfig = {
+        const updatedConfig = new MegarepoConfig({
           ...config,
           members: { ...config.members, [customName]: memberSource },
-        }
+          })
         const updatedContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           updatedConfig,
         )
@@ -376,9 +372,7 @@ describe('mr add', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const initialConfig: MegarepoConfig = {
-          members: { effect: 'effect-ts/effect' },
-        }
+        const initialConfig: MegarepoConfig = new MegarepoConfig({ members: { effect: 'effect-ts/effect' }, })
         const initialContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           initialConfig,
         )
@@ -418,16 +412,14 @@ describe('megarepo.json parsing', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const config: MegarepoConfig = {
-          members: {
-            github: 'owner/repo',
-            'github-ref': 'owner/repo#main',
-            'github-tag': 'owner/repo#v1.0.0',
-            url: 'https://github.com/owner/repo',
-            ssh: 'git@github.com:owner/repo.git',
-            local: './packages/local',
-          },
-        }
+        const config: MegarepoConfig = new MegarepoConfig({ members: {
+          github: 'owner/repo',
+          'github-ref': 'owner/repo#main',
+          'github-tag': 'owner/repo#v1.0.0',
+          url: 'https://github.com/owner/repo',
+          ssh: 'git@github.com:owner/repo.git',
+          local: './packages/local',
+        }, })
         const content = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)
         yield* fs.writeFileString(configPath, content + '\n')
 
@@ -457,12 +449,10 @@ describe('megarepo.json parsing', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const config: MegarepoConfig = {
-          members: { lib: 'owner/lib' },
-          generators: {
-            vscode: { enabled: true, exclude: ['large-repo'] },
-          },
-        }
+        const config: MegarepoConfig = new MegarepoConfig({ members: { lib: 'owner/lib' },
+        generators: {
+          vscode: { enabled: true, exclude: ['large-repo'] },
+        }, })
         const content = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)
         yield* fs.writeFileString(configPath, content + '\n')
 

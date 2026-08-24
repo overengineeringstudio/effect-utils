@@ -15,6 +15,7 @@ import type { AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
+  MegarepoConfig,
   findConfigPath,
   getBaseSourceString,
   getMemberPath,
@@ -132,7 +133,7 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
 
       // Write updated config (unless dry-run)
       if (options.dryRun === false) {
-        const updatedConfig = { ...nestedConfig, members: updatedMembers }
+        const updatedConfig = new MegarepoConfig({ ...nestedConfig, members: updatedMembers })
         yield* writeMegarepoConfig({ configPath: configPath, config: updatedConfig })
       }
 

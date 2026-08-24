@@ -59,7 +59,7 @@ describe('store-fs-atomic: writeFileAtomic', () => {
         )
 
         const result = yield* writeFileAtomic({ path: target, content: 'x' }).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
 
         // The `.tmp-*` sibling must not survive the failed write.
         const remaining = yield* fs.readDirectory(dir)

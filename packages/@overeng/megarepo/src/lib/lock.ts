@@ -106,10 +106,11 @@ export const writeLockFile = ({
 /**
  * Create a new empty lock file
  */
-export const createEmptyLockFile = (): LockFile => ({
-  version: LOCK_FILE_VERSION,
-  members: {},
-})
+export const createEmptyLockFile = (): LockFile =>
+  new LockFile({
+    version: LOCK_FILE_VERSION,
+    members: {},
+  })
 
 /**
  * Create a new locked member entry
@@ -119,13 +120,14 @@ export const createLockedMember = (args: {
   ref: string
   commit: string
   pinned?: boolean
-}): LockedMember => ({
-  url: args.url,
-  ref: args.ref,
-  commit: args.commit,
-  pinned: args.pinned ?? false,
-  lockedAt: new Date().toISOString(),
-})
+}): LockedMember =>
+  new LockedMember({
+    url: args.url,
+    ref: args.ref,
+    commit: args.commit,
+    pinned: args.pinned ?? false,
+    lockedAt: new Date().toISOString(),
+  })
 
 /**
  * Update a member in the lock file
@@ -138,13 +140,14 @@ export const updateLockedMember = ({
   lockFile: LockFile
   memberName: string
   member: LockedMember
-}): LockFile => ({
-  ...lockFile,
-  members: {
-    ...lockFile.members,
-    [memberName]: member,
-  },
-})
+}): LockFile =>
+  new LockFile({
+    ...lockFile,
+    members: {
+      ...lockFile.members,
+      [memberName]: member,
+    },
+  })
 
 /**
  * Check if two locked members are equivalent (ignoring lockedAt)
@@ -208,10 +211,10 @@ export const removeLockedMember = ({
   memberName: string
 }): LockFile => {
   const { [memberName]: _, ...rest } = lockFile.members
-  return {
+  return new LockFile({
     ...lockFile,
     members: rest,
-  }
+  })
 }
 
 /**
@@ -230,11 +233,11 @@ export const pinMember = ({
   return updateLockedMember({
     lockFile,
     memberName,
-    member: {
+    member: new LockedMember({
       ...member,
       pinned: true,
       lockedAt: new Date().toISOString(),
-    },
+    }),
   })
 }
 
@@ -254,11 +257,11 @@ export const unpinMember = ({
   return updateLockedMember({
     lockFile,
     memberName,
-    member: {
+    member: new LockedMember({
       ...member,
       pinned: false,
       lockedAt: new Date().toISOString(),
-    },
+    }),
   })
 }
 
@@ -360,8 +363,8 @@ export const syncLockWithConfig = ({
     }
   }
 
-  return {
+  return new LockFile({
     ...lockFile,
     members,
-  }
+  })
 }

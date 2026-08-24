@@ -10,7 +10,7 @@ import React from 'react'
 
 import { run } from '@overeng/tui-react'
 
-import { parseSourceString, readMegarepoConfig, writeMegarepoConfig } from '../../lib/config.ts'
+import { MegarepoConfig, parseSourceString, readMegarepoConfig, writeMegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'
@@ -118,13 +118,13 @@ export const addCommand = Cli.Command.make(
             }
 
             // Add the new member
-            const newConfig = {
+            const newConfig = new MegarepoConfig({
               ...config,
               members: {
                 ...config.members,
                 [memberName]: parsed.sourceString,
               },
-            }
+            })
 
             // Write updated config (preserves format)
             yield* writeMegarepoConfig({ configPath: configPath, config: newConfig })

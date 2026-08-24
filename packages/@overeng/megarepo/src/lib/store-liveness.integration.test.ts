@@ -338,7 +338,7 @@ describe('store-liveness', () => {
         yield* fs.chmod(reposDir, 0o755).pipe(Effect.catch(() => Effect.void))
         // Re-break for the reconcile-all assertion below.
         yield* fs.chmod(reposDir, 0o000)
-        expect(strictResult._tag).toBe('Left')
+        expect(strictResult._tag).toBe('Failure')
 
         // Reconcile-all keeps the last-known live paths (never overwrites a
         // non-empty record with empty) and flags the workspace unclean.

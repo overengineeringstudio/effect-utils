@@ -11,10 +11,11 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME_JSON, MegarepoConfig } from '../lib/config.ts'
 import {
+  LockFile,
+  LOCK_FILE_NAME,
   checkLockStaleness,
   createEmptyLockFile,
   createLockedMember,
-  LOCK_FILE_NAME,
   readLockFile,
   updateLockedMember,
   writeLockFile,
@@ -627,11 +628,9 @@ const createNestedMegarepoFixture = () =>
     yield* initGitRepo(childPath)
 
     // Create child's megarepo.json pointing to grandchild
-    const childConfig: MegarepoConfig = {
-      members: {
-        'grandchild-lib': grandchildPath,
-      },
-    }
+    const childConfig: MegarepoConfig = new MegarepoConfig({ members: {
+      'grandchild-lib': grandchildPath,
+    }, })
     const childConfigContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       childConfig,
     )
@@ -653,11 +652,9 @@ const createNestedMegarepoFixture = () =>
     yield* initGitRepo(parentPath)
 
     // Create parent's megarepo.json pointing to child
-    const parentConfig: MegarepoConfig = {
-      members: {
-        'child-megarepo': childPath,
-      },
-    }
+    const parentConfig: MegarepoConfig = new MegarepoConfig({ members: {
+      'child-megarepo': childPath,
+    }, })
     const parentConfigContent = yield* Schema.encodeEffect(
       Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(parentConfig)
@@ -763,11 +760,11 @@ describe('--all nested error reporting', () => {
         yield* initGitRepo(childPath)
         yield* fs.writeFileString(
           EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
             members: {
               bad: 'not-a-valid-source',
             },
-          })) + '\n',
+          }))) + '\n',
         )
         yield* addCommit({ repoPath: childPath, message: 'Initialize child megarepo' })
 
@@ -780,11 +777,11 @@ describe('--all nested error reporting', () => {
         yield* initGitRepo(parentPath)
         yield* fs.writeFileString(
           EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
             members: {
               child: childPath,
             },
-          })) + '\n',
+          }))) + '\n',
         )
         yield* addCommit({ repoPath: parentPath, message: 'Initialize parent megarepo' })
 
@@ -873,9 +870,7 @@ const createDiamondDependencyFixture = () =>
     const childAPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-a/'))
     yield* fs.makeDirectory(childAPath, { recursive: true })
     yield* initGitRepo(childAPath)
-    const childAConfig: MegarepoConfig = {
-      members: { 'shared-lib': sharedLibPath },
-    }
+    const childAConfig: MegarepoConfig = new MegarepoConfig({ members: { 'shared-lib': sharedLibPath }, })
     const childAConfigContent = yield* Schema.encodeEffect(
       Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(childAConfig)
@@ -892,9 +887,7 @@ const createDiamondDependencyFixture = () =>
     const childBPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-b/'))
     yield* fs.makeDirectory(childBPath, { recursive: true })
     yield* initGitRepo(childBPath)
-    const childBConfig: MegarepoConfig = {
-      members: { 'shared-lib': sharedLibPath },
-    }
+    const childBConfig: MegarepoConfig = new MegarepoConfig({ members: { 'shared-lib': sharedLibPath }, })
     const childBConfigContent = yield* Schema.encodeEffect(
       Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(childBConfig)
@@ -911,12 +904,10 @@ const createDiamondDependencyFixture = () =>
     const rootPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('root/'))
     yield* fs.makeDirectory(rootPath, { recursive: true })
     yield* initGitRepo(rootPath)
-    const rootConfig: MegarepoConfig = {
-      members: {
-        'child-a': childAPath,
-        'child-b': childBPath,
-      },
-    }
+    const rootConfig: MegarepoConfig = new MegarepoConfig({ members: {
+      'child-a': childAPath,
+      'child-b': childBPath,
+    }, })
     const rootConfigContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       rootConfig,
     )
@@ -1117,11 +1108,11 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
     yield* initGitRepo(childPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
         members: {
           shared: 'https://example.com/acme/shared#main',
         },
-      })) + '\n',
+      }))) + '\n',
     )
     let childLock = createEmptyLockFile()
     childLock = updateLockedMember({
@@ -1144,12 +1135,12 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
     yield* initGitRepo(parentPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
         members: {
           shared: 'https://example.com/acme/shared#main',
           child: childPath,
         },
-      })) + '\n',
+      }))) + '\n',
     )
     let parentLock = createEmptyLockFile()
     parentLock = updateLockedMember({
@@ -1205,13 +1196,13 @@ const createAliasWorkspaceFixture = () =>
     const parentConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
       parentConfigContent,
     )
-    const updatedConfig = {
+    const updatedConfig = new MegarepoConfig({
       ...parentConfig,
       members: {
         ...parentConfig.members,
         'shared-alias': 'https://example.com/acme/shared#main' as const,
       },
-    }
+    })
     yield* fs.writeFileString(
       parentConfigPath,
       (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(updatedConfig)) + '\n',
@@ -1283,11 +1274,11 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     yield* initGitRepo(childPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
         members: {
           'shared-dev': 'https://example.com/acme/shared#dev',
         },
-      })) + '\n',
+      }))) + '\n',
     )
     let childLock = createEmptyLockFile()
     childLock = updateLockedMember({
@@ -1310,13 +1301,13 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     yield* initGitRepo(parentPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
         members: {
           'shared-main': 'https://example.com/acme/shared#main',
           'shared-dev': 'https://example.com/acme/shared#dev',
           child: childPath,
         },
-      })) + '\n',
+      }))) + '\n',
     )
     let parentLock = createEmptyLockFile()
     parentLock = updateLockedMember({
@@ -1784,12 +1775,10 @@ describe('mr lock', () => {
           yield* initGitRepo(workspacePath)
 
           // Create megarepo.json with a GitHub repo
-          const config: MegarepoConfig = {
-            members: {
-              // Using a real but unlikely-to-change repo
-              effect: 'effect-ts/effect',
-            },
-          }
+          const config: MegarepoConfig = new MegarepoConfig({ members: {
+            // Using a real but unlikely-to-change repo
+            effect: 'effect-ts/effect',
+          }, })
           const configContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
@@ -1861,11 +1850,9 @@ describe('mr lock', () => {
           yield* initGitRepo(workspacePath)
 
           // Create initial config pointing to the base repo path
-          const initialConfig: MegarepoConfig = {
-            members: {
-              'my-lib': baseRepoPath,
-            },
-          }
+          const initialConfig: MegarepoConfig = new MegarepoConfig({ members: {
+            'my-lib': baseRepoPath,
+          }, })
           const configPath = EffectPath.ops.join(
             workspacePath,
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
@@ -1900,11 +1887,9 @@ describe('mr lock', () => {
           expect(featureFileInBase).toBe(false)
 
           // Update config to point to the feature repo path
-          const updatedConfig: MegarepoConfig = {
-            members: {
-              'my-lib': featureRepoPath,
-            },
-          }
+          const updatedConfig: MegarepoConfig = new MegarepoConfig({ members: {
+            'my-lib': featureRepoPath,
+          }, })
           yield* fs.writeFileString(
             configPath,
             (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(updatedConfig)) +
@@ -1985,9 +1970,9 @@ describe('mr lock', () => {
           )
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
               members: { 'my-lib': mainRepoPath },
-            })) + '\n',
+            }))) + '\n',
           )
           yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
@@ -2003,9 +1988,9 @@ describe('mr lock', () => {
           // Update config to point to feature branch
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
               members: { 'my-lib': featureRepoPath },
-            })) + '\n',
+            }))) + '\n',
           )
 
           // Sync again - should skip because old worktree is dirty
@@ -2215,9 +2200,9 @@ describe('mr lock', () => {
           )
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
               members: { 'my-lib': mainRepoPath },
-            })) + '\n',
+            }))) + '\n',
           )
           yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
@@ -2233,9 +2218,9 @@ describe('mr lock', () => {
           // Update config
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))({
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(new MegarepoConfig({
               members: { 'my-lib': featureRepoPath },
-            })) + '\n',
+            }))) + '\n',
           )
 
           // Sync with --force - should succeed
@@ -2642,11 +2627,9 @@ describe('sync status types', () => {
         yield* fs.makeDirectory(workspacePath, { recursive: true })
         yield* initGitRepo(workspacePath)
 
-        const config: MegarepoConfig = {
-          members: {
-            'new-lib': localRepoPath,
-          },
-        }
+        const config: MegarepoConfig = new MegarepoConfig({ members: {
+          'new-lib': localRepoPath,
+        }, })
         const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           config,
         )
@@ -2701,11 +2684,9 @@ describe('sync error handling', () => {
         // Create megarepo.json with a missing remote. Use file:// so the clone
         // failure is deterministic and does not spend the test timeout on
         // network/auth retries.
-        const config: MegarepoConfig = {
-          members: {
-            'non-existent-repo': pathToFileURL(missingRemotePath).href,
-          },
-        }
+        const config: MegarepoConfig = new MegarepoConfig({ members: {
+          'non-existent-repo': pathToFileURL(missingRemotePath).href,
+        }, })
         const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           config,
         )
@@ -2792,12 +2773,10 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: MegarepoConfig = {
-            members: {
-              repo1: repo1Path,
-              repo2: repo2Path,
-            },
-          }
+          const config: MegarepoConfig = new MegarepoConfig({ members: {
+            repo1: repo1Path,
+            repo2: repo2Path,
+          }, })
           const configContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
@@ -2863,12 +2842,10 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: MegarepoConfig = {
-            members: {
-              repo1: repo1Path,
-              repo2: repo2Path,
-            },
-          }
+          const config: MegarepoConfig = new MegarepoConfig({ members: {
+            repo1: repo1Path,
+            repo2: repo2Path,
+          }, })
           const configContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
@@ -2918,11 +2895,9 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: MegarepoConfig = {
-            members: {
-              repo1: 'owner/repo1',
-            },
-          }
+          const config: MegarepoConfig = new MegarepoConfig({ members: {
+            repo1: 'owner/repo1',
+          }, })
           const configContent = yield* Schema.encodeEffect(
             Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
@@ -3017,12 +2992,10 @@ describe('sync worktree ref mismatch detection', () => {
         yield* initGitRepo(workspacePath)
 
         // Create megarepo.json with URL source (not local path)
-        const config: MegarepoConfig = {
-          members: {
-            // Using https URL so it's treated as URL type, not path type
-            'test-repo': 'https://example.com/org/test-repo#main',
-          },
-        }
+        const config: MegarepoConfig = new MegarepoConfig({ members: {
+          // Using https URL so it's treated as URL type, not path type
+          'test-repo': 'https://example.com/org/test-repo#main',
+        }, })
         const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           config,
         )
@@ -3038,16 +3011,16 @@ describe('sync worktree ref mismatch detection', () => {
         )
         yield* writeLockFile({
           lockPath,
-          lockFile: {
-            version: 1,
-            members: {
+          lockFile: new LockFile({
+              version: 1,
+              members: {
               'test-repo': createLockedMember({
                 url: 'https://example.com/org/test-repo',
                 ref: 'main',
                 commit: mainCommit,
               }),
             },
-          },
+          }),
         })
 
         yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
@@ -3124,11 +3097,9 @@ describe('sync worktree ref mismatch detection', () => {
         yield* initGitRepo(workspacePath)
 
         // Create megarepo.json with URL source
-        const config: MegarepoConfig = {
-          members: {
-            'test-repo': 'https://example.com/org/test-repo#main',
-          },
-        }
+        const config: MegarepoConfig = new MegarepoConfig({ members: {
+          'test-repo': 'https://example.com/org/test-repo#main',
+        }, })
         const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           config,
         )
@@ -3144,16 +3115,16 @@ describe('sync worktree ref mismatch detection', () => {
         )
         yield* writeLockFile({
           lockPath,
-          lockFile: {
-            version: 1,
-            members: {
+          lockFile: new LockFile({
+              version: 1,
+              members: {
               'test-repo': createLockedMember({
                 url: 'https://example.com/org/test-repo',
                 ref: 'main',
                 commit: mainCommit,
               }),
             },
-          },
+          }),
         })
 
         yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
@@ -3238,12 +3209,10 @@ describe('sync member removal detection', () => {
         )
 
         // Initial config with both members
-        const initialConfig: MegarepoConfig = {
-          members: {
-            repo1: repo1Path,
-            repo2: repo2Path,
-          },
-        }
+        const initialConfig: MegarepoConfig = new MegarepoConfig({ members: {
+          repo1: repo1Path,
+          repo2: repo2Path,
+        }, })
         yield* fs.writeFileString(
           configPath,
           (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(initialConfig)) +
@@ -3270,12 +3239,10 @@ describe('sync member removal detection', () => {
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
 
         // Update config to remove repo2
-        const updatedConfig: MegarepoConfig = {
-          members: {
-            repo1: repo1Path,
-            // repo2 removed!
-          },
-        }
+        const updatedConfig: MegarepoConfig = new MegarepoConfig({ members: {
+          repo1: repo1Path,
+          // repo2 removed!
+        }, })
         yield* fs.writeFileString(
           configPath,
           (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(updatedConfig)) +
@@ -3346,12 +3313,10 @@ describe('sync member removal detection', () => {
         )
 
         // Initial config with both members
-        const initialConfig: MegarepoConfig = {
-          members: {
-            repo1: repo1Path,
-            repo2: repo2Path,
-          },
-        }
+        const initialConfig: MegarepoConfig = new MegarepoConfig({ members: {
+          repo1: repo1Path,
+          repo2: repo2Path,
+        }, })
         yield* fs.writeFileString(
           configPath,
           (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(initialConfig)) +
@@ -3366,11 +3331,9 @@ describe('sync member removal detection', () => {
         yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
         // Update config to remove repo2
-        const updatedConfig: MegarepoConfig = {
-          members: {
-            repo1: repo1Path,
-          },
-        }
+        const updatedConfig: MegarepoConfig = new MegarepoConfig({ members: {
+          repo1: repo1Path,
+        }, })
         yield* fs.writeFileString(
           configPath,
           (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(updatedConfig)) +
@@ -3440,12 +3403,10 @@ describe('sync member removal detection', () => {
         )
 
         // Config with both members
-        const config: MegarepoConfig = {
-          members: {
-            repo1: repo1Path,
-            repo2: repo2Path,
-          },
-        }
+        const config: MegarepoConfig = new MegarepoConfig({ members: {
+          repo1: repo1Path,
+          repo2: repo2Path,
+        }, })
         yield* fs.writeFileString(
           configPath,
           (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) + '\n',
@@ -3511,11 +3472,9 @@ describe('sync member removal detection', () => {
         )
 
         // Config with only repo1
-        const config: MegarepoConfig = {
-          members: {
-            repo1: repo1Path,
-          },
-        }
+        const config: MegarepoConfig = new MegarepoConfig({ members: {
+          repo1: repo1Path,
+        }, })
         yield* fs.writeFileString(
           configPath,
           (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) + '\n',

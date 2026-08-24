@@ -168,17 +168,17 @@ describe('schema generator', () => {
       const content = generateSchemaContent()
       const schema = JSON.parse(content)
 
-      expect(schema.$schema).toBe('http://json-schema.org/draft-07/schema#')
-      expect(schema.$ref).toBe('#/$defs/MegarepoConfig')
+      expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema')
+      expect(schema.$ref).toBe('#/$defs/MegarepoConfigEncoded')
       expect(schema.$defs).toBeDefined()
-      expect(schema.$defs.MegarepoConfig).toBeDefined()
+      expect(schema.$defs.MegarepoConfigEncoded).toBeDefined()
     })
 
     it('should include members property in schema', () => {
       const content = generateSchemaContent()
       const schema = JSON.parse(content)
 
-      const megarepoConfigDef = schema.$defs.MegarepoConfig
+      const megarepoConfigDef = schema.$defs.MegarepoConfigEncoded
       expect(megarepoConfigDef.type).toBe('object')
       expect(megarepoConfigDef.properties.members).toBeDefined()
     })
@@ -187,7 +187,7 @@ describe('schema generator', () => {
       const content = generateSchemaContent()
       const schema = JSON.parse(content)
 
-      const megarepoConfigDef = schema.$defs.MegarepoConfig
+      const megarepoConfigDef = schema.$defs.MegarepoConfigEncoded
       expect(megarepoConfigDef.properties.generators).toBeDefined()
     })
 
@@ -195,7 +195,7 @@ describe('schema generator', () => {
       const content = generateSchemaContent()
       const schema = JSON.parse(content)
 
-      const megarepoConfigDef = schema.$defs.MegarepoConfig
+      const megarepoConfigDef = schema.$defs.MegarepoConfigEncoded
       expect(megarepoConfigDef.properties.$schema).toBeDefined()
     })
 
