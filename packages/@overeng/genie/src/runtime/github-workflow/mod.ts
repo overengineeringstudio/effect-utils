@@ -620,8 +620,7 @@ const validateGitHubWorkflowAdmissionSize = ({
   return []
 }
 
-const preparedCiRetryScriptPath =
-  '${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
+const preparedCiRuntimeScriptsPath = '${{ github.workspace }}/.genie-ci-runtime/'
 const prepareCiScriptsStepName = 'Prepare CI helper scripts'
 
 const stepName = (step: Step): string | undefined =>
@@ -650,7 +649,10 @@ const checkoutCleansWorkspaceRoot = (step: Step): boolean => {
   return checkoutAtWorkspaceRoot === true && cleanDisabled === false
 }
 
-const validatePreparedCiRetryScriptSetup = ({
+const installNixInvalidatesPreparedCiRuntime = (step: Step): boolean =>
+  stepUses(step)?.toLowerCase().startsWith('determinatesystems/determinate-nix-action@') === true
+
+const validatePreparedCiRuntimeScriptsSetup = ({
   args,
   location,
 }: {
@@ -661,20 +663,25 @@ const validatePreparedCiRetryScriptSetup = ({
 
   for (const [jobName, job] of Object.entries(args.jobs)) {
     let prepareIndex = -1
-    let workspaceCleaningCheckoutIndex = -1
+    let invalidatingStepIndex = -1
 
     for (const [index, step] of job.steps.entries()) {
       if (stepName(step) === prepareCiScriptsStepName) prepareIndex = index
-      if (checkoutCleansWorkspaceRoot(step) === true) workspaceCleaningCheckoutIndex = index
-      if (stepRun(step)?.includes(preparedCiRetryScriptPath) !== true) continue
-      if (prepareIndex >= 0 && prepareIndex > workspaceCleaningCheckoutIndex) continue
+      if (
+        checkoutCleansWorkspaceRoot(step) === true ||
+        installNixInvalidatesPreparedCiRuntime(step) === true
+      ) {
+        invalidatingStepIndex = index
+      }
+      if (stepRun(step)?.includes(preparedCiRuntimeScriptsPath) !== true) continue
+      if (prepareIndex >= 0 && prepareIndex > invalidatingStepIndex) continue
 
       issues.push({
         severity: 'error',
         packageName: location,
         dependency: `jobs.${jobName}.steps[${index}]`,
-        message: `jobs.${jobName} uses the prepared CI retry helper at ${preparedCiRetryScriptPath} without a preceding "${prepareCiScriptsStepName}" step. Add the CI runtime support preparation step after the final workspace-cleaning checkout and before retry-wrapped commands.`,
-        rule: 'github-workflow-prepared-ci-retry-script-setup',
+        message: `jobs.${jobName} uses a prepared CI runtime helper under ${preparedCiRuntimeScriptsPath} without a preceding "${prepareCiScriptsStepName}" step after the final workspace-cleaning checkout and Nix installation.`,
+        rule: 'github-workflow-prepared-ci-runtime-script-setup',
       })
     }
   }
@@ -700,7 +707,7 @@ const validateWorkflow = ({
 
   issues.push(...validateDocumentedGitHubLimits({ args, location }))
   issues.push(...validateGitHubWorkflowAdmissionSize({ yamlContent, location }))
-  issues.push(...validatePreparedCiRetryScriptSetup({ args, location }))
+  issues.push(...validatePreparedCiRuntimeScriptsSetup({ args, location }))
   issues.push(...validateDeterminateNixExtraConf({ args, location }))
   issues.push(
     ...validateGitHubExpressionStrings({
