@@ -52,10 +52,10 @@ All notable changes to this project will be documented in this file.
   `SchemaGetter` (v4 removed `transformOrFail`/`ParseResult`) with the AST
   normalizer ported to the v4 node kinds (`Arrays`/`Objects`, `encoding`
   links, `Suspend.thunk`); otel-contract's weaver registry annotation walk and
-  metric bridge updated (AST `representation.id` declarations, `Metric.update`
-  + `withAttributes`, `Metric.snapshot`, `Result` instead of `Either`);
-  `ServiceIdentity` remains a plain v4 Struct so downstream `decodeSync`
-  consumers are unaffected.
+  metric bridge updated (AST `representation.id` declarations,
+  `Metric.update` with `withAttributes`, `Metric.snapshot`, `Result`
+  instead of `Either`); `ServiceIdentity` remains a plain v4 Struct so
+  downstream `decodeSync` consumers are unaffected.
 
 - **@overeng/utils-dev, @overeng/utils**: finish the effect@4.0.0-rc.111 migration
   for `utils-dev` and the residual `utils` sources/tests. Highlights: OTLP moved

@@ -175,8 +175,7 @@ export class RestateTestEnv extends Context.Service<RestateTestEnv, RestateTestE
   static mock = <AppR, RIn = never>(opts: {
     readonly services: ReadonlyArray<AnyImplementation<AppR>>
     readonly appLayer: Layer.Layer<AppR, never, RIn>
-  }): Layer.Layer<RestateTestEnv, never, RIn> =>
-    Layer.effect(RestateTestEnv, makeMockEnv(opts))
+  }): Layer.Layer<RestateTestEnv, never, RIn> => Layer.effect(RestateTestEnv, makeMockEnv(opts))
 
   /**
    * The native-server REAL backend: a thin wrapper over the existing
