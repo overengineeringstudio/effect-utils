@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Repository-wide**: atomic Effect 4 cohort flip to `effect@4.0.0-rc.111`
+  (with `@effect/platform-node`, `@effect/vitest`, `@effect/opentelemetry`,
+  `@effect/atom-react`, all rc.111). Platform, CLI, RPC, Schema, AI, Cluster,
+  Workflow, SQL and Atom reactivity are now core modules
+  (`effect` / `effect/unstable/*`). Services use the v4 `Context.Service`
+  model; error handling uses `Effect.catch`/`catchCause`; forks are
+  `forkChild`/`forkDetach`; wire formats preserved via `DateFromString`/
+  `DateTimeUtcFromString`. The mixed-major duplicate exception and the v3
+  http.client span-header patch are retired — see
+  `context/effect-4/rc111-followups.md` for known behavior changes and
+  follow-ups.
 - **@overeng/tui-react, @overeng/tui-stories, @overeng/effect-react,
   @overeng/effect-schema-form, @overeng/effect-schema-form-aria**: migrate to
   effect@4.0.0-rc.111. Schema AST introspection updated to v4 node kinds
