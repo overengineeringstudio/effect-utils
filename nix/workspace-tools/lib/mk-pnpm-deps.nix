@@ -196,31 +196,42 @@ let
         return null;
       }
 
-      // pnpm appends one parenthesized group per resolved peer to the directory
-      // locator. The declared source path itself is the prefix before the
-      // complete adjacent suffix.
       const sourcePathWithPeerContext = locator.slice(
         locatorIndex + sourceInputLocatorPrefix.length
       );
-      const sourcePath = sourcePathWithPeerContext.replace(/(?:\([^/()]*\))+$/, "");
       const sourceInputStageRoot = path.resolve(
         lockfileDir,
         ".devenv/pnpm-source-inputs/current"
       );
-      const sourceProjectAliasDir = path.resolve(
-        sourceInputStageRoot,
-        sourcePath
-      );
-      if (
-        sourceProjectAliasDir === sourceInputStageRoot ||
-        !isWithin(sourceInputStageRoot, sourceProjectAliasDir)
-      ) {
-        throw new Error(`source-input package locator escaped its stage root: ''${locator}`);
-      }
 
-      const sourceProjectAliasManifest = path.join(sourceProjectAliasDir, "package.json");
-      if (!fs.existsSync(sourceProjectAliasManifest)) {
-        throw new Error(`source-input package alias is missing package.json: ''${sourceProjectAliasDir}`);
+      // The generated manifest alias is the owned boundary between the declared
+      // logical path and pnpm's opaque peer context. Select the longest existing
+      // alias prefix instead of duplicating pnpm's nested locator grammar.
+      let sourcePath;
+      let sourceProjectAliasManifest;
+      let escapedSourcePath = false;
+      for (let end = sourcePathWithPeerContext.length; end > 0; end -= 1) {
+        if (end !== sourcePathWithPeerContext.length && sourcePathWithPeerContext[end] !== "(") {
+          continue;
+        }
+        const candidateSourcePath = sourcePathWithPeerContext.slice(0, end);
+        const candidateAliasDir = path.resolve(sourceInputStageRoot, candidateSourcePath);
+        if (candidateAliasDir === sourceInputStageRoot || !isWithin(sourceInputStageRoot, candidateAliasDir)) {
+          escapedSourcePath = true;
+          continue;
+        }
+        const candidateManifest = path.join(candidateAliasDir, "package.json");
+        if (fs.existsSync(candidateManifest)) {
+          sourcePath = candidateSourcePath;
+          sourceProjectAliasManifest = candidateManifest;
+          break;
+        }
+      }
+      if (sourceProjectAliasManifest === undefined) {
+        if (escapedSourcePath) {
+          throw new Error(`source-input package locator escaped its stage root: ''${locator}`);
+        }
+        throw new Error(`source-input package alias is missing package.json: ''${sourceInputStageRoot}/''${sourcePathWithPeerContext}`);
       }
       const sourceProjectDir = path.resolve(lockfileDir, sourcePath);
       if (!isWithin(workspaceRoot, sourceProjectDir)) {
