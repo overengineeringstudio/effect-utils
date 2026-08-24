@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 
-import { Effect, FileSystem, Path } from 'effect'
+import { Effect, FileSystem, type Path } from 'effect'
 
 import type { BatchResult } from './batch.ts'
 import { NmdCliError, type NmdError } from './errors.ts'

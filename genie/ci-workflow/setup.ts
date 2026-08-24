@@ -587,8 +587,8 @@ export const defaultPnpmStateKeyPrefix = 'pnpm-state'
 
 const defaultPnpmStateHashFilesExpression = "${{ hashFiles('**/pnpm-lock.yaml') }}"
 
-const pnpmStateCachePrimaryKey = (keyPrefix: string, hashFilesExpression: string) =>
-  `${keyPrefix}-${pnpmStateCacheVersion}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${hashFilesExpression}`
+const pnpmStateCachePrimaryKey = (args: { keyPrefix: string; hashFilesExpression: string }) =>
+  `${args.keyPrefix}-${pnpmStateCacheVersion}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${args.hashFilesExpression}`
 
 /**
  * Restore the workspace-local pnpm state snapshot before any install work runs.
@@ -620,7 +620,7 @@ export const restorePnpmStateStep = (opts?: {
       path,
       // The fetched state contents are platform-specific, so the cache must
       // isolate both OS and CPU architecture to avoid cross-platform corruption.
-      key: pnpmStateCachePrimaryKey(keyPrefix, hashFilesExpression),
+      key: pnpmStateCachePrimaryKey({ keyPrefix, hashFilesExpression }),
     },
   }
 }
@@ -652,7 +652,7 @@ export const savePnpmStateStep = (opts?: {
       // not allow nesting `${{ ... }}` inside a fallback string of another
       // expression, so deriving the key once in TypeScript keeps the emitted
       // workflow expression valid.
-      key: pnpmStateCachePrimaryKey(keyPrefix, hashFilesExpression),
+      key: pnpmStateCachePrimaryKey({ keyPrefix, hashFilesExpression }),
     },
   }
 }

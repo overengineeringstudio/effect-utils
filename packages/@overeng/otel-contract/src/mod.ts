@@ -13,7 +13,7 @@ import {
   SchemaParser,
   Stream,
 } from 'effect'
-import * as AST from 'effect/SchemaAST'
+import type * as AST from 'effect/SchemaAST'
 
 export * from './otel-scrape/registry.gen.ts'
 export * from './otel-scrape/profile-link.ts'

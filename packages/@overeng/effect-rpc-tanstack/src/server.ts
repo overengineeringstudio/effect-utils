@@ -20,7 +20,7 @@ export type RpcWebHandler = {
 }
 
 type HandlerLayer<TRpcs extends Rpc.Any, TError, TRuntime> = Layer.Layer<
-  Rpc.ToHandler<TRpcs> | Rpc.Middleware<TRpcs>,
+  Rpc.ToHandler<TRpcs> | Rpc.Middleware<TRpcs> | Rpc.ServicesServer<TRpcs>,
   TError,
   TRuntime
 >
@@ -58,6 +58,7 @@ const buildHandlerLayer = <TRpcs extends Rpc.Any, TRuntime, TError>(
 ): Layer.Layer<
   | Rpc.ToHandler<TRpcs>
   | Rpc.Middleware<TRpcs>
+  | Rpc.ServicesServer<TRpcs>
   | RpcSerialization.RpcSerialization
   | HttpRouter.HttpRouter,
   TError,
@@ -87,7 +88,7 @@ export const makeHandler: {
 ): RpcWebHandler => {
   const handlerLayer = buildHandlerLayer(options)
 
-  const appLayer: Layer.Layer<never, TError, any> = Layer.provide(
+  const appLayer: Layer.Layer<never, TError> = Layer.provide(
     RpcServer.layerHttp({
       group: options.group,
       path: options.path ?? '/api/rpc',

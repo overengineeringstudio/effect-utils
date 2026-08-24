@@ -1,4 +1,4 @@
-import { Brand, Schema } from 'effect'
+import { type Brand, Schema } from 'effect'
 
 /** Unix timestamp integer in milliseconds since epoch */
 export type Timestamp = Brand.Branded<number, 'Timestamp'>

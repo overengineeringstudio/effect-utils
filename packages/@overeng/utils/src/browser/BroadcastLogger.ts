@@ -74,11 +74,11 @@ import {
   Effect,
   Layer,
   Logger,
-  LogLevel,
+  type LogLevel,
   Option,
   References,
   Schema,
-  Scope,
+  type Scope,
   Stream,
 } from 'effect'
 
@@ -187,7 +187,7 @@ const makeBroadcastLoggerFromChannel = ({
       spans: fiber
         .getRef(References.CurrentLogSpans)
         .map(([label]) => label)
-        .reverse(),
+        .toReversed(),
       annotations: Object.fromEntries(
         Object.entries(fiber.getRef(References.CurrentLogAnnotations)).map(([k, v]) => [
           k,

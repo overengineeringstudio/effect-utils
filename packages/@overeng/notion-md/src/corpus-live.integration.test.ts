@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 import { Effect, Layer, Redacted } from 'effect'
-import { FetchHttpClient, HttpClient } from 'effect/unstable/http'
+import { FetchHttpClient, type HttpClient } from 'effect/unstable/http'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import {

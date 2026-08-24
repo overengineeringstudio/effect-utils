@@ -1,7 +1,7 @@
 import { createServer, type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import { Context, Effect, Result, Schema } from 'effect'
+import { type Context, Effect, Result, Schema } from 'effect'
 
 import { DataSourceId, PageId } from '../core/domain.ts'
 import type { SyncRootId } from '../core/events.ts'

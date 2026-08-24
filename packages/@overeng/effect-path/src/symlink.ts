@@ -4,7 +4,7 @@
  * Provides utilities for detecting, reading, and resolving symbolic links.
  */
 
-import { Effect, FileSystem, Path as PlatformPath, PlatformError, Result } from 'effect'
+import { Effect, FileSystem, Path as PlatformPath, type PlatformError, Result } from 'effect'
 
 import type { AbsolutePath, Path } from './brands.ts'
 import { NotASymlinkError, PathNotFoundError, PermissionError, SymlinkLoopError } from './errors.ts'
@@ -102,7 +102,7 @@ export const isSymlink = Effect.fnUntraced(function* (path: AbsolutePath) {
 export const isSymlinkSafe = (
   path: AbsolutePath,
 ): Effect.Effect<boolean, never, FileSystem.FileSystem> =>
-  isSymlink(path).pipe(Effect.catch(() => Effect.succeed(false)))
+  isSymlink(path).pipe(Effect.orElseSucceed(() => false))
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Symlink Reading
@@ -276,4 +276,4 @@ export const chain = Effect.fnUntraced(function* (path: AbsolutePath) {
 export const resolveSafe = (
   path: AbsolutePath,
 ): Effect.Effect<AbsolutePath, never, FileSystem.FileSystem> =>
-  resolve(path).pipe(Effect.catch(() => Effect.succeed(path)))
+  resolve(path).pipe(Effect.orElseSucceed(() => path))

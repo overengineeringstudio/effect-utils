@@ -6,7 +6,7 @@ import rootPackageJson from './package.json.genie.ts'
 import rootPnpmWorkspaceYaml from './pnpm-workspace.yaml.genie.ts'
 
 const packageManager = rootPackageJson.data.packageManager ?? 'pnpm@unknown'
-const pnpmVersion = packageManager.startsWith('pnpm@')
+const pnpmVersion = packageManager.startsWith('pnpm@') === true
   ? packageManager.slice('pnpm@'.length)
   : packageManager
 const workspaceData = rootPnpmWorkspaceYaml.data

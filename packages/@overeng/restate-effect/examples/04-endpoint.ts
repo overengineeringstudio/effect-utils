@@ -39,7 +39,7 @@
  * endpoint, declare each at the endpoint's full `AppR` (the union of every
  * construct's requirements) when you implement it.
  */
-import { Config, Effect, Layer } from 'effect'
+import { type Config, Effect, Layer } from 'effect'
 
 import { type EndpointOptions, layer, type RestateError, serve } from '../src/mod.ts'
 import { Greeting, GreeterLive } from './01-service.ts'

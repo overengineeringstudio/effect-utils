@@ -27,7 +27,7 @@
  * Author-time failures raise `Schema.TaggedError`s (not plain `throw`, unlike the prototype).
  */
 import { Schema } from 'effect'
-import * as AST from 'effect/SchemaAST'
+import type * as AST from 'effect/SchemaAST'
 
 import {
   OtelAttr,

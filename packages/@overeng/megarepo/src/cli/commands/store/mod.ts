@@ -10,7 +10,7 @@ import { lstat, opendir } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 
 import * as Cli from 'effect/unstable/cli'
-import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
 import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'

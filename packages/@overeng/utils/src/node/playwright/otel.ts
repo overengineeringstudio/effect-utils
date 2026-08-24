@@ -12,7 +12,7 @@
  * @module
  */
 
-import { Effect, Layer, Option, Schema, Tracer } from 'effect'
+import { Effect, Layer, type Option, Schema, Tracer } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 

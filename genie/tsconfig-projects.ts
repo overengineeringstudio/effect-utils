@@ -43,79 +43,75 @@ export type RootTsconfigProject = {
   tsconfig: GenieOutput<TSConfigArgs>
 }
 
-const workspaceTsconfigsByPath = new Map<string, GenieOutput<TSConfigArgs>>([
-  ['context/effect/socket', effectSocketTsconfig],
-  ['context/opentui', opentuiTsconfig],
-  ['packages/@overeng/agent-session-ingest', agentSessionIngestTsconfig],
-  ['packages/@overeng/ci-tools', ciToolsTsconfig],
-  ['packages/@overeng/content-address', contentAddressTsconfig],
-  ['packages/@overeng/effect-ai-claude-cli', effectAiClaudeCliTsconfig],
-  ['packages/@overeng/effect-distributed-lock', effectDistributedLockTsconfig],
-  ['packages/@overeng/effect-path', effectPathTsconfig],
-  ['packages/@overeng/effect-react', effectReactTsconfig],
-  ['packages/@overeng/effect-rpc-tanstack', effectRpcTanstackTsconfig],
-  ['packages/@overeng/effect-rpc-tanstack/examples/basic', effectRpcTanstackBasicTsconfig],
-  ['packages/@overeng/effect-schema-form', effectSchemaFormTsconfig],
-  ['packages/@overeng/effect-schema-form-aria', effectSchemaFormAriaTsconfig],
-  ['packages/@overeng/genie', genieTsconfig],
-  ['packages/@overeng/kdl', kdlTsconfig],
-  ['packages/@overeng/kdl-effect', kdlEffectTsconfig],
-  ['packages/@overeng/megarepo', megarepoTsconfig],
-  ['packages/@overeng/notion-cli', notionCliTsconfig],
-  ['packages/@overeng/npm-release', npmReleaseTsconfig],
-  ['packages/@overeng/notion-core', notionCoreTsconfig],
-  ['packages/@overeng/notion-datasource-sync', notionDatasourceSyncTsconfig],
-  ['packages/@overeng/notion-effect-client', notionEffectClientTsconfig],
-  ['packages/@overeng/notion-effect-schema', notionEffectSchemaTsconfig],
-  ['packages/@overeng/notion-md', notionMdTsconfig],
-  ['packages/@overeng/notion-property-write', notionPropertyWriteTsconfig],
-  ['packages/@overeng/notion-react', notionReactTsconfig],
-  ['packages/@overeng/otel-contract', otelContractTsconfig],
-  ['packages/@overeng/oxc-config', oxcConfigTsconfig],
-  ['packages/@overeng/pty-effect', ptyEffectTsconfig],
-  ['packages/@overeng/react-inspector', reactInspectorTsconfig],
-  ['packages/@overeng/restate-effect', restateEffectTsconfig],
-  ['packages/@overeng/tui-core', tuiCoreTsconfig],
-  ['packages/@overeng/tui-react', tuiReactTsconfig],
-  ['packages/@overeng/tui-stories', tuiStoriesTsconfig],
-  ['packages/@overeng/utils', utilsTsconfig],
-  ['packages/@overeng/utils-dev', utilsDevTsconfig],
-])
-
-const rootWorkspacePackagePaths = rootWorkspacePackages.map((pkg) => pkg.meta.workspace.memberPath)
-
-const missingTsconfigPaths = rootWorkspacePackagePaths.filter(
-  (path) => workspaceTsconfigsByPath.has(path) === false,
-)
-const extraTsconfigPaths = [...workspaceTsconfigsByPath.keys()].filter(
-  (path) => rootWorkspacePackagePaths.includes(path) === false,
-)
-
-if (missingTsconfigPaths.length > 0 || extraTsconfigPaths.length > 0) {
-  throw new Error(
-    [
-      'root tsconfig project registry drifted from rootWorkspacePackages',
-      missingTsconfigPaths.length > 0
-        ? `missing tsconfig data for workspace packages: ${missingTsconfigPaths.join(', ')}`
-        : undefined,
-      extraTsconfigPaths.length > 0
-        ? `tsconfig data without workspace package: ${extraTsconfigPaths.join(', ')}`
-        : undefined,
-    ]
-      .filter((line) => line !== undefined)
-      .join('\n'),
-  )
-}
-
-const workspaceTsconfigProject = (path: string): RootTsconfigProject => {
-  const tsconfig = workspaceTsconfigsByPath.get(path)
-  if (tsconfig === undefined) {
-    throw new Error(`missing tsconfig data for workspace package: ${path}`)
+export const rootWorkspaceTsconfigProjects = (() => {
+  const workspaceTsconfigsByPath: Record<string, GenieOutput<TSConfigArgs>> = {
+    'context/effect/socket': effectSocketTsconfig,
+    'context/opentui': opentuiTsconfig,
+    'packages/@overeng/agent-session-ingest': agentSessionIngestTsconfig,
+    'packages/@overeng/ci-tools': ciToolsTsconfig,
+    'packages/@overeng/content-address': contentAddressTsconfig,
+    'packages/@overeng/effect-ai-claude-cli': effectAiClaudeCliTsconfig,
+    'packages/@overeng/effect-distributed-lock': effectDistributedLockTsconfig,
+    'packages/@overeng/effect-path': effectPathTsconfig,
+    'packages/@overeng/effect-react': effectReactTsconfig,
+    'packages/@overeng/effect-rpc-tanstack': effectRpcTanstackTsconfig,
+    'packages/@overeng/effect-rpc-tanstack/examples/basic': effectRpcTanstackBasicTsconfig,
+    'packages/@overeng/effect-schema-form': effectSchemaFormTsconfig,
+    'packages/@overeng/effect-schema-form-aria': effectSchemaFormAriaTsconfig,
+    'packages/@overeng/genie': genieTsconfig,
+    'packages/@overeng/kdl': kdlTsconfig,
+    'packages/@overeng/kdl-effect': kdlEffectTsconfig,
+    'packages/@overeng/megarepo': megarepoTsconfig,
+    'packages/@overeng/notion-cli': notionCliTsconfig,
+    'packages/@overeng/npm-release': npmReleaseTsconfig,
+    'packages/@overeng/notion-core': notionCoreTsconfig,
+    'packages/@overeng/notion-datasource-sync': notionDatasourceSyncTsconfig,
+    'packages/@overeng/notion-effect-client': notionEffectClientTsconfig,
+    'packages/@overeng/notion-effect-schema': notionEffectSchemaTsconfig,
+    'packages/@overeng/notion-md': notionMdTsconfig,
+    'packages/@overeng/notion-property-write': notionPropertyWriteTsconfig,
+    'packages/@overeng/notion-react': notionReactTsconfig,
+    'packages/@overeng/otel-contract': otelContractTsconfig,
+    'packages/@overeng/oxc-config': oxcConfigTsconfig,
+    'packages/@overeng/pty-effect': ptyEffectTsconfig,
+    'packages/@overeng/react-inspector': reactInspectorTsconfig,
+    'packages/@overeng/restate-effect': restateEffectTsconfig,
+    'packages/@overeng/tui-core': tuiCoreTsconfig,
+    'packages/@overeng/tui-react': tuiReactTsconfig,
+    'packages/@overeng/tui-stories': tuiStoriesTsconfig,
+    'packages/@overeng/utils': utilsTsconfig,
+    'packages/@overeng/utils-dev': utilsDevTsconfig,
   }
-  return { path, tsconfig }
-}
-
-export const rootWorkspaceTsconfigProjects = rootWorkspacePackagePaths.map(workspaceTsconfigProject)
+  const rootWorkspacePackagePaths = rootWorkspacePackages.map((pkg) => pkg.meta.workspace.memberPath)
+  const missingTsconfigPaths = rootWorkspacePackagePaths.filter(
+    (path) => workspaceTsconfigsByPath[path] === undefined,
+  )
+  const extraTsconfigPaths = Object.keys(workspaceTsconfigsByPath).filter(
+    (path) => rootWorkspacePackagePaths.includes(path) === false,
+  )
+  if (missingTsconfigPaths.length > 0 || extraTsconfigPaths.length > 0) {
+    throw new Error(
+      [
+        'root tsconfig project registry drifted from rootWorkspacePackages',
+        missingTsconfigPaths.length > 0
+          ? `missing tsconfig data for workspace packages: ${missingTsconfigPaths.join(', ')}`
+          : undefined,
+        extraTsconfigPaths.length > 0
+          ? `tsconfig data without workspace package: ${extraTsconfigPaths.join(', ')}`
+          : undefined,
+      ]
+        .filter((line) => line !== undefined)
+        .join('\n'),
+    )
+  }
+  return rootWorkspacePackagePaths.map((path): RootTsconfigProject => {
+    const tsconfig = workspaceTsconfigsByPath[path]
+    if (tsconfig === undefined) {
+      throw new Error(`missing tsconfig data for workspace package: ${path}`)
+    }
+    return { path, tsconfig }
+  })
+})()
 
 export const extraRootTsconfigProjects = [
   {

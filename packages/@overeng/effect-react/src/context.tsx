@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import {
   Cause,
-  Context,
+  type Context,
   Effect,
   Exit,
   Fiber,

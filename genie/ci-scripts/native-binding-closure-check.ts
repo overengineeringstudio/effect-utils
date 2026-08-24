@@ -428,7 +428,7 @@ export const detectActiveFamilies = (opts: ClosureAuditOptions): string[] => {
       if (family !== undefined && pureFamilies.has(family) === true) active.add(family)
     }
   }
-  return [...active].sort()
+  return [...active].toSorted()
 }
 
 /**
@@ -640,8 +640,8 @@ const main = (): void => {
     if (added.length > 0 || removed.length > 0) {
       console.error(
         `native binding closure check: native-family drift in ${treeDir}\n` +
-          `  expected: ${[...expected].sort().join(', ') || '(none)'}\n` +
-          `  detected: ${[...detected].sort().join(', ') || '(none)'}\n` +
+          `  expected: ${[...expected].toSorted().join(', ') || '(none)'}\n` +
+          `  detected: ${[...detected].toSorted().join(', ') || '(none)'}\n` +
           (added.length > 0 ? `  ADDED (unexpected native family): ${added.join(', ')}\n` : '') +
           (removed.length > 0 ? `  REMOVED (declared but gone): ${removed.join(', ')}\n` : ''),
       )

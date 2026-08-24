@@ -52,7 +52,7 @@ export const deriveSystemLabels = ({
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .filter((name) => excluded.has(name) === false)
-    .sort()
+    .toSorted()
     .map((name) => ({
       name: `system:${aliases[name] ?? name}`,
       color: systemLabelColor,

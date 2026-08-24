@@ -7,7 +7,7 @@
 import * as Cli from 'effect/unstable/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option, type Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'

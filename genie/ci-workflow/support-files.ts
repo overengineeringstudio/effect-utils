@@ -5,7 +5,7 @@ import {
 import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 import { resolveDevenvFnScript } from './shared.ts'
 
-const withTrailingNewline = (content: string) => (content.endsWith('\n') ? content : `${content}\n`)
+const withTrailingNewline = (content: string) => (content.endsWith('\n') === true ? content : `${content}\n`)
 const dollar = '$'
 
 const textArtifact = (content: string): GenieOutput<string> =>

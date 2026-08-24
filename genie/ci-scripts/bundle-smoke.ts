@@ -17,8 +17,8 @@ const nativePtySpecifiers = new Set(['node-pty', '@homebridge/node-pty-prebuilt-
 type RollupExternal = (id: string) => boolean
 
 const external: RollupExternal = (id) => {
-  if (builtinSpecifiers.has(id)) return true
-  if (nativePtySpecifiers.has(id)) return true
+  if (builtinSpecifiers.has(id) === true) return true
+  if (nativePtySpecifiers.has(id) === true) return true
   return id.endsWith('.node')
 }
 
@@ -41,30 +41,32 @@ const ptyEffectRequire = createRequire(
 const main = async () => {
   const { build } = await import(ptyEffectRequire.resolve('vite'))
 
-  for (const smokeEntry of smokeEntries) {
-    console.log(`bundle smoke: ${smokeEntry.name}`)
-    await build({
-      root: repoRoot,
-      configFile: false,
-      logLevel: 'warn',
-      ssr: {
-        noExternal: true,
-      },
-      build: {
-        emptyOutDir: false,
-        minify: false,
-        outDir: path.join(repoRoot, 'tmp', 'bundle-smoke', smokeEntry.name),
-        ssr: path.join(repoRoot, smokeEntry.entry),
-        write: false,
-        rollupOptions: {
-          external,
-          output: {
-            entryFileNames: `${smokeEntry.name}.mjs`,
+  await Promise.all(
+    smokeEntries.map(async (smokeEntry) => {
+      console.log(`bundle smoke: ${smokeEntry.name}`)
+      await build({
+        root: repoRoot,
+        configFile: false,
+        logLevel: 'warn',
+        ssr: {
+          noExternal: true,
+        },
+        build: {
+          emptyOutDir: false,
+          minify: false,
+          outDir: path.join(repoRoot, 'tmp', 'bundle-smoke', smokeEntry.name),
+          ssr: path.join(repoRoot, smokeEntry.entry),
+          write: false,
+          rollupOptions: {
+            external,
+            output: {
+              entryFileNames: `${smokeEntry.name}.mjs`,
+            },
           },
         },
-      },
-    })
-  }
+      })
+    }),
+  )
 }
 
 main().catch((error: unknown) => {

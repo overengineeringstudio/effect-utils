@@ -1,4 +1,4 @@
-import { Effect, FileSystem, PlatformError, Result, Schema } from 'effect'
+import { Effect, FileSystem, type PlatformError, Result, Schema } from 'effect'
 import { NodeServices as NodeContext } from '@effect/platform-node'
 import { describe, expect, it } from 'vitest'
 

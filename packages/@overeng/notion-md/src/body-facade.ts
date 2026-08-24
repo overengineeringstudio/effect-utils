@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Schema } from 'effect'
+import { Effect, type FileSystem, Schema } from 'effect'
 
 import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-address'
 import { describeBodyLossyRefusal, type BodyCompleteness } from '@overeng/notion-core'

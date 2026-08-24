@@ -36,7 +36,7 @@ import {
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics'
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base'
-import { Config, Effect, Layer } from 'effect'
+import { type Config, Effect, Layer } from 'effect'
 
 import { layer, Restate, type RestateError, serve } from '../src/mod.ts'
 import { RestateOtel } from '../src/observability/otel.ts'

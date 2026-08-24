@@ -7,7 +7,7 @@
  * All operations within a sandbox are guaranteed to stay within the root directory.
  */
 
-import { Effect, FileSystem, Path as PlatformPath, Result } from 'effect'
+import { Effect, FileSystem, type Path as PlatformPath, Result } from 'effect'
 
 import type { AbsoluteDirPath, AbsolutePath, RelativePath } from './brands.ts'
 import { PathNotFoundError, PermissionError, TraversalError, type SandboxError } from './errors.ts'
@@ -328,7 +328,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
       }
       const resolved = resolveResult.success
       const fs = yield* FileSystem.FileSystem
-      const exists = yield* fs.exists(resolved).pipe(Effect.catch(() => Effect.succeed(false)))
+      const exists = yield* fs.exists(resolved).pipe(Effect.orElseSucceed(() => false))
       if (exists === false) {
         return false
       }
@@ -337,7 +337,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
         Effect.flatMap((realPath) =>
           validateRealPath({ originalPath: path, realPath }).pipe(Effect.as(true)),
         ),
-        Effect.catch(() => Effect.succeed(false)),
+        Effect.orElseSucceed(() => false),
       )
     }),
 

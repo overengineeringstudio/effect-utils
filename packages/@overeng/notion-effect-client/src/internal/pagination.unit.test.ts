@@ -128,7 +128,7 @@ Vitest.describe('paginate (items mode)', () => {
         { emit: { _tag: 'items' } },
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => [...chunks]))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => chunks.slice()))
 
       expect(items).toEqual([{ id: '1' }, { id: '2' }])
       expect(fetchCount).toBe(1)
@@ -160,7 +160,7 @@ Vitest.describe('paginate (items mode)', () => {
         { emit: { _tag: 'items' } },
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => [...chunks]))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => chunks.slice()))
 
       expect(items).toEqual([{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }, { id: '5' }])
       expect(cursors.length).toBe(3)
@@ -183,7 +183,7 @@ Vitest.describe('paginate (items mode)', () => {
         { startCursor: Option.some('seed-cursor'), emit: { _tag: 'items' } },
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => [...chunks]))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => chunks.slice()))
 
       expect(items).toEqual([{ id: 'a' }])
       expect(Option.getOrNull(cursors[0] ?? Option.none())).toBe('seed-cursor')
@@ -218,7 +218,7 @@ Vitest.describe('paginate (page mode)', () => {
         { emit: { _tag: 'page', map: (page) => page.results.length } },
       )
 
-      const pages = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => [...chunks]))
+      const pages = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => chunks.slice()))
 
       expect(pages).toEqual([2, 1])
     }),

@@ -6,7 +6,7 @@
  * `AdminFailed` on a decode mismatch), and a non-OK status surfaces a
  * `RestateError`. We stub `globalThis.fetch` to capture the requests.
  */
-import * as ConfigError from 'effect/Config'
+import type * as ConfigError from 'effect/Config'
 import { Cause, ConfigProvider, Effect, Exit, Layer, Redacted, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 

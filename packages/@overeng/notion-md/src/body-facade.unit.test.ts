@@ -1,5 +1,5 @@
 import { NodeServices } from '@effect/platform-node'
-import { Effect, FileSystem, Layer } from 'effect'
+import { Effect, type FileSystem, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
