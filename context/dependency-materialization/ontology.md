@@ -20,7 +20,7 @@ realization-specific language.
 
 This context owns **Dependency Materialization**, **Materialization Root**,
 **Materialization Profile**, **Authoritative Materializer**, **Dependency
-Graph**, **Package Instance**, **Dependency Edge**, **Dependency Data**,
+Graph**, **Source Input**, **Package Instance**, **Dependency Edge**, **Dependency Data**,
 **Projection State**, **Store Cache**, and **Repair**.
 
 ### Subsystem language
@@ -53,6 +53,12 @@ topology and dependency inputs plus package-manager and toolchain policy. It
 does not own mutable realization state, storage placement, repair, or garbage
 collection. Prepared dependency and Buck2 evidence use its `profileKey` as a
 compatibility boundary; a live root need not emit a separate profile artifact.
+
+**Source Input** is canonical package source selected by a topology before the
+Authoritative Materializer realizes Package Instances. A composed root may
+construct a root-owned generation from a Source Input and publish that
+generation read-only with validation. Construction state is writable; a published generation
+is not a Package Instance and does not select Dependency Edges.
 
 ### Dependency graph
 
@@ -130,6 +136,7 @@ The materialization pipeline is:
 
 ```text
 declared dependency inputs + Materialization Root
+  -> root-local Source Input staging when canonical source is external
   -> Authoritative Materializer
   -> Dependency Graph
      -> Dependency Data

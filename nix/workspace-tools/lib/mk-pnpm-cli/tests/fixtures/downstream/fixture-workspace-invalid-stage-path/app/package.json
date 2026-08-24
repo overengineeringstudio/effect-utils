@@ -1,0 +1,11 @@
+{
+  "name": "mk-pnpm-cli-invalid-stage-path-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "$genie": {
+    "workspaceClosureDirs": [
+      "app"
+    ]
+  }
+}

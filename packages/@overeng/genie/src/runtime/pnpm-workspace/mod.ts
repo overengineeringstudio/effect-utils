@@ -1147,6 +1147,55 @@ const collectLogicalWorkspaceDepsRecursive = ({
   return sortStrings(members)
 }
 
+/** Stable root-local path through which pnpm consumes the current source generation. */
+export const pnpmSourceInputStagePath = '.devenv/pnpm-source-inputs/current'
+
+/** Project foreign workspace dependencies into one root-local source generation. */
+export const projectPnpmSourceInputs = ({
+  packages,
+  repoName,
+}: {
+  packages: readonly WorkspacePackageLike[]
+  repoName: string
+}) => {
+  const byName = new Map<string, string>()
+  const visited = new Set<string>()
+  const visit = (pkg: WorkspacePackageLike) => {
+    const key = `${pkg.meta.workspace.repoName}:${pkg.meta.workspace.memberPath}`
+    if (visited.has(key) === true) return
+    visited.add(key)
+
+    if (pkg.meta.workspace.repoName !== repoName) {
+      const name = pkg.data.name
+      if (name === undefined)
+        throw new Error(`Foreign workspace package at ${key} must have a name`)
+      const sourcePath = joinPath(
+        'repos',
+        pkg.meta.workspace.repoName,
+        pkg.meta.workspace.memberPath,
+      )
+      const previous = byName.get(name)
+      if (previous !== undefined && previous !== sourcePath) {
+        throw new Error(`Workspace package ${name} maps to both ${previous} and ${sourcePath}`)
+      }
+      byName.set(name, sourcePath)
+    }
+
+    for (const dep of pkg.meta.workspace.deps) visit(dep)
+  }
+
+  for (const pkg of packages) visit(pkg)
+  const entries = [...byName.entries()].toSorted(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  )
+  return {
+    sourceInputPaths: [...new Set(entries.map(([, sourcePath]) => sourcePath))].toSorted(),
+    overrides: Object.fromEntries(
+      entries.map(([name, sourcePath]) => [name, `file:${pnpmSourceInputStagePath}/${sourcePath}`]),
+    ),
+  }
+}
+
 /** Compute the workspace member closure for a package's pnpm install boundary. */
 export const projectPnpmPackageClosure = ({ pkg }: { pkg: WorkspacePackageLike }) => {
   const packageDir = pkg.meta.workspace.memberPath

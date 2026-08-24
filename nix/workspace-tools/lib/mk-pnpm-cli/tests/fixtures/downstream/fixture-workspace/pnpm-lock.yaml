@@ -4,10 +4,24 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@overeng/utils': file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils
+
+packageExtensionsChecksum: sha256-LU2/j/l3R+j7b1WqrjZQtPcw3ScrfwaVJrrAFedVGTs=
+
 importers:
   .: {}
   app:
     dependencies:
       '@overeng/utils':
-        specifier: link:../repos/effect-utils/packages/@overeng/utils
-        version: link:../repos/effect-utils/packages/@overeng/utils
+        specifier: file:../.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils
+        version: '@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils'
+
+packages:
+
+  '@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils':
+    resolution: {directory: .devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils, type: directory}
+
+snapshots:
+
+  '@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils': {}

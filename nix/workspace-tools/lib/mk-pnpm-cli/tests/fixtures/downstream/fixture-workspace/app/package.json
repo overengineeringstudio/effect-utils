@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "dependencies": {
-    "@overeng/utils": "link:../repos/effect-utils/packages/@overeng/utils"
+    "@overeng/utils": "workspace:^"
   },
   "$genie": {
     "workspaceClosureDirs": [

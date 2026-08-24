@@ -515,6 +515,60 @@ let
     else
       resolved.fullSourceRoot + "/${resolved.sourceRelPath}";
 
+  rootPnpmInstallContractPath = evalWorkspaceRootPath + "/pnpm-install-contract.json";
+  rootPnpmInstallContract =
+    if builtins.pathExists rootPnpmInstallContractPath then
+      builtins.fromJSON (builtins.readFile rootPnpmInstallContractPath)
+    else
+      { };
+  rootWorkspaceManifestContract = rootPnpmInstallContract.workspaceManifestContract or { };
+  hasDeclaredSourceInputStagePath = rootWorkspaceManifestContract ? sourceInputStagePath;
+  hasDeclaredSourceInputPaths = rootWorkspaceManifestContract ? sourceInputPaths;
+  declaredSourceInputStagePath = rootWorkspaceManifestContract.sourceInputStagePath or null;
+  declaredSourceInputPaths = rootWorkspaceManifestContract.sourceInputPaths or null;
+  canonicalSourceInputStagePath = ".devenv/pnpm-source-inputs/current";
+  hasSourceInputProjectionContract = hasDeclaredSourceInputStagePath || hasDeclaredSourceInputPaths;
+  validRelativeSourceInputPath =
+    path:
+    builtins.isString path
+    && path != ""
+    && !(lib.hasPrefix "/" path)
+    && path != "."
+    && path != ".."
+    && !(lib.hasPrefix "../" path)
+    && !(lib.hasInfix "/../" path)
+    && !(lib.hasSuffix "/.." path);
+  _validateSourceInputProjectionContract =
+    if !hasSourceInputProjectionContract then
+      true
+    else if hasDeclaredSourceInputStagePath != hasDeclaredSourceInputPaths then
+      throw "mk-pnpm-cli: workspaceManifestContract must declare sourceInputStagePath and sourceInputPaths together"
+    else if declaredSourceInputStagePath != canonicalSourceInputStagePath then
+      throw "mk-pnpm-cli: workspaceManifestContract.sourceInputStagePath must be ${canonicalSourceInputStagePath}"
+    else if !builtins.isList declaredSourceInputPaths then
+      throw "mk-pnpm-cli: workspaceManifestContract.sourceInputPaths must be a list"
+    else if !(builtins.all validRelativeSourceInputPath declaredSourceInputPaths) then
+      throw "mk-pnpm-cli: workspaceManifestContract.sourceInputPaths entries must be non-empty relative paths without parent traversal"
+    else if lib.unique declaredSourceInputPaths != declaredSourceInputPaths then
+      throw "mk-pnpm-cli: workspaceManifestContract.sourceInputPaths entries must be unique"
+    else
+      true;
+  declaredSourceInputPathsValidated =
+    assert _validateSourceInputProjectionContract;
+    if hasSourceInputProjectionContract then declaredSourceInputPaths else [ ];
+  stageRootSourceInputManifestAliasesCmd = lib.optionalString hasSourceInputProjectionContract (
+    builtins.concatStringsSep "\n" (
+      map (sourcePath: ''
+        logical_dir="$out"/${lib.escapeShellArg sourcePath}
+        alias_dir="$out"/${lib.escapeShellArg "${declaredSourceInputStagePath}/${sourcePath}"}
+        if [ -f "$logical_dir/package.json" ]; then
+          mkdir -p "$alias_dir"
+          ln -s "$(realpath --relative-to="$alias_dir" "$logical_dir/package.json")" "$alias_dir/package.json"
+        fi
+      '') declaredSourceInputPathsValidated
+    )
+  );
+
   # Read workspace closure dirs from the generated package.json ($genie.workspaceClosureDirs).
   # Pre-computed by genie at generation time, avoiding import-from-derivation (IFD).
   # Future alternative: NixOS/nix#15380 (builtins.wasm) could compute this natively at eval time.
@@ -1125,6 +1179,7 @@ let
       targetPrefix = "";
     }
     + builtins.concatStringsSep "\n" (map stageExternalInstallRootManifestOnlyCmd externalInstallRoots)
+    + stageRootSourceInputManifestAliasesCmd
   );
 
   # Each external install root gets its own manifest-only derivation and its

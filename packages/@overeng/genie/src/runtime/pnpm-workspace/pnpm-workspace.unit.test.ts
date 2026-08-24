@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { packageJson, type GenieContext } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
 import type { WorkspacePackage } from '../package-json/mod.ts'
-import { pnpmWorkspaceYaml, projectPnpmPackageClosure } from './mod.ts'
+import { pnpmWorkspaceYaml, projectPnpmPackageClosure, projectPnpmSourceInputs } from './mod.ts'
 
 const mockGenieContext: GenieContext = {
   location: '.',
@@ -164,6 +164,13 @@ describe('metadata-based workspace projections', () => {
     })
 
     expect(workspaceFile.data.packages).toEqual(['packages/app', 'packages/utils'])
+
+    expect(projectPnpmSourceInputs({ packages: [crossRepoApp], repoName: repo.repoName })).toEqual({
+      sourceInputPaths: [`repos/${foreignRepo.repoName}/packages/shared`],
+      overrides: {
+        '@foreign/shared': `file:.devenv/pnpm-source-inputs/current/repos/${foreignRepo.repoName}/packages/shared`,
+      },
+    })
   })
 
   it('includes extraMembers in root workspace projection', () => {

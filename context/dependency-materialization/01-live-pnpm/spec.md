@@ -20,14 +20,15 @@ in [../03-nix-prepared-deps/spec.md](../03-nix-prepared-deps/spec.md).
 
 ## Requirement Trace
 
-| Section           | Requirements                                           |
-| ----------------- | ------------------------------------------------------ |
-| Model             | DMP.LIVE-R01, DMP.LIVE-R08, DMP.LIVE-R11               |
-| Install Ownership | DMP.LIVE-R01, DMP.LIVE-R02, DMP.LIVE-R03, DMP.LIVE-R04 |
-| Runtime Identity  | DMP.LIVE-R05, DMP.LIVE-R06, DMP.LIVE-R07               |
-| CI State          | DMP.LIVE-R10                                           |
-| Health            | DMP.LIVE-R09, DMP.LIVE-R11                             |
-| Mutation Parity   | DMP.LIVE-R12                                           |
+| Section              | Requirements                                           |
+| -------------------- | ------------------------------------------------------ |
+| Model                | DMP.LIVE-R01, DMP.LIVE-R08, DMP.LIVE-R11               |
+| Install Ownership    | DMP.LIVE-R01, DMP.LIVE-R02, DMP.LIVE-R03, DMP.LIVE-R04 |
+| Source Input Staging | DMP.LIVE-R03, DMP.LIVE-R06, DMP.LIVE-R13, DMP.LIVE-R14 |
+| Runtime Identity     | DMP.LIVE-R05, DMP.LIVE-R06, DMP.LIVE-R07               |
+| CI State             | DMP.LIVE-R10                                           |
+| Health               | DMP.LIVE-R09, DMP.LIVE-R11, DMP.LIVE-R14               |
+| Mutation Parity      | DMP.LIVE-R12, DMP.LIVE-R14                             |
 
 ## Model
 
@@ -55,18 +56,61 @@ Package-directory installs are not supported when they would create
 package-local lockfiles, package-local `node_modules`, or a second dependency
 authority.
 
-Nested roots are explicit:
+Nested roots are explicit but need not be active in the same topology:
 
 ```text
 parent composed root
-  owns parent lockfile and parent node_modules projection
+  owns parent lockfile, Source Input stage, and node_modules projection
 
 repos/effect-utils
-  owns nested lockfile and nested node_modules projection
+  remains canonical read-only source input to the parent topology
+  owns its lockfile and node_modules only when selected as a standalone root
 ```
 
-The parent may link source from a nested root, but it must not silently repair
-or mutate the nested root's dependency state.
+The parent consumes a published source generation from a nested root, but it
+must not silently repair or mutate the nested root's dependency state.
+
+## Source Input Staging
+
+```text
+canonical cross-repo Source Inputs (read-only)
+  -> writable root-local generation construction
+  -> validate complete identity and publish a read-only generation atomically
+  -> generated pnpm overrides select the published generation
+  -> pnpm realizes Package Instances and Dependency Edges
+```
+
+A composed topology declares the relative paths of canonical Source Inputs
+owned by independently valid repository roots. The managed mutation transaction
+copies that declared set into root-owned construction state before invoking
+pnpm. It validates that canonical source did not change during the copy, makes
+the completed generation read-only, then publishes it through one atomic
+pointer switch. It does not discover or rewrite installed package occurrences
+after pnpm runs.
+
+The published generation preserves package-relative layout so generated
+`file:` overrides can address stable paths. Staging rejects absolute paths,
+parent traversal, missing sources, all directory symlinks, resolved file
+symlink escapes, and cleanup or publication destinations outside its fixed
+root-owned subtree.
+
+The declared source set and canonical content determine one generation
+identity. Readiness validates that the published read-only generation matches
+that identity; staged output is not a second freshness authority. A canonical
+change invalidates readiness until the next managed boundary publishes the
+matching complete generation.
+
+pnpm remains the Authoritative Materializer: the stage supplies Source Inputs
+but neither creates Package Instances nor selects, removes, or retargets
+Dependency Edges. Package Instances within one Materialization Root may reuse
+published bytes. Separate Materialization Roots never share writable
+construction state.
+
+effect-utils owns the reusable staging, identity, validation, and containment
+primitive. Readiness checks remain read-only: a miss schedules the managed
+mutation transaction that publishes the next generation. A downstream root
+only declares its Source Input paths and emits
+topology overrides for the fixed published-generation location.
 
 ## Mutation Parity
 
@@ -78,6 +122,7 @@ Materialization-Root lock + package-manager-home lock
   -> selected fresh Store Cache namespace
   -> shared Store Cache admission lease
   -> capacity gate
+  -> atomic root-local Source Input generation publication
   -> canonical policy arguments
   -> pnpm mutation
   -> root-local projection

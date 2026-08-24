@@ -68,6 +68,12 @@ This is useful for:
 - aggregate workspace generation
 - recomposing inherited peer installs when needed
 
+Use `workspaceClosureReference(pkg)` when a package is an install dependency by
+name but should contribute only its recursive workspace graph to composition.
+The projection strips peer contracts, patch metadata, and all other package
+behavior from that edge. Prefer the full imported package for ordinary runtime
+or development dependencies.
+
 ## Catalog Helpers
 
 Use:
