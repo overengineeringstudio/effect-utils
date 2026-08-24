@@ -1186,7 +1186,7 @@ export const sync = (
     const adoptInlineChildren = (
       parentId: string,
       nodes: readonly PendingInlineNode[],
-    ): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+    ): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionConfig | HttpClient> =>
       Effect.gen(function* () {
         const live = yield* Stream.runCollect(
           NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
@@ -1195,7 +1195,7 @@ export const sync = (
             (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
           ),
         )
-        const liveBlocks = Chunk.toReadonlyArray(live)
+        const liveBlocks = Array.from(live)
         const adopted: CacheNode[] = []
         let liveIdx = 0
         for (const node of nodes) {
@@ -1258,7 +1258,7 @@ export const sync = (
     ): Effect.Effect<
       { readonly nodes: readonly CacheNode[]; readonly changed: boolean },
       NotionSyncError,
-      NotionConfig | HttpClient.HttpClient
+      NotionConfig | HttpClient
     > =>
       Effect.gen(function* () {
         let changed = false

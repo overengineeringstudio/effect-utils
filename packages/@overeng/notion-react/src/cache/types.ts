@@ -12,7 +12,8 @@ export interface PendingInlineNode {
   readonly children: readonly PendingInlineNode[]
 }
 
-export const PendingInlineNode: Schema.Schema<PendingInlineNode> = Schema.suspend(() =>
+export const PendingInlineNode: Schema.Codec<PendingInlineNode, PendingInlineNode> = Schema.suspend(
+  (): Schema.Codec<PendingInlineNode, PendingInlineNode> =>
   Schema.Struct({
     key: Schema.String,
     type: Schema.String,
