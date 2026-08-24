@@ -76,7 +76,7 @@ let
       headers="$(${pkgs.lib.escapeShellArg inspectionTools.otool.executable} -hv "$executable")" \
         || fail "otool header inspection failed for $relative"
       header_architecture="$(printf '%s\n' "$headers" | ${pkgs.gawk}/bin/awk '
-        NR == 2 { print $2; seen = 1 }
+        $1 == "MH_MAGIC_64" { print tolower($2); seen = 1; exit }
         END { if (seen != 1) exit 2 }
       ')" || fail "malformed Mach-O architecture observation: $relative"
       [ "$header_architecture" = "$actual_architecture" ] \
@@ -85,9 +85,12 @@ let
       load_commands="$(${pkgs.lib.escapeShellArg inspectionTools.otool.executable} -l "$executable")" \
         || fail "otool load-command inspection failed for $relative"
       read -r actual_platform actual_minimum_os < <(printf '%s\n' "$load_commands" | ${pkgs.gawk}/bin/awk '
-        /^      cmd LC_BUILD_VERSION$/ { in_version = 1; next }
-        in_version && /^ platform / { platform = $2; next }
-        in_version && /^    minos / { minos = $2; matches++; in_version = 0 }
+        /^[[:space:]]*cmd[[:space:]]+LC_BUILD_VERSION$/ { in_version = 1; next }
+        in_version && /^[[:space:]]*platform[[:space:]]/ {
+          platform = ($2 == "1" ? "MACOS" : $2)
+          next
+        }
+        in_version && /^[[:space:]]*minos[[:space:]]/ { minos = $2; matches++; in_version = 0 }
         END {
           if (matches != 1 || platform == "" || minos == "") exit 2
           print platform, minos
@@ -108,14 +111,14 @@ let
       if printf '%s\n' "$actual_dylibs" | ${pkgs.gnugrep}/bin/grep -Ev '^/usr/lib/|^/System/Library/' >/dev/null; then
         fail "Mach-O install names must be system-only: $relative"
       fi
-      if printf '%s\n' "$load_commands" | ${pkgs.gnugrep}/bin/grep -Eq '^      cmd LC_RPATH$'; then
+      if printf '%s\n' "$load_commands" | ${pkgs.gnugrep}/bin/grep -Eq '^[[:space:]]*cmd[[:space:]]+LC_RPATH$'; then
         fail "Mach-O LC_RPATH must be absent: $relative"
       fi
       local signature_offset signature_size file_size magic declared_size count index slot blob_offset blob_magic flags
       read -r signature_offset signature_size < <(printf '%s\n' "$load_commands" | ${pkgs.gawk}/bin/awk '
-        /^      cmd LC_CODE_SIGNATURE$/ { in_signature = 1; matches++; next }
-        in_signature && /^  dataoff / { offset = $2; next }
-        in_signature && /^ datasize / { size = $2; in_signature = 0 }
+        /^[[:space:]]*cmd[[:space:]]+LC_CODE_SIGNATURE$/ { in_signature = 1; matches++; next }
+        in_signature && /^[[:space:]]*dataoff[[:space:]]/ { offset = $2; next }
+        in_signature && /^[[:space:]]*datasize[[:space:]]/ { size = $2; in_signature = 0 }
         END {
           if (matches != 1 || offset !~ /^[0-9]+$/ || size !~ /^[0-9]+$/ || size == 0) exit 2
           print offset, size
@@ -129,19 +132,27 @@ let
       [ "$magic" -eq 4208856256 ] || fail "Mach-O code signature is not a superblob: $relative"
       declared_size="$(read_be32 "$executable" "$((signature_offset + 4))")"
       count="$(read_be32 "$executable" "$((signature_offset + 8))")"
-      [ "$declared_size" -eq "$signature_size" ] \
-        && [ "$count" -le "$(( (signature_size - 12) / 8 ))" ] \
+      [ "$declared_size" -ge 12 ] \
+        && [ "$declared_size" -le "$signature_size" ] \
+        && [ "$count" -le "$(( (declared_size - 12) / 8 ))" ] \
         || fail "malformed Mach-O code signature superblob: $relative"
       flags=
       index=0
       while [ "$index" -lt "$count" ]; do
         slot="$(read_be32 "$executable" "$((signature_offset + 12 + index * 8))")"
         blob_offset="$(read_be32 "$executable" "$((signature_offset + 16 + index * 8))")"
-        [ "$blob_offset" -le "$((signature_size - 16))" ] \
+        [ "$blob_offset" -ge 12 ] && [ "$blob_offset" -le "$((declared_size - 8))" ] \
           || fail "Mach-O code-signature blob is outside the superblob: $relative"
-        [ "$slot" -ne 65536 ] || fail "Mach-O CMS signature must be absent: $relative"
+        blob_magic="$(read_be32 "$executable" "$((signature_offset + blob_offset))")"
+        blob_size="$(read_be32 "$executable" "$((signature_offset + blob_offset + 4))")"
+        if [ "$slot" -eq 65536 ]; then
+          [ "$blob_magic" -eq 4208855809 ] && [ "$blob_size" -eq 8 ] \
+            || fail "Mach-O CMS signature must be absent: $relative"
+        else
+          [ "$blob_size" -ge 8 ] && [ "$((blob_offset + blob_size))" -le "$declared_size" ] \
+            || fail "malformed Mach-O code-signature blob: $relative"
+        fi
         if [ "$slot" -eq 0 ]; then
-          blob_magic="$(read_be32 "$executable" "$((signature_offset + blob_offset))")"
           [ "$blob_magic" -eq 4208856066 ] \
             || fail "Mach-O CodeDirectory has invalid magic: $relative"
           flags="$(read_be32 "$executable" "$((signature_offset + blob_offset + 12))")"
