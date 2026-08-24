@@ -5,9 +5,7 @@
     "root//:succ": {
       "success": "SUCCESS",
       "outputs": {
-        "DEFAULT": [
-          "buck-out/v2/art/root/__succ__/hello.txt"
-        ]
+        "DEFAULT": ["buck-out/v2/art/root/__succ__/hello.txt"]
       },
       "errors": []
     }

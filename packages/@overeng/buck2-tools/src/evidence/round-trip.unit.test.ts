@@ -1,3 +1,8 @@
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+
+import * as Otlp from '@effect/opentelemetry/Otlp'
+import { FetchHttpClient } from '@effect/platform'
 /**
  * OTelite-local round-trip suite for the Buck evidence lane.
  *
@@ -17,11 +22,7 @@
  */
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Ref } from 'effect'
-import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 
-import * as Otlp from '@effect/opentelemetry/Otlp'
-import { FetchHttpClient } from '@effect/platform'
 import { captureTest } from '@overeng/utils-dev/otelite'
 
 import {
@@ -82,7 +83,10 @@ describe('buck2 evidence — otelite round-trip', () => {
         const root = trace.expectOne({ name: `${SERVICE}.root` })
         const rootSpanId = root.span_id
         if (rootSpanId === null) throw new Error('harness root span missing span_id')
-        const invocation = expectExactlyOneInvocation({ trace, options: { parentSpanId: rootSpanId } })
+        const invocation = expectExactlyOneInvocation({
+          trace,
+          options: { parentSpanId: rootSpanId },
+        })
         expect(invocation.status_code).toBe(1) // STATUS_CODE_OK
         expect(invocation.attrs[SpanAttrKeys.platformClass]).toBe('linux-x64')
         expect(invocation.attrs[SpanAttrKeys.commandKind]).toBe('build')
@@ -132,102 +136,113 @@ describe('buck2 evidence — otelite round-trip', () => {
     30_000,
   )
 
-  it.scopedLive('failure trace preserves error status through the direct path', () =>
-    Effect.gen(function* () {
-      const otel = yield* captureTest({ serviceName: SERVICE, exportInterval: 50 })
-      const failureEvidence = decodeEvidence({
-        buildReportText: fixture('build-report-failure.json'),
-        eventLogInput: fixture('event-log-failure.jsonl'),
-      })
-      const { metrics, trace } = yield* otel.runInProcessAllSignals(
-        projectInvocation(observationFor(failureEvidence)),
-      )
+  it.scopedLive(
+    'failure trace preserves error status through the direct path',
+    () =>
+      Effect.gen(function* () {
+        const otel = yield* captureTest({ serviceName: SERVICE, exportInterval: 50 })
+        const failureEvidence = decodeEvidence({
+          buildReportText: fixture('build-report-failure.json'),
+          eventLogInput: fixture('event-log-failure.jsonl'),
+        })
+        const { metrics, trace } = yield* otel.runInProcessAllSignals(
+          projectInvocation(observationFor(failureEvidence)),
+        )
 
-      // The failing Buck operation stays failing: ERROR status on the span.
-      const invocation = trace.expectOne({ name: SpanNames.invocation })
-      expect(invocation.status_code).toBe(2) // STATUS_CODE_ERROR
-      expect(resultClassFor({ evidence: failureEvidence, verdict: verdictFor({ evidence: failureEvidence }) })).toBe('failure')
-      expect(invocation.attrs[SpanAttrKeys.verdict]).toBe('FAIL')
-
-      guardMetricCardinality(metrics.metrics)
-      metrics.expectOne({
-        name: 'buck2_invocations_total',
-        attrs: { 'result-class': 'failure' },
-      })
-      // The import span still exists and mirrors the failing class.
-      expect(trace.expectOne({ name: SpanNames.import }).attrs['import.result-class']).toBe(
-        'failure',
-      )
-    }),
-    30_000,
-  )
-
-  it.scopedLive('malformed evidence yields NO_VERDICT and zero rich spans', () =>
-    Effect.gen(function* () {
-      const otel = yield* captureTest({ serviceName: SERVICE, exportInterval: 50 })
-      const malformed = decodeEvidence({
-        buildReportText: '{"outcome":"SUCCESS"',
-        eventLogInput: 'not json at all',
-      })
-      const verdict = verdictFor({ evidence: malformed })
-      expect(verdict).toStrictEqual({
-        _tag: 'NO_VERDICT',
-        cause: expect.stringMatching(/malformed/),
-      })
-
-      const { metrics, trace } = yield* otel.runInProcessAllSignals(
-        projectInvocation(observationFor(malformed)),
-      )
-
-      // Invocation span exists but carries NO_VERDICT; rich spans absent.
-      const invocation = trace.expectOne({ name: SpanNames.invocation })
-      expect(invocation.attrs[SpanAttrKeys.verdict]).toBe('NO_VERDICT')
-      expectNoRichSpans(trace)
-
-      guardMetricCardinality(metrics.metrics)
-      metrics.expectOne({
-        name: 'buck2_invocations_total',
-        attrs: { 'result-class': 'no-verdict' },
-      })
-    }),
-    30_000,
-  )
-
-  it.scopedLive('dead exporter never changes the recorded Buck result (R08)', () =>
-    Effect.gen(function* () {
-      // The "recorded result" stands in for Buck's reaped exit code + stdout.
-      // It is WRITTEN inside the same scope that runs the projection against a
-      // dead exporter — so the assertion is non-vacuous: any telemetry failure
-      // leaking into the result path would corrupt what we re-read below.
-      const recordedResult = yield* Ref.make({ exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
-
-      const failingExportLayer = Otlp.layerJson({
-        baseUrl: 'http://127.0.0.1:9', // discard port: nothing listens
-        resource: { serviceName: SERVICE },
-        loggerExportInterval: 20,
-        metricsExportInterval: 20,
-        shutdownTimeout: 500,
-        tracerExportInterval: 20,
-      }).pipe(Layer.provide(FetchHttpClient.layer))
-
-      const outcome = yield* Effect.exit(
-        Effect.scoped(
-          Effect.gen(function* () {
-            // Capture phase: Buck has been reaped; its result is now fixed.
-            yield* Ref.set(recordedResult, { exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
-            // Export phase: a whole OTLP lifecycle fails at the closed port.
-            yield* projectInvocation(observationFor(successEvidence())).pipe(
-              Effect.provide(failingExportLayer),
-            )
+        // The failing Buck operation stays failing: ERROR status on the span.
+        const invocation = trace.expectOne({ name: SpanNames.invocation })
+        expect(invocation.status_code).toBe(2) // STATUS_CODE_ERROR
+        expect(
+          resultClassFor({
+            evidence: failureEvidence,
+            verdict: verdictFor({ evidence: failureEvidence }),
           }),
-        ),
-      )
-      // The projection itself completed (telemetry outcome is its own concern).
-      expect(Exit.isSuccess(outcome)).toBe(true)
+        ).toBe('failure')
+        expect(invocation.attrs[SpanAttrKeys.verdict]).toBe('FAIL')
 
-      const after = yield* Ref.get(recordedResult)
-      expect(after).toStrictEqual({ exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
-    }),
+        guardMetricCardinality(metrics.metrics)
+        metrics.expectOne({
+          name: 'buck2_invocations_total',
+          attrs: { 'result-class': 'failure' },
+        })
+        // The import span still exists and mirrors the failing class.
+        expect(trace.expectOne({ name: SpanNames.import }).attrs['import.result-class']).toBe(
+          'failure',
+        )
+      }),
+    30_000,
+  )
+
+  it.scopedLive(
+    'malformed evidence yields NO_VERDICT and zero rich spans',
+    () =>
+      Effect.gen(function* () {
+        const otel = yield* captureTest({ serviceName: SERVICE, exportInterval: 50 })
+        const malformed = decodeEvidence({
+          buildReportText: '{"outcome":"SUCCESS"',
+          eventLogInput: 'not json at all',
+        })
+        const verdict = verdictFor({ evidence: malformed })
+        expect(verdict).toStrictEqual({
+          _tag: 'NO_VERDICT',
+          cause: expect.stringMatching(/malformed/),
+        })
+
+        const { metrics, trace } = yield* otel.runInProcessAllSignals(
+          projectInvocation(observationFor(malformed)),
+        )
+
+        // Invocation span exists but carries NO_VERDICT; rich spans absent.
+        const invocation = trace.expectOne({ name: SpanNames.invocation })
+        expect(invocation.attrs[SpanAttrKeys.verdict]).toBe('NO_VERDICT')
+        expectNoRichSpans(trace)
+
+        guardMetricCardinality(metrics.metrics)
+        metrics.expectOne({
+          name: 'buck2_invocations_total',
+          attrs: { 'result-class': 'no-verdict' },
+        })
+      }),
+    30_000,
+  )
+
+  it.scopedLive(
+    'dead exporter never changes the recorded Buck result (R08)',
+    () =>
+      Effect.gen(function* () {
+        // The "recorded result" stands in for Buck's reaped exit code + stdout.
+        // It is WRITTEN inside the same scope that runs the projection against a
+        // dead exporter — so the assertion is non-vacuous: any telemetry failure
+        // leaking into the result path would corrupt what we re-read below.
+        const recordedResult = yield* Ref.make({ exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
+
+        const failingExportLayer = Otlp.layerJson({
+          baseUrl: 'http://127.0.0.1:9', // discard port: nothing listens
+          resource: { serviceName: SERVICE },
+          loggerExportInterval: 20,
+          metricsExportInterval: 20,
+          shutdownTimeout: 500,
+          tracerExportInterval: 20,
+        }).pipe(Layer.provide(FetchHttpClient.layer))
+
+        const outcome = yield* Effect.exit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              // Capture phase: Buck has been reaped; its result is now fixed.
+              yield* Ref.set(recordedResult, { exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
+              // Export phase: a whole OTLP lifecycle fails at the closed port.
+              yield* projectInvocation(observationFor(successEvidence())).pipe(
+                Effect.provide(failingExportLayer),
+              )
+            }),
+          ),
+        )
+        // The projection itself completed (telemetry outcome is its own concern).
+        expect(Exit.isSuccess(outcome)).toBe(true)
+
+        const after = yield* Ref.get(recordedResult)
+        expect(after).toStrictEqual({ exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
+      }),
     30_000,
   )
 

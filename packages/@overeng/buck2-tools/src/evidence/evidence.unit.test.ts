@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 
-import { readFileSync } from 'node:fs'
+import { describe, expect, it } from 'vitest'
 
 import { decodeBuildReport, decodeEventLog, decodeEvidence } from './decoder.ts'
 import { richClaimsAvailable, verdictFor } from './verdict.ts'

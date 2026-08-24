@@ -18,10 +18,7 @@
  */
 export * from './model.ts'
 export * from './decoder.ts'
-export {
-  richClaimsAvailable,
-  verdictFor,
-} from './verdict.ts'
+export { richClaimsAvailable, verdictFor } from './verdict.ts'
 export {
   defaultSanitizationPolicy,
   sanitizeArgv,
