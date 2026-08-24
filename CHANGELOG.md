@@ -1,5 +1,7 @@
 # Changelog
 
+- **@overeng/megarepo**: Consume native `st2.workspace-activity.v1` snapshots for generated-artifact planning. Incomplete, erroneous, expired, malformed, or non-canonical claims fail closed; only canonical active claims veto a plan.
+
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
