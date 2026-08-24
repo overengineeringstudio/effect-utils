@@ -15,23 +15,23 @@ All claims carry file:line evidence. Empirical probes were run on this workstati
 
 Interface (`node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/src/FileSystem.ts`, cited as `FileSystem.ts` below):
 
-| Fact | Evidence |
-|---|---|
-| `watch(path, options?) => Stream<WatchEvent, PlatformError>` | FileSystem.ts:361 |
-| Doc: *"By default, only changes to the direct children of the directory are reported. Set the `recursive` option to `true`…"* | FileSystem.ts:353–360 |
-| `WatchOptions { readonly recursive?: boolean \| undefined }` — **recursion is opt-in, not forced** | FileSystem.ts:1171–1176 |
-| `WatchEvent = Create \| Update \| Remove`; every variant carries only `_tag` + `path` | FileSystem.ts:1196, 1216, 1232, 1248 |
-| Escape hatch: `WatchBackend.register(path, stat, options)` can replace the platform stream entirely | FileSystem.ts:1293–1299 |
+| Fact                                                                                                                          | Evidence                             |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `watch(path, options?) => Stream<WatchEvent, PlatformError>`                                                                  | FileSystem.ts:361                    |
+| Doc: _"By default, only changes to the direct children of the directory are reported. Set the `recursive` option to `true`…"_ | FileSystem.ts:353–360                |
+| `WatchOptions { readonly recursive?: boolean \| undefined }` — **recursion is opt-in, not forced**                            | FileSystem.ts:1171–1176              |
+| `WatchEvent = Create \| Update \| Remove`; every variant carries only `_tag` + `path`                                         | FileSystem.ts:1196, 1216, 1232, 1248 |
+| Escape hatch: `WatchBackend.register(path, stat, options)` can replace the platform stream entirely                           | FileSystem.ts:1293–1299              |
 
 Node backend (`@effect/platform-node-shared/src/NodeFileSystem.ts`, cited as `NodeFileSystem.ts`):
 
-| Fact | Evidence |
-|---|---|
-| Node impl forwards `recursive: options?.recursive ?? false` straight into `fs.watch` | NodeFileSystem.ts:557–558 |
-| `"rename"` → re-`stat`s the path: exists ⇒ `{_tag:"Create"}`, gone ⇒ `{_tag:"Remove"}` | NodeFileSystem.ts:562–567 |
-| `"change"` → `{_tag:"Update"}` (offered unsafely, no backpressure) | NodeFileSystem.ts:569–571 |
-| Backend error fails the stream (`Unknown` system error); watcher close ends it | NodeFileSystem.ts:575–593 |
-| Stream is built via `stat(path)` first, then either custom backend or `watchNode` | NodeFileSystem.ts:598–608 |
+| Fact                                                                                       | Evidence                  |
+| ------------------------------------------------------------------------------------------ | ------------------------- |
+| Node impl forwards `recursive: options?.recursive ?? false` straight into `fs.watch`       | NodeFileSystem.ts:557–558 |
+| `"rename"` → re-`stat`s the path: exists ⇒ `{_tag:"Create"}`, gone ⇒ `{_tag:"Remove"}`     | NodeFileSystem.ts:562–567 |
+| `"change"` → `{_tag:"Update"}` (offered unsafely, no backpressure)                         | NodeFileSystem.ts:569–571 |
+| Backend error fails the stream (`Unknown` system error); watcher close ends it             | NodeFileSystem.ts:575–593 |
+| Stream is built via `stat(path)` first, then either custom backend or `watchNode`          | NodeFileSystem.ts:598–608 |
 | Wired into the service as `watch(path, options)` with optional `WatchBackend` from context | NodeFileSystem.ts:659–661 |
 
 ### Key correction to the working assumption
@@ -69,18 +69,18 @@ NodeFileSystem.ts:557):
    (`EVENT rename nested/deep/f.txt`). Older "unsupported on Linux" behavior does not
    apply to this Node build.
 2. **Heavy native coalescing under burst**: five sequential `writeFileSync` calls to one
-   nested file produced a *single* `rename` event; a top-level write, a `mkdir`, and a
+   nested file produced a _single_ `rename` event; a top-level write, a `mkdir`, and a
    create inside the new dir produced exactly one event each:
    `["rename:nested/f.txt", "rename:nested/sub", "rename:nested/sub/g.txt", "rename:top.txt"]`.
    So the "duplicate-event storm" risk is real but smaller than the classic chokidar-era
-   folklore suggests on this platform — bursts collapse, but *per-save* duplicates across
+   folklore suggests on this platform — bursts collapse, but _per-save_ duplicates across
    editor write+rename sequences still occur (probe 1 showed save-style rename chains).
 3. **Non-recursive control**: a second watcher without `recursive` on the same root saw
    nothing for nested-path mutations — confirming today's consumers are blind to nested
    activity, and confirming recursion strictly enlarges the event set.
 4. All events arrived with paths relative to the watched root, matching §1.
 
-Implication: under recursion the dominant new cost is *volume* (events from arbitrary
+Implication: under recursion the dominant new cost is _volume_ (events from arbitrary
 subtree depth), while duplication within a burst is partly absorbed by the kernel/libuv
 layer. Consumer-side debounce windows (250 ms-class) remain necessary and sufficient.
 
@@ -112,7 +112,7 @@ Current usage (all in the CLI handler, watch branch `mod.tsx:199–289`):
   (`generateFile`, `mod.tsx:222–226`), mark others unchanged, dispatch summary
   (`mod.tsx:246–286`), drained by `Stream.runDrain` (`mod.tsx:288`).
 - **No coalescing/debounce whatsoever** — one event = one full cycle.
-- Discovery itself *is* recursive: `findGenieFiles` walks the tree manually with symlink
+- Discovery itself _is_ recursive: `findGenieFiles` walks the tree manually with symlink
   handling and a seen-directory set (`src/core/discovery.ts:154–200`).
 
 What breaks / changes under always-recursive:
@@ -126,18 +126,18 @@ What breaks / changes under always-recursive:
   sequential cycles (the stream is pulled sequentially by `runDrain`), each resetting the
   TUI (`WatchReset`) — visible flicker and wasted walks, but no concurrent-generation
   race because consumption is serialized.
-- Edge: a created *directory* named `*.genie.ts` passes the suffix filter; harmless today,
+- Edge: a created _directory_ named `*.genie.ts` passes the suffix filter; harmless today,
   equally harmless recursive, worth a stat-guard only if free.
 
 Strategy verdict:
 
-| | (a) filter-helper | (b) embrace-recursion-with-coalescing |
-|---|---|---|
-| Correctness | Keeps the nested-file blindness bug (helper restores old scope = old bug) | Fixes it; recursive scope matches recursive discovery |
-| Code delta | ~zero (call helper instead of inline filter) | Moderate: wrap event flow in a debounce window; collect changed paths per window; run one regen pass over the batch |
-| Perf | Same as today + wasted events filtered | Fewer redundant cycles than today once coalesced (one walk per window, not per event); more events ingested but suffix-filtered cheaply |
+|             | (a) filter-helper                                                         | (b) embrace-recursion-with-coalescing                                                                                                   |
+| ----------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Correctness | Keeps the nested-file blindness bug (helper restores old scope = old bug) | Fixes it; recursive scope matches recursive discovery                                                                                   |
+| Code delta  | ~zero (call helper instead of inline filter)                              | Moderate: wrap event flow in a debounce window; collect changed paths per window; run one regen pass over the batch                     |
+| Perf        | Same as today + wasted events filtered                                    | Fewer redundant cycles than today once coalesced (one walk per window, not per event); more events ingested but suffix-filtered cheaply |
 
-**Recommendation: (b)** — embrace recursion *with* a small coalescing window. This is the
+**Recommendation: (b)** — embrace recursion _with_ a small coalescing window. This is the
 only consumer where recursion changes observable behavior, and the change is an
 improvement. Concretely: keep `fs.watch(resolvedCwd, {recursive:true})` (explicit flag,
 §1), suffix-filter as now, accumulate changed paths for a 250 ms window, then run the
@@ -150,10 +150,10 @@ one cycle.
 
 Current usage (`runWatch`, `cli-program.ts:306–409`):
 
-- Watches the *parent directory of the target file*: `watchedDir = dirname(path)`
+- Watches the _parent directory of the target file_: `watchedDir = dirname(path)`
   (`cli-program.ts:315`), `fs.watch(watchedDir)` (`cli-program.ts:359`) — non-recursive.
 - Filter: exact absolute-path equality
-  `resolve(watchedDir, event.path) === watchedPath` (`cli-program.ts:360`). This *is*
+  `resolve(watchedDir, event.path) === watchedPath` (`cli-program.ts:360`). This _is_
   strategy (a)'s scope filter, hand-rolled.
 - Debounce/coalesce already present: sliding queue 1024 (`cli-program.ts:311`),
   initial event seeded (`cli-program.ts:358`, offered at startup alongside file/poll),
@@ -176,11 +176,11 @@ What breaks / changes under always-recursive:
 
 Strategy verdict:
 
-| | (a) filter-helper | (b) embrace-recursion-with-coalescing |
-|---|---|---|
-| Correctness | Identical to today | Identical (same filter, wider input) |
-| Code delta | ~zero (swap inline filter for shared helper) | Zero-to-negative: there is no broader scope to embrace — the consumer's domain is exactly one file |
-| Perf | Equal | Equal or marginally worse (more events through the filter) |
+|             | (a) filter-helper                            | (b) embrace-recursion-with-coalescing                                                              |
+| ----------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Correctness | Identical to today                           | Identical (same filter, wider input)                                                               |
+| Code delta  | ~zero (swap inline filter for shared helper) | Zero-to-negative: there is no broader scope to embrace — the consumer's domain is exactly one file |
+| Perf        | Equal                                        | Equal or marginally worse (more events through the filter)                                         |
 
 **Recommendation: (a)** — adopt the shared filter-helper (or leave as-is; it already
 implements the pattern). Embracing recursion buys nothing when the desired scope is one
@@ -221,11 +221,11 @@ What breaks / changes under always-recursive:
 
 Strategy verdict:
 
-| | (a) filter-helper | (b) embrace-recursion-with-coalescing |
-|---|---|---|
-| Correctness | Identical | Identical (Set membership is scope-agnostic) |
-| Code delta | Small: replace inline membership filter with helper | Moderate: single-root watch replaces per-dir fan-out; delete fork loop |
-| Perf | N watchers, N streams, same filtering | 1 watcher, fewer syscalls/inodes; identical pass count thanks to existing coalesce |
+|             | (a) filter-helper                                   | (b) embrace-recursion-with-coalescing                                              |
+| ----------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Correctness | Identical                                           | Identical (Set membership is scope-agnostic)                                       |
+| Code delta  | Small: replace inline membership filter with helper | Moderate: single-root watch replaces per-dir fan-out; delete fork loop             |
+| Perf        | N watchers, N streams, same filtering               | 1 watcher, fewer syscalls/inodes; identical pass count thanks to existing coalesce |
 
 **Recommendation: (b)** — this call site already has best-in-repo coalescing
 (`coalesceTriggers`), so "embracing recursion" reduces to a watcher-count optimization:
@@ -237,22 +237,22 @@ resolution proves fiddly; correctness is unaffected either way.
 
 ## 4. Strategy comparison — summary
 
-| Consumer | Current scope | Breaks under recursion? | Recommended strategy | Rationale |
-|---|---|---|---|---|
-| `megarepo` | none | n/a | n/a (start on (b) if ever needed) | No call sites (`store-lock.ts:109–110` deliberately avoids fs.watch) |
-| `genie` watch | cwd dir, non-recursive, no debounce (`build/mod.tsx:202–288`) | No breakage; fixes nested-file blindness | **(b)** with 250 ms coalescing window | Discovery already recursive (`core/discovery.ts:154`); coalescing removes today's per-event full-walk churn |
-| `notion-md` runWatch | one parent dir, exact-path filter (`cli-program.ts:359–360`) | No | **(a)** filter-helper | Desired scope is one file; recursion adds only filtered noise |
-| `notion-md` runBatchWatch | N parent dirs, Set filter (`batch.ts:474–477`) | No | **(b)** single recursive root watch | Existing coalesce (`batch.ts:12,418–434`) absorbs volume; collapses N watchers to 1 |
+| Consumer                  | Current scope                                                 | Breaks under recursion?                  | Recommended strategy                  | Rationale                                                                                                   |
+| ------------------------- | ------------------------------------------------------------- | ---------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `megarepo`                | none                                                          | n/a                                      | n/a (start on (b) if ever needed)     | No call sites (`store-lock.ts:109–110` deliberately avoids fs.watch)                                        |
+| `genie` watch             | cwd dir, non-recursive, no debounce (`build/mod.tsx:202–288`) | No breakage; fixes nested-file blindness | **(b)** with 250 ms coalescing window | Discovery already recursive (`core/discovery.ts:154`); coalescing removes today's per-event full-walk churn |
+| `notion-md` runWatch      | one parent dir, exact-path filter (`cli-program.ts:359–360`)  | No                                       | **(a)** filter-helper                 | Desired scope is one file; recursion adds only filtered noise                                               |
+| `notion-md` runBatchWatch | N parent dirs, Set filter (`batch.ts:474–477`)                | No                                       | **(b)** single recursive root watch   | Existing coalesce (`batch.ts:12,418–434`) absorbs volume; collapses N watchers to 1                         |
 
 Cross-cutting risks table (both strategies):
 
-| Risk | Mitigation grounded in code |
-|---|---|
-| Duplicate/burst events | Kernel-level coalescing observed (§2 probe 2) + consumer 250 ms windows already exist in notion-md (`batch.ts:12`, `cli-program.ts:388`); port the same window to genie |
-| Tag misclassification (writes arriving as `Create` via rename→stat) | No consumer inspects `_tag` (genie `mod.tsx:203`, notion-md `cli-program.ts:360`, `batch.ts:477` all filter on path only) — keep it that way |
-| Relative event paths | All three sites already resolve against the watch root before comparing |
-| Watcher error mid-stream | notion-md degrades to polling (`cli-program.ts:362–372`); genie currently has no error handling on the watch stream (`mod.tsx:202–288`) — add catch→log when touching it |
-| Self-trigger loops (tool writes what it watches) | Pre-existing and window-bounded in notion-md; genie's generated targets are read-only by default (docs/spec.md:70–72), so exposure is limited to user edits |
+| Risk                                                                | Mitigation grounded in code                                                                                                                                              |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Duplicate/burst events                                              | Kernel-level coalescing observed (§2 probe 2) + consumer 250 ms windows already exist in notion-md (`batch.ts:12`, `cli-program.ts:388`); port the same window to genie  |
+| Tag misclassification (writes arriving as `Create` via rename→stat) | No consumer inspects `_tag` (genie `mod.tsx:203`, notion-md `cli-program.ts:360`, `batch.ts:477` all filter on path only) — keep it that way                             |
+| Relative event paths                                                | All three sites already resolve against the watch root before comparing                                                                                                  |
+| Watcher error mid-stream                                            | notion-md degrades to polling (`cli-program.ts:362–372`); genie currently has no error handling on the watch stream (`mod.tsx:202–288`) — add catch→log when touching it |
+| Self-trigger loops (tool writes what it watches)                    | Pre-existing and window-bounded in notion-md; genie's generated targets are read-only by default (docs/spec.md:70–72), so exposure is limited to user edits              |
 
 ---
 
