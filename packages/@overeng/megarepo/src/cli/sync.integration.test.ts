@@ -145,7 +145,7 @@ const runMrCommand = ({
         }),
     )
 
-    const argv = ['node', 'mr', ...command, ...args]
+    const argv = [...command, ...args]
     const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(consoleLayer),

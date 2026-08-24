@@ -42,7 +42,7 @@ const runStatusCommand = ({
   Effect.gen(function* () {
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
 
-    const argv = ['node', 'mr', '--cwd', cwd, 'status', '--output', 'json', ...args]
+    const argv = ['--cwd', cwd, 'status', '--output', 'json', ...args]
     const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provide(consoleLayer),
     )

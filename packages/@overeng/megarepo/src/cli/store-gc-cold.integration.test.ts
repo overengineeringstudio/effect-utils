@@ -144,11 +144,11 @@ const runGc = ({
     const previous = process.env['MEGAREPO_STORE']
     process.env['MEGAREPO_STORE'] = storePath
 
-    const argv = ['node', 'mr', 'store', 'gc', ...args, '--output', 'json']
+    const argv = ['store', 'gc', ...args, '--output', 'json']
     const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(
-        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now)),
+        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now), NodeServices.layer),
       ),
       Effect.exit,
     )

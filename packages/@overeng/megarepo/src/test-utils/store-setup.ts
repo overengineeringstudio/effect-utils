@@ -386,9 +386,9 @@ export const createWorkspaceWithLock = (args: {
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: MegarepoConfig = {
-      members: args.members,
-    }
+    // Effect v4 class schemas require a real instance on the encode side — a
+    // plain literal fails `SchemaError: Expected MegarepoConfig`.
+    const config = new MegarepoConfig({ members: args.members })
     const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )

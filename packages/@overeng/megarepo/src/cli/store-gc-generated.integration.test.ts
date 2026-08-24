@@ -62,8 +62,6 @@ const runGc = ({
     const previous = process.env['MEGAREPO_STORE']
     process.env['MEGAREPO_STORE'] = storePath
     const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })([
-      'node',
-      'mr',
       'store',
       'gc',
       ...(generatedArtifacts === true ? ['--generated-artifacts'] : []),
@@ -72,7 +70,7 @@ const runGc = ({
       'json',
     ]).pipe(
       Effect.provideService(Cwd, cwd),
-      Effect.provide(Layer.mergeAll(consoleLayer, liveClock)),
+      Effect.provide(Layer.mergeAll(consoleLayer, liveClock, NodeServices.layer)),
       Effect.exit,
     )
     if (previous === undefined) delete process.env['MEGAREPO_STORE']

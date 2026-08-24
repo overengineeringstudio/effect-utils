@@ -1,4 +1,8 @@
+import { Writable } from 'node:stream'
+
 import { Console, Effect, Layer } from 'effect'
+
+import { ViewOutputStreamTag } from '@overeng/tui-react'
 
 /**
  * Capture Console output as an in-memory line buffer.
@@ -35,10 +39,24 @@ export const makeConsoleCapture = Effect.sync(() => {
     timeEnd: () => {},
     timeLog: () => {},
   })
+  // TUI JSON/final output bypasses Console and writes directly to
+  // ViewOutputStreamTag (defaulting to process.stdout), so bind it to a
+  // capturing stream too.
+  const viewStream = new Writable({
+    write(chunk, _encoding, callback) {
+      for (const line of String(chunk).split('\n')) {
+        if (line !== '') stdoutLines.push(line)
+      }
+      callback()
+    },
+  })
 
   return {
-    consoleLayer: Layer.succeed(Console.Console, consoleService),
-    getStdoutLines: Effect.succeed(stdoutLines.slice()),
-    getStderrLines: Effect.succeed(stderrLines.slice()),
+    consoleLayer: Layer.mergeAll(
+      Layer.succeed(Console.Console, consoleService),
+      Layer.succeed(ViewOutputStreamTag, viewStream),
+    ),
+    getStdoutLines: Effect.sync(() => stdoutLines.slice()),
+    getStderrLines: Effect.sync(() => stderrLines.slice()),
   }
 })

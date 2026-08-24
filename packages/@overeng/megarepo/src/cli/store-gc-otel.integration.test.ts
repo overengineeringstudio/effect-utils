@@ -144,12 +144,12 @@ const runGc = ({
     const previous = process.env['MEGAREPO_STORE']
     process.env['MEGAREPO_STORE'] = storePath
 
-    const argv = ['node', 'mr', 'store', 'gc', '--output', 'json']
+    const argv = ['store', 'gc', '--output', 'json']
     yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provideService(OtelConfig, { endpoint: telemetry }),
       Effect.provide(
-        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now)),
+        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now), NodeServices.layer),
       ),
       Effect.scoped,
       Effect.exit,

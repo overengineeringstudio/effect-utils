@@ -194,9 +194,9 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: MegarepoConfig = {
-      members: fixture?.members ?? {},
-    }
+    // Effect v4 class schemas require a real instance on the encode side — a
+    // plain literal fails `SchemaError: Expected MegarepoConfig`.
+    const config = new MegarepoConfig({ members: fixture?.members ?? {} })
     const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )

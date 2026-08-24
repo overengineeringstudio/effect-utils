@@ -491,7 +491,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
   Effect.gen(function* () {
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
 
-    const argv = ['node', 'mr', '--cwd', cwdPath, 'root', '--output', 'json']
+    const argv = ['--cwd', cwdPath, 'root', '--output', 'json']
     const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provide(consoleLayer),
     )
@@ -570,7 +570,7 @@ describe('--cwd option', () => {
         const { consoleLayer } = yield* makeConsoleCapture
 
         const cwdPath = '/nonexistent/path/that/does/not/exist/'
-        const argv = ['node', 'mr', '--cwd', cwdPath, 'root', '--output', 'json']
+        const argv = ['--cwd', cwdPath, 'root', '--output', 'json']
         const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
           Effect.provide(consoleLayer),
         )
