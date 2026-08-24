@@ -105,7 +105,7 @@ const LegacyTopLevelRecord = Schema.Struct({
 const TokenCountInfo = Schema.Struct({
   total_token_usage: Schema.optional(Schema.Unknown),
   last_token_usage: Schema.optional(Schema.Unknown),
-  model_context_window: Schema.optional(Schema.Number),
+  model_context_window: Schema.optional(Schema.Finite),
 })
 
 /**

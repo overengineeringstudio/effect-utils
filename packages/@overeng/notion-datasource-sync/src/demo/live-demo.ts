@@ -25,7 +25,7 @@ export const NotionDatasourceSyncDemoDataSourceSchema = Schema.Struct({
   databaseId: NotionId,
   databaseUrl: NotionUrl,
   dataSourceId: NotionId,
-  expectedRows: Schema.Number,
+  expectedRows: Schema.Finite,
   expectedPropertyNames: Schema.Array(NonEmptyTrimmedString),
   fastReplica: Schema.Boolean,
 }).annotate({ identifier: 'NotionDatasourceSync.DemoDataSource' })
@@ -50,7 +50,7 @@ export const NotionDatasourceSyncDemoManifestSchema = Schema.Struct({
   pageUrl: NotionUrl,
   readOnlyContract: Schema.Struct({
     lane: Schema.Literal('read-only-verifier'),
-    minDurableRows: Schema.Number,
+    minDurableRows: Schema.Finite,
     localFullReplica: Schema.Literal('explicit-opt-in'),
   }),
   provisionerContract: NotionDatasourceSyncDemoProvisionerContractSchema,
@@ -68,7 +68,7 @@ export type NotionDatasourceSyncDemoChildDatabase = {
 
 const NotionApiFailureBodySchema = Schema.Struct({
   object: Schema.optional(Schema.String),
-  status: Schema.optional(Schema.Number),
+  status: Schema.optional(Schema.Finite),
   code: Schema.optional(Schema.String),
   message: Schema.optional(Schema.String),
 }).annotate({ identifier: 'NotionDatasourceSync.DemoApiFailureBody' })

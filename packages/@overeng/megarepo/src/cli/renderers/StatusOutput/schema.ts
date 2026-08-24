@@ -16,7 +16,7 @@ import { RefMismatch } from '../../../lib/issues.ts'
 /** Schema for a member's git working tree status (dirty, unpushed, branch info). */
 export const GitStatus = Schema.Struct({
   isDirty: Schema.Boolean,
-  changesCount: Schema.Number,
+  changesCount: Schema.Finite,
   hasUnpushed: Schema.Boolean,
   branch: Schema.optional(Schema.String),
   shortRev: Schema.optional(Schema.String),

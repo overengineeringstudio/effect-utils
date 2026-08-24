@@ -20,7 +20,7 @@ const UserSchema = Schema.Struct({
     description: 'Your full name',
   }),
   email: Schema.String.annotate({ title: 'Email' }),
-  age: Schema.optional(Schema.Number).annotate({
+  age: Schema.optional(Schema.Finite).annotate({
     title: 'Age',
     description: 'Optional',
   }),
@@ -195,7 +195,7 @@ const ComplexSchema = Schema.Struct({
     title: 'Email Address',
     description: 'Primary contact email',
   }),
-  age: Schema.optional(Schema.Number).annotate({ title: 'Age' }),
+  age: Schema.optional(Schema.Finite).annotate({ title: 'Age' }),
   subscribe: Schema.Boolean.annotate({
     title: 'Subscribe to newsletter',
     description: 'Receive weekly updates',

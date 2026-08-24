@@ -15,7 +15,7 @@ export const timestamp = (value: number | string | Date): Timestamp => {
 }
 
 /** Schema for a `Timestamp` carried on the wire as a plain number */
-export const timestampSchema = Schema.Number.pipe(Schema.brand('Timestamp'))
+export const timestampSchema = Schema.Finite.pipe(Schema.brand('Timestamp'))
 
 /** Returns the current time as a Timestamp */
 export const timestampNow = (): Timestamp => Math.round(Date.now()) as Timestamp

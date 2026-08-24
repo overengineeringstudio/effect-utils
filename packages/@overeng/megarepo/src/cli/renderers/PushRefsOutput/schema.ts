@@ -42,7 +42,7 @@ export const PushRefsAlignedState = Schema.TaggedStruct('Aligned', {})
 /** Refs were propagated (or would be in dry-run) */
 export const PushRefsResultState = Schema.TaggedStruct('Result', {
   results: Schema.Array(NestedResultSchema),
-  totalUpdates: Schema.Number,
+  totalUpdates: Schema.Finite,
   dryRun: Schema.Boolean,
 })
 
@@ -73,7 +73,7 @@ export const PushRefsAction = Schema.Union([
   Schema.TaggedStruct('SetAligned', {}),
   Schema.TaggedStruct('SetResult', {
     results: Schema.Array(NestedResultSchema),
-    totalUpdates: Schema.Number,
+    totalUpdates: Schema.Finite,
     dryRun: Schema.Boolean,
   }),
   Schema.TaggedStruct('SetError', {

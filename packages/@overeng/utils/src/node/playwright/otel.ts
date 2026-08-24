@@ -48,12 +48,10 @@ export const currentParentSpanContextJson: Effect.Effect<string | undefined, nev
     const span: Option.Option<Tracer.Span> = yield* Effect.currentSpan.pipe(Effect.option)
     if (span._tag === 'None') return undefined
 
-    return yield* Effect.sync(() =>
-      Schema.encodeSync(Schema.fromJsonString(ParentSpanContextSchema))({
-        traceId: span.value.traceId,
-        spanId: span.value.spanId,
-      }),
-    )
+    return yield* Schema.encodeEffect(Schema.fromJsonString(ParentSpanContextSchema))({
+      traceId: span.value.traceId,
+      spanId: span.value.spanId,
+    }).pipe(Effect.orDie)
   })
 
 /**

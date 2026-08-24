@@ -29,6 +29,9 @@ const TestState = Schema.Struct({
 
 type TestState = Schema.Schema.Type<typeof TestState>
 
+const decodeTestState = (json: string): TestState =>
+  Schema.decodeSync(Schema.fromJsonString(TestState))(json)
+
 // Action schema WITH Interrupted variant
 const TestActionWithInterrupt = Schema.Union([
   Schema.TaggedStruct('SetValue', { value: Schema.String }),
@@ -427,7 +430,7 @@ describe('Final state output', () => {
       Effect.provide(testModeLayer('json')),
       Effect.andThen(Effect.sync(() => {
         expect(capturedOutput).toHaveLength(1)
-        const state = JSON.parse(capturedOutput[0]!)
+        const state = decodeTestState(capturedOutput[0]!)
         // Flat contract: stdout is raw state, no envelope.
         expect(state.value).toBe('final')
         expect(state.interrupted).toBe(false)
@@ -473,7 +476,7 @@ describe('Final state output', () => {
         // Interrupt still emits the final state (no envelope). The interrupt
         // signal itself rides the Effect channel, not stdout.
         expect(capturedOutput).toHaveLength(1)
-        const state = JSON.parse(capturedOutput[0]!)
+        const state = decodeTestState(capturedOutput[0]!)
         expect(state).toBeDefined()
         expect(state).toHaveProperty('value')
       })),

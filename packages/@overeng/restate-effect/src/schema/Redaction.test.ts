@@ -30,9 +30,9 @@ const SecretMessage = Schema.Struct({
 describe('field-level redaction (sensitive/redacted)', () => {
   it('finds sensitive fields off the pre-transform property signatures', () => {
     expect(findSensitiveFields(SecretMessage.ast)).toStrictEqual(['body'])
-    expect(findSensitiveFields(Schema.Struct({ x: Schema.Number }).ast)).toStrictEqual([])
+    expect(findSensitiveFields(Schema.Struct({ x: Schema.Finite }).ast)).toStrictEqual([])
     /* `redacted` is an alias for `sensitive`. */
-    const R = Schema.Struct({ pin: Restate.redacted(Schema.Number) })
+    const R = Schema.Struct({ pin: Restate.redacted(Schema.Finite) })
     expect(findSensitiveFields(R.ast)).toStrictEqual(['pin'])
   })
 

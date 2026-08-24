@@ -58,9 +58,9 @@ const WakeFast = makeComposedDaemon({ name: 'cmp-wake-fast', delayMillis: 600, w
  * as a daemon so `harness.stateOf` can read the domain keys (the primitive's own
  * contract declares only the control plane — see decision 0012 consequences). */
 const ComposedDomain = {
-  cursor: Schema.Number,
-  itemsSeen: Schema.Number,
-  wakeCount: Schema.Number,
+  cursor: Schema.Finite,
+  itemsSeen: Schema.Finite,
+  wakeCount: Schema.Finite,
 } as const
 const DomainProbe = (name: string) =>
   RestateObject.contract({

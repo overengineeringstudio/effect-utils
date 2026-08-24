@@ -99,7 +99,7 @@ const Release = DurablePromise.for(Schema.Struct({ go: Schema.Boolean }))
  */
 export class DiscordUnavailable extends Schema.TaggedError<DiscordUnavailable>(
   'example/DiscordUnavailable',
-)('DiscordUnavailable', { retryAfterMillis: Schema.Number }) {}
+)('DiscordUnavailable', { retryAfterMillis: Schema.Finite }) {}
 
 export const DiscordUnavailableRetryable = Restate.retryable({
   self: DiscordUnavailable,
@@ -164,7 +164,7 @@ export const InvocationRow = Schema.Struct({
   target_service_name: Schema.String,
   target_handler_name: Schema.String,
   status: Schema.String,
-  retry_count: Schema.optional(Schema.NullishOr(Schema.Number)),
+  retry_count: Schema.optional(Schema.NullishOr(Schema.Finite)),
 })
 export type InvocationRow = Schema.Schema.Type<typeof InvocationRow>
 

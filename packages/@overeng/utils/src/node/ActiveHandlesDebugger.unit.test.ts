@@ -13,11 +13,10 @@ import {
 /** Test logger that captures log messages at all levels */
 const makeTestLogger = Effect.fnUntraced(function* () {
   const logs = yield* Ref.make<Chunk.Chunk<string>>(Chunk.empty())
-  const context = yield* Effect.context<never>()
 
   const logger = Logger.make<unknown, void>(({ message }) => {
     const msg = Array.isArray(message) === true ? message.join(' ') : String(message)
-    Effect.runSync(Ref.update(logs, Chunk.append(msg)).pipe(Effect.provide(context)))
+    Effect.runSync(Ref.update(logs, Chunk.append(msg)))
   })
 
   const getLogs = Ref.get(logs).pipe(Effect.map(Chunk.toArray))

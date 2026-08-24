@@ -2,9 +2,9 @@ import { Schema } from 'effect'
 
 /** Source location within a KDL document */
 export const KdlLocation = Schema.Struct({
-  offset: Schema.Number,
-  line: Schema.Number,
-  column: Schema.Number,
+  offset: Schema.Finite,
+  line: Schema.Finite,
+  column: Schema.Finite,
 }).annotate({ identifier: 'Kdl.Location' })
 
 export type KdlLocation = typeof KdlLocation.Type

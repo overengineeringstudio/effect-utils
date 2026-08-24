@@ -72,9 +72,9 @@ const program = Effect.gen(function* () {
   return yield* socketServer.run(handleConnection)
 }).pipe(
   Effect.withSpan('ws.server'),
-  Effect.provide(layerWebSocket({ port: wsPort })),
-  Effect.provide(HttpRouter.layer),
-  Effect.provide(httpServer),
+  Effect.provide(
+    Layer.mergeAll(layerWebSocket({ port: wsPort }), HttpRouter.layer, httpServer),
+  ),
 )
 
 /**

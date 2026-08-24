@@ -18,7 +18,7 @@ export const GenerateConfigState = Schema.Union([
   }),
   Schema.TaggedStruct('Done', {
     configPath: Schema.String,
-    count: Schema.Number,
+    count: Schema.Finite,
   }),
   Schema.TaggedStruct('Error', {
     message: Schema.String,
@@ -45,7 +45,7 @@ export const GenerateConfigAction = Schema.Union([
     name: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('SetDone', {
-    count: Schema.Number,
+    count: Schema.Finite,
   }),
   Schema.TaggedStruct('SetError', {
     message: Schema.String,

@@ -18,7 +18,7 @@ import { serverAvailable, withRestateServer } from '../testing/testing.ts'
 
 /* ── counter object: exclusive `add` (typed State) + shared `get` ── */
 
-const CounterState = { count: Schema.Number } as const
+const CounterState = { count: Schema.Finite } as const
 const Counter = State.for(CounterState)
 
 const CounterObj = RestateObject.contract({
@@ -26,8 +26,8 @@ const CounterObj = RestateObject.contract({
   def: {
     state: CounterState,
     handlers: {
-      add: { input: Schema.Number, success: Schema.Number }, // exclusive (default)
-      get: { input: Schema.Void, success: Schema.Number, shared: true }, // read-only
+      add: { input: Schema.Finite, success: Schema.Finite }, // exclusive (default)
+      get: { input: Schema.Void, success: Schema.Finite, shared: true }, // read-only
     },
   },
 })

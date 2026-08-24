@@ -117,7 +117,9 @@ Vitest.describe('genie cli', () => {
       function* () {
         yield* withTestEnv((env) =>
           Effect.gen(function* () {
-            const packageJsonContent = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown, { space: 2 }))({
+            const packageJsonContent = yield* Schema.encodeEffect(
+              Schema.fromJsonString(Schema.Unknown, { space: 2 }),
+            )({
               name: 'genie-cli-test',
               private: true,
             })
@@ -676,9 +678,9 @@ export default { data: {}, stringify: () => '{}' }`,
 
             // Flat JSON contract: final stdout line is the raw state (no envelope).
             // Exit code signals failure; per-file error details are carried in state.
-            const state = Schema.decodeSync(Schema.fromJsonString(GenieApp.config.stateSchema))(
-              stdout.trim(),
-            )
+            const state = yield* Schema.decodeEffect(
+              Schema.fromJsonString(GenieApp.config.stateSchema),
+            )(stdout.trim())
 
             // Bug #135: files array must NOT be empty
             expect(state.files.length).toBe(2)
@@ -762,9 +764,9 @@ export default { data: {}, stringify: () => '{}' }`,
             // NDJSON flat contract: each line is raw state; last line is the
             // authoritative end state (no trailing Failure envelope).
             const lines = stdout.trim().split('\n')
-            const finalState = Schema.decodeSync(Schema.fromJsonString(GenieApp.config.stateSchema))(
-              lines[lines.length - 1]!,
-            )
+            const finalState = yield* Schema.decodeEffect(
+              Schema.fromJsonString(GenieApp.config.stateSchema),
+            )(lines[lines.length - 1]!)
 
             expect(finalState.files.length).toBe(2)
             expect(finalState.cwd).not.toBe('')

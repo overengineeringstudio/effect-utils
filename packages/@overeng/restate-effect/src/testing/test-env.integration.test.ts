@@ -55,7 +55,7 @@ const GreeterLive = RestateService.implement<typeof Greeter, Greeting>({
   },
 })
 
-const CounterState = { count: Schema.Number } as const
+const CounterState = { count: Schema.Finite } as const
 const Counter = State.for(CounterState)
 
 const CounterObj = RestateObject.contract({
@@ -63,8 +63,8 @@ const CounterObj = RestateObject.contract({
   def: {
     state: CounterState,
     handlers: {
-      add: { input: Schema.Number, success: Schema.Number },
-      get: { input: Schema.Void, success: Schema.Number, shared: true },
+      add: { input: Schema.Finite, success: Schema.Finite },
+      get: { input: Schema.Void, success: Schema.Finite, shared: true },
     },
   },
 })
@@ -89,7 +89,7 @@ const CounterLive = RestateObject.implement<typeof CounterObj>({
  * and `set(key, undefined)`/`clear(key)` REMOVES it. This is the `notion-datasource-sync`
  * cursor shape that was previously unexpressible (optional/nullable State, #1). */
 const CursorState = {
-  highWatermark: Schema.optional(Schema.Number),
+  highWatermark: Schema.optional(Schema.Finite),
   name: Schema.String,
 } as const
 const Cursor = State.for(CursorState)
@@ -98,7 +98,7 @@ const Cursor = State.for(CursorState)
  * JSON schema), since a top-level `Schema.UndefinedOr` handler return breaks
  * `JSONSchema.make` at endpoint registration — State, not handler I/O, is the
  * nullable surface (#1). */
-const PeekOutput = Schema.Struct({ highWatermark: Schema.optional(Schema.Number) })
+const PeekOutput = Schema.Struct({ highWatermark: Schema.optional(Schema.Finite) })
 
 const CursorObj = RestateObject.contract({
   name: 'test-env-cursor',
@@ -106,7 +106,7 @@ const CursorObj = RestateObject.contract({
     state: CursorState,
     handlers: {
       /** Set the nullable watermark to a present value. */
-      advance: { input: Schema.Number, success: Schema.Void },
+      advance: { input: Schema.Finite, success: Schema.Void },
       /** Clear the watermark by writing `undefined` (≡ remove the key). */
       reset: { input: Schema.Void, success: Schema.Void },
       /** Read the watermark (`{ highWatermark }` omitted when unset). */

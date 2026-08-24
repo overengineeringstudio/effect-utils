@@ -25,8 +25,8 @@ import * as FileSystemBacking from './file-system-backing.ts'
 
 /** Schema for lock file content structure */
 const LockFileContent = Schema.Struct({
-  permits: Schema.Number,
-  expiresAt: Schema.Number,
+  permits: Schema.Finite,
+  expiresAt: Schema.Finite,
 })
 
 /**
@@ -779,18 +779,18 @@ Vitest.describe('FileSystemBacking', () => {
         const now = Date.now()
 
         yield* fsService.makeDirectory(keyDir, { recursive: true })
-        const expiredLockContent = Schema.encodeSync(Schema.fromJsonString(LockFileContent))({
+        const expiredLockContent = yield* Schema.encodeEffect(Schema.fromJsonString(LockFileContent))({
           permits: 2,
           expiresAt: now - 60_000,
-        })
+        }).pipe(Effect.orDie)
         yield* fsService.writeFileString(
           `${keyDir}/${encodeURIComponent('holder-expired')}.lock`,
           expiredLockContent,
         )
-        const activeLockContent = Schema.encodeSync(Schema.fromJsonString(LockFileContent))({
+        const activeLockContent = yield* Schema.encodeEffect(Schema.fromJsonString(LockFileContent))({
           permits: 3,
           expiresAt: now + 60_000,
-        })
+        }).pipe(Effect.orDie)
         yield* fsService.writeFileString(
           `${keyDir}/${encodeURIComponent('holder-active')}.lock`,
           activeLockContent,

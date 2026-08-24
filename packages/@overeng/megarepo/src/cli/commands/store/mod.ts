@@ -147,7 +147,7 @@ type GeneratedArtifactScan =
 
 const AgentLivenessManifest = Schema.Struct({
   version: Schema.Literal(1),
-  expiresAtMs: Schema.Number,
+  expiresAtMs: Schema.Finite,
   activeWorkspacePaths: Schema.Array(Schema.String),
 })
 
@@ -1400,7 +1400,7 @@ const coldReclaimRepo = ({
 const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
   Effect.gen(function* () {
     const store = yield* Store
-    const repos = yield* store.listRepos()
+    const repos = yield* store.listRepos
 
     yield* runStoreCommand({
       output,
@@ -1439,7 +1439,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     })
 
     // List all repos and analyze worktrees in parallel
-    const repos = yield* store.listRepos()
+    const repos = yield* store.listRepos
 
     const repoResults = yield* Effect.all(
       repos.map((repo) =>
@@ -1586,7 +1586,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
 const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({ output }) =>
   Effect.gen(function* () {
     const store = yield* Store
-    const repos = yield* store.listRepos()
+    const repos = yield* store.listRepos
     const startTime = Date.now()
 
     // Fetch repos with limited concurrency
@@ -1924,7 +1924,7 @@ const storeGcCommand = Cli.Command.make(
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
           const repos = yield* store
-            .listRepos()
+            .listRepos
             .pipe(Observability.withStoreGcPhaseSpan({ phase: 'list-repos' }))
           repoCount = repos.length
           statusMessage = 'checking worktrees'

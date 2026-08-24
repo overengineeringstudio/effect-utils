@@ -15,7 +15,7 @@ export const buildCheckpointKey = (
 export class CheckpointStore extends Context.Service<
   CheckpointStore,
   {
-    readonly list: () => Effect.Effect<
+    readonly list: Effect.Effect<
       ReadonlyArray<IngestionCheckpoint>,
       SessionCheckpointDecodeError
     >
@@ -30,8 +30,7 @@ export const makeFileCheckpointStore = (options: { path: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    const list = () =>
-      Effect.gen(function* () {
+    const list = Effect.gen(function* () {
         const exists = yield* fs.exists(options.path)
         if (exists !== true) return [] as Array<IngestionCheckpoint>
 

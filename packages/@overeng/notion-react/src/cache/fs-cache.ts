@@ -14,10 +14,9 @@ import { CACHE_SCHEMA_VERSION, CacheTree, type CacheTree as CacheTreeValue, type
  * separate schema `decode` below.
  */
 const parseJson = (contents: string): Effect.Effect<unknown, CacheError> =>
-  Effect.try({
-    try: () => JSON.parse(contents) as unknown,
-    catch: (cause) => new CacheError({ reason: 'fs-cache-parse-failed', cause }),
-  })
+  Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(contents).pipe(
+    Effect.mapError((cause) => new CacheError({ reason: 'fs-cache-parse-failed', cause })),
+  )
 
 const decode = Schema.decodeUnknownEffect(CacheTree)
 

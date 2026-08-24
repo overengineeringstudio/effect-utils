@@ -40,7 +40,7 @@ export type ServiceProgress = Schema.Schema.Type<typeof ServiceProgress>
 export const ServiceResult = Schema.Struct({
   name: Schema.String,
   result: Schema.Literals(['updated', 'unchanged', 'rolled-back', 'failed']),
-  duration: Schema.Number,
+  duration: Schema.Finite,
   error: Schema.optional(Schema.String),
 })
 /** Inferred type for a service's final deployment result. */
@@ -78,16 +78,16 @@ export const DeployState = Schema.Union([
     environment: Schema.String,
     services: Schema.Array(ServiceProgress),
     logs: Schema.Array(LogEntry),
-    startedAt: Schema.Number,
+    startedAt: Schema.Finite,
   }),
 
   Schema.TaggedStruct('Complete', {
     environment: Schema.String,
     services: Schema.Array(ServiceResult),
     logs: Schema.Array(LogEntry),
-    startedAt: Schema.Number,
-    completedAt: Schema.Number,
-    totalDuration: Schema.Number,
+    startedAt: Schema.Finite,
+    completedAt: Schema.Finite,
+    totalDuration: Schema.Finite,
   }),
 
   Schema.TaggedStruct('Failed', {
@@ -95,8 +95,8 @@ export const DeployState = Schema.Union([
     services: Schema.Array(ServiceResult),
     error: Schema.String,
     logs: Schema.Array(LogEntry),
-    startedAt: Schema.Number,
-    failedAt: Schema.Number,
+    startedAt: Schema.Finite,
+    failedAt: Schema.Finite,
   }),
 
   Schema.TaggedStruct('RollingBack', {
@@ -104,15 +104,15 @@ export const DeployState = Schema.Union([
     services: Schema.Array(ServiceProgress),
     reason: Schema.String,
     logs: Schema.Array(LogEntry),
-    startedAt: Schema.Number,
+    startedAt: Schema.Finite,
   }),
 
   Schema.TaggedStruct('Interrupted', {
     environment: Schema.String,
     services: Schema.Array(ServiceResult),
     logs: Schema.Array(LogEntry),
-    startedAt: Schema.Number,
-    interruptedAt: Schema.Number,
+    startedAt: Schema.Finite,
+    interruptedAt: Schema.Finite,
   }),
 ])
 
@@ -129,7 +129,7 @@ export const DeployOptions = Schema.Struct({
   environment: Schema.String,
   dryRun: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   force: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  timeout: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(30000))),
+  timeout: Schema.Finite.pipe(Schema.withDecodingDefault(Effect.succeed(30000))),
 })
 /** Inferred type for deploy command options. */
 export type DeployOptions = Schema.Schema.Type<typeof DeployOptions>
@@ -142,7 +142,7 @@ export type DeployOptions = Schema.Schema.Type<typeof DeployOptions>
 export const DeployResult = Schema.Struct({
   success: Schema.Boolean,
   services: Schema.Array(ServiceResult),
-  totalDuration: Schema.Number,
+  totalDuration: Schema.Finite,
   error: Schema.optional(Schema.String),
 })
 /** Inferred type for the deploy result. */
@@ -250,7 +250,7 @@ export const DeployAction = Schema.Union([
 
   // Granular updates (for Progress state)
   Schema.TaggedStruct('UpdateServiceStatus', {
-    index: Schema.Number,
+    index: Schema.Finite,
     status: ServiceStatus,
     message: Schema.optional(Schema.String),
   }),

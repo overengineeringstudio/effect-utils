@@ -17,7 +17,7 @@ export const RollupValue = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal('number'),
-    number: Schema.NullOr(Schema.Number),
+    number: Schema.NullOr(Schema.Finite),
   }),
   Schema.Struct({
     type: Schema.Literal('boolean'),
@@ -90,7 +90,7 @@ export const Rollup = {
         p.rollup.type === 'number' && p.rollup.number !== null,
       { message: 'Rollup must be a non-null number' },
     ),
-    Schema.decodeTo(Schema.Number, {
+    Schema.decodeTo(Schema.Finite, {
       decode: SchemaGetter.transform((prop) => prop.rollup.number),
       encode: SchemaGetter.forbidden(
         () => 'Rollup.asNumber encode is not supported (rollup is read-only).',

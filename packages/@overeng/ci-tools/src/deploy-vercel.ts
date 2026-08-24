@@ -336,7 +336,7 @@ const preparePrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-prebuilt
     }
 
     const workDir = yield* Effect.sync(() => mkdtempSync(join(tmpdir(), 'ci-tools-vercel-')))
-    const projectJson = Schema.encodeSync(VercelProjectFileJson)({
+    const projectJson = yield* Schema.encodeEffect(VercelProjectFileJson)({
       projectId: opts.projectId,
       orgId: opts.orgId,
     })

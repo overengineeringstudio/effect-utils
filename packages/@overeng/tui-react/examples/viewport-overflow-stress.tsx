@@ -40,12 +40,12 @@ const AppState = Schema.Union([
   }),
   Schema.TaggedStruct('Generating', {
     files: Schema.Array(FileEntry),
-    processed: Schema.Number,
-    total: Schema.Number,
+    processed: Schema.Finite,
+    total: Schema.Finite,
   }),
   Schema.TaggedStruct('Complete', {
     files: Schema.Array(FileEntry),
-    total: Schema.Number,
+    total: Schema.Finite,
   }),
   Schema.TaggedStruct('Interrupted', {}),
 ])
@@ -55,11 +55,11 @@ type AppState = typeof AppState.Type
 const AppAction = Schema.Union([
   Schema.TaggedStruct('StartGenerating', {}),
   Schema.TaggedStruct('ProcessFile', {
-    index: Schema.Number,
+    index: Schema.Finite,
     status: Schema.String,
   }),
   Schema.TaggedStruct('MarkActive', {
-    index: Schema.Number,
+    index: Schema.Finite,
   }),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
@@ -211,7 +211,7 @@ const StressView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
 // =============================================================================
 
 const VerticalState = Schema.Union([
-  Schema.TaggedStruct('Showing', { count: Schema.Number }),
+  Schema.TaggedStruct('Showing', { count: Schema.Finite }),
   Schema.TaggedStruct('Interrupted', {}),
 ])
 const VerticalAction = Schema.Union([Schema.TaggedStruct('Interrupted', {})])

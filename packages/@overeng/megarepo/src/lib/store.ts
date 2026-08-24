@@ -76,7 +76,7 @@ export interface MegarepoStore {
   }) => Effect.Effect<boolean, PlatformError>
 
   /** List all repos in the store */
-  readonly listRepos: () => Effect.Effect<
+  readonly listRepos: Effect.Effect<
     ReadonlyArray<{
       readonly relativePath: RelativeDirPath
       readonly fullPath: AbsoluteDirPath
@@ -275,7 +275,7 @@ const make = ({
     // Legacy compatibility
     hasRepo: (source) => fs.exists(getBareRepoPath(source)),
 
-    listRepos: () =>
+    listRepos:
       Effect.gen(function* () {
         const exists = yield* fs.exists(basePath)
         if (exists === false) {

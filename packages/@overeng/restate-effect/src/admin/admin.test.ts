@@ -110,7 +110,7 @@ describe('RestateAdmin invocation lifecycle', () => {
 describe('RestateAdmin deployments', () => {
   it('register/list/get/update hit the deployment endpoints', async () => {
     await run((a) => a.registerDeployment({ uri: 'http://localhost:9080', force: true }))
-    await run((a) => a.listDeployments())
+    await run((a) => a.listDeployments)
     await run((a) => a.getDeployment('dp_1'))
     await run((a) =>
       a.updateDeployment({ id: 'dp_1', body: { additional_headers: { 'x-k': 'v' } } }),

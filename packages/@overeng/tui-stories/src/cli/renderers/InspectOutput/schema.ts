@@ -19,7 +19,7 @@ export const InspectState = Schema.Struct({
   filePath: Schema.String,
   args: Schema.Array(ArgInfo),
   hasTimeline: Schema.Boolean,
-  timelineEventCount: Schema.Number,
+  timelineEventCount: Schema.Finite,
 })
 
 export type InspectStateType = typeof InspectState.Type

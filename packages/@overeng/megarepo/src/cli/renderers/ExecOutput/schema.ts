@@ -18,7 +18,7 @@ export const MemberExecStatus = Schema.Struct({
   /** Current execution status */
   status: Schema.Literals(['pending', 'running', 'success', 'error', 'skipped']),
   /** Exit code (0 = success, non-zero = error) */
-  exitCode: Schema.optional(Schema.Number),
+  exitCode: Schema.optional(Schema.Finite),
   /** Combined stdout output */
   stdout: Schema.optional(Schema.String),
   /** Combined stderr output */
@@ -114,7 +114,7 @@ export const ExecAction = Schema.Union([
   Schema.TaggedStruct('UpdateMember', {
     name: Schema.String,
     status: Schema.Literals(['pending', 'running', 'success', 'error', 'skipped']),
-    exitCode: Schema.optional(Schema.Number),
+    exitCode: Schema.optional(Schema.Finite),
     stdout: Schema.optional(Schema.String),
     stderr: Schema.optional(Schema.String),
   }),

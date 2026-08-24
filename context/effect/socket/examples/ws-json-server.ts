@@ -40,7 +40,7 @@ type ClientMessage = typeof ClientMessageSchema.Type
 const ServerMessageSchema = Schema.Union([
   Schema.TaggedStruct('pong', {
     id: Schema.String,
-    receivedAt: Schema.Number,
+    receivedAt: Schema.Finite,
   }),
   Schema.TaggedStruct('echoed', {
     text: Schema.String,

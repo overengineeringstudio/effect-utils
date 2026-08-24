@@ -121,7 +121,7 @@ export interface RestateAdminService {
     readonly force?: boolean
   }) => Effect.Effect<unknown, RestateError>
   /** List registered deployments + their services (`GET /deployments`). */
-  readonly listDeployments: () => Effect.Effect<unknown, RestateError>
+  readonly listDeployments: Effect.Effect<unknown, RestateError>
   /** Get one deployment's detail (`GET /deployments/{id}`). */
   readonly getDeployment: (id: string) => Effect.Effect<unknown, RestateError>
   /** Update a deployment's headers / address / role (`PATCH /deployments/{id}`). */
@@ -213,8 +213,10 @@ const makeAdmin = (config: AdminClientConfig): RestateAdminService => {
             ...(force !== undefined ? { opts: { force } } : {}),
           }),
       }),
-    listDeployments: () =>
-      adminCall({ method: 'admin.listDeployments', run: () => bareListDeployments(config) }),
+    listDeployments: adminCall({
+      method: 'admin.listDeployments',
+      run: () => bareListDeployments(config),
+    }),
     getDeployment: (id) =>
       adminCall({
         method: `admin.getDeployment(${id})`,

@@ -102,7 +102,7 @@ export const CacheNode = Schema.suspend((): Schema.Codec<CacheNode, CacheNodeEnc
 )
 
 export const CacheTree = Schema.Struct({
-  schemaVersion: Schema.Number,
+  schemaVersion: Schema.Finite,
   rootId: Schema.String,
   children: Schema.Array(CacheNode),
   /**

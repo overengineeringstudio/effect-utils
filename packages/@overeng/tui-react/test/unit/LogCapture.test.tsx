@@ -3,7 +3,7 @@
  */
 
 import { it } from '@effect/vitest'
-import { Effect, Fiber, Option, Stream, SubscriptionRef } from 'effect'
+import { Effect, Fiber, Option, Schema, Stream, SubscriptionRef } from 'effect'
 import { describe, expect, beforeEach, afterEach } from 'vitest'
 
 import { createLogCapture } from '../../src/effect/LogCapture.ts'
@@ -11,6 +11,8 @@ import type { LogCaptureHandle } from '../../src/effect/LogCapture.ts'
 import { testModeLayer } from '../../src/effect/testing.tsx'
 import type { TuiLogEntry } from '../../src/effect/TuiLogger.ts'
 import { createTuiApp } from '../../src/mod.tsx'
+
+const CountState = Schema.Struct({ count: Schema.Finite })
 
 /**
  * Wait for captured logs to satisfy a predicate by subscribing to ref.changes.
@@ -230,9 +232,8 @@ describe('log capture integration', () => {
 
   it.effect('json mode is unaffected by log capture', () =>
     Effect.gen(function* () {
-      const Schema = yield* Effect.promise(() => import('effect').then((m) => m.Schema))
       const App = createTuiApp({
-        stateSchema: Schema.Struct({ count: Schema.Number }),
+        stateSchema: CountState,
         actionSchema: Schema.Union([Schema.TaggedStruct('Inc', {})]),
         initial: { count: 0 },
         reducer: ({ state, action }) => {
@@ -251,7 +252,7 @@ describe('log capture integration', () => {
       Effect.andThen(Effect.sync(() => {
         // JSON mode should still output to console.log (our captured output)
         expect(capturedOutput).toHaveLength(1)
-        const state = JSON.parse(capturedOutput[0]!)
+        const state = Schema.decodeSync(Schema.fromJsonString(CountState))(capturedOutput[0]!)
         expect(state).toEqual({ count: 1 })
       })),
     ),

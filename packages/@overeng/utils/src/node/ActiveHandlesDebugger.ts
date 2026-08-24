@@ -193,7 +193,7 @@ export const withActiveHandlesDumpOnSigint = Effect.fn(
 
   const handler = () => {
     try {
-      Effect.runSync(logActiveHandles.pipe(Effect.provide(context), Effect.ignore))
+      Effect.runSyncWith(context)(logActiveHandles.pipe(Effect.ignore))
     } finally {
       process.off('SIGINT', handler)
       process.kill(process.pid, 'SIGINT')

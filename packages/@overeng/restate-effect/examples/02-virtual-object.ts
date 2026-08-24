@@ -15,7 +15,7 @@ import { RestateObject, State } from '../src/mod.ts'
 
 /* ── The typed State block: the single source of truth for State keys/values ── */
 
-export const CounterState = { count: Schema.Number } as const
+export const CounterState = { count: Schema.Finite } as const
 
 /** The typed, capability-gated State combinators bound to `CounterState`. */
 const Counter = State.for(CounterState)
@@ -25,8 +25,8 @@ export const CounterObj = RestateObject.contract({
   def: {
     state: CounterState,
     handlers: {
-      add: { input: Schema.Number, success: Schema.Number }, // exclusive (default)
-      get: { input: Schema.Void, success: Schema.Number, shared: true }, // read-only
+      add: { input: Schema.Finite, success: Schema.Finite }, // exclusive (default)
+      get: { input: Schema.Void, success: Schema.Finite, shared: true }, // read-only
     },
   },
 })

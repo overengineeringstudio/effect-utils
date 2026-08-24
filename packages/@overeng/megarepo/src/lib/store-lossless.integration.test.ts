@@ -33,25 +33,6 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   })
 
 /**
- * Create a real git stash (`refs/stash`) in `worktreeCwd`.
- *
- * Bare `git stash` is intercepted by the agent-policy wrapper, so we bypass it
- * to produce a genuine standard stash ref — exactly the artifact the lossless
- * floor must detect. This is a fixture concern, not product behavior.
- */
-const createStash = (worktreeCwd: string) =>
-  Effect.gen(function* () {
-    yield* ChildProcessSpawner.use((spawner) =>
-      spawner.string(
-        Command.make('git', [...GIT_USER, 'stash'], {
-          cwd: worktreeCwd,
-          env: { AGENT_POLICY_BYPASS: '1' },
-        }),
-      ),
-    )
-  })
-
-/**
  * Build a store-like bare repo wired to a separate upstream (real
  * `refs/remotes/origin/*`) with an initial pushed commit on `main`.
  *
@@ -238,7 +219,16 @@ describe('store-lossless', () => {
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('f.txt')),
           'dirty\n',
         )
-        yield* createStash(wt)
+        // Bare `git stash` is intercepted by the agent-policy wrapper, so bypass
+        // it to produce a genuine `refs/stash` (fixture concern, not product).
+        yield* ChildProcessSpawner.use((spawner) =>
+          spawner.string(
+            Command.make('git', [...GIT_USER, 'stash'], {
+              cwd: wt,
+              env: { AGENT_POLICY_BYPASS: '1' },
+            }),
+          ),
+        )
 
         expect(yield* hasStash({ bareRepoPath: bare })).toBe(true)
       },
@@ -262,7 +252,16 @@ describe('store-lossless', () => {
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('f.txt')),
           'to-stash\n',
         )
-        yield* createStash(wt)
+        // Bare `git stash` is intercepted by the agent-policy wrapper, so bypass
+        // it to produce a genuine `refs/stash` (fixture concern, not product).
+        yield* ChildProcessSpawner.use((spawner) =>
+          spawner.string(
+            Command.make('git', [...GIT_USER, 'stash'], {
+              cwd: wt,
+              env: { AGENT_POLICY_BYPASS: '1' },
+            }),
+          ),
+        )
         yield* fs.writeFileString(
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('untracked.txt')),
           'new dirt\n',

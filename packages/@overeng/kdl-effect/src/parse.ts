@@ -54,7 +54,8 @@ export const parseKdl = <S extends Schema.Codec<any, any, any, any>>(
     encode: SchemaGetter.transform((value) => value),
   })(Schema.Unknown)
 
-  return Schema.decodeTo(schema)(
-    Schema.decodeTo(normalizedKdl)(ParseKdl),
+  return ParseKdl.pipe(
+    Schema.decodeTo(normalizedKdl),
+    Schema.decodeTo(schema),
   ) as Schema.Codec<S['Type'], string, S['DecodingServices'], S['EncodingServices']>
 }

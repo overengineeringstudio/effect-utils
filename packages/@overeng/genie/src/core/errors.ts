@@ -29,7 +29,7 @@ export class GenieCheckError extends Schema.TaggedError<GenieCheckError>()('Geni
 export class GenieGenerationFailedError extends Schema.TaggedError<GenieGenerationFailedError>()(
   'GenieGenerationFailedError',
   {
-    failedCount: Schema.Number,
+    failedCount: Schema.Finite,
     message: Schema.String,
     /** Per-file details including error messages for failed files */
     files: Schema.Array(GenieFile),

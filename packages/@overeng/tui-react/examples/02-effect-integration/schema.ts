@@ -10,20 +10,20 @@ import { Schema } from 'effect'
 
 /** Schema for the running counter state with count, loading status, and action history. */
 export const RunningState = Schema.TaggedStruct('Running', {
-  count: Schema.Number,
+  count: Schema.Finite,
   status: Schema.Literals(['idle', 'loading']),
   history: Schema.Array(Schema.String),
 })
 
 /** Schema for the completed counter state with final count and history. */
 export const CompleteState = Schema.TaggedStruct('Complete', {
-  finalCount: Schema.Number,
+  finalCount: Schema.Finite,
   history: Schema.Array(Schema.String),
 })
 
 /** Schema for the interrupted counter state preserving count and history at interruption. */
 export const InterruptedState = Schema.TaggedStruct('Interrupted', {
-  count: Schema.Number,
+  count: Schema.Finite,
   history: Schema.Array(Schema.String),
 })
 

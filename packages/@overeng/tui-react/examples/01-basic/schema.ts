@@ -10,7 +10,7 @@ import { Schema } from 'effect'
 
 /** Schema for the active display state with a countdown timer. */
 export const DisplayingState = Schema.TaggedStruct('Displaying', {
-  secondsRemaining: Schema.Number,
+  secondsRemaining: Schema.Finite,
 })
 
 /** Schema for the finished state with a completion message. */

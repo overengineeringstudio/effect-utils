@@ -48,7 +48,7 @@ const makeTestStore = (basePath: AbsoluteDirPath): MegarepoStore => ({
   },
   hasBareRepo: () => Effect.succeed(true),
   hasWorktree: () => Effect.succeed(true),
-  listRepos: () => Effect.succeed([]),
+  listRepos: Effect.succeed([]),
   listWorktrees: () => Effect.succeed([]),
   getRepoPath: (source) => {
     if (source.type === 'github') {

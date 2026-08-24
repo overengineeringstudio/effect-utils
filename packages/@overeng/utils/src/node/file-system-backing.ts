@@ -23,9 +23,9 @@ export interface HolderInfo {
  */
 const HolderLockSchema = Schema.Struct({
   /** Number of permits held */
-  permits: Schema.Number,
+  permits: Schema.Finite,
   /** Expiry timestamp in milliseconds since epoch */
-  expiresAt: Schema.Number,
+  expiresAt: Schema.Finite,
 })
 
 type HolderLockContent = typeof HolderLockSchema.Type

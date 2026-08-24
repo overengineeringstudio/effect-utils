@@ -463,7 +463,7 @@ export interface StateProxy<S extends StateSchemas> {
     key: K,
   ) => Effect.Effect<StateValueType<S[K]> | undefined, RestateError>
   /** Read every set State value as a partial typed record. */
-  readonly getAll: () => Effect.Effect<
+  readonly getAll: Effect.Effect<
     { readonly [K in keyof S]?: StateValueType<S[K]> },
     RestateError
   >
@@ -552,7 +552,7 @@ const makeStateProxy = <S extends StateSchemas>({
           })
         }),
       ),
-    getAll: () =>
+    getAll:
       readAll().pipe(
         Effect.flatMap((rows) =>
           Effect.try({

@@ -37,7 +37,7 @@ export class ClaudeCliExitError extends Schema.TaggedError<ClaudeCliExitError>()
   'ClaudeCliExitError',
   {
     message: Schema.String,
-    exitCode: Schema.Number,
+    exitCode: Schema.Finite,
     stderr: Schema.String,
     stdout: Schema.String,
     command: Schema.String,

@@ -93,8 +93,8 @@ export const MalformedUpstreamTerminal = Restate.terminal({
 export class UpstreamUnavailable extends Schema.TaggedError<UpstreamUnavailable>(
   'http/UpstreamUnavailable',
 )('UpstreamUnavailable', {
-  status: Schema.Number,
-  retryAfterMillis: Schema.Number,
+  status: Schema.Finite,
+  retryAfterMillis: Schema.Finite,
 }) {}
 export const UpstreamUnavailableRetryable = Restate.retryable({
   self: UpstreamUnavailable,

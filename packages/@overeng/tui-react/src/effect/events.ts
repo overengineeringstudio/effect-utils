@@ -126,12 +126,12 @@ export const ResizeEvent = Schema.TaggedStruct('Event.Resize', {
   /**
    * Number of columns (width in characters)
    */
-  cols: Schema.Number,
+  cols: Schema.Finite,
 
   /**
    * Number of rows (height in lines)
    */
-  rows: Schema.Number,
+  rows: Schema.Finite,
 })
 
 /**
@@ -222,12 +222,12 @@ export const MouseEvent = Schema.TaggedStruct('Event.Mouse', {
   /**
    * X coordinate (column, 0-based)
    */
-  x: Schema.Number,
+  x: Schema.Finite,
 
   /**
    * Y coordinate (row, 0-based)
    */
-  y: Schema.Number,
+  y: Schema.Finite,
 
   /**
    * Whether Ctrl was held

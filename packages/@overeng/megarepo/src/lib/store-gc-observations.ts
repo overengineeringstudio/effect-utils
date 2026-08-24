@@ -33,7 +33,7 @@ import * as Observability from './observability.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 
 /** Ledger schema: path -> epoch-ms it was first observed continuously cold. */
-const GcObservationLedger = Schema.Record(Schema.String, Schema.Number)
+const GcObservationLedger = Schema.Record(Schema.String, Schema.Finite)
 
 /** In-memory ledger: `normalizePath(worktreePath) -> firstSeenColdAtMs`. */
 export type GcObservationLedger = Schema.Schema.Type<typeof GcObservationLedger>

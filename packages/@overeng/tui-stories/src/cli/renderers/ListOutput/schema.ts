@@ -5,7 +5,7 @@ import { Schema } from 'effect'
 const StoryEntry = Schema.Struct({
   name: Schema.String,
   hasTimeline: Schema.Boolean,
-  argCount: Schema.Number,
+  argCount: Schema.Finite,
 })
 
 const StoryGroup = Schema.Struct({
@@ -16,7 +16,7 @@ const StoryGroup = Schema.Struct({
 /** Schema for the `tui-stories list` output state */
 export const ListState = Schema.Struct({
   groups: Schema.Array(StoryGroup),
-  skippedCount: Schema.Number,
+  skippedCount: Schema.Finite,
   packagePath: Schema.String,
 })
 

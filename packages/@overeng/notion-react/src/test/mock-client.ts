@@ -6,7 +6,7 @@ import { NotionConfig } from '@overeng/notion-effect-client'
 /** Notion's error-envelope wire shape, as emitted by the fake on a rejected request. */
 const NotionErrorEnvelope = Schema.Struct({
   object: Schema.Literal('error'),
-  status: Schema.Number,
+  status: Schema.Finite,
   code: Schema.String,
   message: Schema.String,
 })

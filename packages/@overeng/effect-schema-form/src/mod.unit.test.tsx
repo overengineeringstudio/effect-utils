@@ -167,7 +167,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
 
     const Probe = (): ReactNode => {
       const context = useSchemaFormContext()
-      const fieldMeta = useFieldMeta(Schema.UndefinedOr(Schema.Number)).meta
+      const fieldMeta = useFieldMeta(Schema.UndefinedOr(Schema.Finite)).meta
       const form = useSchemaForm({
         schema: Schema.Struct({
           name: Schema.String,

@@ -144,7 +144,7 @@ describe('effect-schema-form-aria baselines (cross-major invariant)', () => {
   it('renders a complete tagged schema form as byte-identical markup', () => {
     const FormSchema = Schema.TaggedStruct('contact_preferences', {
       name: Schema.String.annotate({ title: 'Name', description: 'Unicode accepted' }),
-      count: Schema.optional(Schema.Number).annotate({ title: 'Count' }),
+      count: Schema.optional(Schema.Finite).annotate({ title: 'Count' }),
       enabled: Schema.Boolean,
       mode: Schema.Literals(['email', 'push-notification']),
       items: Schema.Tuple([Schema.String]),

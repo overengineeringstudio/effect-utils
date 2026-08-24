@@ -96,7 +96,7 @@ export const parseRepoCoordinates = (
 
 /** One PR row from `gh pr list --json number,state,headRefName,mergedAt,closedAt`. */
 const GhPr = Schema.Struct({
-  number: Schema.Number,
+  number: Schema.Finite,
   /** gh emits uppercase `MERGED`/`CLOSED`/`OPEN`. */
   state: Schema.Literals(['MERGED', 'CLOSED', 'OPEN']),
   headRefName: Schema.String,

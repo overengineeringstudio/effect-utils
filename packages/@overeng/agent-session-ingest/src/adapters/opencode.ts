@@ -106,7 +106,7 @@ const OpenCodePartStepFinishData = Schema.Struct({
   type: Schema.Literal('step-finish'),
   reason: Schema.optional(Schema.String),
   snapshot: Schema.optional(Schema.String),
-  cost: Schema.optional(Schema.Number),
+  cost: Schema.optional(Schema.Finite),
   tokens: Schema.optional(Schema.Unknown),
 }).annotate({ identifier: 'AgentSessionIngest.OpenCodePartStepFinishData' })
 

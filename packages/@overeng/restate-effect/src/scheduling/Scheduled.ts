@@ -155,7 +155,7 @@ const ControlState = {
   /** Lifecycle tag (the source of truth for "is the chain live"). */
   status: StatusSchema,
   /** Monotonic cycle counter (cycles ATTEMPTED; drives `maxIterations`). */
-  iteration: Schema.Number,
+  iteration: Schema.Finite,
   /**
    * Re-arm GENERATION token. Every `start` bumps this; the delayed re-arm send
    * carries the generation it was armed under, and a landing `cycle` no-ops if its
@@ -164,7 +164,7 @@ const ControlState = {
    * us no timer handle). A `retryable` re-arm also bumps it so the pre-armed
    * `delayMillis` send no-ops and only the fresh `retryAfter` send lands.
    */
-  generation: Schema.Number,
+  generation: Schema.Finite,
   /** Last cycle error string (for `skipToNext`/`failed`/retry diagnostics). */
   lastError: Schema.String,
   /**
@@ -172,7 +172,7 @@ const ControlState = {
    * a successful / skipped / advancing cycle). Surfaced in `status` so an operator
    * can see a backoff is active; bounds the re-arm via `maxRetryBackoffs`.
    */
-  retryBackoffs: Schema.Number,
+  retryBackoffs: Schema.Finite,
   /**
    * The awakeable id of the CURRENT inter-cycle wait (wake mode), persisted so an
    * external caller (the webhook) can read it via the `wakeId` SHARED handler and
@@ -189,16 +189,16 @@ const ControlState = {
 } as const
 
 /** The cycle input the internal `cycle` handler is sent (carries the generation). */
-const CycleInput = Schema.Struct({ generation: Schema.Number })
+const CycleInput = Schema.Struct({ generation: Schema.Finite })
 type CycleInput = Schema.Schema.Type<typeof CycleInput>
 
 /** The status the `status` shared handler returns. */
 const StatusOutput = Schema.Struct({
   status: StatusSchema,
-  iteration: Schema.Number,
+  iteration: Schema.Finite,
   lastError: Schema.optional(Schema.String),
   /** Consecutive retryable backoffs for the current logical cycle (0 when none). */
-  retryBackoffs: Schema.Number,
+  retryBackoffs: Schema.Finite,
   /** The live wake awakeable id (wake mode); omitted when no wait is live. */
   wakeId: Schema.optional(Schema.String),
 })

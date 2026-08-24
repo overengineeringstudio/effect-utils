@@ -74,7 +74,7 @@ export type ProcessRole = 'cli' | 'daemon' | 'fake-gateway' | 'library'
 
 const SpanAttributeValueSchema = Schema.Union([
 Schema.String,
-Schema.Number,
+Schema.Finite,
 Schema.Boolean,
 ])
 

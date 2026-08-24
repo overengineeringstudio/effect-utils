@@ -75,13 +75,13 @@ export const DEFAULT_STORE_GC_CONFIG: StoreGcConfig = {
 
 /** On-disk override shape: every key optional; only provided keys override defaults. */
 const StoreGcConfigOverride = Schema.Struct({
-  absenceGraceMs: Schema.optional(Schema.Number),
-  postMergeGraceMs: Schema.optional(Schema.Number),
-  archiveRetentionMs: Schema.optional(Schema.Number),
+  absenceGraceMs: Schema.optional(Schema.Finite),
+  postMergeGraceMs: Schema.optional(Schema.Finite),
+  archiveRetentionMs: Schema.optional(Schema.Finite),
   generatedArtifacts: Schema.optional(
     Schema.Struct({
       enabled: Schema.optional(Schema.Boolean),
-      retentionMs: Schema.optional(Schema.Number),
+      retentionMs: Schema.optional(Schema.Finite),
       allowlist: Schema.optional(Schema.Array(Schema.Literals([...STORE_GC_GENERATED_ARTIFACTS]))),
       agentLivenessManifest: Schema.optional(Schema.String),
     }),

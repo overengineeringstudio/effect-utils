@@ -799,7 +799,7 @@ describe('--all nested error reporting', () => {
         expect(result.stdout.trim()).not.toBe('')
 
         const SyncOutput = Schema.TaggedStruct('Error', {
-          syncErrorCount: Schema.Number,
+          syncErrorCount: Schema.Finite,
           syncErrors: Schema.Array(SyncErrorItem),
           syncTree: MegarepoSyncTree,
         })

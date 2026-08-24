@@ -59,11 +59,11 @@ export const Lineage = Schema.Union([
   }),
   Schema.TaggedStruct('Projection', {
     of: LineageRef,
-    stalenessMs: Schema.optional(Schema.Number),
+    stalenessMs: Schema.optional(Schema.Finite),
   }),
   Schema.TaggedStruct('Cache', {
     of: LineageRef,
-    ttlMs: Schema.optional(Schema.Number),
+    ttlMs: Schema.optional(Schema.Finite),
   }),
   Schema.TaggedStruct('Mirror', {
     of: LineageRef,
@@ -90,7 +90,7 @@ export type Authority = typeof Authority.Type
 /** Temporal freshness of a captured value. */
 export const Freshness = Schema.Struct({
   capturedAt: Schema.optional(Schema.Literals(['now', 'event-time', 'snapshot'])),
-  maxAgeMs: Schema.optional(Schema.Number),
+  maxAgeMs: Schema.optional(Schema.Finite),
 })
 export type Freshness = typeof Freshness.Type
 

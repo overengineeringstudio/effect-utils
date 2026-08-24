@@ -8,7 +8,7 @@ describe('parseKdl', () => {
     it('decodes simple struct', () => {
       const MySchema = Schema.Struct({
         name: Schema.String,
-        age: Schema.Number,
+        age: Schema.Finite,
       })
 
       const result = Schema.decodeUnknownSync(parseKdl(MySchema))('name "Alice"\nage 30')
@@ -71,7 +71,7 @@ describe('parseKdl', () => {
     it('decodes optional fields', () => {
       const MySchema = Schema.Struct({
         name: Schema.String,
-        age: Schema.optional(Schema.Number),
+        age: Schema.optional(Schema.Finite),
       })
 
       const result = Schema.decodeUnknownSync(parseKdl(MySchema))('name "Alice"')
@@ -83,7 +83,7 @@ describe('parseKdl', () => {
     it('encodes simple struct to KDL', () => {
       const MySchema = Schema.Struct({
         name: Schema.String,
-        age: Schema.Number,
+        age: Schema.Finite,
       })
 
       const kdl = Schema.encodeUnknownSync(parseKdl(MySchema))({ name: 'Alice', age: 30 })

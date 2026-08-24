@@ -19,8 +19,8 @@ export const Ping = makeRpc('ping', {
 
 /** RPC procedure for adding two numbers */
 export const Add = makeRpc('math.add', {
-  payload: Schema.Struct({ a: Schema.Number, b: Schema.Number }),
-  success: Schema.Number,
+  payload: Schema.Struct({ a: Schema.Finite, b: Schema.Finite }),
+  success: Schema.Finite,
 })
 
 /** RPC group containing all API procedures (Ping, Add) */

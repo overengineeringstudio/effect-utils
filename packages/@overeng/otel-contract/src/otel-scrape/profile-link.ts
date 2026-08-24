@@ -15,7 +15,9 @@ const NonNegativeInt = Schema.Int.pipe(
 /** Opaque native profile kind, e.g. `cpuprofile`, `tsc-trace`, or `cargo-timings`. */
 export const OtelScrapeProfileType = Schema.NonEmptyString.pipe(
   Schema.check(Schema.isTrimmed()),
-).pipe(Schema.brand('OtelScrape.ProfileType'), Schema.annotate({ identifier: 'OtelScrape.ProfileType' }))
+  Schema.brand('OtelScrape.ProfileType'),
+  Schema.annotate({ identifier: 'OtelScrape.ProfileType' }),
+)
 export type OtelScrapeProfileType = typeof OtelScrapeProfileType.Type
 
 /** Flat span payload for a content-addressed native profile artifact. */

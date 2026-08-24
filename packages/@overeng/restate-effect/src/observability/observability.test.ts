@@ -259,7 +259,7 @@ describe('annotateSpanFrom strips sensitive fields (server-free)', () => {
    * alongside non-secret identity fields the operator legitimately slices on. */
   const Input = Schema.Struct({
     dataSourceId: Schema.String,
-    pageCount: Schema.Number,
+    pageCount: Schema.Finite,
     apiToken: Restate.sensitive(Schema.String),
   })
   const value = { dataSourceId: 'ds-42', pageCount: 7, apiToken: 'secret-xyz' }

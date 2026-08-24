@@ -110,6 +110,7 @@ export const paginate = <Page extends PaginatedResult<unknown>, Out, E, R>(
 ): Stream.Stream<Out, E, R> =>
   Stream.flattenIterable(Stream.unfold(Option.some(options.startCursor ?? Option.none<string>()), (state) =>
     Option.match(state, {
+      // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
       onNone: () => Effect.succeed(undefined),
       onSome: (cursor) =>
         fetchPage(cursor).pipe(

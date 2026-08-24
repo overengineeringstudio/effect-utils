@@ -24,7 +24,7 @@ const FileUploadResponseSchema = Schema.Struct({
   upload_url: Schema.String,
   filename: Schema.NullOr(Schema.String),
   content_type: Schema.NullOr(Schema.String),
-  content_length: Schema.NullOr(Schema.Number),
+  content_length: Schema.NullOr(Schema.Finite),
 })
 
 /** Request body for creating a single-part file upload. */

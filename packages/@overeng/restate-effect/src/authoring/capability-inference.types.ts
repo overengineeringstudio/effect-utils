@@ -66,7 +66,7 @@ const _unknownMethod = call({ contract: Greeter, method: 'shout', input: { name:
 
 /* ── State.set in a Service handler is a type error ───────────────────────── */
 
-const CounterState = { count: Schema.Number }
+const CounterState = { count: Schema.Finite }
 const CounterStateApi = State.for(CounterState)
 
 /* A Service handler is provided ONLY RestateContext — never StateWrite. So a
@@ -145,7 +145,7 @@ type _R3 = Assert<Equals<Effect.Error<typeof _runExitObserve>, never>>
  *     should flag it.
  */
 const _gateRunOnStateGet = (
-  CounterState2: ReturnType<typeof State.for<{ count: typeof Schema.Number }>>,
+  CounterState2: ReturnType<typeof State.for<{ count: typeof Schema.Finite }>>,
 ) =>
   Effect.gen(function* () {
     /* Read journaled State in the handler body (StateRead — legal, deterministic). */
@@ -175,14 +175,14 @@ const _allRejectsEffects = Restate.all([Effect.succeed(1), Effect.succeed('x')])
 const CounterObj = RestateObject.contract({
   name: 'counter',
   def: {
-    state: { count: Schema.Number },
+    state: { count: Schema.Finite },
     handlers: {
-      add: { input: Schema.Number, success: Schema.Number }, // exclusive (default)
-      get: { input: Schema.Void, success: Schema.Number, shared: true }, // read-only
+      add: { input: Schema.Finite, success: Schema.Finite }, // exclusive (default)
+      get: { input: Schema.Void, success: Schema.Finite, shared: true }, // read-only
     },
   },
 })
-const CounterState2 = State.for({ count: Schema.Number })
+const CounterState2 = State.for({ count: Schema.Finite })
 
 /* POSITIVE: an exclusive handler may write State; a shared handler may read it.
  * Both kinds live in one heterogeneous `implement` record and discharge per-kind.

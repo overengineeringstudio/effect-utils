@@ -38,8 +38,8 @@ import { Restate, RestateObject, RestateScheduled, State } from '../src/mod.ts'
  * a poll cursor + a running tally of items seen. A real watcher would store a
  * Notion `last_edited_time` / pagination cursor here. */
 export const WatcherState = {
-  cursor: Schema.Number,
-  itemsSeen: Schema.Number,
+  cursor: Schema.Finite,
+  itemsSeen: Schema.Finite,
 } as const
 
 const Watcher = State.for(WatcherState)
@@ -105,7 +105,7 @@ export const RawWatcherState = {
   /** Gates re-arm. `stop` clears it; the next cycle sees it and does not re-arm. */
   running: Schema.Boolean,
   /** Advanced once per successful cycle. */
-  cursor: Schema.Number,
+  cursor: Schema.Finite,
 } as const
 
 const Raw = State.for(RawWatcherState)
@@ -122,7 +122,7 @@ export const RawWatcherObj = RestateObject.contract({
       /** Read-only inspection (no write lock). */
       read: {
         input: Schema.Void,
-        success: Schema.Struct({ running: Schema.Boolean, cursor: Schema.Number }),
+        success: Schema.Struct({ running: Schema.Boolean, cursor: Schema.Finite }),
         shared: true,
       },
       /** INTERNAL: one cycle — re-arm via a delayed self-send, then return. */
@@ -232,7 +232,7 @@ const defaultComposedSource: ComposedSourceBehavior = (cursor) => ({
  * The loop reads this projection (via `classifyOutcome`) to set the re-arm delay.
  */
 export class RateLimited extends Schema.TaggedError<RateLimited>()('RateLimited', {
-  retryAfterMillis: Schema.Number,
+  retryAfterMillis: Schema.Finite,
 }) {}
 const RateLimitedRetryable = Restate.retryable({
   self: RateLimited,
@@ -254,9 +254,9 @@ export type ComposedError = Schema.Schema.Type<typeof ComposedError>
 /** The composed daemon's domain State: the poll cursor, an item tally, and a
  * count of how many times it was woken early (for assertions). */
 export const ComposedState = {
-  cursor: Schema.Number,
-  itemsSeen: Schema.Number,
-  wakeCount: Schema.Number,
+  cursor: Schema.Finite,
+  itemsSeen: Schema.Finite,
+  wakeCount: Schema.Finite,
 } as const
 const Composed = State.for(ComposedState)
 

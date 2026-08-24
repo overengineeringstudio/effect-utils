@@ -195,7 +195,7 @@ export class NmdEditorAbortedError extends Schema.TaggedError<NmdEditorAbortedEr
   {
     page_id: Schema.String,
     editor: Schema.String,
-    exit_code: Schema.Number,
+    exit_code: Schema.Finite,
     message: Schema.String,
   },
 ) {}

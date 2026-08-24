@@ -105,7 +105,7 @@ export class MemberNotSyncedError extends Schema.TaggedError<MemberNotSyncedErro
 /** Error when sync operations fail */
 export class SyncFailedError extends Schema.TaggedError<SyncFailedError>()('SyncFailedError', {
   message: Schema.String,
-  errorCount: Schema.Number,
+  errorCount: Schema.Finite,
   failedMembers: Schema.Array(Schema.String),
 }) {}
 
@@ -159,6 +159,6 @@ export class CheckCommandError extends Schema.TaggedError<CheckCommandError>()(
   'CheckCommandError',
   {
     message: Schema.String,
-    violationCount: Schema.Number,
+    violationCount: Schema.Finite,
   },
 ) {}

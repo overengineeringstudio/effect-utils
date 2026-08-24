@@ -9,7 +9,7 @@ describe('effect-rpc-tanstack streaming', () => {
   it('returns ndjson with chunk and exit messages for stream RPCs', async () => {
     const StreamNumbers = Rpc.make('StreamNumbers', {
       payload: {},
-      success: Schema.Number,
+      success: Schema.Finite,
       stream: true,
     })
 

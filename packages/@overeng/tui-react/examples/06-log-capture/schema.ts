@@ -30,7 +30,7 @@ export const RunningState = Schema.TaggedStruct('Running', {
 /** Schema for the completed state with final task results. */
 export const CompleteState = Schema.TaggedStruct('Complete', {
   tasks: Schema.Array(TaskItem),
-  totalTasks: Schema.Number,
+  totalTasks: Schema.Finite,
 })
 
 /** Schema for the interrupted state preserving task list at interruption. */

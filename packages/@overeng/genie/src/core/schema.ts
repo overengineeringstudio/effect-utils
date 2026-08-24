@@ -39,9 +39,9 @@ export const GenieFile = Schema.Struct({
   /** Optional message (error message, etc.) */
   message: Schema.optional(Schema.String),
   /** Lines added (for created/updated files) */
-  linesAdded: Schema.optional(Schema.Number),
+  linesAdded: Schema.optional(Schema.Finite),
   /** Lines removed (for updated files) */
-  linesRemoved: Schema.optional(Schema.Number),
+  linesRemoved: Schema.optional(Schema.Finite),
 })
 /** File entry with path and status */
 export type GenieFile = Schema.Schema.Type<typeof GenieFile>
@@ -52,11 +52,11 @@ export type GenieFile = Schema.Schema.Type<typeof GenieFile>
 
 /** Schema for genie operation summary counts */
 export const GenieSummary = Schema.Struct({
-  created: Schema.Number,
-  updated: Schema.Number,
-  unchanged: Schema.Number,
-  skipped: Schema.Number,
-  failed: Schema.Number,
+  created: Schema.Finite,
+  updated: Schema.Finite,
+  unchanged: Schema.Finite,
+  skipped: Schema.Finite,
+  failed: Schema.Finite,
 })
 /** Summary counts for genie operation */
 export type GenieSummary = Schema.Schema.Type<typeof GenieSummary>
@@ -101,7 +101,7 @@ export const GenieState = Schema.Struct({
   cwd: Schema.String,
 
   /** Watch cycle number (for watch mode) */
-  watchCycle: Schema.optional(Schema.Number),
+  watchCycle: Schema.optional(Schema.Finite),
 
   /** All files being processed */
   files: Schema.Array(GenieFile),
@@ -145,8 +145,8 @@ export const GenieAction = Schema.Union([
     path: Schema.String,
     status: GenieFileStatus,
     message: Schema.optional(Schema.String),
-    linesAdded: Schema.optional(Schema.Number),
-    linesRemoved: Schema.optional(Schema.Number),
+    linesAdded: Schema.optional(Schema.Finite),
+    linesRemoved: Schema.optional(Schema.Finite),
   }),
 
   /** All files processed successfully */

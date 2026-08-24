@@ -11,12 +11,12 @@ import { Schema } from 'effect'
 export const RenderState = Schema.Union([
   Schema.TaggedStruct('Rendering', {
     storyId: Schema.String,
-    width: Schema.Number,
+    width: Schema.Finite,
     timelineMode: Schema.String,
   }),
   Schema.TaggedStruct('Complete', {
     storyId: Schema.String,
-    width: Schema.Number,
+    width: Schema.Finite,
     timelineMode: Schema.String,
     renderedLines: Schema.Array(Schema.String),
   }),

@@ -10,24 +10,24 @@ import { Schema } from 'effect'
 
 /** Schema for the running stress test state with frame count, FPS, and progress. */
 export const RunningState = Schema.TaggedStruct('Running', {
-  frame: Schema.Number,
-  startTime: Schema.Number,
-  fps: Schema.Number,
-  progress: Schema.Number,
+  frame: Schema.Finite,
+  startTime: Schema.Finite,
+  fps: Schema.Finite,
+  progress: Schema.Finite,
 })
 
 /** Schema for the finished stress test state with total frames, average FPS, and duration. */
 export const FinishedState = Schema.TaggedStruct('Finished', {
-  totalFrames: Schema.Number,
-  averageFps: Schema.Number,
-  duration: Schema.Number,
+  totalFrames: Schema.Finite,
+  averageFps: Schema.Finite,
+  duration: Schema.Finite,
 })
 
 /** Schema for the interrupted stress test state preserving last frame, FPS, and progress. */
 export const InterruptedState = Schema.TaggedStruct('Interrupted', {
-  frame: Schema.Number,
-  fps: Schema.Number,
-  progress: Schema.Number,
+  frame: Schema.Finite,
+  fps: Schema.Finite,
+  progress: Schema.Finite,
 })
 
 /** Union schema of all stress test states. */

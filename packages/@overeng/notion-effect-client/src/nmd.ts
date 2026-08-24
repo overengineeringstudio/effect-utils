@@ -251,7 +251,7 @@ export const NmdPropertyFileRef = Schema.Union([
     file_upload_id: Schema.optional(NotionUUID),
     filename: Schema.String,
     content_type: Schema.optional(Schema.String),
-    content_length: Schema.optional(Schema.Number),
+    content_length: Schema.optional(Schema.Finite),
   }),
   Schema.TaggedStruct('external_url', {
     url: Schema.String,
@@ -264,8 +264,8 @@ export type NmdPropertyFileRef = typeof NmdPropertyFileRef.Type
 
 /** Place value used by typed page-property frontmatter. */
 export const NmdPlaceValue = Schema.Struct({
-  lat: Schema.Number,
-  lon: Schema.Number,
+  lat: Schema.Finite,
+  lon: Schema.Finite,
   name: Schema.optional(Schema.NullOr(Schema.String)),
   address: Schema.optional(Schema.NullOr(Schema.String)),
   google_place_id: Schema.optional(Schema.NullOr(Schema.String)),
@@ -295,7 +295,7 @@ export type NmdVerificationValue = typeof NmdVerificationValue.Type
 export const NmdPropertyValue = Schema.Union([
   Schema.TaggedStruct('title', { value: Schema.String }),
   Schema.TaggedStruct('rich_text', { value: Schema.NullOr(Schema.String) }),
-  Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Number) }),
+  Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Finite) }),
   Schema.TaggedStruct('select', { value: Schema.NullOr(Schema.String) }),
   Schema.TaggedStruct('multi_select', { value: Schema.Array(Schema.String) }),
   Schema.TaggedStruct('status', { value: Schema.NullOr(Schema.String) }),
@@ -361,7 +361,7 @@ export const NmdFileUnit = Schema.TaggedStruct('file_unit', {
   role: Schema.Literals(['property_file', 'block_file', 'block_image', 'upload']),
   filename: Schema.String,
   content_type: Schema.optional(Schema.String),
-  content_length: Schema.optional(Schema.Number),
+  content_length: Schema.optional(Schema.Finite),
   local_path: Schema.optional(RelativePath),
   content_hash: Schema.optional(Sha256Digest),
   block_id: Schema.optional(NotionUUID),
@@ -434,7 +434,7 @@ export type NmdFrontmatterV1 = typeof NmdFrontmatterV1.Type
 export const NmdWritablePropertyValue = Schema.Union([
   Schema.TaggedStruct('title', { value: Schema.String }),
   Schema.TaggedStruct('rich_text', { value: Schema.NullOr(Schema.String) }),
-  Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Number) }),
+  Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Finite) }),
   Schema.TaggedStruct('select', { value: Schema.NullOr(Schema.String) }),
   Schema.TaggedStruct('multi_select', { value: Schema.Array(Schema.String) }),
   Schema.TaggedStruct('status', { value: Schema.NullOr(Schema.String) }),

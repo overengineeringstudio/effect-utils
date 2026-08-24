@@ -122,7 +122,7 @@ describe('error transport (contract layer, server-free)', () => {
     /* A 429-style error carrying its own retry floor; the projection reads it off
      * the very instance that failed, not a static literal. */
     class RateLimited extends Schema.TaggedError<RateLimited>('test/RateLimited')('RateLimited', {
-      retryAfterMillis: Schema.Number,
+      retryAfterMillis: Schema.Finite,
     }) {}
     const RateLimitedSchema = Restate.retryable({
       self: RateLimited,
@@ -145,7 +145,7 @@ describe('error transport (contract layer, server-free)', () => {
 
   it('a projection returning undefined falls back to default backoff (no floor)', () => {
     class Maybe extends Schema.TaggedError<Maybe>('test/Maybe')('Maybe', {
-      after: Schema.optional(Schema.Number),
+      after: Schema.optional(Schema.Finite),
     }) {}
     const MaybeSchema = Restate.retryable({
       self: Maybe,
@@ -163,7 +163,7 @@ describe('error transport (contract layer, server-free)', () => {
      * failing error before reading the class — else the retryable member is silently
      * mis-classified as terminal (the pollLoop compose blocker). */
     class RateLimited extends Schema.TaggedError<RateLimited>('test/RateLimited2')('RateLimited', {
-      retryAfterMillis: Schema.Number,
+      retryAfterMillis: Schema.Finite,
     }) {}
     class Gone extends Schema.TaggedError<Gone>('test/Gone')('Gone', { id: Schema.String }) {}
     const UnionSchema = Schema.Union([

@@ -50,7 +50,7 @@ export class LockedMember extends Schema.Class<LockedMember>('LockedMember')({
  */
 export class LockFile extends Schema.Class<LockFile>('LockFile')({
   /** Lock file format version */
-  version: Schema.Number,
+  version: Schema.Finite,
 
   /** Locked members (name -> entry) */
   members: Schema.Record(Schema.String, LockedMember),

@@ -193,8 +193,11 @@ describe('serviceIdentityFromBinding', () => {
 describe('OtelAttrs', () => {
   it('derives primitive, literal, uuid, option, date, duration, and explicit array attributes', async () => {
     const Attrs = Schema.Struct({
-      label: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())).pipe(OtelAttr.spanLabel()),
-      requestId: Schema.String.pipe(Schema.check(Schema.isUUID())).pipe(OtelAttr.key({ key: 'request.id' })),
+      label: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()), OtelAttr.spanLabel()),
+      requestId: Schema.String.pipe(
+        Schema.check(Schema.isUUID()),
+        OtelAttr.key({ key: 'request.id' }),
+      ),
       outcome: Schema.Literals(['approved', 'denied', 'timeout']).pipe(
         OtelAttr.key({ key: 'op.outcome' }),
       ),
@@ -357,6 +360,7 @@ describe('OtelAttrs', () => {
 
   it('surfaces encoding errors on the error channel', async () => {
     const Attrs = Schema.Struct({
+      // @effect-diagnostics-next-line schemaNumber:off -- deliberately accepts non-finite values; this test encodes NaN to assert the error-channel path
       count: Schema.Number.pipe(OtelAttr.key({ key: 'count' })),
     })
     const attrs = await Effect.runPromise(OtelAttrs.define(Attrs))
@@ -381,6 +385,7 @@ describe('OtelAttrs', () => {
     const attrs = await Effect.runPromise(
       OtelAttrs.define(
         Schema.Struct({
+          // @effect-diagnostics-next-line schemaNumber:off -- intentionally uses Schema.Number so NaN reaches encodeSync/unsafeEncode below
           count: Schema.Number.pipe(OtelAttr.key({ key: 'count' })),
         }),
       ),
@@ -502,7 +507,7 @@ describe('OtelAttrs', () => {
     const attrs = await Effect.runPromise(
       OtelAttrs.define(
         Schema.Struct({
-          label: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())).pipe(OtelAttr.spanLabel()),
+          label: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()), OtelAttr.spanLabel()),
           outcome: OtelAttr.literal('op.outcome', 'success', 'retryable', 'terminal'),
           cacheHit: OtelAttr.boolean({ key: 'op.cache_hit' }),
           requestId: OtelAttr.string({ key: 'request.id', metadata: { cardinality: 'high' } }),

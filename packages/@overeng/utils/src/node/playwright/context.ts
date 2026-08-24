@@ -89,14 +89,13 @@ export const addCookies: (args: {
 /**
  * Clears cookies from the browser context.
  */
-export const clearCookies: () => Effect.Effect<void, PwOpError, PwBrowserContext> = Effect.fn(
-  'pw.context.clearCookies',
-)(() =>
-  Effect.gen(function* () {
+export const clearCookies: Effect.Effect<void, PwOpError, PwBrowserContext> = Effect.gen(
+  function* () {
     const context = yield* PwBrowserContext
     yield* tryPw({
+      // tryPw emits the `pw.context.clearCookies` operation span itself.
       op: 'pw.context.clearCookies',
       effect: () => context.clearCookies(),
     })
-  }),
+  },
 )

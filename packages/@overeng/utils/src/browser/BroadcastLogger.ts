@@ -153,7 +153,7 @@ const sanitizeForBroadcast = (value: unknown): unknown => {
 /** Schema for log entries broadcast over BroadcastChannel */
 export class BroadcastLogEntry extends Schema.Class<BroadcastLogEntry>('BroadcastLogEntry')({
   _tag: Schema.Literal('BroadcastLogEntry'),
-  timestamp: Schema.Number,
+  timestamp: Schema.Finite,
   level: Schema.String,
   message: Schema.Array(Schema.Unknown),
   fiberId: Schema.String,

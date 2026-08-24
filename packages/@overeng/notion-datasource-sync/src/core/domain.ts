@@ -19,13 +19,13 @@ export const NonEmptyTrimmedString = Schema.NonEmptyString.pipe(Schema.check(Sch
 export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Type
 
 /** Integer greater than zero. */
-export const PositiveInt = Schema.Number.pipe(
+export const PositiveInt = Schema.Finite.pipe(
   Schema.check(Schema.isInt(), Schema.isGreaterThan(0)),
 )
 export type PositiveInt = typeof PositiveInt.Type
 
 /** Integer greater than or equal to zero. */
-export const NonNegativeInt = Schema.Number.pipe(
+export const NonNegativeInt = Schema.Finite.pipe(
   Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
 )
 export type NonNegativeInt = typeof NonNegativeInt.Type
@@ -165,7 +165,7 @@ export const OwnWriteSuppressionToken = NonEmptyTrimmedString.pipe(
 export type OwnWriteSuppressionToken = typeof OwnWriteSuppressionToken.Type
 
 /** Notion API pagination page size, constrained to the API-documented range [1, 100]. */
-export const NotionPageSize = Schema.Number.pipe(
+export const NotionPageSize = Schema.Finite.pipe(
   Schema.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })),
   Schema.annotate({ identifier: 'NotionDatasourceSync.NotionPageSize' }),
 )

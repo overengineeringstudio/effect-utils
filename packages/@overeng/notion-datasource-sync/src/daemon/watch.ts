@@ -169,7 +169,7 @@ export class WatchDaemonCancelled extends Schema.TaggedError<WatchDaemonCancelle
   'WatchDaemonCancelled',
   {
     rootId: Schema.String,
-    cycle: Schema.Number,
+    cycle: Schema.Finite,
     message: Schema.String,
   },
 ) {}
@@ -179,8 +179,8 @@ export class WatchDaemonCycleTimedOut extends Schema.TaggedError<WatchDaemonCycl
   'WatchDaemonCycleTimedOut',
   {
     rootId: Schema.String,
-    cycle: Schema.Number,
-    timeoutMillis: Schema.Number,
+    cycle: Schema.Finite,
+    timeoutMillis: Schema.Finite,
     message: Schema.String,
   },
 ) {}
@@ -188,16 +188,16 @@ export class WatchDaemonCycleTimedOut extends Schema.TaggedError<WatchDaemonCycl
 const WatchDaemonStateSchema = Schema.Struct({
   version: Schema.Literal(1),
   rootId: Schema.String,
-  cycle: Schema.Number,
-  lastCompleteCycle: Schema.Number,
+  cycle: Schema.Finite,
+  lastCompleteCycle: Schema.Finite,
   lastStartedAt: Schema.optional(Schema.String),
   lastCompletedAt: Schema.optional(Schema.String),
   repair: Schema.Union([
 Schema.TaggedStruct('none', {}),
 Schema.TaggedStruct('retry', {
       reason: Schema.String,
-      retryAfterMillis: Schema.Number,
-      failedCycle: Schema.Number,
+      retryAfterMillis: Schema.Finite,
+      failedCycle: Schema.Finite,
     }),
 ]),
   lastStatus: Schema.optional(Schema.Unknown),

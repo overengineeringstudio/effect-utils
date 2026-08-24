@@ -94,7 +94,7 @@ export const CanonicalPropertyValue = Schema.Union([
     plainText: Schema.String,
   }),
   Schema.TaggedStruct('number', {
-    value: Schema.Number,
+    value: Schema.Finite,
   }),
   Schema.TaggedStruct('checkbox', {
     checked: Schema.Boolean,

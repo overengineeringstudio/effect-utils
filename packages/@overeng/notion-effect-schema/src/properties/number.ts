@@ -18,7 +18,7 @@ export const NumberProperty = Schema.Struct({
   type: Schema.Literal('number').annotate({
     description: 'Property type identifier.',
   }),
-  number: Schema.NullOr(Schema.Number).annotate({
+  number: Schema.NullOr(Schema.Finite).annotate({
     description: 'The numeric value, or null if empty.',
     examples: [42, 3.14, null],
   }),
@@ -37,7 +37,7 @@ export type NumberProperty = typeof NumberProperty.Type
  * @see https://developers.notion.com/reference/page#page-property-value
  */
 export const NumberWrite = Schema.Struct({
-  number: Schema.NullOr(Schema.Number),
+  number: Schema.NullOr(Schema.Finite),
 }).annotate({
   identifier: 'Notion.NumberWrite',
   title: 'Number (Write)',
@@ -48,7 +48,7 @@ export const NumberWrite = Schema.Struct({
 export type NumberWrite = typeof NumberWrite.Type
 
 /** Transform schema for converting number to NumberWrite payload */
-export const NumberWriteFromNumber = Schema.NullOr(Schema.Number).pipe(
+export const NumberWriteFromNumber = Schema.NullOr(Schema.Finite).pipe(
   Schema.decodeTo(
     NumberWrite,
     SchemaTransformation.transform({
@@ -70,7 +70,7 @@ export const Num = {
 
   /** Transform to raw nullable number. */
   raw: NumberProperty.pipe(
-    Schema.decodeTo(Schema.NullOr(Schema.Number), {
+    Schema.decodeTo(Schema.NullOr(Schema.Finite), {
       decode: SchemaGetter.transform((prop) => prop.number),
       encode: SchemaGetter.forbidden(
         () => 'Num.raw encode is not supported. Use NumberWrite / NumberWriteFromNumber.',
@@ -81,7 +81,7 @@ export const Num = {
   /** Transform to Option<number>. */
   asOption: withOptionValueSchema({
     schema: NumberProperty.pipe(
-      Schema.decodeTo(Schema.toType(Schema.Option(Schema.Number)), {
+      Schema.decodeTo(Schema.toType(Schema.Option(Schema.Finite)), {
         decode: SchemaGetter.transform((prop) =>
           prop.number === null ? Option.none() : Option.some(prop.number)
         ),
@@ -90,7 +90,7 @@ export const Num = {
         ),
       }),
     ),
-    valueSchema: Schema.Number,
+    valueSchema: Schema.Finite,
   }),
 
   /** Transform to required number (fails if null). */
@@ -98,7 +98,7 @@ export const Num = {
     Schema.refine((p): p is typeof p & { number: number } => p.number !== null, {
       message: 'Number is required',
     }),
-    Schema.decodeTo(Schema.Number, {
+    Schema.decodeTo(Schema.Finite, {
       decode: SchemaGetter.transform((prop) => prop.number),
       encode: SchemaGetter.forbidden(
         () => 'Num.asNumber encode is not supported. Use NumberWrite / NumberWriteFromNumber.',

@@ -56,7 +56,7 @@ describe('effect-rpc-tanstack client', () => {
   it('streams responses through a custom fetch transport', async () => {
     const StreamNumbers = Rpc.make('StreamNumbers', {
       payload: {},
-      success: Schema.Number,
+      success: Schema.Finite,
       stream: true,
     })
 

@@ -53,7 +53,7 @@ describe.skipIf(!serverAvailable)('restate-effect ./admin management API', () =>
   afterAll(held.teardown, 60_000)
 
   it('lists deployments + a typed /query round-trip over sys_invocation', async () => {
-    const deployments = await runAdmin((admin) => admin.listDeployments())
+    const deployments = await runAdmin((admin) => admin.listDeployments)
     /* The harness registered exactly one deployment (the served endpoint). */
     expect(deployments).toBeDefined()
 

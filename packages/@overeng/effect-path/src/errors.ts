@@ -30,7 +30,7 @@ export class InvalidPathError extends Schema.TaggedError<InvalidPathError>()('In
   /** Specific reason for invalidity */
   reason: InvalidPathReason,
   /** Position in path where error was detected (if applicable) */
-  position: Schema.UndefinedOr(Schema.Number),
+  position: Schema.UndefinedOr(Schema.Finite),
 }) {}
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -132,7 +132,7 @@ const RawFlakeLockJson = Schema.fromJsonString(
       Schema.mutableKey(Schema.Record(Schema.String, Schema.mutableKey(Schema.Unknown))),
     ),
     root: Schema.String,
-    version: Schema.Number,
+    version: Schema.Finite,
   }),
   { space: 2 },
 )
@@ -161,7 +161,7 @@ const NixFlakePrefetchOutput = Schema.fromJsonString(
   Schema.Struct({
     hash: Schema.String,
     locked: Schema.Struct({
-      lastModified: Schema.Number,
+      lastModified: Schema.Finite,
       owner: Schema.optional(Schema.String),
       repo: Schema.optional(Schema.String),
       rev: Schema.String,

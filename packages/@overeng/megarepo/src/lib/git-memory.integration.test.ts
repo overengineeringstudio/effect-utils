@@ -37,9 +37,9 @@ const SUBDIR_COUNT = 80
 const MAX_GROWTH_KB = 100 * 1024
 
 const ProbeOutput = Schema.Struct({
-  rssStartKb: Schema.Number,
-  vmHwmKb: Schema.Number,
-  changesCount: Schema.Number,
+  rssStartKb: Schema.Finite,
+  vmHwmKb: Schema.Finite,
+  changesCount: Schema.Finite,
 })
 const decodeProbe = Schema.decodeUnknownSync(Schema.fromJsonString(ProbeOutput))
 

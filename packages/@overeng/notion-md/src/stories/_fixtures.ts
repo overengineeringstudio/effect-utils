@@ -31,7 +31,7 @@ export type ProblemFixture = typeof ProblemFixture.Type
 export const DetailSectionFixture = Schema.Struct({
   title: Schema.String,
   items: Schema.Array(Schema.String),
-  more: Schema.optional(Schema.Number),
+  more: Schema.optional(Schema.Finite),
 })
 export type DetailSectionFixture = typeof DetailSectionFixture.Type
 

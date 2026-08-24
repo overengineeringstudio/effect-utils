@@ -30,7 +30,7 @@ export class GitHubLockedInput extends Schema.Class<GitHubLockedInput>('GitHubLo
   /** NAR hash - optional, must be removed when updating rev */
   narHash: Schema.optional(Schema.String),
   /** Unix timestamp - optional, must be removed when updating rev */
-  lastModified: Schema.optional(Schema.Number),
+  lastModified: Schema.optional(Schema.Finite),
 }) {}
 
 /**
@@ -45,7 +45,7 @@ export class GitLockedInput extends Schema.Class<GitLockedInput>('GitLockedInput
   /** NAR hash - optional, must be removed when updating rev */
   narHash: Schema.optional(Schema.String),
   /** Unix timestamp - optional, must be removed when updating rev */
-  lastModified: Schema.optional(Schema.Number),
+  lastModified: Schema.optional(Schema.Finite),
   /** Whether the repo is shallow cloned */
   shallow: Schema.optional(Schema.Boolean),
   /** Submodules setting */
@@ -60,7 +60,7 @@ export class PathLockedInput extends Schema.Class<PathLockedInput>('PathLockedIn
   type: Schema.Literal('path'),
   path: Schema.String,
   narHash: Schema.optional(Schema.String),
-  lastModified: Schema.optional(Schema.Number),
+  lastModified: Schema.optional(Schema.Finite),
 }) {}
 
 /**
@@ -92,7 +92,7 @@ export const GenericLockedInput = Schema.Struct({
   type: Schema.String,
   rev: Schema.optional(Schema.String),
   narHash: Schema.optional(Schema.String),
-  lastModified: Schema.optional(Schema.Number),
+  lastModified: Schema.optional(Schema.Finite),
 }).pipe(Schema.annotate({ identifier: 'GenericLockedInput' }))
 export type GenericLockedInput = typeof GenericLockedInput.Type
 
@@ -155,7 +155,7 @@ export class FlakeLock extends Schema.Class<FlakeLock>('FlakeLock')({
   /**
    * Lock file format version (currently 7)
    */
-  version: Schema.Number,
+  version: Schema.Finite,
 }) {}
 
 // =============================================================================

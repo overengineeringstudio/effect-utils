@@ -18,7 +18,7 @@ const decodeJson = <A,>(schema: Schema.Codec<A>, json: string): A =>
 // =============================================================================
 
 const CounterState = Schema.Struct({
-  count: Schema.Number,
+  count: Schema.Finite,
 })
 
 type CounterState = Schema.Schema.Type<typeof CounterState>
@@ -26,7 +26,7 @@ type CounterState = Schema.Schema.Type<typeof CounterState>
 const CounterAction = Schema.Union([
   Schema.TaggedStruct('Increment', {}),
   Schema.TaggedStruct('Decrement', {}),
-  Schema.TaggedStruct('Set', { value: Schema.Number }),
+  Schema.TaggedStruct('Set', { value: Schema.Finite }),
 ])
 
 type CounterAction = Schema.Schema.Type<typeof CounterAction>
@@ -185,9 +185,9 @@ describe('createTuiApp', () => {
 
   describe('ndjson mode with event mapping', () => {
     const CounterEvent = Schema.Union([
-      Schema.TaggedStruct('Incremented', { newCount: Schema.Number }),
-      Schema.TaggedStruct('Decremented', { newCount: Schema.Number }),
-      Schema.TaggedStruct('Reset', { from: Schema.Number, to: Schema.Number }),
+      Schema.TaggedStruct('Incremented', { newCount: Schema.Finite }),
+      Schema.TaggedStruct('Decremented', { newCount: Schema.Finite }),
+      Schema.TaggedStruct('Reset', { from: Schema.Finite, to: Schema.Finite }),
     ])
 
     const EventCounterApp = createTuiApp({
@@ -472,7 +472,7 @@ describe('Issue #129: typed errors do not mask final state', () => {
 
   class GenerationFailed extends Schema.TaggedError<GenerationFailed>()('GenerationFailed', {
     message: Schema.String,
-    failedCount: Schema.Number,
+    failedCount: Schema.Finite,
   }) {}
 
   it.effect('json mode: typed error still emits final state on stdout', () =>
@@ -524,6 +524,7 @@ describe('Issue #129: typed errors do not mask final state', () => {
         Effect.sync(() => {
           // Every state change before the error is on stdout as raw JSON.
           // No trailing Failure envelope — exit code + stderr carry error info.
+          // @effect-diagnostics-next-line preferSchemaOverJson:off -- lines are asserted as untyped wire JSON (including absence of a Failure envelope), so decoding into CounterState would break `s._tag` checks
           const states = capturedOutput.map((line) => JSON.parse(line))
           expect(states.some((s) => s.count === 42)).toBe(true)
           expect(states.every((s) => s._tag !== 'Failure')).toBe(true)
@@ -628,7 +629,7 @@ describe('run (standalone dual API)', () => {
       Effect.provide(testModeLayer('json')),
       Effect.andThen(Effect.sync(() => {
         expect(capturedOutput).toHaveLength(1)
-        const state = JSON.parse(capturedOutput[0]!)
+        const state = decodeJson(CounterState, capturedOutput[0]!)
         expect(state).toEqual({ count: 77 })
       })),
     ),
@@ -775,7 +776,7 @@ describe('runResult', () => {
   describe('structured result (Schema.Struct)', () => {
     const ResultSchema = Schema.Struct({
       items: Schema.Array(Schema.String),
-      total: Schema.Number,
+      total: Schema.Finite,
     })
 
     it.effect('json mode: writes JSON-encoded result directly to stdout', () =>
@@ -795,6 +796,7 @@ describe('runResult', () => {
           // (not Effect.Console) so handler-emitted logs can be routed to
           // stderr without interfering with the result channel.
           const stdout = capturedStdout.join('')
+          // @effect-diagnostics-next-line preferSchemaOverJson:off -- asserting the byte-exact JSON serialization written to stdout; re-encoding via Schema would use the implementation's own serializer (tautology)
           expect(stdout).toBe(JSON.stringify({ items: ['a', 'b', 'c'], total: 3 }) + '\n')
         })),
       ),

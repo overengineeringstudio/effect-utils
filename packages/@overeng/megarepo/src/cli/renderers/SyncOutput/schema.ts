@@ -64,7 +64,7 @@ export type LockSchemeUpdate = Schema.Schema.Type<typeof LockSchemeUpdate>
 export const LockSharedSourceUpdate = Schema.TaggedStruct('SharedSourceUpdate', {
   sourceName: Schema.String,
   sourceMemberName: Schema.String,
-  targetCount: Schema.Number,
+  targetCount: Schema.Finite,
 })
 /** Inferred type for a shared source update */
 export type LockSharedSourceUpdate = Schema.Schema.Type<typeof LockSharedSourceUpdate>
@@ -174,7 +174,7 @@ export const SyncState = Schema.Struct({
   logs: Schema.Array(SyncLogEntry),
 
   /** Timestamp when sync started */
-  startedAt: Schema.NullOr(Schema.Number),
+  startedAt: Schema.NullOr(Schema.Finite),
 
   /** Members that are themselves megarepos (for --all hint) */
   nestedMegarepos: Schema.Array(Schema.String),
@@ -195,7 +195,7 @@ export const SyncState = Schema.Struct({
   syncErrors: Schema.Array(SyncErrorItem),
 
   /** Total number of sync errors (root + nested). */
-  syncErrorCount: Schema.Number,
+  syncErrorCount: Schema.Finite,
 
   /** Pre-flight hygiene issues (populated when _tag === 'PreflightFailed') */
   preflightIssues: Schema.Array(PreflightIssue),

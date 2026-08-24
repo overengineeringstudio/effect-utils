@@ -81,16 +81,16 @@ export const defaultSyncOptions: SyncOptions = {
 
 /** Schema for aggregated sync result counts by status category. */
 export const SyncSummary = Schema.Struct({
-  cloned: Schema.Number,
-  synced: Schema.Number,
-  updated: Schema.Number,
-  recorded: Schema.Number,
-  applied: Schema.Number,
-  alreadySynced: Schema.Number,
-  skipped: Schema.Number,
-  errors: Schema.Number,
-  removed: Schema.Number,
-  total: Schema.Number,
+  cloned: Schema.Finite,
+  synced: Schema.Finite,
+  updated: Schema.Finite,
+  recorded: Schema.Finite,
+  applied: Schema.Finite,
+  alreadySynced: Schema.Finite,
+  skipped: Schema.Finite,
+  errors: Schema.Finite,
+  removed: Schema.Finite,
+  total: Schema.Finite,
 })
 /** Inferred type for aggregated sync summary counts. */
 export type SyncSummary = Schema.Schema.Type<typeof SyncSummary>

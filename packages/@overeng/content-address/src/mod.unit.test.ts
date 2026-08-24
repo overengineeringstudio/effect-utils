@@ -40,7 +40,7 @@ import {
 const Payload = Schema.Struct({
   alpha: Schema.String,
   nested: Schema.Struct({
-    zed: Schema.Number,
+    zed: Schema.Finite,
     beta: Schema.Array(Schema.String),
   }),
 }).annotate({ identifier: 'ContentAddressTest.Payload' })
@@ -59,7 +59,7 @@ describe('@overeng/content-address', () => {
     // Keys where locale order diverges from code-unit order: en-US collation sorts
     // 'a' before 'B', but UTF-16 code units put 'B' (66) before 'a' (97). A
     // locale-sensitive comparator would canonicalize this differently per machine.
-    const Record = Schema.Record(Schema.String, Schema.Number)
+    const Record = Schema.Record(Schema.String, Schema.Finite)
     const rendered = canonicalJsonString({ schema: Record, value: { a: 1, B: 0 } })
 
     expect(rendered).toBe('{"B":0,"a":1}')

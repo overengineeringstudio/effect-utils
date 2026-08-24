@@ -316,7 +316,7 @@ const mockStateProxy = <S extends StateSchemas>({
           )
         : // @effect-diagnostics-next-line effectSucceedWithVoid:off -- `get` returns a meaningful `StateValueType | undefined` union (undefined = key absent), not void; `Effect.void` would break the `StateProxy.get` signature.
           Effect.succeed(undefined),
-    getAll: () =>
+    getAll:
       Effect.forEach([...state.entries()], ([k, v]) =>
         Schema.decodeUnknownEffect(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),
       ).pipe(

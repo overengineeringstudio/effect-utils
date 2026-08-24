@@ -43,10 +43,10 @@ const DeployState = Schema.Union([
       Schema.Struct({
         name: Schema.String,
         result: Schema.Literals(['updated', 'unchanged']),
-        duration: Schema.Number,
+        duration: Schema.Finite,
       }),
     ),
-    totalDuration: Schema.Number,
+    totalDuration: Schema.Finite,
   }),
 ])
 
@@ -68,7 +68,7 @@ const DeployAction = Schema.Union([
     logs: Schema.Array(Schema.String),
   }),
   Schema.TaggedStruct('UpdateService', {
-    index: Schema.Number,
+    index: Schema.Finite,
     status: Schema.Literals(['pending', 'deploying', 'healthy']),
   }),
   Schema.TaggedStruct('Complete', {
@@ -76,10 +76,10 @@ const DeployAction = Schema.Union([
       Schema.Struct({
         name: Schema.String,
         result: Schema.Literals(['updated', 'unchanged']),
-        duration: Schema.Number,
+        duration: Schema.Finite,
       }),
     ),
-    totalDuration: Schema.Number,
+    totalDuration: Schema.Finite,
   }),
 ])
 

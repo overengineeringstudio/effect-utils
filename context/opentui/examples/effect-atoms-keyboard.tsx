@@ -24,9 +24,9 @@ class CounterService extends Context.Service<
   CounterService,
   {
     readonly get: () => number
-    readonly increment: () => Effect.Effect<number>
-    readonly decrement: () => Effect.Effect<number>
-    readonly reset: () => Effect.Effect<number>
+    readonly increment: Effect.Effect<number>
+    readonly decrement: Effect.Effect<number>
+    readonly reset: Effect.Effect<number>
   }
 >()('CounterService', {
   make: Effect.sync(() => {
@@ -34,17 +34,17 @@ class CounterService extends Context.Service<
 
     return {
       get: () => value,
-      increment: Effect.fnUntraced(function* () {
+      increment: Effect.gen(function* () {
         yield* Effect.sleep('100 millis') // Simulate async work
         value += 1
         return value
       }),
-      decrement: Effect.fnUntraced(function* () {
+      decrement: Effect.gen(function* () {
         yield* Effect.sleep('100 millis')
         value -= 1
         return value
       }),
-      reset: Effect.fnUntraced(function* () {
+      reset: Effect.gen(function* () {
         yield* Effect.sleep('50 millis')
         value = 0
         return value
@@ -168,7 +168,7 @@ const main = async () => {
           registry.set(messageAtom, 'Incrementing...')
 
           const counter = yield* CounterService
-          const newValue = yield* counter.increment()
+          const newValue = yield* counter.increment
 
           registry.set(countAtom, newValue)
           registry.set(statusAtom, 'idle')
@@ -184,7 +184,7 @@ const main = async () => {
           registry.set(messageAtom, 'Decrementing...')
 
           const counter = yield* CounterService
-          const newValue = yield* counter.decrement()
+          const newValue = yield* counter.decrement
 
           registry.set(countAtom, newValue)
           registry.set(statusAtom, 'idle')
@@ -200,7 +200,7 @@ const main = async () => {
           registry.set(messageAtom, 'Resetting...')
 
           const counter = yield* CounterService
-          const newValue = yield* counter.reset()
+          const newValue = yield* counter.reset
 
           registry.set(countAtom, newValue)
           registry.set(statusAtom, 'idle')

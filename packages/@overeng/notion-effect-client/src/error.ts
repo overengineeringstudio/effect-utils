@@ -34,13 +34,13 @@ export type NotionErrorCode = typeof NotionErrorCode.Type
  */
 export class NotionApiError extends Schema.TaggedError<NotionApiError>()('NotionApiError', {
   /** HTTP status code */
-  status: Schema.Number,
+  status: Schema.Finite,
   /** Notion-specific error code */
   code: NotionErrorCode,
   /** Human-readable error message */
   message: Schema.String,
   /** Retry delay in seconds (from retry-after header, typically for rate limits) */
-  retryAfterSeconds: Schema.Option(Schema.Number),
+  retryAfterSeconds: Schema.Option(Schema.Finite),
   /** Request ID for Notion support (from x-request-id header) */
   requestId: Schema.OptionFromUndefinedOr(Schema.String),
   /** Original request URL for debugging */
@@ -76,7 +76,7 @@ export class NotionApiError extends Schema.TaggedError<NotionApiError>()('Notion
  */
 export const NotionErrorResponse = Schema.Struct({
   object: Schema.Literal('error'),
-  status: Schema.Number,
+  status: Schema.Finite,
   code: NotionErrorCode,
   message: Schema.String,
 })

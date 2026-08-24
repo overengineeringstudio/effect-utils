@@ -14,7 +14,7 @@
  *   // Do work...
  *   yield* Effect.sleep('5 seconds')
  *
- *   yield* tui.unmount()
+ *   yield* tui.unmount
  * })
  *
  * // Run with the live layer
@@ -59,7 +59,7 @@ export interface TuiRendererService {
    * Unmount the React tree and cleanup resources.
    * Shows cursor, clears dynamic region.
    */
-  readonly unmount: () => Effect.Effect<void>
+  readonly unmount: Effect.Effect<void>
 
   /**
    * The underlying React root instance.
@@ -100,7 +100,7 @@ export class TuiRenderer extends Context.Service<TuiRenderer, TuiRendererService
   /**
    * Unmount the React tree.
    */
-  static unmount: Effect.Effect<void, never, TuiRenderer> = TuiRenderer.use((r) => r.unmount())
+  static unmount: Effect.Effect<void, never, TuiRenderer> = TuiRenderer.use((r) => r.unmount)
 
   /**
    * Create a scoped layer that manages the TuiRenderer lifecycle.
@@ -136,10 +136,9 @@ export class TuiRenderer extends Context.Service<TuiRenderer, TuiRendererService
             // This is a no-op placeholder for direct static content injection
             Effect.void,
 
-          unmount: () =>
-            Effect.sync(() => {
-              root.unmount()
-            }),
+          unmount: Effect.sync(() => {
+            root.unmount()
+          }),
 
           root,
         }

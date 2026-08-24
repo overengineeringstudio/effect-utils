@@ -75,10 +75,10 @@ export const StoreGcResult = Schema.Struct({
   kind: Schema.optional(Schema.Literals(['worktree', 'generated-artifact'])),
   artifactClass: Schema.optional(Schema.String),
   workspacePath: Schema.optional(Schema.String),
-  allocatedBytes: Schema.optional(Schema.Number),
-  exclusiveClosureBytes: Schema.optional(Schema.NullOr(Schema.Number)),
+  allocatedBytes: Schema.optional(Schema.Finite),
+  exclusiveClosureBytes: Schema.optional(Schema.NullOr(Schema.Finite)),
   outcome: Schema.optional(Schema.Literals(['would-delete', 'deleted', 'keep', 'unknown'])),
-  mtimeMs: Schema.optional(Schema.Number),
+  mtimeMs: Schema.optional(Schema.Finite),
 })
 
 /** Inferred type for a store GC result. */
@@ -139,8 +139,8 @@ export const StoreLsState = Schema.TaggedStruct('Ls', {
  */
 export const StoreStatusState = Schema.TaggedStruct('Status', {
   basePath: Schema.String,
-  repoCount: Schema.Number,
-  worktreeCount: Schema.Number,
+  repoCount: Schema.Finite,
+  worktreeCount: Schema.Finite,
   diskUsage: Schema.optional(Schema.String),
   worktrees: Schema.Array(StoreWorktreeStatus),
 })
@@ -151,7 +151,7 @@ export const StoreStatusState = Schema.TaggedStruct('Status', {
 export const StoreFetchState = Schema.TaggedStruct('Fetch', {
   basePath: Schema.String,
   results: Schema.Array(StoreFetchResult),
-  elapsedMs: Schema.Number,
+  elapsedMs: Schema.Finite,
 })
 
 /**
@@ -163,11 +163,11 @@ export const StoreGcState = Schema.TaggedStruct('Gc', {
   dryRun: Schema.Boolean,
   warning: Schema.optional(StoreGcWarning),
   showForceHint: Schema.Boolean,
-  processedCount: Schema.optional(Schema.Number),
-  repoCount: Schema.optional(Schema.Number),
-  completedRepoCount: Schema.optional(Schema.Number),
-  discoveredWorktreeCount: Schema.optional(Schema.Number),
-  activeWorktreeCount: Schema.optional(Schema.Number),
+  processedCount: Schema.optional(Schema.Finite),
+  repoCount: Schema.optional(Schema.Finite),
+  completedRepoCount: Schema.optional(Schema.Finite),
+  discoveredWorktreeCount: Schema.optional(Schema.Finite),
+  activeWorktreeCount: Schema.optional(Schema.Finite),
   statusMessage: Schema.optional(Schema.String),
   done: Schema.optional(Schema.Boolean),
   interrupted: Schema.optional(Schema.Boolean),
@@ -299,15 +299,15 @@ export const StoreAction = Schema.Union([
   }),
   Schema.TaggedStruct('SetStatus', {
     basePath: Schema.String,
-    repoCount: Schema.Number,
-    worktreeCount: Schema.Number,
+    repoCount: Schema.Finite,
+    worktreeCount: Schema.Finite,
     diskUsage: Schema.optional(Schema.String),
     worktrees: Schema.Array(StoreWorktreeStatus),
   }),
   Schema.TaggedStruct('SetFetch', {
     basePath: Schema.String,
     results: Schema.Array(StoreFetchResult),
-    elapsedMs: Schema.Number,
+    elapsedMs: Schema.Finite,
   }),
   Schema.TaggedStruct('SetGc', {
     basePath: Schema.String,
@@ -315,11 +315,11 @@ export const StoreAction = Schema.Union([
     dryRun: Schema.Boolean,
     warning: Schema.optional(StoreGcWarning),
     showForceHint: Schema.Boolean,
-    processedCount: Schema.optional(Schema.Number),
-    repoCount: Schema.optional(Schema.Number),
-    completedRepoCount: Schema.optional(Schema.Number),
-    discoveredWorktreeCount: Schema.optional(Schema.Number),
-    activeWorktreeCount: Schema.optional(Schema.Number),
+    processedCount: Schema.optional(Schema.Finite),
+    repoCount: Schema.optional(Schema.Finite),
+    completedRepoCount: Schema.optional(Schema.Finite),
+    discoveredWorktreeCount: Schema.optional(Schema.Finite),
+    activeWorktreeCount: Schema.optional(Schema.Finite),
     statusMessage: Schema.optional(Schema.String),
     done: Schema.optional(Schema.Boolean),
     interrupted: Schema.optional(Schema.Boolean),

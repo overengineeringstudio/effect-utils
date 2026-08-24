@@ -17,7 +17,7 @@ export const FormulaValue = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal('number'),
-    number: Schema.NullOr(Schema.Number),
+    number: Schema.NullOr(Schema.Finite),
   }),
   Schema.Struct({
     type: Schema.Literal('boolean'),
@@ -82,7 +82,7 @@ export const Formula = {
         p.formula.type === 'number' && p.formula.number !== null,
       { message: 'Formula must be a non-null number' },
     ),
-    Schema.decodeTo(Schema.Number, {
+    Schema.decodeTo(Schema.Finite, {
       decode: SchemaGetter.transform((prop) => prop.formula.number),
       encode: SchemaGetter.forbidden(
         () => 'Formula.asNumber encode is not supported (formula is read-only).',
@@ -157,7 +157,7 @@ export const UniqueIdProperty = Schema.Struct({
       description: 'Optional text prefix for the ID.',
       examples: ['TASK', 'BUG'],
     }),
-    number: Schema.Number.annotate({
+    number: Schema.Finite.annotate({
       description: 'Auto-incrementing number.',
       examples: [1, 42, 100],
     }),
@@ -193,7 +193,7 @@ export const UniqueId = {
 
   /** Transform to just the number. */
   asNumber: UniqueIdProperty.pipe(
-    Schema.decodeTo(Schema.Number, {
+    Schema.decodeTo(Schema.Finite, {
       decode: SchemaGetter.transform((prop) => prop.unique_id.number),
       encode: SchemaGetter.forbidden(
         () => 'UniqueId.asNumber encode is not supported (unique_id is read-only).',

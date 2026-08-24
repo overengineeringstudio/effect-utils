@@ -28,7 +28,7 @@ import { RestateOtel } from './otel.ts'
 
 /* A keyed Object whose `bump` runs a journaled `Restate.run` step + a State write —
  * so `alwaysReplay` exercises a real suspension/replay around the journaled work. */
-const CounterState = { count: Schema.Number } as const
+const CounterState = { count: Schema.Finite } as const
 const Counter = State.for(CounterState)
 
 const CounterObj = RestateObject.contract({
@@ -36,7 +36,7 @@ const CounterObj = RestateObject.contract({
   def: {
     state: CounterState,
     handlers: {
-      bump: { input: Schema.Void, success: Schema.Number },
+      bump: { input: Schema.Void, success: Schema.Finite },
     },
   },
 })

@@ -53,11 +53,11 @@ describe('in-memory TestContext', () => {
       /* A nullable `highWatermark` cursor: present-value set, absent⇒undefined read,
        * and `State.set(undefined)`/`State.clear` both REMOVE the key — exercised
        * through the REAL `State.*` combinators against the in-memory context. */
-      const Cursor = State.for({ highWatermark: Schema.optional(Schema.Number) })
+      const Cursor = State.for({ highWatermark: Schema.optional(Schema.Finite) })
       const Probe = RestateObject.contract({
         name: 'opt-probe',
         def: {
-          state: { highWatermark: Schema.optional(Schema.Number) },
+          state: { highWatermark: Schema.optional(Schema.Finite) },
           handlers: { go: { input: Schema.Void, success: Schema.Void } },
         },
       })
@@ -95,8 +95,8 @@ describe('in-memory TestContext', () => {
       const StepObj = RestateObject.contract({
         name: 'step-probe',
         def: {
-          state: { last: Schema.Number },
-          handlers: { go: { input: Schema.Void, success: Schema.Number } },
+          state: { last: Schema.Finite },
+          handlers: { go: { input: Schema.Void, success: Schema.Finite } },
         },
       })
       const StepLive = RestateObject.implement<typeof StepObj>({
@@ -140,7 +140,7 @@ describe('in-memory TestContext', () => {
       const KeyObj = RestateObject.contract({
         name: 'key-probe',
         def: {
-          state: { n: Schema.Number },
+          state: { n: Schema.Finite },
           handlers: {
             go: { input: Schema.Void, success: Schema.Struct({ key: Schema.String }) },
           },

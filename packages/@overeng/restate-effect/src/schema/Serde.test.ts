@@ -14,7 +14,7 @@ const textEncoder = new TextEncoder()
 
 describe('effectSerde', () => {
   it('round-trips a plain struct', () => {
-    const schema = Schema.Struct({ name: Schema.String, age: Schema.Number })
+    const schema = Schema.Struct({ name: Schema.String, age: Schema.Finite })
     const serde = effectSerde({ schema })
     const value = { name: 'Sarah', age: 42 }
     const bytes = serde.serialize(value)
@@ -49,14 +49,14 @@ describe('effectSerde', () => {
 
   it('honors the Restate.serde annotation contentType override', () => {
     const schema = Restate.serde({
-      self: Schema.Struct({ n: Schema.Number }),
+      self: Schema.Struct({ n: Schema.Finite }),
       options: { contentType: 'application/vnd.custom+json' },
     })
     expect(effectSerde({ schema }).contentType).toBe('application/vnd.custom+json')
   })
 
   it('throws TerminalError(400) on a malformed INGRESS input', () => {
-    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
     const badBytes = new TextEncoder().encode(JSON.stringify({ n: 'not-a-number' }))
     try {
       serde.deserialize(badBytes)
@@ -69,7 +69,7 @@ describe('effectSerde', () => {
 
   it('rethrows a raw defect (not a TerminalError) on a malformed INTERNAL slot', () => {
     /* A corrupt-journal decode failure must NOT become a 400 to the caller. */
-    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
     const badBytes = new TextEncoder().encode(JSON.stringify({ n: 'not-a-number' }))
     try {
       serde.deserialize(badBytes)
@@ -126,7 +126,7 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
 
   // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) here; use #978's stable error envelope instead of refreshing the v3 HTTP 400 parser text.
   it('captures ingress decode failure transport bytes for invalid input', () => {
-    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
     const cases = {
       wrongType: JSON.stringify({ n: 'not-a-number' }),
       malformedJson: '{"n":',
@@ -158,7 +158,7 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
 
   // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) here; re-baseline only after confirming this remains an internal structural failure outside #978's stable ingress envelope.
   it('keeps internal decode failures out of the ingress 400 transport partition', () => {
-    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
 
     try {
       serde.deserialize(textEncoder.encode(JSON.stringify({ n: 'not-a-number' })))
@@ -178,7 +178,7 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
 
 describe('State.for optional field serde (papercut)', () => {
   it('a plain Schema state field passes through normalize unchanged', () => {
-    const serde = effectSerde({ schema: normalizeStateSchema(Schema.Number) })
+    const serde = effectSerde({ schema: normalizeStateSchema(Schema.Finite) })
     expect(serde.deserialize(serde.serialize(42))).toBe(42)
   })
 

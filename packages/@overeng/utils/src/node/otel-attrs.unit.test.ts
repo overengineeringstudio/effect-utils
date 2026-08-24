@@ -14,12 +14,12 @@ import {
 describe('OtelAttrs', () => {
   it('derives primitive, literal, uuid, option, date, duration, and explicit array attributes', async () => {
     const Attrs = Schema.Struct({
-      label: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())).pipe(OtelAttr.spanLabel()),
-      requestId: Schema.String.pipe(Schema.check(Schema.isUUID())).pipe(OtelAttr.key({ key: 'request.id' })),
+      label: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()), OtelAttr.spanLabel()),
+      requestId: Schema.String.pipe(Schema.check(Schema.isUUID()), OtelAttr.key({ key: 'request.id' })),
       outcome: Schema.Literals(['approved', 'denied', 'timeout']).pipe(
         OtelAttr.key({ key: 'op.outcome' }),
       ),
-      count: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))).pipe(OtelAttr.key({ key: 'op.count' })),
+      count: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), OtelAttr.key({ key: 'op.count' })),
       cacheHit: Schema.Boolean.pipe(OtelAttr.key({ key: 'op.cache_hit' })),
       maybeShard: Schema.OptionFromNullOr(Schema.String).pipe(OtelAttr.key({ key: 'op.shard' })),
       at: Schema.DateTimeUtc.pipe(OtelAttr.key({ key: 'op.at' })),
@@ -178,7 +178,7 @@ describe('OtelAttrs', () => {
 
   it('surfaces encoding errors on the error channel', async () => {
     const Attrs = Schema.Struct({
-      count: Schema.Number.pipe(OtelAttr.key({ key: 'count' })),
+      count: Schema.Finite.pipe(OtelAttr.key({ key: 'count' })),
     })
     const attrs = await Effect.runPromise(OtelAttrs.define(Attrs))
 
@@ -195,8 +195,8 @@ describe('OtelAttrs', () => {
       asJson: Schema.Struct({ id: Schema.String }).pipe(
         OtelAttr.key({ key: 'json', encode: 'json' }),
       ),
-      asString: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))).pipe(OtelAttr.key({ key: 'string', encode: 'string' })),
-      asNumber: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))).pipe(OtelAttr.key({ key: 'number', encode: 'number' })),
+      asString: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), OtelAttr.key({ key: 'string', encode: 'string' })),
+      asNumber: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), OtelAttr.key({ key: 'number', encode: 'number' })),
       asBoolean: Schema.Boolean.pipe(OtelAttr.key({ key: 'boolean', encode: 'boolean' })),
       secret: Schema.Redacted(Schema.String).pipe(
         OtelAttr.key({ key: 'secret', encode: 'redacted' }),
@@ -260,7 +260,7 @@ describe('OtelAttrs', () => {
       OtelAttrs.define(
         Schema.Struct({
           label: Schema.String.pipe(OtelAttr.spanLabel()),
-          count: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))).pipe(OtelAttr.key({ key: 'retry.count' })),
+          count: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)), OtelAttr.key({ key: 'retry.count' })),
         }),
       ),
     )

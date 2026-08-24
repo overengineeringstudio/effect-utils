@@ -131,6 +131,7 @@ export const retrieveChildrenStream = (
 ): Stream.Stream<Block, NotionApiError, NotionConfig | HttpClient> =>
   Stream.flattenIterable(Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
     Option.match(maybeNextCursor, {
+      // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
       onNone: () => Effect.succeed(undefined),
       onSome: (cursor) => {
         const childrenOpts: RetrieveBlockChildrenOptions =

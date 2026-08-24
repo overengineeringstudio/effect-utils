@@ -125,7 +125,7 @@ describe('mr store gc', () => {
           const storeLayer = makeStoreLayer({ basePath: storePath })
           const store = yield* Effect.provide(Store, storeLayer)
 
-          const repos = yield* store.listRepos()
+          const repos = yield* store.listRepos
           expect(repos).toHaveLength(1)
           expect(repos[0]?.relativePath).toBe('github.com/test-owner/test-repo/')
         },
@@ -164,7 +164,7 @@ describe('mr store gc', () => {
           const storeLayer = makeStoreLayer({ basePath: storePath })
           const store = yield* Effect.provide(Store, storeLayer)
 
-          const repos = yield* store.listRepos()
+          const repos = yield* store.listRepos
           expect(repos).toHaveLength(1)
         },
         Effect.provide(NodeServices.layer),
@@ -497,7 +497,7 @@ describe('store discovery is bounded to the layout', () => {
         yield* mkdirp('stray/node_modules/deep/deeper')
 
         const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
-        const repos = (yield* store.listRepos()).map((r) => r.relativePath)
+        const repos = (yield* store.listRepos).map((r) => r.relativePath)
 
         expect(repos).toContain('github.com/acme/real/')
         expect(repos).toContain('other/contrib/')
@@ -623,7 +623,7 @@ describe('mr store ls', () => {
         const storeLayer = makeStoreLayer({ basePath: storePath })
         const store = yield* Effect.provide(Store, storeLayer)
 
-        const repos = yield* store.listRepos()
+        const repos = yield* store.listRepos
         expect(repos).toHaveLength(2)
 
         const paths = repos.map((r) => r.relativePath).sort()
@@ -649,7 +649,7 @@ describe('mr store ls', () => {
         const storeLayer = makeStoreLayer({ basePath: storePath })
         const store = yield* Effect.provide(Store, storeLayer)
 
-        const repos = yield* store.listRepos()
+        const repos = yield* store.listRepos
         expect(repos).toHaveLength(0)
       },
       Effect.provide(NodeServices.layer),
@@ -686,7 +686,7 @@ describe('mr store ls', () => {
         const storeLayer = makeStoreLayer({ basePath: storePath })
         const store = yield* Effect.provide(Store, storeLayer)
 
-        const repos = yield* store.listRepos()
+        const repos = yield* store.listRepos
         expect(repos.map((repo) => repo.relativePath)).toStrictEqual(['localhost/owner/repo/'])
       },
       Effect.provide(NodeServices.layer),
@@ -714,7 +714,7 @@ describe('mr store ls', () => {
         const storeLayer = makeStoreLayer({ basePath: storePath })
         const store = yield* Effect.provide(Store, storeLayer)
 
-        const repos = yield* store.listRepos()
+        const repos = yield* store.listRepos
         expect(repos.map((repo) => repo.relativePath)).toContain('example.com/refs/project/')
       },
       Effect.provide(NodeServices.layer),
