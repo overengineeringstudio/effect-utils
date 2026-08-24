@@ -3,7 +3,6 @@
   "dependencyGraphContract": {
     "allowBuilds": {
       "@myobie/pty": false,
-      "@parcel/watcher": false,
       "esbuild": false,
       "fsevents": false,
       "msgpackr-extract": false,
@@ -43,6 +42,13 @@
       },
       "nixPreparedDependencies": {
         "scope": "independent-builder-policy"
+      }
+    },
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "eslint": ">=10.0.0",
+        "typescript": ">=6.0.0",
+        "vitest": ">=4.0.0"
       }
     },
     "pmOnFail": "ignore",
