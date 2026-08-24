@@ -1,0 +1,2 @@
+{"schema":"buck2.event-log/v1","buck_version":"2026-08-22","invocation_id":"inv-unknown-pin"}
+{"type":"action_ended","payload":{"action_id":"a1","target":"//apps/demo:bin","status":"success","cache_class":"hit","duration_ms":10}}

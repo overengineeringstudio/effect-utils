@@ -1,0 +1,10 @@
+{
+  "version": "3",
+  "outcome": "FAILURE",
+  "targets": {
+    "//apps/demo:bin": {
+      "outcome": "FAILURE",
+      "outputs": []
+    }
+  }
+}
