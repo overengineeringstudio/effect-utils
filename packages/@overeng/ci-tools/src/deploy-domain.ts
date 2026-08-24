@@ -78,7 +78,7 @@ export const RelativeHttpPath = NonEmptyTrimmedString.pipe(
 )
 export type RelativeHttpPath = typeof RelativeHttpPath.Type
 
-export const HttpsUrl = Schema.URL.pipe(
+export const HttpsUrl = Schema.URLFromString.pipe(
   Schema.check(
     Schema.makeFilter((url: URL) => (url.protocol === 'https:' ? undefined : 'URL must use https:')),
   ),

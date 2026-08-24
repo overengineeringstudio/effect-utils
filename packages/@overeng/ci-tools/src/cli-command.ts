@@ -414,7 +414,7 @@ const vercelDeployCommand = Command.make(
     ),
     productionDomain: Options.string('production-domain').pipe(
       Options.withDescription('Production hostname to alias to the deployment (repeatable)'),
-      Options.atLeast(1),
+      Options.atLeast(0),
     ),
     projectIdEnv: Options.string('project-id-env').pipe(
       Options.withDescription('Environment variable containing the Vercel project id'),
@@ -472,7 +472,7 @@ const vercelDeployCommand = Command.make(
       Options.withDescription(
         'Environment variable for local vercel build (KEY=VALUE, repeatable)',
       ),
-      Options.atLeast(1),
+      Options.atLeast(0),
     ),
     vercelBin: Options.string('vercel-bin').pipe(
       Options.withDescription('Vercel CLI binary path'),
