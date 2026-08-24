@@ -845,7 +845,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
 export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
 ): Layer.Layer<BoundEndpoint, RestateError | Config.ConfigError, AppROf<S>> =>
-  Layer.effect(BoundEndpoint, Effect.scoped(make(opts)))
+  Layer.effect(BoundEndpoint, make(opts))
 
 /**
  * A scoped `Layer` that starts the endpoint server and discards the bound
@@ -855,7 +855,7 @@ export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplemen
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
 ): Layer.Layer<never, RestateError | Config.ConfigError, AppROf<S>> =>
-  Layer.effectDiscard(Effect.scoped(make(opts)))
+  Layer.effectDiscard(make(opts))
 
 /**
  * Long-lived production entrypoint: launch the endpoint `layer` and block until

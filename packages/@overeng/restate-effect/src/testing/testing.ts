@@ -39,7 +39,6 @@ import { freePorts } from '@overeng/utils/node'
 
 import {
   type AdminClientConfig,
-  AdminHttpError,
   queryStateRows as adminQueryStateRows,
   putState as adminPutState,
   registerDeployment as adminRegisterDeployment,
@@ -391,25 +390,11 @@ const startServer = async (opts: {
 
     const register = async (uri: string): Promise<void> => {
       /* Reuse the shared bare admin client (the same one `./admin` lifts) so the
-       * harness and the public admin surface never drift on the registration call.
-       *
-       * The partition-readiness poll above can still race the worker: right
-       * after `/query` starts answering, a registration may 500 with
-       * `node lookup for partition N failed` while the worker finishes
-       * initializing. Retry such transient failures with backoff. */
-      const maxAttempts = 10
-      for (let attempt = 1; ; attempt++) {
-        try {
-          await adminRegisterDeployment({ config: { adminUrl }, uri, opts: { force: true } })
-          return
-        } catch (cause) {
-          const transient =
-            cause instanceof AdminHttpError && cause.status >= 500 && attempt < maxAttempts
-          if (transient === false) {
-            fail(`deployment registration failed for uri=${uri}: ${String(cause)}`)
-          }
-          await sleep(200 * attempt)
-        }
+       * harness and the public admin surface never drift on the registration call. */
+      try {
+        await adminRegisterDeployment({ config: { adminUrl }, uri, opts: { force: true } })
+      } catch (cause) {
+        fail(`deployment registration failed for uri=${uri}: ${String(cause)}`)
       }
     }
 
@@ -801,192 +786,184 @@ export class RestateTestHarness extends Context.Service<
   }): Layer.Layer<RestateTestHarness, RestateError, RIn> =>
     Layer.effect(
       RestateTestHarness,
-      Effect.scoped(
-        Effect.gen(function* () {
-          const sdkLogRecords: Array<RestateSdkLogRecord> = []
-          // oxlint-disable-next-line overeng/named-args -- implements the Restate SDK's positional LoggerTransport callback.
-          const sdkLogger: restate.LoggerTransport = (metadata, message, ...optionalParams) => {
-            sdkLogRecords.push({ metadata, message, optionalParams })
-          }
+      Effect.gen(function* () {
+        const sdkLogRecords: Array<RestateSdkLogRecord> = []
+        // oxlint-disable-next-line overeng/named-args -- implements the Restate SDK's positional LoggerTransport callback.
+        const sdkLogger: restate.LoggerTransport = (metadata, message, ...optionalParams) => {
+          sdkLogRecords.push({ metadata, message, optionalParams })
+        }
+        /* 1. Spawn the native server (ephemeral ports + isolated base dir). The
+         * finalizer SIGTERM/SIGKILLs it and removes the base dir LAST. */
+        const server = yield* Effect.acquireRelease(
+          Effect.tryPromise({
+            try: () =>
+              startServer({
+                ...(opts.alwaysReplay !== undefined ? { alwaysReplay: opts.alwaysReplay } : {}),
+                ...(opts.disableRetries !== undefined
+                  ? { disableRetries: opts.disableRetries }
+                  : {}),
+              }),
+            catch: (cause) =>
+              new RestateError({ reason: 'EndpointFailed', method: 'startServer', cause }),
+          }),
+          (s) => Effect.promise(() => s.shutdown()),
+        )
 
-          /* 1. Spawn the native server (ephemeral ports + isolated base dir). The
-           * finalizer SIGTERM/SIGKILLs it and removes the base dir LAST. */
-          const server = yield* Effect.acquireRelease(
-            Effect.tryPromise({
-              try: () =>
-                startServer({
-                  ...(opts.alwaysReplay !== undefined ? { alwaysReplay: opts.alwaysReplay } : {}),
-                  ...(opts.disableRetries !== undefined
-                    ? { disableRetries: opts.disableRetries }
-                    : {}),
-                }),
+        /* Serve one `services` array on a fresh ephemeral SDK port (the consumer's
+         * `appLayer` provided so handler `R` is discharged) and register it as a
+         * deployment. The endpoint `layer` is itself scoped — building it into the
+         * GIVEN scope registers its finalizer (close the HTTP/2 server) BEFORE the
+         * server-shutdown finalizer (close endpoint → kill server → rm base dir).
+         * Reused for the primary deployment AND `registerDeployment` (multi-version,
+         * docs/vrs/09-testing/spec.md §2) — each gets its own port + scope-managed endpoint. */
+        const serveAndRegister = <AppR2, RIn2>({
+          services,
+          appLayer,
+          endpointScope,
+        }: {
+          services: ReadonlyArray<AnyImplementation<AppR2>>
+          appLayer: Layer.Layer<AppR2, never, RIn2>
+          endpointScope: Scope.Scope
+        }): Effect.Effect<string, RestateError, RIn2> =>
+          Effect.gen(function* () {
+            const endpointContext = yield* Layer.buildWithScope(
+              layerWithBoundEndpoint({
+                services,
+                port: 0,
+                ...(opts.hooks !== undefined ? { hooks: opts.hooks } : {}),
+                ...(opts.inboundBridge !== undefined ? { inboundBridge: opts.inboundBridge } : {}),
+                ...(opts.boundaryObserver !== undefined
+                  ? { boundaryObserver: opts.boundaryObserver }
+                  : {}),
+                identityKeys: [server.requestIdentityPublicKey],
+                sdkLogger,
+              }).pipe(Layer.provide(appLayer)),
+              endpointScope,
+            ).pipe(
+              /* The endpoint layer's channel is `RestateError | ConfigError`, but
+               * the `ConfigError` arm fires ONLY for a `Config<number>` port — here
+               * the port is literal `0`, so it is structurally impossible.
+               * Re-fail a real `RestateError` (a bind/listen failure) and die on the
+               * unreachable `ConfigError`, keeping the harness channel clean. */
+              Effect.catch((cause) =>
+                cause instanceof RestateError ? Effect.fail(cause) : Effect.die(cause),
+              ),
+            )
+            const uri = Context.get(endpointContext, BoundEndpoint).url
+            yield* Effect.tryPromise({
+              try: () => server.register(uri),
               catch: (cause) =>
-                new RestateError({ reason: 'EndpointFailed', method: 'startServer', cause }),
-            }),
-            (s) => Effect.promise(() => s.shutdown()),
-          )
-
-          /* Serve one `services` array on a fresh ephemeral SDK port (the consumer's
-           * `appLayer` provided so handler `R` is discharged) and register it as a
-           * deployment. The endpoint `layer` is itself scoped — building it into the
-           * GIVEN scope registers its finalizer (close the HTTP/2 server) BEFORE the
-           * server-shutdown finalizer (close endpoint → kill server → rm base dir).
-           * Reused for the primary deployment AND `registerDeployment` (multi-version,
-           * docs/vrs/09-testing/spec.md §2) — each gets its own port + scope-managed endpoint. */
-          const serveAndRegister = <AppR2, RIn2>({
-            services,
-            appLayer,
-            endpointScope,
-          }: {
-            services: ReadonlyArray<AnyImplementation<AppR2>>
-            appLayer: Layer.Layer<AppR2, never, RIn2>
-            endpointScope: Scope.Scope
-          }): Effect.Effect<string, RestateError, RIn2> =>
-            Effect.gen(function* () {
-              const endpointContext = yield* Layer.buildWithScope(
-                layerWithBoundEndpoint({
-                  services,
-                  port: 0,
-                  ...(opts.hooks !== undefined ? { hooks: opts.hooks } : {}),
-                  ...(opts.inboundBridge !== undefined
-                    ? { inboundBridge: opts.inboundBridge }
-                    : {}),
-                  ...(opts.boundaryObserver !== undefined
-                    ? { boundaryObserver: opts.boundaryObserver }
-                    : {}),
-                  identityKeys: [server.requestIdentityPublicKey],
-                  sdkLogger,
-                }).pipe(Layer.provide(appLayer)),
-                endpointScope,
-              ).pipe(
-                /* The endpoint layer's channel is `RestateError | ConfigError`, but
-                 * the `ConfigError` arm fires ONLY for a `Config<number>` port — here
-                 * the port is literal `0`, so it is structurally impossible.
-                 * Re-fail a real `RestateError` (a bind/listen failure) and die on the
-                 * unreachable `ConfigError`, keeping the harness channel clean. */
-                Effect.catch((cause) =>
-                  cause instanceof RestateError ? Effect.fail(cause) : Effect.die(cause),
-                ),
-              )
-              const uri = Context.get(endpointContext, BoundEndpoint).url
-              yield* Effect.tryPromise({
-                try: () => server.register(uri),
-                catch: (cause) =>
-                  new RestateError({ reason: 'EndpointFailed', method: 'register', cause }),
-              })
-              return uri
+                new RestateError({ reason: 'EndpointFailed', method: 'register', cause }),
             })
-
-          /* MEMOIZE the primary `appLayer` so it is built EXACTLY ONCE into the
-           * harness scope and shared by (a) the served endpoint and (b) the redaction
-           * read below — no double-acquisition of resourceful app services. The
-           * memoized layer is provided to the endpoint AND read for `RestateRedaction`,
-           * so the harness uses the SAME cipher instance the handlers do. */
-          const harnessScope = yield* Effect.scope
-          const appContext = yield* Layer.build(opts.appLayer)
-          const memoAppLayer = Layer.succeedContext(appContext)
-
-          /* 2.+3. Serve + register the primary deployment into the harness scope. */
-          yield* serveAndRegister({
-            services: opts.services,
-            appLayer: memoAppLayer,
-            endpointScope: harnessScope,
+            return uri
           })
 
-          /* Resolve the OPTIONAL `RestateRedaction` cipher from the consumer's
-           * `appLayer` — the SAME cipher the served endpoint resolves (decision 0020),
-           * so the harness ingress + `stateOf` use the IDENTICAL contract-invocation
-           * policy as production rather than a parallel `effectSerde` path (closes the
-           * harness-drift gap). Read from the memoized build; absent → no cipher. */
-          const redaction = Context.getOption(appContext, RestateRedaction).pipe(
-            Option.getOrUndefined,
-          )
+        /* MEMOIZE the primary `appLayer` so it is built EXACTLY ONCE into the
+         * harness scope and shared by (a) the served endpoint and (b) the redaction
+         * read below — no double-acquisition of resourceful app services. The
+         * memoized layer is provided to the endpoint AND read for `RestateRedaction`,
+         * so the harness uses the SAME cipher instance the handlers do. */
+        const harnessScope = yield* Effect.scope
+        const appContext = yield* Layer.build(opts.appLayer)
+        const memoAppLayer = Layer.succeedContext(appContext)
 
-          /* 4. Build the connected ingress runtime once, so the bound call surface
-           * provides `RestateIngress` internally (the test never threads it). The
-           * redaction cipher rides on the ingress service, so a `Restate.sensitive`
-           * field is encrypted on the wire through the SAME policy as production. */
-          const ingressService: RestateIngressService = {
-            ingress: clients.connect({ url: server.ingressUrl }),
-            ...(redaction !== undefined ? { redaction } : {}),
-          }
-          const provideIngress = <X, E, R>(
-            effect: Effect.Effect<X, E, R>,
-          ): Effect.Effect<X, E, Exclude<R, RestateIngress>> =>
-            effect.pipe(Effect.provideService(RestateIngress, ingressService)) as Effect.Effect<
-              X,
-              E,
-              Exclude<R, RestateIngress>
-            >
+        /* 2.+3. Serve + register the primary deployment into the harness scope. */
+        yield* serveAndRegister({
+          services: opts.services,
+          appLayer: memoAppLayer,
+          endpointScope: harnessScope,
+        })
 
-          const bound: BoundIngress = {
-            call: ((...a: Parameters<typeof ingressCall>) =>
-              provideIngress(ingressCall(...a))) as BoundIngress['call'],
-            callTyped: ((...a: Parameters<typeof ingressCallTyped>) =>
-              provideIngress(ingressCallTyped(...a))) as BoundIngress['callTyped'],
-            objectCall: ((...a: Parameters<typeof ingressObjectCall>) =>
-              provideIngress(ingressObjectCall(...a))) as BoundIngress['objectCall'],
-            /* Generic wrapper (not `Parameters<typeof ...>`-spread) so the deferred
-             * conditional `ObjectErrorOf<C, M>` stays in the error channel instead of
-             * collapsing to `unknown` at the constraint defaults. */
-            objectCallTyped: (<
-              C extends ObjectContract<string, any, any>,
-              M extends ObjectMethodsOf<C>,
-            >(args: {
-              contract: C
-              key: string
-              method: M
-              input: ObjectInputOf<C, M>
-            }) => provideIngress(ingressObjectCallTyped(args))) as BoundIngress['objectCallTyped'],
-            objectSend: ((...a: Parameters<typeof ingressObjectSend>) =>
-              provideIngress(ingressObjectSend(...a))) as BoundIngress['objectSend'],
-            workflowSubmit: ((...a: Parameters<typeof ingressWorkflowSubmit>) =>
-              provideIngress(ingressWorkflowSubmit(...a))) as BoundIngress['workflowSubmit'],
-            /* Generic wrapper (see `objectCallTyped`) so `WorkflowRunErrorOf<C>` stays
-             * a deferred conditional rather than degrading to `unknown`. */
-            workflowAttach: (<C extends WorkflowContract<string, any, any, any, any>>(args: {
-              contract: C
-              key: string
-            }) => provideIngress(ingressWorkflowAttach(args))) as BoundIngress['workflowAttach'],
-            workflowOutput: ((...a: Parameters<typeof ingressWorkflowOutput>) =>
-              provideIngress(ingressWorkflowOutput(...a))) as BoundIngress['workflowOutput'],
-            workflowCall: ((...a: Parameters<typeof ingressWorkflowCall>) =>
-              provideIngress(ingressWorkflowCall(...a))) as BoundIngress['workflowCall'],
-            result: ((...a: Parameters<typeof ingressResult>) =>
-              provideIngress(ingressResult(...a))) as BoundIngress['result'],
-            resolveAwakeable: ((...a: Parameters<typeof ingressResolveAwakeable>) =>
-              provideIngress(ingressResolveAwakeable(...a))) as BoundIngress['resolveAwakeable'],
-          }
+        /* Resolve the OPTIONAL `RestateRedaction` cipher from the consumer's
+         * `appLayer` — the SAME cipher the served endpoint resolves (decision 0020),
+         * so the harness ingress + `stateOf` use the IDENTICAL contract-invocation
+         * policy as production rather than a parallel `effectSerde` path (closes the
+         * harness-drift gap). Read from the memoized build; absent → no cipher. */
+        const redaction = Context.getOption(appContext, RestateRedaction).pipe(
+          Option.getOrUndefined,
+        )
 
-          return {
-            ingressUrl: server.ingressUrl,
-            adminUrl: server.adminUrl,
-            sdkLogs: {
-              records: () => [...sdkLogRecords],
-            },
-            ingress: bound,
-            stateOf: <S extends StateSchemas>(args: {
-              contract: StatefulContract<S>
-              key: string
-            }) =>
-              makeStateProxy({
-                adminUrl: server.adminUrl,
-                contract: args.contract,
-                serviceKey: args.key,
-                redaction,
-              }),
-            registerDeployment: (<AppR2, RIn2>(deployOpts: {
-              readonly services: ReadonlyArray<AnyImplementation<AppR2>>
-              readonly appLayer: Layer.Layer<AppR2, never, RIn2>
-            }) =>
-              serveAndRegister({
-                services: deployOpts.services,
-                appLayer: deployOpts.appLayer,
-                endpointScope: harnessScope,
-              })) as RestateTestHarnessService['registerDeployment'],
-          }
-        }),
-      ),
+        /* 4. Build the connected ingress runtime once, so the bound call surface
+         * provides `RestateIngress` internally (the test never threads it). The
+         * redaction cipher rides on the ingress service, so a `Restate.sensitive`
+         * field is encrypted on the wire through the SAME policy as production. */
+        const ingressService: RestateIngressService = {
+          ingress: clients.connect({ url: server.ingressUrl }),
+          ...(redaction !== undefined ? { redaction } : {}),
+        }
+        const provideIngress = <X, E, R>(
+          effect: Effect.Effect<X, E, R>,
+        ): Effect.Effect<X, E, Exclude<R, RestateIngress>> =>
+          effect.pipe(Effect.provideService(RestateIngress, ingressService)) as Effect.Effect<
+            X,
+            E,
+            Exclude<R, RestateIngress>
+          >
+
+        const bound: BoundIngress = {
+          call: ((...a: Parameters<typeof ingressCall>) =>
+            provideIngress(ingressCall(...a))) as BoundIngress['call'],
+          callTyped: ((...a: Parameters<typeof ingressCallTyped>) =>
+            provideIngress(ingressCallTyped(...a))) as BoundIngress['callTyped'],
+          objectCall: ((...a: Parameters<typeof ingressObjectCall>) =>
+            provideIngress(ingressObjectCall(...a))) as BoundIngress['objectCall'],
+          /* Generic wrapper (not `Parameters<typeof ...>`-spread) so the deferred
+           * conditional `ObjectErrorOf<C, M>` stays in the error channel instead of
+           * collapsing to `unknown` at the constraint defaults. */
+          objectCallTyped: (<
+            C extends ObjectContract<string, any, any>,
+            M extends ObjectMethodsOf<C>,
+          >(args: {
+            contract: C
+            key: string
+            method: M
+            input: ObjectInputOf<C, M>
+          }) => provideIngress(ingressObjectCallTyped(args))) as BoundIngress['objectCallTyped'],
+          objectSend: ((...a: Parameters<typeof ingressObjectSend>) =>
+            provideIngress(ingressObjectSend(...a))) as BoundIngress['objectSend'],
+          workflowSubmit: ((...a: Parameters<typeof ingressWorkflowSubmit>) =>
+            provideIngress(ingressWorkflowSubmit(...a))) as BoundIngress['workflowSubmit'],
+          /* Generic wrapper (see `objectCallTyped`) so `WorkflowRunErrorOf<C>` stays
+           * a deferred conditional rather than degrading to `unknown`. */
+          workflowAttach: (<C extends WorkflowContract<string, any, any, any, any>>(args: {
+            contract: C
+            key: string
+          }) => provideIngress(ingressWorkflowAttach(args))) as BoundIngress['workflowAttach'],
+          workflowOutput: ((...a: Parameters<typeof ingressWorkflowOutput>) =>
+            provideIngress(ingressWorkflowOutput(...a))) as BoundIngress['workflowOutput'],
+          workflowCall: ((...a: Parameters<typeof ingressWorkflowCall>) =>
+            provideIngress(ingressWorkflowCall(...a))) as BoundIngress['workflowCall'],
+          result: ((...a: Parameters<typeof ingressResult>) =>
+            provideIngress(ingressResult(...a))) as BoundIngress['result'],
+          resolveAwakeable: ((...a: Parameters<typeof ingressResolveAwakeable>) =>
+            provideIngress(ingressResolveAwakeable(...a))) as BoundIngress['resolveAwakeable'],
+        }
+
+        return {
+          ingressUrl: server.ingressUrl,
+          adminUrl: server.adminUrl,
+          sdkLogs: {
+            records: () => [...sdkLogRecords],
+          },
+          ingress: bound,
+          stateOf: <S extends StateSchemas>(args: { contract: StatefulContract<S>; key: string }) =>
+            makeStateProxy({
+              adminUrl: server.adminUrl,
+              contract: args.contract,
+              serviceKey: args.key,
+              redaction,
+            }),
+          registerDeployment: (<AppR2, RIn2>(deployOpts: {
+            readonly services: ReadonlyArray<AnyImplementation<AppR2>>
+            readonly appLayer: Layer.Layer<AppR2, never, RIn2>
+          }) =>
+            serveAndRegister({
+              services: deployOpts.services,
+              appLayer: deployOpts.appLayer,
+              endpointScope: harnessScope,
+            })) as RestateTestHarnessService['registerDeployment'],
+        }
+      }),
     )
 }
 

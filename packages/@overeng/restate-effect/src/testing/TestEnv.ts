@@ -176,7 +176,7 @@ export class RestateTestEnv extends Context.Service<RestateTestEnv, RestateTestE
     readonly services: ReadonlyArray<AnyImplementation<AppR>>
     readonly appLayer: Layer.Layer<AppR, never, RIn>
   }): Layer.Layer<RestateTestEnv, never, RIn> =>
-    Layer.effect(RestateTestEnv, Effect.scoped(makeMockEnv(opts)))
+    Layer.effect(RestateTestEnv, makeMockEnv(opts))
 
   /**
    * The native-server REAL backend: a thin wrapper over the existing
@@ -367,7 +367,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
   Effect.gen(function* () {
     /* 1. Capture the application `Runtime<AppR>` ONCE from `appLayer`, into the env
      * scope (so its scoped resources are torn down with the env — the ambient
-     * `Scope.Scope` is provided by the `Layer.scoped` this runs under). */
+     * `Scope.Scope` is provided by the `Layer.effect` this runs under). */
     const runtime = yield* Layer.build(opts.appLayer)
 
     /* 2. Per-key State: `${service}/${key}` → the inner State `Map` (so object /
