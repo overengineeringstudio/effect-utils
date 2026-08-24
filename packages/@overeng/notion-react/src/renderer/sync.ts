@@ -1219,8 +1219,38 @@ export const sync = (
             nodeKind: 'block',
           })
         }
+        // Live children beyond the persisted create-time intent mean another
+        // client wrote under the half-created page between the crashed sync
+        // and this retry. Adopting only the prefix would strand those blocks
+        // forever (drift detection is root-shallow), so fail loudly instead —
+        // failing before the cache save keeps the pending marker intact for a
+        // clean retry once the untracked content is removed.
+        if (liveIdx < liveBlocks.length) {
+          return yield* new NotionSyncError({
+            reason: 'notion-retrieve-failed',
+            cause:
+              `pending inline adoption found ${liveBlocks.length - liveIdx} untracked block(s) ` +
+              `under ${parentId} beyond the persisted create-time intent (${nodes.length} expected); ` +
+              `remove them or reset the cache to recover`,
+          })
+        }
         return adopted
       })
+
+    // A checkpointed page may have moved to another parent in the retry JSX,
+    // so resolvePendingPages' sibling-local lookup would miss it and leave the
+    // marker unresolved — the subsequent movePage diff then re-appends the
+    // already-created inline descendants from an empty cache subtree. Index
+    // all page-kind candidates once so recovery can adopt the identity before
+    // the relocation is diffed.
+    const candidatePageByKey = new Map<string, CandidateNode>()
+    const indexCandidatePages = (nodes: readonly CandidateNode[]): void => {
+      for (const node of nodes) {
+        if (node.nodeKind === 'page') candidatePageByKey.set(node.key, node)
+        indexCandidatePages(node.children)
+      }
+    }
+    indexCandidatePages(candidate.children)
 
     const resolvePendingPages = (
       cached: readonly CacheNode[],
@@ -1234,9 +1264,19 @@ export const sync = (
         let changed = false
         const nodes: CacheNode[] = []
         for (const cachedNode of cached) {
-          const candidateNode = candidates.find(
+          let candidateNode = candidates.find(
             (node) => node.key === cachedNode.key && node.nodeKind === cachedNode.nodeKind,
           )
+          if (
+            candidateNode === undefined &&
+            cachedNode.nodeKind === 'page' &&
+            cachedNode.pendingInlineResolution !== undefined
+          ) {
+            // Cross-parent fallback: resolve the pending inline descendants
+            // against the old location so the move diff sees adopted children
+            // instead of duplicating the server-side subtree.
+            candidateNode = candidatePageByKey.get(cachedNode.key)
+          }
           if (candidateNode === undefined || cachedNode.nodeKind !== 'page') {
             nodes.push(cachedNode)
             continue
@@ -1258,7 +1298,12 @@ export const sync = (
         return { nodes, changed }
       })
 
-    if (prior !== undefined) {
+    // Pending recovery retrieves against page ids recorded under prior.rootId.
+    // When the cache was written for a different page (page-id drift) those
+    // retrievals can fail on ids that are stale or no longer accessible, so
+    // skip recovery and let the documented cold-start path handle the
+    // mismatch.
+    if (prior !== undefined && prior.rootId === opts.pageId) {
       const resolvedPending = yield* resolvePendingPages(prior.children, candidate.children)
       if (resolvedPending.changed) {
         prior = { ...prior, children: resolvedPending.nodes }
