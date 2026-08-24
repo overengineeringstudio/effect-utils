@@ -24,7 +24,7 @@ let
   contract = "effect-utils/rust-local-store-toolchain/v1";
   executionPlatform = "//buck2/platforms:exec_x86_64_linux_local_store";
   targetPlatform = "//buck2/platforms:target_x86_64_linux_musl_static";
-  identityVerifier = pkgs.writeShellScript "buck2-rust-toolchain-identity-verify" ''
+  identityVerifierBin = pkgs.writeShellScriptBin "buck2-rust-toolchain-identity-verify" ''
     set -euo pipefail
     [ "$#" -ge 3 ] || {
       echo "buck2-rust-toolchain-identity-verify: expected MATERIAL ID COMMAND..." >&2
@@ -48,6 +48,10 @@ let
     fi
     exec "$@"
   '';
+  # Buck's local-store contract requires every executable to live at an exact
+  # /nix/store/<drv>/bin/<name> path, so the verifier is packaged as a bin
+  # derivation instead of a bare store file.
+  identityVerifier = "${identityVerifierBin}/bin/buck2-rust-toolchain-identity-verify";
   # Complete material detects a stale or spliced config. It is deliberately
   # not an action key: actions use the narrow semantic material below.
   configIntegrityMaterial = builtins.concatStringsSep ";" [
