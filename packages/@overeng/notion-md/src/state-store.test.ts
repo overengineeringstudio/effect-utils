@@ -126,7 +126,8 @@ const TreeIndexCodec: JsonCodec<TreeIndex> = {
 
 const roundTripFileJson = <T>(codec: JsonCodec<T>, value: T) => {
   const encoded = `${codec.encode(value).trimEnd()}\n`
-  const decoded = codec.decode(JSON.parse(encoded))
+  // Effect v4 `Schema.fromJsonString` decodes the raw JSON string itself.
+  const decoded = codec.decode(encoded)
   const reencoded = `${codec.encode(decoded).trimEnd()}\n`
 
   return {
@@ -139,7 +140,7 @@ const roundTripFileJson = <T>(codec: JsonCodec<T>, value: T) => {
 
 const decodeFailure = <T>(codec: JsonCodec<T>, encoded: string) => {
   try {
-    return { _tag: 'decoded' as const, value: codec.decode(JSON.parse(encoded)) }
+    return { _tag: 'decoded' as const, value: codec.decode(encoded) }
   } catch (error) {
     return {
       _tag: 'failed' as const,
@@ -149,7 +150,6 @@ const decodeFailure = <T>(codec: JsonCodec<T>, encoded: string) => {
 }
 
 describe('notion-md wire baselines (cross-major invariant)', () => {
-  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and renders SchemaError(...); preserve ISO state bytes and adjudicate internal failure text before re-baselining.
   it('captures state-store sync state JSON bytes and failure partition', () => {
     const baseContent = 'Base body\r\nunicode ß\n'
     const storageContent = '{"comments":["c-1"],"note":"Grüße 東京"}\n'
@@ -449,73 +449,47 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
       {
         "excessTopLevel": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.SyncStateV1)
-      └─ Type side transformation failure
-         └─ NotionMd.SyncStateV1
-            ├─ ["extra"]
-            │  └─ is unexpected, expected: "version" | "page_id" | "body" | "storage" | "read_only_properties" | "data_source"
-            └─ ["body"]
-               └─ NotionMd.BodyState
-                  ├─ ["hash"]
-                  │  └─ NotionMd.Sha256Digest
-                  │     └─ Predicate refinement failure
-                  │        └─ Expected a string matching the pattern ^sha256:[a-f0-9]{64}$, actual "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                  └─ ["base"]
-                     └─ NotionMd.ObjectRef
-                        └─ ["hash"]
-                           └─ NotionMd.Sha256Digest
-                              └─ Predicate refinement failure
-                                 └─ Expected a string matching the pattern ^sha256:[a-f0-9]{64}$, actual "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"",
+          "error": "SchemaError(Expected no excess property
+        at ["extra"]
+      Expected a string matching the RegExp ^sha256:[a-f0-9]{64}$
+        at ["body"]["hash"]
+      Expected a string matching the RegExp ^sha256:[a-f0-9]{64}$
+        at ["body"]["base"]["hash"])",
         },
         "missingStorage": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.SyncStateV1)
-      └─ Type side transformation failure
-         └─ NotionMd.SyncStateV1
-            ├─ ["body"]
-            │  └─ NotionMd.BodyState
-            │     ├─ ["format"]
-            │     │  └─ is missing
-            │     ├─ ["hash"]
-            │     │  └─ is missing
-            │     ├─ ["base"]
-            │     │  └─ is missing
-            │     ├─ ["last_pulled_at"]
-            │     │  └─ is missing
-            │     ├─ ["remote_last_edited_time"]
-            │     │  └─ is missing
-            │     ├─ ["truncated"]
-            │     │  └─ is missing
-            │     └─ ["unknown_block_ids"]
-            │        └─ is missing
-            └─ ["storage"]
-               └─ is missing",
+          "error": "SchemaError(Missing key
+        at ["body"]["format"]
+      Missing key
+        at ["body"]["hash"]
+      Missing key
+        at ["body"]["base"]
+      Missing key
+        at ["body"]["last_pulled_at"]
+      Missing key
+        at ["body"]["remote_last_edited_time"]
+      Missing key
+        at ["body"]["truncated"]
+      Missing key
+        at ["body"]["unknown_block_ids"]
+      Missing key
+        at ["storage"])",
         },
         "nullBase": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.SyncStateV1)
-      └─ Type side transformation failure
-         └─ NotionMd.SyncStateV1
-            └─ ["body"]
-               └─ NotionMd.BodyState
-                  ├─ ["hash"]
-                  │  └─ NotionMd.Sha256Digest
-                  │     └─ Predicate refinement failure
-                  │        └─ Expected a string matching the pattern ^sha256:[a-f0-9]{64}$, actual "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                  └─ ["base"]
-                     └─ Expected NotionMd.ObjectRef, actual null",
+          "error": "SchemaError(Expected a string matching the RegExp ^sha256:[a-f0-9]{64}$
+        at ["body"]["hash"]
+      Expected NotionMd.ObjectRef
+        at ["body"]["base"])",
         },
         "nullDocument": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.SyncStateV1)
-      └─ Type side transformation failure
-         └─ Expected NotionMd.SyncStateV1, actual null",
+          "error": "SchemaError(Expected NotionMd.SyncStateV1)",
         },
       }
     `)
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and renders SchemaError(...); preserve ISO object bytes and adjudicate internal failure text before re-baselining.
   it('captures state-store object JSON bytes and failure partition', () => {
     const baseSnapshot: NmdBaseSnapshotV2 = {
       version: 2,
@@ -787,46 +761,29 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
       {
         "baseBadVersion": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.BaseSnapshotV2)
-      └─ Type side transformation failure
-         └─ NotionMd.BaseSnapshotV2
-            ├─ ["version"]
-            │  └─ Expected 2, actual 1
-            └─ ["body_hash"]
-               └─ NotionMd.Sha256Digest
-                  └─ Predicate refinement failure
-                     └─ Expected a string matching the pattern ^sha256:[a-f0-9]{64}$, actual "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"",
+          "error": "SchemaError(Expected 2
+        at ["version"]
+      Expected a string matching the RegExp ^sha256:[a-f0-9]{64}$
+        at ["body_hash"])",
         },
         "baseNullDocument": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.BaseSnapshotV2)
-      └─ Type side transformation failure
-         └─ Expected NotionMd.BaseSnapshotV2, actual null",
+          "error": "SchemaError(Expected NotionMd.BaseSnapshotV2)",
         },
         "storageNullPayload": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.StorageObjectV2)
-      └─ Type side transformation failure
-         └─ NotionMd.StorageObjectV2
-            └─ ["storage"]
-               └─ Expected NotionMd.Storage, actual null",
+          "error": "SchemaError(Expected NotionMd.Storage
+        at ["storage"])",
         },
         "storageUnknownTag": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.StorageObjectV2)
-      └─ Type side transformation failure
-         └─ NotionMd.StorageObjectV2
-            └─ ["storage"]
-               └─ NotionMd.Storage
-                  └─ { readonly _tag: "self_contained" | "object_store" }
-                     └─ ["_tag"]
-                        └─ Expected "self_contained" | "object_store", actual "unknown"",
+          "error": "SchemaError(Expected NotionMd.Storage
+        at ["storage"])",
         },
       }
     `)
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) for these failures; preserve the tree-index structural partition and adjudicate internal-only text before re-baselining.
   it('captures tree-index JSON bytes and failure partition', () => {
     expect(
       roundTripFileJson(TreeIndexCodec, {
@@ -900,35 +857,22 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
       {
         "excessTopLevel": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.TreeIndex)
-      └─ Type side transformation failure
-         └─ NotionMd.TreeIndex
-            └─ ["extra"]
-               └─ is unexpected, expected: "version" | "root_page_id" | "root_file" | "pages"",
+          "error": "SchemaError(Expected no excess property
+        at ["extra"])",
         },
         "missingRootFile": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.TreeIndex)
-      └─ Type side transformation failure
-         └─ NotionMd.TreeIndex
-            └─ ["root_file"]
-               └─ is missing",
+          "error": "SchemaError(Missing key
+        at ["root_file"])",
         },
         "nullDocument": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.TreeIndex)
-      └─ Type side transformation failure
-         └─ Expected NotionMd.TreeIndex, actual null",
+          "error": "SchemaError(Expected NotionMd.TreeIndex)",
         },
         "nullPageId": {
           "_tag": "failed",
-          "error": "(parseJson <-> NotionMd.TreeIndex)
-      └─ Type side transformation failure
-         └─ NotionMd.TreeIndex
-            └─ ["pages"]
-               └─ { readonly [x: string]: string }
-                  └─ ["alpha.nmd"]
-                     └─ Expected string, actual null",
+          "error": "SchemaError(Expected string
+        at ["pages"]["alpha.nmd"])",
         },
       }
     `)

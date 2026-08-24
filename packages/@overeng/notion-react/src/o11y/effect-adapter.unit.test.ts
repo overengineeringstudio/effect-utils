@@ -22,14 +22,13 @@ const makeFakeTracer = (): { tracer: Tracer.Tracer; spans: RecordedSpan[] } => {
   const tracer: Tracer.Tracer = {
     // eslint-disable-next-line @typescript-eslint/naming-convention
     ['~effect/Tracer' as never]: undefined as never,
-    span: (
-      name: string,
-      parent: Option.Option<Tracer.AnySpan>,
-      _context: Context.Context<never>,
-      _links: ReadonlyArray<Tracer.SpanLink>,
-      startTime: bigint,
-      kind: Tracer.SpanKind,
-    ): Tracer.Span => {
+    span: (options: {
+      readonly name: string
+      readonly parent: Option.Option<Tracer.AnySpan>
+      readonly startTime: bigint
+      readonly kind: Tracer.SpanKind
+    }): Tracer.Span => {
+      const { name, parent, startTime, kind } = options
       const rec: RecordedSpan = {
         name,
         startTimeNs: startTime,
@@ -174,7 +173,8 @@ describe('emitSyncEndOnInterrupt', () => {
       }),
     )
 
-    expect(Exit.isSuccess(exit)).toBe(true)
+    // v4 `Fiber.join` propagates the child's interruption to the parent.
+    expect(Exit.isFailure(exit)).toBe(true)
     expect(events).toHaveLength(1)
     const [ev] = events
     expect(ev!._tag).toBe('SyncEnd')

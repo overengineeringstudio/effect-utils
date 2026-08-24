@@ -56,9 +56,11 @@ Vitest.describe('NotionThrottle', () => {
 
       const stamps = [...(yield* Queue.takeAll(completedAt))]
       // burst of 2 ⇒ the bucket starts with 2 tokens (first two requests
-      // immediate), and the token-bucket refills 1 token per interval/limit
-      // (1000/2 = 500 ms), so the third request is released at 500 ms.
-      expect(stamps).toEqual([0, 0, 500])
+      // immediate), and the bucket refills at the SUSTAINED rate of 1 token
+      // per 1000/rps ms (window/limit = 2000/2), so the third request is
+      // released at 1000 ms. (Effect v3 scaled throughput by `burst`;
+      // the documented contract is a fixed sustained `requestsPerSecond`.)
+      expect(stamps).toEqual([0, 0, 1000])
     }).pipe(Effect.provide(NotionThrottleLive({ requestsPerSecond: 1, burst: 2 }))),
   )
 })

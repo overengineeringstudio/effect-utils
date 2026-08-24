@@ -269,7 +269,7 @@ Vitest.describe('RichText Property', () => {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.richTextNonEmpty)(emptyProp).pipe(
           Effect.result,
         )
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -480,7 +480,7 @@ Vitest.describe('Select Property', () => {
         const result = yield* Schema.decodeUnknownEffect(
           NotionSchema.select(Allowed).pipe(NotionSchema.asName),
         )(invalidProperty).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -591,7 +591,7 @@ Vitest.describe('MultiSelect Property', () => {
         const result = yield* Schema.decodeUnknownEffect(
           NotionSchema.multiSelect(Allowed).pipe(NotionSchema.asNames),
         )(invalidProperty).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -690,7 +690,7 @@ Vitest.describe('Status Property', () => {
         const result = yield* Schema.decodeUnknownEffect(
           NotionSchema.status(Allowed).pipe(NotionSchema.asName),
         )(invalidProperty).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -794,7 +794,7 @@ Vitest.describe('Formula Property', () => {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.formulaNumber)(
           stringFormulaProperty,
         ).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -814,7 +814,7 @@ Vitest.describe('Formula Property', () => {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.formulaString)(
           numberFormulaProperty,
         ).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -907,7 +907,7 @@ Vitest.describe('Rollup Property', () => {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.rollupNumber)(
           stringRollupProperty,
         ).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1003,7 +1003,7 @@ Vitest.describe('Date Property', () => {
     Vitest.it.effect('fails for null date', () =>
       Effect.gen(function* () {
         const result = yield* Schema.decodeUnknownEffect(schema)(nullDateProperty).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1068,7 +1068,7 @@ Vitest.describe('NotionSchema.nullable', () => {
   Vitest.it.effect('fails for null', () =>
     Effect.gen(function* () {
       const result = yield* Schema.decodeUnknownEffect(schema)(null).pipe(Effect.result)
-      expect(result._tag).toBe('Left')
+      expect(result._tag).toBe('Failure')
     }),
   )
 })
@@ -1283,7 +1283,7 @@ Vitest.describe('Relation Property', () => {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.relationSingle)(
           relationProperty,
         ).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1303,7 +1303,7 @@ Vitest.describe('Relation Property', () => {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.relationSingleId)(
           relationProperty,
         ).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1335,7 +1335,7 @@ Vitest.describe('Relation Property', () => {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.relationSingleOption)(
           relationProperty,
         ).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })
@@ -1367,7 +1367,7 @@ Vitest.describe('Relation Property', () => {
         const result = yield* Schema.decodeUnknownEffect(NotionSchema.relationSingleIdOption)(
           relationProperty,
         ).pipe(Effect.result)
-        expect(result._tag).toBe('Left')
+        expect(result._tag).toBe('Failure')
       }),
     )
   })

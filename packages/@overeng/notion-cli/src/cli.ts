@@ -157,7 +157,8 @@ const runNotionCliMain = async ({
     return
   }
 
-  const rewrittenArgv = rewriteHelpSubcommand(argv)
+  // Effect v4 `Command.runWith` consumes user args only (no node/script prefix).
+  const rewrittenArgv = rewriteHelpSubcommand(argv).slice(2)
   await runRootCli(rewrittenArgv)
 }
 

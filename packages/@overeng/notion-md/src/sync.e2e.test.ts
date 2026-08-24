@@ -787,10 +787,12 @@ describe('notion-md e2e prototype', () => {
         ),
       )
 
+      // The watch fiber is interrupted as soon as the first pass lands, so
+      // otelite stamps the in-flight `notion-md.watch`/`sync-pass` spans with
+      // an interrupt marker in `span.label`; assert the semantic attributes.
       trace.expectSome({
         name: 'notion-md.watch',
         attrs: {
-          'span.label': 'probe.nmd',
           'notion_md.command': 'sync',
           'notion_md.watch': 'true',
           'notion_md.path.basename': 'probe.nmd',
@@ -799,7 +801,6 @@ describe('notion-md e2e prototype', () => {
       trace.expectSome({
         name: 'notion-md.watch.sync-pass',
         attrs: {
-          'span.label': 'probe.nmd:initial',
           'notion_md.command': 'sync',
           'notion_md.watch': 'true',
           'notion_md.watch.reason': 'initial',

@@ -134,7 +134,7 @@ describe('FakeNotion stateful page model', () => {
         Effect.result,
       ),
     )
-    expect(listing._tag).toBe('Left')
+    expect(listing._tag).toBe('Failure')
     // Restore.
     await runWith(fake, NotionPages.update({ pageId: created.id, in_trash: false }))
     expect(fake.pages.get(created.id)!.archived).toBe(false)

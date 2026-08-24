@@ -18,7 +18,7 @@ export const runCliMain = ({
   Effect.gen(function* () {
     const endpoint = yield* otelEndpointFromConfig()
 
-    yield* cli(toEffectCliArgv({ binaryName: 'notion-md', args })).pipe(
+    yield* cli(args).pipe(
       Effect.tapCause(renderCliError),
       Effect.scoped,
       Effect.provide(
@@ -36,13 +36,6 @@ const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => v
   onExit(editorExitCode(exit))
 }
 
-const toEffectCliArgv = ({
-  binaryName,
-  args,
-}: {
-  readonly binaryName: string
-  readonly args: ReadonlyArray<string>
-}) => ['node', binaryName, ...args]
 
 const identity = Schema.decodeSync(ServiceIdentity)({
   name: 'notion-md-cli',

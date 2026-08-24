@@ -56,7 +56,25 @@ const noMaterializeBodiesOption = Options.boolean('no-materialize-bodies').pipe(
   Options.withDefault(false),
 )
 
-const commandRegistry: Array<{ readonly name: string; readonly description: string }> = []
+type CompletionCommandDescriptor = {
+  readonly name: string
+  readonly description: string
+  readonly subcommands: ReadonlyArray<CompletionCommandDescriptor>
+}
+
+const commandRegistry: Array<CompletionCommandDescriptor> = []
+
+const register = ({
+  name,
+  description,
+  subcommands = [],
+}: {
+  readonly name: string
+  readonly description: string
+  readonly subcommands?: CompletionCommandDescriptor['subcommands']
+}): void => {
+  commandRegistry.push({ name, description, subcommands })
+}
 
 const leafCommand = ({
   name,
@@ -69,7 +87,6 @@ const leafCommand = ({
   readonly handler: DatasourceDbCommandHandler
   readonly extraConfig?: {}
 }) => {
-  commandRegistry.push({ name, description })
   return Command.make(name, { ...commonOptions, ...extraConfig }, () => handler(name)).pipe(
     Command.withDescription(description),
   )
@@ -123,6 +140,7 @@ export const makeDatasourceDbSubcommands = (
       'Reconcile an established workspace, or run the watch daemon with --watch',
     ),
   )
+  register({ name: 'sync', description: 'Reconcile an established workspace, or run the watch daemon with --watch' })
 
   const conflictsCommand = Command.make('conflicts').pipe(
     Command.withSubcommands([
@@ -154,6 +172,14 @@ export const makeDatasourceDbSubcommands = (
     ]),
     Command.withDescription('Inspect and resolve SQLite sync conflicts'),
   )
+  register({
+    name: 'conflicts',
+    description: 'Inspect and resolve SQLite sync conflicts',
+    subcommands: [
+      { name: 'list', description: 'List unresolved conflicts', subcommands: [] },
+      { name: 'resolve', description: 'Resolve a conflict', subcommands: [] },
+    ],
+  })
 
   const trackCommand = Command.make(
     'track',
@@ -177,6 +203,13 @@ export const makeDatasourceDbSubcommands = (
     },
     () => handler('track'),
   ).pipe(Command.withDescription('Adopt a Notion data source into a workspace (the adoption verb)'))
+  register({ name: 'track', description: 'Adopt a Notion data source into a workspace (the adoption verb)' })
+
+  register({ name: 'export', description: 'Export rows, schema, and sync metadata from SQLite' })
+  register({ name: 'status', description: 'Print workspace sync status' })
+  register({ name: 'forget', description: 'Archive or forget a page locally' })
+  register({ name: 'restore', description: 'Restore a forgotten page locally' })
+  register({ name: 'doctor', description: 'Print diagnostics' })
 
   return [
     trackCommand,
@@ -266,6 +299,16 @@ export const makeDatasourceSyncCommand = ({
 // oxlint-disable-next-line overeng/exports-first -- command descriptor depends on the local builder.
 export const datasourceSyncCommand = makeDatasourceSyncCommand()
 
+const toCompletionDescriptor = (
+  command: CompletionCommandDescriptor,
+): Completions.CommandDescriptor => ({
+  name: command.name,
+  description: command.description,
+  flags: [],
+  arguments: [],
+  subcommands: command.subcommands.map(toCompletionDescriptor),
+})
+
 /** Renders datasource-sync shell completions from the shared command tree. */
 // oxlint-disable-next-line overeng/exports-first -- completion rendering depends on the local descriptor.
 export const renderDatasourceSyncCompletions = ({
@@ -283,13 +326,7 @@ export const renderDatasourceSyncCompletions = ({
       description: 'Notion database replica sync',
       flags: [],
       arguments: [],
-      subcommands: commandRegistry.map((command) => ({
-        name: command.name,
-        description: command.description,
-        flags: [],
-        arguments: [],
-        subcommands: [],
-      })),
+      subcommands: commandRegistry.map((command) => toCompletionDescriptor(command)),
     },
   )
 

@@ -385,8 +385,14 @@ export const runWatch = (opts: {
       return yield* Effect.forever(
         Effect.gen(function* () {
           const initial = yield* Queue.take(queue)
-          yield* Effect.sleep(Duration.millis(250))
-          const pending = yield* Queue.takeAll(queue)
+          // v4 `Queue.takeAll` blocks until ≥1 item is available; drain
+          // non-blockingly so the debounce window stays bounded.
+          const pending: Array<WatchTrigger> = []
+          while (true) {
+            const next = yield* Queue.poll(queue)
+            if (Option.isNone(next) === true) break
+            pending.push(next.value)
+          }
           yield* pass(nextWatchReason({ initial, pending }))
         }),
       )

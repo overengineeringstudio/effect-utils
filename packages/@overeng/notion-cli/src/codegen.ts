@@ -583,7 +583,7 @@ const generateTypedOptions = (opts: {
     property.description !== undefined
       ? `,\n  description: ${toSingleQuotedStringLiteral(property.description)},`
       : ''
-  const code = `export const ${typeName} = Schema.Literal(${literals}).annotate({
+  const code = `export const ${typeName} = Schema.Literals([${literals}]).annotate({
   identifier: '${typeName}'${descPart}
 })
 export type ${typeName} = typeof ${typeName}.Type`

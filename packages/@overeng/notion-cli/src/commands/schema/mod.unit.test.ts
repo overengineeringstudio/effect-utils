@@ -34,7 +34,8 @@ describe('schema generate option resolution', () => {
       yield* runCli(['db-id-123', '-o', 'schema.gen.ts'])
 
       expect(captured).toBeDefined()
-      expect(captured!.output).toBe('schema.gen.ts')
+      // Effect v4 `Options.file` resolves the value against the process cwd.
+      expect(captured!.output!.endsWith('schema.gen.ts')).toBe(true)
       // The TUI render mode falls back to its default rather than swallowing `-o`.
       expect(captured!.tuiOutput).toBe('auto')
     }).pipe(Effect.provide(NodeServices.layer)),

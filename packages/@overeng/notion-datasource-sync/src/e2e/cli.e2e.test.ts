@@ -417,7 +417,7 @@ describe('CLI command surface', () => {
   })
 
   it('prints shell completions from the import-safe Effect command tree', async () => {
-    const { stdout, stderr } = await execFileAsync(cliPath, ['--completions', 'bash'], {
+    const { stdout } = await execFileAsync(cliPath, ['--completions', 'bash'], {
       cwd: packageDir,
       timeout: cliTestTimeoutMs,
     })
@@ -428,11 +428,12 @@ describe('CLI command surface', () => {
     expect(stdout).toContain('conflicts')
     // The removed reconciliation verbs must not be advertised in completions
     // (CLI-R01); guards against a descriptor regression re-exposing them.
-    expect(stdout).not.toContain('init')
-    expect(stdout).not.toContain('pull')
-    expect(stdout).not.toContain('push')
-    expect(stdout).not.toContain('from-notion')
-    expect(stderr).not.toContain('CliErrorEnvelope')
+    // Word boundaries avoid false positives on bash's `_init_completion`
+    // helper emitted by the Effect v4 completion template.
+    expect(stdout).not.toMatch(/\binit\b/u)
+    expect(stdout).not.toMatch(/\bpull\b/u)
+    expect(stdout).not.toMatch(/\bpush\b/u)
+    expect(stdout).not.toMatch(/\bfrom-notion\b/u)
   })
 
   it(

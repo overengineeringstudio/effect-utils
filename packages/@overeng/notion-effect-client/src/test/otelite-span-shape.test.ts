@@ -125,13 +125,16 @@ layer(CaptureLayer, { excludeTestServices: true })('NotionHttp span shape (D3)',
       expect(httpClientSpans[0]!.attrs['url.path']).toBe(`/v1/data_sources/${DATA_SOURCE_ID}/query`)
 
       // (d) public-repo leak guard: the `Bearer <token>` Authorization header
-      // never reaches the captured spans — @effect/platform records only a
-      // header subset and excludes Authorization. Assert NO captured span
-      // attribute carries an auth header or the token value.
+      // value never reaches the captured spans. Effect v4's http client records
+      // request header NAMES as span attributes but redacts sensitive values
+      // (`Headers.CurrentRedactedNames` defaults include `authorization`), so
+      // an auth attribute may exist — its value MUST be `<redacted>`.
       const allSpans = yield* cap.inspect({ signal: 'traces' })
       for (const captured of allSpans) {
         for (const [key, value] of Object.entries(captured.attrs)) {
-          expect(key.toLowerCase()).not.toContain('authorization')
+          if (key.toLowerCase().includes('authorization') === true) {
+            expect(value).toBe('<redacted>')
+          }
           expect(value).not.toContain('stub-token-not-a-secret')
           expect(value).not.toContain('Bearer ')
         }
