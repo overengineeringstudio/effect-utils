@@ -24,7 +24,7 @@ const Approval = DurablePromise.for(Decision)
 /* ── Typed State observable via the `status` query ── */
 
 export const StatusState = {
-  status: Schema.Literal('pending', 'approved', 'rejected'),
+  status: Schema.Literals(['pending', 'approved', 'rejected']),
 } as const
 const Status = State.for(StatusState)
 

@@ -12,7 +12,7 @@ import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-const ownPeerDepNames = ['@effect/cli'] as const
+const ownPeerDepNames = ['effect'] as const
 
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/tui-stories' }),
@@ -24,6 +24,7 @@ const runtimeDeps = catalog.compose({
     external: {
       ...catalog.pick(
         ...ownPeerDepNames,
+        '@effect/atom-react',
         '@effect/vitest',
         '@storybook/react',
         '@storybook/react-vite',

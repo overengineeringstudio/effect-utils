@@ -10,8 +10,8 @@
  *   bun examples/06-log-capture/log-capture.tsx --output json
  */
 
-import { Command } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Command } from 'effect/unstable/cli'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Duration, Effect } from 'effect'
 import React from 'react'
 
@@ -70,9 +70,8 @@ const logCaptureCmd = Command.make('log-capture', { output: outputOption }, ({ o
   runTaskRunner.pipe(Effect.provide(outputModeLayer(output))),
 )
 
-const cli = Command.run(logCaptureCmd, {
-  name: 'log-capture',
+const cli = Command.runWith(logCaptureCmd, {
   version: '1.0.0',
 })
 
-cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+cli(process.argv).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

@@ -10,9 +10,7 @@ import {
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
-  '@effect/platform',
   '@effect/platform-node',
-  '@effect/rpc',
   '@tanstack/react-router',
   '@tanstack/react-start',
   'effect',
@@ -31,8 +29,6 @@ const workspaceDeps = catalog.compose({
     external: {
       ...catalog.pick(
         ...peerDepNames,
-        '@effect/experimental',
-        '@effect/sql',
         '@types/react',
         'typescript',
         'vite',

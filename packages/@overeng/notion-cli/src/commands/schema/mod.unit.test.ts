@@ -1,5 +1,5 @@
-import { Command } from '@effect/cli'
-import { NodeContext } from '@effect/platform-node'
+import { Command } from 'effect/unstable/cli'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
@@ -29,16 +29,14 @@ describe('schema generate option resolution', () => {
         }),
       )
 
-      const runCli = Command.run(testCommand, { name: 'notion', version: 'test' })
+      const runCli = Command.runWith(testCommand, { version: 'test' })
 
-      // argv[0]/argv[1] are dropped by Command.run; the rest is parsed by the
-      // command: a synthetic database-id positional plus the file `-o` flag.
-      yield* runCli(['node', 'notion', 'db-id-123', '-o', 'schema.gen.ts'])
+      yield* runCli(['db-id-123', '-o', 'schema.gen.ts'])
 
       expect(captured).toBeDefined()
       expect(captured!.output).toBe('schema.gen.ts')
       // The TUI render mode falls back to its default rather than swallowing `-o`.
       expect(captured!.tuiOutput).toBe('auto')
-    }).pipe(Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.provide(NodeServices.layer)),
   )
 })

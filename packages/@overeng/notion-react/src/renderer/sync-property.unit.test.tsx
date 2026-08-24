@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Fragment, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -116,7 +116,7 @@ const genTree = (seed: number, maxDepth = 3, maxWidth = 4): ReactNode => {
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 /**

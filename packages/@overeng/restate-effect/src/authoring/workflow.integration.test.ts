@@ -26,7 +26,7 @@ import { serverAvailable, withRestateServer } from '../testing/testing.ts'
 const Decision = Schema.Struct({ approved: Schema.Boolean })
 const Approval = DurablePromise.for(Decision)
 
-const StatusState = { status: Schema.Literal('pending', 'approved', 'rejected') } as const
+const StatusState = { status: Schema.Literals(['pending', 'approved', 'rejected']) } as const
 const Status = State.for(StatusState)
 
 const ApprovalWf = RestateWorkflow.contract({

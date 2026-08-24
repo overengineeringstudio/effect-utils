@@ -21,7 +21,6 @@ const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-react' }),
   dependencies: {
     workspace: [notionEffectClientPkg, notionEffectSchemaPkg, otelContractPkg],
-    external: catalog.pick('@effect/platform'),
   },
   devDependencies: {
     workspace: [notionMdPkg, utilsDevPkg, utilsPkg],

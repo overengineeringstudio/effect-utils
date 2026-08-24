@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
+import { NodeServices } from '@effect/platform-node'
 import { Deferred, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -493,24 +494,24 @@ const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
   }
 }
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 const runWithFake = <A, E>(
-  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, E, NodeServicesEnv | NotionMdGateway | NmdStateStore>,
   fake: FakeNotion,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer))),
   )
 
 const runEitherWithFake = <A, E>(
-  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, E, NodeServicesEnv | NotionMdGateway | NmdStateStore>,
   fake: FakeNotion,
 ) =>
   Effect.runPromise(
     effect.pipe(
-      Effect.either,
-      Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer)),
+      Effect.result,
+      Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer)),
     ),
   )
 
@@ -633,7 +634,7 @@ describe('notion-md e2e prototype', () => {
         Effect.scoped(
           Effect.gen(function* () {
             const pushed = yield* Deferred.make<void>()
-            const fiber = yield* Effect.fork(
+            const fiber = yield* Effect.forkChild(
               runWatch({
                 syncOptions: { path },
                 pollIntervalMs: 10_000,
@@ -668,7 +669,7 @@ describe('notion-md e2e prototype', () => {
         Effect.scoped(
           Effect.gen(function* () {
             const planned = yield* Deferred.make<void>()
-            const fiber = yield* Effect.fork(
+            const fiber = yield* Effect.forkChild(
               runWatch({
                 syncOptions: { path, dryRun: true },
                 pollIntervalMs: 10_000,
@@ -676,7 +677,7 @@ describe('notion-md e2e prototype', () => {
                   Effect.sync(() => {
                     events.push(event)
                   }).pipe(
-                    Effect.zipRight(
+                    Effect.andThen(
                       isPushedSyncEvent(event) === true
                         ? Deferred.succeed(planned, undefined).pipe(Effect.asVoid)
                         : Effect.void,
@@ -715,7 +716,7 @@ describe('notion-md e2e prototype', () => {
       await runWithFake(
         Effect.scoped(
           Effect.gen(function* () {
-            const fiber = yield* Effect.fork(
+            const fiber = yield* Effect.forkChild(
               runWatch({
                 syncOptions: { path },
                 pollIntervalMs: 50,
@@ -768,7 +769,7 @@ describe('notion-md e2e prototype', () => {
           Effect.scoped(
             Effect.gen(function* () {
               const pushed = yield* Deferred.make<void>()
-              const fiber = yield* Effect.fork(
+              const fiber = yield* Effect.forkChild(
                 runWatch({
                   syncOptions: { path },
                   pollIntervalMs: 10_000,
@@ -781,7 +782,7 @@ describe('notion-md e2e prototype', () => {
               yield* Deferred.await(pushed)
               yield* Fiber.interrupt(fiber)
             }),
-          ).pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+          ).pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer))),
           { inspect: { service: 'notion-md-test' } },
         ),
       )
@@ -824,7 +825,7 @@ describe('notion-md e2e prototype', () => {
       await runWithFake(
         Effect.scoped(
           Effect.gen(function* () {
-            const fiber = yield* Effect.fork(
+            const fiber = yield* Effect.forkChild(
               runWatch({
                 syncOptions: { path },
                 pollIntervalMs: 10_000,
@@ -1147,7 +1148,7 @@ describe('notion-md e2e prototype', () => {
       await runWithFake(
         Effect.scoped(
           Effect.gen(function* () {
-            const fiber = yield* Effect.fork(
+            const fiber = yield* Effect.forkChild(
               runBatchWatch({
                 paths: [localPath, remotePath],
                 pollIntervalMs: 50,
@@ -1279,14 +1280,14 @@ describe('notion-md e2e prototype', () => {
       await writeFile(path, content.replace('Body', '{==Body==}{>>Needs review.<<}{id="c1"}'))
 
       const result = await runEitherWithFake(pushPage({ path }), fake)
-      expect(result._tag).toBe('Left')
-      if (result._tag !== 'Left') throw new Error('expected left')
-      expect(result.left).toBeInstanceOf(NmdDestructiveBodyBlockedError)
-      expect((result.left as NmdDestructiveBodyBlockedError).guard).toBe('ReviewMarkupAsContent')
-      expect((result.left as NmdDestructiveBodyBlockedError).allowFlag).toBe(
+      expect(result._tag).toBe('Failure')
+      if (result._tag !== 'Failure') throw new Error('expected failure')
+      expect(result.failure).toBeInstanceOf(NmdDestructiveBodyBlockedError)
+      expect((result.failure as NmdDestructiveBodyBlockedError).guard).toBe('ReviewMarkupAsContent')
+      expect((result.failure as NmdDestructiveBodyBlockedError).allowFlag).toBe(
         '--allow-review-markup',
       )
-      expect((result.left as NmdDestructiveBodyBlockedError).message).toContain(
+      expect((result.failure as NmdDestructiveBodyBlockedError).message).toContain(
         'Local body contains unresolved Roughdraft review markup',
       )
 
@@ -1404,11 +1405,11 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(pushPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
+        _tag: 'Failure',
+        failure: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
       })
-      if (result._tag !== 'Left') throw new Error('Expected pushPage to fail on schema drift')
-      expect(result.left).toBeInstanceOf(NmdSchemaDriftError)
+      if (result._tag !== 'Failure') throw new Error('Expected pushPage to fail on schema drift')
+      expect(result.failure).toBeInstanceOf(NmdSchemaDriftError)
       // the property write was refused — remote stays at its pre-edit value
       expect(fake.remoteProperties(pageId).Done).toEqual({ type: 'checkbox', checkbox: false })
     })
@@ -1472,11 +1473,11 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(pushPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
+        _tag: 'Failure',
+        failure: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
       })
-      if (result._tag !== 'Left') throw new Error('Expected pushPage to fail on schema drift')
-      expect(result.left).toBeInstanceOf(NmdSchemaDriftError)
+      if (result._tag !== 'Failure') throw new Error('Expected pushPage to fail on schema drift')
+      expect(result.failure).toBeInstanceOf(NmdSchemaDriftError)
       expect(fake.remoteProperties(pageId).Done).toEqual({ type: 'checkbox', checkbox: false })
     })
   })
@@ -2038,14 +2039,14 @@ describe('notion-md e2e prototype', () => {
       await writeFile(path, content.replace('# Unknowns', '# Unknowns\n\nLocal edit'))
 
       const errResult = await runEitherWithFake(pushPage({ path }), fake)
-      expect(errResult._tag).toBe('Left')
-      if (errResult._tag !== 'Left') throw new Error('expected left')
-      expect(errResult.left).toBeInstanceOf(NmdDestructiveBodyBlockedError)
-      expect((errResult.left as NmdDestructiveBodyBlockedError).guard).toBe('UnknownBlockDeletion')
-      expect((errResult.left as NmdDestructiveBodyBlockedError).allowFlag).toBe(
+      expect(errResult._tag).toBe('Failure')
+      if (errResult._tag !== 'Failure') throw new Error('expected failure')
+      expect(errResult.failure).toBeInstanceOf(NmdDestructiveBodyBlockedError)
+      expect((errResult.failure as NmdDestructiveBodyBlockedError).guard).toBe('UnknownBlockDeletion')
+      expect((errResult.failure as NmdDestructiveBodyBlockedError).allowFlag).toBe(
         '--allow-delete-unknown-blocks',
       )
-      expect((errResult.left as NmdDestructiveBodyBlockedError).message).toContain(
+      expect((errResult.failure as NmdDestructiveBodyBlockedError).message).toContain(
         'Page contains unresolved unknown Notion blocks',
       )
       expect(fake.remoteMarkdown(pageId)).toContain('<unknown')
@@ -2370,8 +2371,8 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(pushPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdConflictError',
           path,
           page_id: pageId,
@@ -2380,10 +2381,10 @@ describe('notion-md e2e prototype', () => {
           conflict_path: `${path}.conflict.roughdraft.md`,
         },
       })
-      if (result._tag !== 'Left') {
+      if (result._tag !== 'Failure') {
         throw new Error('Expected pushPage to fail')
       }
-      expect(result.left).toBeInstanceOf(NmdConflictError)
+      expect(result.failure).toBeInstanceOf(NmdConflictError)
     })
   })
 
@@ -2403,8 +2404,8 @@ describe('notion-md e2e prototype', () => {
       )
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdConflictError',
           path,
           page_id: pageId,
@@ -2471,17 +2472,17 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(pushPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdObjectStoreError',
           path,
           object_path: basePath,
         },
       })
-      if (result._tag !== 'Left') {
+      if (result._tag !== 'Failure') {
         throw new Error('Expected pushPage to fail')
       }
-      expect(result.left).toBeInstanceOf(NmdObjectStoreError)
+      expect(result.failure).toBeInstanceOf(NmdObjectStoreError)
     })
   })
 
@@ -2497,17 +2498,17 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(statusPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdObjectStoreError',
           path,
           object_path: basePath,
         },
       })
-      if (result._tag !== 'Left') {
+      if (result._tag !== 'Failure') {
         throw new Error('Expected statusPage to fail')
       }
-      expect(result.left).toBeInstanceOf(NmdObjectStoreError)
+      expect(result.failure).toBeInstanceOf(NmdObjectStoreError)
     })
   })
 
@@ -2551,16 +2552,16 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(statusPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdFrontmatterError',
           path,
         },
       })
-      if (result._tag !== 'Left') {
+      if (result._tag !== 'Failure') {
         throw new Error('Expected statusPage to fail')
       }
-      expect(result.left).toBeInstanceOf(NmdFrontmatterError)
+      expect(result.failure).toBeInstanceOf(NmdFrontmatterError)
     })
   })
 
@@ -2651,16 +2652,16 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(statusPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdFrontmatterError',
           path,
         },
       })
-      if (result._tag !== 'Left') {
+      if (result._tag !== 'Failure') {
         throw new Error('Expected statusPage to fail')
       }
-      expect(result.left).toBeInstanceOf(NmdFrontmatterError)
+      expect(result.failure).toBeInstanceOf(NmdFrontmatterError)
     })
   })
 
@@ -2695,17 +2696,17 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(statusPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdObjectStoreError',
           path,
           object_path: storagePath,
         },
       })
-      if (result._tag !== 'Left') {
+      if (result._tag !== 'Failure') {
         throw new Error('Expected statusPage to fail')
       }
-      expect(result.left).toBeInstanceOf(NmdObjectStoreError)
+      expect(result.failure).toBeInstanceOf(NmdObjectStoreError)
     })
   })
 
@@ -2752,16 +2753,16 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(statusPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdObjectStoreError',
           path,
         },
       })
-      if (result._tag !== 'Left') {
+      if (result._tag !== 'Failure') {
         throw new Error('Expected statusPage to fail')
       }
-      expect(result.left).toBeInstanceOf(NmdObjectStoreError)
+      expect(result.failure).toBeInstanceOf(NmdObjectStoreError)
     })
   })
 
@@ -2811,17 +2812,17 @@ describe('notion-md e2e prototype', () => {
       const result = await runEitherWithFake(pushPage({ path }), fake)
 
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
+        _tag: 'Failure',
+        failure: {
           _tag: 'NmdObjectStoreError',
           path,
           object_path: objectPath({ path, hash: legacyHash }),
         },
       })
-      if (result._tag !== 'Left') {
+      if (result._tag !== 'Failure') {
         throw new Error('Expected pushPage to fail')
       }
-      expect(result.left).toBeInstanceOf(NmdObjectStoreError)
+      expect(result.failure).toBeInstanceOf(NmdObjectStoreError)
     })
   })
 })

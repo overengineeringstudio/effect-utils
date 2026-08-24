@@ -2,8 +2,8 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import path from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
-import { Duration, Effect, Either, Option, PubSub } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import { Duration, Effect, Option, PubSub, Result } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { checkAll } from './core.ts'
@@ -166,17 +166,17 @@ export default {
             oxfmtConfigPath: Option.none(),
           }).pipe(
             Effect.provideService(GenieEventBus, bus),
-            Effect.provide(NodeContext.layer),
+            Effect.provide(NodeServices.layer),
             Effect.timeout(Duration.seconds(2)),
-            Effect.either,
+            Effect.result,
           )
         }),
       )
 
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isRight(result) === true) return
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isSuccess(result) === true) return
 
-      const error = result.left
+      const error = result.failure
       expect(error._tag).toBe('GenieGenerationFailedError')
       if (error._tag !== 'GenieGenerationFailedError') return
 

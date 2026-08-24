@@ -53,25 +53,25 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     "byteIdentical": true,
     "decoded": {
       "domainFailure": {
-        "body": "{"_tag":"Exit","requestId":"2","exit":{"_tag":"Failure","cause":{"_tag":"Fail","error":{"reason":"missing-user","userId":"","_tag":"GreetingError"}}}}
+        "body": "{"_tag":"Exit","requestId":"2","exit":{"_tag":"Failure","cause":[{"_tag":"Fail","error":{"_tag":"GreetingError","reason":"missing-user","userId":""}}]}}
 ",
         "contentType": "application/ndjson",
         "status": 200,
       },
       "invalidEnvelope": {
-        "body": "{"_tag":"Defect","defect":"Unknown request tag: "}
+        "body": "{"_tag":"Exit","requestId":"5","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Unknown request tag: "}]}}
 ",
         "contentType": "application/ndjson",
         "status": 200,
       },
       "invalidId": {
-        "body": "{"_tag":"Defect","defect":{"name":"SyntaxError","message":"Cannot convert req-invalid-id to a BigInt"}}
+        "body": "{"_tag":"Exit","requestId":"req-invalid-id","exit":{"_tag":"Success","value":{"message":"hello ada-ß","empty":"","unicode":"Grüße ß"}}}
 ",
         "contentType": "application/ndjson",
         "status": 200,
       },
       "invalidPayload": {
-        "body": "{"_tag":"Exit","requestId":"3","exit":{"_tag":"Failure","cause":{"_tag":"Die","defect":"{ readonly userId: string; readonly note: string | null }\\n└─ [\\"userId\\"]\\n   └─ Expected string, actual 123"}}}
+        "body": "{"_tag":"Exit","requestId":"3","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Expected string\\n  at [\\"userId\\"]"}]}}
 ",
         "contentType": "application/ndjson",
         "status": 200,
@@ -83,7 +83,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
         "status": 200,
       },
       "unknownTag": {
-        "body": "{"_tag":"Defect","defect":"Unknown request tag: UnknownRpc"}
+        "body": "{"_tag":"Exit","requestId":"4","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Unknown request tag: UnknownRpc"}]}}
 ",
         "contentType": "application/ndjson",
         "status": 200,
@@ -98,27 +98,27 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
   "domainFailure": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"2\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":{\\"_tag\\":\\"Fail\\",\\"error\\":{\\"reason\\":\\"missing-user\\",\\"userId\\":\\"\\",\\"_tag\\":\\"GreetingError\\"}}}}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"2\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Fail\\",\\"error\\":{\\"_tag\\":\\"GreetingError\\",\\"reason\\":\\"missing-user\\",\\"userId\\":\\"\\"}}]}}\\n"
   },
   "invalidPayload": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"3\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":{\\"_tag\\":\\"Die\\",\\"defect\\":\\"{ readonly userId: string; readonly note: string | null }\\\\n└─ [\\\\\\"userId\\\\\\"]\\\\n   └─ Expected string, actual 123\\"}}}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"3\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Expected string\\\\n  at [\\\\\\"userId\\\\\\"]\\"}]}}\\n"
   },
   "unknownTag": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":\\"Unknown request tag: UnknownRpc\\"}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"4\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Unknown request tag: UnknownRpc\\"}]}}\\n"
   },
   "invalidEnvelope": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":\\"Unknown request tag: \\"}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"5\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Unknown request tag: \\"}]}}\\n"
   },
   "invalidId": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":{\\"name\\":\\"SyntaxError\\",\\"message\\":\\"Cannot convert req-invalid-id to a BigInt\\"}}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"req-invalid-id\\",\\"exit\\":{\\"_tag\\":\\"Success\\",\\"value\\":{\\"message\\":\\"hello ada-ß\\",\\"empty\\":\\"\\",\\"unicode\\":\\"Grüße ß\\"}}}\\n"
   }
 }",
     "reencoded": "{
@@ -130,51 +130,51 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
   "domainFailure": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"2\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":{\\"_tag\\":\\"Fail\\",\\"error\\":{\\"reason\\":\\"missing-user\\",\\"userId\\":\\"\\",\\"_tag\\":\\"GreetingError\\"}}}}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"2\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Fail\\",\\"error\\":{\\"_tag\\":\\"GreetingError\\",\\"reason\\":\\"missing-user\\",\\"userId\\":\\"\\"}}]}}\\n"
   },
   "invalidPayload": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"3\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":{\\"_tag\\":\\"Die\\",\\"defect\\":\\"{ readonly userId: string; readonly note: string | null }\\\\n└─ [\\\\\\"userId\\\\\\"]\\\\n   └─ Expected string, actual 123\\"}}}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"3\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Expected string\\\\n  at [\\\\\\"userId\\\\\\"]\\"}]}}\\n"
   },
   "unknownTag": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":\\"Unknown request tag: UnknownRpc\\"}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"4\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Unknown request tag: UnknownRpc\\"}]}}\\n"
   },
   "invalidEnvelope": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":\\"Unknown request tag: \\"}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"5\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Unknown request tag: \\"}]}}\\n"
   },
   "invalidId": {
     "status": 200,
     "contentType": "application/ndjson",
-    "body": "{\\"_tag\\":\\"Defect\\",\\"defect\\":{\\"name\\":\\"SyntaxError\\",\\"message\\":\\"Cannot convert req-invalid-id to a BigInt\\"}}\\n"
+    "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"req-invalid-id\\",\\"exit\\":{\\"_tag\\":\\"Success\\",\\"value\\":{\\"message\\":\\"hello ada-ß\\",\\"empty\\":\\"\\",\\"unicode\\":\\"Grüße ß\\"}}}\\n"
   }
 }",
   },
   "responses": {
     "domainFailure": {
-      "body": "{"_tag":"Exit","requestId":"2","exit":{"_tag":"Failure","cause":{"_tag":"Fail","error":{"reason":"missing-user","userId":"","_tag":"GreetingError"}}}}
+      "body": "{"_tag":"Exit","requestId":"2","exit":{"_tag":"Failure","cause":[{"_tag":"Fail","error":{"_tag":"GreetingError","reason":"missing-user","userId":""}}]}}
 ",
       "contentType": "application/ndjson",
       "status": 200,
     },
     "invalidEnvelope": {
-      "body": "{"_tag":"Defect","defect":"Unknown request tag: "}
+      "body": "{"_tag":"Exit","requestId":"5","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Unknown request tag: "}]}}
 ",
       "contentType": "application/ndjson",
       "status": 200,
     },
     "invalidId": {
-      "body": "{"_tag":"Defect","defect":{"name":"SyntaxError","message":"Cannot convert req-invalid-id to a BigInt"}}
+      "body": "{"_tag":"Exit","requestId":"req-invalid-id","exit":{"_tag":"Success","value":{"message":"hello ada-ß","empty":"","unicode":"Grüße ß"}}}
 ",
       "contentType": "application/ndjson",
       "status": 200,
     },
     "invalidPayload": {
-      "body": "{"_tag":"Exit","requestId":"3","exit":{"_tag":"Failure","cause":{"_tag":"Die","defect":"{ readonly userId: string; readonly note: string | null }\\n└─ [\\"userId\\"]\\n   └─ Expected string, actual 123"}}}
+      "body": "{"_tag":"Exit","requestId":"3","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Expected string\\n  at [\\"userId\\"]"}]}}
 ",
       "contentType": "application/ndjson",
       "status": 200,
@@ -186,7 +186,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
       "status": 200,
     },
     "unknownTag": {
-      "body": "{"_tag":"Defect","defect":"Unknown request tag: UnknownRpc"}
+      "body": "{"_tag":"Exit","requestId":"4","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Unknown request tag: UnknownRpc"}]}}
 ",
       "contentType": "application/ndjson",
       "status": 200,
@@ -228,48 +228,51 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
   "failures": {
     "invalidExitTag": {
       "_tag": "failed",
-      "error": "(ExitEncoded<unknown, unknown, Defect> <-> Exit<unknown, unknown>)
-└─ Encoded side transformation failure
-   └─ ExitEncoded<unknown, unknown, Defect>
-      └─ { readonly _tag: "Failure" | "Success" }
-         └─ ["_tag"]
-            └─ Expected "Failure" | "Success", actual "NotAnExit"",
+      "error": "SchemaError(Expected Exit)",
     },
     "missingFailureCause": {
       "_tag": "failed",
-      "error": "(ExitEncoded<unknown, unknown, Defect> <-> Exit<unknown, unknown>)
-└─ Encoded side transformation failure
-   └─ ExitEncoded<unknown, unknown, Defect>
-      └─ { readonly _tag: "Failure"; readonly cause: CauseEncoded<unknown> }
-         └─ ["cause"]
-            └─ is missing",
+      "error": "SchemaError(Expected Exit)",
     },
   },
   "wire": {
     "byteIdentical": true,
     "decoded": {
       "defect": {
+        "_id": "Exit",
         "_tag": "Failure",
         "cause": {
-          "_tag": "Die",
-          "defect": {
-            "message": "loader defect ß",
-            "name": "Error",
-          },
+          "_id": "Cause",
+          "failures": [
+            {
+              "_tag": "Die",
+              "defect": {
+                "message": "loader defect ß",
+                "name": "Error",
+              },
+            },
+          ],
         },
       },
       "failure": {
+        "_id": "Exit",
         "_tag": "Failure",
         "cause": {
-          "_tag": "Fail",
-          "error": {
-            "_tag": "GreetingError",
-            "reason": "missing-user",
-            "userId": "",
-          },
+          "_id": "Cause",
+          "failures": [
+            {
+              "_tag": "Fail",
+              "error": {
+                "_tag": "GreetingError",
+                "reason": "missing-user",
+                "userId": "",
+              },
+            },
+          ],
         },
       },
       "success": {
+        "_id": "Exit",
         "_tag": "Success",
         "value": {
           "empty": "",
@@ -282,6 +285,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     },
     "encoded": "{
   "success": {
+    "_id": "Exit",
     "_tag": "Success",
     "value": {
       "message": "hello ß",
@@ -292,29 +296,42 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     }
   },
   "failure": {
+    "_id": "Exit",
     "_tag": "Failure",
     "cause": {
-      "_tag": "Fail",
-      "error": {
-        "reason": "missing-user",
-        "userId": "",
-        "_tag": "GreetingError"
-      }
+      "_id": "Cause",
+      "failures": [
+        {
+          "_tag": "Fail",
+          "error": {
+            "_tag": "GreetingError",
+            "reason": "missing-user",
+            "userId": ""
+          }
+        }
+      ]
     }
   },
   "defect": {
+    "_id": "Exit",
     "_tag": "Failure",
     "cause": {
-      "_tag": "Die",
-      "defect": {
-        "name": "Error",
-        "message": "loader defect ß"
-      }
+      "_id": "Cause",
+      "failures": [
+        {
+          "_tag": "Die",
+          "defect": {
+            "name": "Error",
+            "message": "loader defect ß"
+          }
+        }
+      ]
     }
   }
 }",
     "reencoded": "{
   "success": {
+    "_id": "Exit",
     "_tag": "Success",
     "value": {
       "message": "hello ß",
@@ -325,24 +342,36 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     }
   },
   "failure": {
+    "_id": "Exit",
     "_tag": "Failure",
     "cause": {
-      "_tag": "Fail",
-      "error": {
-        "reason": "missing-user",
-        "userId": "",
-        "_tag": "GreetingError"
-      }
+      "_id": "Cause",
+      "failures": [
+        {
+          "_tag": "Fail",
+          "error": {
+            "_tag": "GreetingError",
+            "reason": "missing-user",
+            "userId": ""
+          }
+        }
+      ]
     }
   },
   "defect": {
+    "_id": "Exit",
     "_tag": "Failure",
     "cause": {
-      "_tag": "Die",
-      "defect": {
-        "name": "Error",
-        "message": "loader defect ß"
-      }
+      "_id": "Cause",
+      "failures": [
+        {
+          "_tag": "Die",
+          "defect": {
+            "name": "Error",
+            "message": "loader defect ß"
+          }
+        }
+      ]
     }
   }
 }",

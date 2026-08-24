@@ -14,7 +14,7 @@
  */
 import * as restate from '@restatedev/restate-sdk'
 import type { LogLevel } from 'effect'
-import { Chunk, Clock, Effect, Layer, Logger, Random } from 'effect'
+import { Clock, Duration, Effect, Layer, Logger, Random } from 'effect'
 
 import { RestateContext } from '../authoring/RestateContext.ts'
 import { withRestateOperation } from '../observability/effect.ts'
@@ -43,80 +43,43 @@ const makeJournaledClock = ({
 }: {
   ctx: restate.Context
   frozenBaseMillis: number
-}): Clock.Clock => {
-  const base = Clock.make()
-  /* PROTOTYPE-PRESERVING clone: `Clock.make()` puts `sleep` and the sync
-   * `unsafeCurrentTime*` on the Clock PROTOTYPE (only the async `currentTime*`
-   * Effects are own-enumerable). A plain `{ ...Clock.make(), … }` object spread
-   * therefore DROPS `sleep` — an in-handler `Effect.sleep` would then throw
-   * `clock.sleep is not a function` (it surfaces as a retry loop under load).
-   * We clone onto an object whose prototype IS the base Clock's prototype, so
-   * `sleep` (the non-durable in-process timer — NOT remapped to `ctx.sleep`,
-   * R18) and the `[ClockTypeId]` brand survive, then override only the time
-   * reads: the sync `unsafeCurrentTime*` from the per-attempt frozen base, the
-   * async `currentTime*` from the journaled `ctx.date`. */
-  return Object.assign(Object.create(Object.getPrototypeOf(base)) as Clock.Clock, base, {
-    unsafeCurrentTimeMillis: () => frozenBaseMillis,
-    unsafeCurrentTimeNanos: () => millisToNanos(frozenBaseMillis),
-    currentTimeMillis: Effect.promise(() => ctx.date.now()),
-    currentTimeNanos: Effect.map(
-      Effect.promise(() => ctx.date.now()),
-      millisToNanos,
-    ),
-  })
-}
+}): Clock.Clock => ({
+  /* The per-attempt FROZEN base serves the SYNC reads (replay-stable, R17,
+   * decision 0004): wall-clock time does not advance mid-attempt. */
+  currentTimeMillisUnsafe: () => frozenBaseMillis,
+  currentTimeNanosUnsafe: () => millisToNanos(frozenBaseMillis),
+  monotonicTimeNanosUnsafe: () => millisToNanos(frozenBaseMillis),
+  monotonicTimeNanos: Effect.suspend(() => Effect.succeed(millisToNanos(frozenBaseMillis))),
+  /* The ASYNC reads go through the journaled `ctx.date` (replay-stable). */
+  currentTimeMillis: Effect.promise(() => ctx.date.now()),
+  currentTimeNanos: Effect.map(
+    Effect.promise(() => ctx.date.now()),
+    millisToNanos,
+  ),
+  /* NOT remapped to `ctx.sleep` (R18) — a bare in-handler `Effect.sleep` stays a
+   * non-durable in-process timer. */
+  sleep: (duration) =>
+    Effect.callback<void, never>((resume) => {
+      const timer = setTimeout(() => resume(Effect.void), Duration.toMillis(duration))
+      return Effect.sync(() => clearTimeout(timer))
+    }),
+})
 
 /**
- * Build an Effect `Random` backed by the invocation's journaled `ctx.rand`
+ * Build an Effect `Random` service backed by the invocation's journaled `ctx.rand`
  * (seeded on the invocation id; `ctx.rand.random()` is replay-stable). The base
- * generator is `ctx.rand.random()` (uniform `[0, 1)`); the derived methods mirror
- * Effect's own `Random.make` derivations (so semantics match the default), but
- * integers are derived from the float (`ctx.rand` exposes only `random()` /
- * `uuidv4()`). Determinism holds because `ctx.rand.random()` is journaled-seeded
- * (R17, decision 0004).
+ * generator is `ctx.rand.random()` (uniform `[0, 1)`); v4's derived generators
+ * (`next`, `nextInt`, …) read this service, so determinism holds because
+ * `ctx.rand.random()` is journaled-seeded (R17, decision 0004).
  */
-const makeJournaledRandom = (ctx: restate.Context): Random.Random => {
-  const next = Effect.sync(() => ctx.rand.random())
-  /* Floor a uniform float into `[0, bound)` — the integer analogue of Effect's
-   * `PRNG.integer(bound)`, but over the journaled float source. */
-  const nextIntBounded = (bound: number): Effect.Effect<number> =>
-    Effect.map(next, (n) => Math.floor(n * bound))
-  // oxlint-disable-next-line overeng/named-args -- assigned to `Random.nextIntBetween`, whose Effect interface signature is positional (min, max)
-  const nextIntBetween = (min: number, max: number): Effect.Effect<number> =>
-    Effect.map(nextIntBounded(max - min), (n) => n + min)
-  /* Fisher-Yates over the journaled int source — mirrors Effect's `shuffleWith`. */
-  const shuffle = <A>(elements: Iterable<A>): Effect.Effect<Chunk.Chunk<A>> =>
-    Effect.suspend(() => {
-      const buffer = Array.from(elements)
-      const swaps: number[] = []
-      for (let i = buffer.length; i >= 2; i = i - 1) swaps.push(i)
-      return Effect.as(
-        Effect.forEach(
-          swaps,
-          (n) =>
-            Effect.map(nextIntBetween(0, n), (k) => {
-              const tmp = buffer[n - 1]!
-              buffer[n - 1] = buffer[k]!
-              buffer[k] = tmp
-            }),
-          { discard: true },
-        ),
-        Chunk.fromIterable(buffer),
-      )
-    })
-  /* Spread the canonical default Random so the nominal `[RandomTypeId]` brand is
-   * preserved; override every generator method to read the journaled `ctx.rand`. */
-  return {
-    ...Random.make('restate'),
-    next,
-    nextBoolean: Effect.map(next, (n) => n > 0.5),
-    nextInt: nextIntBounded(Number.MAX_SAFE_INTEGER),
-    // oxlint-disable-next-line overeng/named-args -- implements `Random.nextRange`, whose Effect interface signature is positional (min, max)
-    nextRange: (min, max) => Effect.map(next, (n) => (max - min) * n + min),
-    nextIntBetween,
-    shuffle,
-  }
-}
+const makeJournaledRandom = (
+  ctx: restate.Context,
+): { nextIntUnsafe(): number; nextDoubleUnsafe(): number } => ({
+  nextDoubleUnsafe: () => ctx.rand.random(),
+  nextIntUnsafe: () =>
+    Math.floor(ctx.rand.random() * (Number.MAX_SAFE_INTEGER - Number.MIN_SAFE_INTEGER + 1)) +
+    Number.MIN_SAFE_INTEGER,
+})
 
 /**
  * The per-invocation determinism `Layer` (R17): journaled `Clock` (via
@@ -133,8 +96,8 @@ export const determinismLayer = ({
   frozenBaseMillis: number
 }): Layer.Layer<never> =>
   Layer.merge(
-    Layer.setClock(makeJournaledClock({ ctx, frozenBaseMillis })),
-    Layer.setRandom(makeJournaledRandom(ctx)),
+    Layer.succeed(Clock.Clock, makeJournaledClock({ ctx, frozenBaseMillis })),
+    Layer.succeed(Random.Random, makeJournaledRandom(ctx)),
   )
 
 /* ── logger bridge (decision 0015, docs/vrs/03-effect-runtime/spec.md §2) ───────────────────────────── */
@@ -147,11 +110,11 @@ export const determinismLayer = ({
  * filters it), so it falls through to `info` defensively.
  */
 const consoleMethodFor = (level: LogLevel.LogLevel): 'debug' | 'info' | 'warn' | 'error' => {
-  switch (level._tag) {
+  switch (level) {
     case 'Trace':
     case 'Debug':
       return 'debug'
-    case 'Warning':
+    case 'Warn':
       return 'warn'
     case 'Error':
     case 'Fatal':
@@ -165,7 +128,7 @@ const consoleMethodFor = (level: LogLevel.LogLevel): 'debug' | 'info' | 'warn' |
  * so the message, fiber id, annotations, spans, and cause all ride along in the
  * one logfmt string the way Effect's default console output does — we only change
  * the SINK (`ctx.console` instead of `globalThis.console`), not the FORMAT. */
-const formatLog = Logger.logfmtLogger.log
+const formatLog = (options: Logger.Options<unknown>): string => Logger.formatLogFmt.log(options)
 
 /**
  * Build the per-invocation `Logger` that routes every in-handler `Effect.log*`
@@ -194,7 +157,7 @@ const makeConsoleLogger = (ctx: restate.Context): Logger.Logger<unknown, void> =
  * handler, so it is unaffected (it keeps the process default logger).
  */
 export const loggerLayer = (ctx: restate.Context): Layer.Layer<never> =>
-  Logger.replace(Logger.defaultLogger, makeConsoleLogger(ctx))
+  Logger.layer([makeConsoleLogger(ctx)])
 
 /* ── cancellation ↔ interruption bridge (R31, docs/vrs/04-error-boundary/spec.md §2) ──────────────── */
 
@@ -225,7 +188,7 @@ export const withAttemptInterruption = <A, E, R>({
    * `acquireRelease`/`onInterrupt` finalizers and compensations run (R31). The
    * `Effect.async` registration's returned effect removes the listener on
    * teardown (no leak across attempts). */
-  const onAttemptComplete: Effect.Effect<never> = Effect.async<never>((resume) => {
+  const onAttemptComplete: Effect.Effect<never> = Effect.callback<never>((resume) => {
     if (signal.aborted === true) {
       resume(Effect.interrupt)
       return

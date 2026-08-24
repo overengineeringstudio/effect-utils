@@ -1,10 +1,10 @@
 import { symlink, utimes } from 'node:fs/promises'
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Clock, Effect, Exit, Layer } from 'effect'
+import { Clock, Duration, Effect, Exit, Layer } from 'effect'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -18,7 +18,20 @@ import { mrCommand } from './mod.ts'
 
 const NOW = Date.now()
 const DAY_MS = 24 * 60 * 60 * 1000
-const liveClock = Layer.setClock(Clock.make())
+/** Live wall-clock layer so command timeouts stay on wall time. */
+const liveClock = Layer.succeed(Clock.Clock, {
+  currentTimeMillisUnsafe: () => Date.now(),
+  currentTimeMillis: Effect.sync(() => Date.now()),
+  currentTimeNanosUnsafe: () => BigInt(Date.now()) * 1_000_000n,
+  currentTimeNanos: Effect.sync(() => BigInt(Date.now()) * 1_000_000n),
+  monotonicTimeNanosUnsafe: () => process.hrtime.bigint(),
+  monotonicTimeNanos: Effect.sync(() => process.hrtime.bigint()),
+  sleep: (duration) =>
+    Effect.callback((resume) => {
+      const timer = setTimeout(() => resume(Effect.void), Duration.toMillis(duration))
+      timer.unref?.()
+    }),
+})
 
 type JsonResult = {
   readonly artifactClass?: string
@@ -48,7 +61,7 @@ const runGc = ({
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
     const previous = process.env['MEGAREPO_STORE']
     process.env['MEGAREPO_STORE'] = storePath
-    const exit = yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })([
+    const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })([
       'node',
       'mr',
       'store',
@@ -170,7 +183,7 @@ describe('mr store gc --generated-artifacts', () => {
           true,
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -205,7 +218,7 @@ describe('mr store gc --generated-artifacts', () => {
           expect(result.activeWorktreeCount).toBe(0)
         }
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -224,7 +237,7 @@ describe('mr store gc --generated-artifacts', () => {
         const row = generated(result.results, 'node_modules')
         expect(row?.reason, row?.message).toBe('retention')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -253,7 +266,7 @@ describe('mr store gc --generated-artifacts', () => {
           'agent-liveness-unavailable',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -286,7 +299,7 @@ describe('mr store gc --generated-artifacts', () => {
         })
         expect(generated(nonIgnored.results, 'dist')?.reason).toBe('artifact-not-ignored')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -307,7 +320,7 @@ describe('mr store gc --generated-artifacts', () => {
           })).exitCode,
         ).toBe(1)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -326,7 +339,7 @@ describe('mr store gc --generated-artifacts', () => {
           reason: 'artifact-scan-incomplete',
         })
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -350,7 +363,7 @@ describe('mr store gc --generated-artifacts', () => {
           true,
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -368,7 +381,7 @@ describe('mr store gc --generated-artifacts', () => {
         yield* runGc({ cwd: f.outside, storePath: f.storePath, args: ['--dry-run'] })
         expect(yield* fs.exists(registry)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

@@ -92,41 +92,26 @@ import { Schema, SchemaAST } from 'effect'
 
 import type { FieldMeta, FieldType, PropertyInfo, TaggedStructInfo } from './types.ts'
 
-/** Extract the title annotation from an AST node or annotated object */
-const getTitle = (annotated: {
-  readonly annotations: SchemaAST.Annotations
-}): string | undefined => {
-  const value = annotated.annotations[SchemaAST.TitleAnnotationId]
-  return typeof value === 'string' ? value : undefined
-}
+/** Extract the title annotation from an AST node */
+const getTitle = (ast: SchemaAST.AST): string | undefined => SchemaAST.resolveTitle(ast)
 
-/** Extract the description annotation from an AST node or annotated object */
-const getDescription = (annotated: {
-  readonly annotations: SchemaAST.Annotations
-}): string | undefined => {
-  const value = annotated.annotations[SchemaAST.DescriptionAnnotationId]
-  return typeof value === 'string' ? value : undefined
-}
+/** Extract the description annotation from an AST node */
+const getDescription = (ast: SchemaAST.AST): string | undefined => SchemaAST.resolveDescription(ast)
 
-/** Unwrap transformations and refinements to get the underlying primitive type */
-const unwrapToBase = (ast: SchemaAST.AST): SchemaAST.AST => {
-  switch (ast._tag) {
-    case 'Transformation':
-      return unwrapToBase(ast.to)
-    case 'Refinement':
-      return unwrapToBase(ast.from)
-    default:
-      return ast
-  }
-}
+/**
+ * In v4 the AST node is already the type-side representation: refinements are
+ * attached as checks and transformations as encoding links, so no unwrapping
+ * is required to classify a node.
+ */
+const unwrapToBase = (ast: SchemaAST.AST): SchemaAST.AST => ast
 
 /** Check if an AST represents an optional property */
 const isOptionalAST = (ast: SchemaAST.AST): { isOptional: boolean; inner: SchemaAST.AST } => {
   const unwrapped = unwrapToBase(ast)
 
-  // Check for Union with UndefinedKeyword (Schema.optional pattern)
+  // Check for Union with Undefined (Schema.optional pattern)
   if (unwrapped._tag === 'Union') {
-    const nonUndefined = unwrapped.types.filter((t: SchemaAST.AST) => t._tag !== 'UndefinedKeyword')
+    const nonUndefined = unwrapped.types.filter((t: SchemaAST.AST) => t._tag !== 'Undefined')
     const first = nonUndefined[0]
     if (nonUndefined.length === 1 && unwrapped.types.length === 2 && first !== undefined) {
       return { isOptional: true, inner: first }
@@ -172,13 +157,13 @@ const getFieldType = (ast: SchemaAST.AST): FieldType => {
   }
 
   switch (unwrapped._tag) {
-    case 'StringKeyword':
+    case 'String':
       return 'string'
-    case 'NumberKeyword':
+    case 'Number':
       return 'number'
-    case 'BooleanKeyword':
+    case 'Boolean':
       return 'boolean'
-    case 'TypeLiteral':
+    case 'Objects':
       return 'struct'
     default:
       return 'unknown'
@@ -186,7 +171,7 @@ const getFieldType = (ast: SchemaAST.AST): FieldType => {
 }
 
 /** Analyze a schema and extract UI-relevant metadata. */
-export const analyzeSchema = (schema: Schema.Schema.AnyNoContext): FieldMeta => {
+export const analyzeSchema = (schema: Schema.Top): FieldMeta => {
   const ast = schema.ast
   const { isOptional, inner } = isOptionalAST(ast)
 
@@ -206,30 +191,28 @@ export const analyzeSchema = (schema: Schema.Schema.AnyNoContext): FieldMeta => 
  * Extract property info from a struct schema.
  * Returns an array of properties with their keys and metadata.
  */
-export const getStructProperties = (
-  schema: Schema.Schema.AnyNoContext,
-): readonly PropertyInfo[] => {
+export const getStructProperties = (schema: Schema.Top): readonly PropertyInfo[] => {
   const ast = unwrapToBase(schema.ast)
 
-  if (ast._tag !== 'TypeLiteral') {
+  if (ast._tag !== 'Objects') {
     return []
   }
 
   return ast.propertySignatures.map((prop: SchemaAST.PropertySignature) => {
-    const propSchema = Schema.make(prop.type)
+    const propSchema = Schema.make<Schema.Top>(prop.type)
     const meta = analyzeSchema(propSchema)
 
     // Use property-level annotations if available, fall back to type annotations
-    // Note: annotations from Schema.optional(X).annotations({...}) are on prop, not prop.type
-    const propTitle = getTitle(prop) ?? getTitle(prop.type)
-    const propDescription = getDescription(prop) ?? getDescription(prop.type)
+    // Note: annotations from Schema.optional(X).annotate({...}) land on the union node itself
+    const propTitle = getTitle(prop.type)
+    const propDescription = getDescription(prop.type)
 
     return {
       key: String(prop.name),
       schema: propSchema,
       meta: {
         ...meta,
-        isOptional: prop.isOptional || meta.isOptional,
+        isOptional: prop.type.context?.isOptional === true || meta.isOptional,
         title: propTitle ?? meta.title,
         description: propDescription ?? meta.description,
       },
@@ -243,7 +226,7 @@ export const getStructProperties = (
  * Detects if a schema is a tagged struct (has a `_tag` field with a single literal value)
  * and extracts the tag value and remaining content properties.
  */
-export const analyzeTaggedStruct = (schema: Schema.Schema.AnyNoContext): TaggedStructInfo => {
+export const analyzeTaggedStruct = (schema: Schema.Top): TaggedStructInfo => {
   const properties = getStructProperties(schema)
 
   const tagProp = properties.find((p) => p.key === '_tag')

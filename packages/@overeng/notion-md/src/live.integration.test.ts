@@ -2,10 +2,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { FileSystem } from '@effect/platform'
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, FileSystem, Layer, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient, HttpClient } from 'effect/unstable/http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
@@ -71,11 +70,11 @@ const ConfigLayer = NotionConfigLive({
 })
 
 const BaseLayer = Layer.mergeAll(ConfigLayer, FetchHttpClient.layer)
-const StateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const StateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 const TestLayer = Layer.mergeAll(
   BaseLayer,
   StateStoreLayer,
-  NodeContext.layer,
+  NodeServices.layer,
   NotionMdGatewayLive.pipe(Layer.provide(BaseLayer)),
 )
 
@@ -144,7 +143,7 @@ const childPageTitle = (block: Block): string | undefined => {
 const retrieveTopLevelChildren = (pageId: string) =>
   NotionBlocks.retrieveChildrenStream({ blockId: pageId, pageSize: 100 }).pipe(
     Stream.runCollect,
-    Effect.map(Chunk.toReadonlyArray),
+    Effect.map((chunks) => [...chunks]),
   )
 
 const archiveLeakedScratchPages = (pageId: string) =>
@@ -291,12 +290,12 @@ const createScratchPage = (label: string) =>
   })
 
 const archiveScratchPage = (pageId: string) =>
-  Effect.zipRight(
+  Effect.andThen(
     NotionPages.update({ pageId, is_locked: false }).pipe(Effect.ignore),
     NotionPages.archive({ pageId }),
   ).pipe(
     Effect.asVoid,
-    Effect.catchAll(() => Effect.void),
+    Effect.catch(() => Effect.void),
   )
 
 const withScratchPage = async <A>(label: string, body: (pageId: string) => Promise<A>) => {

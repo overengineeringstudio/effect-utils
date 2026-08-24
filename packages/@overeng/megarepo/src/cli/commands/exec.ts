@@ -4,8 +4,10 @@
  * Execute a command in member directories.
  */
 
-import * as Cli from '@effect/cli'
-import { Command, FileSystem } from '@effect/platform'
+import * as Cli from 'effect/unstable/cli'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option } from 'effect'
 import React from 'react'
 
@@ -23,18 +25,18 @@ type ExecMode = 'parallel' | 'sequential'
 export const execCommand = Cli.Command.make(
   'exec',
   {
-    command: Cli.Args.text({ name: 'command' }).pipe(
-      Cli.Args.withDescription('Command to execute'),
+    command: Cli.Argument.string('command').pipe(
+      Cli.Argument.withDescription('Command to execute'),
     ),
     output: outputOption,
-    member: Cli.Options.text('member').pipe(
-      Cli.Options.withAlias('m'),
-      Cli.Options.withDescription('Run only in this member'),
-      Cli.Options.optional,
+    member: Cli.Flag.string('member').pipe(
+      Cli.Flag.withAlias('m'),
+      Cli.Flag.withDescription('Run only in this member'),
+      Cli.Flag.optional,
     ),
-    mode: Cli.Options.choice('mode', ['parallel', 'sequential'] as const).pipe(
-      Cli.Options.withDescription('Execution mode: parallel (default) or sequential'),
-      Cli.Options.withDefault('parallel' as ExecMode),
+    mode: Cli.Flag.choice('mode', ['parallel', 'sequential'] as const).pipe(
+      Cli.Flag.withDescription('Execution mode: parallel (default) or sequential'),
+      Cli.Flag.withDefault('parallel' as ExecMode),
     ),
     verbose: verboseOption,
   },
@@ -109,10 +111,9 @@ export const execCommand = Cli.Command.make(
 
                 // Run the command
                 yield* Effect.gen(function* () {
-                  const shellCmd = Command.make('sh', '-c', cmd).pipe(
-                    Command.workingDirectory(memberPath),
+                  const commandOutput = yield* ChildProcessSpawner.use((spawner) =>
+                    spawner.string(Command.make('sh', ['-c', cmd], { cwd: memberPath })),
                   )
-                  const commandOutput = yield* Command.string(shellCmd)
                   tui.dispatch({
                     _tag: 'UpdateMember',
                     name,
@@ -121,7 +122,7 @@ export const execCommand = Cli.Command.make(
                     stdout: commandOutput,
                   })
                 }).pipe(
-                  Effect.catchAll((error) =>
+                  Effect.catch((error) =>
                     Effect.sync(() => {
                       tui.dispatch({
                         _tag: 'UpdateMember',

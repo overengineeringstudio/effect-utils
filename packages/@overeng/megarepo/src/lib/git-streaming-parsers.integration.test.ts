@@ -11,8 +11,10 @@
  * helper is proven separately by `git-memory.integration.test.ts`.
  */
 
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
 import { expect } from 'vitest'
@@ -23,8 +25,9 @@ import * as Git from './git.ts'
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    return (yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', args, { cwd })),
+    )).trim()
   })
 
 const makeRepoDir = Effect.gen(function* () {
@@ -74,7 +77,7 @@ describe('streaming git parsers', () => {
         expect(w.path.length).toBeGreaterThan(0)
         expect(w.head).toMatch(/^[0-9a-f]{40}$/)
       }
-    }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   it.effect('revListUnpushed returns exactly the commits absent from remotes', () =>
@@ -129,6 +132,6 @@ describe('streaming git parsers', () => {
       expect([...unpushed].sort()).toEqual([...expected].sort())
       // No empty entries leaked through the line fold.
       for (const sha of unpushed) expect(sha).toMatch(/^[0-9a-f]{40}$/)
-    }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })

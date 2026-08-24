@@ -16,7 +16,7 @@
  * `RestateTestEnv`.
  */
 import { it } from '@effect/vitest'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, Fiber, Layer, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { Awakeable, type AwakeableId, RestateObject, RestateService, State } from '../mod.ts'
@@ -24,7 +24,9 @@ import { RestateTestEnv, serverAvailable } from './testing.ts'
 
 /* ── demo app: a greeter Service (typed error) + a counter Object (typed State) ── */
 
-class Greeting extends Context.Tag('test-env/Greeting')<Greeting, { readonly prefix: string }>() {
+class Greeting extends Context.Service<Greeting, { readonly prefix: string }>()(
+  'test-env/Greeting',
+) {
   static readonly Default = Layer.succeed(Greeting, { prefix: 'Hello' })
 }
 
@@ -313,7 +315,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
         Effect.gen(function* () {
           const env = yield* RestateTestEnv
           /* Fork the suspending `start` (it parks on the awakeable promise). */
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             env.invokeObject({
               contract: WaiterObj,
               key: 'job-1',
@@ -332,7 +334,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
                 input: undefined,
               })
               if (read !== '') return read
-              yield* Effect.yieldNow()
+              yield* Effect.yieldNow
             }
             return ''
           })
@@ -344,7 +346,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
             id: id as AwakeableId<Schema.Schema.Type<typeof Payload>>,
             payload: { token: 'resumed-ok' },
           })
-          const resumed = yield* fiber.await
+          const resumed = yield* Effect.exit(Fiber.join(fiber))
           expect(resumed._tag).toBe('Success')
         }),
       )

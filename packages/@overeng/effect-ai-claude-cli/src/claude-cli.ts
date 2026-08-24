@@ -4,10 +4,11 @@
  * Implements the LanguageModel interface by delegating to the `claude` CLI,
  * allowing use without API keys by re-using Claude CLI authentication.
  */
-import { AiError, LanguageModel, type Prompt, type Response } from '@effect/ai'
-import { Command, CommandExecutor } from '@effect/platform'
-import type { PlatformError } from '@effect/platform/Error'
-import { Effect, Exit, flow, JSONSchema, Layer, Ref, Scope, Stream } from 'effect'
+import { AiError, LanguageModel, type Prompt, type Response } from 'effect/unstable/ai'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
+import type { PlatformError } from 'effect/PlatformError'
+import { Effect, Exit, flow, Layer, Ref, Schema, Scope, Stream } from 'effect'
 
 import {
   ClaudeCliAuthError,
@@ -78,7 +79,7 @@ const promptToString = (opts: {
 
   // Add JSON schema instructions if JSON response format is requested
   if (opts.responseFormat.type === 'json') {
-    const jsonSchema = JSONSchema.make(opts.responseFormat.schema)
+    const jsonSchema = Schema.toJsonSchemaDocument(opts.responseFormat.schema)
     parts.push(
       `[System]: CRITICAL: Your response must be ONLY raw JSON. Do NOT use markdown code blocks (\`\`\`). Do NOT add any explanation before or after. Start your response with { and end with }. The JSON must conform to this schema:\n${JSON.stringify(jsonSchema, null, 2)}`,
     )
@@ -134,11 +135,10 @@ const wrapPlatformError = (error: PlatformError): ClaudeCliError => {
 
 /** Convert ClaudeCliError to AiError.AiError for LanguageModel interface compatibility */
 const toAiError = (error: ClaudeCliError): AiError.AiError =>
-  new AiError.UnknownError({
+  AiError.make({
     module: 'claude-cli',
     method: error._tag,
-    description: error.message,
-    cause: error,
+    reason: new AiError.UnknownError({ description: error.message }),
   })
 
 /** Compose wrapPlatformError and toAiError for use in mapError */
@@ -212,7 +212,7 @@ export const classifyError = (opts: {
 
 /** Creates a LanguageModel that delegates to claude CLI */
 export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {}) {
-  const executor = yield* CommandExecutor.CommandExecutor
+  const spawner = yield* CommandExecutor.ChildProcessSpawner
 
   const generateText = (
     providerOptions: LanguageModel.ProviderOptions,
@@ -235,7 +235,7 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
         args.push('--model', options.model)
       }
 
-      const command = Command.make('claude', ...args).pipe(Command.stdin('pipe'))
+      const command = Command.make('claude', args, { stdin: 'pipe' })
       const commandDisplay = formatCommandForDisplay({
         command: 'claude',
         args,
@@ -243,7 +243,9 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
 
       const result = yield* Effect.scoped(
         Effect.gen(function* () {
-          const process = yield* executor.start(command)
+          const process = yield* command.pipe(
+            Effect.provideService(CommandExecutor.ChildProcessSpawner, spawner),
+          )
 
           // Write prompt to stdin
           yield* Stream.make(new TextEncoder().encode(promptText)).pipe(Stream.run(process.stdin))
@@ -321,16 +323,15 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
           type: 'finish',
           reason: 'stop',
           usage: {
-            inputTokens: undefined,
-            outputTokens: undefined,
-            totalTokens: undefined,
+            inputTokens: {},
+            outputTokens: {},
           },
         },
       ]
 
       return parts
     }).pipe(
-      Effect.catchAllDefect(
+      Effect.catchDefect(
         (defect) =>
           new ClaudeCliParseError({
             message: `Unexpected error: ${String(defect)}`,
@@ -357,14 +358,15 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
           args.push('--model', options.model)
         }
 
-        const command = Command.make('claude', ...args).pipe(Command.stdin('pipe'))
+        const command = Command.make('claude', args, { stdin: 'pipe' })
 
         const scope = yield* Scope.make()
         const startEmittedRef = yield* Ref.make(false)
 
-        const process = yield* executor
-          .start(command)
-          .pipe(Effect.provideService(Scope.Scope, scope), Effect.mapError(platformToAiError))
+        const process = yield* spawner.spawn(command).pipe(
+          Effect.provideService(Scope.Scope, scope),
+          Effect.mapError(platformToAiError),
+        )
 
         // Write prompt to stdin
         yield* Stream.make(new TextEncoder().encode(promptText)).pipe(
@@ -465,9 +467,8 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
           type: 'finish',
           reason: 'stop',
           usage: {
-            inputTokens: undefined,
-            outputTokens: undefined,
-            totalTokens: undefined,
+            inputTokens: {},
+            outputTokens: {},
           },
         }
 
@@ -481,5 +482,5 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
 /** Layer providing Claude CLI as the LanguageModel */
 export const layer = (
   options: ClaudeCliOptions = {},
-): Layer.Layer<LanguageModel.LanguageModel, never, CommandExecutor.CommandExecutor> =>
+): Layer.Layer<LanguageModel.LanguageModel, never, CommandExecutor.ChildProcessSpawner> =>
   Layer.effect(LanguageModel.LanguageModel, make(options))

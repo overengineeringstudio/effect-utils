@@ -8,7 +8,7 @@
 import { globSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { Context, Effect, Array as Arr } from 'effect'
+import { Context, Effect, Layer, Array as Arr } from 'effect'
 
 import {
   parseStoryModule,
@@ -106,7 +106,7 @@ export const discoverStories = (options: {
 // =============================================================================
 
 /** Effect service for story discovery (enables dependency injection in tests) */
-export class StoryDiscovery extends Context.Tag('StoryDiscovery')<
+export class StoryDiscovery extends Context.Service<
   StoryDiscovery,
   {
     readonly discover: (options: {
@@ -114,8 +114,8 @@ export class StoryDiscovery extends Context.Tag('StoryDiscovery')<
       readonly patterns?: readonly string[]
     }) => Effect.Effect<DiscoverStoriesResult>
   }
->() {
-  static readonly live = StoryDiscovery.of({
+>()('StoryDiscovery') {
+  static readonly live = Layer.succeed(StoryDiscovery, {
     discover: discoverStories,
   })
 }

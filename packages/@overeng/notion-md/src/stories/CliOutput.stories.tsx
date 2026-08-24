@@ -1,4 +1,4 @@
-import type { Atom } from '@effect-atom/atom'
+import type { Atom } from 'effect/unstable/reactivity'
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 

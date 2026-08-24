@@ -25,10 +25,9 @@
  * that would assert non-existent attributes.
  */
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { expect, layer } from '@effect/vitest'
-import { Effect, Layer } from 'effect'
+import { Effect, FileSystem, Layer } from 'effect'
 
 import type { BodyCompleteness } from '@overeng/notion-core'
 import {
@@ -130,17 +129,17 @@ class FakeGateway {
         }
         return { markdown: pull(this.state).markdown }
       }),
-    updatePageProperties: () => Effect.dieMessage('unexpected updatePageProperties'),
-    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
+    updatePageProperties: () => Effect.die(new Error('unexpected updatePageProperties')),
+    retrieveDataSource: () => Effect.die(new Error('unexpected retrieveDataSource')),
     updatePageMetadata: ({ metadata }) =>
       Effect.sync(() => {
         if (metadata.title !== undefined) this.state.title = metadata.title.value
         return snapshot(this.state)
       }),
     listChildPages: () => Effect.succeed([]),
-    createPage: () => Effect.dieMessage('unexpected createPage'),
-    movePage: () => Effect.dieMessage('unexpected movePage'),
-    archivePage: () => Effect.dieMessage('unexpected archivePage'),
+    createPage: () => Effect.die(new Error('unexpected createPage')),
+    movePage: () => Effect.die(new Error('unexpected movePage')),
+    archivePage: () => Effect.die(new Error('unexpected archivePage')),
   } satisfies NotionMdGatewayShape)
 }
 
@@ -162,7 +161,7 @@ const scriptedEditor =
       ),
     )
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 /** R24 leak guard applied across every captured span attribute value. */
 const assertNoSensitiveAttrs = (
@@ -250,7 +249,7 @@ layer(CaptureLayer, { excludeTestServices: true })('editor span shapes (Group G)
         mode: 'default',
         pageRef: pageId,
         runEditor: scriptedEditor((buffer) => buffer.replace('original line', SENTINEL_BODY)),
-      }).pipe(Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeContext.layer)))
+      }).pipe(Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeServices.layer)))
       expect(result.outcome).toBe('pushed')
 
       yield* flushCaptureSpans({ exportInterval })
@@ -290,7 +289,7 @@ layer(CaptureLayer, { excludeTestServices: true })('editor span shapes (Group G)
         writeStderr: () => Effect.void,
         // The editor "edits" the buffer, but read-only discards it.
         runEditor: scriptedEditor((buffer) => `${buffer}\ndiscarded edit`),
-      }).pipe(Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeContext.layer)))
+      }).pipe(Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeServices.layer)))
       expect(result.outcome).toBe('read-only')
       // Read-only never calls updateMarkdown: the remote body is untouched.
       expect(gateway.state.body).toBe(normalizeMarkdownLineEndings(SENTINEL_BODY))

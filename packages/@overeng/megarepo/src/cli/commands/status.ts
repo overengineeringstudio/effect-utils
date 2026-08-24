@@ -4,10 +4,11 @@
  * Show workspace status and member states.
  */
 
-import * as Cli from '@effect/cli'
-import type { CommandExecutor } from '@effect/platform'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Clock, Effect, Option, type ParseResult } from 'effect'
+import * as Cli from 'effect/unstable/cli'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
+import { Clock, Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -64,8 +65,8 @@ const scanMembersRecursive = ({
   depth?: number
 }): Effect.Effect<
   MemberStatus[],
-  PlatformError.PlatformError | ParseResult.ParseError | Error,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
+  PlatformError | Schema.SchemaError | Error,
+  FileSystem.FileSystem | ChildProcessSpawner | Store
 > =>
   Effect.gen(function* () {
     const enterResult = yield* traversal.enterRoot({ root: megarepoRoot, depth })
@@ -285,9 +286,9 @@ export const statusCommand = Cli.Command.make(
   'status',
   {
     output: outputOption,
-    all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Recursively show status of nested megarepos'),
-      Cli.Options.withDefault(false),
+    all: Cli.Flag.boolean('all').pipe(
+      Cli.Flag.withDescription('Recursively show status of nested megarepos'),
+      Cli.Flag.withDefault(false),
     ),
   },
   ({ output, all }) =>
@@ -403,7 +404,7 @@ export const statusCommand = Cli.Command.make(
               })
               const memberRealPath = yield* fs
                 .realPath(memberSymlinkPath.replace(/\/$/, ''))
-                .pipe(Effect.catchAll(() => Effect.void))
+                .pipe(Effect.catch(() => Effect.void))
 
               if (memberRealPath !== undefined) {
                 const memberRealPathNorm = memberRealPath.replace(/\/$/, '')

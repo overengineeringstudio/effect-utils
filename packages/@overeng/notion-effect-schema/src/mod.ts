@@ -119,9 +119,9 @@ export type { DateValue } from './properties/date.ts'
  */
 function select(): typeof Select.asOption
 function select<TName extends string>(
-  nameSchema: Schema.Schema<TName>,
+  nameSchema: Schema.Codec<TName, TName>,
 ): ReturnType<typeof Select.asOptionNamed<TName>>
-function select<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+function select<TName extends string>(nameSchema?: Schema.Codec<TName, TName>) {
   return nameSchema !== undefined ? Select.asOptionNamed(nameSchema) : Select.asOption
 }
 
@@ -132,9 +132,9 @@ function select<TName extends string>(nameSchema?: Schema.Schema<TName>) {
  */
 function status(): typeof Status.asOption
 function status<TName extends string>(
-  nameSchema: Schema.Schema<TName>,
+  nameSchema: Schema.Codec<TName, TName>,
 ): ReturnType<typeof Status.asOptionNamed<TName>>
-function status<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+function status<TName extends string>(nameSchema?: Schema.Codec<TName, TName>) {
   return nameSchema !== undefined ? Status.asOptionNamed(nameSchema) : Status.asOption
 }
 
@@ -145,9 +145,9 @@ function status<TName extends string>(nameSchema?: Schema.Schema<TName>) {
  */
 function multiSelect(): typeof MultiSelect.raw
 function multiSelect<TName extends string>(
-  nameSchema: Schema.Schema<TName>,
+  nameSchema: Schema.Codec<TName, TName>,
 ): ReturnType<typeof MultiSelect.asOptionsNamed<TName>>
-function multiSelect<TName extends string>(nameSchema?: Schema.Schema<TName>) {
+function multiSelect<TName extends string>(nameSchema?: Schema.Codec<TName, TName>) {
   return nameSchema !== undefined ? MultiSelect.asOptionsNamed(nameSchema) : MultiSelect.raw
 }
 

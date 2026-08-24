@@ -4,7 +4,7 @@
  * Main CLI entry point for the `mr` command.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 import { Option } from 'effect'
 
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
@@ -66,14 +66,13 @@ export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
     generateCommand,
     depsCommand,
   ]),
-  Cli.Command.provide(({ cwd }) =>
-    Option.isSome(cwd) === true ? Cwd.fromPath(cwd.value) : Cwd.live,
+  Cli.Command.provide((config) =>
+    'cwd' in config && Option.isSome(config.cwd) === true
+      ? Cwd.fromPath(config.cwd.value)
+      : Cwd.live,
   ),
   Cli.Command.withDescription('Multi-repo workspace management tool'),
 )
 
 /** Exported CLI for external use */
-export const cli = Cli.Command.run(mrCommand, {
-  name: 'mr',
-  version: MR_VERSION,
-})(rewriteHelpSubcommand(process.argv))
+export const cli = Cli.Command.runWith(mrCommand, { version: MR_VERSION })(rewriteHelpSubcommand(process.argv))

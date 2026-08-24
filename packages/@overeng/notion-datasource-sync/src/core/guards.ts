@@ -3,6 +3,7 @@ import { Schema } from 'effect'
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import type { PropertyWriteClassType } from '@overeng/notion-effect-schema'
 import { propertyWriteGuardNames } from '@overeng/notion-property-write'
+import { NonEmptyTrimmedString } from './domain.ts'
 
 import type { QueryRowsPage } from './commands.ts'
 import type {
@@ -88,27 +89,27 @@ export const reservedGuardNames = [
 export type ReservedGuardName = (typeof reservedGuardNames)[number]
 
 /** Exhaustive set of named safety guards; each guard represents a distinct safety check the sync engine may enforce. */
-export const GuardName = Schema.Literal(
+export const GuardName = Schema.Literals([
   ...propertyWriteGuardNames,
   ...syncOnlyGuardNames,
-).annotations({ identifier: 'NotionDatasourceSync.GuardName' })
+]).annotate({ identifier: 'NotionDatasourceSync.GuardName' })
 export type GuardName = typeof GuardName.Type
 
 /** Tagged-union outcome of a guard evaluation: `allowed` means the operation may proceed; `blocked` carries the guard name and reason. */
-export const GuardDecision = Schema.Union(
+export const GuardDecision = Schema.Union([
   Schema.TaggedStruct('allowed', {}),
   Schema.TaggedStruct('blocked', {
     guard: GuardName,
     message: Schema.String,
   }),
-).annotations({ identifier: 'NotionDatasourceSync.GuardDecision' })
+]).annotate({ identifier: 'NotionDatasourceSync.GuardDecision' })
 export type GuardDecision = typeof GuardDecision.Type
 
 /** Structured diagnostic payload attached to a guard block; provides a human-readable summary and key/value evidence for debugging. */
 export const SafeDiagnostic = Schema.TaggedStruct('SafeDiagnostic', {
-  summary: Schema.NonEmptyTrimmedString,
-  evidence: Schema.Record({ key: Schema.String, value: Schema.String }),
-}).annotations({ identifier: 'NotionDatasourceSync.SafeDiagnostic' })
+  summary: NonEmptyTrimmedString,
+  evidence: Schema.Record(Schema.String, Schema.String),
+}).annotate({ identifier: 'NotionDatasourceSync.SafeDiagnostic' })
 export type SafeDiagnostic = typeof SafeDiagnostic.Type
 
 /** Input snapshot for the API compatibility guard: the configured version and whether a compatibility proof has been recorded. */

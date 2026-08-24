@@ -7,7 +7,6 @@ import {
   defaultCiRuntimeScriptsDir,
   jobLocalCiDiagnosticsDir,
   nixBinaryCachesExtraConf,
-  resolveDevenvRevScript,
   resolveDevenvRevScriptFor,
   linuxX64Runner,
   runDevenvTasksBefore,

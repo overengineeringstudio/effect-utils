@@ -5,7 +5,8 @@
  * which megarepo members are referenced as inputs by other members.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
 import { Effect } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -319,7 +320,7 @@ export const discoverMemberInputs = ({
   members: Record<string, LockedMember>
 }): Effect.Effect<
   ReadonlyArray<DiscoveredInput>,
-  PlatformError.PlatformError,
+  PlatformError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -419,7 +420,7 @@ export const buildDependencyGraph = ({
   config: MegarepoConfig
   lockFile: LockFile
   excludeMembers?: ReadonlySet<string>
-}): Effect.Effect<DependencyGraph, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<DependencyGraph, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const exclude = excludeMembers ?? new Set()

@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -12,7 +13,7 @@ import type { NotionMdGateway } from './model.ts'
 import { ProgressReporter, type ProgressReporterShape, type ProgressStage } from './progress.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 /** A captured progress event: the method that fired and the stage/note payload. */
 type ProgressEvent =
@@ -39,14 +40,14 @@ const hostileLayer: Layer.Layer<ProgressReporter> = Layer.succeed(ProgressReport
 } satisfies ProgressReporterShape)
 
 const runEdit = <A, E>(
-  effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore | NodeContext.NodeContext>,
+  effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore | NodeServicesEnv>,
   gateway: FakeGateway,
   progressLayer?: Layer.Layer<ProgressReporter>,
 ) => {
-  const base = Layer.mergeAll(gateway.layer, stateStoreLayer, NodeContext.layer)
+  const base = Layer.mergeAll(gateway.layer, stateStoreLayer, NodeServices.layer)
   const layer = progressLayer === undefined ? base : Layer.merge(base, progressLayer)
-  return Effect.either(effect).pipe(
-    Effect.provide(layer as Layer.Layer<NotionMdGateway | NmdStateStore | NodeContext.NodeContext>),
+  return Effect.result(effect).pipe(
+    Effect.provide(layer as Layer.Layer<NotionMdGateway | NmdStateStore | NodeServicesEnv>),
     Effect.runPromise,
   )
 }
@@ -77,9 +78,9 @@ describe('progress (staged write-path sync indicator)', () => {
 
     // Byte-identical outcome + remote effect across all three reporter wirings.
     for (const r of [none, capturing, hostile]) {
-      expect(r.result._tag).toBe('Right')
-      if (r.result._tag === 'Right') {
-        expect(r.result.right).toEqual({ pageId, outcome: 'pushed' })
+      expect(r.result._tag).toBe('Success')
+      if (r.result._tag === 'Success') {
+        expect(r.result.success).toEqual({ pageId, outcome: 'pushed' })
       }
       expect(r.body).toBe('edited line\n')
     }
@@ -100,7 +101,7 @@ describe('progress (staged write-path sync indicator)', () => {
       gateway,
       capturingLayer(events),
     )
-    expect(result._tag).toBe('Right')
+    expect(result._tag).toBe('Success')
     // Body-only edit: title is unchanged, so write-title is a skip (no active/succeed).
     expect(ids(events)).toEqual([
       'observe:active',
@@ -156,8 +157,8 @@ describe('progress (staged write-path sync indicator)', () => {
       gateway,
       capturingLayer(events),
     )
-    expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') expect(result.right).toEqual({ pageId, outcome: 'pushed' })
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') expect(result.success).toEqual({ pageId, outcome: 'pushed' })
     const notes = events.filter((e) => e.kind === 'note')
     expect(notes).toHaveLength(1)
     if (notes[0]?.kind === 'note') {
@@ -190,8 +191,8 @@ describe('progress (staged write-path sync indicator)', () => {
         gateway,
         capturingLayer(events),
       )
-      expect(result._tag).toBe('Right')
-      if (result._tag === 'Right') expect(result.right.outcome).toBe('conflict')
+      expect(result._tag).toBe('Success')
+      if (result._tag === 'Success') expect(result.success.outcome).toBe('conflict')
     } finally {
       process.chdir(previousCwd)
       rmSync(cwd, { recursive: true, force: true })
@@ -222,8 +223,8 @@ describe('progress (staged write-path sync indicator)', () => {
     )
     // The wrapped stage failed: the engine error still propagates (Left), proving
     // `withStage`'s fail branch is observation-only and never swallows the error.
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdGatewayError')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdGatewayError')
     expect(ids(events)).toEqual([
       'observe:active',
       'observe:succeed',

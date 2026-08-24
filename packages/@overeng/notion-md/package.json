@@ -34,16 +34,10 @@
     "@overeng/utils": "workspace:^"
   },
   "devDependencies": {
-    "@effect-atom/atom": "0.5.3",
-    "@effect/cli": "0.75.2",
-    "@effect/cluster": "0.59.0",
-    "@effect/experimental": "0.60.0",
-    "@effect/opentelemetry": "0.63.0",
-    "@effect/platform": "0.96.2",
-    "@effect/platform-node": "0.107.0",
-    "@effect/rpc": "0.75.1",
-    "@effect/vitest": "0.29.0",
-    "@effect/workflow": "0.18.2",
+    "@effect/atom-react": "4.0.0-rc.111",
+    "@effect/opentelemetry": "4.0.0-rc.111",
+    "@effect/platform-node": "4.0.0-rc.111",
+    "@effect/vitest": "4.0.0-rc.111",
     "@overeng/tui-react": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
     "@playwright/test": "1.61.0",
@@ -53,7 +47,7 @@
     "@types/react": "19.2.17",
     "@types/react-reconciler": "0.33.0",
     "@vitejs/plugin-react": "6.0.2",
-    "effect": "3.21.4",
+    "effect": "4.0.0-rc.111",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-reconciler": "0.33.0",
@@ -63,16 +57,10 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "@effect/cli": "^0.75.2",
-    "@effect/cluster": "^0.59.0",
-    "@effect/experimental": "^0.60.0",
-    "@effect/opentelemetry": "^0.63.0",
-    "@effect/platform": "^0.96.2",
-    "@effect/platform-node": "^0.107.0",
-    "@effect/rpc": "^0.75.1",
-    "@effect/workflow": "^0.18.2",
+    "@effect/opentelemetry": "^4.0.0-rc.111",
+    "@effect/platform-node": "^4.0.0-rc.111",
     "@playwright/test": "^1.61.0",
-    "effect": "^3.21.4"
+    "effect": "^4.0.0-rc.111"
   },
   "$genie": {
     "source": "package.json.genie.ts",

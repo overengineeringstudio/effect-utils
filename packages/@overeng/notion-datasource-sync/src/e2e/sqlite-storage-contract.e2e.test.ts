@@ -587,7 +587,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
         dataSourceId: secondDataSourceId,
         parentDatabaseId: secondDatabaseId,
         requestId: testIds.requestId,
-        observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+        observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
         schemaHash: hash('schema-2'),
         schemaProperties: [
           {
@@ -1316,7 +1316,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
           ) =>
             Effect.sync(() => {
               operationOrder.push('patch')
-            }).pipe(Effect.zipRight(baseGateway.gateway.patchPageProperties(command))),
+            }).pipe(Effect.andThen(baseGateway.gateway.patchPageProperties(command))),
         },
       }
       await runWorkspaceCommand({

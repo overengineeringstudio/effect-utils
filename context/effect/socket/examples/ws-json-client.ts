@@ -1,11 +1,11 @@
 import { NodeRuntime } from '@effect/platform-node'
-import type { Socket as SocketType } from '@effect/platform/Socket'
+import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
 import {
   CloseEvent,
   layerWebSocketConstructorGlobal,
   makeWebSocket,
   toChannelString,
-} from '@effect/platform/Socket'
+} from 'effect/unstable/socket/Socket'
 import { Duration, Effect, Fiber, Schema, Stream } from 'effect'
 
 /**
@@ -26,19 +26,19 @@ const socketTextStream = (socket: SocketType) =>
   )
 
 /** Tagged union for client -> server messages. */
-const ClientMessageSchema = Schema.Union(
+const ClientMessageSchema = Schema.Union([
   Schema.TaggedStruct('ping', {
     id: Schema.String,
   }),
   Schema.TaggedStruct('echo', {
     text: Schema.String,
   }),
-)
+])
 
 type ClientMessage = typeof ClientMessageSchema.Type
 
 /** Tagged union for server -> client responses. */
-const ServerMessageSchema = Schema.Union(
+const ServerMessageSchema = Schema.Union([
   Schema.TaggedStruct('pong', {
     id: Schema.String,
     receivedAt: Schema.Number,
@@ -46,18 +46,18 @@ const ServerMessageSchema = Schema.Union(
   Schema.TaggedStruct('echoed', {
     text: Schema.String,
   }),
-)
+])
 
 type ServerMessage = typeof ServerMessageSchema.Type
 
 /** Encode a typed client message to JSON. */
 const encodeClientMessage = Effect.fn('ws-json.encode')(function* (message: ClientMessage) {
-  return yield* Schema.encode(Schema.parseJson(ClientMessageSchema))(message)
+  return yield* Schema.encodeEffect(Schema.fromJsonString(ClientMessageSchema))(message)
 })
 
 /** Decode a JSON string into a typed server response. */
 const decodeServerMessage = Effect.fn('ws-json.decode')(function* (raw: string) {
-  const message: ServerMessage = yield* Schema.decodeUnknown(Schema.parseJson(ServerMessageSchema))(
+  const message: ServerMessage = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ServerMessageSchema))(
     raw,
   )
   return message
@@ -93,7 +93,7 @@ const runClient = Effect.gen(function* () {
         Stream.mapEffect((text) =>
           decodeServerMessage(text).pipe(
             Effect.tap((decoded) => Effect.log(decoded)),
-            Effect.catchAll((error) =>
+            Effect.catch((error) =>
               Effect.logError({ message: 'invalid server message', error }),
             ),
           ),

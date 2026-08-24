@@ -118,7 +118,7 @@ export const AppView: React.FC<{ state: AppState }> = ({ state }) => {
 ### 4. Create CLI Entry Point (`cli.tsx`)
 
 ```typescript
-import { Command } from '@effect/cli'
+import { Command } from 'effect/unstable/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 import React from 'react'

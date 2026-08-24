@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -62,7 +62,7 @@ const v1: readonly Phase[] = [
 /** Static top-level blocks: h2, p, divider, h2 = 4. Plus N toggles + N paragraphs = 2N children. */
 const totalBlockCount = (n: number): number => 4 + 2 * n
 
-type TestR = NotionConfig | HttpClient.HttpClient
+type TestR = NotionConfig | HttpClient
 
 const findToggleByTitle = (
   tree: readonly ReadBlockNode[],

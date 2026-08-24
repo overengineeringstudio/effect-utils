@@ -70,17 +70,17 @@ describe('parseTitleBody', () => {
   it('refuses a buffer whose line 1 is not a `# ` heading (exit 5)', () =>
     run(
       Effect.gen(function* () {
-        const result = yield* Effect.either(parseTitleBody({ buffer: 'no heading\nbody\n' }))
-        expect(result._tag).toBe('Left')
-        if (result._tag === 'Left') expect(result.left._tag).toBe('NmdInvalidDocumentError')
+        const result = yield* Effect.result(parseTitleBody({ buffer: 'no heading\nbody\n' }))
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdInvalidDocumentError')
       }),
     ))
 
   it('refuses a Setext-style heading (line 2 underline is not line-1 `# `)', () =>
     run(
       Effect.gen(function* () {
-        const result = yield* Effect.either(parseTitleBody({ buffer: 'Title\n=====\n' }))
-        expect(result._tag).toBe('Left')
+        const result = yield* Effect.result(parseTitleBody({ buffer: 'Title\n=====\n' }))
+        expect(result._tag).toBe('Failure')
       }),
     ))
 })

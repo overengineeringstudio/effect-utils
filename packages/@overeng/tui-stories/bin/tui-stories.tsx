@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { Command } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 
 import { runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
@@ -17,15 +17,12 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-const cli = Command.run(tuiStoriesCommand, {
-  name: 'tui-stories',
-  version,
-})
-
-cli(rewriteHelpSubcommand(process.argv)).pipe(
+// effect 4 CLI expects pure arguments (no program/script prefix), while
+// rewriteHelpSubcommand still speaks the effect 3 full-argv convention.
+Cli.Command.runWith(tuiStoriesCommand, { version })(rewriteHelpSubcommand(process.argv).slice(2)).pipe(
   Effect.scoped,
   CliVersion.enrichErrors,
   Effect.provideService(CliVersion, { name: 'tui-stories', version }),
-  Effect.provide(NodeContext.layer),
+  Effect.provide(NodeServices.layer),
   runTuiMain(NodeRuntime),
 )

@@ -1,8 +1,6 @@
 import { basename } from 'node:path'
 
-import type { Path } from '@effect/platform'
-import { FileSystem } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, FileSystem, Path } from 'effect'
 
 import {
   gateNmdLocalState,
@@ -1098,9 +1096,9 @@ export const trackPage = (opts: {
     if (exists === true) {
       // refuse to overwrite a file already bound to a different page
       const store = yield* NmdStateStore
-      const existing = yield* store.readNmdFile({ path: opts.outPath }).pipe(Effect.either)
-      if (existing._tag === 'Right') {
-        const parsed = yield* parseNmdFile({ path: opts.outPath, content: existing.right })
+      const existing = yield* store.readNmdFile({ path: opts.outPath }).pipe(Effect.result)
+      if (existing._tag === 'Success') {
+        const parsed = yield* parseNmdFile({ path: opts.outPath, content: existing.success })
         const boundId = parsed.frontmatter.notion_md.page_id
         if (boundId !== null && boundId !== opts.pageId) {
           return yield* new NmdFrontmatterError({

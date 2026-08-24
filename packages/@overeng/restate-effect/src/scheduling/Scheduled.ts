@@ -148,7 +148,7 @@ export type WakePayload = Schema.Schema.Type<typeof WakePayload>
  * `cycle` body reads/writes via the typed `state` it is handed.
  * ════════════════════════════════════════════════════════════════════════ */
 
-const StatusSchema = Schema.Literal('idle', 'running', 'stopped', 'failed', 'completed')
+const StatusSchema = Schema.Literals(['idle', 'running', 'stopped', 'failed', 'completed'])
 
 /** The loop control-plane state, persisted in the Object's typed K/V State. */
 const ControlState = {
@@ -278,7 +278,7 @@ export interface ScheduledConfig<DomainState extends StateSchemas, AppR, CycleE 
    * schema are kept in sync by the compiler — a typed cycle `Effect.fail`s its
    * declared error and composes WITHOUT a cast (#3).
    */
-  readonly errorSchema?: Schema.Schema<CycleE, any>
+  readonly errorSchema?: Schema.Codec<CycleE, any>
   /**
    * Cap consecutive `retryable` backoffs for ONE logical cycle. Past the cap the
    * retryable failure is DEMOTED to the `onCycleError` policy (so a permanently-429
@@ -367,7 +367,7 @@ const isStop = (r: { readonly stop?: boolean } | void): boolean =>
  * `onCycleError` decision — keeps the cycle body honest about whether the retry
  * re-arm path can ever fire.
  */
-const hasRetryableMember = (errorSchema: Schema.Schema<any, any> | undefined): boolean => {
+const hasRetryableMember = (errorSchema: Schema.Codec<any, any> | undefined): boolean => {
   if (errorSchema === undefined) return false
   const ast = errorSchema.ast
   const members = ast._tag === 'Union' ? ast.types : [ast]
@@ -481,8 +481,8 @@ export const RestateScheduled = {
        * therefore composes a typed cycle without an `as unknown as` (#3). */
       config.cycle(args).pipe(
         Effect.map((r): CycleOutcome => ({ _tag: 'ok', stop: isStop(r) })),
-        Effect.catchAllCause((cause) =>
-          Cause.isInterruptedOnly(cause) === true
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause) === true
             ? /* An interrupt-only cause carries NO typed error (the declared `E` is
                * absent here), so re-raising it keeps the outcome channel `never` — the
                * `Cause<never>` narrowing is sound under `isInterruptedOnly`. */

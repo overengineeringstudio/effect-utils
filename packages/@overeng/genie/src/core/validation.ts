@@ -1,5 +1,5 @@
-import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, FileSystem, Path } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
 import ts from 'typescript'
 
 import type { GenieContext, GenieJsoncParser } from '../runtime/mod.ts'
@@ -38,7 +38,7 @@ export const runGenieValidation = ({
   requirePackageJsonValidate?: boolean
 }): Effect.Effect<
   ValidationIssue[],
-  GenieValidationError | GenieImportError | PlatformError.PlatformError | Error | undefined,
+  GenieValidationError | GenieImportError | PlatformError | Error | undefined,
   FileSystem.FileSystem | Path.Path
 > =>
   Effect.gen(function* () {
@@ -71,7 +71,7 @@ export const runGenieValidation = ({
         }
         return loadGenieFile({ genieFilePath, cwd })
       })().pipe(
-        Effect.catchAll((error) => {
+        Effect.catch((error) => {
           issues.push({
             severity: 'error',
             packageName: 'genie',

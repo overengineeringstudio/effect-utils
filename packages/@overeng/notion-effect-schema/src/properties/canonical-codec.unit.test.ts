@@ -527,7 +527,7 @@ describe('canonical wire baselines (cross-major invariant)', () => {
   })
 })
 
-const dateTimeUtc = (iso: string): DateTime.Utc => Schema.decodeSync(Schema.DateTimeUtc)(iso)
+const dateTimeUtc = (iso: string): DateTime.Utc => Schema.decodeUnknownSync(Schema.DateTimeUtc)(iso)
 
 type Opt = Extract<CanonicalPropertyValue, { _tag: 'select' }>['option'] & object
 

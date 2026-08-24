@@ -22,8 +22,9 @@ import { platform } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Command } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -40,7 +41,7 @@ const ProbeOutput = Schema.Struct({
   vmHwmKb: Schema.Number,
   changesCount: Schema.Number,
 })
-const decodeProbe = Schema.decodeUnknownSync(Schema.parseJson(ProbeOutput))
+const decodeProbe = Schema.decodeUnknownSync(Schema.fromJsonString(ProbeOutput))
 
 const probeScript = fileURLToPath(new URL('../test-utils/memory-probe.ts', import.meta.url))
 
@@ -82,20 +83,22 @@ describe('git memory regression', () => {
         // only — it must stay generous because bun/JSC reserves a large virtual
         // address space regardless of resident set; the assertion below (on
         // resident growth) is the real bound, not this limit.
-        const probe = Command.make(
-          'bash',
-          '-c',
-          'ulimit -v 16777216; exec bun "$0" "$1"',
-          probeScript,
-          worktreePath,
+        const stdout = yield* ChildProcessSpawner.use((spawner) =>
+          spawner.string(
+            Command.make('bash', [
+              '-c',
+              'ulimit -v 16777216; exec bun "$0" "$1"',
+              probeScript,
+              worktreePath,
+            ]),
+          ),
         )
-        const stdout = yield* Command.string(probe)
         const result = decodeProbe(stdout.trim())
 
         const growthKb = result.vmHwmKb - result.rssStartKb
         expect(result.changesCount).toBe(UNTRACKED_FILE_COUNT)
         expect(growthKb).toBeLessThan(MAX_GROWTH_KB)
-      }).pipe(Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(NodeServices.layer)),
     { timeout: 120_000 },
   )
 })

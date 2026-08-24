@@ -48,7 +48,7 @@ const makeFakeTracer = (): { tracer: Tracer.Tracer; spans: RecordedSpan[] } => {
         spanId: String(spans.length),
         traceId: 'trace-1',
         parent,
-        context: Context.empty(),
+        annotations: Context.empty(),
         status: { _tag: 'Started', startTime },
         attributes: new Map() as ReadonlyMap<string, unknown>,
         links: [],
@@ -167,10 +167,10 @@ describe('emitSyncEndOnInterrupt', () => {
 
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(program)
+        const fiber = yield* Effect.forkChild(program)
         yield* Effect.sleep('10 millis')
         yield* Fiber.interrupt(fiber)
-        return yield* fiber.await
+        return yield* Fiber.join(fiber)
       }),
     )
 
@@ -202,7 +202,7 @@ describe('emitSyncEndOnInterrupt', () => {
     await Effect.runPromise(
       Effect.fail('boom').pipe(
         emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler }),
-        Effect.catchAll(() => Effect.void),
+        Effect.catch(() => Effect.void),
       ),
     )
 

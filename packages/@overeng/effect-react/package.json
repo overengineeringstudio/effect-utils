@@ -28,7 +28,7 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
-    "effect": "3.21.4",
+    "effect": "4.0.0-rc.111",
     "react": "19.2.7",
     "react-aria-components": "1.19.0",
     "react-dom": "19.2.7",
@@ -38,7 +38,7 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "^3.21.4",
+    "effect": "^4.0.0-rc.111",
     "react": "^19.2.7",
     "react-aria-components": "^1.19.0",
     "react-dom": "^19.2.7"

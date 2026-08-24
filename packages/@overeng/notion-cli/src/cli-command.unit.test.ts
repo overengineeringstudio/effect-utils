@@ -1,4 +1,4 @@
-import { Command } from '@effect/cli'
+import { Command } from 'effect/unstable/cli'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -8,8 +8,11 @@ import { dbCommand } from './commands/db/mod.ts'
 const placeholderCommand = (name: string) =>
   Command.make(name, {}, () => Effect.void).pipe(Command.withDescription(`${name} command`))
 
+const subcommandNames = (command: Command.Command.Any): readonly string[] =>
+  command.subcommands.flatMap((group) => group.commands.map((sub) => sub.name))
+
 describe('notion root command composition', () => {
-  it('exposes md/schema/db plus the top-level edit alias, not the removed sqlite command', async () => {
+  it('exposes md/schema/db plus the top-level edit alias, not the removed sqlite command', () => {
     const command = makeNotionRootCommand({
       schemaCommand: placeholderCommand('schema'),
       dbCommand: placeholderCommand('db'),
@@ -17,30 +20,28 @@ describe('notion root command composition', () => {
       notionEditAliasCommand: placeholderCommand('edit'),
     })
 
-    const completions = await Effect.runPromise(Command.getBashCompletions(command, 'notion'))
-    const completionText = completions.join('\n')
+    const names = subcommandNames(command)
 
-    expect(completionText).toContain('schema')
-    expect(completionText).toContain('db')
-    expect(completionText).toContain('md')
+    expect(names).toContain('schema')
+    expect(names).toContain('db')
+    expect(names).toContain('md')
     // R18: the top-level `notion edit` marquee alias is a first-level command.
-    expect(completionText).toContain('edit')
-    expect(completionText).not.toContain('sqlite')
+    expect(names).toContain('edit')
+    expect(names).not.toContain('sqlite')
   })
 })
 
 describe('notion db command composition', () => {
-  it('keeps promoted db commands while excluding retired namespaces', async () => {
-    const completions = await Effect.runPromise(Command.getBashCompletions(dbCommand, 'notion db'))
-    const completionText = completions.join('\n')
+  it('keeps promoted db commands while excluding retired namespaces', () => {
+    const names = subcommandNames(dbCommand)
 
-    expect(completionText).toContain('info')
-    expect(completionText).toContain('sync')
-    expect(completionText).toContain('export')
-    expect(completionText).toContain('status')
-    expect(completionText).not.toContain('dump')
-    expect(completionText).not.toContain('replica')
-    expect(completionText).not.toContain('migrate')
-    expect(completionText).not.toContain('repair')
+    expect(names).toContain('info')
+    expect(names).toContain('sync')
+    expect(names).toContain('export')
+    expect(names).toContain('status')
+    expect(names).not.toContain('dump')
+    expect(names).not.toContain('replica')
+    expect(names).not.toContain('migrate')
+    expect(names).not.toContain('repair')
   })
 })

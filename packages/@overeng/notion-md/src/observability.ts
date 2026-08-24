@@ -155,7 +155,7 @@ export {
 
 /** Wrap an effect in an OTEL operation span; an attribute-encode failure is a defect, not a recoverable error. */
 export const withOperation =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -170,7 +170,7 @@ export const withOperation =
 
 /** Like {@link withOperation} but forces a ROOT span (for top-level `cat` / `put` / `edit` / watch-pass). */
 export const withRootOperation =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -184,7 +184,7 @@ export const withRootOperation =
     )
 
 /** Annotate the current span with typed attributes; an attribute-encode failure is a defect, not a recoverable error. */
-export const annotateAttrs = <S extends Schema.Schema.AnyNoContext>({
+export const annotateAttrs = <S extends Schema.Codec<any>>({
   attributes,
   value,
 }: {

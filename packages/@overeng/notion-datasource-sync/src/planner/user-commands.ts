@@ -28,7 +28,7 @@ type UserActionOptions = {
   readonly now?: () => Date
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {

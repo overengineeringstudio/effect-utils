@@ -1,6 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Layer, Ref, Schema, Effect } from 'effect'
+import { Effect, FileSystem, Layer, Ref, Schema } from 'effect'
+import { NodeServices as NodeContext } from '@effect/platform-node'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -142,7 +141,7 @@ Vitest.describe('checkpoint store wire baselines (cross-major invariant)', () =>
 
       const checkpointStore = yield* makeFileCheckpointStore({ path: checkpointPath })
       const checkpoints = [
-        yield* Schema.decodeUnknown(IngestionCheckpointSchema)({
+        yield* Schema.decodeUnknownEffect(IngestionCheckpointSchema)({
           sourceId: 'codex',
           artifactId: '2026/07/28/rollout',
           path: '/var/lib/agent/sessions/2026/07/28/rollout.jsonl',
@@ -159,7 +158,7 @@ Vitest.describe('checkpoint store wire baselines (cross-major invariant)', () =>
           },
           updatedAtEpochMs: 1785225600456,
         }),
-        yield* Schema.decodeUnknown(IngestionCheckpointSchema)({
+        yield* Schema.decodeUnknownEffect(IngestionCheckpointSchema)({
           sourceId: 'opencode',
           artifactId: 'thread:世界',
           path: '/var/lib/agent/opencode.db',
@@ -206,14 +205,14 @@ Vitest.describe('checkpoint store wire baselines (cross-major invariant)', () =>
       )
 
       const checkpointStore = yield* makeFileCheckpointStore({ path: checkpointPath })
-      const result = yield* checkpointStore.list().pipe(Effect.either)
+      const result = yield* checkpointStore.list().pipe(Effect.result)
 
-      expect(result._tag).toBe('Left')
-      if (result._tag === 'Left') {
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') {
         expect(
           stringifyJson({
-            _tag: result.left._tag,
-            message: result.left.message,
+            _tag: result.failure._tag,
+            message: result.failure.message,
           }),
         ).toMatchInlineSnapshot(
           `"{"_tag":"SessionCheckpointDecodeError","message":"Failed to decode checkpoint entry"}"`,

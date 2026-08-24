@@ -33,9 +33,9 @@
  * reads a version-fragile internal SDK flag — prefer `Restate.run`.
  */
 
-import * as EffectMetrics from '@effect/opentelemetry/Metrics'
+import * as EffectMetrics from '@effect/opentelemetry/OtelMetrics'
 import * as Resource from '@effect/opentelemetry/Resource'
-import * as EffectTracer from '@effect/opentelemetry/Tracer'
+import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 import { type Span, trace } from '@opentelemetry/api'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import type { MetricReader, PushMetricExporter } from '@opentelemetry/sdk-metrics'
@@ -48,7 +48,7 @@ import {
   openTelemetryHook,
   type OpenTelemetryHookOptions,
 } from '@restatedev/restate-sdk-opentelemetry'
-import { Config, type ConfigError, Effect, Layer, Option, Schema, type Scope } from 'effect'
+import { Config, Effect, Layer, Option, Schema, type Scope } from 'effect'
 
 import { OtelServiceName, OtelServiceVersion } from '@overeng/otel-contract'
 
@@ -183,7 +183,7 @@ const acquireProvider = (
  * scope (`Layer` memoizes the acquire), so there is no double `register()`.
  */
 const sharedLayer = (config: OtelLayerConfig): Layer.Layer<never, never, never> =>
-  Layer.unwrapScoped(
+  Layer.unwrap(
     acquireProvider(config).pipe(
       Effect.map((provider) => {
         const identity = brandIdentity(config.resource)
@@ -196,7 +196,7 @@ const sharedLayer = (config: OtelLayerConfig): Layer.Layer<never, never, never> 
             ? { attributes: config.resource.attributes }
             : {}),
         })
-        const tracerLayer = EffectTracer.layer.pipe(
+        const tracerLayer = EffectTracer.layerTracer.pipe(
           Layer.provide(Layer.succeed(EffectTracer.OtelTracerProvider, provider)),
         )
         const metricReader = resolveMetricReader(config)
@@ -255,8 +255,8 @@ const layerConfig = (opts: {
     readonly endpoint: string | undefined
     readonly serviceName: string
   }) => Omit<OtelLayerConfig, 'resource'>
-}): Layer.Layer<never, ConfigError.ConfigError> =>
-  Layer.unwrapEffect(
+}): Layer.Layer<never, Config.ConfigError> =>
+  Layer.unwrap(
     Effect.gen(function* () {
       const values = yield* otelConfig
       const serviceName = Option.getOrElse(values.serviceName, () => opts.base.resource.serviceName)

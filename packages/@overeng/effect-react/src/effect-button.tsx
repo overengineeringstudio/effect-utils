@@ -1,8 +1,9 @@
-import { Effect, Exit, Schema, type Runtime, type Scope, Stream } from 'effect'
+import { Effect, Exit, Schema, type Scope, Stream } from 'effect'
 import React from 'react'
 
 import { OtelOperation } from '@overeng/otel-contract'
 
+import type { CancelFn } from './context.tsx'
 import { initialProgress, type Progress, ProgressReporter } from './progress-reporter.ts'
 
 const EffectButtonOperation = OtelOperation.define({
@@ -23,7 +24,7 @@ export type EffectButtonState<TA = unknown, TE = unknown> =
       /** Timestamp when the effect started, in ms since epoch. */
       startedAt: number
       /** Cancel handle for the running effect. */
-      cancel: Runtime.Cancel<unknown, unknown>
+      cancel: CancelFn
       /** Latest progress update. */
       progress: Progress
     }
@@ -49,7 +50,7 @@ export type EffectButtonState<TA = unknown, TE = unknown> =
  */
 export type EffectButtonRunEffect<TEnv> = <TA, TE>(
   effect: Effect.Effect<TA, TE, TEnv | ProgressReporter | Scope.Scope>,
-) => Runtime.Cancel<TA, TE>
+) => CancelFn
 
 /**
  * Configuration for useEffectButton.
@@ -154,16 +155,17 @@ export const useEffectButton = <TEnv, TA, TE>({
           onSuccess?.(result)
           return
         }
-        if (Exit.isInterrupted(exit) === true) {
+        const cause = exit.cause
+        if (Exit.hasInterrupts(exit) === true) {
           return
         }
 
-        const error = exit.cause.valueOf() as TE
+        const error = cause.valueOf() as TE
         setState({ _tag: 'failed', durationMs, error })
         onError?.(error)
 
         /** Re-raise so the effect runner can surface the error. */
-        return yield* Effect.failCause(exit.cause)
+        return yield* Effect.failCause(cause)
       }).pipe(EffectButtonOperation.with({})),
     )
 

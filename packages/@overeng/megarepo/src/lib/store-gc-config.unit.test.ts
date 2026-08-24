@@ -1,5 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { it as effectIt } from '@effect/vitest'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
@@ -140,7 +140,7 @@ describe('store-gc-config', () => {
           )
           expect(yield* loadStoreGcConfig({ storeBasePath })).toEqual(DEFAULT_STORE_GC_CONFIG)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -159,7 +159,7 @@ describe('store-gc-config', () => {
             generatedArtifacts: DEFAULT_STORE_GC_CONFIG.generatedArtifacts,
           })
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -172,7 +172,7 @@ describe('store-gc-config', () => {
           // Degrades to defaults rather than failing the gc path.
           expect(yield* loadStoreGcConfig({ storeBasePath })).toEqual(DEFAULT_STORE_GC_CONFIG)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )

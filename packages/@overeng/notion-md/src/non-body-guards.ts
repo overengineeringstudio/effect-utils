@@ -38,7 +38,7 @@ export const nonBodyGuardNames = [
 ] as const
 
 /** A single files/media or comment write guard name. */
-export const NonBodyGuardName = Schema.Literal(...nonBodyGuardNames).annotations({
+export const NonBodyGuardName = Schema.Literals(nonBodyGuardNames).annotate({
   identifier: 'NotionMd.NonBodyGuardName',
 })
 export type NonBodyGuardName = typeof NonBodyGuardName.Type
@@ -58,7 +58,7 @@ export const destructiveBodyGuardNames = [
 ] as const
 
 /** A single destructive body write guard name. */
-export const DestructiveBodyGuardName = Schema.Literal(...destructiveBodyGuardNames).annotations({
+export const DestructiveBodyGuardName = Schema.Literals(destructiveBodyGuardNames).annotate({
   identifier: 'NotionMd.DestructiveBodyGuardName',
 })
 export type DestructiveBodyGuardName = typeof DestructiveBodyGuardName.Type

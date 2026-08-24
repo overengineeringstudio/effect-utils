@@ -168,7 +168,7 @@ export const dryRunSyncDataSource = (): DataSourceSnapshot => ({
   dataSourceId: testIds.dataSourceId,
   parentDatabaseId: testIds.databaseId,
   requestId: testIds.requestId,
-  observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+  observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
   schemaHash: hash('schema'),
   schemaProperties: [
     {

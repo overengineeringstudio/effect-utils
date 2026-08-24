@@ -1,4 +1,5 @@
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
+import { FetchHttpClient } from 'effect/unstable/http'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Duration, Effect, Layer, Redacted, Schedule } from 'effect'
 
 import type { NotionApiError } from '@overeng/notion-effect-client'
@@ -50,13 +51,13 @@ export const NotionConfigLive = Layer.succeed(NotionConfig, {
 })
 
 /** Full Effect layer for e2e tests: live config + fetch HTTP. */
-export const E2ELayer: Layer.Layer<NotionConfig | HttpClient.HttpClient> = Layer.mergeAll(
+export const E2ELayer: Layer.Layer<NotionConfig | HttpClient> = Layer.mergeAll(
   NotionConfigLive,
   FetchHttpClient.layer,
 )
 
 /** Effect env required by any helper below. */
-export type E2EEnv = NotionConfig | HttpClient.HttpClient
+export type E2EEnv = NotionConfig | HttpClient
 
 /**
  * Exponential backoff on rate-limit / transient errors. The underlying
@@ -65,7 +66,7 @@ export type E2EEnv = NotionConfig | HttpClient.HttpClient
  * helper composes multiple requests.
  */
 const e2eRetrySchedule = Schedule.exponential(Duration.seconds(1), 2.0).pipe(
-  Schedule.compose(Schedule.recurs(4)),
+  Schedule.upTo({ times: 4 }),
 )
 
 /**
@@ -112,7 +113,7 @@ export const createScratchPage = (label: string): Effect.Effect<string, NotionAp
 export const archiveScratchPage = (pageId: string): Effect.Effect<void, never, E2EEnv> =>
   NotionPages.archive({ pageId }).pipe(
     Effect.asVoid,
-    Effect.catchAll((cause) => {
+    Effect.catch((cause) => {
       // eslint-disable-next-line no-console
       console.warn(`archiveScratchPage(${pageId}) failed (ignored):`, cause)
       return Effect.void
@@ -142,7 +143,7 @@ export interface ReadBlockNode {
  * so a genuine empty tree never hangs the suite.
  */
 const childrenSettleSchedule = Schedule.exponential(Duration.millis(500), 1.5).pipe(
-  Schedule.compose(Schedule.recurs(4)),
+  Schedule.upTo({ times: 4 }),
 )
 
 const retrieveChildrenSettled = (
@@ -159,7 +160,7 @@ const retrieveChildrenSettled = (
     // If the paradox never resolves within the budget, fall through with an
     // empty list rather than erroring — callers can still assert a readable
     // tree and see the mismatch as a test failure instead of a flake.
-    Effect.catchAll(() => NotionBlocks.retrieveChildren({ blockId })),
+    Effect.catch(() => NotionBlocks.retrieveChildren({ blockId })),
   )
 
 export const readPageTree = (

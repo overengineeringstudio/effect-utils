@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest'
-import * as fc from 'effect/FastCheck'
+import * as fc from 'effect/testing/FastCheck'
 
 import { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'

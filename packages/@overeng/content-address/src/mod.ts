@@ -8,66 +8,72 @@ import { Effect, Schema } from 'effect'
 
 /** Branded SHA-256 content digest in lowercase-hex `sha256:<64 hex>` form. */
 export const ContentDigest = Schema.String.pipe(
-  Schema.pattern(/^sha256:[a-f0-9]{64}$/),
+  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)),
   Schema.brand('ContentAddress.ContentDigest'),
-  Schema.annotations({ identifier: 'ContentAddress.ContentDigest' }),
+  Schema.annotate({ identifier: 'ContentAddress.ContentDigest' }),
 )
 export type ContentDigest = typeof ContentDigest.Type
 
 /** Location-independent CAS retrieval URI in `cas:sha256/<byte>/<rest>` form. */
 export const CasUri = Schema.String.pipe(
-  Schema.pattern(/^cas:sha256\/[a-f0-9]{2}\/[a-f0-9]{62}$/),
+  Schema.check(Schema.isPattern(/^cas:sha256\/[a-f0-9]{2}\/[a-f0-9]{62}$/)),
   Schema.brand('ContentAddress.CasUri'),
-  Schema.annotations({ identifier: 'ContentAddress.CasUri' }),
+  Schema.annotate({ identifier: 'ContentAddress.CasUri' }),
 )
 export type CasUri = typeof CasUri.Type
 
+const NonNegativeInt = Schema.Int.pipe(
+  Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
+)
+
 /** Branded non-empty media (MIME) type describing the encoded byte payload. */
-export const MediaType = Schema.NonEmptyTrimmedString.pipe(
+export const MediaType = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
   Schema.brand('ContentAddress.MediaType'),
-  Schema.annotations({ identifier: 'ContentAddress.MediaType' }),
+  Schema.annotate({ identifier: 'ContentAddress.MediaType' }),
 )
 export type MediaType = typeof MediaType.Type
 
 /** Branded codec tag naming the byte-encoding scheme (e.g. `canonical-json`). */
-export const Codec = Schema.NonEmptyTrimmedString.pipe(
+export const Codec = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
   Schema.brand('ContentAddress.Codec'),
-  Schema.annotations({ identifier: 'ContentAddress.Codec' }),
+  Schema.annotate({ identifier: 'ContentAddress.Codec' }),
 )
 export type Codec = typeof Codec.Type
 
 /** Self-describing content-address record: digest + byte length + media type (optional codec/schema version). */
 export const ContentDescriptor = Schema.TaggedStruct('ContentDescriptor', {
   digest: ContentDigest,
-  byteLength: Schema.NonNegativeInt,
+  byteLength: NonNegativeInt,
   mediaType: MediaType,
   codec: Schema.optional(Codec),
-  schemaVersion: Schema.optional(Schema.NonNegativeInt),
-}).annotations({ identifier: 'ContentAddress.ContentDescriptor' })
+  schemaVersion: Schema.optional(NonNegativeInt),
+}).annotate({ identifier: 'ContentAddress.ContentDescriptor' })
 export type ContentDescriptor = typeof ContentDescriptor.Type
 
 /** One child object referenced by a manifest, optionally with a stable logical path and role. */
 export const ContentManifestEntry = Schema.Struct({
   descriptor: ContentDescriptor,
-  logicalPath: Schema.optional(Schema.NonEmptyTrimmedString),
-  role: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'ContentAddress.ContentManifestEntry' })
+  logicalPath: Schema.optional(Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()))),
+  role: Schema.optional(Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()))),
+}).annotate({ identifier: 'ContentAddress.ContentManifestEntry' })
 export type ContentManifestEntry = typeof ContentManifestEntry.Type
 
 /** Versioned CAS manifest containing descriptors for a logical artifact or artifact set. */
 export const ContentManifest = Schema.TaggedStruct('ContentManifest', {
   schemaVersion: Schema.Literal(1),
-  role: Schema.NonEmptyTrimmedString,
+  role: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
   createdAt: Schema.optional(Schema.DateTimeUtc),
   entries: Schema.Array(ContentManifestEntry),
-}).annotations({ identifier: 'ContentAddress.ContentManifest' })
+}).annotate({ identifier: 'ContentAddress.ContentManifest' })
 export type ContentManifest = typeof ContentManifest.Type
 
 /** Durable pin record that points a mutable name at an immutable manifest descriptor. */
 export const ContentPin = Schema.TaggedStruct('ContentPin', {
   schemaVersion: Schema.Literal(1),
   target: ContentDescriptor,
-}).annotations({ identifier: 'ContentAddress.ContentPin' })
+}).annotate({ identifier: 'ContentAddress.ContentPin' })
 export type ContentPin = typeof ContentPin.Type
 
 /** Local filesystem-backed content store rooted at an absolute directory. */
@@ -82,8 +88,8 @@ export class ContentDescriptorMismatchError extends Schema.TaggedError<ContentDe
   {
     expectedDigest: ContentDigest,
     actualDigest: ContentDigest,
-    expectedByteLength: Schema.NonNegativeInt,
-    actualByteLength: Schema.NonNegativeInt,
+    expectedByteLength: NonNegativeInt,
+    actualByteLength: NonNegativeInt,
     mediaType: MediaType,
     message: Schema.String,
   },
@@ -115,7 +121,7 @@ export class ContentStoreIoError extends Schema.TaggedError<ContentStoreIoError>
   {
     operation: Schema.String,
     path: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
@@ -136,7 +142,7 @@ export class InvalidCasUriError extends Schema.TaggedError<InvalidCasUriError>()
   'InvalidCasUriError',
   {
     uri: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
@@ -177,7 +183,7 @@ export class InvalidManifestDescriptorError extends Schema.TaggedError<InvalidMa
     digest: ContentDigest,
     mediaType: MediaType,
     codec: Schema.optional(Codec),
-    schemaVersion: Schema.optional(Schema.NonNegativeInt),
+    schemaVersion: Schema.optional(NonNegativeInt),
     message: Schema.String,
   },
 ) {}
@@ -188,7 +194,7 @@ export class InvalidPinRecordError extends Schema.TaggedError<InvalidPinRecordEr
   {
     name: Schema.String,
     path: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
@@ -198,7 +204,7 @@ export class InvalidManifestRecordError extends Schema.TaggedError<InvalidManife
   'InvalidManifestRecordError',
   {
     digest: ContentDigest,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
@@ -273,7 +279,7 @@ const canonicalizeJson = (value: unknown): string => {
 }
 
 /** Encode `value` and render it as canonical JSON with object keys sorted, for stable hashing across key-insertion order. */
-export const canonicalJsonString = <TSchema extends Schema.Schema.AnyNoContext>({
+export const canonicalJsonString = <TSchema extends Schema.Codec<any>>({
   schema,
   value,
 }: {
@@ -282,7 +288,7 @@ export const canonicalJsonString = <TSchema extends Schema.Schema.AnyNoContext>(
 }): string => canonicalizeJson(Schema.encodeSync(schema)(value))
 
 /** UTF-8 bytes of {@link canonicalJsonString} — the exact bytes that get hashed. */
-export const canonicalJsonBytes = <TSchema extends Schema.Schema.AnyNoContext>({
+export const canonicalJsonBytes = <TSchema extends Schema.Codec<any>>({
   schema,
   value,
 }: {
@@ -291,7 +297,7 @@ export const canonicalJsonBytes = <TSchema extends Schema.Schema.AnyNoContext>({
 }): Uint8Array => utf8Bytes(canonicalJsonString({ schema, value }))
 
 /** Content digest of a value's canonical-JSON encoding; stable regardless of object key order. */
-export const hashCanonicalJson = <TSchema extends Schema.Schema.AnyNoContext>({
+export const hashCanonicalJson = <TSchema extends Schema.Codec<any>>({
   schema,
   value,
 }: {
@@ -340,7 +346,7 @@ export const descriptorForUtf8 = ({
   })
 
 /** Build a descriptor for a value's canonical-JSON encoding; stamps the canonical-JSON codec and media type and requires an explicit `schemaVersion`. */
-export const descriptorForCanonicalJson = <TSchema extends Schema.Schema.AnyNoContext>({
+export const descriptorForCanonicalJson = <TSchema extends Schema.Codec<any>>({
   schema,
   value,
   schemaVersion,
@@ -545,8 +551,8 @@ const verifyManifestDescriptor = Effect.fn('ContentAddress.verifyManifestDescrip
   }
 })
 
-const decodeContentPinJson = Schema.decodeUnknownSync(Schema.parseJson(ContentPin))
-const decodeContentManifestJson = Schema.decodeUnknownSync(Schema.parseJson(ContentManifest))
+const decodeContentPinJson = Schema.decodeUnknownSync(Schema.fromJsonString(ContentPin))
+const decodeContentManifestJson = Schema.decodeUnknownSync(Schema.fromJsonString(ContentManifest))
 
 /** Store bytes under their descriptor-derived object path and return the descriptor. */
 export const putBytes = Effect.fn('ContentAddress.putBytes')(function* ({

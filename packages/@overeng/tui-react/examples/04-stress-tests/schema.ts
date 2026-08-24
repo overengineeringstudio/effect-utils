@@ -31,7 +31,7 @@ export const InterruptedState = Schema.TaggedStruct('Interrupted', {
 })
 
 /** Union schema of all stress test states. */
-export const StressTestState = Schema.Union(RunningState, FinishedState, InterruptedState)
+export const StressTestState = Schema.Union([RunningState, FinishedState, InterruptedState])
 
 /** Inferred type for the stress test state union. */
 export type StressTestState = Schema.Schema.Type<typeof StressTestState>
@@ -41,11 +41,11 @@ export type StressTestState = Schema.Schema.Type<typeof StressTestState>
 // =============================================================================
 
 /** Union schema of stress test actions (Tick, Finish, Interrupted). */
-export const StressTestAction = Schema.Union(
+export const StressTestAction = Schema.Union([
   Schema.TaggedStruct('Tick', {}),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 /** Inferred type for the stress test action union. */
 export type StressTestAction = Schema.Schema.Type<typeof StressTestAction>

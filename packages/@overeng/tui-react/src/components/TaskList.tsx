@@ -35,7 +35,7 @@ import { Text } from './Text.tsx'
 // =============================================================================
 
 /** Status of a task item */
-export const TaskStatusSchema = Schema.Literal('pending', 'active', 'success', 'error', 'skipped')
+export const TaskStatusSchema = Schema.Literals(['pending', 'active', 'success', 'error', 'skipped'])
 /** Inferred type for a task status literal ('pending' | 'active' | 'success' | 'error' | 'skipped'). */
 export type TaskStatus = Schema.Schema.Type<typeof TaskStatusSchema>
 

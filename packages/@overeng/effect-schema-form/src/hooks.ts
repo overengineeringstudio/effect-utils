@@ -52,9 +52,9 @@ export const useSchemaForm = <T extends Record<string, unknown>>({
   value,
   onChange,
 }: UseSchemaFormOptions<T>): UseSchemaFormResult<T> => {
-  const fields = useMemo(() => getStructProperties(schema as Schema.Schema.AnyNoContext), [schema])
+  const fields = useMemo(() => getStructProperties(schema as Schema.Top), [schema])
 
-  const tagInfo = useMemo(() => analyzeTaggedStruct(schema as Schema.Schema.AnyNoContext), [schema])
+  const tagInfo = useMemo(() => analyzeTaggedStruct(schema as Schema.Top), [schema])
 
   const getValue = useCallback(<K extends keyof T>(key: K): T[K] => value[key], [value])
 
@@ -103,7 +103,7 @@ export interface UseFieldMetaResult {
  * )
  * ```
  */
-export const useFieldMeta = (schema: Schema.Schema.AnyNoContext): UseFieldMetaResult => {
+export const useFieldMeta = (schema: Schema.Top): UseFieldMetaResult => {
   const meta = useMemo(() => analyzeSchema(schema), [schema])
   return { meta }
 }

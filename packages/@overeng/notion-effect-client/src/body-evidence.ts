@@ -10,75 +10,75 @@ import {
 
 import { NOTION_API_VERSION } from './config.ts'
 
-const BodyCompletenessEvidence = Schema.Literal('complete', 'lossy').annotations({
+const BodyCompletenessEvidence = Schema.Literals(['complete', 'lossy']).annotate({
   identifier: 'NotionBodyEvidence.BodyCompleteness',
 })
 type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type
 
 /** `sha256:<hex>` branded fingerprint of a body observation's identity evidence (excludes `observedAt`, so re-observing unchanged content yields the same value). */
 export const BodyEvidenceFingerprint = Schema.String.pipe(
-  Schema.pattern(/^sha256:[a-f0-9]{64}$/),
+  Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)),
   Schema.brand('NotionBodyEvidence.BodyEvidenceFingerprint'),
-  Schema.annotations({ identifier: 'NotionBodyEvidence.BodyEvidenceFingerprint' }),
+  Schema.annotate({ identifier: 'NotionBodyEvidence.BodyEvidenceFingerprint' }),
 )
 export type BodyEvidenceFingerprint = typeof BodyEvidenceFingerprint.Type
 
 /** Content-addressed evidence for one remote page body observation: endpoint markdown, block tree, rendered body, and inventory as content descriptors plus the stability window. */
 export const RemoteBodyObservationEvidence = Schema.TaggedStruct('RemoteBodyObservationEvidence', {
   schemaVersion: Schema.Literal(1),
-  notionApiVersion: Schema.NonEmptyTrimmedString,
-  pageId: Schema.NonEmptyTrimmedString,
-  observedAt: Schema.DateTimeUtc,
+  notionApiVersion: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
+  pageId: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
+  observedAt: Schema.DateTimeUtcFromString,
   observationWindow: Schema.Struct({
-    beforeLastEditedTime: Schema.DateTimeUtc,
-    afterLastEditedTime: Schema.DateTimeUtc,
+    beforeLastEditedTime: Schema.DateTimeUtcFromString,
+    afterLastEditedTime: Schema.DateTimeUtcFromString,
   }),
   endpointMarkdown: ContentDescriptor,
   blockTree: ContentDescriptor,
   renderedBody: ContentDescriptor,
   blockInventory: ContentDescriptor,
   completeness: BodyCompletenessEvidence,
-}).annotations({ identifier: 'NotionBodyEvidence.RemoteBodyObservationEvidence' })
+}).annotate({ identifier: 'NotionBodyEvidence.RemoteBodyObservationEvidence' })
 export type RemoteBodyObservationEvidence = typeof RemoteBodyObservationEvidence.Type
 
 const RemoteBodyObservationIdentityEvidence = Schema.TaggedStruct('RemoteBodyObservationEvidence', {
   schemaVersion: Schema.Literal(1),
-  notionApiVersion: Schema.NonEmptyTrimmedString,
-  pageId: Schema.NonEmptyTrimmedString,
+  notionApiVersion: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
+  pageId: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
   observationWindow: Schema.Struct({
-    beforeLastEditedTime: Schema.DateTimeUtc,
-    afterLastEditedTime: Schema.DateTimeUtc,
+    beforeLastEditedTime: Schema.DateTimeUtcFromString,
+    afterLastEditedTime: Schema.DateTimeUtcFromString,
   }),
   endpointMarkdown: ContentDescriptor,
   blockTree: ContentDescriptor,
   renderedBody: ContentDescriptor,
   blockInventory: ContentDescriptor,
   completeness: BodyCompletenessEvidence,
-}).annotations({ identifier: 'NotionBodyEvidence.RemoteBodyObservationIdentityEvidence' })
+}).annotate({ identifier: 'NotionBodyEvidence.RemoteBodyObservationIdentityEvidence' })
 
 const BlockInventoryEntryEvidence = Schema.Struct({
   id: Schema.String,
   type: Schema.String,
   hasChildren: Schema.Boolean,
   inTrash: Schema.Boolean,
-}).annotations({ identifier: 'NotionBodyEvidence.BlockInventoryEntry' })
+}).annotate({ identifier: 'NotionBodyEvidence.BlockInventoryEntry' })
 
 const BlockTreeEntryEvidence = Schema.Struct({
-  depth: Schema.NonNegativeInt,
+  depth: Schema.Natural,
   id: Schema.String,
   type: Schema.String,
   hasChildren: Schema.Boolean,
   inTrash: Schema.Boolean,
-}).annotations({ identifier: 'NotionBodyEvidence.BlockTreeEntry' })
+}).annotate({ identifier: 'NotionBodyEvidence.BlockTreeEntry' })
 
 const BlockInventoryEvidence = Schema.Struct({
   entries: Schema.Array(BlockInventoryEntryEvidence),
   renderedMarkdown: Schema.String,
-}).annotations({ identifier: 'NotionBodyEvidence.BlockInventory' })
+}).annotate({ identifier: 'NotionBodyEvidence.BlockInventory' })
 
 const BlockTreeEvidence = Schema.Struct({
   entries: Schema.Array(BlockTreeEntryEvidence),
-}).annotations({ identifier: 'NotionBodyEvidence.BlockTree' })
+}).annotate({ identifier: 'NotionBodyEvidence.BlockTree' })
 
 type BodyEvidenceBlockTree = ReadonlyArray<{
   readonly block: {

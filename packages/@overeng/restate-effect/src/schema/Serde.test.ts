@@ -197,7 +197,7 @@ describe('State.for optional field serde (papercut)', () => {
  * ≡ x` over an `Arbitrary` derived from the schema is first-class" is made REAL
  * here: `@effect/vitest` `it.prop` derives a `fast-check` arbitrary from each
  * schema and asserts `deserialize(serialize(x))` is equivalent to `x` for every
- * generated value. Comparison uses `Schema.equivalence(schema)` — NOT
+ * generated value. Comparison uses `Schema.toEquivalence(schema)` — NOT
  * `toStrictEqual` — so transformed/branded values compare by their decoded VALUE,
  * the property that actually matters for a serde.
  */
@@ -211,7 +211,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   })
   fcIt.prop('round-trips a plain struct', [Plain], ([value]) => {
     const serde = effectSerde({ schema: Plain })
-    const eq = Schema.equivalence(Plain)
+    const eq = Schema.toEquivalence(Plain)
     expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
   })
 
@@ -224,7 +224,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   })
   fcIt.prop('round-trips a transformed schema (encoded ≠ decoded)', [Transformed], ([value]) => {
     const serde = effectSerde({ schema: Transformed })
-    const eq = Schema.equivalence(Transformed)
+    const eq = Schema.toEquivalence(Transformed)
     expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
   })
 
@@ -240,14 +240,14 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     [FiniteValue],
     ([value]) => {
       const serde = effectSerde({ schema: OptionalState })
-      const eq = Schema.equivalence(OptionalState)
+      const eq = Schema.toEquivalence(OptionalState)
       expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
     },
   )
 
   /* CRITICAL: the redaction transform itself — `encrypt(decrypt(x)) ≡ x`. A fresh
    * IV per encrypt means the wire bytes differ each time, so the round-trip holds
-   * by VALUE (the whole point of `Schema.equivalence` over byte equality). */
+   * by VALUE (the whole point of `Schema.toEquivalence` over byte equality). */
   const Redacted = Schema.Struct({
     to: Schema.String,
     body: Restate.sensitive(Schema.String),
@@ -261,7 +261,7 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     [Redacted],
     ([value]) => {
       const serde = effectSerde({ schema: Redacted, slot: 'internal', redaction: cipher })
-      const eq = Schema.equivalence(Redacted)
+      const eq = Schema.toEquivalence(Redacted)
       expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
     },
   )

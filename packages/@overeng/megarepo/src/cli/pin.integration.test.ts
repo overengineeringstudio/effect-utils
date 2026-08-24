@@ -5,8 +5,8 @@
  * These tests use direct function calls instead of CLI subprocess to avoid timeouts.
  */
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -52,7 +52,7 @@ const createMinimalTestSetup = () =>
         'test-repo': 'test-owner/test-repo',
       },
     }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
     yield* fs.writeFileString(
@@ -101,8 +101,8 @@ describe('mr config pin', () => {
             workspacePath,
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
-          const newConfigContent = yield* Schema.encode(
-            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          const newConfigContent = yield* Schema.encodeEffect(
+            Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(updatedConfig)
           yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
@@ -110,7 +110,7 @@ describe('mr config pin', () => {
           const finalConfig = yield* readConfig(workspacePath)
           expect(finalConfig.members['test-repo']).toBe('test-owner/test-repo#feature-branch')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -135,7 +135,7 @@ describe('mr config pin', () => {
           }
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config1)) + '\n',
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config1)) + '\n',
           )
 
           // Now switch to main
@@ -152,7 +152,7 @@ describe('mr config pin', () => {
             expect(Option.getOrNull(source.ref)).toBe('main')
           }
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -202,7 +202,7 @@ describe('mr config pin', () => {
             expect(member?.pinned).toBe(true)
           }
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -257,7 +257,7 @@ describe('mr config pin', () => {
             expect(member?.pinned).toBe(true)
           }
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )

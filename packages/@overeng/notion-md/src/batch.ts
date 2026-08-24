@@ -1,7 +1,6 @@
 import { basename, dirname, resolve } from 'node:path'
 
-import { FileSystem, Path } from '@effect/platform'
-import { Duration, Effect, Queue, Schema, Stream } from 'effect'
+import { Duration, Effect, FileSystem, Path, Queue, Stream } from 'effect'
 
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
@@ -215,8 +214,8 @@ export const resolveNmdTargets = (
 
     for (const target of opts.targets) {
       const absoluteTarget = resolve(target)
-      const info = yield* fs.stat(target).pipe(Effect.either)
-      if (info._tag === 'Left') {
+      const info = yield* fs.stat(target).pipe(Effect.result)
+      if (info._tag === 'Failure') {
         errors.push(
           failure({
             operation,
@@ -224,7 +223,7 @@ export const resolveNmdTargets = (
             error: makeFsError({
               operation: 'stat',
               path: target,
-              cause: info.left,
+              cause: info.failure,
               message: `Failed to stat ${target}`,
             }),
           }),
@@ -232,7 +231,7 @@ export const resolveNmdTargets = (
         continue
       }
 
-      if (info.right.type === 'Directory') {
+      if (info.success.type === 'Directory') {
         if (opts.recursive !== true) {
           errors.push(
             failure({
@@ -246,12 +245,12 @@ export const resolveNmdTargets = (
           continue
         }
 
-        const discovered = yield* discoverDirectory({ root: target }).pipe(Effect.either)
-        if (discovered._tag === 'Left') {
-          errors.push(failure({ operation, path: target, error: discovered.left }))
+        const discovered = yield* discoverDirectory({ root: target }).pipe(Effect.result)
+        if (discovered._tag === 'Failure') {
+          errors.push(failure({ operation, path: target, error: discovered.failure }))
           continue
         }
-        paths.push(...discovered.right)
+        paths.push(...discovered.success)
         continue
       }
 
@@ -290,7 +289,7 @@ const preflightPageIds = (opts: {
       (path) =>
         store.readNmdFile({ path }).pipe(
           Effect.flatMap((content) => parseNmdFile({ path, content })),
-          Effect.either,
+          Effect.result,
           Effect.map((result) => ({ path, result })),
         ),
       { concurrency: DEFAULT_BATCH_CONCURRENCY },
@@ -300,14 +299,14 @@ const preflightPageIds = (opts: {
     const pageIds = new Map<string, string[]>()
 
     for (const item of parsed) {
-      if (item.result._tag === 'Left') {
+      if (item.result._tag === 'Failure') {
         errors.push(
-          failure({ operation: opts.operation, path: item.path, error: item.result.left }),
+          failure({ operation: opts.operation, path: item.path, error: item.result.failure }),
         )
         continue
       }
 
-      const pageId = item.result.right.frontmatter.notion_md.page_id
+      const pageId = item.result.success.frontmatter.notion_md.page_id
       /*
        * Unbound files (`page_id: null`) have no remote identity yet, so they
        * cannot collide with another file. The per-file run still fails loud
@@ -380,7 +379,7 @@ export const runBatch = <A>(opts: {
       (path) =>
         opts.run(path).pipe(
           Effect.map((result) => success({ operation: opts.operation, path, result })),
-          Effect.catchAll((error) =>
+          Effect.catch((error) =>
             Effect.succeed(failure({ operation: opts.operation, path, error })),
           ),
         ),
@@ -429,7 +428,7 @@ const coalesceTriggers = (triggers: Iterable<WatchTrigger>): readonly WatchTrigg
     .toSorted((left, right) => left.path.localeCompare(right.path))
 }
 
-const encodeJsonLine = Schema.encodeSync(Schema.parseJson())
+const encodeJsonLine = (value: unknown): string => JSON.stringify(value)
 
 const writeJsonLine = (value: unknown): Effect.Effect<void> =>
   Effect.sync(() => {
@@ -482,7 +481,7 @@ export const runBatchWatch = <A, R>(
                 reason: 'file',
               }),
             ),
-            Effect.catchAll((error) =>
+            Effect.catch((error) =>
               emit({
                 event: 'watch_error',
                 path: watchedDir,
@@ -496,7 +495,7 @@ export const runBatchWatch = <A, R>(
       yield* Effect.forkScoped(
         Effect.forever(
           Effect.sleep(Duration.millis(opts.pollIntervalMs)).pipe(
-            Effect.zipRight(
+            Effect.andThen(
               Effect.forEach(paths, (path) => Queue.offer(queue, { path, reason: 'poll' })),
             ),
           ),
@@ -532,7 +531,7 @@ export const runBatchWatch = <A, R>(
             result: batch,
           })
         }).pipe(
-          Effect.catchAll((error) =>
+          Effect.catch((error) =>
             emit({
               event: 'sync_error',
               reason: 'batch',
@@ -562,6 +561,6 @@ export const isSingleFileTarget = (opts: {
   Effect.gen(function* () {
     if (opts.recursive === true || opts.targets.length !== 1) return false
     const fs = yield* FileSystem.FileSystem
-    const info = yield* fs.stat(opts.targets[0] ?? '').pipe(Effect.either)
-    return info._tag === 'Right' && info.right.type !== 'Directory'
+    const info = yield* fs.stat(opts.targets[0] ?? '').pipe(Effect.result)
+    return info._tag === 'Success' && info.success.type !== 'Directory'
   })

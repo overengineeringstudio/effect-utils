@@ -111,13 +111,13 @@ describe('integration', () => {
     )
 
     // Verify usage is correct
-    expect(code).toContain('Name: NotionSchema.title.annotations({ [notionPropertyMeta]')
+    expect(code).toContain('Name: NotionSchema.title.annotate({ [notionPropertyMeta]')
     expect(code).toContain(
-      'Description: NotionSchema.richTextOption.annotations({ [notionPropertyMeta]',
+      'Description: NotionSchema.richTextOption.annotate({ [notionPropertyMeta]',
     )
-    expect(code).toContain('Count: NotionSchema.numberOption.annotations({ [notionPropertyMeta]')
-    expect(code).toContain('Done: NotionSchema.checkbox.annotations({ [notionPropertyMeta]')
-    expect(code).toContain('Status: NotionSchema.select().annotations({ [notionPropertyMeta]')
+    expect(code).toContain('Count: NotionSchema.numberOption.annotate({ [notionPropertyMeta]')
+    expect(code).toContain('Done: NotionSchema.checkbox.annotate({ [notionPropertyMeta]')
+    expect(code).toContain('Status: NotionSchema.select().annotate({ [notionPropertyMeta]')
   })
 
   it('should generate schemas that can decode actual Notion API responses', () => {

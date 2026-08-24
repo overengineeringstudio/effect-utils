@@ -10,7 +10,7 @@ import type { ReplicaCellBase } from '../replica/replica.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 import { dataFilePropertyEdits, nmdPropertyFacts } from './local-convergence-inputs.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(s: TSchema, v: unknown) =>
+const decode = <TSchema extends Schema.Codec<any, any, never>>(s: TSchema, v: unknown) =>
   Schema.decodeUnknownSync(s)(v)
 
 const pageId = decode(PageId, 'page-1')

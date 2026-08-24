@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Effect, Schema } from 'effect'
 
 import {
@@ -129,7 +129,7 @@ const observeStable = (opts: {
 }): Effect.Effect<
   NotionBodyObservation,
   NotionApiError | NotionBodyObservationChangedError,
-  NotionConfig | HttpClient.HttpClient
+  NotionConfig | HttpClient
 > =>
   Effect.gen(function* () {
     const before = yield* NotionPages.retrieve({ pageId: opts.pageId })

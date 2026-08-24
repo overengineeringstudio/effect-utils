@@ -18,7 +18,7 @@
  *    emission does NOT increment (no double-count across attempts).
  */
 import * as Resource from '@effect/opentelemetry/Resource'
-import * as EffectTracer from '@effect/opentelemetry/Tracer'
+import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 import { context, trace } from '@opentelemetry/api'
 import {
   AggregationTemporality,

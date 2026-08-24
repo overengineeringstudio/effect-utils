@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 
 /** Schema for the single-database generate command's UI state (Introspecting → Generating → Writing → Done/DryRun/Error). */
-export const GenerateState = Schema.Union(
+export const GenerateState = Schema.Union([
   Schema.TaggedStruct('Introspecting', { databaseId: Schema.String }),
   Schema.TaggedStruct('Generating', { schemaName: Schema.String }),
   Schema.TaggedStruct('Writing', { outputPath: Schema.String }),
@@ -17,12 +17,12 @@ export const GenerateState = Schema.Union(
     apiOutputPath: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('Error', { message: Schema.String }),
-)
+])
 
 export type GenerateState = typeof GenerateState.Type
 
 /** Actions dispatched during single-database generation to transition through pipeline stages. */
-export const GenerateAction = Schema.Union(
+export const GenerateAction = Schema.Union([
   Schema.TaggedStruct('SetIntrospecting', { databaseId: Schema.String }),
   Schema.TaggedStruct('SetGenerating', { schemaName: Schema.String }),
   Schema.TaggedStruct('SetWriting', { outputPath: Schema.String }),
@@ -38,7 +38,7 @@ export const GenerateAction = Schema.Union(
     apiOutputPath: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('SetError', { message: Schema.String }),
-)
+])
 
 export type GenerateAction = typeof GenerateAction.Type
 

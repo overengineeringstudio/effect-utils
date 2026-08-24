@@ -1,6 +1,6 @@
 import * as crypto from 'node:crypto'
 
-import { Context, Layer, Option } from 'effect'
+import { Context, Layer } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
 import { SensitiveId } from './Annotations.ts'
@@ -44,10 +44,9 @@ export interface RedactionCipher {
  * `RestateRedaction` is provided, encode/decode FAILS with a clear error rather
  * than silently passing plaintext (see {@link withRedaction}).
  */
-export class RestateRedaction extends Context.Tag('@overeng/restate-effect/RestateRedaction')<
-  RestateRedaction,
-  RedactionCipher
->() {}
+export class RestateRedaction extends Context.Service<RestateRedaction, RedactionCipher>()(
+  '@overeng/restate-effect/RestateRedaction',
+) {}
 
 /* ── reference AES-256-GCM cipher (node:crypto) ──────────────────────────── */
 
@@ -105,11 +104,11 @@ export const aesGcmRedactionLayer = (key: Uint8Array): Layer.Layer<RestateRedact
  * transform consumes them.
  */
 export const findSensitiveFields = (ast: SchemaAST.AST): ReadonlyArray<string> => {
-  if (ast._tag !== 'TypeLiteral') return []
+  if (ast._tag !== 'Objects') return []
   const fields: string[] = []
   for (const prop of ast.propertySignatures) {
     if (typeof prop.name !== 'string') continue
-    if (Option.isSome(SchemaAST.getAnnotation<true>(SensitiveId)(prop.type)) === true) {
+    if (SchemaAST.resolveAt<true>(SensitiveId)(prop.type) !== undefined) {
       fields.push(prop.name)
     }
   }

@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 
 import {
   AbsolutePath,
@@ -18,7 +18,7 @@ import {
 import type { LocalWorkspacePortShape } from '../core/ports.ts'
 
 /** Decode an unknown value against a schema using sync semantics — throws on invalid input (test-only helper, mirrors `Schema.decodeUnknownSync(schema)(value)`). */
-export const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+export const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {
@@ -87,4 +87,4 @@ export const collectWorkspaceScan = ({
   readonly workspace: LocalWorkspacePortShape
   readonly root: AbsolutePath
 }) =>
-  Effect.runPromise(workspace.scan(root).pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)))
+  Effect.runPromise(workspace.scan(root).pipe(Stream.runCollect))

@@ -4,7 +4,7 @@
  * Adds a new member repository to the megarepo configuration.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 import { Effect, Option } from 'effect'
 import React from 'react'
 
@@ -58,18 +58,18 @@ const parseRepoRef = (ref: string): { sourceString: string; suggestedName: strin
 export const addCommand = Cli.Command.make(
   'add',
   {
-    repo: Cli.Args.text({ name: 'repo' }).pipe(
-      Cli.Args.withDescription('Repository reference (github shorthand, URL, or path)'),
+    repo: Cli.Argument.string('repo').pipe(
+      Cli.Argument.withDescription('Repository reference (github shorthand, URL, or path)'),
     ),
-    name: Cli.Options.text('name').pipe(
-      Cli.Options.withAlias('n'),
-      Cli.Options.withDescription('Override the member name (defaults to repo name)'),
-      Cli.Options.optional,
+    name: Cli.Flag.string('name').pipe(
+      Cli.Flag.withAlias('n'),
+      Cli.Flag.withDescription('Override the member name (defaults to repo name)'),
+      Cli.Flag.optional,
     ),
-    sync: Cli.Options.boolean('sync').pipe(
-      Cli.Options.withAlias('s'),
-      Cli.Options.withDescription('Sync the added repo immediately'),
-      Cli.Options.withDefault(true),
+    sync: Cli.Flag.boolean('sync').pipe(
+      Cli.Flag.withAlias('s'),
+      Cli.Flag.withDescription('Sync the added repo immediately'),
+      Cli.Flag.withDefault(true),
     ),
     output: outputOption,
   },

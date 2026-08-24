@@ -86,7 +86,7 @@ const createDryRunState = (): GenerateState => ({
 export const TasksDB = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
-  status: Schema.Literal("todo", "in-progress", "done"),
+  status: Schema.Literals(["todo", "in-progress", "done"]),
   priority: Schema.optional(Schema.Number),
   assignee: Schema.optional(Schema.String),
   createdAt: Schema.Date,
@@ -104,7 +104,7 @@ const createDryRunWithApiState = (): GenerateState => ({
 export const TasksDB = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
-  status: Schema.Literal("todo", "in-progress", "done"),
+  status: Schema.Literals(["todo", "in-progress", "done"]),
   priority: Schema.optional(Schema.Number),
   createdAt: Schema.Date,
 })

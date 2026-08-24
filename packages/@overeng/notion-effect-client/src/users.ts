@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 
 import type { NotionConfig } from './config.ts'
@@ -19,7 +19,7 @@ import {
 const UserSchema = Schema.Struct({
   object: Schema.Literal('user'),
   id: Schema.String,
-}).annotations({ identifier: 'User' })
+}).annotate({ identifier: 'User' })
 
 type User = typeof UserSchema.Type
 
@@ -86,7 +86,7 @@ const listRaw = Effect.fn('NotionUsers.list')(function* (opts: ListUsersOptions)
  */
 export const list = (
   opts: ListUsersOptions = {},
-): Effect.Effect<PaginatedResult<User>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<PaginatedResult<User>, NotionApiError, NotionConfig | HttpClient> =>
   listRaw(opts)
 
 /**
@@ -98,10 +98,10 @@ export const list = (
  */
 export const listStream = (
   opts: Omit<ListUsersOptions, 'startCursor'> = {},
-): Stream.Stream<User, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
+): Stream.Stream<User, NotionApiError, NotionConfig | HttpClient> =>
+  Stream.flattenIterable(Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
     Option.match(maybeNextCursor, {
-      onNone: () => Effect.succeed(Option.none()),
+      onNone: () => Effect.succeed(undefined),
       onSome: (cursor) => {
         const listOpts: ListUsersOptions =
           Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
@@ -110,15 +110,15 @@ export const listStream = (
             const chunk = Chunk.fromIterable(result.results)
 
             if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-              return Option.some([chunk, Option.none()] as const)
+              return [chunk, Option.none()] as const
             }
 
-            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
+            return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
           }),
         )
       },
     }),
-  )
+  ))
 
 /**
  * Retrieve the bot user associated with the integration token.

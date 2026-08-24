@@ -2,42 +2,48 @@ import { Schema } from 'effect'
 
 import { DataSourceId, PageId } from './domain.ts'
 import { SyncRootId } from './events.ts'
+import { NonEmptyTrimmedString, NonNegativeInt } from './domain.ts'
 
 /** Stable local identifier for a durable wake signal in the SQLite inbox. */
-export const SignalId = Schema.NonEmptyTrimmedString.pipe(
+export const SignalId = NonEmptyTrimmedString.pipe(
   Schema.brand('NotionDatasourceSync.SignalId'),
-  Schema.annotations({ identifier: 'NotionDatasourceSync.SignalId' }),
+  Schema.annotate({ identifier: 'NotionDatasourceSync.SignalId' }),
 )
 export type SignalId = typeof SignalId.Type
 
 /** Provider or transport that delivered the signal, for example a webhook bridge or manual test source. */
-export const SignalProvider = Schema.NonEmptyTrimmedString.pipe(
+export const SignalProvider = NonEmptyTrimmedString.pipe(
   Schema.brand('NotionDatasourceSync.SignalProvider'),
-  Schema.annotations({ identifier: 'NotionDatasourceSync.SignalProvider' }),
+  Schema.annotate({ identifier: 'NotionDatasourceSync.SignalProvider' }),
 )
 export type SignalProvider = typeof SignalProvider.Type
 
 /** Provider-scoped idempotency key for deduping repeated signal deliveries. */
-export const SignalExternalId = Schema.NonEmptyTrimmedString.pipe(
+export const SignalExternalId = NonEmptyTrimmedString.pipe(
   Schema.brand('NotionDatasourceSync.SignalExternalId'),
-  Schema.annotations({ identifier: 'NotionDatasourceSync.SignalExternalId' }),
+  Schema.annotate({ identifier: 'NotionDatasourceSync.SignalExternalId' }),
 )
 export type SignalExternalId = typeof SignalExternalId.Type
 
 /** Stage-1 signals only wake the existing full sync path; payload hints are stored but not used for targeted pulls. */
-export const SignalKind = Schema.Literal('remote-change').annotations({
+export const SignalKind = Schema.Literal('remote-change').annotate({
   identifier: 'NotionDatasourceSync.SignalKind',
 })
 export type SignalKind = typeof SignalKind.Type
 
 /** Durable inbox lifecycle for signal processing. */
-export const SignalState = Schema.Literal('pending', 'claimed', 'processed', 'failed').annotations({
+export const SignalState = Schema.Literals([
+'pending',
+'claimed',
+'processed',
+'failed',
+]).annotate({
   identifier: 'NotionDatasourceSync.SignalState',
 })
 export type SignalState = typeof SignalState.Type
 
 /** JSON payload captured from the provider. It is deliberately opaque to keep the inbox provider-neutral. */
-export const SignalPayloadJson = Schema.String.annotations({
+export const SignalPayloadJson = Schema.String.annotate({
   identifier: 'NotionDatasourceSync.SignalPayloadJson',
 })
 export type SignalPayloadJson = typeof SignalPayloadJson.Type
@@ -53,23 +59,23 @@ export const SignalInboxRecord = Schema.Struct({
   state: SignalState,
   dataSourceId: Schema.optional(DataSourceId),
   pageId: Schema.optional(PageId),
-  attemptCount: Schema.NonNegativeInt,
+  attemptCount: NonNegativeInt,
   leaseToken: Schema.optional(Schema.String),
   claimedAt: Schema.optional(Schema.String),
   processedAt: Schema.optional(Schema.String),
   lastError: Schema.optional(Schema.String),
   createdAt: Schema.String,
   updatedAt: Schema.String,
-}).annotations({ identifier: 'NotionDatasourceSync.SignalInboxRecord' })
+}).annotate({ identifier: 'NotionDatasourceSync.SignalInboxRecord' })
 export type SignalInboxRecord = typeof SignalInboxRecord.Type
 
 /** Aggregated signal inbox counters used by daemon wake decisions and health/status reporting. */
 export const SignalInboxStatus = Schema.Struct({
-  pending: Schema.NonNegativeInt,
-  claimed: Schema.NonNegativeInt,
-  processed: Schema.NonNegativeInt,
-  failed: Schema.NonNegativeInt,
-}).annotations({ identifier: 'NotionDatasourceSync.SignalInboxStatus' })
+  pending: NonNegativeInt,
+  claimed: NonNegativeInt,
+  processed: NonNegativeInt,
+  failed: NonNegativeInt,
+}).annotate({ identifier: 'NotionDatasourceSync.SignalInboxStatus' })
 export type SignalInboxStatus = typeof SignalInboxStatus.Type
 
 /** Input for inserting a durable remote-change wake signal into the sync store. */

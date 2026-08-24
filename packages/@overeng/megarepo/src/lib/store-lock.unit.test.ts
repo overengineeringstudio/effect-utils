@@ -23,7 +23,7 @@ describe('StoreLock', () => {
             withRepoLock('shared-url')(
               Effect.gen(function* () {
                 const current = yield* Ref.get(counterRef)
-                yield* Effect.yieldNow()
+                yield* Effect.yieldNow
                 yield* Ref.set(counterRef, current + 1)
               }),
             )
@@ -96,7 +96,7 @@ describe('StoreLock', () => {
               (_, i) => () =>
                 withWorktreeLock('/store/github.com/org/shared-member/refs/heads/main/')(
                   Effect.gen(function* () {
-                    yield* Effect.yieldNow()
+                    yield* Effect.yieldNow
                     creationOrder.push(i)
                   }),
                 ),

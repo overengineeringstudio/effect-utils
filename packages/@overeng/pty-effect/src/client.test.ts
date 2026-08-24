@@ -4,7 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { describe, expect, it } from '@effect/vitest'
-import { Chunk, Effect, Fiber, Schema, Stream } from 'effect'
+import { Effect, Fiber, Schema, Stream } from 'effect'
 
 import { PtyClient, layer as ptyClientLayer } from './client.ts'
 import { PtyName } from './PtySpec.ts'
@@ -99,7 +99,7 @@ describe('PtyClient', () => {
     })
   })
 
-  it.scopedLive('spawns a daemon, lists it, attaches, reads bytes, exits cleanly', () =>
+  it.live('spawns a daemon, lists it, attaches, reads bytes, exits cleanly', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const client = yield* PtyClient
@@ -123,7 +123,7 @@ describe('PtyClient', () => {
         expect(session.initialScreen).toContain('HELLO_FROM_CLIENT')
 
         const collected = yield* session.bytes.pipe(Stream.take(8), Stream.runCollect)
-        expect(Chunk.size(collected)).toBeGreaterThanOrEqual(0)
+        expect(collected.length).toBeGreaterThanOrEqual(0)
 
         const exit = yield* session.exit.pipe(Effect.timeout('2 seconds'))
         expect(exit.code).toBe(0)
@@ -131,7 +131,7 @@ describe('PtyClient', () => {
     ),
   )
 
-  it.scopedLive('attach is scope-bound: closing scope detaches but daemon survives', () =>
+  it.live('attach is scope-bound: closing scope detaches but daemon survives', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const client = yield* PtyClient
@@ -156,7 +156,7 @@ describe('PtyClient', () => {
     ),
   )
 
-  it.scopedLive('peek returns current screen without side effects', () =>
+  it.live('peek returns current screen without side effects', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const client = yield* PtyClient
@@ -174,7 +174,7 @@ describe('PtyClient', () => {
     ),
   )
 
-  it.scopedLive('passes env overrides to the daemon without mutating the parent env', () =>
+  it.live('passes env overrides to the daemon without mutating the parent env', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const client = yield* PtyClient
@@ -209,7 +209,7 @@ describe('PtyClient', () => {
     ),
   )
 
-  it.scopedLive('exposes get, tag mutation, gc, and live event following', () =>
+  it.live('exposes get, tag mutation, gc, and live event following', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const client = yield* PtyClient
@@ -291,7 +291,7 @@ describe('PtyClient', () => {
     ),
   )
 
-  it.scopedLive('supports sendData, queryStats, and recent event reads', () =>
+  it.live('supports sendData, queryStats, and recent event reads', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const client = yield* PtyClient
@@ -334,7 +334,7 @@ describe('PtyClient', () => {
     ),
   )
 
-  it.scopedLive('rejects invalid session names with BadName', () =>
+  it.live('rejects invalid session names with BadName', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const client = yield* PtyClient
@@ -345,9 +345,9 @@ describe('PtyClient', () => {
             command: 'sh',
             args: ['-c', 'true'],
           })
-          .pipe(Effect.either)
-        expect(result._tag).toBe('Left')
-        if (result._tag === 'Left') expect(result.left.reason).toBe('BadName')
+          .pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure') expect(result.failure.reason).toBe('BadName')
       }).pipe(Effect.provide(ptyClientLayer)),
     ),
   )

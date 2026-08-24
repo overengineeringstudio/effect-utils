@@ -1,4 +1,4 @@
-import { Command, Options } from '@effect/cli'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 import { Effect } from 'effect'
 import React from 'react'
 
@@ -8,7 +8,7 @@ import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
 import { discoverStories } from '../StoryDiscovery.ts'
 import { ListApp, ListView } from './renderers/ListOutput/mod.ts'
 
-const pathOption = Options.text('path').pipe(
+const pathOption = Options.string('path').pipe(
   Options.withDescription('Package directory to search for stories'),
 )
 

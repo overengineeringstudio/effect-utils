@@ -26,7 +26,7 @@
  *
  * Author-time failures raise `Schema.TaggedError`s (not plain `throw`, unlike the prototype).
  */
-import { Option, Schema } from 'effect'
+import { Schema } from 'effect'
 import * as AST from 'effect/SchemaAST'
 
 import {
@@ -188,7 +188,7 @@ export type RegistryFragment = {
 /** An attribute Schema is missing the otel key annotation and/or the weaver metadata. */
 export class WeaverMissingAnnotationError extends Schema.TaggedError<WeaverMissingAnnotationError>()(
   'WeaverMissingAnnotationError',
-  { key: Schema.optional(Schema.String), missing: Schema.Literal('otelKey', 'weaverMeta') },
+  { key: Schema.optional(Schema.String), missing: Schema.Literals(['otelKey', 'weaverMeta']) },
 ) {}
 
 /**
@@ -262,32 +262,30 @@ type WeaverAttrMetaInput = {
   readonly constName?: string | undefined
 }
 
-/** deep annotation read (mirrors otel-contract's own walk through Refinement/Transformation/Union). */
+/** deep annotation read (mirrors otel-contract's own walk through encoding links and unions). */
 const getDeep = <T>({ id, ast }: { id: symbol; ast: AST.AST }): T | undefined => {
-  const here = Option.getOrUndefined(AST.getAnnotation<T>(ast, id))
+  const here = (ast.annotations as Record<symbol, unknown> | undefined)?.[id] as T | undefined
   if (here !== undefined) return here
   switch (ast._tag) {
-    case 'Refinement':
-      return getDeep<T>({ id, ast: ast.from })
-    case 'Transformation':
-      return getDeep<T>({ id, ast: ast.to }) ?? getDeep<T>({ id, ast: ast.from })
     case 'Union':
       return ast.types.map((t) => getDeep<T>({ id, ast: t })).find((x) => x !== undefined)
     default:
-      return undefined
+      return ast.encoding !== undefined && ast.encoding.length > 0
+        ? getDeep<T>({ id, ast: ast.encoding[0].to })
+        : undefined
   }
 }
 
-const annotateWeaver = <S extends Schema.Annotable.All>({
+const annotateWeaver = <S extends Schema.Codec<any>>({
   schema,
   meta,
 }: {
   schema: S
   meta: WeaverAttrMetaInput
-}): S => schema.annotations({ [WeaverAttrAnnotationId]: meta }) as S
+}): S => schema.annotate({ [WeaverAttrAnnotationId]: meta }) as S
 
 /** An attribute is an annotated Effect Schema (otel + weaver metadata carried on its AST). */
-export type Attribute = Schema.Schema.AnyNoContext
+export type Attribute = Schema.Codec<any>
 
 const keyOf = (schema: Attribute): string => {
   const otel = getDeep<{ key?: string }>({ id: OtelAttrAnnotationId, ast: schema.ast })
@@ -401,7 +399,7 @@ export const attr = {
     } & EntryMetaInput,
   ) =>
     annotateWeaver({
-      schema: OtelAttr.literal(o.key, ...o.values) as unknown as Schema.Schema<V[number]>,
+      schema: OtelAttr.literal(o.key, ...o.values) as unknown as Schema.Codec<any>,
       meta: {
         brief: o.brief,
         stability: o.stability,
@@ -519,8 +517,8 @@ type Ref = { schema: Attribute; requirement: RequirementLevel; external: boolean
 
 const buildFields = (
   entries: Record<string, FieldSpec>,
-): { fields: Record<string, Schema.Struct.Field>; refList: AttrRef[]; refs: Ref[] } => {
-  const fields: Record<string, Schema.Struct.Field> = {}
+): { fields: Schema.Struct.Fields; refList: AttrRef[]; refs: Ref[] } => {
+  const fields: Record<string, Schema.Constraint> = {}
   const refList: AttrRef[] = []
   const refs: Ref[] = []
   for (const [field, spec] of Object.entries(entries)) {
@@ -538,12 +536,12 @@ const buildFields = (
 
 /**
  * Build a `Schema.Struct` from a dynamically-assembled field record. The record is typed with
- * `Schema.Struct.Field` (so it accepts `Schema.optional(...)` PropertySignatures), which widens
+ * `Schema.Struct.Fields` (so it accepts `Schema.optional(...)` PropertySignatures), which widens
  * the result's `Context` to `unknown`; every field here is a no-context otel attribute, so the
  * cast back to `AnyNoContext` is sound.
  */
-const structOf = (fields: Record<string, Schema.Struct.Field>): Schema.Schema.AnyNoContext =>
-  Schema.Struct(fields) as unknown as Schema.Schema.AnyNoContext
+const structOf = (fields: Schema.Struct.Fields): Schema.Codec<any> =>
+  Schema.Struct(fields) as unknown as Schema.Codec<any>
 
 // ---------------------------------------------------------------------------
 // span / metric / operation — compose refs, derive the runtime encoder + weaver signal.
@@ -560,7 +558,7 @@ const signalMetaSpread = (o: EntryMetaInput): SignalMeta => ({
 export type SpanContract = {
   readonly kind: 'span'
   readonly id: string
-  readonly encoder: OtelAttrs<Schema.Schema.AnyNoContext>
+  readonly encoder: OtelAttrs<Schema.Codec<any>>
   readonly refs: ReadonlyArray<Ref>
   readonly signal: () => SignalDef
 }
@@ -605,8 +603,8 @@ export const span = (
 export type MetricContract = {
   readonly kind: 'metric'
   readonly id: string
-  readonly metric: OtelMetricDefinition<Schema.Schema.AnyNoContext>
-  readonly encoder: OtelAttrs<Schema.Schema.AnyNoContext>
+  readonly metric: OtelMetricDefinition<Schema.Codec<any>>
+  readonly encoder: OtelAttrs<Schema.Codec<any>>
   readonly refs: ReadonlyArray<Ref>
   readonly signal: () => SignalDef
 }
@@ -636,7 +634,7 @@ export const metric = (
   if (o.instrument === 'updowncounter') {
     throw new WeaverUnsupportedInstrumentError({ metricName: o.name, instrument: o.instrument })
   }
-  const def: OtelMetricDefinition<Schema.Schema.AnyNoContext> =
+  const def: OtelMetricDefinition<Schema.Codec<any>> =
     o.instrument === 'counter'
       ? OtelMetric.counter({
           name: o.name,
@@ -695,7 +693,7 @@ export type OperationContract = {
  */
 export const operation = <
   F extends Record<string, FieldSpec>,
-  L extends Record<string, Schema.Schema.AnyNoContext>,
+  L extends Record<string, Schema.Codec<any>>,
 >(
   o: {
     id: string
@@ -710,8 +708,9 @@ export const operation = <
 ): OperationContract => {
   const { fields, refList, refs } = buildFields(o.attributes)
   // runtime-only label-source fields — NOT catalog refs, absent from the registry.
+  const mutableFields = fields as Record<string, Schema.Constraint>
   for (const [field, schema] of Object.entries(o.labelFields ?? {})) {
-    fields[field] = schema as Schema.Struct.Field
+    mutableFields[field] = schema
   }
   const op = OtelOperation.define({
     name: o.name,

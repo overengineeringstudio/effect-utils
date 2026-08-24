@@ -4,8 +4,7 @@
  * Provides utilities for detecting, reading, and resolving symbolic links.
  */
 
-import { FileSystem, Path as PlatformPath, type Error as PlatformError } from '@effect/platform'
-import { Effect, Either } from 'effect'
+import { Effect, FileSystem, Path as PlatformPath, PlatformError, Result } from 'effect'
 
 import type { AbsolutePath, Path } from './brands.ts'
 import { NotASymlinkError, PathNotFoundError, PermissionError, SymlinkLoopError } from './errors.ts'
@@ -28,8 +27,8 @@ const mapFsError = (args: {
   readonly error: PlatformError.PlatformError
 }): PathNotFoundError | PermissionError => {
   const { path, error } = args
-  if (error._tag === 'SystemError') {
-    if (error.reason === 'NotFound') {
+  if (error._tag === 'PlatformError') {
+    if (error.reason._tag === 'NotFound') {
       return new PathNotFoundError({
         path,
         message: `Path not found: ${path}`,
@@ -37,7 +36,7 @@ const mapFsError = (args: {
         expectedType: 'any',
       })
     }
-    if (error.reason === 'PermissionDenied') {
+    if (error.reason._tag === 'PermissionDenied') {
       return new PermissionError({
         path,
         message: `Permission denied: ${path}`,
@@ -68,8 +67,8 @@ export const isSymlink = Effect.fnUntraced(function* (path: AbsolutePath) {
   const handleReadLinkError = (
     error: PlatformError.PlatformError,
   ): Effect.Effect<boolean, PathNotFoundError | PermissionError, never> => {
-    if (error._tag === 'SystemError') {
-      if (error.reason === 'NotFound') {
+    if (error._tag === 'PlatformError') {
+      if (error.reason._tag === 'NotFound') {
         return Effect.fail(
           new PathNotFoundError({
             path,
@@ -79,7 +78,7 @@ export const isSymlink = Effect.fnUntraced(function* (path: AbsolutePath) {
           }),
         )
       }
-      if (error.reason === 'PermissionDenied') {
+      if (error.reason._tag === 'PermissionDenied') {
         return Effect.fail(
           new PermissionError({
             path,
@@ -94,7 +93,7 @@ export const isSymlink = Effect.fnUntraced(function* (path: AbsolutePath) {
     return Effect.succeed(false)
   }
 
-  return yield* fs.readLink(path).pipe(Effect.as(true), Effect.catchAll(handleReadLinkError))
+  return yield* fs.readLink(path).pipe(Effect.as(true), Effect.catch(handleReadLinkError))
 })
 
 /**
@@ -103,7 +102,7 @@ export const isSymlink = Effect.fnUntraced(function* (path: AbsolutePath) {
 export const isSymlinkSafe = (
   path: AbsolutePath,
 ): Effect.Effect<boolean, never, FileSystem.FileSystem> =>
-  isSymlink(path).pipe(Effect.orElse(() => Effect.succeed(false)))
+  isSymlink(path).pipe(Effect.catch(() => Effect.succeed(false)))
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Symlink Reading
@@ -117,14 +116,14 @@ export const isSymlinkSafe = (
 export const readLink = Effect.fnUntraced(function* (path: AbsolutePath) {
   const fs = yield* FileSystem.FileSystem
 
-  const targetResult = yield* fs.readLink(path).pipe(Effect.either)
-  if (Either.isRight(targetResult) === true) {
-    return targetResult.right as Path
+  const targetResult = yield* fs.readLink(path).pipe(Effect.result)
+  if (Result.isSuccess(targetResult) === true) {
+    return targetResult.success as Path
   }
 
-  const error = targetResult.left
-  if (error._tag === 'SystemError') {
-    if (error.reason === 'NotFound') {
+  const error = targetResult.failure
+  if (error._tag === 'PlatformError') {
+    if (error.reason._tag === 'NotFound') {
       return yield* new PathNotFoundError({
         path,
         message: `Path not found: ${path}`,
@@ -132,7 +131,7 @@ export const readLink = Effect.fnUntraced(function* (path: AbsolutePath) {
         expectedType: 'any',
       })
     }
-    if (error.reason === 'PermissionDenied') {
+    if (error.reason._tag === 'PermissionDenied') {
       return yield* new PermissionError({
         path,
         message: `Permission denied: ${path}`,
@@ -143,16 +142,16 @@ export const readLink = Effect.fnUntraced(function* (path: AbsolutePath) {
 
   const statResult = yield* fs.stat(path).pipe(
     Effect.mapError((fsError) => mapFsError({ path, error: fsError })),
-    Effect.either,
+    Effect.result,
   )
-  if (Either.isLeft(statResult) === true) {
-    return yield* statResult.left
+  if (Result.isFailure(statResult) === true) {
+    return yield* statResult.failure
   }
 
   return yield* new NotASymlinkError({
     path,
     message: `Path is not a symbolic link: ${path}`,
-    actualType: statResult.right.type === 'Directory' ? 'directory' : 'file',
+    actualType: statResult.success.type === 'Directory' ? 'directory' : 'file',
   })
 })
 
@@ -174,8 +173,8 @@ export const resolve = Effect.fnUntraced(function* (path: AbsolutePath) {
   // Use realPath for efficient symlink resolution
   const realPath = yield* fs.realPath(path).pipe(
     Effect.mapError((error) => {
-      if (error._tag === 'SystemError') {
-        if (error.reason === 'NotFound') {
+      if (error._tag === 'PlatformError') {
+        if (error.reason._tag === 'NotFound') {
           return new PathNotFoundError({
             path,
             message: `Path not found: ${path}`,
@@ -183,7 +182,7 @@ export const resolve = Effect.fnUntraced(function* (path: AbsolutePath) {
             expectedType: 'any',
           })
         }
-        if (error.reason === 'PermissionDenied') {
+        if (error.reason._tag === 'PermissionDenied') {
           return new PermissionError({
             path,
             message: `Permission denied: ${path}`,
@@ -223,12 +222,12 @@ export const chain = Effect.fnUntraced(function* (path: AbsolutePath) {
   let current = path
 
   for (let depth = 0; depth < MAX_SYMLINK_DEPTH; depth++) {
-    const targetResult = yield* fs.readLink(current).pipe(Effect.either)
-    if (Either.isLeft(targetResult) === true) {
-      const error = targetResult.left
+    const targetResult = yield* fs.readLink(current).pipe(Effect.result)
+    if (Result.isFailure(targetResult) === true) {
+      const error = targetResult.failure
       if (
-        error._tag === 'SystemError' &&
-        (error.reason === 'NotFound' || error.reason === 'PermissionDenied')
+        error._tag === 'PlatformError' &&
+        (error.reason._tag === 'NotFound' || error.reason._tag === 'PermissionDenied')
       ) {
         return yield* mapFsError({ path: current, error })
       }
@@ -237,7 +236,7 @@ export const chain = Effect.fnUntraced(function* (path: AbsolutePath) {
       return visited
     }
 
-    const target = targetResult.right
+    const target = targetResult.success
 
     // Resolve to absolute if relative
     const absoluteTarget =
@@ -277,4 +276,4 @@ export const chain = Effect.fnUntraced(function* (path: AbsolutePath) {
 export const resolveSafe = (
   path: AbsolutePath,
 ): Effect.Effect<AbsolutePath, never, FileSystem.FileSystem> =>
-  resolve(path).pipe(Effect.orElse(() => Effect.succeed(path)))
+  resolve(path).pipe(Effect.catch(() => Effect.succeed(path)))

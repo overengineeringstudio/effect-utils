@@ -1,12 +1,13 @@
 /** @jsxImportSource react */
 import {
   Cause,
+  Context,
   Effect,
   Exit,
   Fiber,
   type Layer,
   ManagedRuntime,
-  Runtime,
+  Result,
   Schema,
   type Scope,
 } from 'effect'
@@ -41,7 +42,7 @@ export type ProviderEffect<TEnv, TA, TE> = Effect.Effect<TA, TE, TEnv | Scope.Sc
 // -----------------------------------------------------------------------------
 
 type EffectContextValue = {
-  runtime: Runtime.Runtime<unknown>
+  runtime: Context.Context<unknown>
   onError: ErrorHandler
 }
 
@@ -96,7 +97,7 @@ export const EffectProvider = <TEnv, TErr>({
   const [state, setState] = React.useState<
     | { _tag: 'loading' }
     | { _tag: 'error'; cause: Cause.Cause<TErr> }
-    | { _tag: 'ready'; runtime: Runtime.Runtime<TEnv> }
+    | { _tag: 'ready'; runtime: Context.Context<TEnv> }
   >({ _tag: 'loading' })
 
   const [retryCount, setRetryCount] = React.useState(0)
@@ -108,7 +109,7 @@ export const EffectProvider = <TEnv, TErr>({
 
     const init = Effect.gen(function* () {
       managedRuntime = ManagedRuntime.make(layer)
-      const runtime = yield* managedRuntime.runtimeEffect
+      const runtime = yield* managedRuntime.contextEffect
       return runtime
     })
 
@@ -117,7 +118,7 @@ export const EffectProvider = <TEnv, TErr>({
     fiber.addObserver((exit) => {
       if (Exit.isSuccess(exit) === true) {
         setState({ _tag: 'ready', runtime: exit.value })
-      } else {
+      } else if (Exit.isFailure(exit) === true) {
         setState({ _tag: 'error', cause: exit.cause })
       }
     })
@@ -139,7 +140,7 @@ export const EffectProvider = <TEnv, TErr>({
   const contextValue = React.useMemo<EffectContextValue | null>(
     () =>
       state._tag === 'ready'
-        ? { runtime: state.runtime as Runtime.Runtime<unknown>, onError }
+        ? { runtime: state.runtime as Context.Context<unknown>, onError }
         : null,
     [state, onError],
   )
@@ -159,13 +160,13 @@ export const EffectProvider = <TEnv, TErr>({
 // Hooks
 // -----------------------------------------------------------------------------
 
-/** Get the current Effect runtime from context */
-export const useRuntime = <TEnv,>(): Runtime.Runtime<TEnv> => {
+/** Get the current Effect runtime context from context */
+export const useRuntime = <TEnv,>(): Context.Context<TEnv> => {
   const ctx = React.useContext(EffectContext)
   if (ctx === null) {
     throw new Error('useRuntime must be used within an EffectProvider')
   }
-  return ctx.runtime as Runtime.Runtime<TEnv>
+  return ctx.runtime as Context.Context<TEnv>
 }
 
 /**
@@ -201,21 +202,21 @@ export const useEffectRunner = <TEnv,>(): (<TA, TE>(
   }
 
   const { runtime, onError } = ctx
-  const typedRuntime = runtime as Runtime.Runtime<TEnv>
+  const typedContext = runtime as Context.Context<TEnv>
 
   return React.useCallback(
     <TA, TE>(effect: ProviderEffect<TEnv, TA, TE>): CancelFn => {
       const fiber = effect.pipe(
-        Effect.tapErrorCause((cause) => Effect.sync(() => onError(cause))),
+        Effect.tapCause((cause) => Effect.sync(() => onError(cause))),
         EffectRunnerOperation.with({}),
         Effect.scoped,
-        Runtime.runFork(typedRuntime),
+        Effect.runForkWith(typedContext),
       )
       return () => {
         void Effect.runFork(Fiber.interrupt(fiber))
       }
     },
-    [typedRuntime, onError],
+    [typedContext, onError],
   )
 }
 
@@ -305,7 +306,7 @@ const defaultErrorHandler: ErrorHandler = (cause) => {
  * Extract a user-friendly error message from a Cause.
  */
 export const extractErrorMessage = (cause: Cause.Cause<unknown>): string => {
-  const failure = Cause.failureOption(cause)
+  const failure = Cause.findErrorOption(cause)
   if (failure._tag === 'Some') {
     const err = failure.value
     if (
@@ -319,9 +320,9 @@ export const extractErrorMessage = (cause: Cause.Cause<unknown>): string => {
     if (typeof err === 'string') return err
     return String(err)
   }
-  const defect = Cause.dieOption(cause)
-  if (defect._tag === 'Some') {
-    const d = defect.value
+  const defect = Cause.findDefect(cause)
+  if (Result.isSuccess(defect) === true) {
+    const d = defect.success
     if (d instanceof Error) return d.message
     return String(d)
   }

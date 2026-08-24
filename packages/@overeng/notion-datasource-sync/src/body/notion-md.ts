@@ -1,7 +1,7 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import * as NodeContext from '@effect/platform-node/NodeServices'
 import { Effect, Layer, Schema, Stream } from 'effect'
 
 import type { ContentDescriptor } from '@overeng/content-address'
@@ -58,7 +58,7 @@ export type NotionMdPageBodySyncPortInput = {
   readonly stateStore?: NmdStateStoreShape
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {
@@ -68,7 +68,7 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
 
 const hashFromNotionMdDigest = (value: string): Hash => decode({ schema: Hash, value })
 
-const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date().toISOString() })
+const observedAtNow = () => decode({ schema: Schema.DateTimeUtcFromString, value: new Date().toISOString() })
 
 /** Structural (duck-typed) view of NotionMD fidelity info, decoupling this adapter from the exact upstream `@overeng/notion-md` body type. */
 export type NotionBodyFidelityLike = {
@@ -204,13 +204,13 @@ const provideNotionMdGatewayAndStateStore =
 class JsonFileWriteError extends Schema.TaggedError<JsonFileWriteError>()('JsonFileWriteError', {
   path: Schema.String,
   message: Schema.String,
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 /**
  * Atomically writes a schema-encoded JSON file via a `.tmp` rename.
  *
- * The value is encoded through `Schema.parseJson(schema, { space: 2 })` so the
+ * The value is encoded through `Schema.fromJsonString(schema, { space: 2 })` so the
  * persisted JSON is the schema's canonical encoding rather than a raw
  * `JSON.stringify`, and any I/O failure is surfaced as a typed
  * {@link JsonFileWriteError}.
@@ -221,11 +221,11 @@ const writeJsonFile = <A>({
   value,
 }: {
   readonly path: string
-  readonly schema: Schema.Schema<A, string>
+  readonly schema: Schema.Codec<A, string>
   readonly value: A
 }): Effect.Effect<void, JsonFileWriteError> =>
   Effect.gen(function* () {
-    const json = yield* Schema.encode(schema)(value).pipe(
+    const json = yield* Schema.encodeEffect(schema)(value).pipe(
       Effect.mapError(
         (cause) =>
           new JsonFileWriteError({ path, message: 'Failed to encode JSON sidecar', cause }),
@@ -243,7 +243,7 @@ const writeJsonFile = <A>({
     })
   })
 
-const sidecarJson = Schema.parseJson(FilesystemWorkspaceSidecar, { space: 2 })
+const sidecarJson = Schema.fromJsonString(FilesystemWorkspaceSidecar, { space: 2 })
 
 const writeDatasourceSyncBodySidecar = ({
   root,

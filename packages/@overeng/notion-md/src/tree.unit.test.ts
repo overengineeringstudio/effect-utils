@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -243,7 +244,7 @@ const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
 }
 
 const run = <A, E>(
-  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, E, NodeServicesEnv | NotionMdGateway | NmdStateStore>,
   fake: FakeTreeNotion,
 ) =>
   Effect.runPromise(
@@ -251,8 +252,8 @@ const run = <A, E>(
       Effect.provide(
         Layer.mergeAll(
           fake.layer,
-          NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
-          NodeContext.layer,
+          NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)),
+          NodeServices.layer,
         ),
       ),
     ),
@@ -786,19 +787,19 @@ describe('notion-md tree reconcile lifecycle', () => {
       )
       const result = await Effect.runPromise(
         syncTree({ root: dir, rootPageId }).pipe(
-          Effect.either,
+          Effect.result,
           Effect.provide(
             Layer.mergeAll(
               fake.layer,
-              NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
-              NodeContext.layer,
+              NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)),
+              NodeServices.layer,
             ),
           ),
         ),
       )
-      expect(result._tag).toBe('Left')
-      if (result._tag === 'Left') {
-        expect(String(result.left)).toContain('Dangling cross-ref')
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') {
+        expect(String(result.failure)).toContain('Dangling cross-ref')
       }
       // nothing pushed: alpha was NOT created on the remote
       expect(fake.liveCount()).toBe(1)

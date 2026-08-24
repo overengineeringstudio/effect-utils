@@ -55,10 +55,11 @@ const taggedExitCode = (value: unknown): number | undefined => {
  */
 export const editorExitCode = (exit: Exit.Exit<unknown, unknown>): number => {
   if (Exit.isSuccess(exit) === true) return 0
-  if (Cause.isInterruptedOnly(exit.cause) === true) return 130
+  if (Cause.hasInterruptsOnly(exit.cause) === true) return 130
 
-  for (const failure of Cause.failures(exit.cause)) {
-    const code = taggedExitCode(failure)
+  const fail = Cause.findFail(exit.cause)
+  if (fail._tag === 'Success') {
+    const code = taggedExitCode(fail.success.error)
     if (code !== undefined) return code
   }
   return 1

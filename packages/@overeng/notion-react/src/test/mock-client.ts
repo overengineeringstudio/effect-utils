@@ -1,4 +1,4 @@
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { HttpClient, HttpClientRequest, HttpClientResponse } from 'effect/unstable/http'
 import { Effect, Layer, Redacted, Schema } from 'effect'
 
 import { NotionConfig } from '@overeng/notion-effect-client'
@@ -12,9 +12,9 @@ const NotionErrorEnvelope = Schema.Struct({
 })
 
 /** Encode an arbitrary handler result to a JSON response string. */
-const encodeResponseJson = Schema.encodeSync(Schema.parseJson())
+const encodeResponseJson = (value: unknown): string => JSON.stringify(value)
 /** Encode a Notion error envelope to its JSON response string. */
-const encodeErrorEnvelopeJson = Schema.encodeSync(Schema.parseJson(NotionErrorEnvelope))
+const encodeErrorEnvelopeJson = Schema.encodeSync(Schema.fromJsonString(NotionErrorEnvelope))
 
 /**
  * In-memory Notion API stub for driver-level tests.

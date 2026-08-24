@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Result, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import {
@@ -138,11 +138,11 @@ Vitest.describe('SchemaHelpers', () => {
             { name: 'Name', tag: 'title' },
             { name: 'Amount', tag: 'number' },
           ],
-        }).pipe(Effect.either)
+        }).pipe(Effect.result)
 
-        expect(result._tag).toBe('Left')
-        if (result._tag === 'Left') {
-          expect(result.left.missing.map((m) => m.name)).toEqual(['Amount'])
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result) === true) {
+          expect(result.failure.missing.map((m) => m.name)).toEqual(['Amount'])
         }
       }),
     )
@@ -162,7 +162,7 @@ Vitest.describe('SchemaHelpers', () => {
 
         yield* SchemaHelpers.validatePropertiesFromSchema({
           schema: Schema.Struct({
-            Name: NotionSchema.title.annotations({
+            Name: NotionSchema.title.annotate({
               [notionPropertyMeta]: {
                 _tag: 'title',
                 id: 'prop-name',
@@ -170,7 +170,7 @@ Vitest.describe('SchemaHelpers', () => {
                 description: null,
               },
             }),
-            Amount: NotionSchema.numberOption.annotations({
+            Amount: NotionSchema.numberOption.annotate({
               [notionPropertyMeta]: {
                 _tag: 'number',
                 id: 'prop-amount',
@@ -223,9 +223,9 @@ Vitest.describe('SchemaHelpers', () => {
           schema: db,
           databaseId: 'db-id',
           property: 'Customer',
-        }).pipe(Effect.either)
+        }).pipe(Effect.result)
 
-        expect(result._tag).toBe('Left')
+        expect(Result.isFailure(result)).toBe(true)
       }),
     )
   })

@@ -2,9 +2,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, FileSystem, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type { BodyCompleteness } from '@overeng/notion-core'
@@ -22,14 +22,14 @@ import { normalizeMarkdownLineEndings } from './hash.ts'
 import { NotionMdGateway, type NotionMdGatewayShape } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 const runEdit = <A, E>(
-  effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore | NodeContext.NodeContext>,
+  effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore | NodeServicesEnv>,
   gateway: FakeGateway,
 ) =>
-  Effect.either(effect).pipe(
-    Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeContext.layer)),
+  Effect.result(effect).pipe(
+    Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeServices.layer)),
     Effect.runPromise,
   )
 
@@ -45,8 +45,8 @@ describe('edit (ephemeral file-engine session)', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') expect(result.right.outcome).toBe('pushed')
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') expect(result.success.outcome).toBe('pushed')
     expect(gateway.state.body).toBe('edited line\n')
   })
 
@@ -61,7 +61,7 @@ describe('edit (ephemeral file-engine session)', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
+    expect(result._tag).toBe('Success')
     expect(gateway.state.title).toBe('New Title')
   })
 
@@ -76,8 +76,8 @@ describe('edit (ephemeral file-engine session)', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') expect(result.right.outcome).toBe('noop')
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') expect(result.success.outcome).toBe('noop')
     expect(gateway.state.body).toBe('unchanged\n')
   })
 
@@ -92,8 +92,8 @@ describe('edit (ephemeral file-engine session)', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdEditorAbortedError')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdEditorAbortedError')
     expect(gateway.state.body).toBe('safe\n')
   })
 
@@ -122,10 +122,10 @@ describe('edit (ephemeral file-engine session)', () => {
         }),
         gateway,
       )
-      expect(result._tag).toBe('Right')
-      if (result._tag === 'Right') {
-        expect(result.right.outcome).toBe('conflict')
-        expect(result.right.conflictPath).toBe(`${pageId}.conflict.md`)
+      expect(result._tag).toBe('Success')
+      if (result._tag === 'Success') {
+        expect(result.success.outcome).toBe('conflict')
+        expect(result.success.conflictPath).toBe(`${pageId}.conflict.md`)
         // The durable conflict file exists and carries all three bodies so the
         // edit is recoverable (the $TMPDIR roughdraft is already reaped).
         const durable = readFileSync(join(cwd, `${pageId}.conflict.md`), 'utf8')
@@ -158,8 +158,8 @@ describe('edit (ephemeral file-engine session)', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdRemoteBodyLossyError')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdRemoteBodyLossyError')
   })
 })
 
@@ -186,14 +186,14 @@ class ReadOnlyFakeGateway {
         this.pullCount += 1
         return pull(this.state)
       }),
-    updateMarkdown: () => Effect.dieMessage('read-only must never call updateMarkdown'),
-    updatePageProperties: () => Effect.dieMessage('read-only must never call updatePageProperties'),
-    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
-    updatePageMetadata: () => Effect.dieMessage('read-only must never call updatePageMetadata'),
+    updateMarkdown: () => Effect.die(new Error('read-only must never call updateMarkdown')),
+    updatePageProperties: () => Effect.die(new Error('read-only must never call updatePageProperties')),
+    retrieveDataSource: () => Effect.die(new Error('unexpected retrieveDataSource')),
+    updatePageMetadata: () => Effect.die(new Error('read-only must never call updatePageMetadata')),
     listChildPages: () => Effect.succeed([]),
-    createPage: () => Effect.dieMessage('unexpected createPage'),
-    movePage: () => Effect.dieMessage('unexpected movePage'),
-    archivePage: () => Effect.dieMessage('unexpected archivePage'),
+    createPage: () => Effect.die(new Error('unexpected createPage')),
+    movePage: () => Effect.die(new Error('unexpected movePage')),
+    archivePage: () => Effect.die(new Error('unexpected archivePage')),
   } satisfies NotionMdGatewayShape)
 }
 
@@ -227,12 +227,12 @@ const recordingEditor = (opts: {
 }
 
 const runReadOnly = <A, E>(
-  effect: Effect.Effect<A, E, NotionMdGateway | NodeContext.NodeContext>,
+  effect: Effect.Effect<A, E, NotionMdGateway | NodeServicesEnv>,
   gateway: ReadOnlyFakeGateway,
 ) =>
-  Effect.either(effect).pipe(
+  Effect.result(effect).pipe(
     // Deliberately NO stateStoreLayer: read-only's narrow R never needs it.
-    Effect.provide(Layer.mergeAll(gateway.layer, NodeContext.layer)),
+    Effect.provide(Layer.mergeAll(gateway.layer, NodeServices.layer)),
     Effect.runPromise,
   )
 
@@ -251,8 +251,8 @@ describe('edit --read-only (inspection-only session)', () => {
       gateway,
     )
     // No write method was hit (else the gateway would have died, surfacing as a defect).
-    expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') expect(result.right.outcome).toBe('read-only')
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') expect(result.success.outcome).toBe('read-only')
     // The editor saw the cat-style projection (`# title` + body).
     expect(editor.seen.buffer).toBe('# Doc\n\noriginal line\n')
     // Remote body is untouched; the local edit was discarded.
@@ -267,7 +267,7 @@ describe('edit --read-only (inspection-only session)', () => {
       editReadOnlyPage({ pageId, mode: 'default', runEditor: editor.run }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
+    expect(result._tag).toBe('Success')
     // The buffer path lived under a scoped temp dir, reaped on scope close.
     const dir = dirname(editor.seen.filePath ?? '')
     expect(existsSync(dir)).toBe(false)
@@ -286,8 +286,8 @@ describe('edit --read-only (inspection-only session)', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') expect(result.right.outcome).toBe('read-only')
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') expect(result.success.outcome).toBe('read-only')
     expect(gateway.state.body).toBe('safe\n')
     expect(stderr).toEqual(['read-only: changes were not synced'])
   })
@@ -299,8 +299,8 @@ describe('edit --read-only (inspection-only session)', () => {
       editReadOnlyPage({ pageId, mode: 'frontmatter', runEditor: editor.run }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') expect(result.right.outcome).toBe('read-only')
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') expect(result.success.outcome).toBe('read-only')
     // The editor saw the full strict `.nmd` envelope, not the `# title` form.
     expect(editor.seen.buffer).toContain('---\n')
     expect(editor.seen.buffer).toContain('"version": 2')
@@ -322,8 +322,8 @@ describe('edit --read-only (inspection-only session)', () => {
       editReadOnlyPage({ pageId, mode: 'default', runEditor: editor.run }),
       gateway,
     )
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdRemoteBodyLossyError')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdRemoteBodyLossyError')
     // Refused before any editor launch.
     expect(editor.seen.buffer).toBeUndefined()
   })

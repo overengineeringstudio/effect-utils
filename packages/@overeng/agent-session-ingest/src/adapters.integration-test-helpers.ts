@@ -1,9 +1,8 @@
 import { appendFile } from 'node:fs/promises'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Effect, Schema } from 'effect'
+import { Effect, FileSystem, Schema } from 'effect'
+import { NodeServices as NodeContext } from '@effect/platform-node'
 import { expect } from 'vitest'
 
 import type { SessionSourceAdapter } from './schema/core.ts'
@@ -14,15 +13,12 @@ export class JsonlArtifactAppendError extends Schema.TaggedError<JsonlArtifactAp
   {
     message: Schema.String,
     path: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {}
 
-/** Schema-based JSON encoder for test fixtures (mirrors `JSON.stringify`). */
-const encodeJson = Schema.encodeSync(Schema.parseJson())
-
-/** Encodes a value to its JSON string for test fixtures via Effect Schema. */
-export const stringifyJson = (value: unknown): string => encodeJson(value)
+/** Encodes a value to its JSON string for test fixtures. */
+export const stringifyJson = (value: unknown): string => JSON.stringify(value)
 
 /** Shared Node runtime layer for adapter integration tests. */
 export const TestLayer = NodeContext.layer

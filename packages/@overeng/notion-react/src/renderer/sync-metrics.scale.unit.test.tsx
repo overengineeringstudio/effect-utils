@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Fragment, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -47,7 +47,7 @@ const mkItems = (n: number): readonly Item[] =>
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const collect = async (

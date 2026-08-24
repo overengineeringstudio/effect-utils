@@ -1,4 +1,4 @@
-import { Atom } from '@effect-atom/atom'
+import { Atom } from 'effect/unstable/reactivity'
 import React, { useMemo } from 'react'
 
 import { Box, Text, useTuiAtomValue } from '../../src/mod.tsx'

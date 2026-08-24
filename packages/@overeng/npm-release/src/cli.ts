@@ -9,31 +9,31 @@
  * and `megarepo`.
  */
 
-import { Command as Cli, Options } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
+import { Command as Cli, Flag } from 'effect/unstable/cli'
 import { Cause, Duration, Effect, Option, Schedule } from 'effect'
 
 import { readPlan, verifyPlan, type VerifyFailure } from './verify.ts'
 
-const planOption = Options.file('plan').pipe(
-  Options.withDescription(
+const planOption = Flag.file('plan').pipe(
+  Flag.withDescription(
     'Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }',
   ),
 )
 
-const registryOption = Options.text('registry').pipe(
-  Options.withDefault('https://registry.npmjs.org'),
-  Options.withDescription('Registry to query'),
+const registryOption = Flag.string('registry').pipe(
+  Flag.withDefault('https://registry.npmjs.org'),
+  Flag.withDescription('Registry to query'),
 )
 
-const attemptsOption = Options.integer('attempts').pipe(
-  Options.withDefault(60),
-  Options.withDescription('How many times to re-check a package that has not converged'),
+const attemptsOption = Flag.integer('attempts').pipe(
+  Flag.withDefault(60),
+  Flag.withDescription('How many times to re-check a package that has not converged'),
 )
 
-const delaySecondsOption = Options.integer('delay-seconds').pipe(
-  Options.withDefault(5),
-  Options.withDescription('Seconds to wait between convergence checks'),
+const delaySecondsOption = Flag.integer('delay-seconds').pipe(
+  Flag.withDefault(5),
+  Flag.withDescription('Seconds to wait between convergence checks'),
 )
 
 /**
@@ -59,7 +59,7 @@ const verifyCommand = Cli.make(
   Effect.fn('verify')(function* ({ plan: planPath, registry, attempts, delaySeconds }) {
     const plan = yield* readPlan(planPath)
     const schedule = Schedule.spaced(Duration.seconds(delaySeconds)).pipe(
-      Schedule.compose(Schedule.recurs(attempts)),
+      Schedule.upTo({ times: attempts }),
     )
 
     yield* Effect.logInfo(
@@ -78,8 +78,7 @@ const verifyCommand = Cli.make(
   ),
 )
 
-const cli = Cli.run(Cli.make('npm-release').pipe(Cli.withSubcommands([verifyCommand])), {
-  name: 'npm-release',
+const cli = Cli.runWith(Cli.make('npm-release').pipe(Cli.withSubcommands([verifyCommand])), {
   version: '0.1.0',
 })
 
@@ -89,9 +88,9 @@ const cli = Cli.run(Cli.make('npm-release').pipe(Cli.withSubcommands([verifyComm
  * noise for the operator reading a failed release log.
  */
 const reportUnexpected = (cause: Cause.Cause<unknown>) =>
-  Cause.isInterruptedOnly(cause) === true
+  Cause.hasInterruptsOnly(cause) === true
     ? Effect.void
-    : Option.match(Cause.failureOption(cause), {
+    : Option.match(Cause.findErrorOption(cause), {
         onNone: () => Effect.logError(Cause.pretty(cause)),
         onSome: (error) =>
           isRendered(error) === true ? Effect.void : Effect.logError(String(error)),
@@ -105,9 +104,9 @@ const isRendered = (error: unknown) =>
   error._tag === 'VerificationFailed'
 
 if (import.meta.main) {
-  cli(process.argv).pipe(
-    Effect.tapErrorCause(reportUnexpected),
-    Effect.provide(NodeContext.layer),
+  cli(process.argv.slice(2)).pipe(
+    Effect.provide(NodeServices.layer),
+    Effect.tapCause(reportUnexpected),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )
 }

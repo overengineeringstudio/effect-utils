@@ -1,9 +1,9 @@
 import { NodeRuntime } from '@effect/platform-node'
 import { layerWebSocket } from '@effect/platform-node/NodeSocketServer'
-import type { CloseEvent, Socket as SocketType } from '@effect/platform/Socket'
-import { toChannelString } from '@effect/platform/Socket'
-import type { Address } from '@effect/platform/SocketServer'
-import { SocketServer } from '@effect/platform/SocketServer'
+import type { CloseEvent, Socket as SocketType } from 'effect/unstable/socket/Socket'
+import { toChannelString } from 'effect/unstable/socket/Socket'
+import type { Address } from 'effect/unstable/socket/SocketServer'
+import { SocketServer } from 'effect/unstable/socket/SocketServer'
 import { Effect, Fiber, PubSub, Stream } from 'effect'
 
 /**
@@ -27,14 +27,14 @@ const handleConnection = (pubsub: PubSub.PubSub<string>) =>
         /** Writer is scoped to the connection lifecycle. */
         const write = yield* socket.writer
         /** Each client gets its own subscription queue. */
-        const subscription = yield* pubsub.subscribe
+        const subscription = yield* PubSub.subscribe(pubsub)
 
-        yield* Effect.addFinalizer(() => pubsub.publish(`[system] ${id} left`).pipe(Effect.asVoid))
+        yield* Effect.addFinalizer(() => PubSub.publish(pubsub, `[system] ${id} left`).pipe(Effect.asVoid))
 
-        yield* pubsub.publish(`[system] ${id} joined`).pipe(Effect.asVoid)
+        yield* PubSub.publish(pubsub, `[system] ${id} joined`).pipe(Effect.asVoid)
 
         /** Forward broadcast messages to the socket. */
-        const forward = Stream.fromQueue(subscription).pipe(
+        const forward = Stream.fromSubscription(subscription).pipe(
           Stream.mapEffect((message) => write(message)),
           Stream.runDrain,
         )
@@ -43,7 +43,7 @@ const handleConnection = (pubsub: PubSub.PubSub<string>) =>
 
         const receive = Stream.fromIterable<Uint8Array | string | CloseEvent>([]).pipe(
           Stream.pipeThroughChannel(toChannelString(socket)),
-          Stream.mapEffect((text) => pubsub.publish(`[${id}] ${text}`).pipe(Effect.asVoid)),
+          Stream.mapEffect((text) => PubSub.publish(pubsub, `[${id}] ${text}`).pipe(Effect.asVoid)),
           Stream.runDrain,
         )
 

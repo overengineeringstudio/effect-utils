@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { NodeContext } from '@effect/platform-node'
+import * as NodeContext from '@effect/platform-node/NodeServices'
 import { Cause, Effect, Exit, Layer, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -1040,10 +1040,10 @@ describe('CLI command surface', () => {
       )
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit) === true) {
-        const failure = Cause.failureOption(exit.cause)
-        // A defect would land in `Cause.defects`, not `Cause.failureOption`.
+        const failure = Cause.findErrorOption(exit.cause)
+        // A defect would surface through `Cause.hasDies`, not a fail reason.
         expect(Option.isSome(failure)).toBe(true)
-        expect(Cause.defects(exit.cause)).toHaveLength(0)
+        expect(Cause.hasDies(exit.cause)).toBe(false)
         if (Option.isSome(failure) === true) {
           expect(failure.value).toBeInstanceOf(WorkspaceNotTracked)
         }
@@ -2580,7 +2580,7 @@ describe('CLI command surface', () => {
                 pageId: testIds.pageId,
                 path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
                 contentHash: hash('body-local'),
-                observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+                observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
               }),
             ],
           }).workspace,
@@ -2624,7 +2624,7 @@ describe('CLI command surface', () => {
                 pageId: testIds.pageId,
                 path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
                 contentHash: hash('body-local'),
-                observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+                observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
               }),
             ],
           }).workspace,
@@ -2649,7 +2649,7 @@ describe('CLI command surface', () => {
           pageId: testIds.pageId,
           path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
           contentHash: hash('body-local'),
-          observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+          observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
         }),
       ],
     })

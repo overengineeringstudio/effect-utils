@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { Command } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { Command } from 'effect/unstable/cli'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Cause, Effect, type Exit, Layer, Option, Schema } from 'effect'
 
 import { editorExitCode } from '@overeng/notion-md'
@@ -37,37 +37,20 @@ const isRootVersionArgv = (argv: ReadonlyArray<string>): boolean => {
 
 /** Composes the root Notion Effect CLI command from package-owned command trees. */
 const makeNotionRootCommand = <
-  SchemaName extends string,
-  SchemaRequirements,
-  SchemaError,
-  SchemaConfig,
-  DbName extends string,
-  DbRequirements,
-  DbError,
-  DbConfig,
-  MdName extends string,
-  MdRequirements,
-  MdError,
-  MdConfig,
-  EditName extends string,
-  EditRequirements,
-  EditError,
-  EditConfig,
+  EditAliasCommand extends Command.Command.Any,
+  SchemaCommand extends Command.Command.Any,
+  DbCommand extends Command.Command.Any,
+  NotionMdDispatchCommand extends Command.Command.Any,
 >({
   schemaCommand,
   dbCommand,
   notionMdDispatchCommand,
   notionEditAliasCommand,
 }: {
-  readonly schemaCommand: Command.Command<SchemaName, SchemaRequirements, SchemaError, SchemaConfig>
-  readonly dbCommand: Command.Command<DbName, DbRequirements, DbError, DbConfig>
-  readonly notionMdDispatchCommand: Command.Command<MdName, MdRequirements, MdError, MdConfig>
-  readonly notionEditAliasCommand: Command.Command<
-    EditName,
-    EditRequirements,
-    EditError,
-    EditConfig
-  >
+  readonly schemaCommand: SchemaCommand
+  readonly dbCommand: DbCommand
+  readonly notionMdDispatchCommand: NotionMdDispatchCommand
+  readonly notionEditAliasCommand: EditAliasCommand
 }) =>
   Command.make('notion').pipe(
     // `edit` is the top-level marquee alias for `md edit` (R18); it is the only
@@ -122,8 +105,7 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
     notionMdDispatchCommand,
     notionEditAliasCommand,
   })
-  const cli = Command.run(command, {
-    name: 'notion',
+  const cli = Command.runWith(command, {
     version,
   })
 
@@ -131,12 +113,12 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
     const endpoint = yield* otelEndpointFromConfig()
 
     yield* cli(argv).pipe(
-      Effect.tapErrorCause((cause) => {
-        if (Cause.isInterruptedOnly(cause) === true) {
+      Effect.tapCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause) === true) {
           return Effect.void
         }
 
-        return Option.match(Cause.failureOption(cause), {
+        return Option.match(Cause.findErrorOption(cause), {
           onNone: () => Effect.logError(cause),
           onSome: (error) => {
             const unknownError: unknown = error
@@ -150,7 +132,7 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
       Effect.provideService(CliVersion, { name: 'notion', version }),
       Effect.provide(
         Layer.mergeAll(
-          NodeContext.layer,
+          NodeServices.layer,
           CurrentWorkingDirectory.live,
           withTelemetry({ identity, shape: 'cli', endpoint }),
         ),

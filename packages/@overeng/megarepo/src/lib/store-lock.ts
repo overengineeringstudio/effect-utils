@@ -17,7 +17,7 @@
 
 import { createHash } from 'node:crypto'
 
-import { Context, Duration, Effect, Layer, SynchronizedRef } from 'effect'
+import { Context, Duration, Effect, Layer, Semaphore, SynchronizedRef } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 import { DistributedSemaphore, DistributedSemaphoreBacking } from '@overeng/utils/lock'
@@ -42,13 +42,15 @@ export interface StoreLockService {
 }
 
 /** Distributed semaphore service for serializing concurrent access to shared store resources */
-export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, StoreLockService>() {}
+export class StoreLock
+  extends Context.Service<StoreLock, StoreLockService>()('megarepo/StoreLock')
+{}
 
-type DistributedSem = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
+type DistributedSem = Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
 
 interface CacheEntry {
   /** In-process fiber gate — primary correctness mechanism */
-  readonly gate: Effect.Semaphore
+  readonly gate: Semaphore.Semaphore
   /** Cross-process distributed lock — best-effort coordination */
   readonly distributed: DistributedSem
 }
@@ -78,7 +80,7 @@ const makeKeyedLock = ({
             const existing = map.get(hashedKey)
             if (existing !== undefined) return Effect.succeed([existing, map] as const)
             return Effect.gen(function* () {
-              const gate = yield* Effect.makeSemaphore(1)
+              const gate = yield* Semaphore.make(1)
               const distributed = yield* DistributedSemaphore.make(hashedKey, {
                 limit: 1,
                 ttl: LOCK_TTL,
@@ -98,7 +100,10 @@ const makeKeyedLock = ({
 const withoutPushAcquire = (
   backingContext: Context.Context<DistributedSemaphoreBacking>,
 ): Context.Context<DistributedSemaphoreBacking> => {
-  const backing = Context.get(backingContext, DistributedSemaphoreBacking)
+  const backing = Context.get(
+    backingContext,
+    DistributedSemaphoreBacking,
+  ) as DistributedSemaphoreBacking
   const { onPermitsReleased: _onPermitsReleased, ...backingWithoutPush } = backing
 
   // Store locks are short critical sections; polling is slower but avoids
@@ -117,7 +122,7 @@ const withoutPushAcquire = (
 export const makeStoreLockLayerFromBacking = (
   backingLayer: Layer.Layer<DistributedSemaphoreBacking>,
 ) =>
-  Layer.scoped(
+  Layer.effect(
     StoreLock,
     Effect.gen(function* () {
       const backingContext = withoutPushAcquire(yield* Layer.build(backingLayer))
@@ -134,7 +139,7 @@ export const makeStoreLockLayerFromBacking = (
  * Lock files stored in {basePath}.locks/ directory.
  */
 export const makeStoreLockLayer = (basePath: AbsoluteDirPath) =>
-  Layer.scoped(
+  Layer.effect(
     StoreLock,
     Effect.gen(function* () {
       const lockDir = `${basePath}.locks`

@@ -14,8 +14,10 @@
  * used to break for large members.
  */
 
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
@@ -30,8 +32,9 @@ const GIT_USER = ['-c', 'user.email=test@example.com', '-c', 'user.name=Test Use
 /** Run git in `cwd`, returning trimmed stdout (fixture setup only). */
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...GIT_USER, ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    return (yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', [...GIT_USER, ...args], { cwd })),
+    )).trim()
   })
 
 /**
@@ -84,7 +87,7 @@ const cloneTargetIn = (tmp: string, name: string) =>
   )
 
 describe('git operation-aware timeout', () => {
-  it.scopedLive('clones a valid local remote under the default network budget', () =>
+  it.live('clones a valid local remote under the default network budget', () =>
     Effect.gen(function* () {
       const { tmp, remote } = yield* makeCloneSource()
       const target = cloneTargetIn(tmp, 'clone-default')
@@ -92,10 +95,10 @@ describe('git operation-aware timeout', () => {
       // Sanity: the clone actually populated a usable bare repo.
       const commit = yield* Git.getCurrentCommit(target)
       expect(commit).toMatch(/^[0-9a-f]{40}$/)
-    }).pipe(Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.provide(NodeServices.layer)),
   )
 
-  it.scopedLive('a network op is bounded by the network budget (1ms → times out)', () =>
+  it.live('a network op is bounded by the network budget (1ms → times out)', () =>
     Effect.gen(function* () {
       const { tmp, remote } = yield* makeCloneSource()
       const target = cloneTargetIn(tmp, 'clone-timeout')
@@ -106,10 +109,10 @@ describe('git operation-aware timeout', () => {
       ).pipe(Effect.flip)
       expect(error).toBeInstanceOf(GitCommandTimeoutError)
       expect((error as GitCommandTimeoutError).timeoutMillis).toBe(1)
-    }).pipe(Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.provide(NodeServices.layer)),
   )
 
-  it.scopedLive('the network budget does NOT bound a local op (rev-parse still succeeds)', () =>
+  it.live('the network budget does NOT bound a local op (rev-parse still succeeds)', () =>
     Effect.gen(function* () {
       const { tmp, remote } = yield* makeCloneSource()
       const target = cloneTargetIn(tmp, 'clone-for-local')
@@ -121,6 +124,6 @@ describe('git operation-aware timeout', () => {
         Git.getCurrentCommit(target),
       )
       expect(commit).toMatch(/^[0-9a-f]{40}$/)
-    }).pipe(Effect.provide(NodeContext.layer)),
+    }).pipe(Effect.provide(NodeServices.layer)),
   )
 })

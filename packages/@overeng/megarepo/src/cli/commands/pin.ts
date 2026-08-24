@@ -4,8 +4,8 @@
  * Commands to pin and unpin members to specific refs.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import * as Cli from 'effect/unstable/cli'
+import * as FileSystem from 'effect/FileSystem'
 import { Clock, Effect, Layer, Option } from 'effect'
 import React from 'react'
 
@@ -59,15 +59,15 @@ import { PinApp, PinView } from '../renderers/PinOutput/mod.ts'
 export const pinCommand = Cli.Command.make(
   'pin',
   {
-    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to pin')),
-    checkout: Cli.Options.text('checkout').pipe(
-      Cli.Options.withAlias('c'),
-      Cli.Options.withDescription('Ref to switch to (branch, tag, or commit SHA)'),
-      Cli.Options.optional,
+    member: Cli.Argument.string('member').pipe(Cli.Argument.withDescription('Member to pin')),
+    checkout: Cli.Flag.string('checkout').pipe(
+      Cli.Flag.withAlias('c'),
+      Cli.Flag.withDescription('Ref to switch to (branch, tag, or commit SHA)'),
+      Cli.Flag.optional,
     ),
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would be changed without making changes'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Show what would be changed without making changes'),
+      Cli.Flag.withDefault(false),
     ),
     output: outputOption,
   },
@@ -245,7 +245,7 @@ export const pinCommand = Cli.Command.make(
             } else {
               // Fetch to ensure we have the latest refs
               yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
-                Effect.catchAll(() => Effect.void),
+                Effect.catch(() => Effect.void),
               )
             }
 
@@ -261,7 +261,7 @@ export const pinCommand = Cli.Command.make(
                 repoPath: bareRepoPath,
                 ref: refType === 'tag' ? `refs/tags/${newRef}` : `refs/remotes/origin/${newRef}`,
               }).pipe(
-                Effect.catchAll(() =>
+                Effect.catch(() =>
                   // Fallback: try resolving directly
                   Git.resolveRef({ repoPath: bareRepoPath, ref: newRef }),
                 ),
@@ -290,7 +290,7 @@ export const pinCommand = Cli.Command.make(
                   branch: `origin/${newRef}`,
                   createBranch: false,
                 }).pipe(
-                  Effect.catchAll(() =>
+                  Effect.catch(() =>
                     // Fallback: create detached at the resolved commit
                     Git.createWorktreeDetached({
                       repoPath: bareRepoPath,
@@ -530,7 +530,7 @@ const shortenPath = (path: string): string => {
 export const unpinCommand = Cli.Command.make(
   'unpin',
   {
-    member: Cli.Args.text({ name: 'member' }).pipe(Cli.Args.withDescription('Member to unpin')),
+    member: Cli.Argument.string('member').pipe(Cli.Argument.withDescription('Member to unpin')),
     output: outputOption,
   },
   ({ member, output }) =>

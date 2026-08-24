@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import * as Cli from '@effect/cli'
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
@@ -27,15 +27,14 @@ const identity = Schema.decodeSync(ServiceIdentity)({
 const program = Effect.gen(function* () {
   const endpoint = yield* otelEndpointFromConfig()
 
-  yield* Cli.Command.run(ciToolsCommand, {
-    name: 'ci-tools',
+  yield* Cli.Command.runWith(ciToolsCommand, {
     version,
   })(rewriteHelpSubcommand(process.argv)).pipe(
     Effect.scoped,
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'ci-tools', version }),
     Effect.provide(
-      Layer.mergeAll(NodeContext.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
+      Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
     ),
   )
 }).pipe(Effect.provide(FetchHttpClient.layer))

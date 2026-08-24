@@ -25,7 +25,7 @@ import {
   type NotionDataSourceGatewayShape,
 } from '../mod.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
+const decode = <TSchema extends Schema.Codec<any, any, never>>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = decode(Hash, `sha256:${'a'.repeat(64)}`)
@@ -109,7 +109,7 @@ describe('@overeng/notion-datasource-sync contracts', () => {
     })
 
     expect(command._tag).toBe('PatchPagePropertiesCommand')
-    expect(command.pageId).toBe(pageId)
+    expect(command).toMatchObject({ pageId })
     expect(decode(PatchPagePropertiesCommand, command).basePropertiesHash).toBe(hash)
   })
 

@@ -53,13 +53,13 @@ export const PushRefsErrorState = Schema.TaggedStruct('Error', {
 })
 
 /** Union of all possible push-refs TUI states */
-export const PushRefsState = Schema.Union(
+export const PushRefsState = Schema.Union([
   PushRefsIdleState,
   PushRefsScanningState,
   PushRefsAlignedState,
   PushRefsResultState,
   PushRefsErrorState,
-)
+])
 
 export type PushRefsState = typeof PushRefsState.Type
 
@@ -68,7 +68,7 @@ export type PushRefsState = typeof PushRefsState.Type
 // =============================================================================
 
 /** Union of all actions dispatched to the push-refs reducer */
-export const PushRefsAction = Schema.Union(
+export const PushRefsAction = Schema.Union([
   Schema.TaggedStruct('SetScanning', {}),
   Schema.TaggedStruct('SetAligned', {}),
   Schema.TaggedStruct('SetResult', {
@@ -80,7 +80,7 @@ export const PushRefsAction = Schema.Union(
     error: Schema.String,
     message: Schema.String,
   }),
-)
+])
 
 export type PushRefsAction = typeof PushRefsAction.Type
 

@@ -10,7 +10,7 @@
  */
 
 import { NodeServices } from '@effect/platform-node'
-import { Effect, FileSystem, Layer, Metric, Option, Schema, type Scope } from 'effect'
+import { Effect, FileSystem, Layer, Metric, Option, Result, Schema, type Scope } from 'effect'
 import { expect } from 'vitest'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
@@ -177,11 +177,16 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
 
   Vitest.it.effect('rejects a raw-string name on the typed identity path', () =>
     Effect.gen(function* () {
-      // NOTE: a raw string is not a branded ServiceIdentity.name; the directive
-      // is temporarily dropped while `@overeng/otel-contract` is mid-migration.
-      const bad: ServiceIdentity = { name: 'identity-cli', namespace: 'overeng', version: '1.0.0' }
-      void bad
-      expect(true).toBe(true)
+      // A raw string is not a branded ServiceIdentity.name: names must pass
+      // through the ServiceIdentity schema, and malformed names fail at the edge.
+      const result = yield* Effect.result(
+        Schema.decodeUnknownEffect(ServiceIdentity)({
+          name: '1identity-cli',
+          namespace: 'overeng',
+          version: '1.0.0',
+        }),
+      )
+      expect(Result.isSuccess(result)).toBe(false)
     }),
   )
 })

@@ -19,9 +19,9 @@
  * ```
  */
 
-import { Atom, Registry } from '@effect-atom/atom'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import type { Scope } from 'effect'
-import { Effect, type Exit, Layer, PubSub, Runtime, Schema, Stream } from 'effect'
+import { Console, Effect, Exit, Layer, PubSub, Schema, Stream } from 'effect'
 
 import {
   type OutputMode,
@@ -53,7 +53,7 @@ export interface RunTestCommandOptions<S, Args> {
   /** Output mode preset to use */
   mode: TestModePreset
   /** Schema for parsing and validating JSON output */
-  schema: Schema.Schema<S>
+  schema: Schema.Codec<S>
 }
 
 /**
@@ -106,9 +106,16 @@ export const modeFromTag = (preset: TestModePreset): OutputMode => {
 
 /**
  * Create a layer for a specific output mode.
+ *
+ * Binds the Effect Console service to the caller's global console so tests that
+ * capture output by patching `console.log` see `Console.log` emissions
+ * (@effect/vitest otherwise scopes tests to its own recording TestConsole).
  */
 export const testModeLayer = (preset: TestModePreset): Layer.Layer<OutputModeTag> =>
-  Layer.succeed(OutputModeTag, modeFromTag(preset))
+  Layer.merge(
+    Layer.succeed(OutputModeTag, modeFromTag(preset)),
+    Layer.succeed(Console.Console, globalThis.console),
+  )
 
 /**
  * Run a command function with test utilities.
@@ -152,11 +159,10 @@ export const runTestCommand = async <S, Args, E>({
   }
 
   // Parse and validate JSON output using schema
-  const jsonSchema = Schema.parseJson(options.schema)
   const parsedStates = jsonOutput
     .map((line) => {
-      const result = Schema.decodeUnknownEither(jsonSchema)(line)
-      return result._tag === 'Right' ? result.right : null
+      const result = Schema.decodeUnknownExit(Schema.fromJsonString(options.schema))(line)
+      return Exit.isSuccess(result) === true ? result.value : null
     })
     .filter((s): s is S => s !== null)
 
@@ -214,10 +220,10 @@ export const createTestTuiState = <S, A>(
       const newState = reducer({ state: currentState, action })
       get.set(stateAtom, newState)
     })
-    const registry = Registry.make()
+    const registry = AtomRegistry.make()
 
     const actionPubSub = yield* PubSub.unbounded<A>()
-    const runtime = yield* Effect.runtime<never>()
+    const runtime = yield* Effect.context<never>()
 
     // Create sync dispatch function that captures states and actions directly
     const dispatch = (action: A): void => {
@@ -229,7 +235,7 @@ export const createTestTuiState = <S, A>(
       // Capture the action
       actions.push(action)
       // Also publish to PubSub for the actions stream
-      void Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
+      void Effect.runForkWith(runtime)(PubSub.publish(actionPubSub, action))
     }
 
     const api: TuiAppApi<S, A> = {
@@ -307,14 +313,14 @@ export const captureConsole = async <A, E, R>({
  * assertJsonMatchesSchema({ jsonString: output, schema: DeployState })
  * ```
  */
-export const assertJsonMatchesSchema = <S, I>({
+export const assertJsonMatchesSchema = <S,>({
   jsonString,
   schema,
 }: {
   jsonString: string
-  schema: Schema.Schema<S, I>
+  schema: Schema.Codec<S>
 }): S => {
-  return Schema.decodeSync(Schema.parseJson(schema))(jsonString)
+  return Schema.decodeSync(Schema.fromJsonString(schema))(jsonString)
 }
 
 /**

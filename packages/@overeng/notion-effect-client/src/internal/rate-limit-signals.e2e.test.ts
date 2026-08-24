@@ -23,8 +23,9 @@
  * This file is `*.e2e.test.ts`, exempt from `overeng/no-raw-otel-primitives`, so it
  * may read raw `Metric` values to assert the OtelMetric-emitted counters moved.
  */
-import { HttpClient } from '@effect/platform'
-import { Effect, Fiber, Metric, Redacted, Schema, TestClock, Tracer } from 'effect'
+import { HttpClient } from 'effect/unstable/http/HttpClient'
+import { Effect, Fiber, Metric, Redacted, Schema, Tracer } from 'effect'
+import { adjust as testClockAdjust } from 'effect/testing/TestClock'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -50,7 +51,8 @@ const makeRecordingTracer = (): {
   return {
     spans,
     tracer: Tracer.make({
-      span: (name, parent, context, links, startTime, kind) => {
+      span(options) {
+        const { name, parent, annotations, links, startTime, kind } = options
         const attributes = new Map<string, unknown>()
         const recorded: RecordedSpan = { name, attributes: {} }
         spans.push(recorded)
@@ -60,7 +62,7 @@ const makeRecordingTracer = (): {
           spanId: `span-${spans.length}`,
           traceId: 'trace-rl-e2e',
           parent,
-          context,
+          annotations,
           status: { _tag: 'Started', startTime },
           attributes,
           links,
@@ -75,7 +77,6 @@ const makeRecordingTracer = (): {
           addLinks: () => {},
         }
       },
-      context: (f) => f(),
     }),
   }
 }
@@ -92,14 +93,14 @@ const sequencedClient = (responses: ReadonlyArray<MockResponse>) => {
 }
 
 type CounterBridge<S> = {
-  readonly metric: Metric.Metric.Counter<number>
+  readonly metric: Metric.Counter<number>
   readonly definition: {
     readonly trustedTagPairs: (labels: S) => Effect.Effect<ReadonlyArray<readonly [string, string]>>
   }
 }
 
 type HistogramBridge<S> = {
-  readonly metric: Metric.Metric.Histogram<number>
+  readonly metric: Metric.Histogram<number>
   readonly definition: {
     readonly trustedTagPairs: (labels: S) => Effect.Effect<ReadonlyArray<readonly [string, string]>>
   }
@@ -109,8 +110,8 @@ type HistogramBridge<S> = {
 const counterCount = <S>(bridge: CounterBridge<S>, labels: S): Effect.Effect<number> =>
   Effect.gen(function* () {
     const pairs = yield* bridge.definition.trustedTagPairs(labels)
-    let metric: Metric.Metric.Counter<number> = bridge.metric
-    for (const [key, value] of pairs) metric = Metric.tagged(metric, key, value)
+    let metric: Metric.Counter<number> = bridge.metric
+    for (const [key, value] of pairs) metric = Metric.withAttributes(metric, { [key]: value })
     const state = yield* Metric.value(metric)
     return state.count
   })
@@ -121,14 +122,14 @@ const histogramState = <S>(
 ): Effect.Effect<{ readonly count: number; readonly sum: number }> =>
   Effect.gen(function* () {
     const pairs = yield* bridge.definition.trustedTagPairs(labels)
-    let metric: Metric.Metric.Histogram<number> = bridge.metric
-    for (const [key, value] of pairs) metric = Metric.tagged(metric, key, value)
+    let metric: Metric.Histogram<number> = bridge.metric
+    for (const [key, value] of pairs) metric = Metric.withAttributes(metric, { [key]: value })
     const state = yield* Metric.value(metric)
     return { count: state.count, sum: state.sum }
   })
 
 Vitest.describe('rate-limit pressure signals (decision 0017 Half 2)', () => {
-  Vitest.it.scoped(
+  Vitest.it.effect(
     'a 429-then-200 sequence records 2 HTTP attempts, a retry_after, and retry span attrs',
     () =>
       Effect.gen(function* () {
@@ -164,11 +165,11 @@ Vitest.describe('rate-limit pressure signals (decision 0017 Half 2)', () => {
             maxRetries: 3,
             retryBaseDelay: 1000,
           }),
-          Effect.provideService(HttpClient.HttpClient, client),
+          Effect.provideService(HttpClient, client),
           Effect.withTracer(trace.tracer),
-          Effect.fork,
+          Effect.forkChild,
         )
-        yield* TestClock.adjust('60 seconds')
+        yield* testClockAdjust('60 seconds')
         const result = yield* Fiber.join(fiber)
 
         expect(result.id).toBe('db-123')
@@ -207,7 +208,7 @@ Vitest.describe('rate-limit pressure signals (decision 0017 Half 2)', () => {
       }),
   )
 
-  Vitest.it.scoped(
+  Vitest.it.effect(
     'a request blocked behind a drained throttle bucket records rate_limit_wait_ms on span and histogram',
     () =>
       Effect.gen(function* () {
@@ -231,12 +232,12 @@ Vitest.describe('rate-limit pressure signals (decision 0017 Half 2)', () => {
             authToken: Redacted.make('test-token'),
             retryEnabled: false,
           }),
-          Effect.provideService(HttpClient.HttpClient, client),
+          Effect.provideService(HttpClient, client),
           Effect.provide(NotionThrottleLive({ requestsPerSecond: 1, burst: 1 })),
           Effect.withTracer(trace.tracer),
-          Effect.fork,
+          Effect.forkChild,
         )
-        yield* TestClock.adjust('5 seconds')
+        yield* testClockAdjust('5 seconds')
         yield* Fiber.join(fiber)
 
         const span = trace.spans.find((candidate) => candidate.name === 'NotionHttp.GET')

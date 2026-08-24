@@ -1,5 +1,6 @@
 import * as restate from '@restatedev/restate-sdk'
-import { JSONSchema, Option, ParseResult, Schema } from 'effect'
+import { Option, Schema } from 'effect'
+import * as SchemaIssue from 'effect/SchemaIssue'
 
 import { textEncodeToArrayBuffer } from '@overeng/utils'
 
@@ -48,7 +49,7 @@ export const effectSerde = <A, I>({
   slot = 'internal',
   redaction,
 }: {
-  schema: Schema.Schema<A, I>
+  schema: Schema.Codec<A, I>
   slot?: SerdeSlot
   redaction?: RedactionCipher
 }): RestateSerde<A> => {
@@ -70,12 +71,19 @@ export const effectSerde = <A, I>({
    * content type UNSET so the server allows an empty body (`application/json` +
    * an empty body is rejected as "Empty body not allowed"). Mirror that: a
    * `VoidKeyword`/`UndefinedKeyword` schema defaults to no content type. */
-  const isVoid = schema.ast._tag === 'VoidKeyword' || schema.ast._tag === 'UndefinedKeyword'
-  const contentType = Option.flatMap(overrides, (o) => Option.fromNullable(o.contentType)).pipe(
-    Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')),
-  )
-  const jsonSchema = Option.flatMap(overrides, (o) => Option.fromNullable(o.jsonSchema)).pipe(
-    Option.getOrElse(() => JSONSchema.make(schema) as object),
+  const isVoid = schema.ast._tag === 'Void' || schema.ast._tag === 'Undefined'
+  const contentType = Option.flatMap(overrides, (o) =>
+    Option.fromUndefinedOr(o.contentType),
+  ).pipe(Option.getOrElse(() => (isVoid === true ? undefined : 'application/json')))
+  const jsonSchema = Option.flatMap(overrides, (o) =>
+    Option.fromUndefinedOr(o.jsonSchema),
+  ).pipe(
+    Option.getOrElse(
+      () =>
+        Schema.toStandardJSONSchemaV1(schema)['~standard'].jsonSchema.input({
+          target: 'draft-2020-12',
+        }) as object,
+    ),
   )
   return {
     /* Omit `contentType` entirely when unset (void payload), per `exactOptionalPropertyTypes`. */
@@ -108,7 +116,7 @@ export const ingressSerde = <A, I>({
   schema,
   redaction,
 }: {
-  schema: Schema.Schema<A, I>
+  schema: Schema.Codec<A, I>
   redaction?: RedactionCipher
 }): RestateSerde<A> =>
   effectSerde({ schema, slot: 'ingress', ...(redaction !== undefined ? { redaction } : {}) })
@@ -118,7 +126,7 @@ export const internalSerde = <A, I>({
   schema,
   redaction,
 }: {
-  schema: Schema.Schema<A, I>
+  schema: Schema.Codec<A, I>
   redaction?: RedactionCipher
 }): RestateSerde<A> =>
   effectSerde({ schema, slot: 'internal', ...(redaction !== undefined ? { redaction } : {}) })
@@ -136,8 +144,8 @@ const classifyDecodeFailure = (input: {
   if (input.cause instanceof restate.TerminalError) return input.cause
   if (input.slot === 'internal') return input.cause
   const detail =
-    ParseResult.isParseError(input.cause) === true
-      ? ParseResult.TreeFormatter.formatErrorSync(input.cause)
+    Schema.isSchemaError(input.cause) === true
+      ? SchemaIssue.makeFormatterDefault()(input.cause.issue)
       : input.cause instanceof Error
         ? input.cause.message
         : String(input.cause)

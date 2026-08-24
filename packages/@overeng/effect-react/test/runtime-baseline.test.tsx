@@ -30,14 +30,13 @@ afterEach(() => {
   }
 })
 
-class ProbeService extends Context.Tag('ProbeService')<
-  ProbeService,
-  { readonly label: string }
->() {}
+class ProbeService extends Context.Service<ProbeService, { readonly label: string }>()(
+  'ProbeService',
+) {}
 
 const flushReactEffects = async (): Promise<void> => {
   await act(async () => {
-    await Effect.runPromise(Effect.yieldNow())
+    await Effect.runPromise(Effect.yieldNow)
   })
 }
 
@@ -55,7 +54,7 @@ const createMountedRoot = () => {
 describe('effect-react runtime baselines (cross-major invariant)', () => {
   it('captures provider runtime construction, provision order, and scoped teardown', async () => {
     const events: string[] = []
-    const layer = Layer.scoped(
+    const layer = Layer.effect(
       ProbeService,
       Effect.acquireRelease(
         Effect.sync(() => {
@@ -222,23 +221,23 @@ describe('effect-react runtime baselines (cross-major invariant)', () => {
     observations.push(`initial:${JSON.stringify(store.getSnapshot())}`)
 
     await Effect.runPromise(SubscriptionRef.set(ref, { value: 2, note: null }))
-    await Effect.runPromise(Effect.yieldNow())
+    await Effect.runPromise(Effect.yieldNow)
 
     unsubscribeA()
 
     await Effect.runPromise(SubscriptionRef.set(ref, { value: 3, note: 'ß' }))
-    await Effect.runPromise(Effect.yieldNow())
+    await Effect.runPromise(Effect.yieldNow)
 
     unsubscribeB()
 
     await Effect.runPromise(SubscriptionRef.set(ref, { value: 4, note: 'after-unsubscribe' }))
-    await Effect.runPromise(Effect.yieldNow())
+    await Effect.runPromise(Effect.yieldNow)
 
     expect(observations).toMatchInlineSnapshot(`
       [
-        "initial:{"value":1,"note":""}",
         "a:{"value":1,"note":""}",
         "b:{"value":1,"note":""}",
+        "initial:{"value":1,"note":""}",
         "a:{"value":2,"note":null}",
         "b:{"value":2,"note":null}",
         "b:{"value":3,"note":"ß"}",

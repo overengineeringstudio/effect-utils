@@ -158,7 +158,7 @@ const hasDataSourceId = ({
   readonly dataSourceIds: ReadonlySet<string>
   readonly dataSourceId: DataSourceId
 }): boolean => dataSourceIds.has(dataSourceKey(dataSourceId))
-const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
+const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtcFromString)
 
 const findDataSource = ({
   dataSources,
@@ -348,7 +348,7 @@ export const makeFakeNotionDataSourceGateway = (
               operation: 'queryRows',
             })
         ).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             validatePageSize({
               operation: 'queryRows',
               pageSize: input.queryContract.pageSize,
@@ -644,7 +644,7 @@ export const makeFakeNotionDataSourceGateway = (
               command.initialProperties,
             )}`,
           )
-          const lastEditedTime = Schema.decodeUnknownSync(Schema.DateTimeUtc)(
+          const lastEditedTime = Schema.decodeUnknownSync(Schema.DateTimeUtcFromString)(
             new Date().toISOString(),
           )
           pages.set(pageKey(pageId), {
@@ -774,7 +774,7 @@ export const makeFakeNotionDataSourceGateway = (
                   descriptionPlainText: snapshot.metadataDescriptionPlainText ?? '',
                   icon: { _tag: 'none' },
                 } satisfies CanonicalDataSourceMetadata)
-              : Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
+              : Schema.decodeUnknownSync(Schema.fromJsonString(CanonicalDataSourceMetadata))(
                   snapshot.metadataJson,
                 )
           const nextMetadata: CanonicalDataSourceMetadata = {
@@ -836,7 +836,7 @@ export const makeFakeNotionDataSourceGateway = (
                   descriptionPlainText: snapshot.metadataDescriptionPlainText ?? '',
                   icon: { _tag: 'none' },
                 } satisfies CanonicalDataSourceMetadata)
-              : Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
+              : Schema.decodeUnknownSync(Schema.fromJsonString(CanonicalDataSourceMetadata))(
                   snapshot.metadataJson,
                 )
           const nextMetadata: CanonicalDataSourceMetadata = {

@@ -33,7 +33,7 @@ import { planIntent } from '../planner/planner.ts'
 import { hashStoreBytes } from './projections.ts'
 import { openNotionSyncStore, type NotionSyncStore } from './store.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
+const decode = <TSchema extends Schema.Codec<any, any, never>>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (value: string) => decode(Hash, `sha256:${value.repeat(64).slice(0, 64)}`)

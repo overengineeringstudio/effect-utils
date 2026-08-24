@@ -2,9 +2,9 @@ import * as crypto from 'node:crypto'
 import * as os from 'node:os'
 import nodePath from 'node:path'
 
-import { Command, FileSystem, Path } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, FileSystem, Path, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -14,10 +14,10 @@ import { GenieApp } from './app.ts'
 /** Schema for parsing generated package.json in tests */
 const GeneratedPackageJson = Schema.Struct({
   _genieLocation: Schema.optional(Schema.String),
-  dependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  dependencies: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 })
 
-const decodeGeneratedPackageJson = Schema.decodeUnknownSync(Schema.parseJson(GeneratedPackageJson))
+const decodeGeneratedPackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(GeneratedPackageJson))
 
 type TestEnv = {
   root: string
@@ -26,7 +26,7 @@ type TestEnv = {
   cleanup: () => Effect.Effect<void, never>
 }
 
-const TestLayer = NodeContext.layer
+const TestLayer = NodeServices.layer
 
 const createTestEnv = Effect.fnUntraced(function* () {
   const fs = yield* FileSystem.FileSystem
@@ -66,8 +66,8 @@ const createTestEnv = Effect.fnUntraced(function* () {
   return { root, writeFile, symlink, cleanup } satisfies TestEnv
 })
 
-const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
-  const merged = Chunk.toReadonlyArray(chunks).reduce((acc, chunk) => {
+const decodeChunks = (chunks: ReadonlyArray<Uint8Array>): string => {
+  const merged = chunks.reduce((acc, chunk) => {
     const result = new Uint8Array(acc.length + chunk.length)
     result.set(acc)
     result.set(chunk, acc.length)
@@ -79,13 +79,13 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
 
 const runGenie = Effect.fnUntraced(function* (env: TestEnv, args: ReadonlyArray<string>) {
   const cliPath = new URL('./mod.ts', import.meta.url).pathname
-  const command = Command.make('bun', cliPath, '--cwd', env.root, ...args).pipe(
-    Command.workingDirectory(env.root),
-    Command.stdout('pipe'),
-    Command.stderr('pipe'),
-  )
+  const command = Command.make('bun', [cliPath, '--cwd', env.root, ...args], {
+    cwd: env.root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
 
-  const process = yield* Command.start(command)
+  const process = yield* command
   const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
     Stream.runCollect(process.stdout),
     Stream.runCollect(process.stderr),
@@ -117,9 +117,10 @@ Vitest.describe('genie cli', () => {
       function* () {
         yield* withTestEnv((env) =>
           Effect.gen(function* () {
-            const packageJsonContent = yield* Schema.encode(
-              Schema.parseJson(Schema.Unknown, { space: 2 }),
-            )({ name: 'genie-cli-test', private: true })
+            const packageJsonContent = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown, { space: 2 }))({
+              name: 'genie-cli-test',
+              private: true,
+            })
 
             yield* env.writeFile({
               path: 'package.json',
@@ -439,13 +440,13 @@ export default {
             // Run genie with --cwd pointing to the SYMLINK path
             // This is the scenario that previously caused the bug
             const cliPath = new URL('./mod.ts', import.meta.url).pathname
-            const command = Command.make('bun', cliPath, '--cwd', symlinkPath).pipe(
-              Command.workingDirectory(symlinkPath),
-              Command.stdout('pipe'),
-              Command.stderr('pipe'),
-            )
+            const command = Command.make('bun', [cliPath, '--cwd', symlinkPath], {
+            cwd: symlinkPath,
+            stdout: 'pipe',
+            stderr: 'pipe',
+          })
 
-            const process = yield* Command.start(command)
+          const process = yield* command
             const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
               Stream.runCollect(process.stdout),
               Stream.runCollect(process.stderr),
@@ -506,12 +507,12 @@ export default {
 export default { data: {}, stringify: () => '{}' }`,
             })
 
-            const init = Command.make('git', 'init', '-q').pipe(
-              Command.workingDirectory(env.root),
-              Command.stdout('pipe'),
-              Command.stderr('pipe'),
-            )
-            const initProcess = yield* Command.start(init)
+            const init = Command.make('git', ['init', '-q'], {
+              cwd: env.root,
+              stdout: 'pipe',
+              stderr: 'pipe',
+            })
+            const initProcess = yield* init
             expect(yield* initProcess.exitCode).toBe(0)
 
             const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
@@ -614,13 +615,13 @@ export default {
 
             const outerRoot = pathSvc.join(env.root, 'outer')
             const cliPath = new URL('./mod.ts', import.meta.url).pathname
-            const command = Command.make('bun', cliPath, '--cwd', outerRoot).pipe(
-              Command.workingDirectory(outerRoot),
-              Command.stdout('pipe'),
-              Command.stderr('pipe'),
-            )
+            const command = Command.make('bun', [cliPath, '--cwd', outerRoot], {
+            cwd: outerRoot,
+            stdout: 'pipe',
+            stderr: 'pipe',
+          })
 
-            const process = yield* Command.start(command)
+          const process = yield* command
             const [stdoutChunks, stderrChunks, exitCode] = yield* Effect.all([
               Stream.runCollect(process.stdout),
               Stream.runCollect(process.stderr),
@@ -675,9 +676,9 @@ export default { data: {}, stringify: () => '{}' }`,
 
             // Flat JSON contract: final stdout line is the raw state (no envelope).
             // Exit code signals failure; per-file error details are carried in state.
-            const state = yield* Schema.decodeUnknown(
-              Schema.parseJson(GenieApp.config.stateSchema),
-            )(stdout.trim())
+            const state = Schema.decodeSync(Schema.fromJsonString(GenieApp.config.stateSchema))(
+              stdout.trim(),
+            )
 
             // Bug #135: files array must NOT be empty
             expect(state.files.length).toBe(2)
@@ -761,9 +762,9 @@ export default { data: {}, stringify: () => '{}' }`,
             // NDJSON flat contract: each line is raw state; last line is the
             // authoritative end state (no trailing Failure envelope).
             const lines = stdout.trim().split('\n')
-            const finalState = yield* Schema.decodeUnknown(
-              Schema.parseJson(GenieApp.config.stateSchema),
-            )(lines[lines.length - 1]!)
+            const finalState = Schema.decodeSync(Schema.fromJsonString(GenieApp.config.stateSchema))(
+              lines[lines.length - 1]!,
+            )
 
             expect(finalState.files.length).toBe(2)
             expect(finalState.cwd).not.toBe('')

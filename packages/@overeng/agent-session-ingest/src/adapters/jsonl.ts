@@ -1,4 +1,4 @@
-import type { FileSystem } from '@effect/platform'
+import type { FileSystem } from 'effect'
 import { Effect, Schema } from 'effect'
 
 import type { SessionSourceDiscoveryError } from '../errors.ts'
@@ -26,7 +26,7 @@ export interface JsonlAdapterOptions<A, I> {
     SessionSourceDiscoveryError,
     FileSystem.FileSystem
   >
-  readonly recordSchema: Schema.Schema<A, I>
+  readonly recordSchema: Schema.Codec<A, I>
   readonly decodeErrorMessage: string
   readonly checkpointErrorMessage: string
 }
@@ -68,7 +68,7 @@ export const makeAppendOnlyJsonlAdapter = <A, I>(
         })
 
         const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
-          Schema.decodeUnknown(Schema.parseJson(options.recordSchema))(line).pipe(
+          Schema.decodeUnknownEffect(Schema.fromJsonString(options.recordSchema))(line).pipe(
             Effect.mapError(
               (cause) =>
                 new SessionArtifactDecodeError({
@@ -85,7 +85,7 @@ export const makeAppendOnlyJsonlAdapter = <A, I>(
         return {
           artifact,
           records,
-          checkpoint: yield* Schema.decodeUnknown(IngestionCheckpointSchema)({
+          checkpoint: yield* Schema.decodeUnknownEffect(IngestionCheckpointSchema)({
             sourceId: artifact.sourceId,
             artifactId: artifact.artifactId,
             path: artifact.path,

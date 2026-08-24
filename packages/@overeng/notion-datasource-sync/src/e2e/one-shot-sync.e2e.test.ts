@@ -1151,7 +1151,7 @@ describe('one-shot sync orchestration', () => {
       pageId: testIds.pageId,
       path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
       contentHash: hash('body-a'),
-      observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+      observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
     })
     const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
     const remoteBody = makeFakePageBodySyncPort({
@@ -1164,11 +1164,11 @@ describe('one-shot sync orchestration', () => {
       planLocalChange: (input: Parameters<typeof remoteBody.planLocalChange>[0]) =>
         Effect.sync(() => {
           bodyPlans += 1
-        }).pipe(Effect.zipRight(remoteBody.planLocalChange(input))),
+        }).pipe(Effect.andThen(remoteBody.planLocalChange(input))),
       push: (command: Parameters<typeof remoteBody.push>[0]) =>
         Effect.sync(() => {
           bodyPushes += 1
-        }).pipe(Effect.zipRight(remoteBody.push(command))),
+        }).pipe(Effect.andThen(remoteBody.push(command))),
     }
     const workspace = makeFakeLocalWorkspacePort({ observations: [localObservation] })
     const command = decode({
@@ -1253,7 +1253,7 @@ describe('one-shot sync orchestration', () => {
       observe: (input: Parameters<typeof remoteBody.observe>[0]) =>
         Effect.sync(() => {
           observedBodies += 1
-        }).pipe(Effect.zipRight(remoteBody.observe(input))),
+        }).pipe(Effect.andThen(remoteBody.observe(input))),
     }
     const baseWorkspace = makeHarnessPorts().workspace
     const materializedPlans: MaterializePlan[] = []
@@ -1372,7 +1372,7 @@ describe('one-shot sync orchestration', () => {
       pageId: testIds.pageId,
       path: decode({ schema: WorkspaceRelativePath, value: 'page-1.nmd' }),
       contentHash: hash('body-local'),
-      observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+      observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
     })
     const ports = makeHarnessPorts({
       bodyPages: [

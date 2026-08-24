@@ -1,5 +1,5 @@
 import type * as restate from '@restatedev/restate-sdk'
-import { Context, Effect, Runtime, Schema } from 'effect'
+import { Context, Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { run as durableRun } from '../authoring/RestateContext.ts'
@@ -29,7 +29,7 @@ const Greet = Schema.Struct({ name: Schema.String })
 
 describe('retention annotation → SDK retention options', () => {
   it('maps a Restate.retention annotation on the handler input to SDK retention millis', () => {
-    /* `Duration.DurationInput` accepts the `"5 minutes"` etc. string form. */
+    /* `Duration.Input` accepts the `"5 minutes"` etc. string form. */
     const input = Restate.retention({
       self: Greet,
       options: { idempotency: '5 minutes', journal: '1 hour' },
@@ -39,7 +39,7 @@ describe('retention annotation → SDK retention options', () => {
       handlers: { greet: { input, success: Schema.String } },
       impl: { greet: () => Effect.succeed('hi') },
     })
-    const def = materialize({ implementation: impl, runtime: Runtime.defaultRuntime })
+    const def = materialize({ implementation: impl, runtime: Context.empty() })
     const opts = handlerOptionsOf(def, 'greet')
     expect(opts?.idempotencyRetention).toBe(5 * 60 * 1000)
     expect(opts?.journalRetention).toBe(60 * 60 * 1000)
@@ -55,7 +55,7 @@ describe('retention annotation → SDK retention options', () => {
       impl: { greet: () => Effect.succeed('hi') },
     })
     const opts = handlerOptionsOf(
-      materialize({ implementation: impl, runtime: Runtime.defaultRuntime }),
+      materialize({ implementation: impl, runtime: Context.empty() }),
       'greet',
     )
     expect(opts?.journalRetention).toBe(42)
@@ -86,7 +86,7 @@ describe('retry surfacing → SDK RetryPolicy', () => {
       impl: { greet: () => Effect.succeed('hi') },
     })
     const opts = handlerOptionsOf(
-      materialize({ implementation: impl, runtime: Runtime.defaultRuntime }),
+      materialize({ implementation: impl, runtime: Context.empty() }),
       'greet',
     )
     expect(opts?.retryPolicy).toStrictEqual({
@@ -108,7 +108,7 @@ describe('retry surfacing → SDK RetryPolicy', () => {
       impl: { greet: () => Effect.succeed('hi') },
     })
     const opts = handlerOptionsOf(
-      materialize({ implementation: impl, runtime: Runtime.defaultRuntime }),
+      materialize({ implementation: impl, runtime: Context.empty() }),
       'greet',
     )
     expect(opts?.asTerminalError).toBe(asTerminalError)
@@ -128,7 +128,7 @@ describe('retry surfacing → SDK RetryPolicy', () => {
       contractValue: contract,
       impl: { greet: () => Effect.succeed('hi') },
     })
-    const def = materialize({ implementation: bound, runtime: Runtime.defaultRuntime })
+    const def = materialize({ implementation: bound, runtime: Context.empty() })
     expect(serviceOptionsOf(def)).toMatchObject({
       retryPolicy: { maxAttempts: 2, onMaxAttempts: 'kill' },
       journalRetention: 9000,
@@ -199,11 +199,11 @@ describe('redaction cipher resolution at materialize', () => {
      * runtime's context carries it); `materialize` resolves it best-effort via
      * `Context.getOption`, decoupled from the handler `AppR`. Mirror that here by
      * widening the cipher-carrying runtime back to `Runtime<never>`. */
-    const runtime = Runtime.defaultRuntime.pipe(
-      Runtime.updateContext(
-        Context.add(RestateRedaction, aesGcmCipher(new Uint8Array(32).fill(7))),
-      ),
-    ) as Runtime.Runtime<never>
+    const runtime = Context.add(
+      Context.empty(),
+      RestateRedaction,
+      aesGcmCipher(new Uint8Array(32).fill(7)),
+    ) as Context.Context<never>
     const opts = handlerOptionsOf(materialize({ implementation: impl, runtime: runtime }), 'store')
     const inputSerde = opts?.input as { serialize: (v: unknown) => Uint8Array }
     const wire = JSON.parse(new TextDecoder().decode(inputSerde.serialize({ pin: '1234' }))) as {
@@ -226,7 +226,7 @@ describe('materialize REJECTS misplaced field annotations (decision 0020)', () =
       },
       impl: { go: () => Effect.void },
     })
-    expect(() => materialize({ implementation: impl, runtime: Runtime.defaultRuntime })).toThrow(
+    expect(() => materialize({ implementation: impl, runtime: Context.empty() })).toThrow(
       /idempotencyKey.*STRUCT/s,
     )
   })
@@ -239,7 +239,7 @@ describe('materialize REJECTS misplaced field annotations (decision 0020)', () =
       },
       impl: { go: () => Effect.void },
     })
-    expect(() => materialize({ implementation: impl, runtime: Runtime.defaultRuntime })).toThrow(
+    expect(() => materialize({ implementation: impl, runtime: Context.empty() })).toThrow(
       /sensitive.*STRUCT/s,
     )
   })
@@ -258,7 +258,7 @@ describe('materialize REJECTS misplaced field annotations (decision 0020)', () =
       },
       impl: { go: () => Effect.void },
     })
-    expect(() => materialize({ implementation: impl, runtime: Runtime.defaultRuntime })).toThrow(
+    expect(() => materialize({ implementation: impl, runtime: Context.empty() })).toThrow(
       /idempotencyKey.*SINGLE source/s,
     )
   })
@@ -275,7 +275,7 @@ describe('materialize REJECTS misplaced field annotations (decision 0020)', () =
       impl: { go: () => Effect.void },
     })
     expect(() =>
-      materialize({ implementation: impl, runtime: Runtime.defaultRuntime }),
+      materialize({ implementation: impl, runtime: Context.empty() }),
     ).not.toThrow()
   })
 })

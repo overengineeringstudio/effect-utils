@@ -1,4 +1,4 @@
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 
 import type { NmdWritablePropertyValue } from '@overeng/notion-effect-client'
 
@@ -139,7 +139,7 @@ export type RemoteObservationResult = {
   }
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {
@@ -155,7 +155,7 @@ const eventPayload = (value: unknown): SyncEventType['payload'] => ({
 
 const observedAt = (now: () => Date) => now().toISOString()
 
-const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
+const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtcFromString)
 
 const eventBase = ({
   rootId,
@@ -207,17 +207,17 @@ const defaultBodyPathForPage = (pageId: PageIdType): WorkspaceRelativePath => {
 const collectStream = <TValue, TError>(
   stream: Stream.Stream<TValue, TError>,
 ): Effect.Effect<ReadonlyArray<TValue>, TError> =>
-  stream.pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+  stream.pipe(Stream.runCollect)
 
 const maxObservedHighWatermark = ({
   initial,
   rows,
   complete,
 }: {
-  readonly initial: typeof Schema.DateTimeUtc.Type | null
+  readonly initial: typeof Schema.DateTimeUtcFromString.Type | null
   readonly rows: ReadonlyArray<QueryRowsPage['rows'][number]>
   readonly complete: boolean
-}): typeof Schema.DateTimeUtc.Type | null => {
+}): typeof Schema.DateTimeUtcFromString.Type | null => {
   if (complete === false) return initial
 
   return rows.reduce((max, row) => {
@@ -992,7 +992,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                   // error. Keep the sync decode (matching the file's `decode` helper and
                   // module-level sync codecs) rather than widen the gen channel with `ParseError`.
                   // @effect-diagnostics-next-line schemaSyncInEffect:off
-                  observedAt: Schema.decodeSync(Schema.DateTimeUtc)(now().toISOString()),
+                  observedAt: Schema.decodeSync(Schema.DateTimeUtcFromString)(now().toISOString()),
                   propertiesHash: row.propertiesHash,
                   propertyValuesJson: row.propertyValuesJson,
                   inTrash: row.inTrash,

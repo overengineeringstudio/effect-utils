@@ -1,5 +1,4 @@
-import { Option, Schema } from 'effect'
-import * as SchemaAST from 'effect/SchemaAST'
+import { Option, Schema, SchemaAST, SchemaGetter, SchemaTransformation } from 'effect'
 
 import {
   NOTICON_COLORS,
@@ -22,7 +21,7 @@ import {
  *
  * @example
  * ```ts
- * Schema.Struct({ ... }).annotations({
+ * Schema.Struct({ ... }).annotate({
  *   [docsPath]: 'property-value-object#title',
  * })
  * ```
@@ -54,7 +53,7 @@ export const resolveDocsUrl = (path: string): string => `${NOTION_DOCS_BASE}/${p
  *
  * @see https://developers.notion.com/reference/intro#conventions
  */
-export const NotionUUID = Schema.String.annotations({
+export const NotionUUID = Schema.String.annotate({
   identifier: 'Notion.UUID',
   title: 'Notion UUID',
   description: 'A unique identifier in UUID format used throughout the Notion API.',
@@ -87,7 +86,7 @@ export const notionObjectUrl = (id: string): string => notionObjectUrlCore(id)
  *
  * @see https://developers.notion.com/reference/intro#conventions
  */
-export const ISO8601DateTime = Schema.String.annotations({
+export const ISO8601DateTime = Schema.String.annotate({
   identifier: 'Notion.ISO8601DateTime',
   title: 'ISO 8601 DateTime',
   description: 'A timestamp in ISO 8601 format.',
@@ -102,7 +101,7 @@ export type ISO8601DateTime = typeof ISO8601DateTime.Type
  *
  * @see https://developers.notion.com/reference/rich-text#the-annotation-object
  */
-export const NotionColor = Schema.Literal(...NOTION_COLORS).annotations({
+export const NotionColor = Schema.Literals(NOTION_COLORS).annotate({
   identifier: 'Notion.Color',
   title: 'Notion Color',
   description: 'Color values used for text annotations and backgrounds.',
@@ -116,7 +115,7 @@ export type NotionColor = typeof NotionColor.Type
  *
  * @see https://developers.notion.com/reference/property-value-object#select
  */
-export const SelectColor = Schema.Literal(...SELECT_COLORS).annotations({
+export const SelectColor = Schema.Literals(SELECT_COLORS).annotate({
   identifier: 'Notion.SelectColor',
   title: 'Select Color',
   description: 'Color values used for select and multi-select options.',
@@ -132,7 +131,7 @@ export type SelectColor = typeof SelectColor.Type
  *
  * @see https://developers.notion.com/reference/icon-object
  */
-export const NoticonColor = Schema.Literal(...NOTICON_COLORS).annotations({
+export const NoticonColor = Schema.Literals(NOTICON_COLORS).annotate({
   identifier: 'Notion.NoticonColor',
   title: 'Noticon Color',
   description: 'Color values used for native Notion icons (noticons).',
@@ -147,7 +146,7 @@ export type NoticonColor = typeof NoticonColor.Type
  * Can be used in date filters where absolute dates are accepted,
  * e.g. `{ property: "Due Date", date: { on_or_after: "today" } }`.
  */
-export const RelativeDate = Schema.Literal(
+export const RelativeDate = Schema.Literals([
   'today',
   'tomorrow',
   'yesterday',
@@ -155,7 +154,7 @@ export const RelativeDate = Schema.Literal(
   'one_week_from_now',
   'one_month_ago',
   'one_month_from_now',
-).annotations({
+]).annotate({
   identifier: 'Notion.RelativeDate',
   title: 'Relative Date',
   description: 'Relative date values for database query filters.',
@@ -195,16 +194,18 @@ export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
 // Composable helpers
 // ---------------------------------------------------------------------------
 
-const getOptionValueSchema = <TValue, TInput, TContext>(
-  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
-): Schema.Schema<TValue, TValue, never> => {
-  const annotated = SchemaAST.getAnnotation<Schema.Schema<TValue, TValue, never>>(
-    schema.ast,
-    optionValueSchema,
-  )
+const getAnnotationValue = <A>({ ast, key }: { ast: SchemaAST.AST; key: symbol }): A | undefined => {
+  const annotations = SchemaAST.resolve(ast) as { [key: symbol]: unknown } | undefined
+  return annotations?.[key] as A | undefined
+}
 
-  if (Option.isSome(annotated) === true) {
-    return annotated.value
+const getOptionValueSchema = <TValue>(
+  schema: Schema.Schema<Option.Option<TValue>>,
+): Schema.Codec<TValue, TValue> => {
+  const annotated = getAnnotationValue<Schema.Codec<TValue, TValue>>({ ast: schema.ast, key: optionValueSchema })
+
+  if (annotated !== undefined) {
+    return annotated
   }
 
   return shouldNeverHappen(
@@ -212,16 +213,13 @@ const getOptionValueSchema = <TValue, TInput, TContext>(
   )
 }
 
-const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
-  schema: Schema.Schema<TValue, TInput, TContext>,
-): Schema.Schema<TName, TName, never> => {
-  const annotated = SchemaAST.getAnnotation<Schema.Schema<TName, TName, never>>(
-    schema.ast,
-    optionNameSchema,
-  )
+const getOptionNameSchema = <TName extends string, TValue>(
+  schema: Schema.Schema<TValue>,
+): Schema.Decoder<TName> => {
+  const annotated = getAnnotationValue<Schema.Decoder<TName>>({ ast: schema.ast, key: optionNameSchema })
 
-  if (Option.isSome(annotated) === true) {
-    return annotated.value
+  if (annotated !== undefined) {
+    return annotated
   }
 
   return shouldNeverHappen(
@@ -230,18 +228,18 @@ const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
 }
 
 /** Annotates an Option schema with its inner value schema for extraction */
-export const withOptionValueSchema = <TValue, TInput, TContext>(options: {
-  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>
-  valueSchema: Schema.Schema<TValue, TValue, never>
-}): Schema.Schema<Option.Option<TValue>, TInput, TContext> =>
-  options.schema.annotations({ [optionValueSchema]: options.valueSchema })
+export const withOptionValueSchema = <TValue>(
+  options: {
+    schema: Schema.Decoder<Option.Option<TValue>>
+    valueSchema: Schema.Decoder<TValue>
+  },
+) => options.schema.annotate({ [optionValueSchema]: options.valueSchema })
 
 /** Annotates a schema with the name schema for select/status option extraction */
-export const withOptionNameSchema = <TValue, TInput, TContext, TName extends string>(options: {
-  schema: Schema.Schema<TValue, TInput, TContext>
-  nameSchema: Schema.Schema<TName, TName, never>
-}): Schema.Schema<TValue, TInput, TContext> =>
-  options.schema.annotations({ [optionNameSchema]: options.nameSchema })
+export const withOptionNameSchema = <TValue, TName extends string>(options: {
+  schema: Schema.Decoder<TValue>
+  nameSchema: Schema.Decoder<TName>
+}) => options.schema.annotate({ [optionNameSchema]: options.nameSchema })
 
 /**
  * Convert select/status `Option<SelectOption>` values to `Option<name>`.
@@ -254,20 +252,26 @@ export const withOptionNameSchema = <TValue, TInput, TContext, TName extends str
  *
  * Typed options are enforced via the upstream schema. Decode-only; use write helpers for updates.
  */
-export const asName = <TName extends string, TOption extends { name: TName }, TInput, TContext>(
-  schema: Schema.Schema<Option.Option<TOption>, TInput, TContext>,
-): Schema.Schema<Option.Option<TName>, TInput, TContext> => {
-  const nameSchema = getOptionNameSchema<TName, Option.Option<TOption>, TInput, TContext>(schema)
+export const asName = <TName extends string, TOption extends { name: TName }>(
+  schema: Schema.Decoder<Option.Option<TOption>>,
+) => {
+  const nameSchema = getOptionNameSchema<TName, Option.Option<TOption>>(schema)
 
   return withOptionValueSchema({
-    schema: Schema.transform(schema, Schema.OptionFromSelf(nameSchema), {
-      strict: false,
-      decode: (opt) => Option.map(opt, (value) => value.name),
-      encode: () =>
-        shouldNeverHappen(
-          'NotionSchema.asName encode is not supported. Use the write helpers for updates.',
-        ),
-    }),
+    schema: schema.pipe(
+      Schema.decodeTo(
+        Schema.Option(nameSchema),
+        {
+          decode: SchemaGetter.transform((opt: Option.Option<TOption>) =>
+            Option.map(opt, (value) => value.name)
+          ),
+          encode: SchemaGetter.forbidden(
+            () =>
+              'NotionSchema.asName encode is not supported. Use the write helpers for updates.',
+          ),
+        },
+      ),
+    ),
     valueSchema: nameSchema,
   })
 }
@@ -283,19 +287,25 @@ export const asName = <TName extends string, TOption extends { name: TName }, TI
  *
  * Typed options are enforced via the upstream schema. Decode-only; use write helpers for updates.
  */
-export const asNames = <TName extends string, TOption extends { name: TName }, TInput, TContext>(
-  schema: Schema.Schema<ReadonlyArray<TOption>, TInput, TContext>,
-): Schema.Schema<ReadonlyArray<TName>, TInput, TContext> => {
-  const nameSchema = getOptionNameSchema<TName, ReadonlyArray<TOption>, TInput, TContext>(schema)
+export const asNames = <TName extends string, TOption extends { name: TName }>(
+  schema: Schema.Decoder<ReadonlyArray<TOption>>,
+) => {
+  const nameSchema = getOptionNameSchema<TName, ReadonlyArray<TOption>>(schema)
 
-  return Schema.transform(schema, Schema.Array(nameSchema), {
-    strict: false,
-    decode: (options) => options.map((option) => option.name),
-    encode: () =>
-      shouldNeverHappen(
-        'NotionSchema.asNames encode is not supported. Use the write helpers for updates.',
-      ),
-  })
+  return schema.pipe(
+    Schema.decodeTo(
+      Schema.Array(nameSchema),
+      {
+        decode: SchemaGetter.transform((options: ReadonlyArray<TOption>) =>
+          options.map((option) => option.name)
+        ),
+        encode: SchemaGetter.forbidden(
+          () =>
+            'NotionSchema.asNames encode is not supported. Use the write helpers for updates.',
+        ),
+      },
+    ),
+  )
 }
 
 /**
@@ -303,61 +313,67 @@ export const asNames = <TName extends string, TOption extends { name: TName }, T
  *
  * Expects a schema created by notion-effect-schema Option helpers.
  */
-export const asNullable = <TValue, TInput, TContext>(
-  schema: Schema.Schema<Option.Option<TValue>, TInput, TContext>,
-): Schema.Schema<TValue | null, TInput, TContext> => {
+export const asNullable = <TValue>(schema: Schema.Decoder<Option.Option<TValue>>) => {
   const valueSchema = getOptionValueSchema(schema)
 
-  return Schema.transform(schema, Schema.NullOr(valueSchema), {
-    strict: false,
-    decode: (opt) => Option.getOrNull(opt),
-    encode: (value) => (value === null ? Option.none() : Option.some(value)),
-  })
+  return schema.pipe(
+    Schema.decodeTo(
+      Schema.NullOr(valueSchema),
+      {
+        decode: SchemaGetter.transform((opt: Option.Option<TValue>) => Option.getOrNull(opt)),
+        encode: SchemaGetter.transform((value: TValue | null) =>
+          value === null ? Option.none() : Option.some(value)
+        ),
+      },
+    ),
+  )
 }
 
 /** Helpers for making Option/nullable values required */
 export const Required = {
   some:
     (message = 'Value is required') =>
-    <TValue, TInput, TOutputContext>(
-      schema: Schema.Schema<Option.Option<TValue>, TInput, TOutputContext>,
-    ): Schema.Schema<TValue, TInput, TOutputContext> => {
+    <TValue>(schema: Schema.Decoder<Option.Option<TValue>>) => {
       const valueSchema = getOptionValueSchema(schema)
-      return Schema.transform(
-        schema.pipe(
-          Schema.filter((opt): opt is Option.Some<TValue> => Option.isSome(opt), {
-            message: () => message,
+      return schema.pipe(
+        Schema.check(
+          Schema.makeFilter((opt: Option.Option<TValue>) => Option.isSome(opt), {
+            message,
           }),
         ),
-        valueSchema,
-        {
-          strict: false,
-          decode: (opt) => Option.getOrThrow(opt),
-          encode: (value) => Option.some(value),
-        },
+        Schema.decodeTo(
+          valueSchema,
+          {
+            decode: SchemaGetter.transform((opt: Option.Option<TValue>) =>
+              Option.getOrThrow(opt)
+            ),
+            encode: SchemaGetter.transform((value: TValue) => Option.some(value)),
+          },
+        ),
       )
     },
   nullable:
-    <TValue, TContext>(options: {
-      valueSchema: Schema.Schema<TValue, TValue, TContext>
-      message?: string
-    }) =>
-    <TInput, TOutputContext>(
-      schema: Schema.Schema<TValue | null, TInput, TOutputContext>,
-    ): Schema.Schema<TValue, TInput, TContext | TOutputContext> => {
+    <TValue>(options: { valueSchema: Schema.Codec<TValue>; message?: string }) =>
+    (schema: Schema.Decoder<TValue | null>) => {
       const message = options.message ?? 'Value is required'
-      return Schema.transform(
-        schema.pipe(
-          Schema.filter((value): value is TValue => value !== null, {
-            message: () => message,
+      return schema.pipe(
+        Schema.check(
+          Schema.makeFilter((value: TValue | null) => value !== null, {
+            message,
           }),
         ),
-        options.valueSchema,
-        {
-          strict: false,
-          decode: (value) => value,
-          encode: (value) => value,
-        },
+        Schema.decodeTo(
+          options.valueSchema,
+          SchemaTransformation.transform<TValue, TValue | null>({
+            decode: (value) => {
+              if (value === null) {
+                return shouldNeverHappen('Required.nullable decoded null after filtering')
+              }
+              return value
+            },
+            encode: (value) => value,
+          }),
+        ),
       )
     },
 } as const

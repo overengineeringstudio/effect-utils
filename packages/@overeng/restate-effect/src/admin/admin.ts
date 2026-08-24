@@ -38,7 +38,7 @@
  * ```
  */
 import type { Redacted } from 'effect'
-import { Config, type ConfigError, Context, Effect, Layer, Option, Schema } from 'effect'
+import { Config, Context, Effect, Layer, Option, Schema } from 'effect'
 
 import { RestateError } from '../schema/RestateError.ts'
 import {
@@ -142,7 +142,7 @@ export interface RestateAdminService {
    */
   readonly query: <A, I>(args: {
     readonly sql: string
-    readonly rowSchema: Schema.Schema<A, I>
+    readonly rowSchema: Schema.Codec<A, I>
   }) => Effect.Effect<ReadonlyArray<A>, RestateError>
   /** As {@link query} but returns the RAW untyped rows (no Schema decode). */
   readonly queryRaw: (
@@ -229,7 +229,7 @@ const makeAdmin = (config: AdminClientConfig): RestateAdminService => {
       adminCall({ method: 'admin.query', run: () => bareQuery({ config, sql }) }).pipe(
         Effect.flatMap((rows) =>
           Effect.forEach(rows, (row) =>
-            Schema.decodeUnknown(rowSchema)(row).pipe(
+            Schema.decodeUnknownEffect(rowSchema)(row).pipe(
               Effect.mapError(
                 (cause) =>
                   new RestateError({ reason: 'AdminFailed', method: 'admin.query.decode', cause }),
@@ -259,10 +259,9 @@ const toClientConfig = (opts: {
  * `RestateIngress` Tag/layer pattern — but points at the admin URL, NOT the
  * ingress URL, and carries the admin-API trust boundary (see the module doc).
  */
-export class RestateAdmin extends Context.Tag('@overeng/restate-effect/RestateAdmin')<
-  RestateAdmin,
-  RestateAdminService
->() {
+export class RestateAdmin extends Context.Service<RestateAdmin, RestateAdminService>()(
+  '@overeng/restate-effect/RestateAdmin',
+) {
   /**
    * Build a `RestateAdmin` layer bound to a `restate-server` ADMIN URL (the
    * PRIMITIVE form). For a SECURED / Restate Cloud admin endpoint, pass `apiKey`
@@ -282,7 +281,7 @@ export class RestateAdmin extends Context.Tag('@overeng/restate-effect/RestateAd
    * `Config`-then-literal wrapper over {@link RestateAdmin.layer}. Fails the layer
    * with a `ConfigError` if `RESTATE_ADMIN_URL` is unset.
    */
-  static layerConfig = (): Layer.Layer<RestateAdmin, ConfigError.ConfigError> =>
+  static layerConfig = (): Layer.Layer<RestateAdmin, Config.ConfigError> =>
     Layer.effect(
       RestateAdmin,
       Effect.gen(function* () {

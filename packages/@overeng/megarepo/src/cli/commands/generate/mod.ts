@@ -4,7 +4,7 @@
  * Commands for generating configuration files.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 import { Effect, Option } from 'effect'
 import React from 'react'
 
@@ -24,9 +24,9 @@ const generateVscodeCommand = Cli.Command.make(
   'vscode',
   {
     output: outputOption,
-    exclude: Cli.Options.text('exclude').pipe(
-      Cli.Options.withDescription('Comma-separated list of members to exclude'),
-      Cli.Options.optional,
+    exclude: Cli.Flag.string('exclude').pipe(
+      Cli.Flag.withDescription('Comma-separated list of members to exclude'),
+      Cli.Flag.optional,
     ),
   },
   ({ output, exclude }) =>
@@ -82,10 +82,10 @@ const generateSchemaCommand = Cli.Command.make(
   'schema',
   {
     output: outputOption,
-    outputPath: Cli.Options.text('output-path').pipe(
-      Cli.Options.withAlias('p'),
-      Cli.Options.withDescription('Output path (relative to megarepo root)'),
-      Cli.Options.withDefault('schema/megarepo.schema.json'),
+    outputPath: Cli.Flag.string('output-path').pipe(
+      Cli.Flag.withAlias('p'),
+      Cli.Flag.withDescription('Output path (relative to megarepo root)'),
+      Cli.Flag.withDefault('schema/megarepo.schema.json'),
     ),
   },
   ({ output, outputPath }) =>

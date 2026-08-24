@@ -30,7 +30,7 @@
  * admin-cancel, idempotency-keyed result attach, OTel attempt-span reparenting.
  */
 import type { Scope } from 'effect'
-import { Cause, Context, Effect, Exit, Layer, Option, Runtime, Schema } from 'effect'
+import { Cause, Context, Effect, Exit, Layer, Option, Schema } from 'effect'
 
 import {
   normalizeStateSchema,
@@ -151,17 +151,16 @@ export interface RestateTestEnvService {
    * ingress `resolveAwakeable`.
    */
   readonly resolveAwakeable: <T, I>(args: {
-    schema: Schema.Schema<T, I>
+    schema: Schema.Codec<T, I>
     id: string
     payload: T
   }) => Effect.Effect<void, RestateError>
 }
 
 /** The env service tag. The `mock` / `real` statics below are the only constructors. */
-export class RestateTestEnv extends Context.Tag('@overeng/restate-effect/RestateTestEnv')<
-  RestateTestEnv,
-  RestateTestEnvService
->() {
+export class RestateTestEnv extends Context.Service<RestateTestEnv, RestateTestEnvService>()(
+  '@overeng/restate-effect/RestateTestEnv',
+) {
   /**
    * The in-process MOCK backend: no journal, no server. Captures the
    * `Runtime<AppR>` from `appLayer` once, then dispatches each contract-addressed
@@ -176,7 +175,8 @@ export class RestateTestEnv extends Context.Tag('@overeng/restate-effect/Restate
   static mock = <AppR, RIn = never>(opts: {
     readonly services: ReadonlyArray<AnyImplementation<AppR>>
     readonly appLayer: Layer.Layer<AppR, never, RIn>
-  }): Layer.Layer<RestateTestEnv, never, RIn> => Layer.scoped(RestateTestEnv, makeMockEnv(opts))
+  }): Layer.Layer<RestateTestEnv, never, RIn> =>
+    Layer.effect(RestateTestEnv, Effect.scoped(makeMockEnv(opts)))
 
   /**
    * The native-server REAL backend: a thin wrapper over the existing
@@ -193,8 +193,10 @@ export class RestateTestEnv extends Context.Tag('@overeng/restate-effect/Restate
     readonly alwaysReplay?: boolean
     readonly disableRetries?: boolean
   }): Layer.Layer<RestateTestEnv, RestateError, RIn> =>
-    Layer.map(RestateTestHarness.layer(opts), (ctx) =>
-      Context.make(RestateTestEnv, realEnv(Context.get(ctx, RestateTestHarness))),
+    RestateTestHarness.layer(opts).pipe(
+      Layer.flatMap((ctx) =>
+        Layer.succeed(RestateTestEnv, realEnv(Context.get(ctx, RestateTestHarness))),
+      ),
     )
 }
 
@@ -250,7 +252,7 @@ const classifyMockExit = ({
   errorSchema,
 }: {
   exit: Exit.Exit<unknown, unknown>
-  errorSchema: Schema.Schema<unknown, unknown> | undefined
+  errorSchema: Schema.Codec<unknown, unknown> | undefined
 }): Effect.Effect<unknown, unknown> => {
   if (Exit.isSuccess(exit) === true) return Effect.succeed(exit.value)
   const outcome = classifyOutcome({
@@ -266,10 +268,10 @@ const classifyMockExit = ({
     outcome.errorTag !== undefined &&
     errorSchema !== undefined
   ) {
-    const failure = Cause.failureOption(exit.cause)
+    const failure = Cause.findErrorOption(exit.cause)
     if (Option.isSome(failure) === true) {
-      return Schema.encodeUnknown(errorSchema)(failure.value).pipe(
-        Effect.flatMap((encoded) => Schema.decodeUnknown(errorSchema)(encoded)),
+      return Schema.encodeUnknownEffect(errorSchema)(failure.value).pipe(
+        Effect.flatMap((encoded) => Schema.decodeUnknownEffect(errorSchema)(encoded)),
         Effect.orElseSucceed(() => failure.value),
         // @effect-diagnostics-next-line anyUnknownInErrorContext:off -- re-fails with a value decoded from the user-supplied `errorSchema: Schema.Schema<unknown, unknown>`; there is no nameable error type at this dynamic-decode boundary.
         Effect.flatMap((decoded) => Effect.fail(decoded)),
@@ -309,14 +311,14 @@ const mockStateProxy = <S extends StateSchemas>({
   return {
     get: (key) =>
       state.has(key) === true
-        ? Schema.decodeUnknown(schemaFor(key))(state.get(key)).pipe(
+        ? Schema.decodeUnknownEffect(schemaFor(key))(state.get(key)).pipe(
             Effect.mapError(stateErr(`stateOf(${contract.name}).get(${key})`)),
           )
         : // @effect-diagnostics-next-line effectSucceedWithVoid:off -- `get` returns a meaningful `StateValueType | undefined` union (undefined = key absent), not void; `Effect.void` would break the `StateProxy.get` signature.
           Effect.succeed(undefined),
     getAll: () =>
       Effect.forEach([...state.entries()], ([k, v]) =>
-        Schema.decodeUnknown(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),
+        Schema.decodeUnknownEffect(schemaFor(k))(v).pipe(Effect.map((decoded) => [k, decoded] as const)),
       ).pipe(
         Effect.map(
           (pairs) =>
@@ -332,7 +334,7 @@ const mockStateProxy = <S extends StateSchemas>({
         ? Effect.sync(() => {
             state.delete(key)
           })
-        : Schema.encode(schemaFor(key))(value).pipe(
+        : Schema.encodeEffect(schemaFor(key))(value).pipe(
             Effect.map((encoded) => {
               state.set(key, encoded)
             }),
@@ -346,7 +348,7 @@ const mockStateProxy = <S extends StateSchemas>({
       Effect.forEach(
         Object.entries(values).filter(([, v]) => v !== undefined),
         ([k, v]) =>
-          Schema.encode(schemaFor(k))(v).pipe(Effect.map((encoded) => [k, encoded] as const)),
+          Schema.encodeEffect(schemaFor(k))(v).pipe(Effect.map((encoded) => [k, encoded] as const)),
       ).pipe(
         Effect.map((pairs) => {
           state.clear()
@@ -366,7 +368,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
     /* 1. Capture the application `Runtime<AppR>` ONCE from `appLayer`, into the env
      * scope (so its scoped resources are torn down with the env — the ambient
      * `Scope.Scope` is provided by the `Layer.scoped` this runs under). */
-    const runtime = yield* Layer.toRuntime(opts.appLayer)
+    const runtime = yield* Layer.build(opts.appLayer)
 
     /* 2. Per-key State: `${service}/${key}` → the inner State `Map` (so object /
      * workflow key isolation is free). `stateOf` reads/writes the SAME inner map. */
@@ -468,7 +470,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
         }).pipe(Effect.provide(determinismLayer({ ctx: handle.context, frozenBaseMillis })))
         const exit = yield* Effect.promise(() =>
           // @effect-diagnostics-next-line anyUnknownInErrorContext:off
-          Runtime.runPromiseExit(runtime)(program as Effect.Effect<unknown, unknown, AppR>),
+          Effect.runPromiseExitWith(runtime)(program as Effect.Effect<unknown, unknown, AppR>),
         )
         // @effect-diagnostics-next-line anyUnknownInErrorContext:off
         return yield* classifyMockExit({ exit, errorSchema: params.spec.error })
@@ -558,7 +560,7 @@ const makeMockEnv = <AppR, RIn>(opts: {
           state: stateMapFor({ service: args.contract.name, key: args.key }),
         })) as RestateTestEnvService['stateOf'],
       resolveAwakeable: ((args: {
-        schema: Schema.Schema<unknown, unknown>
+        schema: Schema.Codec<unknown, unknown>
         id: string
         payload: unknown
       }) =>

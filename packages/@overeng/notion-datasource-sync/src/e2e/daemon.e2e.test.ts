@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { Effect, Fiber, Option, Schema, Stream, Tracer } from 'effect'
+import { Effect, Fiber, Schema, Stream, Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { bodySafetySnapshot, makeFakePageBodySyncPort } from '../body/adapter.ts'
@@ -152,7 +152,7 @@ const localBodyChange = ({
     pageId,
     path,
     contentHash,
-    observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+    observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
   })
 
 type QueryCheckpointRow = {
@@ -307,10 +307,12 @@ const makeDaemonRecordingTracer = (): {
   return {
     spans,
     tracer: Tracer.make({
-      span: (name, parent, spanContext, links, startTime, kind, options) => {
-        const attributes = new Map<string, unknown>(Object.entries(options?.attributes ?? {}))
+      span(options) {
+        const attributes = new Map<string, unknown>(
+          Object.entries(options.annotations.mapUnsafe ?? {}),
+        )
         const recorded: RecordedDaemonSpan = {
-          name,
+          name: options.name,
           attributes: Object.fromEntries(attributes),
           ended: false,
         }
@@ -318,16 +320,16 @@ const makeDaemonRecordingTracer = (): {
 
         return {
           _tag: 'Span',
-          name,
+          name: options.name,
           spanId: `daemon-soak-span-${spans.length.toString()}`,
           traceId: 'trace-daemon-soak-e2e',
-          parent,
-          context: spanContext,
-          status: { _tag: 'Started', startTime },
+          parent: options.parent,
+          annotations: options.annotations,
+          status: { _tag: 'Started', startTime: options.startTime },
           attributes,
-          links,
-          sampled: true,
-          kind,
+          links: options.links,
+          sampled: options.sampled,
+          kind: options.kind,
           end: () => {
             recorded.ended = true
           },
@@ -339,7 +341,6 @@ const makeDaemonRecordingTracer = (): {
           addLinks: () => {},
         }
       },
-      context: (f) => f(),
     }),
   }
 }
@@ -570,7 +571,7 @@ describe('watch daemon surface', () => {
         Effect.sync(() => {
           observedWaits.push(millis)
           sleepStarted.resolve(millis)
-        }).pipe(Effect.zipRight(wakeNotifier.awaitWake(millis))),
+        }).pipe(Effect.andThen(wakeNotifier.awaitWake(millis))),
     }
 
     try {
@@ -638,7 +639,7 @@ describe('watch daemon surface', () => {
           ? Effect.sync(() => {
               retrieveAttempts += 1
             }).pipe(
-              Effect.zipRight(
+              Effect.andThen(
                 Effect.fail(
                   makeGatewayError({
                     operation: 'retrieveDataSource',
@@ -706,7 +707,7 @@ describe('watch daemon surface', () => {
           ? Effect.sync(() => {
               retrieveAttempts += 1
             }).pipe(
-              Effect.zipRight(
+              Effect.andThen(
                 Effect.fail(
                   makeGatewayError({
                     operation: 'retrieveDataSource',
@@ -996,7 +997,7 @@ describe('watch daemon surface', () => {
       push: (command: Parameters<typeof baseBody.push>[0]) =>
         Effect.sync(() => {
           bodyPushes += 1
-        }).pipe(Effect.zipRight(baseBody.push(command))),
+        }).pipe(Effect.andThen(baseBody.push(command))),
     }
     const workspace = makeHarnessPorts({ localObservations: [localBodyChange()] }).workspace
 
@@ -1083,7 +1084,7 @@ describe('watch daemon surface', () => {
       push: (command: Parameters<typeof baseBody.push>[0]) =>
         Effect.sync(() => {
           bodyPushes += 1
-        }).pipe(Effect.zipRight(baseBody.push(command))),
+        }).pipe(Effect.andThen(baseBody.push(command))),
     }
     const workspace = makeHarnessPorts({ localObservations: [localBodyChange()] }).workspace
 
@@ -1163,7 +1164,7 @@ describe('watch daemon surface', () => {
     const queryContract = {
       ...defaultQueryContract(),
       pageSize: 1,
-      highWatermark: decode({ schema: Schema.DateTimeUtc, value: '2026-05-24T23:59:00.000Z' }),
+      highWatermark: decode({ schema: Schema.DateTimeUtcFromString, value: '2026-05-24T23:59:00.000Z' }),
     }
     const baselineGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
     const soakGateway = makeFakeGatewayHarness({
@@ -1194,7 +1195,7 @@ describe('watch daemon surface', () => {
       push: (command: Parameters<typeof baseBody.push>[0]) =>
         Effect.sync(() => {
           bodyPushes += 1
-        }).pipe(Effect.zipRight(baseBody.push(command))),
+        }).pipe(Effect.andThen(baseBody.push(command))),
     }
     const workspace = makeHarnessPorts({
       localObservations: [localBodyChange({ contentHash: hash('body-local-soak') })],
@@ -1462,7 +1463,7 @@ describe('watch daemon surface', () => {
     const queryContract = {
       ...defaultQueryContract(),
       pageSize: 1,
-      highWatermark: decode({ schema: Schema.DateTimeUtc, value: '2026-05-24T23:59:00.000Z' }),
+      highWatermark: decode({ schema: Schema.DateTimeUtcFromString, value: '2026-05-24T23:59:00.000Z' }),
     }
     const thirdPageId = decode({ schema: PageId, value: 'page-3' })
     const pages = [
@@ -1636,7 +1637,7 @@ describe('watch daemon surface', () => {
           observedWatermarks.push(
             input.queryContract.highWatermark === null
               ? null
-              : Schema.encodeSync(Schema.DateTimeUtc)(input.queryContract.highWatermark),
+              : Schema.encodeSync(Schema.DateTimeUtcFromString)(input.queryContract.highWatermark),
           )
           return gatewayHarness.gateway.queryRows(input)
         },
@@ -1771,7 +1772,7 @@ describe('watch daemon surface', () => {
       push: (command: Parameters<typeof baseBody.push>[0]) =>
         Effect.sync(() => {
           bodyPushes += 1
-        }).pipe(Effect.zipRight(baseBody.push(command))),
+        }).pipe(Effect.andThen(baseBody.push(command))),
     }
     const statePath = `${storeFixture.path}.watch.json`
 
@@ -1977,7 +1978,7 @@ describe('watch daemon surface', () => {
           Effect.sync(() => {
             bodyPushes += 1
             controller.abort()
-          }).pipe(Effect.zipRight(baseBody.push(command))),
+          }).pipe(Effect.andThen(baseBody.push(command))),
       }
 
       const result = await runWithPorts(
@@ -2048,7 +2049,7 @@ describe('watch daemon surface', () => {
         ...baseBody,
         push: (_command: Parameters<typeof baseBody.push>[0]) =>
           Effect.sync(() => inFlight.resolve()).pipe(
-            Effect.zipRight(Effect.never),
+            Effect.andThen(Effect.never),
             Effect.ensuring(Effect.sync(() => interrupted.resolve())),
           ),
       }
@@ -2117,7 +2118,7 @@ describe('watch daemon surface', () => {
       push: (command: Parameters<typeof baseBody.push>[0]) =>
         Effect.sync(() => {
           bodyPushes += 1
-        }).pipe(Effect.zipRight(baseBody.push(command))),
+        }).pipe(Effect.andThen(baseBody.push(command))),
     }
 
     try {
@@ -2225,7 +2226,7 @@ describe('watch daemon surface', () => {
         materialize: (plan: Parameters<typeof baseWorkspace.materialize>[0]) =>
           Effect.sync(() => {
             calls.push('materialize')
-          }).pipe(Effect.zipRight(baseWorkspace.materialize(plan))),
+          }).pipe(Effect.andThen(baseWorkspace.materialize(plan))),
       }
       const remoteGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
       const gateway = {
@@ -2244,7 +2245,7 @@ describe('watch daemon surface', () => {
           Effect.sync(() => {
             calls.push('plan-local-body')
             planInputs.push(input)
-          }).pipe(Effect.zipRight(remoteBody.planLocalChange(input))),
+          }).pipe(Effect.andThen(remoteBody.planLocalChange(input))),
       }
 
       const result = await runWithPorts(
@@ -2446,9 +2447,12 @@ describe('watch daemon surface', () => {
     // Fork a second awaitWake — pendingWake is now false so it must register as a waiter and BLOCK.
     // This is the load-bearing assertion: it proves the 3 wakes collapsed to exactly one consumed flag.
     const fiber = Effect.runFork(notifier.awaitWake(5_000))
-    // Effect.async registers waiters.add() synchronously on fork, so Fiber.poll is already settled.
-    const pending = await Effect.runPromise(Fiber.poll(fiber))
-    expect(Option.isNone(pending)).toBe(true) // still blocked — pendingWake was fully consumed above
+    // A blocked awaitWake never settles: racing its completion against a short
+    // timeout fails with TimeoutError while the waiter stays registered.
+    const early = await Effect.runPromise(
+      Effect.exit(Fiber.await(fiber).pipe(Effect.timeout(20))),
+    )
+    expect(early._tag === 'Failure').toBe(true) // still blocked — pendingWake was fully consumed above
 
     // A fresh single wake() unblocks the waiting fiber
     notifier.wake()
@@ -2498,7 +2502,7 @@ describe('watch daemon surface', () => {
       const blockingGateway = {
         ...makeFakeGatewayHarness().gateway,
         retrieveDataSource: () =>
-          Effect.sync(() => inFlight.resolve()).pipe(Effect.zipRight(Effect.never)),
+          Effect.sync(() => inFlight.resolve()).pipe(Effect.andThen(Effect.never)),
       }
 
       const cycleEffect = runWatchDaemonCycle(

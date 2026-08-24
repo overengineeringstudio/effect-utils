@@ -1,5 +1,4 @@
-import { FileSystem } from '@effect/platform'
-import { Effect, Schema } from 'effect'
+import { Effect, FileSystem, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
@@ -75,14 +74,14 @@ export class ConfigFileNotFoundError extends Schema.TaggedError<ConfigFileNotFou
 export class ConfigReadError extends Schema.TaggedError<ConfigReadError>()('ConfigReadError', {
   message: Schema.String,
   path: Schema.String,
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 /** Error thrown when config file has invalid structure */
 export class ConfigParseError extends Schema.TaggedError<ConfigParseError>()('ConfigParseError', {
   message: Schema.String,
   path: Schema.String,
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 /** Union of all configuration-related errors. */

@@ -14,11 +14,9 @@ import { createTuiApp, run, useTuiAtomValue, Box, Text, testModeLayer } from '..
 
 const parseJson = (json: string) =>
   Schema.decodeSync(
-    Schema.parseJson(
-      Schema.Record({
-        key: Schema.String,
-        value: Schema.Unknown,
-      }),
+    Schema.fromJsonString(
+      Schema.Record(Schema.String, Schema.Unknown,
+      ),
     ),
   )(json)
 
@@ -26,7 +24,7 @@ const parseJson = (json: string) =>
 // Test State Schema (simulating a deploy command)
 // =============================================================================
 
-const DeployState = Schema.Union(
+const DeployState = Schema.Union([
   Schema.TaggedStruct('Idle', {}),
   Schema.TaggedStruct('Validating', {
     logs: Schema.Array(Schema.String),
@@ -35,7 +33,7 @@ const DeployState = Schema.Union(
     services: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        status: Schema.Literal('pending', 'deploying', 'healthy'),
+        status: Schema.Literals(['pending', 'deploying', 'healthy']),
       }),
     ),
     logs: Schema.Array(Schema.String),
@@ -44,13 +42,13 @@ const DeployState = Schema.Union(
     services: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        result: Schema.Literal('updated', 'unchanged'),
+        result: Schema.Literals(['updated', 'unchanged']),
         duration: Schema.Number,
       }),
     ),
     totalDuration: Schema.Number,
   }),
-)
+])
 
 type DeployState = Schema.Schema.Type<typeof DeployState>
 
@@ -58,32 +56,32 @@ type DeployState = Schema.Schema.Type<typeof DeployState>
 // Action Schema
 // =============================================================================
 
-const DeployAction = Schema.Union(
+const DeployAction = Schema.Union([
   Schema.TaggedStruct('StartValidation', { logs: Schema.Array(Schema.String) }),
   Schema.TaggedStruct('StartProgress', {
     services: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        status: Schema.Literal('pending', 'deploying', 'healthy'),
+        status: Schema.Literals(['pending', 'deploying', 'healthy']),
       }),
     ),
     logs: Schema.Array(Schema.String),
   }),
   Schema.TaggedStruct('UpdateService', {
     index: Schema.Number,
-    status: Schema.Literal('pending', 'deploying', 'healthy'),
+    status: Schema.Literals(['pending', 'deploying', 'healthy']),
   }),
   Schema.TaggedStruct('Complete', {
     services: Schema.Array(
       Schema.Struct({
         name: Schema.String,
-        result: Schema.Literal('updated', 'unchanged'),
+        result: Schema.Literals(['updated', 'unchanged']),
         duration: Schema.Number,
       }),
     ),
     totalDuration: Schema.Number,
   }),
-)
+])
 
 type DeployAction = Schema.Schema.Type<typeof DeployAction>
 

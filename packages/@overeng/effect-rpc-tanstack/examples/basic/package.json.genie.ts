@@ -15,8 +15,6 @@ const workspaceDeps = catalog.compose({
   dependencies: {
     external: {
       ...catalog.pick(
-        '@effect/platform',
-        '@effect/rpc',
         '@tanstack/react-router',
         '@tanstack/react-start',
         'effect',

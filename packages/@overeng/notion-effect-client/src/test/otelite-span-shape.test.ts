@@ -21,8 +21,10 @@
  * 401, not 200).
  */
 
-import { HttpClient, HttpClientResponse } from '@effect/platform'
+import { HttpClient, make as makeHttpClient } from 'effect/unstable/http/HttpClient'
+import * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
 import { expect, layer } from '@effect/vitest'
+import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { Effect, Layer, Redacted } from 'effect'
 
 import {
@@ -58,8 +60,8 @@ const NotionConfigStub = Layer.succeed(NotionConfig, {
  * list + a couple of canned Notion headers. No network, no secrets.
  */
 const StubHttpClientLayer = Layer.succeed(
-  HttpClient.HttpClient,
-  HttpClient.make((request) =>
+  HttpClient,
+  makeHttpClient((request: HttpClientRequest.HttpClientRequest) =>
     Effect.succeed(
       HttpClientResponse.fromWeb(
         request,

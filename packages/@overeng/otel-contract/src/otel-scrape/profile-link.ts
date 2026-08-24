@@ -8,11 +8,14 @@ import {
   type ContentDescriptor,
 } from '@overeng/content-address'
 
-/** Opaque native profile kind, e.g. `cpuprofile`, `tsc-trace`, or `cargo-timings`. */
-export const OtelScrapeProfileType = Schema.NonEmptyTrimmedString.pipe(
-  Schema.brand('OtelScrape.ProfileType'),
-  Schema.annotations({ identifier: 'OtelScrape.ProfileType' }),
+const NonNegativeInt = Schema.Int.pipe(
+  Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
 )
+
+/** Opaque native profile kind, e.g. `cpuprofile`, `tsc-trace`, or `cargo-timings`. */
+export const OtelScrapeProfileType = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+).pipe(Schema.brand('OtelScrape.ProfileType'), Schema.annotate({ identifier: 'OtelScrape.ProfileType' }))
 export type OtelScrapeProfileType = typeof OtelScrapeProfileType.Type
 
 /** Flat span payload for a content-addressed native profile artifact. */
@@ -20,12 +23,12 @@ export const OtelScrapeProfileLink = Schema.Struct({
   type: OtelScrapeProfileType,
   digest: ContentDigest,
   uri: CasUri,
-  byteLength: Schema.NonNegativeInt,
+  byteLength: NonNegativeInt,
   mediaType: MediaType,
   codec: Schema.optional(Codec),
-  schemaVersion: Schema.optional(Schema.NonNegativeInt),
-  ui: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'OtelScrape.ProfileLink' })
+  schemaVersion: Schema.optional(NonNegativeInt),
+  ui: Schema.optional(Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()))),
+}).annotate({ identifier: 'OtelScrape.ProfileLink' })
 export type OtelScrapeProfileLink = typeof OtelScrapeProfileLink.Type
 
 /** Build the VRS-defined flat profile link from the reusable content descriptor. */

@@ -1,4 +1,4 @@
-import { Cause, Chunk, Effect, Exit, Option, Schema, Stream } from 'effect'
+import { Cause, Effect, Exit, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { NotionApiError } from '@overeng/notion-effect-client'
@@ -33,7 +33,7 @@ import {
   type NotionGatewayPage,
 } from './notion.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
+const decode = <TSchema extends Schema.Codec<any, any, never>>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (seed: string) => hashStoreBytes(seed)
@@ -41,7 +41,7 @@ const dataSourceId = decode(DataSourceId, 'data-source-1')
 const commandId = (value: string) => decode(CommandId, value)
 const pageId = (value: string) => decode(PageId, value)
 const propertyId = (value: string) => decode(PropertyId, value)
-const dateTimeUtc = (value: string) => decode(Schema.DateTimeUtc, value)
+const dateTimeUtc = (value: string) => decode(Schema.DateTimeUtcFromString, value)
 const observedAt = '2026-05-25T00:00:00.000Z'
 
 const queryContract = (overrides: Record<string, unknown> = {}) =>
@@ -126,7 +126,7 @@ const expectGatewayFailure = (
 ) => {
   expect(result._tag).toBe('Failure')
   if (result._tag === 'Failure') {
-    expect(Chunk.toReadonlyArray(Cause.failures(result.cause)).at(0)).toMatchObject({
+    expect(Option.getOrUndefined(Cause.findErrorOption(result.cause))).toMatchObject({
       _tag: 'NotionGatewayError',
       ...expected,
     })
@@ -178,7 +178,7 @@ describe('Notion data source gateway fake', () => {
 
     expect(result._tag).toBe('Failure')
     if (result._tag === 'Failure') {
-      expect(Chunk.toReadonlyArray(Cause.failures(result.cause)).at(0)).toMatchObject({
+      expect(Option.getOrUndefined(Cause.findErrorOption(result.cause))).toMatchObject({
         _tag: 'NotionGatewayError',
         guard: 'ApiVersionUnsupported',
       })
@@ -220,7 +220,7 @@ describe('Notion data source gateway fake', () => {
             queryContract: queryContract(),
             startCursor: null,
           })
-          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          .pipe(Stream.runCollect)
       }),
     )
 
@@ -254,7 +254,7 @@ describe('Notion data source gateway fake', () => {
             queryContract: queryContract({ pageSize: 100 }),
             startCursor: null,
           })
-          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          .pipe(Stream.runCollect)
       }),
     )
 
@@ -413,7 +413,7 @@ describe('Notion data source gateway fake', () => {
               })
               .pipe(
                 Stream.runCollect,
-                Effect.map((chunk) => Chunk.toReadonlyArray(chunk)[0]),
+                Effect.map((rows) => rows[0]),
               )
           }),
         ),
@@ -456,7 +456,7 @@ describe('Notion data source gateway fake', () => {
             propertyId: relation,
             startCursor: null,
           })
-          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          .pipe(Stream.runCollect)
       }),
     )
 
@@ -492,7 +492,7 @@ describe('Notion data source gateway fake', () => {
             propertyId: relation,
             startCursor: null,
           })
-          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          .pipe(Stream.runCollect)
       }),
     )
 
@@ -513,7 +513,7 @@ describe('Notion data source gateway fake', () => {
             queryContract: queryContract({ pageSize: 2 }),
             startCursor: null,
           })
-          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          .pipe(Stream.runCollect)
       }),
     )
 
@@ -606,7 +606,7 @@ describe('Notion data source gateway fake', () => {
             queryContract: queryContract({ membershipScope: 'explicit-filter' }),
             startCursor: null,
           })
-          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          .pipe(Stream.runCollect)
         const direct = yield* gateway.retrievePage(filteredPageId)
 
         return { queryPages, direct }
@@ -869,13 +869,14 @@ describe('Notion data source gateway fake', () => {
   })
 
   it('patches data source metadata independently from schema hash and rejects stale bases', async () => {
+    const metadataHashBefore = hash('metadata-before')
     const metadataDataSource = decode(DataSourceSnapshot, {
       _tag: 'DataSourceSnapshot',
       dataSourceId,
       requestId: 'request-metadata',
       observedAt,
       schemaHash: hash('schema-stable'),
-      metadataHash: hash('metadata-before'),
+      metadataHash: metadataHashBefore,
     })
     const gatewayConfig = config({ dataSources: [metadataDataSource] })
     const success = await runWithGateway(
@@ -886,7 +887,7 @@ describe('Notion data source gateway fake', () => {
           _tag: 'PatchDataSourceMetadataCommand',
           commandId: commandId('command-metadata'),
           dataSourceId,
-          baseMetadataHash: metadataDataSource.metadataHash,
+          baseMetadataHash: metadataHashBefore,
           metadataPatch: { descriptionPlainText: 'Updated description' },
         })
         const after = yield* gateway.retrieveDataSource(dataSourceId)
@@ -1002,7 +1003,7 @@ describe('Notion data source gateway real adapter boundary', () => {
           queryContract: queryContract({ pageSize: 1 }),
           startCursor: null,
         })
-        .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)),
+        .pipe(Stream.runCollect),
     )
     const requestId = await Effect.runPromise(
       gateway.patchPageProperties({
@@ -1066,7 +1067,7 @@ describe('Notion data source gateway real adapter boundary', () => {
     const rateLimited = await Effect.runPromiseExit(gateway.retrieveDataSource(dataSourceId))
     expect(rateLimited._tag).toBe('Failure')
     if (rateLimited._tag === 'Failure') {
-      expect(Chunk.toReadonlyArray(Cause.failures(rateLimited.cause)).at(0)).toMatchObject({
+      expect(Option.getOrUndefined(Cause.findErrorOption(rateLimited.cause))).toMatchObject({
         _tag: 'NotionGatewayError',
         operation: 'retrieveDataSource',
         retryAfterMillis: 2_000,
@@ -1109,7 +1110,7 @@ describe('Notion data source gateway real adapter boundary', () => {
           propertyId: relation,
           startCursor: null,
         })
-        .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)),
+        .pipe(Stream.runCollect),
     )
 
     expect(pages).toHaveLength(1)

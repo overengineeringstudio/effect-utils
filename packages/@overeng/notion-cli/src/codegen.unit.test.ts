@@ -157,11 +157,11 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test Database" database.
          */
         export const TestDatabasePageProperties = Schema.Struct({
-          Name: NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'title-prop', name: 'Name', description: null } }),
-          Description: NotionSchema.richTextOption.annotations({ [notionPropertyMeta]: { _tag: 'rich_text', id: 'text-prop', name: 'Description', description: null } }),
-          Count: NotionSchema.numberOption.annotations({ [notionPropertyMeta]: { _tag: 'number', id: 'num-prop', name: 'Count', description: null, number: { format: 'number' } } }),
-          Done: NotionSchema.checkbox.annotations({ [notionPropertyMeta]: { _tag: 'checkbox', id: 'check-prop', name: 'Done', description: null } }),
-        }).annotations({
+          Name: NotionSchema.title.annotate({ [notionPropertyMeta]: { _tag: 'title', id: 'title-prop', name: 'Name', description: null } }),
+          Description: NotionSchema.richTextOption.annotate({ [notionPropertyMeta]: { _tag: 'rich_text', id: 'text-prop', name: 'Description', description: null } }),
+          Count: NotionSchema.numberOption.annotate({ [notionPropertyMeta]: { _tag: 'number', id: 'num-prop', name: 'Count', description: null, number: { format: 'number' } } }),
+          Done: NotionSchema.checkbox.annotate({ [notionPropertyMeta]: { _tag: 'checkbox', id: 'check-prop', name: 'Done', description: null } }),
+        }).annotate({
           identifier: 'TestDatabasePageProperties',
           description: 'Read schema for Test Database database pages',
         })
@@ -217,8 +217,8 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test Database" database.
          */
         export const TestDatabasePageProperties = Schema.Struct({
-          Name: NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'title-prop', name: 'Name', description: null } }),
-        }).annotations({
+          Name: NotionSchema.title.annotate({ [notionPropertyMeta]: { _tag: 'title', id: 'title-prop', name: 'Name', description: null } }),
+        }).annotate({
           identifier: 'TestDatabasePageProperties',
           description: 'Read schema for Test Database database pages',
         })
@@ -272,10 +272,10 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          'Due Date': NotionSchema.dateOption.annotations({ [notionPropertyMeta]: { _tag: 'date', id: 'prop1', name: 'Due Date', description: null } }),
-          'Project Name': NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'prop2', name: 'Project Name', description: null } }),
-          'User\\'s Choice': NotionSchema.select().annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop3', name: 'User\\'s Choice', description: null, select: { options: [] } } }),
-        }).annotations({
+          'Due Date': NotionSchema.dateOption.annotate({ [notionPropertyMeta]: { _tag: 'date', id: 'prop1', name: 'Due Date', description: null } }),
+          'Project Name': NotionSchema.title.annotate({ [notionPropertyMeta]: { _tag: 'title', id: 'prop2', name: 'Project Name', description: null } }),
+          'User\\'s Choice': NotionSchema.select().annotate({ [notionPropertyMeta]: { _tag: 'select', id: 'prop3', name: 'User\\'s Choice', description: null, select: { options: [] } } }),
+        }).annotate({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
         })
@@ -336,10 +336,10 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Status: NotionSchema.select().pipe(NotionSchema.asNullable).annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: null, select: { options: [] } } }),
-          Tags: NotionSchema.multiSelect().annotations({ [notionPropertyMeta]: { _tag: 'multi_select', id: 'prop2', name: 'Tags', description: null, multi_select: { options: [] } } }),
-          Website: NotionSchema.urlString.annotations({ [notionPropertyMeta]: { _tag: 'url', id: 'prop3', name: 'Website', description: null } }),
-        }).annotations({
+          Status: NotionSchema.select().pipe(NotionSchema.asNullable).annotate({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: null, select: { options: [] } } }),
+          Tags: NotionSchema.multiSelect().annotate({ [notionPropertyMeta]: { _tag: 'multi_select', id: 'prop2', name: 'Tags', description: null, multi_select: { options: [] } } }),
+          Website: NotionSchema.urlString.annotate({ [notionPropertyMeta]: { _tag: 'url', id: 'prop3', name: 'Website', description: null } }),
+        }).annotate({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
         })
@@ -441,8 +441,8 @@ describe('codegen', () => {
          */
         export const TestPageProperties = Schema.Struct({
           /** Current task status */
-          Status: NotionSchema.select().annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: 'Current task status', select: { options: [] } } }),
-        }).annotations({
+          Status: NotionSchema.select().annotate({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: 'Current task status', select: { options: [] } } }),
+        }).annotate({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
         })
@@ -695,10 +695,10 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Name: NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'prop1', name: 'Name', description: null } }),
-          Status: NotionSchema.select().annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop2', name: 'Status', description: null, select: { options: [] } } }),
-          CreatedAt: NotionSchema.createdTimeDate.annotations({ [notionPropertyMeta]: { _tag: 'created_time', id: 'prop3', name: 'CreatedAt', description: null } }),
-        }).annotations({
+          Name: NotionSchema.title.annotate({ [notionPropertyMeta]: { _tag: 'title', id: 'prop1', name: 'Name', description: null } }),
+          Status: NotionSchema.select().annotate({ [notionPropertyMeta]: { _tag: 'select', id: 'prop2', name: 'Status', description: null, select: { options: [] } } }),
+          CreatedAt: NotionSchema.createdTimeDate.annotate({ [notionPropertyMeta]: { _tag: 'created_time', id: 'prop3', name: 'CreatedAt', description: null } }),
+        }).annotate({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
         })
@@ -726,7 +726,7 @@ describe('codegen', () => {
         export const TestPageWrite = Schema.Struct({
           Name: NotionSchema.titleWriteFromString,
           Status: NotionSchema.selectWriteFromName,
-        }).annotations({
+        }).annotate({
           identifier: 'TestPageWrite',
           description: 'Write schema for Test database pages',
         })
@@ -812,13 +812,13 @@ describe('codegen', () => {
         // -----------------------------------------------------------------------------
 
         /** Options for "Status" property */
-        export const TestStatusOption = Schema.Literal('Done', 'In Progress', 'Not Started').annotations({
+        export const TestStatusOption = Schema.Literals(['Done', 'In Progress', 'Not Started']).annotate({
           identifier: 'TestStatusOption'
         })
         export type TestStatusOption = typeof TestStatusOption.Type
 
         /** Options for "Priority" property */
-        export const TestPriorityOption = Schema.Literal('High', 'Low').annotations({
+        export const TestPriorityOption = Schema.Literals(['High', 'Low']).annotate({
           identifier: 'TestPriorityOption'
         })
         export type TestPriorityOption = typeof TestPriorityOption.Type
@@ -832,9 +832,9 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Status: NotionSchema.select(TestStatusOption).annotations({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: null, select: { options: [{ id: '1', name: 'Not Started', color: 'gray', description: null }, { id: '2', name: 'In Progress', color: 'blue', description: null }, { id: '3', name: 'Done', color: 'green', description: null }] } } }),
-          Priority: NotionSchema.multiSelect(TestPriorityOption).annotations({ [notionPropertyMeta]: { _tag: 'multi_select', id: 'prop2', name: 'Priority', description: null, multi_select: { options: [{ id: '1', name: 'High', color: 'red', description: null }, { id: '2', name: 'Low', color: 'gray', description: null }] } } }),
-        }).annotations({
+          Status: NotionSchema.select(TestStatusOption).annotate({ [notionPropertyMeta]: { _tag: 'select', id: 'prop1', name: 'Status', description: null, select: { options: [{ id: '1', name: 'Not Started', color: 'gray', description: null }, { id: '2', name: 'In Progress', color: 'blue', description: null }, { id: '3', name: 'Done', color: 'green', description: null }] } } }),
+          Priority: NotionSchema.multiSelect(TestPriorityOption).annotate({ [notionPropertyMeta]: { _tag: 'multi_select', id: 'prop2', name: 'Priority', description: null, multi_select: { options: [{ id: '1', name: 'High', color: 'red', description: null }, { id: '2', name: 'Low', color: 'gray', description: null }] } } }),
+        }).annotate({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
         })
@@ -935,8 +935,8 @@ describe('codegen', () => {
          * Schema for reading pages from the "Test" database.
          */
         export const TestPageProperties = Schema.Struct({
-          Name: NotionSchema.title.annotations({ [notionPropertyMeta]: { _tag: 'title', id: 'prop1', name: 'Name', description: null } }),
-        }).annotations({
+          Name: NotionSchema.title.annotate({ [notionPropertyMeta]: { _tag: 'title', id: 'prop1', name: 'Name', description: null } }),
+        }).annotate({
           identifier: 'TestPageProperties',
           description: 'Read schema for Test database pages',
         })
@@ -963,7 +963,7 @@ describe('codegen', () => {
          */
         export const TestPageWrite = Schema.Struct({
           Name: NotionSchema.titleWriteFromString,
-        }).annotations({
+        }).annotate({
           identifier: 'TestPageWrite',
           description: 'Write schema for Test database pages',
         })

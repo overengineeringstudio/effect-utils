@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 
 import type { NotionConfig } from './config.ts'
@@ -17,9 +17,9 @@ import {
 
 /** Search result can be a page or data source */
 const SearchResultSchema = Schema.Struct({
-  object: Schema.Literal('page', 'data_source'),
+  object: Schema.Literals(['page', 'data_source']),
   id: Schema.String,
-}).annotations({ identifier: 'SearchResult' })
+}).annotate({ identifier: 'SearchResult' })
 
 type SearchResult = typeof SearchResultSchema.Type
 
@@ -90,7 +90,7 @@ export const search = (
 ): Effect.Effect<
   PaginatedResult<SearchResult>,
   NotionApiError,
-  NotionConfig | HttpClient.HttpClient
+  NotionConfig | HttpClient
 > => searchRaw(opts)
 
 /**
@@ -102,10 +102,10 @@ export const search = (
  */
 export const searchStream = (
   opts: Omit<SearchOptions, 'startCursor'> = {},
-): Stream.Stream<SearchResult, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
+): Stream.Stream<SearchResult, NotionApiError, NotionConfig | HttpClient> =>
+  Stream.flattenIterable(Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
     Option.match(maybeNextCursor, {
-      onNone: () => Effect.succeed(Option.none()),
+      onNone: () => Effect.succeed(undefined),
       onSome: (cursor) => {
         const searchOpts: SearchOptions =
           Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
@@ -114,15 +114,15 @@ export const searchStream = (
             const chunk = Chunk.fromIterable(result.results)
 
             if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-              return Option.some([chunk, Option.none()] as const)
+              return [chunk, Option.none()] as const
             }
 
-            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
+            return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
           }),
         )
       },
     }),
-  )
+  ))
 
 // -----------------------------------------------------------------------------
 // Namespace Export

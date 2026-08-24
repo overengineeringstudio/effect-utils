@@ -1,9 +1,9 @@
 import path from 'node:path'
 
-import { type Error as PlatformError, FileSystem } from '@effect/platform'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type { Path } from '@effect/platform/Path'
-import { Effect, Option, PubSub } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import type * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
+import { Effect, FileSystem, Option, PubSub } from 'effect'
+import type { Path } from 'effect'
 
 import {
   type GenieGenerateResult,
@@ -98,8 +98,8 @@ export const generate = ({
   oxfmtConfigPath: explicitOxfmtPath,
 }: GenieGenerateOptions): Effect.Effect<
   GenieGenerateResult,
-  GenieGenerationFailedError | PlatformError.PlatformError,
-  FileSystem.FileSystem | Path | CommandExecutor.CommandExecutor
+  GenieGenerationFailedError | PlatformError,
+  FileSystem.FileSystem | Path.Path | CommandExecutor.ChildProcessSpawner
 > => {
   const core = Effect.gen(function* () {
     const cwd = yield* resolveCwd(inputCwd)
@@ -126,8 +126,8 @@ export const check = ({
   oxfmtConfigPath: explicitOxfmtPath,
 }: GenieCheckOptions): Effect.Effect<
   void,
-  GenieGenerationFailedError | PlatformError.PlatformError,
-  FileSystem.FileSystem | Path | CommandExecutor.CommandExecutor
+  GenieGenerationFailedError | PlatformError,
+  FileSystem.FileSystem | Path.Path | CommandExecutor.ChildProcessSpawner
 > => {
   const core = Effect.gen(function* () {
     const cwd = yield* resolveCwd(inputCwd)

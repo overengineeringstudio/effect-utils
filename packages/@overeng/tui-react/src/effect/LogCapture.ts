@@ -34,10 +34,9 @@ import type { Layer, Scope } from 'effect'
 import {
   Effect,
   Fiber,
-  FiberId,
   Inspectable,
   Logger,
-  Runtime,
+  References,
   Stream,
   SubscriptionRef,
 } from 'effect'
@@ -137,7 +136,9 @@ export const useCapturedLogs = (): readonly TuiLogEntry[] => {
   const subscribeActive = (onStoreChange: () => void): (() => void) => {
     if (handle === null) return () => {}
     const fiber = Effect.runFork(
-      handle.logsRef.changes.pipe(Stream.runForEach(() => Effect.sync(() => onStoreChange()))),
+      SubscriptionRef.changes(handle.logsRef).pipe(
+        Stream.runForEach(() => Effect.sync(() => onStoreChange())),
+      ),
     )
     return () => {
       void Effect.runFork(Fiber.interrupt(fiber))
@@ -180,7 +181,7 @@ export const createLogCapture = (options?: {
     // Create the SubscriptionRef for log entries
     const logsRef = yield* SubscriptionRef.make<readonly TuiLogEntry[]>([])
 
-    const runtime = yield* Effect.runtime<never>()
+    const runtime = yield* Effect.context<never>()
 
     // Helper to append a log entry (fire and forget)
     const appendLog = (entry: TuiLogEntry) =>
@@ -190,27 +191,29 @@ export const createLogCapture = (options?: {
       })
 
     const appendLogSync = (entry: TuiLogEntry): void => {
-      void Runtime.runFork(runtime)(appendLog(entry))
+      void Effect.runForkWith(runtime)(appendLog(entry))
     }
 
     // Create Effect Logger that captures instead of printing
     const capturingLogger = Logger.make<unknown, void>(
-      ({ logLevel, message, date, fiberId, annotations, spans }) => {
-        const spanLabel = spans._tag === 'Cons' ? spans.head.label : undefined
+      ({ logLevel, message, date, fiber }) => {
+        const spans = fiber.getRef(References.CurrentLogSpans)
+        const annotations = fiber.getRef(References.CurrentLogAnnotations)
+        const spanLabel = spans.length > 0 ? (spans[0]?.[0] ?? undefined) : undefined
         const entry: TuiLogEntry = {
           id: ++logCaptureEntryId,
-          level: logLevel.label,
+          level: logLevel,
           message: String(message),
           timestamp: date,
-          fiberId: FiberId.threadName(fiberId),
-          annotations: Object.fromEntries(annotations),
+          fiberId: String(fiber.id),
+          annotations,
           ...(spanLabel !== undefined ? { span: spanLabel } : {}),
         }
         appendLogSync(entry)
       },
     )
 
-    const loggerLayer = Logger.replace(Logger.defaultLogger, capturingLogger)
+    const loggerLayer = Logger.layer([capturingLogger], { mergeWithExisting: false })
 
     // Override console methods
     const originalLog = console.log

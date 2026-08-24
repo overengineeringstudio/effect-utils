@@ -5,14 +5,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import type { Path } from '@effect/platform'
-import {
-  Command,
-  type CommandExecutor,
-  type Error as PlatformError,
-  FileSystem,
-} from '@effect/platform'
-import { Duration, Effect, Either, Option, Schema } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
+import { Duration, Effect, FileSystem, Option, Result, Schema, Stream } from 'effect'
+import type { Path } from 'effect'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
@@ -315,7 +312,7 @@ const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 type OxfmtConfig = Readonly<Record<string, unknown>>
 
 /** Permissive JSON decode for an oxfmt config (shape is cast, not validated). */
-const decodeOxfmtConfig = Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))
+const decodeOxfmtConfig = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
 
 const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   configPath,
@@ -453,8 +450,8 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     return content
   }
 
-  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.either)
-  if (Either.isLeft(optionsResult) === true) {
+  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.result)
+  if (Result.isFailure(optionsResult) === true) {
     return content
   }
 
@@ -463,11 +460,14 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     onSome: (cfg) => ['-c', cfg, '--stdin-filepath', targetFilePath],
   })
 
-  const result = yield* Command.make('oxfmt', ...args).pipe(
-    Command.feed(content),
-    Command.string,
-    Effect.orElseSucceed(() => content),
-  )
+  const result = yield* Effect.gen(function* () {
+    const spawner = yield* CommandExecutor.ChildProcessSpawner
+    return yield* spawner.string(
+      Command.make('oxfmt', args, {
+        stdin: { stream: Stream.make(content).pipe(Stream.encodeText) },
+      }),
+    )
+  }).pipe(Effect.orElseSucceed(() => content))
 
   // If oxfmt returned empty output (e.g., failed to parse), return original content.
   // This handles YAML with GitHub Actions ${{ }} expressions in flow sequences (inline arrays)
@@ -704,7 +704,7 @@ const atomicWriteFile = ({
     // Make target writable if it exists (for read-only files)
     const targetExists = yield* fs.exists(targetFilePath)
     if (targetExists === true) {
-      yield* fs.chmod(targetFilePath, 0o644).pipe(Effect.catchAll(() => Effect.void))
+      yield* fs.chmod(targetFilePath, 0o644).pipe(Effect.catch(() => Effect.void))
     }
 
     // Write to temp file first
@@ -718,12 +718,12 @@ const atomicWriteFile = ({
     // Atomic rename - either fully succeeds or original file remains untouched
     yield* fs.rename(tempPath, targetFilePath)
   }).pipe(
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       Effect.gen(function* () {
         // Clean up temp file on failure
         const fs = yield* FileSystem.FileSystem
         const tempPath = `${targetFilePath}.genie.tmp`
-        yield* fs.remove(tempPath, { force: true }).pipe(Effect.catchAll(() => Effect.void))
+        yield* fs.remove(tempPath, { force: true }).pipe(Effect.catch(() => Effect.void))
         return yield* error
       }),
     ),
@@ -772,7 +772,7 @@ export const generateFile = ({
 }): Effect.Effect<
   GenerateSuccess,
   GenieFileError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Path.Path
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner | Path.Path
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -820,7 +820,7 @@ export const generateFile = ({
       // Restore read-only permissions if needed (e.g. after a --writeable run or manual chmod)
       const mode = generatedFileMode({ readOnly, targetFilePath })
       if (mode !== undefined) {
-        yield* fs.chmod(targetFilePath, mode).pipe(Effect.catchAll(() => Effect.void))
+        yield* fs.chmod(targetFilePath, mode).pipe(Effect.catch(() => Effect.void))
       }
       return { _tag: 'unchanged', targetFilePath } as const
     }
@@ -856,7 +856,7 @@ export const generateFile = ({
           underlyingError instanceof Error ? underlyingError : new Error(safeErrorString(cause)),
       })
     }),
-    Effect.catchAllDefect((defect) => {
+    Effect.catchDefect((defect) => {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
       return Effect.fail(
         new GenieFileError({
@@ -886,8 +886,8 @@ export const checkFile = ({
   oxfmtConfigPath: Option.Option<string>
 }): Effect.Effect<
   void,
-  GenieCheckError | GenieImportError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  GenieCheckError | GenieImportError | PlatformError,
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
 
 /** Check a generated file and return the loaded genie module for downstream validation reuse. */
@@ -901,8 +901,8 @@ export const checkFileDetailed = ({
   oxfmtConfigPath: Option.Option<string>
 }): Effect.Effect<
   { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
-  GenieCheckError | GenieImportError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  GenieCheckError | GenieImportError | PlatformError,
+  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem

@@ -45,13 +45,15 @@ const makeRecordingTracer = (): {
   return {
     spans,
     tracer: Tracer.make({
-      span: (name, parent, context, links, startTime, kind, options) => {
-        const attributes = new Map<string, unknown>(Object.entries(options?.attributes ?? {}))
+      span(options) {
+        const attributes = new Map<string, unknown>(
+          Object.entries(options.annotations.mapUnsafe ?? {}),
+        )
         const recorded: RecordedSpan = {
-          name,
+          name: options.name,
           spanId: `span-${spans.length + 1}`,
           traceId: 'trace-otel-e2e',
-          parent,
+          parent: options.parent,
           attributes: Object.fromEntries(attributes),
           ended: false,
         }
@@ -59,16 +61,16 @@ const makeRecordingTracer = (): {
 
         const span: Tracer.Span = {
           _tag: 'Span',
-          name,
+          name: options.name,
           spanId: recorded.spanId,
           traceId: recorded.traceId,
-          parent,
-          context,
-          status: { _tag: 'Started', startTime },
+          parent: options.parent,
+          annotations: options.annotations,
+          status: { _tag: 'Started', startTime: options.startTime },
           attributes,
-          links,
-          sampled: true,
-          kind,
+          links: options.links,
+          sampled: options.sampled,
+          kind: options.kind,
           end: () => {
             recorded.ended = true
           },
@@ -81,7 +83,6 @@ const makeRecordingTracer = (): {
         }
         return span
       },
-      context: (f) => f(),
     }),
   }
 }
@@ -150,7 +151,7 @@ describe('notion datasource sync OTEL tracing', () => {
           pageId: testIds.pageId,
           path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
           contentHash: hash('body-local-edit'),
-          observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+          observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
         }),
       ],
     })

@@ -5,15 +5,15 @@ import { Schema } from 'effect'
  * Branded so misuse fails at the schema layer rather than inside upstream.
  */
 export const PtyName = Schema.String.pipe(
-  Schema.pattern(/^[a-zA-Z0-9._-]{1,255}$/),
+  Schema.check(Schema.isPattern(/^[a-zA-Z0-9._-]{1,255}$/)),
   Schema.brand('@overeng/pty-effect/PtyName'),
 )
 export type PtyName = typeof PtyName.Type
 
 /** Terminal dimensions. */
 export const TerminalSize = Schema.Struct({
-  rows: Schema.Number.pipe(Schema.int(), Schema.positive()),
-  cols: Schema.Number.pipe(Schema.int(), Schema.positive()),
+  rows: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
+  cols: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
 })
 export type TerminalSize = typeof TerminalSize.Type
 
@@ -27,7 +27,7 @@ export const PtySpawnSpec = Schema.Struct({
   command: Schema.String,
   args: Schema.optional(Schema.Array(Schema.String)),
   cwd: Schema.optional(Schema.String),
-  env: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   size: Schema.optional(TerminalSize),
 })
 export type PtySpawnSpec = typeof PtySpawnSpec.Type
@@ -49,7 +49,7 @@ export const PtyServerSpec = Schema.Struct({
 export type PtyServerSpec = typeof PtyServerSpec.Type
 
 /** Tagged union of all spec variants. */
-export const PtySpec = Schema.Union(PtySpawnSpec, PtyServerSpec)
+export const PtySpec = Schema.Union([PtySpawnSpec, PtyServerSpec])
 export type PtySpec = typeof PtySpec.Type
 
 /** Convenience constructors. */

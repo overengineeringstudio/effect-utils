@@ -14,7 +14,7 @@ import { RefMismatch } from '../issues.ts'
 // =============================================================================
 
 /** Member sync status */
-export const MemberSyncStatus = Schema.Literal(
+export const MemberSyncStatus = Schema.Literals([
   'cloned',
   'synced',
   'already_synced',
@@ -24,12 +24,12 @@ export const MemberSyncStatus = Schema.Literal(
   'recorded',
   'applied',
   'removed',
-)
+])
 /** Inferred type for the possible outcomes of syncing a single member. */
 export type MemberSyncStatus = Schema.Schema.Type<typeof MemberSyncStatus>
 
 /** Sync mode. */
-export const SyncMode = Schema.Literal('fetch', 'apply', 'lock')
+export const SyncMode = Schema.Literals(['fetch', 'apply', 'lock'])
 /** Inferred type for sync mode. */
 export type SyncMode = Schema.Schema.Type<typeof SyncMode>
 
@@ -108,7 +108,7 @@ export type MegarepoSyncTree = {
 }
 
 /** Recursive schema for nested megarepo sync results. */
-export const MegarepoSyncTree: Schema.Schema<MegarepoSyncTree> = Schema.suspend(() =>
+export const MegarepoSyncTree: Schema.Codec<MegarepoSyncTree, MegarepoSyncTree> = Schema.suspend(() =>
   Schema.Struct({
     root: Schema.String,
     results: Schema.Array(MemberSyncResult),

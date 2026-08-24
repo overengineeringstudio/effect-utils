@@ -5,13 +5,13 @@ import { StoreState } from '../cli/renderers/StoreOutput/schema.ts'
 import { MegarepoConfig } from './config.ts'
 import { LockFile } from './lock.ts'
 
-const encodeJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A): string =>
-  Schema.encodeSync(Schema.parseJson(schema, { space: 2 }))(value)
+const encodeJson = <A, I>(schema: Schema.Codec<A, I>, value: A): string =>
+  Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
 
-const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string): A =>
-  Schema.decodeUnknownSync(Schema.parseJson(schema))(encoded)
+const decodeJson = <A, I>(schema: Schema.Codec<A, I>, encoded: string): A =>
+  Schema.decodeUnknownSync(Schema.fromJsonString(schema))(encoded)
 
-const roundTrip = <A, I>(schema: Schema.Schema<A, I, never>, value: A) => {
+const roundTrip = <A, I>(schema: Schema.Codec<A, I>, value: A) => {
   const encoded = encodeJson(schema, value)
   const decoded = decodeJson(schema, encoded)
   const reencoded = encodeJson(schema, decoded)
@@ -24,7 +24,7 @@ const roundTrip = <A, I>(schema: Schema.Schema<A, I, never>, value: A) => {
   }
 }
 
-const decodeFailure = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string) => {
+const decodeFailure = <A, I>(schema: Schema.Codec<A, I>, encoded: string) => {
   try {
     return { _tag: 'decoded' as const, value: decodeJson(schema, encoded) }
   } catch (error) {
