@@ -72,8 +72,8 @@ All notable changes to this project will be documented in this file.
 
 - **genie/ci-workflow**: preserve prepared CI helper scripts between workflow
   steps by staging their runtime artifacts in the job workspace without their
-  generator sources, and reject retry-helper use when another checkout would
-  remove the prepared runtime.
+  generator sources, and reject every helper consumer unless preparation
+  follows the final workspace-cleaning checkout and Nix installation.
 
 - **devenv pnpm installs**: refresh nixpkgs so pnpm runs on Node 24.18.1,
   avoiding the Darwin Node 24.15 teardown hang after a completed workspace
