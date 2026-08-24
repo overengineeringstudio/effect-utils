@@ -35,15 +35,29 @@ export class CliVersion extends Context.Service<CliVersion, CliVersionInfo>()('C
       const suffix = ` (${infoOpt.value.name} ${infoOpt.value.version})`
       return self.pipe(
         Effect.mapError((error) => {
+          const candidate = error as { readonly message?: unknown }
           if (
             typeof error === 'object' &&
             error !== null &&
             'message' in error &&
-            typeof (error as any).message === 'string'
+            typeof candidate.message === 'string'
           ) {
-            return Object.assign(Object.create(Object.getPrototypeOf(error)), error, {
-              message: `${(error as any).message}${suffix}`,
-            }) as E
+            // Effect v4 error classes declare `message` as a prototype accessor without a
+            // setter, so `Object.assign` onto a proto-chained clone throws
+            // "Attempted to assign to readonly property" in strict mode. Copy own property
+            // descriptors verbatim (preserving accessors) and define `message` directly.
+            const clone: Record<PropertyKey, unknown> = Object.create(Object.getPrototypeOf(error))
+            for (const key of Reflect.ownKeys(error)) {
+              const descriptor = Object.getOwnPropertyDescriptor(error, key)
+              if (descriptor !== undefined) Object.defineProperty(clone, key, descriptor)
+            }
+            Object.defineProperty(clone, 'message', {
+              value: `${candidate.message}${suffix}`,
+              writable: true,
+              enumerable: false,
+              configurable: true,
+            })
+            return clone as E
           }
           return error
         }),
