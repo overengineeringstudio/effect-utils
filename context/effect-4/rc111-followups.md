@@ -6,19 +6,18 @@ owner decision or upstream movement before/with test-suite convergence.
 
 ## Upstream (Effect) issues to file / track
 
-1. **cli-A-nested-terminator-loss** — argv after `--` dropped in nested
-   commands (parser builds child input with `trailingOperands: []`). Blocks
-   dash-prefixed positionals in megarepo/notion-cli/tui-stories. Repro already
-   drafted in alignment register.
-2. **CLI validation help on stdout** (bucket C) — v4 prints full help to stdout
-   on validation failure; breaks JSON/NDJSON consumers. Needs compat rendering
-   or per-binary rebaseline.
+1. ~~**cli-A-nested-terminator-loss**~~ — RESOLVED FIXED UPSTREAM (beta.103,
+   PR #6692, issue #6690 closed). Alignment register updated.
+2. **CLI validation help on stdout** (bucket C) — RESOLVED by locked full
+   rebaseline decision; ci-tools snapshots regenerated (commit 01f823c8b).
 3. **ShowHelp `TypeError: Attempted to assign to readonly property` under Bun**
-   — thrown from CliError ShowHelp construction (`errorExitCode` class field)
-   after correct ERROR/exit-1 output; affects stderr bytes only.
-4. **FileSystem.watch always recursive** — `{ recursive: false }` removed;
-   megarepo/genie/notion-md watch loops need a shim or upstream restore of
-   non-recursive backends.
+   — NOT an upstream bug: our `CliVersion.enrichErrors` used Object.assign over
+   a v4 getter-only `message` accessor (fixed d53532b57). Standalone repro
+   under Bun 1.3.13 / Node 24 could not reproduce; do not file upstream.
+4. **FileSystem.watch recursion** — premise corrected at rc.111:
+   `{ recursive }` is opt-in again (Node backend defaults false). Design study
+   in watch-recursion-experiments.md; refactor of genie/notion-md consumers
+   still open.
 5. **Prompt PTY ANSI byte drift** — shorter SGR/reset sequences; raw-terminal
    parsers and PTY snapshots need owner review before rebaseline.
 
