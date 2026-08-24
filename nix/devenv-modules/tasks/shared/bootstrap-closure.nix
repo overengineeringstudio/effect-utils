@@ -37,9 +37,11 @@
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  sourceFilter = import ./bootstrap-source-filter.nix;
   effectUtilsSrc = builtins.path {
     path = ../../../..;
     name = "effect-utils-source";
+    filter = sourceFilter;
   };
   checkerPkg = import (effectUtilsSrc + "/packages/@overeng/genie/nix/bootstrap-closure-check.nix") {
     inherit pkgs;
