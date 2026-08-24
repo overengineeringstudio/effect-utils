@@ -23,7 +23,8 @@ import { FetchHttpClient } from '@effect/platform'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Ref } from 'effect'
 
-import { captureTest } from '@overeng/utils-dev/otelite'
+import { captureTest, SpanRow } from '@overeng/utils-dev/otelite'
+import { Schema } from 'effect'
 
 import {
   decodeEvidence,
@@ -65,6 +66,9 @@ const successEvidence = () =>
     eventLogInput: fixture('event-log-success.jsonl'),
   })
 
+/** Schema-backed JSON rendering of captured span rows (preferSchemaOverJson). */
+const SpanRowsJson = Schema.parseJson(Schema.Array(SpanRow))
+
 describe('buck2 evidence — otelite round-trip', () => {
   it.scopedLive(
     'success shape: exactly one CLIENT invocation span under the harness root + import LINK',
@@ -96,10 +100,11 @@ describe('buck2 evidence — otelite round-trip', () => {
 
         // --- Sanitized export (R07): no raw host paths, no env values survive. ---
         expect(invocation.attrs[SpanAttrKeys.buildReportPath]).toBe('run/current/report.json')
-        expect(JSON.stringify(invocation)).not.toContain('hunter2')
+        const invocationJson = yield* Schema.encode(SpanRowsJson)([invocation])
+        expect(invocationJson).not.toContain('hunter2')
         // No host prefix, no home dir, no raw path survives.
-        expect(JSON.stringify(invocation)).not.toContain('/home/dev')
-        expect(JSON.stringify(invocation)).not.toContain('events.log=')
+        expect(invocationJson).not.toContain('/home/dev')
+        expect(invocationJson).not.toContain('events.log=')
 
         // --- Rich tier produced action + materialization spans. ---
         expect(trace.expectSome({ name: SpanNames.action })).toHaveLength(1)
@@ -110,7 +115,8 @@ describe('buck2 evidence — otelite round-trip', () => {
             'buck.artifact.path': 'buck-out/v2/art/root/__succ__/hello.txt',
           },
         })
-        expect(JSON.stringify(trace.spans)).not.toContain('/home/dev')
+        const spansJson = yield* Schema.encode(SpanRowsJson)(trace.spans)
+        expect(spansJson).not.toContain('/home/dev')
 
         // --- Independent import span LINKS to the invocation (W3C ids). ---
         const importSpan = trace.expectOne({ name: SpanNames.import })

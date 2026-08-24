@@ -21,7 +21,7 @@
  * failing exporter can only fail THIS effect, never rewrite the recorded
  * result.
  */
-import { Context, Effect, Option } from 'effect'
+import { Context, Effect, Option, Schema } from 'effect'
 import type { ExternalSpan } from 'effect/Tracer'
 
 import type { DecodedEvidence, Verdict } from './model.ts'
@@ -34,6 +34,13 @@ import {
   SpanNames,
   type BuckMetricLabels,
 } from './telemetry.ts'
+
+/**
+ * Schema-backed JSON serialization for the sanitized argv vector — satisfies
+ * the preferSchemaOverJson discipline (`Schema.parseJson`, never raw
+ * `JSON.stringify`).
+ */
+const SanitizedArgvJson = Schema.parseJson(Schema.Array(Schema.String))
 
 /**
  * Carries the recorded Buck outcome into the invocation span's error status.
@@ -148,8 +155,12 @@ export const projectInvocation = ({
   platformClass,
   verdict,
   workspaceRoot,
-}: InvocationObservation): Effect.Effect<void> =>
-  Effect.gen(function* () {
+}: InvocationObservation): Effect.Effect<void> => {
+  // Serialized OUTSIDE any Effect generator so the throwing sync bridge
+  // (Schema.encodeSync on a pure array) never runs mid-effect.
+  const argvJson =
+    argv.length > 0 ? Schema.encodeSync(SanitizedArgvJson)(sanitizeArgv({ argv })) : undefined
+  return Effect.gen(function* () {
     const resultClass = resultClassFor({ evidence, verdict })
     const labels: BuckMetricLabels = {
       'cache-class': cacheClassFor(evidence),
@@ -179,7 +190,9 @@ export const projectInvocation = ({
       })
     }
     if (argv.length > 0) {
-      invocationAttrs[SanitizedAttrKeys.argv] = JSON.stringify(sanitizeArgv({ argv }))
+      if (argvJson !== undefined) {
+        invocationAttrs[SanitizedAttrKeys.argv] = argvJson
+      }
     }
     if (evidence.eventLog !== null && evidence.eventLog._tag === 'DecodedEventLog') {
       // Buck's own trace id is the invocation correlation id — never trace identity.
@@ -289,5 +302,6 @@ export const projectInvocation = ({
     yield* BuckInvocationCountBridge.trustedIncrement(labels)
     yield* BuckInvocationDurationMsBridge.trustedRecord({ labels, value: durationMs })
   })
+}
 
 const statusError = (resultClass: string): boolean => resultClass !== 'success'
