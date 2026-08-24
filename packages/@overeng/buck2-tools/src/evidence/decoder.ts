@@ -47,11 +47,7 @@ const GZIP_MAGIC_1 = 0x8b
 /** Decode event-log input: transparently inflates gzip streams, passes text through. */
 export const decodeEventLogText = (input: Uint8Array | string): string => {
   if (typeof input !== 'string') {
-    if (
-      input.length >= 2 &&
-      input[0] === GZIP_MAGIC_0 &&
-      input[1] === GZIP_MAGIC_1
-    ) {
+    if (input.length >= 2 && input[0] === GZIP_MAGIC_0 && input[1] === GZIP_MAGIC_1) {
       return new TextDecoder().decode(gunzipSync(input))
     }
     return new TextDecoder().decode(input)
@@ -89,7 +85,10 @@ const ActionExecutionRow = Schema.Struct({
             failed: Schema.Boolean,
             key: Schema.optional(Schema.Unknown),
             name: Schema.optional(
-              Schema.Struct({ category: Schema.optional(Schema.String), identifier: Schema.optional(Schema.String) }),
+              Schema.Struct({
+                category: Schema.optional(Schema.String),
+                identifier: Schema.optional(Schema.String),
+              }),
             ),
             wall_time_us: Schema.optional(Schema.Number),
           }),
@@ -136,15 +135,15 @@ const targetLabelOf = (owner: unknown): string | undefined => {
       'name' in label &&
       typeof label.name === 'string'
     ) {
-      return label.package.endsWith('//') ? `//${label.name}` : `${label.package}:${label.name}`
+      return label.package.endsWith('//') === true
+        ? `//${label.name}`
+        : `${label.package}:${label.name}`
     }
   }
   return undefined
 }
 
-const cacheClassForExecutionKind = (
-  executionKind: unknown,
-): EventLogAction['cache_class'] => {
+const cacheClassForExecutionKind = (executionKind: unknown): EventLogAction['cache_class'] => {
   if (executionKind === 10) return 'hit' // replayed from cache (empirical pinned binary)
   if (executionKind === 1) return 'miss' // locally executed
   return 'unknown'
@@ -165,7 +164,7 @@ export const decodeEventLog = (input: Uint8Array | string): EventLogResult => {
   try {
     rawLines = text
       .split('\n')
-      .flatMap((line) => (line.trim() === '' ? [] : [(JSON.parse(line) as ParsedEventLogLine)]))
+      .flatMap((line) => (line.trim() === '' ? [] : [JSON.parse(line) as ParsedEventLogLine]))
   } catch (cause) {
     return { _tag: 'MalformedEventLog', detail: `invalid JSON line: ${String(cause)}` }
   }

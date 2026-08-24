@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { defaultSanitizationPolicy, sanitizeArgv, sanitizeEnv, sanitizeHostPath } from './sanitize.ts'
+import {
+  defaultSanitizationPolicy,
+  sanitizeArgv,
+  sanitizeEnv,
+  sanitizeHostPath,
+} from './sanitize.ts'
 
 describe('sanitizeHostPath (R07)', () => {
   it('makes workspace-relative paths repo-scoped', () => {
@@ -36,7 +41,13 @@ describe('sanitizeArgv (R07)', () => {
           '//apps/demo:bin',
         ],
       }),
-    ).toStrictEqual(['[redacted]', '--event-log', '[redacted]', '--profile=[redacted]', '//apps/demo:bin'])
+    ).toStrictEqual([
+      '[redacted]',
+      '--event-log',
+      '[redacted]',
+      '--profile=[redacted]',
+      '//apps/demo:bin',
+    ])
   })
 
   it('never leaks values embedded in free-form tokens', () => {

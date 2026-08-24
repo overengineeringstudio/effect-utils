@@ -950,6 +950,10 @@ in
       export MKTEMP_BIN=${pkgs.coreutils}/bin/mktemp
       export NIX_BIN=${pkgs.nix}/bin/nix
       export RM_BIN=${pkgs.coreutils}/bin/rm
+      export BUN_BIN=${pkgs.bun}/bin/bun
+      export TAR_BIN=${pkgs.gnutar}/bin/tar
+      export WC_BIN=${pkgs.coreutils}/bin/wc
+      export CHMOD_BIN=${pkgs.coreutils}/bin/chmod
       exec ${pkgs.bash}/bin/bash scripts/buck2-megarepo-product-e2e.sh \
         "$root" ${pkgs.buck2}/bin/buck2 //packages/@overeng/megarepo:mr \
         -c buck2_nix.bun=${pkgs.bun}/bin/bun \
