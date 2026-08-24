@@ -278,6 +278,11 @@ fn stage(common: &CommonArgs, workspace: &Path) -> ToolResult<()> {
             }
             .map_err(|error| fail("BUCK2_TS_NATIVE", error.to_string()))?;
         }
+        let parent = destination.parent().ok_or_else(|| {
+            fail("BUCK2_TS_NATIVE", "native package destination has no parent")
+        })?;
+        fs::create_dir_all(parent)
+            .map_err(|error| fail("BUCK2_TS_NATIVE", error.to_string()))?;
         symlink(source, destination).map_err(|error| fail("BUCK2_TS_NATIVE", error.to_string()))?;
     }
     Ok(())
