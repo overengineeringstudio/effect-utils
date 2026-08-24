@@ -1,10 +1,24 @@
 {
-  "version": "3",
-  "outcome": "FAILURE",
-  "targets": {
-    "//apps/demo:bin": {
-      "outcome": "FAILURE",
-      "outputs": []
+  "trace_id": "de505e38-05db-4d36-a1ef-ee8a8e67ec6d",
+  "success": false,
+  "results": {
+    "root//:fail": {
+      "success": "FAIL",
+      "outputs": {},
+      "errors": []
     }
-  }
+  },
+  "failures": {
+    "root//:fail": {
+      "success": "FAIL",
+      "errors": [
+        {
+          "error_category": "USER"
+        }
+      ]
+    }
+  },
+  "project_root": "/home/dev/effect-utils",
+  "truncated": false,
+  "strings": {}
 }

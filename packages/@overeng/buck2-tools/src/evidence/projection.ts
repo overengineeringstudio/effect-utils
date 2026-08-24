@@ -76,15 +76,13 @@ export const resultClassFor = ({
   readonly evidence: DecodedEvidence
   readonly verdict: Verdict
 }): BuckMetricLabels['result-class'] => {
-  if (verdict._tag === 'NO_VERDICT' && evidence.buildReport == null) return 'no-verdict'
-  const outcome =
+  if (verdict._tag === 'NO_VERDICT') return 'no-verdict'
+  const success =
     evidence.buildReport !== null && evidence.buildReport._tag === 'Decoded'
-      ? evidence.buildReport.report.outcome
+      ? evidence.buildReport.report.success
       : undefined
-  if (outcome === 'SUCCESS') return 'success'
-  if (outcome === 'CANCELED') return 'canceled'
-  if (outcome === 'FAILURE') return 'failure'
-  return 'no-verdict'
+  // PASS/FAIL verdicts imply a decoded report, so success is defined here.
+  return success === true ? 'success' : 'failure'
 }
 
 /** Bounded aggregate cache class across all admitted action records. */
@@ -184,8 +182,8 @@ export const projectInvocation = ({
       invocationAttrs[SanitizedAttrKeys.argv] = JSON.stringify(sanitizeArgv({ argv }))
     }
     if (evidence.eventLog !== null && evidence.eventLog._tag === 'DecodedEventLog') {
-      invocationAttrs[SpanAttrKeys.buckVersion] = evidence.eventLog.log.buckVersion
-      invocationAttrs[SpanAttrKeys.invocationId] = evidence.eventLog.log.invocationId
+      // Buck's own trace id is the invocation correlation id — never trace identity.
+      invocationAttrs[SpanAttrKeys.invocationId] = evidence.eventLog.log.buckTraceId
     }
 
     // Capture the invocation span's identity from INSIDE it, then record the
@@ -219,29 +217,34 @@ export const projectInvocation = ({
         // oxlint-disable-next-line overeng/no-raw-otel-primitives -- dynamic per-action name (see block comment above)
         Effect.withSpan(SpanNames.action, {
           attributes: <Record<string, string | number>>{
-            ...(action.duration_ms === undefined
+            ...(action.wallTimeUs === undefined
               ? {}
-              : { 'buck.action.duration_ms': action.duration_ms }),
-            ...(action.target === undefined ? {} : { [SpanAttrKeys.target]: action.target }),
+              : { 'buck.action.duration_ms': action.wallTimeUs / 1000 }),
+            ...(action.targetLabel === undefined
+              ? {}
+              : { [SpanAttrKeys.target]: action.targetLabel }),
             [SpanAttrKeys.cacheClass]: action.cache_class,
-            [SpanAttrKeys.resultClass]: action.status,
-            'span.label': action.target ?? action.action_id,
+            // Empirical per-action result: the action's own failed flag.
+            [SpanAttrKeys.resultClass]:
+              action.failed === true ? ('failure' as const) : ('success' as const),
+            'span.label': action.targetLabel ?? action.category ?? 'action',
           },
         }),
       )
     }
     for (const materialization of log?.materializations ?? []) {
+      // R07: materialization paths go through the SAME host-path policy as
+      // every other path — attribute AND label.
+      const artifactPath =
+        materialization.path === undefined
+          ? undefined
+          : sanitizeHostPath({ path: materialization.path, workspaceRoot })
       yield* Effect.void.pipe(
-        // oxlint-disable-next-line overeng/no-raw-otel-primitives -- digest/path attrs on a rich record (see block comment above)
+        // oxlint-disable-next-line overeng/no-raw-otel-primitives -- path attrs on a rich record (see block comment above)
         Effect.withSpan('buck.artifact.materialized', {
           attributes: <Record<string, string | number>>{
-            ...(materialization.digest_sha256 === undefined
-              ? {}
-              : { [SpanAttrKeys.digest]: materialization.digest_sha256 }),
-            ...(materialization.path === undefined
-              ? {}
-              : { 'buck.artifact.path': materialization.path }),
-            'span.label': materialization.path ?? 'artifact',
+            ...(artifactPath === undefined ? {} : { 'buck.artifact.path': artifactPath }),
+            'span.label': artifactPath ?? 'artifact',
           },
         }),
       )

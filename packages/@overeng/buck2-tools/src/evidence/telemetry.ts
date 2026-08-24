@@ -71,7 +71,6 @@ export const SpanNames = {
  * locations) — they are correlation attributes, never trace identity.
  */
 export const SpanAttrKeys = {
-  buckVersion: 'buck.buck2.version',
   cacheClass: 'buck.action.cache_class',
   commandKind: 'buck.command.kind',
   digest: 'buck.product.digest',

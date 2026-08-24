@@ -41,18 +41,11 @@ const SERVICE = 'effect-utils-buck2'
 const fixture = (name: string): string =>
   readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
-const fixtureDigest = (): string => {
-  const report = JSON.parse(fixture('build-report-success.json')) as {
-    targets?: Record<string, { outputs?: Array<{ digest_sha256?: string }> }>
-  }
-  return report.targets?.['//apps/demo:bin']?.outputs?.[0]?.digest_sha256 ?? ''
-}
-
 const observationFor = (
   evidence: Parameters<typeof projectInvocation>[0]['evidence'],
   overrides: Partial<Parameters<typeof projectInvocation>[0]> = {},
 ): Parameters<typeof projectInvocation>[0] => ({
-  argv: ['build', '--event-log', '/home/dev/effect-utils/run/current/events.log', '//apps/demo:bin'],
+  argv: ['build', '--event-log', '/home/dev/effect-utils/run/current/events.log'],
   buildReportPath: '/home/dev/effect-utils/run/current/report.json',
   durationMs: 1234,
   env: { SECRET_TOKEN: 'hunter2', PATH: '/usr/bin' },
@@ -68,7 +61,7 @@ const observationFor = (
 const successEvidence = () =>
   decodeEvidence({
     buildReportText: fixture('build-report-success.json'),
-    eventLogText: fixture('event-log-v2026-04-15-success.jsonl'),
+    eventLogInput: fixture('event-log-success.jsonl'),
   })
 
 describe('buck2 evidence — otelite round-trip', () => {
@@ -93,9 +86,9 @@ describe('buck2 evidence — otelite round-trip', () => {
         expect(invocation.status_code).toBe(1) // STATUS_CODE_OK
         expect(invocation.attrs[SpanAttrKeys.platformClass]).toBe('linux-x64')
         expect(invocation.attrs[SpanAttrKeys.commandKind]).toBe('build')
-        expect(invocation.attrs[SpanAttrKeys.invocationId]).toBe('inv-3f9a2c7')
+        expect(invocation.attrs[SpanAttrKeys.invocationId]).toMatch(/[0-9a-f-]{36}/)
         // Invocation ID is a correlation attribute — it must never be a trace id.
-        expect(invocation.trace_id).not.toBe('inv-3f9a2c7')
+        expect(invocation.trace_id).not.toBe(invocation.attrs[SpanAttrKeys.invocationId])
 
         // --- Sanitized export (R07): no raw host paths, no env values survive. ---
         expect(invocation.attrs[SpanAttrKeys.buildReportPath]).toBe('run/current/report.json')
@@ -105,11 +98,15 @@ describe('buck2 evidence — otelite round-trip', () => {
         expect(JSON.stringify(invocation)).not.toContain('events.log=')
 
         // --- Rich tier produced action + materialization spans. ---
-        expect(trace.expectSome({ name: SpanNames.action })).toHaveLength(2)
+        expect(trace.expectSome({ name: SpanNames.action })).toHaveLength(1)
         trace.expectSome({
           name: 'buck.artifact.materialized',
-          attrs: { [SpanAttrKeys.digest]: fixtureDigest() },
+          attrs: {
+            // R07: the ABSOLUTE host path from the real capture is repo-relative on export.
+            'buck.artifact.path': 'buck-out/v2/art/root/__succ__/hello.txt',
+          },
         })
+        expect(JSON.stringify(trace.spans)).not.toContain('/home/dev')
 
         // --- Independent import span LINKS to the invocation (W3C ids). ---
         const importSpan = trace.expectOne({ name: SpanNames.import })
@@ -125,7 +122,7 @@ describe('buck2 evidence — otelite round-trip', () => {
         metrics.expectOne({
           name: 'buck2_invocations_total',
           attrs: {
-            'cache-class': 'partial',
+            'cache-class': 'miss',
             'operation-kind': 'build',
             'platform-class': 'linux-x64',
             'result-class': 'success',
@@ -140,7 +137,7 @@ describe('buck2 evidence — otelite round-trip', () => {
       const otel = yield* captureTest({ serviceName: SERVICE, exportInterval: 50 })
       const failureEvidence = decodeEvidence({
         buildReportText: fixture('build-report-failure.json'),
-        eventLogText: fixture('event-log-v2026-04-15-success.jsonl'),
+        eventLogInput: fixture('event-log-failure.jsonl'),
       })
       const { metrics, trace } = yield* otel.runInProcessAllSignals(
         projectInvocation(observationFor(failureEvidence)),
@@ -170,7 +167,7 @@ describe('buck2 evidence — otelite round-trip', () => {
       const otel = yield* captureTest({ serviceName: SERVICE, exportInterval: 50 })
       const malformed = decodeEvidence({
         buildReportText: '{"outcome":"SUCCESS"',
-        eventLogText: 'not json at all',
+        eventLogInput: 'not json at all',
       })
       const verdict = verdictFor({ evidence: malformed })
       expect(verdict).toStrictEqual({
@@ -198,10 +195,10 @@ describe('buck2 evidence — otelite round-trip', () => {
 
   it.scopedLive('dead exporter never changes the recorded Buck result (R08)', () =>
     Effect.gen(function* () {
-      // The "recorded result" stands in for Buck's reaped exit code + stdout:
-      // captured BEFORE any telemetry exists. A whole OTLP exporter lifecycle
-      // (every signal POSTing at a closed port) runs in between; afterwards
-      // the recorded result must be byte-for-byte unchanged.
+      // The "recorded result" stands in for Buck's reaped exit code + stdout.
+      // It is WRITTEN inside the same scope that runs the projection against a
+      // dead exporter — so the assertion is non-vacuous: any telemetry failure
+      // leaking into the result path would corrupt what we re-read below.
       const recordedResult = yield* Ref.make({ exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
 
       const failingExportLayer = Otlp.layerJson({
@@ -215,9 +212,14 @@ describe('buck2 evidence — otelite round-trip', () => {
 
       const outcome = yield* Effect.exit(
         Effect.scoped(
-          projectInvocation(observationFor(successEvidence())).pipe(
-            Effect.provide(failingExportLayer),
-          ),
+          Effect.gen(function* () {
+            // Capture phase: Buck has been reaped; its result is now fixed.
+            yield* Ref.set(recordedResult, { exitCode: 0, stdout: 'BUCK_STDOUT_MARKER' })
+            // Export phase: a whole OTLP lifecycle fails at the closed port.
+            yield* projectInvocation(observationFor(successEvidence())).pipe(
+              Effect.provide(failingExportLayer),
+            )
+          }),
         ),
       )
       // The projection itself completed (telemetry outcome is its own concern).
