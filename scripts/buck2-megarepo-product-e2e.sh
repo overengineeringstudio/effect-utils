@@ -126,7 +126,7 @@ if "$nix_bin" build --impure --no-link --expr '
   echo "importer accepted mismatched observed runtime facts" >&2
   exit 1
 fi
-"$grep_bin" -F "ELF machine mismatch" "$red_log" >/dev/null || { echo "runtime RED missed its asserted seam" >&2; exit 1; }
+"$grep_bin" -F "descriptor.runtime.machine must match" "$red_log" >/dev/null || { echo "runtime RED missed its asserted seam" >&2; exit 1; }
 echo "buck2-megarepo-product-e2e: RUNTIME RED PASS"
 
 imported="$($nix_bin build --impure --no-link --print-out-paths --expr '
