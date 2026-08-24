@@ -106,6 +106,14 @@ let
     }
     .${currentSystem} or (throw "Buck2 does not admit execution platform ${currentSystem}");
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
+  megarepoPnpmDeps = repoFlake.packages.${currentSystem}."megarepo-pnpm-deps";
+  opentuiCoreNative = import ./nix/opentui-core-native.nix { inherit pkgs; };
+  opentuiCorePrimary = opentuiCoreNative.package;
+  opentuiCoreMusl =
+    if builtins.length opentuiCoreNative.packages > 1 then
+      (builtins.elemAt opentuiCoreNative.packages 1).package
+    else
+      opentuiCoreNative.package;
   buck2CapabilityProjectionTools = [
     pkgs.bash
     pkgs.coreutils
