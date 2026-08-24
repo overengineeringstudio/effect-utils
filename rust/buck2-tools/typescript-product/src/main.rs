@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use buck2_tool_core::{
-    canonical_json, normalized_relative, safe_text, sha256_file, ToolError, ToolResult,
+    canonical_json, normalized_relative, safe_text, sha256_file, verify_execution_capability,
+    ToolError, ToolResult,
 };
 use clap::{Args, Parser, Subcommand};
 use serde_json::json;
@@ -19,6 +20,8 @@ use walkdir::WalkDir;
 
 #[derive(Parser)]
 struct Cli {
+    #[arg(long)]
+    capability_manifest: PathBuf,
     #[command(subcommand)]
     command: CommandKind,
 }
@@ -539,10 +542,17 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
 }
 
 fn main() {
-    let result = match Cli::parse().command {
+    let cli = Cli::parse();
+    let result = verify_execution_capability(
+        &cli.capability_manifest,
+        "typescript-product",
+        "effect-utils/buck2-typescript-product/v1",
+        "native-executable/v1",
+    )
+    .and_then(|()| match cli.command {
         CommandKind::Check(args) => check(args),
         CommandKind::Bundle(args) => bundle(args),
-    };
+    });
     if let Err(error) = result {
         eprintln!("{error}");
         std::process::exit(1);
