@@ -372,7 +372,7 @@ export const runDevenvTasksBeforeWithOptions = (
     opts,
   })
 
-export const defaultCiRuntimeScriptsDir = 'genie/ci-scripts'
+export const defaultCiRuntimeScriptsDir = '${{ github.workspace }}/genie/ci-scripts'
 export const preparedCiRuntimeScriptsDir = '${{ github.workspace }}/.genie-ci-runtime'
 export const prepareJobLocalRustState = `. "${preparedCiRuntimeScriptsDir}/prepare-job-local-rust-state.sh"`
 

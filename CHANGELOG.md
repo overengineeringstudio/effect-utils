@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Genie CI workflows**: resolve checked-in helper scripts from the explicit
+  GitHub workspace root so custom runner working directories cannot hide them.
+
 ### Added
 
 - **devenv pnpm / Genie**: add root-local, read-only source generations for

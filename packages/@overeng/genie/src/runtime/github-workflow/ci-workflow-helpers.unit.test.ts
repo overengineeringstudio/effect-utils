@@ -196,7 +196,9 @@ describe('ci workflow retry helpers', () => {
   })
 
   it('emits compact calls to the checked-in retry helper script', () => {
-    expect(ciWorkflowSource).toContain("defaultCiRuntimeScriptsDir = 'genie/ci-scripts'")
+    expect(ciWorkflowSource).toContain(
+      "defaultCiRuntimeScriptsDir = '${{ github.workspace }}/genie/ci-scripts'",
+    )
     expect(ciWorkflowSource).toContain(
       "preparedCiRuntimeScriptsDir = '${{ github.workspace }}/.genie-ci-runtime'",
     )
@@ -236,6 +238,9 @@ describe('ci workflow retry helpers', () => {
       const checkoutIndex = jobBlock.indexOf('uses: actions/checkout@v6')
       const installNixIndex = jobBlock.indexOf('uses: DeterminateSystems/determinate-nix-action@v3')
       const prepareIndex = jobBlock.indexOf('Prepare CI helper scripts')
+      const workspaceSourceIndex = jobBlock.indexOf(
+        "scripts_src='${{ github.workspace }}/genie/ci-scripts'",
+      )
       const baselineCheckoutIndex = jobBlock.indexOf('Checkout CI measurement baseline ref')
       expect(checkoutIndex).toBeGreaterThanOrEqual(0)
       expect(checkoutIndex).toBeLessThan(helperIndex)
@@ -243,6 +248,7 @@ describe('ci workflow retry helpers', () => {
       expect(installNixIndex).toBeLessThan(prepareIndex)
       expect(prepareIndex).toBeGreaterThanOrEqual(0)
       expect(prepareIndex).toBeLessThan(helperIndex)
+      expect(workspaceSourceIndex).toBeGreaterThan(prepareIndex)
       if (baselineCheckoutIndex >= 0) {
         expect(baselineCheckoutIndex).toBeLessThan(prepareIndex)
       }
