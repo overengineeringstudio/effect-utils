@@ -481,17 +481,20 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
         fs::create_dir_all(parent).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
     }
     fs::copy(&stable, &args.output).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
-    let output_text = args
-        .output
+    // patchelf runs with the scratch directory as cwd, while Buck declares the
+    // output relative to the project root. Resolve it absolutely first.
+    let output_text = fs::canonicalize(&args.output)
+        .map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?
         .to_str()
-        .ok_or_else(|| fail("BUCK2_TS_PATH", "output path is not UTF-8"))?;
+        .ok_or_else(|| fail("BUCK2_TS_PATH", "output path is not UTF-8"))?
+        .to_owned();
     run_tool(
         &args.patchelf,
         &[
             "--set-interpreter",
             "/lib64/ld-linux-x86-64.so.2",
             "--remove-rpath",
-            output_text,
+            output_text.as_str(),
         ],
         temp.path(),
         &temp.path().join("home"),
