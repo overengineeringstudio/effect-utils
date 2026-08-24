@@ -390,10 +390,12 @@ fn run() -> ToolResult<()> {
         "native-executable/v1",
     )?;
     match cli.command {
-        Command::Package(args) => package(args),
+        Command::Package(args) => package(*args),
         Command::Product(args) => product(args),
     }
 }
+
+fn main() {
     if let Err(error) = run() {
         eprintln!("{error}");
         std::process::exit(1);
