@@ -353,7 +353,7 @@
               fixture="$PWD/fixture"
               logical_path=repos/effect-utils/packages/@overeng/utils
               wrong_logical_path=repos/effect-utils/packages/@overeng/wrong-utils
-              locator='@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils(a02d012e)'
+              locator='@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils(effect@3.21.4)(react-dom@19.2.4)(react@19.2.4)'
               virtual_path='.pnpm/@overeng+utils@file+.devenv+pnpm-source-inputs+current+repos+effect-utils+packages+@overeng+utils/node_modules/@overeng/utils'
               mkdir -p \
                 "$fixture/$logical_path/src" \
