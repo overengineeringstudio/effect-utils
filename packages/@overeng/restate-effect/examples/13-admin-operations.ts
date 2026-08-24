@@ -34,7 +34,7 @@ import { DurablePromise, Restate, RestateObject, RestateWorkflow, State } from '
 
 export const IncidentState = {
   /** The incident lifecycle the operator inspects via `QUERY object state`. */
-  status: Schema.Literal('open', 'acknowledged', 'resolved'),
+  status: Schema.Literals(['open', 'acknowledged', 'resolved']),
   /** A free-form human note recorded on the last transition. */
   note: Schema.String,
 } as const
@@ -79,7 +79,7 @@ export const IncidentLive = RestateObject.implement<typeof IncidentObj>({
 
 export const DeliveryState = {
   /** Where the delivery is in its lifecycle — inspected via `INSPECT workflow state`. */
-  phase: Schema.Literal('delivering', 'delivered', 'gave-up'),
+  phase: Schema.Literals(['delivering', 'delivered', 'gave-up']),
 } as const
 
 const Delivery = State.for(DeliveryState)

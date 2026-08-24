@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
-import { Chunk, Effect, Layer, Schema, Stream } from 'effect'
+import * as NodeContext from '@effect/platform-node/NodeServices'
+import { Effect, Layer, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint } from '@overeng/notion-effect-client'
@@ -44,7 +44,7 @@ import {
   notionMdBodySafetySnapshot,
 } from './notion-md.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
+const decode = <TSchema extends Schema.Codec<any, any, never>>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (char: string) => decode(Hash, `sha256:${char.repeat(64)}`)
@@ -295,11 +295,7 @@ describe('body adapter contract', () => {
           pageId,
           pointer,
           requestId,
-          remoteIdentity: {
-            ...pointer.identity,
-            rendered: bodyDescriptorForDigest(hash('c')),
-            evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(hash('c')),
-          },
+          remoteIdentity: bodyPointerFor({ bodyHash: hash('c') }).identity,
         },
       ],
     })
@@ -755,7 +751,7 @@ describe('body adapter contract', () => {
             gateway,
             stateStore,
           })
-          return yield* port.scan(root).pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          return yield* port.scan(root).pipe(Stream.runCollect)
         }),
       )
       expect(observations).toEqual([
@@ -784,7 +780,7 @@ describe('body adapter contract', () => {
             gateway,
             stateStore,
           })
-          return yield* port.scan(root).pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          return yield* port.scan(root).pipe(Stream.runCollect)
         }),
       )
       expect(editedObservations).toEqual([

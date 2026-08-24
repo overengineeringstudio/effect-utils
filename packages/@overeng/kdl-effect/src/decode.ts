@@ -83,17 +83,17 @@ const nodeToValue = (node: Node): unknown => {
  */
 export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown => {
   switch (ast._tag) {
-    case 'TupleType': {
+    case 'Arrays': {
       const arr = Array.isArray(obj) ? obj : [obj]
       // Recurse into elements to normalize nested schemas
-      const elementType = ast.rest[0]?.type
+      const elementType = ast.rest[0]
       if (elementType !== undefined) {
         return arr.map((item) => normalizeForSchema(item, elementType))
       }
       return arr
     }
 
-    case 'TypeLiteral': {
+    case 'Objects': {
       if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return obj
       const record = obj as Record<string, unknown>
       const result: Record<string, unknown> = { ...record }
@@ -114,20 +114,12 @@ export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown =>
       return result
     }
 
-    case 'Transformation': {
-      return normalizeForSchema(obj, ast.from)
-    }
-
     case 'Union': {
       // Try to find a matching member. For normalization purposes,
-      // we pick the first member that is a TypeLiteral or TupleType
+      // we pick the first member that is an Arrays or Objects node
       // and apply normalization based on it.
       for (const member of ast.types) {
-        if (
-          member._tag === 'TupleType' ||
-          member._tag === 'TypeLiteral' ||
-          member._tag === 'Transformation'
-        ) {
+        if (member._tag === 'Arrays' || member._tag === 'Objects') {
           return normalizeForSchema(obj, member)
         }
       }
@@ -135,11 +127,7 @@ export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown =>
     }
 
     case 'Suspend': {
-      return normalizeForSchema(obj, ast.f())
-    }
-
-    case 'Refinement': {
-      return normalizeForSchema(obj, ast.from)
+      return normalizeForSchema(obj, ast.thunk())
     }
 
     case 'Declaration': {
@@ -153,7 +141,12 @@ export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown =>
       return obj
     }
 
-    default:
+    default: {
+      // Transformed schemas store their wire-form link on `encoding`
+      if (ast.encoding !== undefined) {
+        return normalizeForSchema(obj, ast.encoding[0].to)
+      }
       return obj
+    }
   }
 }

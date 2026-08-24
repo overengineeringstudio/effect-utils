@@ -49,12 +49,12 @@ const Greeter = RestateService.contract({
 const greetCall = call({ contract: Greeter, method: 'greet', input: { name: 'Sarah' } })
 /* The success type is precise (not `any`). */
 type _A1 = Assert<
-  Equals<Effect.Effect.Success<typeof greetCall>, { readonly message: string; readonly id: string }>
+  Equals<Effect.Success<typeof greetCall>, { readonly message: string; readonly id: string }>
 >
 /* `callTyped` lifts the contract's tagged error into the recoverable `E` channel
  * (alongside the wrapper `RestateError`). */
 const greetTyped = callTyped({ contract: Greeter, method: 'greet', input: { name: '' } })
-type _A2 = Assert<Equals<Effect.Effect.Error<typeof greetTyped>, RestateError | EmptyName>>
+type _A2 = Assert<Equals<Effect.Error<typeof greetTyped>, RestateError | EmptyName>>
 
 /* NEGATIVE: wrong input type. */
 // @ts-expect-error — `name` must be a string, not a number
@@ -119,13 +119,13 @@ const _runTypedFail = Restate.run({ name: 'bad', effect: Effect.fail(new EmptyNa
 
 /* POSITIVE: `run` erases the typed failure channel — the result `E` is `never`. */
 const _runCleanE = Restate.run({ name: 'gen', effect: Effect.sync(() => 1) })
-type _R1 = Assert<Equals<Effect.Effect.Error<typeof _runCleanE>, never>>
+type _R1 = Assert<Equals<Effect.Error<typeof _runCleanE>, never>>
 
 /* POSITIVE: `runExit` honestly OBSERVES the outcome as `Exit<A>` (failure channel
  * `never` — an observed failure is a defect/interrupt `Cause`, not a typed `E`). */
 const _runExitObserve = Restate.runExit({ name: 'gen', effect: Effect.sync(() => 'value') })
-type _R2 = Assert<Equals<Effect.Effect.Success<typeof _runExitObserve>, Exit.Exit<string, never>>>
-type _R3 = Assert<Equals<Effect.Effect.Error<typeof _runExitObserve>, never>>
+type _R2 = Assert<Equals<Effect.Success<typeof _runExitObserve>, Exit.Exit<string, never>>>
+type _R3 = Assert<Equals<Effect.Error<typeof _runExitObserve>, never>>
 
 /* ── determinism-hazard verification (stress-run round 2) ──────────────────── */
 /*
@@ -218,7 +218,7 @@ const _CounterObjBad = RestateObject.implement<typeof CounterObj>({
 
 /* The object ingress client infers exact input/success from the contract + key. */
 const _objCall = objectCall({ contract: CounterObj, key: 'key-1', method: 'add', input: 1 })
-type _O1 = Assert<Equals<Effect.Effect.Success<typeof _objCall>, number>>
+type _O1 = Assert<Equals<Effect.Success<typeof _objCall>, number>>
 // @ts-expect-error — `add` takes a number, not a string
 const _objCallBad = objectCall({ contract: CounterObj, key: 'key-1', method: 'add', input: 'x' })
 
@@ -230,14 +230,14 @@ const Approval = DurablePromise.for(Decision)
 const Approve = RestateWorkflow.contract({
   name: 'approve',
   def: {
-    state: { status: Schema.Literal('pending', 'approved', 'rejected') },
+    state: { status: Schema.Literals(['pending', 'approved', 'rejected']) },
     payload: { input: Schema.String, success: Schema.Boolean },
     signals: { approve: { input: Decision, success: Schema.Void } },
     queries: { status: { input: Schema.Void, success: Schema.String } },
   },
 })
 const ApproveState = State.for({
-  status: Schema.Literal('pending', 'approved', 'rejected'),
+  status: Schema.Literals(['pending', 'approved', 'rejected']),
 })
 
 /* POSITIVE: `run` writes State + awaits a durable promise; the signal resolves it
@@ -291,6 +291,6 @@ const _ServiceNoPromise = RestateService.implement<typeof Counter>({
 /* The workflow submit client omits the `run` handler from the direct call surface
  * but submit/attach derive from `run`'s I/O. */
 const _wfSubmit = workflowSubmit({ contract: Approve, key: 'wf-1', input: 'payload' })
-type _W1 = Assert<Equals<Effect.Effect.Error<typeof _wfSubmit>, RestateError>>
+type _W1 = Assert<Equals<Effect.Error<typeof _wfSubmit>, RestateError>>
 
 /* eslint-enable @typescript-eslint/no-unused-vars */

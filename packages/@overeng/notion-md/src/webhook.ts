@@ -16,8 +16,8 @@ export const NotionWebhookPayload = NotionWebhookPayloadSchema
 /** @see {@link NotionWebhookPayload} */
 export type NotionWebhookPayload = CanonicalNotionWebhookPayload
 
-const decodeWebhookJson = Schema.decodeUnknown(
-  Schema.parseJson(NotionWebhookPayload),
+const decodeWebhookJson = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(NotionWebhookPayload),
   notionWebhookDecodeOptions,
 )
 
@@ -26,7 +26,7 @@ export class NmdWebhookPayloadError extends Schema.TaggedError<NmdWebhookPayload
   'NmdWebhookPayloadError',
   {
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 

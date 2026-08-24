@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { describe, expect, it } from 'vitest'
 
 import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
@@ -22,7 +22,7 @@ const ROOT = '00000000-0000-4000-8000-000000000001'
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const runSync = async (

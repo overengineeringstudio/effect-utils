@@ -16,11 +16,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
-  '@effect/cli',
-  '@effect/platform',
   '@effect/platform-node',
-  '@effect/printer',
-  '@effect/printer-ansi',
   'effect',
 ] as const
 
@@ -35,6 +31,7 @@ const runtimeDeps = catalog.compose({
     external: {
       ...catalog.pick(
         ...peerDepNames,
+        '@effect/atom-react',
         '@effect/vitest',
         '@types/bun',
         '@types/node',

@@ -779,7 +779,7 @@ Vitest.describe('FileSystemBacking', () => {
         const now = Date.now()
 
         yield* fsService.makeDirectory(keyDir, { recursive: true })
-        const expiredLockContent = yield* Schema.encodeSync(Schema.fromJsonString(LockFileContent))({
+        const expiredLockContent = Schema.encodeSync(Schema.fromJsonString(LockFileContent))({
           permits: 2,
           expiresAt: now - 60_000,
         })
@@ -787,7 +787,7 @@ Vitest.describe('FileSystemBacking', () => {
           `${keyDir}/${encodeURIComponent('holder-expired')}.lock`,
           expiredLockContent,
         )
-        const activeLockContent = yield* Schema.encodeSync(Schema.fromJsonString(LockFileContent))({
+        const activeLockContent = Schema.encodeSync(Schema.fromJsonString(LockFileContent))({
           permits: 3,
           expiresAt: now + 60_000,
         })
@@ -921,7 +921,7 @@ Vitest.describe('FileSystemBacking', () => {
         const watchFiber = yield* fsService
           .watch(watchDir)
           .pipe(Stream.runForEach(recordEvent), Effect.forkChild)
-        yield* Effect.yieldNow()
+        yield* Effect.yieldNow
 
         const writeDirectFileUntilObserved = (fileName: string, content: string) =>
           Effect.gen(function* () {
@@ -932,7 +932,7 @@ Vitest.describe('FileSystemBacking', () => {
                 path.join(watchDir, fileName),
                 `${content}-${attempt}`,
               )
-              yield* Effect.yieldNow()
+              yield* Effect.yieldNow
             }
 
             return yield* Fiber.join(eventFiber)

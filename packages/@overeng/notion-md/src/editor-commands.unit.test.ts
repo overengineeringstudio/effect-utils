@@ -91,8 +91,8 @@ class FakeGateway {
         }
         return { markdown: pullResult(this.state).markdown }
       }),
-    updatePageProperties: () => Effect.dieMessage('unexpected updatePageProperties'),
-    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
+    updatePageProperties: () => Effect.die(new Error('unexpected updatePageProperties')),
+    retrieveDataSource: () => Effect.die(new Error('unexpected retrieveDataSource')),
     updatePageMetadata: ({ metadata }) =>
       this.failTitleWrite === true
         ? Effect.fail(
@@ -110,14 +110,14 @@ class FakeGateway {
             return pageSnapshot(this.state)
           }),
     listChildPages: () => Effect.succeed([]),
-    createPage: () => Effect.dieMessage('unexpected createPage'),
-    movePage: () => Effect.dieMessage('unexpected movePage'),
-    archivePage: () => Effect.dieMessage('unexpected archivePage'),
+    createPage: () => Effect.die(new Error('unexpected createPage')),
+    movePage: () => Effect.die(new Error('unexpected movePage')),
+    archivePage: () => Effect.die(new Error('unexpected archivePage')),
   } satisfies NotionMdGatewayShape)
 }
 
 const runWith = <A, E>(effect: Effect.Effect<A, E, NotionMdGateway>, gateway: FakeGateway) =>
-  Effect.either(effect).pipe(Effect.provide(gateway.layer), Effect.runPromise)
+  Effect.result(effect).pipe(Effect.provide(gateway.layer), Effect.runPromise)
 
 describe('cat', () => {
   it('emits `# title` + body to stdout and the base hash to stderr', async () => {
@@ -133,7 +133,7 @@ describe('cat', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
+    expect(result._tag).toBe('Success')
     expect(stdout).toEqual(['# Hello\n\nworld\n'])
     expect(stderr[0]).toBe(`base-hash: ${editorBaseHash({ title: 'Hello', body: 'world\n' })}`)
   })
@@ -149,8 +149,8 @@ describe('cat', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdRemoteBodyLossyError')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdRemoteBodyLossyError')
   })
 
   it('--frontmatter dumps the full envelope', async () => {
@@ -165,7 +165,7 @@ describe('cat', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
+    expect(result._tag).toBe('Success')
     expect(stdout[0]).toContain('---\n')
     expect(stdout[0]).toContain('"version": 2')
     expect(stdout[0]).toContain('body text')
@@ -185,10 +185,10 @@ describe('put', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') {
-      expect(result.right.bodyWritten).toBe(true)
-      expect(result.right.titleWritten).toBe(false)
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.bodyWritten).toBe(true)
+      expect(result.success.titleWritten).toBe(false)
     }
     expect(gateway.state.body).toBe('edited body\n')
     expect(gateway.markdownCalls).toHaveLength(1)
@@ -201,7 +201,7 @@ describe('put', () => {
       putEditorPage({ pageId, buffer: '# New\n\nb\n', baseHash, force: false }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
+    expect(result._tag).toBe('Success')
     expect(gateway.state.title).toBe('New')
     expect(gateway.metadataCalls).toHaveLength(1)
   })
@@ -217,8 +217,8 @@ describe('put', () => {
       }),
       gateway,
     )
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdConflictError')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdConflictError')
     // Nothing written on a guard refusal.
     expect(gateway.markdownCalls).toHaveLength(0)
   })
@@ -229,8 +229,8 @@ describe('put', () => {
       putEditorPage({ pageId, buffer: 'no heading here\n', force: true }),
       gateway,
     )
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdInvalidDocumentError')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdInvalidDocumentError')
   })
 
   it('--force bypasses the stale-base guard (concurrency-only)', async () => {
@@ -239,7 +239,7 @@ describe('put', () => {
       putEditorPage({ pageId, buffer: '# T\n\nforced\n', force: true }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
+    expect(result._tag).toBe('Success')
     expect(gateway.state.body).toBe('forced\n')
   })
 
@@ -252,8 +252,8 @@ describe('put', () => {
       putEditorPage({ pageId, buffer: '# T\n\nmy forced body\n', force: true }),
       gateway,
     )
-    expect(result._tag).toBe('Right')
-    if (result._tag === 'Right') expect(result.right.bodyWritten).toBe(true)
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') expect(result.success.bodyWritten).toBe(true)
     expect(gateway.state.body).toBe('my forced body\n')
   })
 
@@ -266,12 +266,12 @@ describe('put', () => {
       putEditorPage({ pageId, buffer: '# New\n\nedited\n', baseHash, force: false }),
       gateway,
     )
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') {
-      expect(result.left._tag).toBe('NmdPartialWriteError')
-      if (result.left._tag === 'NmdPartialWriteError') {
-        expect(result.left.body_written).toBe(true)
-        expect(result.left.title_written).toBe(false)
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure._tag).toBe('NmdPartialWriteError')
+      if (result.failure._tag === 'NmdPartialWriteError') {
+        expect(result.failure.body_written).toBe(true)
+        expect(result.failure.title_written).toBe(false)
       }
     }
     // The body write did land; the title did not.
@@ -285,7 +285,7 @@ describe('put', () => {
       putEditorPage({ pageId, buffer: '# T\n\nx\n', force: true }),
       gateway,
     )
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdRemoteBodyLossyError')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure._tag).toBe('NmdRemoteBodyLossyError')
   })
 })

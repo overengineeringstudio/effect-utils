@@ -1,4 +1,4 @@
-import { FastCheck as fc } from 'effect'
+import * as fc from 'effect/testing/FastCheck'
 import { describe, expect, it } from 'vitest'
 
 import { canonicalize, canonicalHash, semanticEqual } from './canonicalizer.ts'

@@ -6,7 +6,7 @@
  * ## Server Usage
  *
  * ```typescript
- * import { Rpc, RpcGroup } from '@effect/rpc'
+ * import { Rpc, RpcGroup } from 'effect/unstable/rpc'
  * import { Schema, Effect } from 'effect'
  * import { createFileRoute } from '@tanstack/react-router'
  * import { makeHandler } from '@overeng/effect-rpc-tanstack/server'
@@ -41,7 +41,7 @@
  * ## Client Usage
  *
  * ```typescript
- * import { RpcClient } from '@effect/rpc'
+ * import { RpcClient } from 'effect/unstable/rpc'
  * import { Effect } from 'effect'
  * import { layerClient } from '@overeng/effect-rpc-tanstack/client'
  * import { UserApi } from './api.ts'
@@ -67,4 +67,4 @@ export * from './router.ts'
 /**
  * Re-export RPC primitives for direct access
  */
-export { RpcClient, RpcClientError, RpcSerialization, RpcServer } from '@effect/rpc'
+export { RpcClient, RpcClientError, RpcSerialization, RpcServer } from 'effect/unstable/rpc'

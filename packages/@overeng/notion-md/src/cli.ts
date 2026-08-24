@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, type Exit, Layer, Schema } from 'effect'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
@@ -19,10 +19,10 @@ export const runCliMain = ({
     const endpoint = yield* otelEndpointFromConfig()
 
     yield* cli(toEffectCliArgv({ binaryName: 'notion-md', args })).pipe(
-      Effect.tapErrorCause(renderCliError),
+      Effect.tapCause(renderCliError),
       Effect.scoped,
       Effect.provide(
-        Layer.mergeAll(NodeContext.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
+        Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
       ),
     )
   })

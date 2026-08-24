@@ -6,10 +6,11 @@
  * - `runCommand` — CLI orchestration: TUI rendering, fetch-before-apply, error merging
  */
 
-import { Prompt } from '@effect/cli'
-import type { CommandExecutor, Terminal } from '@effect/platform'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Clock, Effect, Option, type ParseResult } from 'effect'
+import { Prompt } from 'effect/unstable/cli'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
+import { Clock, Effect, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -123,10 +124,10 @@ export const syncMegarepo = <R = never>({
   | StaleLockFileError
   | StoreHygieneError
   | ConfigNotFoundError
-  | PlatformError.PlatformError
-  | ParseResult.ParseError
+  | PlatformError
+  | Schema.SchemaError
   | Error,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | StoreLock | R
+  FileSystem.FileSystem | ChildProcessSpawner | Store | StoreLock | R
 > =>
   Effect.gen(function* () {
     const { mode, dryRun, force, all, only, skip, gitProtocol, createBranches } = options
@@ -323,7 +324,7 @@ export const syncMegarepo = <R = never>({
 
             if (linkTarget !== null) {
               if (dryRun === false) {
-                yield* fs.remove(entryPath).pipe(Effect.catchAll(() => Effect.void))
+                yield* fs.remove(entryPath).pipe(Effect.catch(() => Effect.void))
               }
               return {
                 name: entry,
@@ -509,7 +510,7 @@ export const syncMegarepo = <R = never>({
                   ...(onMissingRef !== undefined ? { onMissingRef } : {}),
                 })
               }).pipe(
-                Effect.catchAll((error) =>
+                Effect.catch((error) =>
                   Effect.succeed({
                     root: nestedRoot,
                     results: [
@@ -568,7 +569,7 @@ const parseMemberList = (value: string): ReadonlyArray<string> =>
  */
 const createMissingRefPrompt = (
   info: MissingRefInfo,
-): Effect.Effect<MissingRefAction, never, Terminal.Terminal> =>
+): Effect.Effect<MissingRefAction, never, Prompt.Environment> =>
   Effect.gen(function* () {
     const prompt = Prompt.select<MissingRefAction>({
       message: `Branch '${info.ref}' doesn't exist in ${info.memberName}`,
@@ -592,7 +593,7 @@ const createMissingRefPrompt = (
     })
 
     return yield* prompt.pipe(
-      Effect.catchTag('QuitException', () => Effect.succeed('abort' as const)),
+      Effect.catchTag('QuitError', () => Effect.succeed('abort' as const)),
     )
   })
 

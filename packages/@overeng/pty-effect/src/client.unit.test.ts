@@ -109,13 +109,13 @@ describe('PtyClient client wrapper', () => {
             args: ['-c', 'false'],
             env: { PTY_EFFECT_TEST_VALUE: 'from-test' },
           })
-        }).pipe(Effect.provide(layer), Effect.either),
+        }).pipe(Effect.provide(layer), Effect.result),
       )
 
-      expect(result._tag).toBe('Left')
-      if (result._tag === 'Left') {
-        expect(result.left.reason).toBe('SpawnFailed')
-        expect(result.left.message).toContain('boom')
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') {
+        expect(result.failure.reason).toBe('SpawnFailed')
+        expect(result.failure.message).toContain('boom')
       }
       expect(spawnDaemon).toHaveBeenCalledTimes(1)
       expect(envInsideSpawn).toBe('from-test')

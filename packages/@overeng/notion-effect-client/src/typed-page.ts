@@ -34,7 +34,7 @@ export class PageDecodeError extends Schema.TaggedError<PageDecodeError>()('Page
   /** Page ID that failed to decode */
   pageId: Schema.String,
   /** The underlying parse error */
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
   /** Human-readable message */
   message: Schema.String,
 }) {}
@@ -46,10 +46,10 @@ export class PageDecodeError extends Schema.TaggedError<PageDecodeError>()('Page
  */
 export const decodePage = Effect.fnUntraced(function* <TProperties, I, R>(opts: {
   page: Page
-  schema: Schema.Schema<TProperties, I, R>
+  schema: Schema.Codec<TProperties, I, R>
 }) {
   const { page, schema } = opts
-  const decode = Schema.decodeUnknown(schema)
+  const decode = Schema.decodeUnknownEffect(schema)
   const properties = yield* decode(page.properties).pipe(
     Effect.mapError(
       (cause) =>
@@ -80,6 +80,6 @@ export const decodePage = Effect.fnUntraced(function* <TProperties, I, R>(opts: 
  */
 export const decodePages = <TProperties, I, R>(opts: {
   pages: readonly Page[]
-  schema: Schema.Schema<TProperties, I, R>
+  schema: Schema.Codec<TProperties, I, R>
 }): Effect.Effect<readonly TypedPage<TProperties>[], PageDecodeError, R> =>
   Effect.forEach(opts.pages, (page) => decodePage({ page, schema: opts.schema }))

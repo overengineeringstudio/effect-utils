@@ -22,7 +22,7 @@ export const EnvSuccessState = Schema.TaggedStruct('Success', {
   /** Global store location */
   MEGAREPO_STORE: Schema.String,
   /** Shell type for output formatting (only used in TTY mode) */
-  shell: Schema.optional(Schema.Literal('bash', 'zsh', 'fish')),
+  shell: Schema.optional(Schema.Literals(['bash', 'zsh', 'fish'])),
 })
 
 /**
@@ -36,7 +36,7 @@ export const EnvErrorState = Schema.TaggedStruct('Error', {
 /**
  * State for env command.
  */
-export const EnvState = Schema.Union(EnvSuccessState, EnvErrorState)
+export const EnvState = Schema.Union([EnvSuccessState, EnvErrorState])
 
 /** Inferred type for the env command state (success with env vars or error). */
 export type EnvState = Schema.Schema.Type<typeof EnvState>
@@ -60,15 +60,15 @@ export const isEnvSuccess = (state: EnvState): state is typeof EnvSuccessState.T
 /**
  * Actions for env output.
  */
-export const EnvAction = Schema.Union(
+export const EnvAction = Schema.Union([
   /** Set success state */
   Schema.TaggedStruct('SetEnv', {
     MEGAREPO_STORE: Schema.String,
-    shell: Schema.optional(Schema.Literal('bash', 'zsh', 'fish')),
+    shell: Schema.optional(Schema.Literals(['bash', 'zsh', 'fish'])),
   }),
   /** Set error state */
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
-)
+])
 
 /** Inferred type for env actions. */
 export type EnvAction = Schema.Schema.Type<typeof EnvAction>

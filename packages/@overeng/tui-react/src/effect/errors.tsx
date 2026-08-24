@@ -48,7 +48,7 @@ export type RuntimeError = Schema.Schema.Type<typeof RuntimeError>
  * Cancelled error - for user cancellation, timeout, or signal.
  */
 export const CancelledError = Schema.TaggedStruct('CommandError.Cancelled', {
-  reason: Schema.Literal('user', 'timeout', 'signal'),
+  reason: Schema.Literals(['user', 'timeout', 'signal']),
 })
 /** Inferred type for a cancellation error (user, timeout, or signal). */
 export type CancelledError = Schema.Schema.Type<typeof CancelledError>
@@ -56,7 +56,7 @@ export type CancelledError = Schema.Schema.Type<typeof CancelledError>
 /**
  * Union of all command error types.
  */
-export const CommandError = Schema.Union(ValidationError, RuntimeError, CancelledError)
+export const CommandError = Schema.Union([ValidationError, RuntimeError, CancelledError])
 /** Inferred union type of all command error variants. */
 export type CommandError = Schema.Schema.Type<typeof CommandError>
 
@@ -111,7 +111,7 @@ export const cancelledError = (reason: 'user' | 'timeout' | 'signal'): Cancelled
  * Used in JSON mode to maintain modal consistency.
  */
 export const outputJsonError = (error: CommandError): Effect.Effect<void> =>
-  Schema.encode(Schema.parseJson(CommandError))(error).pipe(
+  Schema.encodeEffect(Schema.fromJsonString(CommandError))(error).pipe(
     Effect.flatMap((jsonString) => Console.log(jsonString)),
     Effect.orDie, // Schema encoding of our own types should never fail
   )
@@ -160,7 +160,7 @@ export const withJsonErrors = <A, E, R>(
     if (isJson(mode) === true) {
       // In JSON mode, catch errors and output as JSON
       const result = yield* effect.pipe(
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           Effect.gen(function* () {
             yield* outputJsonError(toCommandError(error))
             return undefined as unknown as A
@@ -187,7 +187,7 @@ export const runWithJsonErrors = <A, E, R>(
 ): Effect.Effect<A | void, never, R | OutputModeTag> =>
   effect.pipe(
     withJsonErrors,
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       Effect.gen(function* () {
         const mode = yield* OutputModeTag
         if (isJson(mode) === true) {

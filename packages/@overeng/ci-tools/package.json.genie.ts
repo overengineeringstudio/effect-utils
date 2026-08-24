@@ -19,8 +19,6 @@ const workspaceDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsDevPkg, utilsPkg],
     external: catalog.pick(
-      '@effect/cli',
-      '@effect/platform',
       '@effect/platform-node',
       '@effect/vitest',
       '@types/bun',
@@ -31,7 +29,7 @@ const workspaceDeps = catalog.compose({
   },
   peerDependencies: {
     workspace: [utilsPkg],
-    external: catalog.pick('@effect/cli'),
+    external: catalog.pick('effect'),
   },
 })
 

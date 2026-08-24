@@ -1,5 +1,5 @@
-import { Rpc, RpcGroup, RpcClient } from '@effect/rpc'
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import { Rpc, RpcGroup, RpcClient } from 'effect/unstable/rpc'
+import { Effect, Schema, Stream } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
 import { layerClient, fetchFromWebHandler } from './client.ts'
@@ -89,7 +89,7 @@ describe('effect-rpc-tanstack client', () => {
         Effect.runPromise,
       )
 
-      expect(Chunk.toReadonlyArray(numbers)).toEqual([1, 2, 3])
+      expect(numbers).toEqual([1, 2, 3])
     } finally {
       await dispose()
     }

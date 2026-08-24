@@ -9,8 +9,8 @@
  * Note: Local path sources are NOT in the lock file - they're already local.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import type { ParseResult } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
 import { Effect, Option, Schema } from 'effect'
 
 import type { AbsoluteFilePath } from '@overeng/effect-path'
@@ -53,7 +53,7 @@ export class LockFile extends Schema.Class<LockFile>('LockFile')({
   version: Schema.Number,
 
   /** Locked members (name -> entry) */
-  members: Schema.Record({ key: Schema.String, value: LockedMember }),
+  members: Schema.Record(Schema.String, LockedMember),
 }) {}
 
 // =============================================================================
@@ -67,7 +67,7 @@ export const readLockFile = (
   lockPath: AbsoluteFilePath,
 ): Effect.Effect<
   Option.Option<LockFile>,
-  PlatformError.PlatformError | ParseResult.ParseError,
+  PlatformError | Schema.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -79,7 +79,7 @@ export const readLockFile = (
     }
 
     const content = yield* fs.readFileString(lockPath)
-    const parsed = yield* Schema.decodeUnknown(Schema.parseJson(LockFile))(content)
+    const parsed = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LockFile))(content)
     return Option.some(parsed)
   })
 
@@ -94,12 +94,12 @@ export const writeLockFile = ({
   lockFile: LockFile
 }): Effect.Effect<
   void,
-  PlatformError.PlatformError | ParseResult.ParseError,
+  PlatformError | Schema.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const content = yield* Schema.encode(Schema.parseJson(LockFile, { space: 2 }))(lockFile)
+    const content = yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(lockFile)
     yield* fs.writeFileString(lockPath, content + '\n')
   })
 
@@ -272,7 +272,7 @@ export const getLockedMember = ({
   lockFile: LockFile
   memberName: string
 }): Option.Option<LockedMember> => {
-  return Option.fromNullable(lockFile.members[memberName])
+  return Option.fromUndefinedOr(lockFile.members[memberName])
 }
 
 /**

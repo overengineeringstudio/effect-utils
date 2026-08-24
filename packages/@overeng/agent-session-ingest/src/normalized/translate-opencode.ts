@@ -4,7 +4,7 @@ import type { OpenCodeRecord } from '../adapters/opencode.ts'
 import { parseMcpToolName } from './mcp-tool-name.ts'
 import type { NormalizedRecord } from './schema.ts'
 
-const epochMsToUtc = (ms: number): DateTime.Utc => DateTime.unsafeMake(ms)
+const epochMsToUtc = (ms: number): DateTime.Utc => DateTime.makeUnsafe(ms)
 
 /** Translate a raw OpenCode session record into normalized records. */
 export const translateOpenCodeRecord = (

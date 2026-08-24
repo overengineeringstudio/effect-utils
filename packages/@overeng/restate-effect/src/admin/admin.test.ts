@@ -6,7 +6,7 @@
  * `AdminFailed` on a decode mismatch), and a non-OK status surfaces a
  * `RestateError`. We stub `globalThis.fetch` to capture the requests.
  */
-import type { ConfigError } from 'effect'
+import * as ConfigError from 'effect/Config'
 import { Cause, ConfigProvider, Effect, Exit, Layer, Redacted, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -187,15 +187,10 @@ describe('RestateAdmin auth + config', () => {
   })
 
   it('layerConfig reads RESTATE_ADMIN_URL / RESTATE_ADMIN_KEY', async () => {
-    const provider = ConfigProvider.fromMap(
-      new Map([
-        ['RESTATE_ADMIN_URL', 'http://admin.local:9070'],
-        ['RESTATE_ADMIN_KEY', 'k3y'],
-      ]),
-    )
+    const provider = ConfigProvider.fromEnvRecord({ RESTATE_ADMIN_URL: 'http://admin.local:9070', RESTATE_ADMIN_KEY: 'k3y' })
     await run(
       (a) => a.cancel('inv_1'),
-      RestateAdmin.layerConfig().pipe(Layer.provide(Layer.setConfigProvider(provider))),
+      RestateAdmin.layerConfig().pipe(Layer.provide(ConfigProvider.layer(provider))),
     )
     expect(captured[0]!.url).toBe('http://admin.local:9070/invocations/inv_1/cancel')
     expect(captured[0]!.headers['authorization']).toBe('Bearer k3y')

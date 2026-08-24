@@ -4,11 +4,47 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
 {
   "signal": null,
   "status": 1,
-  "stderr": "'nope' is not a integer
-
-Error: {"_tag":"InvalidValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"'nope' is not a integer"}}}
+  "stderr": "
+ERROR
+  Invalid value for flag --width: "nope". Expected a string representing a finite number
+TypeError: Attempted to assign to readonly property.
+    at assign (unknown)
+    at ~effect/Utils/internal (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/Utils.js:85:16)
+    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:721:53)
+    at runLoop (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:462:98)
+    at evaluate (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:422:23)
+    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:2263:9)
+    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/Runtime.js:130:66)
+    at runTuiMainImpl (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/packages/@overeng/tui-react/src/effect/cli.tsx:357:10)
+    at /home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/packages/@overeng/tui-stories/bin/tui-stories.tsx:22:99
+    at asyncModuleEvaluation (native:2)
+    at processTicksAndRejections (native:7:39)
 ",
-  "stdout": "",
+  "stdout": "DESCRIPTION
+  Render a story to terminal output
+
+USAGE
+  tui-stories render [flags] <story-id>
+
+ARGUMENTS
+  story-id string    Story title or ID to render (supports prefix/substring match)
+
+FLAGS
+  --story, -s string     Named story export to render (defaults to first)
+  --path string          Package directory to search for stories
+  --width, -w integer    Terminal width for layout
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+  --final                Apply all timeline events (show final state)
+  --at integer           Apply timeline events up to this timestamp (ms)
+  --arg, -a string       Override story arg (key=value format, repeatable)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+",
 }
 `;
 
@@ -17,74 +53,22 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "tui-stories
-
-tui-stories 0.1.0
+  "stdout": "DESCRIPTION
+  List all discovered stories
 
 USAGE
+  tui-stories list [flags]
 
-$ list --path text [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]
+FLAGS
+  --path string          Package directory to search for stories
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
 
-DESCRIPTION
-
-List all discovered stories
-
-OPTIONS
-
---path text
-
-  A user-defined piece of text.
-
-  Package directory to search for stories
-
-(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)
-
-  One of the following: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson
-
-  Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson
-
-  This setting is optional.
-
---completions sh | bash | fish | zsh
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
---log-level all | trace | debug | info | warning | error | fatal | none
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-(-h, --help)
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
---wizard
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
---version
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 ",
 }
 `;
@@ -93,11 +77,39 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
 {
   "signal": null,
   "status": 1,
-  "stderr": "Expected to find option: '--path'
-
-Error: {"_tag":"MissingValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"Expected to find option: '--path'"}}}
+  "stderr": "
+ERROR
+  Missing required flag: --path
+TypeError: Attempted to assign to readonly property.
+    at assign (unknown)
+    at ~effect/Utils/internal (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/Utils.js:85:16)
+    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:721:53)
+    at runLoop (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:462:98)
+    at evaluate (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:422:23)
+    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/internal/effect.js:2263:9)
+    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/Runtime.js:130:66)
+    at runTuiMainImpl (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/packages/@overeng/tui-react/src/effect/cli.tsx:357:10)
+    at /home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/packages/@overeng/tui-stories/bin/tui-stories.tsx:22:99
+    at asyncModuleEvaluation (native:2)
+    at processTicksAndRejections (native:7:39)
 ",
-  "stdout": "",
+  "stdout": "DESCRIPTION
+  List all discovered stories
+
+USAGE
+  tui-stories list [flags]
+
+FLAGS
+  --path string          Package directory to search for stories
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+",
 }
 `;
 
@@ -106,68 +118,23 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "tui-stories
-
-tui-stories 0.1.0
+  "stdout": "DESCRIPTION
+  Headless TUI story runner — render Storybook stories in the terminal
 
 USAGE
+  tui-stories <subcommand> [flags]
 
-$ tui-stories
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
-DESCRIPTION
-
-Headless TUI story runner — render Storybook stories in the terminal
-
-OPTIONS
-
---completions sh | bash | fish | zsh
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
---log-level all | trace | debug | info | warning | error | fatal | none
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-(-h, --help)
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
---wizard
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
---version
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
-COMMANDS
-
-  - list --path text [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                         List all discovered stories
-
-  - render [(-s, --story text)] --path text [(-w, --width integer)] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--final] [--at integer] (-a, --arg text)... <story-id>  Render a story to terminal output
-
-  - inspect --path text [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <story-id>                                                                                           Inspect story metadata and available args
-
+SUBCOMMANDS
+  list       List all discovered stories
+  render     Render a story to terminal output
+  inspect    Inspect story metadata and available args
 ",
 }
 `;
@@ -177,8 +144,7 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "0.1.0
-
+  "stdout": "tui-stories v0.1.0
 ",
 }
 `;

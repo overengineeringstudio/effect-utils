@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
-import { Schema } from 'effect'
+import { Result, Schema } from 'effect'
+import { NonEmptyTrimmedString } from '../core/domain.ts'
 
 import {
   type NotionWebhookPayload,
@@ -79,10 +80,10 @@ const rawBodyText = (rawBody: string | Uint8Array): string =>
   typeof rawBody === 'string' ? rawBody : textDecoder.decode(rawBody)
 
 /** Decode a raw body string into a JSON value, returning Either. */
-const decodeJson = Schema.decodeUnknownEither(Schema.parseJson())
+const decodeJson = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Json))
 
 /** Decode a JSON value into `NotionWebhookPayload`, returning Either. */
-const decodePayload = Schema.decodeUnknownEither(
+const decodePayload = Schema.decodeUnknownResult(
   NotionWebhookPayloadSchema,
   notionWebhookDecodeOptions,
 )
@@ -95,10 +96,10 @@ const NotionWebhookVerificationStruct = Schema.Struct({
   // NonEmptyTrimmedString trims then checks: a whitespace-only token (e.g. "   ")
   // intentionally fails this decode and falls through to the HMAC gate rather than
   // being treated as a (meaningless) verification challenge.
-  verification_token: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'NotionWebhook.VerificationStruct' })
+  verification_token: NonEmptyTrimmedString,
+}).annotate({ identifier: 'NotionWebhook.VerificationStruct' })
 
-const decodeVerification = Schema.decodeUnknownEither(NotionWebhookVerificationStruct, {
+const decodeVerification = Schema.decodeUnknownResult(NotionWebhookVerificationStruct, {
   onExcessProperty: 'preserve',
 })
 
@@ -109,14 +110,14 @@ export const parseNotionWebhookVerification = (
   | NotionWebhookVerification
   | { readonly _tag: 'NotionWebhookRejected'; readonly reason: NotionWebhookRejectionReason } => {
   const jsonResult = decodeJson(rawBodyText(rawBody))
-  if (jsonResult._tag === 'Left') return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
-  const verResult = decodeVerification(jsonResult.right)
-  if (verResult._tag === 'Left') {
+  if (Result.isFailure(jsonResult) === true) return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
+  const verResult = decodeVerification(jsonResult.success)
+  if (Result.isFailure(verResult) === true) {
     return { _tag: 'NotionWebhookRejected', reason: 'missing-verification-token' }
   }
   return {
     _tag: 'NotionWebhookVerification',
-    verificationToken: verResult.right.verification_token,
+    verificationToken: verResult.success.verification_token,
   }
 }
 
@@ -247,15 +248,15 @@ export const parseNotionWebhookRequest = ({
 }: NotionWebhookRequestInput): NotionWebhookParseResult => {
   // Step 1: JSON parse
   const jsonResult = decodeJson(rawBodyText(rawBody))
-  if (jsonResult._tag === 'Left') return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
-  const jsonValue = jsonResult.right
+  if (Result.isFailure(jsonResult) === true) return { _tag: 'NotionWebhookRejected', reason: 'invalid-json' }
+  const jsonValue = jsonResult.success
 
   // Step 2: unauthenticated verification-token branch
   const verResult = decodeVerification(jsonValue)
-  if (verResult._tag === 'Right') {
+  if (Result.isSuccess(verResult) === true) {
     return {
       _tag: 'NotionWebhookVerification',
-      verificationToken: verResult.right.verification_token,
+      verificationToken: verResult.success.verification_token,
     }
   }
 
@@ -273,11 +274,11 @@ export const parseNotionWebhookRequest = ({
 
   // Step 4: shape decode
   const payloadResult = decodePayload(jsonValue)
-  if (payloadResult._tag === 'Left') {
+  if (Result.isFailure(payloadResult) === true) {
     return { _tag: 'NotionWebhookRejected', reason: 'invalid-payload-shape' }
   }
 
   // Step 5: normalize
-  const signal = normalizeNotionWebhookPayload(payloadResult.right)
+  const signal = normalizeNotionWebhookPayload(payloadResult.success)
   return signal._tag === 'NotionWebhookRejected' ? signal : { _tag: 'NotionWebhookEvent', signal }
 }

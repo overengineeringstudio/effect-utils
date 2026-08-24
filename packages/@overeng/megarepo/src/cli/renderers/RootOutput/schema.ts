@@ -32,7 +32,7 @@ export const RootErrorState = Schema.TaggedStruct('Error', {
 /**
  * State for root command - discriminated by _tag.
  */
-export const RootState = Schema.Union(RootSuccessState, RootErrorState)
+export const RootState = Schema.Union([RootSuccessState, RootErrorState])
 
 /** Inferred type for root command state (success with path or error). */
 export type RootState = Schema.Schema.Type<typeof RootState>
@@ -54,13 +54,13 @@ export const isRootSuccess = (state: RootState): state is typeof RootSuccessStat
 // =============================================================================
 
 /** Tagged union of actions for the root command (set success or error). */
-export const RootAction = Schema.Union(
+export const RootAction = Schema.Union([
   Schema.TaggedStruct('SetSuccess', {
     root: Schema.String,
     name: Schema.String,
   }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
-)
+])
 
 /** Inferred type for root actions. */
 export type RootAction = Schema.Schema.Type<typeof RootAction>

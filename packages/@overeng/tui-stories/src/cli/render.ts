@@ -1,4 +1,4 @@
-import { Args, Command, Options } from '@effect/cli'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
 import { Effect } from 'effect'
 import React from 'react'
 
@@ -11,17 +11,17 @@ import { findStory, parseArgOverrides } from '../StoryModule.ts'
 import { renderStory, type TimelineMode } from '../StoryRenderer.ts'
 import { RenderApp, RenderView } from './renderers/RenderOutput/mod.ts'
 
-const storyIdArg = Args.text({ name: 'story-id' }).pipe(
+const storyIdArg = Args.string('story-id').pipe(
   Args.withDescription('Story title or ID to render (supports prefix/substring match)'),
 )
 
-const storyNameOption = Options.text('story').pipe(
+const storyNameOption = Options.string('story').pipe(
   Options.withAlias('s'),
   Options.withDescription('Named story export to render (defaults to first)'),
   Options.optional,
 )
 
-const pathOption = Options.text('path').pipe(
+const pathOption = Options.string('path').pipe(
   Options.withDescription('Package directory to search for stories'),
 )
 
@@ -41,10 +41,10 @@ const atOption = Options.integer('at').pipe(
   Options.optional,
 )
 
-const argOption = Options.text('arg').pipe(
+const argOption = Options.string('arg').pipe(
   Options.withAlias('a'),
   Options.withDescription('Override story arg (key=value format, repeatable)'),
-  Options.repeated,
+  Options.between(0, Number.POSITIVE_INFINITY),
 )
 
 /** CLI subcommand to render a story to terminal output */

@@ -146,8 +146,11 @@ export { RestateTestEnv, type RestateTestEnvService } from './TestEnv.ts'
  * )
  * ```
  */
+const liveClock: Clock.Clock = Context.get(Context.empty(), Clock.Clock)
+
+/** Sleep that always uses the live (real) clock, bypassing journaled time. */
 export const liveSleep = (millis: number): Effect.Effect<void> =>
-  Effect.sleep(millis).pipe(Effect.withClock(Clock.make()))
+  Effect.sleep(millis).pipe(Effect.provideService(Clock.Clock, liveClock))
 
 /**
  * Run `effect` under a LIVE `Clock` (ignoring the ambient `it.effect`
@@ -156,7 +159,7 @@ export const liveSleep = (millis: number): Effect.Effect<void> =>
  * with the real server in wall-clock time.
  */
 export const withLiveClock = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-  effect.pipe(Effect.withClock(Clock.make()))
+  effect.pipe(Effect.provideService(Clock.Clock, liveClock))
 
 /* ════════════════════════════════════════════════════════════════════════
  * Native server lifecycle (productized from `test/restate-server.ts`).
@@ -513,7 +516,7 @@ const makeStateProxy = <S extends StateSchemas>({
   const serdes = contractSerdeFactory(redaction)
   const serdeFor = <K extends keyof S & string>(key: K) =>
     serdes.forSchema({
-      schema: normalizeStateSchema(schemas[key]!) as Schema.Schema<unknown, unknown>,
+      schema: normalizeStateSchema(schemas[key]!) as Schema.Codec<unknown, unknown>,
       slot: 'internal',
     })
 
@@ -736,10 +739,10 @@ export interface BoundIngress {
   }) => Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError, never>
   readonly result: <T, I>(args: {
     send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>
-    outputSchema: Schema.Schema<T, I>
+    outputSchema: Schema.Codec<T, I>
   }) => Effect.Effect<T, RestateError, never>
   readonly resolveAwakeable: <T, I>(args: {
-    schema: Schema.Schema<T, I>
+    schema: Schema.Codec<T, I>
     id: AwakeableId<T>
     payload: T
   }) => Effect.Effect<void, RestateError, never>
@@ -748,10 +751,10 @@ export interface BoundIngress {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** The harness service tag. The `layer` factory below is the only constructor. */
-export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/RestateTestHarness')<
+export class RestateTestHarness extends Context.Service<
   RestateTestHarness,
   RestateTestHarnessService
->() {
+>()('@overeng/restate-effect/RestateTestHarness') {
   /**
    * A scoped `Layer` that, on ACQUIRE: allocates an isolated temp base dir +
    * EPHEMERAL ports for every listener (server ingress / admin / node-to-node AND
@@ -785,9 +788,10 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
     readonly inboundBridge?: HandlerWrap
     readonly boundaryObserver?: BoundaryObserver
   }): Layer.Layer<RestateTestHarness, RestateError, RIn> =>
-    Layer.scoped(
+    Layer.effect(
       RestateTestHarness,
-      Effect.gen(function* () {
+      Effect.scoped(
+        Effect.gen(function* () {
         const sdkLogRecords: Array<RestateSdkLogRecord> = []
         // oxlint-disable-next-line overeng/named-args -- implements the Restate SDK's positional LoggerTransport callback.
         const sdkLogger: restate.LoggerTransport = (metadata, message, ...optionalParams) => {
@@ -847,7 +851,7 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
                * the port is literal `0`, so it is structurally impossible.
                * Re-fail a real `RestateError` (a bind/listen failure) and die on the
                * unreachable `ConfigError`, keeping the harness channel clean. */
-              Effect.catchAll((cause) =>
+              Effect.catch((cause) =>
                 cause instanceof RestateError ? Effect.fail(cause) : Effect.die(cause),
               ),
             )
@@ -866,7 +870,8 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
          * memoized layer is provided to the endpoint AND read for `RestateRedaction`,
          * so the harness uses the SAME cipher instance the handlers do. */
         const harnessScope = yield* Effect.scope
-        const memoAppLayer = yield* Layer.memoize(opts.appLayer)
+        const appContext = yield* Layer.build(opts.appLayer)
+        const memoAppLayer = Layer.succeedContext(appContext)
 
         /* 2.+3. Serve + register the primary deployment into the harness scope. */
         yield* serveAndRegister({
@@ -880,8 +885,8 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
          * so the harness ingress + `stateOf` use the IDENTICAL contract-invocation
          * policy as production rather than a parallel `effectSerde` path (closes the
          * harness-drift gap). Read from the memoized build; absent → no cipher. */
-        const redaction = yield* Layer.build(memoAppLayer).pipe(
-          Effect.map((ctx) => Context.getOption(ctx, RestateRedaction).pipe(Option.getOrUndefined)),
+        const redaction = Context.getOption(appContext, RestateRedaction).pipe(
+          Option.getOrUndefined,
         )
 
         /* 4. Build the connected ingress runtime once, so the bound call surface
@@ -965,6 +970,7 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
             })) as RestateTestHarnessService['registerDeployment'],
         }
       }),
+      ),
     )
 }
 
@@ -1010,7 +1016,7 @@ export const withRestateServer = <AppR>(opts: {
   readonly alwaysReplay?: boolean
   readonly disableRetries?: boolean
 }): HeldRestateServer => {
-  let scope: Scope.CloseableScope | undefined
+  let scope: Scope.Closeable | undefined
   let service: RestateTestHarnessService | undefined
   const built = RestateTestHarness.layer(opts)
 

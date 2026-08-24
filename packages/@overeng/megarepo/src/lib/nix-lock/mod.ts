@@ -8,13 +8,11 @@
  * source of truth for dependency versions.
  */
 
-import {
-  Command,
-  type CommandExecutor,
-  FileSystem,
-  type Error as PlatformError,
-} from '@effect/platform'
-import { Effect, Option, Schema, type ParseResult } from 'effect'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
+import { Effect, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -127,19 +125,15 @@ const DEVENV_LOCK = 'devenv.lock'
 const MEGAREPO_LOCK = LOCK_FILE_NAME
 
 /** Schema for raw flake lock JSON (used to preserve key order during manipulation) */
-const RawFlakeLockJson = Schema.parseJson(
-  Schema.mutable(
-    Schema.Struct({
-      nodes: Schema.mutable(
-        Schema.Record({
-          key: Schema.String,
-          value: Schema.mutable(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-        }),
-      ),
-      root: Schema.String,
-      version: Schema.Number,
-    }),
-  ),
+const RawFlakeLockJson = Schema.fromJsonString(
+  Schema.Struct({
+    nodes: Schema.Record(
+      Schema.String,
+      Schema.mutableKey(Schema.Record(Schema.String, Schema.mutableKey(Schema.Unknown))),
+    ),
+    root: Schema.String,
+    version: Schema.Number,
+  }),
   { space: 2 },
 )
 
@@ -149,8 +143,8 @@ const RawFlakeLockJson = Schema.parseJson(
  * with 2-space indentation, matching the prior `JSON.stringify(value, null, 2)`
  * output byte-for-byte.
  */
-const RawLockJson = Schema.parseJson(
-  Schema.mutable(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+const RawLockJson = Schema.fromJsonString(
+  Schema.Record(Schema.String, Schema.mutableKey(Schema.Unknown)),
   { space: 2 },
 )
 
@@ -163,7 +157,7 @@ const encodeRawLockJson = (value: Record<string, unknown>): string =>
 // =============================================================================
 
 /** Schema for nix flake prefetch JSON output (parses JSON string directly) */
-const NixFlakePrefetchOutput = Schema.parseJson(
+const NixFlakePrefetchOutput = Schema.fromJsonString(
   Schema.Struct({
     hash: Schema.String,
     locked: Schema.Struct({
@@ -201,14 +195,15 @@ export const fetchNixFlakeMetadata = ({
   rev: string
 }): Effect.Effect<
   NixFlakeMetadata,
-  PlatformError.PlatformError | ParseResult.ParseError | NixFlakeMetadataError,
-  CommandExecutor.CommandExecutor
+  PlatformError | Schema.SchemaError | NixFlakeMetadataError,
+  ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const flakeRef = `github:${owner}/${repo}/${rev}`
 
-    const command = Command.make('nix', 'flake', 'prefetch', flakeRef, '--json')
-    const result = yield* Command.string(command)
+    const result = yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('nix', ['flake', 'prefetch', flakeRef, '--json'])),
+    )
 
     // Check for empty output - this typically means the command failed.
     // Nix outputs errors to stderr and returns empty stdout with non-zero exit code.
@@ -223,7 +218,7 @@ export const fetchNixFlakeMetadata = ({
     }
 
     // Attempt to parse the JSON output
-    const parsed = yield* Schema.decodeUnknown(NixFlakePrefetchOutput)(result).pipe(
+    const parsed = yield* Schema.decodeUnknownEffect(NixFlakePrefetchOutput)(result).pipe(
       Effect.mapError((parseError) => {
         // Check if output looks like a nix error message (shouldn't normally happen
         // since nix errors go to stderr, but handle defensively)
@@ -343,15 +338,15 @@ const syncSingleLockFile = ({
   megarepoMembers: Record<string, LockedMember>
 }): Effect.Effect<
   NixLockSyncFileResult,
-  PlatformError.PlatformError | ParseResult.ParseError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  PlatformError | Schema.SchemaError,
+  FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
     // Read and parse the lock file (Schema.parseJson handles both parsing and validation)
     const content = yield* fs.readFileString(lockPath)
-    const rawJson = yield* Schema.decodeUnknown(RawFlakeLockJson)(content)
+    const rawJson = yield* Schema.decodeUnknownEffect(RawFlakeLockJson)(content)
 
     // First pass: collect all nodes that need metadata fetching
     const nodesToUpdate: NodeUpdateInfo[] = []
@@ -501,7 +496,7 @@ const syncSingleLockFile = ({
 
     // Write updated lock file if any changes were made
     if (updatedInputs.length > 0 || schemeNormalized === true) {
-      const updatedContent = yield* Schema.encode(RawFlakeLockJson)(rawJson)
+      const updatedContent = yield* Schema.encodeEffect(RawFlakeLockJson)(rawJson)
       yield* fs.writeFileString(lockPath, updatedContent + '\n')
     }
 
@@ -529,7 +524,7 @@ const syncNestedMegarepoLockFile = ({
   megarepoMembers: Record<string, LockedMember>
 }): Effect.Effect<
   NixLockSyncFileResult,
-  PlatformError.PlatformError | ParseResult.ParseError,
+  PlatformError | Schema.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -629,7 +624,7 @@ export const syncSourceFileRevs = ({
   filePath: AbsoluteFilePath
   fileType: 'flake.nix' | 'devenv.yaml'
   megarepoMembers: Record<string, LockedMember>
-}): Effect.Effect<NixLockSyncFileResult, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<NixLockSyncFileResult, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
@@ -760,7 +755,7 @@ const validateSharedInputSource = ({
   sourceMemberName: string
 }): Effect.Effect<
   ValidatedSharedInputSource,
-  PlatformError.PlatformError | SharedInputSourceError,
+  PlatformError | SharedInputSourceError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -779,9 +774,9 @@ const validateSharedInputSource = ({
     }
 
     const sourceContent = yield* fs.readFileString(sourceLockPath)
-    const sourceJson = yield* Schema.decodeUnknown(RawLockJson)(sourceContent).pipe(
+    const sourceJson = yield* Schema.decodeUnknownEffect(RawLockJson)(sourceContent).pipe(
       Effect.catchTag(
-        'ParseError',
+        'SchemaError',
         () =>
           new SharedInputSourceError({
             message: `Source member '${sourceMemberName}' has invalid devenv.lock (not valid JSON)`,
@@ -846,7 +841,7 @@ const applySharedInputSource = ({
   validated: ValidatedSharedInputSource
   memberNames: ReadonlyArray<string>
   excludeMembers: ReadonlySet<string>
-}): Effect.Effect<SharedInputSourceResult, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<SharedInputSourceResult, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const { sourceMemberName, sourceMap } = validated
@@ -928,7 +923,7 @@ const syncMemberRefs = ({
   megarepoMembers: Record<string, LockedMember>
 }): Effect.Effect<
   ReadonlyArray<NixLockSyncFileResult>,
-  PlatformError.PlatformError,
+  PlatformError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -1222,7 +1217,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
               lockType: 'flake.lock',
               megarepoMembers,
             }).pipe(
-              Effect.catchTag('ParseError', (e) =>
+              Effect.catchTag('SchemaError', (e) =>
                 Effect.gen(function* () {
                   yield* Effect.logWarning(`Failed to parse ${flakeLockPath}: ${e.message}`)
                   return {
@@ -1250,7 +1245,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
               lockType: 'devenv.lock',
               megarepoMembers,
             }).pipe(
-              Effect.catchTag('ParseError', (e) =>
+              Effect.catchTag('SchemaError', (e) =>
                 Effect.gen(function* () {
                   yield* Effect.logWarning(`Failed to parse ${devenvLockPath}: ${e.message}`)
                   return {
@@ -1280,7 +1275,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
                 lockPath: nestedMegarepoLockPath,
                 megarepoMembers,
               }).pipe(
-                Effect.catchTag('ParseError', (e) =>
+                Effect.catchTag('SchemaError', (e) =>
                   Effect.gen(function* () {
                     yield* Effect.logWarning(
                       `Failed to parse ${nestedMegarepoLockPath}: ${e.message}`,

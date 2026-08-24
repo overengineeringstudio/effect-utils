@@ -1,4 +1,4 @@
-import { HttpClient, HttpClientRequest } from '@effect/platform'
+import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
 import { Effect } from 'effect'
 import { Fragment, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -948,7 +948,7 @@ describe('sync() against in-memory fake Notion', () => {
               ? HttpClientRequest.patch(url).pipe(
                   HttpClientRequest.bodyText('{"toggle":{}}', 'application/json'),
                 )
-              : HttpClientRequest.del(url)
+              : HttpClientRequest.make('DELETE')(url)
           const res = yield* http.execute(req)
           const body = (yield* res.json) as Record<string, unknown>
           return { status: res.status, body }

@@ -22,11 +22,8 @@ const supportDeps = catalog.compose({
     workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
     external: {
       ...catalog.pick(
-        '@effect/cli',
-        '@effect/platform',
         '@effect/platform-node',
-        '@effect/printer',
-        '@effect/printer-ansi',
+        '@effect/atom-react',
         '@effect/vitest',
         '@types/node',
         '@types/bun',
@@ -42,7 +39,7 @@ const supportDeps = catalog.compose({
   },
   peerDependencies: {
     workspace: [utilsPkg, tuiReactPkg],
-    external: catalog.pick('@effect/cli'),
+    external: catalog.pick('effect'),
   },
   mode: 'install',
 })

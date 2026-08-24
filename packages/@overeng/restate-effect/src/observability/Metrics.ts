@@ -286,7 +286,7 @@ export const annotateSpanFrom = <A, I>({
   value,
   pick,
 }: {
-  schema: Schema.Schema<A, I>
+  schema: Schema.Codec<A, I>
   value: A
   pick?: ReadonlyArray<keyof A & string>
 }): Effect.Effect<void> => {

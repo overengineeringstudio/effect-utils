@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { Readable } from 'node:stream'
 
-import { Cause, Effect, Exit, Stream } from 'effect'
+import { Cause, Effect, Exit, Fiber, Stream } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createTerminalInput } from '../../src/effect/TerminalInput.ts'
@@ -47,16 +47,16 @@ describe('createTerminalInput', () => {
 
               return Effect.void
             }),
-            Effect.fork,
+            Effect.forkChild,
           )
 
-          yield* Effect.yieldNow()
+          yield* Effect.yieldNow
           input.emitData(Buffer.from([0x03]))
 
-          const fiberExit = yield* fiber.await
+          const fiberExit = yield* Fiber.await(fiber)
           expect(Exit.isFailure(fiberExit)).toBe(true)
           if (Exit.isFailure(fiberExit) === true) {
-            expect(Cause.isInterruptedOnly(fiberExit.cause)).toBe(true)
+            expect(Cause.hasInterruptsOnly(fiberExit.cause)).toBe(true)
           }
         }),
       ),

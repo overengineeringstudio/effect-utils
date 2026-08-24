@@ -1,8 +1,8 @@
 import path from 'node:path'
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { Effect, Either, Fiber, Option, pipe, PubSub, Queue, Stream } from 'effect'
+import * as Cli from 'effect/unstable/cli'
+import type { PlatformError } from 'effect/PlatformError'
+import { Effect, FileSystem, Fiber, Option, pipe, PubSub, Result, Stream } from 'effect'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
@@ -66,43 +66,43 @@ const dispatchEvent = (tui: { dispatch: (action: any) => void }, event: GenieEve
 export const genieCommand = Cli.Command.make(
   'genie',
   {
-    cwd: Cli.Options.text('cwd').pipe(
-      Cli.Options.withDescription('Working directory to search for .genie.ts files'),
-      Cli.Options.withDefault('.'),
+    cwd: Cli.Flag.string('cwd').pipe(
+      Cli.Flag.withDescription('Working directory to search for .genie.ts files'),
+      Cli.Flag.withDefault('.'),
     ),
-    watch: Cli.Options.boolean('watch').pipe(
-      Cli.Options.withDescription('Watch for changes and regenerate automatically'),
-      Cli.Options.withDefault(false),
+    watch: Cli.Flag.boolean('watch').pipe(
+      Cli.Flag.withDescription('Watch for changes and regenerate automatically'),
+      Cli.Flag.withDefault(false),
     ),
-    writeable: Cli.Options.boolean('writeable').pipe(
-      Cli.Options.withDescription('Generate files as writable (default: read-only)'),
-      Cli.Options.withDefault(false),
+    writeable: Cli.Flag.boolean('writeable').pipe(
+      Cli.Flag.withDescription('Generate files as writable (default: read-only)'),
+      Cli.Flag.withDefault(false),
     ),
-    check: Cli.Options.boolean('check').pipe(
-      Cli.Options.withDescription('Check if generated files are up to date (for CI)'),
-      Cli.Options.withDefault(false),
+    check: Cli.Flag.boolean('check').pipe(
+      Cli.Flag.withDescription('Check if generated files are up to date (for CI)'),
+      Cli.Flag.withDefault(false),
     ),
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Preview changes without writing files'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Preview changes without writing files'),
+      Cli.Flag.withDefault(false),
     ),
-    deferValidation: Cli.Options.boolean('defer-validation').pipe(
-      Cli.Options.withDescription(
+    deferValidation: Cli.Flag.boolean('defer-validation').pipe(
+      Cli.Flag.withDescription(
         'Generate projections before a repair step; the caller must finish with genie --check',
       ),
-      Cli.Options.withDefault(false),
+      Cli.Flag.withDefault(false),
     ),
-    phase: Cli.Options.choice('phase', GENERATOR_PHASES).pipe(
-      Cli.Options.withDescription(
+    phase: Cli.Flag.choice('phase', GENERATOR_PHASES).pipe(
+      Cli.Flag.withDescription(
         'Only run generators declaring this phase (bootstrap runs before install; default: all phases)',
       ),
-      Cli.Options.optional,
+      Cli.Flag.optional,
     ),
-    oxfmtConfig: Cli.Options.file('oxfmt-config').pipe(
-      Cli.Options.withDescription(
+    oxfmtConfig: Cli.Flag.file('oxfmt-config').pipe(
+      Cli.Flag.withDescription(
         `Path to oxfmt config file (default: ${OXFMT_CONFIG_CONVENTION_PATHS.join(' or ')})`,
       ),
-      Cli.Options.optional,
+      Cli.Flag.optional,
     ),
     output: outputOption,
   },
@@ -143,7 +143,7 @@ export const genieCommand = Cli.Command.make(
               // Create event bus and subscribe for TUI progress
               const bus = yield* PubSub.unbounded<GenieEvent>()
               const sub = yield* PubSub.subscribe(bus)
-              const consumerFiber = yield* Queue.take(sub).pipe(
+              const consumerFiber = yield* PubSub.take(sub).pipe(
                 Effect.tap((event) => Effect.sync(() => dispatchEvent(tui, event))),
                 Effect.forever,
                 Effect.forkScoped,
@@ -177,7 +177,7 @@ export const genieCommand = Cli.Command.make(
                   yield* checkAll({ cwd: resolvedCwd, oxfmtConfigPath, phase: selectedPhase }).pipe(
                     Effect.provideService(GenieEventBus, bus),
                     Effect.catchTag('GenieGenerationFailedError', (error) =>
-                      syncStateFromGenerationError(error).pipe(Effect.zipRight(Effect.fail(error))),
+                      syncStateFromGenerationError(error).pipe(Effect.andThen(Effect.fail(error))),
                     ),
                   )
                 } else {
@@ -191,7 +191,7 @@ export const genieCommand = Cli.Command.make(
                   }).pipe(
                     Effect.provideService(GenieEventBus, bus),
                     Effect.catchTag('GenieGenerationFailedError', (error) =>
-                      syncStateFromGenerationError(error).pipe(Effect.zipRight(Effect.fail(error))),
+                      syncStateFromGenerationError(error).pipe(Effect.andThen(Effect.fail(error))),
                     ),
                   )
                 }
@@ -232,15 +232,15 @@ export const genieCommand = Cli.Command.make(
                           cwd: resolvedCwd,
                           readOnly,
                           oxfmtConfigPath,
-                        }).pipe(Effect.either)
+                        }).pipe(Effect.result)
 
-                        if (Either.isRight(result)) {
+                        if (result._tag === 'Success') {
                           const message =
-                            result.right._tag === 'updated' ? result.right.diffSummary : undefined
+                            result.success._tag === 'updated' ? result.success.diffSummary : undefined
                           tui.dispatch({
                             _tag: 'FileCompleted',
                             path: genieFilePath,
-                            status: mapResultToStatus(result.right),
+                            status: mapResultToStatus(result.success),
                             message,
                           })
                         } else {
@@ -248,7 +248,7 @@ export const genieCommand = Cli.Command.make(
                             _tag: 'FileCompleted',
                             path: genieFilePath,
                             status: 'error',
-                            message: result.left.message,
+                            message: result.failure.message,
                           })
                         }
 
@@ -263,15 +263,15 @@ export const genieCommand = Cli.Command.make(
                           }
                         }
 
-                        const watchSummary: GenieSummary = Either.isRight(result)
+                        const watchSummary: GenieSummary = result._tag === 'Success'
                           ? {
-                              created: result.right._tag === 'created' ? 1 : 0,
-                              updated: result.right._tag === 'updated' ? 1 : 0,
+                              created: result.success._tag === 'created' ? 1 : 0,
+                              updated: result.success._tag === 'updated' ? 1 : 0,
                               unchanged:
                                 newGenieFiles.length -
                                 1 +
-                                (result.right._tag === 'unchanged' ? 1 : 0),
-                              skipped: result.right._tag === 'skipped' ? 1 : 0,
+                                (result.success._tag === 'unchanged' ? 1 : 0),
+                              skipped: result.success._tag === 'skipped' ? 1 : 0,
                               failed: 0,
                             }
                           : {
@@ -292,7 +292,7 @@ export const genieCommand = Cli.Command.make(
                 Effect.ensuring(
                   Effect.gen(function* () {
                     const _ = yield* Fiber.interrupt(consumerFiber)
-                    const pendingEvents = yield* Queue.takeAll(sub)
+                    const pendingEvents = yield* PubSub.takeAll(sub)
                     for (const event of pendingEvents) {
                       yield* Effect.sync(() => dispatchEvent(tui, event))
                     }

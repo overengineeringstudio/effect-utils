@@ -9,7 +9,7 @@ import { findStory } from '../src/StoryModule.ts'
 import { renderStory } from '../src/StoryRenderer.ts'
 
 /** Permissive JSON decode for asserting render output shape. */
-const parseJson = Schema.decodeSync(Schema.parseJson(Schema.Unknown))
+const parseJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown))
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
 const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
@@ -17,7 +17,7 @@ const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
 /* Story discovery is slow on CI (glob + sequential imports due to Bun TDZ workaround
    can take >5s). Provide it as a layer so it runs once in beforeAll — independent of
    per-test timeouts — and is shared across all tests via dependency injection. */
-class TestStories extends Context.Tag('TestStories')<TestStories, DiscoverStoriesResult>() {
+class TestStories extends Context.Service<TestStories, DiscoverStoriesResult>()('TestStories') {
   static readonly layer = Layer.effect(
     TestStories,
     discoverStories({ packageDirs: [MEGAREPO_DIR] }),

@@ -3,14 +3,14 @@ import {
   DateTime,
   Duration,
   Effect,
-  Either,
   Exit,
   Metric,
-  MetricBoundaries,
-  Option,
-  ParseResult,
   Redacted,
+  Result,
   Schema,
+  SchemaGetter,
+  SchemaIssue,
+  SchemaParser,
   Stream,
 } from 'effect'
 import * as AST from 'effect/SchemaAST'
@@ -21,54 +21,60 @@ export * from './otel-scrape/profile-link.ts'
 type OtelPrimitive = string | number | boolean
 
 /** Branded OTel attribute key: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the canonical key shape shared by resource and span attributes. */
-export const OtelAttributeKey = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
-  Schema.pattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
+export const OtelAttributeKey = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isMaxLength(255)),
+  Schema.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/)),
   Schema.brand('OtelAttributeKey'),
-  Schema.annotations({ identifier: 'Otel.AttributeKey' }),
+  Schema.annotate({ identifier: 'Otel.AttributeKey' }),
 )
 export type OtelAttributeKey = typeof OtelAttributeKey.Type
 
 /** Branded span name: any printable ASCII (`[ -~]`, so spaces/punctuation allowed unlike keys), ≤255 chars. */
-export const OtelSpanName = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
-  Schema.pattern(/^[ -~]+$/),
+export const OtelSpanName = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isMaxLength(255)),
+  Schema.check(Schema.isPattern(/^[ -~]+$/)),
   Schema.brand('OtelSpanName'),
-  Schema.annotations({ identifier: 'Otel.SpanName' }),
+  Schema.annotate({ identifier: 'Otel.SpanName' }),
 )
 export type OtelSpanName = typeof OtelSpanName.Type
 
 /** Branded metric name: Prometheus-style, may lead with `_` or `:` (not just a letter), ≤255 chars. */
-export const OtelMetricName = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
-  Schema.pattern(/^[A-Za-z_:][A-Za-z0-9_.:-]*$/),
+export const OtelMetricName = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isMaxLength(255)),
+  Schema.check(Schema.isPattern(/^[A-Za-z_:][A-Za-z0-9_.:-]*$/)),
   Schema.brand('OtelMetricName'),
-  Schema.annotations({ identifier: 'Otel.MetricName' }),
+  Schema.annotate({ identifier: 'Otel.MetricName' }),
 )
 export type OtelMetricName = typeof OtelMetricName.Type
 
 /** Branded `service.name` resource value: letter-led, `[A-Za-z0-9_.:-]`, ≤255 chars — the telemetry service identity. */
-export const OtelServiceName = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
-  Schema.pattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/),
+export const OtelServiceName = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isMaxLength(255)),
+  Schema.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/)),
   Schema.brand('OtelServiceName'),
-  Schema.annotations({ identifier: 'Otel.ServiceName' }),
+  Schema.annotate({ identifier: 'Otel.ServiceName' }),
 )
 export type OtelServiceName = typeof OtelServiceName.Type
 
 /** Resource attribute key `service.namespace` — a logical grouping for related services. */
-export const OtelServiceNamespace = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
+export const OtelServiceNamespace = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isMaxLength(255)),
   Schema.brand('OtelServiceNamespace'),
-  Schema.annotations({ identifier: 'Otel.ServiceNamespace' }),
+  Schema.annotate({ identifier: 'Otel.ServiceNamespace' }),
 )
 export type OtelServiceNamespace = typeof OtelServiceNamespace.Type
 
 /** Resource attribute key `service.version` — the build/release version of the service. */
-export const OtelServiceVersion = Schema.NonEmptyTrimmedString.pipe(
-  Schema.maxLength(255),
+export const OtelServiceVersion = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isMaxLength(255)),
   Schema.brand('OtelServiceVersion'),
-  Schema.annotations({ identifier: 'Otel.ServiceVersion' }),
+  Schema.annotate({ identifier: 'Otel.ServiceVersion' }),
 )
 export type OtelServiceVersion = typeof OtelServiceVersion.Type
 
@@ -82,7 +88,7 @@ export const ServiceIdentity = Schema.Struct({
   name: OtelServiceName,
   namespace: OtelServiceNamespace,
   version: OtelServiceVersion,
-}).annotations({ identifier: 'Otel.ServiceIdentity' })
+}).annotate({ identifier: 'Otel.ServiceIdentity' })
 export type ServiceIdentity = typeof ServiceIdentity.Type
 
 /**
@@ -97,9 +103,9 @@ export type ServiceIdentity = typeof ServiceIdentity.Type
  * naming law (shared with the rest of the contract) still applies.
  */
 export const ServiceNameParts = Schema.Struct({
-  project: Schema.NonEmptyTrimmedString,
-  role: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'Otel.ServiceNameParts' })
+  project: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
+  role: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
+}).annotate({ identifier: 'Otel.ServiceNameParts' })
 export type ServiceNameParts = typeof ServiceNameParts.Type
 
 /**
@@ -108,26 +114,23 @@ export type ServiceNameParts = typeof ServiceNameParts.Type
  * the joined string decodes through the {@link OtelServiceName} brand (the same
  * naming law as every other contract name). A malformed part is a decode error at
  * the composition root, never a backend surprise. Decode it like any other brand:
- * `Schema.decode(ServiceNameFromParts)({ project, role })`.
+ * `Schema.decodeEffect(ServiceNameFromParts)({ project, role })`.
  */
-export const ServiceNameFromParts = Schema.transformOrFail(ServiceNameParts, OtelServiceName, {
-  strict: true,
-  decode: (parts, _options, ast) =>
-    ParseResult.decodeUnknown(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
-      Effect.mapError(
-        (issue) =>
-          new ParseResult.Type(ast, parts, ParseResult.TreeFormatter.formatIssueSync(issue)),
+export const ServiceNameFromParts = ServiceNameParts.pipe(
+  Schema.decodeTo(OtelServiceName, {
+    decode: SchemaGetter.transformOrFail((parts: ServiceNameParts) =>
+      SchemaParser.decodeUnknownEffect(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
+        Effect.mapError((issue) => new SchemaIssue.InvalidValue({ message: formatIssue(issue) })),
       ),
     ),
-  encode: (name, _options, ast) =>
-    ParseResult.fail(
-      new ParseResult.Forbidden(
-        ast,
-        name,
-        'A composed service name cannot be split back into parts',
-      ),
+    encode: SchemaGetter.fail(
+      () =>
+        new SchemaIssue.Forbidden({
+          message: 'A composed service name cannot be split back into parts',
+        }),
     ),
-}).annotations({ identifier: 'Otel.ServiceNameFromParts' })
+  }),
+).annotate({ identifier: 'Otel.ServiceNameFromParts' })
 
 /**
  * The SHAPE a private fleet configuration supplies to produce a
@@ -159,13 +162,13 @@ export interface FleetServiceBinding {
  */
 export const serviceIdentityFromBinding = (
   binding: FleetServiceBinding,
-): Effect.Effect<ServiceIdentity, ParseResult.ParseError> =>
+): Effect.Effect<ServiceIdentity, Schema.SchemaError> =>
   Effect.gen(function* () {
-    const name = yield* Schema.decode(ServiceNameFromParts)({
+    const name = yield* Schema.decodeEffect(ServiceNameFromParts)({
       project: binding.project,
       role: binding.role,
     })
-    return yield* Schema.decode(ServiceIdentity)({
+    return yield* Schema.decodeEffect(ServiceIdentity)({
       name,
       namespace: binding.namespace,
       version: binding.version,
@@ -214,7 +217,7 @@ export class OtelAttrEncodeError extends Schema.TaggedError<OtelAttrEncodeError>
   {
     key: Schema.String,
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -223,24 +226,24 @@ type FieldEncoder = (
 ) => Effect.Effect<OtelAttributeValue | undefined, OtelAttrEncodeError>
 
 const decodeNameSync = <A>(options: {
-  readonly schema: Schema.Schema<A, string, never>
+  readonly schema: Schema.Codec<A, string, never, never>
   readonly value: string
   readonly path: ReadonlyArray<PropertyKey>
   readonly kind: string
 }): A => {
   const decoded = decodeNameEither(options)
-  if (Either.isRight(decoded) === true) return decoded.right
-  throw decoded.left
+  if (Result.isSuccess(decoded) === true) return decoded.success
+  throw decoded.failure
 }
 
 const decodeNameEither = <A>(options: {
-  readonly schema: Schema.Schema<A, string, never>
+  readonly schema: Schema.Codec<A, string, never, never>
   readonly value: string
   readonly path: ReadonlyArray<PropertyKey>
   readonly kind: string
-}): Either.Either<A, OtelAttrPlanError> =>
-  Schema.decodeUnknownEither(options.schema)(options.value).pipe(
-    Either.mapLeft(() =>
+}): Result.Result<A, OtelAttrPlanError> =>
+  Schema.decodeUnknownResult(options.schema)(options.value).pipe(
+    Result.mapError(() =>
       unsupported({
         path: options.path,
         message: `Invalid OTEL ${options.kind}: ${options.value}`,
@@ -249,7 +252,7 @@ const decodeNameEither = <A>(options: {
   )
 
 const decodeAttributeKey = (key: string): Effect.Effect<string, OtelAttrPlanError> =>
-  effectFromEither(
+  effectFromResult(
     decodeNameEither({
       schema: OtelAttributeKey,
       value: key,
@@ -294,7 +297,7 @@ interface FieldPlan {
 }
 
 /** Compiled schema-backed OTEL attribute contract. */
-export interface OtelAttrs<S extends Schema.Schema.AnyNoContext> {
+export interface OtelAttrs<S extends Schema.Codec<any>> {
   readonly schema: S
   readonly keys: ReadonlySet<string>
   readonly fields: ReadonlyArray<OtelAttrFieldMetadata>
@@ -307,7 +310,7 @@ export interface OtelAttrs<S extends Schema.Schema.AnyNoContext> {
 }
 
 /** Named span contract coupled to a compiled attribute schema. */
-export interface OtelSpanDefinition<S extends Schema.Schema.AnyNoContext> {
+export interface OtelSpanDefinition<S extends Schema.Codec<any>> {
   readonly name: string
   readonly attributes: OtelAttrs<S>
   readonly root?: boolean
@@ -335,7 +338,7 @@ export interface OtelOperationMetadata {
 }
 
 /** Named operation contract: the normal schema-first API for product code. */
-export interface OtelOperationDefinition<S extends Schema.Schema.AnyNoContext> {
+export interface OtelOperationDefinition<S extends Schema.Codec<any>> {
   readonly name: string
   readonly attributes: OtelAttrs<S>
   readonly root?: boolean
@@ -383,7 +386,7 @@ export interface OtelMetricLabelsMetadata {
 }
 
 /** Schema-backed metric labels. Metric labels intentionally use stricter cardinality policy than spans. */
-export interface OtelMetricLabels<S extends Schema.Schema.AnyNoContext> {
+export interface OtelMetricLabels<S extends Schema.Codec<any>> {
   readonly schema: S
   readonly attributes: OtelAttrs<S>
   readonly metadata: OtelMetricLabelsMetadata
@@ -410,7 +413,7 @@ export interface OtelMetricMetadata {
 }
 
 /** Runtime-light metric contract. It owns names, labels, cardinality, and metadata, not emission. */
-export interface OtelMetricDefinition<S extends Schema.Schema.AnyNoContext> {
+export interface OtelMetricDefinition<S extends Schema.Codec<any>> {
   readonly instrument: OtelMetricInstrumentKind
   readonly name: string
   readonly description?: string
@@ -432,7 +435,7 @@ export interface OtelMetricDefinition<S extends Schema.Schema.AnyNoContext> {
 
 /** Metric definition narrowed to a histogram, adding optional explicit bucket `boundaries`. */
 export interface OtelHistogramDefinition<
-  S extends Schema.Schema.AnyNoContext,
+  S extends Schema.Codec<any>,
 > extends OtelMetricDefinition<S> {
   readonly instrument: 'histogram'
   readonly boundaries?: ReadonlyArray<number>
@@ -440,20 +443,20 @@ export interface OtelHistogramDefinition<
 
 /** Metric definition narrowed to a gauge (instantaneous last-set value, no boundaries). */
 export interface OtelGaugeDefinition<
-  S extends Schema.Schema.AnyNoContext,
+  S extends Schema.Codec<any>,
 > extends OtelMetricDefinition<S> {
   readonly instrument: 'gauge'
 }
 
 /** Alias for the underlying Effect counter runtime that a counter contract drives. */
-export type OtelEffectCounterMetric = Metric.Metric.Counter<number>
+export type OtelEffectCounterMetric = Metric.Counter<number>
 /** Alias for the underlying Effect histogram runtime that a histogram contract drives. */
-export type OtelEffectHistogramMetric = Metric.Metric.Histogram<number>
+export type OtelEffectHistogramMetric = Metric.Histogram<number>
 /** Alias for the underlying Effect gauge runtime that a gauge contract drives. */
-export type OtelEffectGaugeMetric = Metric.Metric.Gauge<number>
+export type OtelEffectGaugeMetric = Metric.Gauge<number>
 
 /** Effect Metric runtime bridge for a schema-first counter contract. */
-export interface OtelEffectCounter<S extends Schema.Schema.AnyNoContext> {
+export interface OtelEffectCounter<S extends Schema.Codec<any>> {
   readonly definition: OtelMetricDefinition<S>
   readonly metric: OtelEffectCounterMetric
   readonly increment: (labels: Schema.Schema.Type<S>) => Effect.Effect<void, OtelAttrEncodeError>
@@ -469,7 +472,7 @@ export interface OtelEffectCounter<S extends Schema.Schema.AnyNoContext> {
 }
 
 /** Effect Metric runtime bridge for a schema-first histogram contract. */
-export interface OtelEffectHistogram<S extends Schema.Schema.AnyNoContext> {
+export interface OtelEffectHistogram<S extends Schema.Codec<any>> {
   readonly definition: OtelHistogramDefinition<S>
   readonly metric: OtelEffectHistogramMetric
   readonly record: (options: {
@@ -483,7 +486,7 @@ export interface OtelEffectHistogram<S extends Schema.Schema.AnyNoContext> {
 }
 
 /** Effect Metric runtime bridge for a schema-first gauge contract. */
-export interface OtelEffectGauge<S extends Schema.Schema.AnyNoContext> {
+export interface OtelEffectGauge<S extends Schema.Codec<any>> {
   readonly definition: OtelGaugeDefinition<S>
   readonly metric: OtelEffectGaugeMetric
   readonly set: (options: {
@@ -496,33 +499,33 @@ export interface OtelEffectGauge<S extends Schema.Schema.AnyNoContext> {
   }) => Effect.Effect<void>
 }
 
-const getAttrMetadata = (annotated: AST.Annotated): OtelAttrMetadata | undefined =>
-  Option.getOrUndefined(AST.getAnnotation<OtelAttrMetadata>(annotated, OtelAttrAnnotationId))
+const getAttrMetadata = (
+  annotated: { readonly annotations?: object | undefined },
+): OtelAttrMetadata | undefined =>
+  (annotated.annotations as Record<symbol, unknown> | undefined)?.[
+    OtelAttrAnnotationId
+  ] as OtelAttrMetadata | undefined
 
 const getAttrMetadataDeep = (ast: AST.AST): OtelAttrMetadata | undefined => {
   const metadata = getAttrMetadata(ast)
   if (metadata !== undefined) return metadata
   switch (ast._tag) {
-    case 'Refinement':
-      return getAttrMetadataDeep(ast.from)
-    case 'Transformation':
-      return getAttrMetadataDeep(ast.to) ?? getAttrMetadataDeep(ast.from)
     case 'Union':
       return ast.types
         .filter((member) => isUndefinedAst(member) === false)
         .map(getAttrMetadataDeep)
         .find((memberMetadata) => memberMetadata !== undefined)
     default:
-      return undefined
+      return ast.encoding !== undefined && ast.encoding.length > 0
+        ? getAttrMetadataDeep(ast.encoding[0].to)
+        : undefined
   }
 }
 
 const withAttrMetadata =
   (metadata: OtelAttrMetadata) =>
-  <S extends Schema.Annotable.All>(schema: S): Schema.Annotable.Self<S> =>
-    Schema.make<Schema.Schema.Type<S>, Schema.Schema.Encoded<S>, Schema.Schema.Context<S>>(
-      addAnnotation({ ast: schema.ast, metadata }),
-    ) as Schema.Annotable.Self<S>
+  <S extends Schema.Codec<any>>(schema: S): S =>
+    Schema.make<S>(addAnnotation({ ast: schema.ast, metadata }))
 
 const addAnnotation = ({
   ast,
@@ -562,14 +565,14 @@ export const OtelAttr = {
   }: {
     key: string
     metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
-  }): Schema.Schema<string> => Schema.String.pipe(OtelAttr.key({ ...metadata, key })),
+  }): Schema.Codec<string, string, never, never> => Schema.String.pipe(OtelAttr.key({ ...metadata, key })),
   boolean: ({
     key,
     metadata = {},
   }: {
     key: string
     metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
-  }): Schema.Schema<boolean> =>
+  }): Schema.Codec<boolean, boolean, never, never> =>
     Schema.Boolean.pipe(OtelAttr.key({ cardinality: 'low', ...metadata, key })),
   number: ({
     key,
@@ -577,18 +580,18 @@ export const OtelAttr = {
   }: {
     key: string
     metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
-  }): Schema.Schema<number> => Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
-  literal: <Literals extends readonly [AST.LiteralValue, ...Array<AST.LiteralValue>]>(
+  }): Schema.Codec<number, number, never, never> => Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
+  literal: <const Literals extends readonly [AST.LiteralValue, ...Array<AST.LiteralValue>]>(
     key: string,
     ...values: Literals
-  ): Schema.Literal<Literals> =>
-    Schema.Literal(...values).pipe(
+  ): Schema.Literals<Literals> =>
+    Schema.Literals(values).pipe(
       OtelAttr.key({ key, cardinality: values.length <= 2 ? 'low' : 'bounded' }),
-    ) as Schema.Literal<Literals>,
-  optional: <S extends Schema.Schema.AnyNoContext>(schema: S) => Schema.optional(schema),
-  redacted: (key: string): Schema.Schema<Redacted.Redacted<string>, string, never> =>
+    ) as Schema.Literals<Literals>,
+  optional: <S extends Schema.Codec<any>>(schema: S) => Schema.optional(schema),
+  redacted: (key: string) =>
     Schema.Redacted(Schema.String).pipe(OtelAttr.key({ key, encode: 'redacted' })),
-  json: <S extends Schema.Schema.AnyNoContext>({
+  json: <S extends Schema.Codec<any>>({
     key,
     schema,
     metadata = {},
@@ -597,7 +600,7 @@ export const OtelAttr = {
     schema: S
     metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
   }): S => schema.pipe(OtelAttr.key({ ...metadata, key, encode: 'json' })) as S,
-  drop: <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
+  drop: <S extends Schema.Codec<any>>(schema: S): S =>
     schema.pipe(OtelAttr.encode('drop')) as S,
 } as const
 
@@ -645,7 +648,7 @@ const primitiveFromUnknown = ({
   readonly value: unknown
 }) => {
   if (typeof value === 'number' && isFiniteOtelNumber(value) === false) {
-    return Either.left(
+    return Result.fail(
       new OtelAttrEncodeError({
         key,
         message: `OTEL number attribute ${key} must be finite`,
@@ -653,25 +656,23 @@ const primitiveFromUnknown = ({
     )
   }
   return isPrimitive(value) === true
-    ? Either.right(value)
-    : Either.left(primitiveEncodeError({ key, value }))
+    ? Result.succeed(value)
+    : Result.fail(primitiveEncodeError({ key, value }))
 }
 
-const effectFromEither = <A, E>(either: Either.Either<A, E>): Effect.Effect<A, E> =>
-  Either.isRight(either) === true ? Effect.succeed(either.right) : Effect.fail(either.left)
+const effectFromResult = <A, E>(result: Result.Result<A, E>): Effect.Effect<A, E> =>
+  Result.isSuccess(result) === true ? Effect.succeed(result.success) : Effect.fail(result.failure)
 
 const runSyncOrThrow = <A, E>(effect: Effect.Effect<A, E>): A =>
   Exit.match(Effect.runSyncExit(effect), {
     onSuccess: (value) => value,
     onFailure: (cause) => {
-      const failure = Option.getOrUndefined(Cause.failureOption(cause))
-      if (failure !== undefined) throw failure
       throw Cause.squash(cause)
     },
   })
 
 /** Codec whose encode side mirrors `JSON.stringify` for arbitrary values. */
-const jsonStringFromUnknown = Schema.parseJson(Schema.Unknown)
+const jsonStringFromUnknown = Schema.fromJsonString(Schema.Unknown)
 
 const encodeUnknown = ({
   key,
@@ -679,47 +680,47 @@ const encodeUnknown = ({
   value,
 }: {
   readonly key: string
-  readonly schema: Schema.Schema<unknown, unknown, never>
+  readonly schema: Schema.Codec<unknown, unknown, never, never>
   readonly value: unknown
 }) =>
-  effectFromEither(Schema.encodeUnknownEither(schema)(value)).pipe(
+  effectFromResult(Schema.encodeUnknownResult(schema)(value)).pipe(
     Effect.mapError((cause) => encodeFailure({ key, cause })),
   )
 
-const astIdentifier = (ast: AST.AST): string | undefined =>
-  Option.getOrUndefined(AST.getIdentifierAnnotation(ast))
+const formatIssue = SchemaIssue.makeFormatterDefault()
 
-const typeConstructorTag = (ast: AST.AST): string | undefined =>
-  Option.getOrUndefined(AST.getTypeConstructorAnnotation(ast))?._tag
+const astIdentifier = (ast: AST.AST): string | undefined =>
+  (ast.annotations as { identifier?: string } | undefined)?.identifier
+
+const typeConstructorTag = (ast: AST.AST): string | undefined => {
+  const representation = ast.annotations?.representation as { id?: string } | undefined
+  return typeof representation?.id === 'string' ? representation.id : undefined
+}
 
 const typeConstructorTagDeep = (ast: AST.AST): string | undefined =>
   typeConstructorTag(ast) ??
-  (ast._tag === 'Transformation' ? typeConstructorTagDeep(ast.to) : undefined)
+  (ast.encoding !== undefined && ast.encoding.length > 0
+    ? typeConstructorTagDeep(ast.encoding[0].to)
+    : undefined)
 
 const typeConstructorParametersDeep = (ast: AST.AST): ReadonlyArray<AST.AST> => {
   if (ast._tag === 'Declaration') return ast.typeParameters
-  if (ast._tag === 'Transformation') return typeConstructorParametersDeep(ast.to)
   return []
 }
 
-const unwrapRefinement = (ast: AST.AST): AST.AST =>
-  ast._tag === 'Refinement' ? unwrapRefinement(ast.from) : ast
-
 const isUndefinedAst = (ast: AST.AST): boolean =>
-  ast._tag === 'UndefinedKeyword' ||
-  (ast._tag === 'Union' && ast.types.some((member) => isUndefinedAst(member)))
+  ast._tag === 'Undefined' || (ast._tag === 'Union' && ast.types.some((member) => isUndefinedAst(member)))
 
 const isPrimitiveAst = (ast: AST.AST): boolean => {
-  const unwrapped = unwrapRefinement(ast)
-  switch (unwrapped._tag) {
-    case 'StringKeyword':
-    case 'NumberKeyword':
-    case 'BooleanKeyword':
+  switch (ast._tag) {
+    case 'String':
+    case 'Number':
+    case 'Boolean':
       return true
     case 'Literal':
-      return isPrimitive(unwrapped.literal)
+      return isPrimitive(ast.literal)
     case 'Union':
-      return unwrapped.types
+      return ast.types
         .filter((member) => isUndefinedAst(member) === false)
         .every(isPrimitiveAst)
     case 'TemplateLiteral':
@@ -732,16 +733,15 @@ const isPrimitiveAst = (ast: AST.AST): boolean => {
 const inferCardinality = (
   ast: AST.AST,
 ): NonNullable<OtelAttrMetadata['cardinality']> | undefined => {
-  const unwrapped = unwrapRefinement(ast)
-  switch (unwrapped._tag) {
-    case 'BooleanKeyword':
+  switch (ast._tag) {
+    case 'Boolean':
       return 'low'
     case 'Literal':
-      return typeof unwrapped.literal === 'boolean' ? 'low' : 'bounded'
+      return typeof ast.literal === 'boolean' ? 'low' : 'bounded'
     case 'Union': {
-      const members = unwrapped.types.filter((member) => isUndefinedAst(member) === false)
+      const members = ast.types.filter((member) => isUndefinedAst(member) === false)
       if (members.length === 0) return undefined
-      if (members.every((member) => unwrapRefinement(member)._tag === 'Literal') === false) {
+      if (members.every((member) => member._tag === 'Literal') === false) {
         return undefined
       }
       return members.length <= 2 ? 'low' : 'bounded'
@@ -751,10 +751,9 @@ const inferCardinality = (
   }
 }
 
-const rootTypeLiteral = (schema: Schema.Schema.AnyNoContext) => {
+const rootTypeLiteral = (schema: Schema.Codec<any>) => {
   const ast = schema.ast
-  if (ast._tag === 'TypeLiteral') return ast
-  if (ast._tag === 'Transformation' && ast.to._tag === 'TypeLiteral') return ast.to
+  if (ast._tag === 'Objects') return ast
   return undefined
 }
 
@@ -765,16 +764,16 @@ const compileAutoEncoder = ({
 }: {
   readonly attrKey: string
   readonly path: ReadonlyArray<PropertyKey>
-  readonly schema: Schema.Schema<unknown, unknown, never>
+  readonly schema: Schema.Codec<unknown, unknown, never, never>
 }): Effect.Effect<FieldEncoder, OtelAttrPlanError> => {
   const ast = schema.ast
   const tag = typeConstructorTagDeep(ast)
-  if (tag === 'effect/Redacted') {
+  if (tag === 'effect/schema/Redacted') {
     return Effect.fail(
       unsupported({ path, message: 'Redacted attributes require OtelAttr.encode("redacted")' }),
     )
   }
-  if (tag === 'effect/Option') {
+  if (tag === 'effect/schema/Option') {
     const valueAst = typeConstructorParametersDeep(ast)[0]
     if (valueAst === undefined || isPrimitiveAst(valueAst) === false) {
       return Effect.fail(
@@ -785,12 +784,13 @@ const compileAutoEncoder = ({
       Effect.gen(function* () {
         const encoded = yield* encodeUnknown({ key: attrKey, schema, value })
         if (encoded === null || encoded === undefined) return undefined
-        return yield* effectFromEither(primitiveFromUnknown({ key: attrKey, value: encoded }))
+        return yield* effectFromResult(primitiveFromUnknown({ key: attrKey, value: encoded }))
       }),
     )
   }
-  if (tag === 'effect/Duration') {
-    if (astIdentifier(ast) !== 'DurationFromMillis') {
+  if (tag === 'effect/schema/Duration') {
+    const encodesToNumber = ast.encoding?.[0]?.to._tag === 'Number'
+    if (encodesToNumber !== true) {
       return Effect.fail(
         unsupported({
           path,
@@ -799,18 +799,18 @@ const compileAutoEncoder = ({
       )
     }
     return Effect.succeed((value) =>
-      Effect.succeed(Duration.toMillis(value as Duration.DurationInput)),
+      Effect.succeed(Duration.toMillis(value as Duration.Input)),
     )
   }
-  if (tag === 'effect/DateTime.Utc') {
+  if (tag === 'effect/schema/DateTimeUtc') {
     return Effect.succeed((value) => Effect.succeed(DateTime.formatIso(value as DateTime.Utc)))
   }
-  if (ast._tag === 'TypeLiteral') {
+  if (ast._tag === 'Objects') {
     return Effect.fail(
       unsupported({ path, message: 'Nested Struct attributes require an explicit encoder' }),
     )
   }
-  if (ast._tag === 'TupleType') {
+  if (ast._tag === 'Arrays') {
     return Effect.fail(
       unsupported({
         path,
@@ -818,7 +818,7 @@ const compileAutoEncoder = ({
       }),
     )
   }
-  if (isPrimitiveAst(ast) === false && ast._tag !== 'Transformation') {
+  if (isPrimitiveAst(ast) === false && ast.encoding === undefined) {
     return Effect.fail(
       unsupported({ path, message: `Unsupported OTEL attribute schema: ${String(ast)}` }),
     )
@@ -830,7 +830,7 @@ const compileAutoEncoder = ({
         encoded === null || encoded === undefined
           ? // @effect-diagnostics-next-line effectSucceedWithVoid:off -- FieldEncoder success channel is `OtelAttributeValue | undefined`; `undefined` is the meaningful "drop field" value, not `void`
             Effect.succeed(undefined)
-          : effectFromEither(primitiveFromUnknown({ key: attrKey, value: encoded })),
+          : effectFromResult(primitiveFromUnknown({ key: attrKey, value: encoded })),
       ),
     ),
   )
@@ -843,7 +843,7 @@ const compilePolicyEncoder = ({
 }: {
   readonly attrKey: string
   readonly policy: Exclude<OtelAttrEncodePolicy, 'auto'>
-  readonly schema: Schema.Schema<unknown, unknown, never>
+  readonly schema: Schema.Codec<unknown, unknown, never, never>
 }): FieldEncoder => {
   switch (policy) {
     case 'drop':
@@ -858,10 +858,10 @@ const compilePolicyEncoder = ({
       return (value) =>
         encodeUnknown({ key: attrKey, schema, value }).pipe(
           Effect.flatMap((encoded) =>
-            // `Schema.parseJson(Schema.Unknown)` encodes via `JSON.stringify`, but
+            // `Schema.fromJsonString(Schema.Unknown)` encodes via `JSON.stringify`, but
             // fails with a `ParseError` exactly when the result would be `undefined`
             // (functions, bare `undefined`, ...) instead of returning `undefined`.
-            Schema.encode(jsonStringFromUnknown)(encoded).pipe(
+            Schema.encodeEffect(jsonStringFromUnknown)(encoded).pipe(
               Effect.mapError((cause) => encodeFailure({ key: attrKey, cause })),
             ),
           ),
@@ -895,13 +895,13 @@ const compilePolicyEncoder = ({
 const compileField = (
   field: AST.PropertySignature,
 ): Effect.Effect<FieldPlan, OtelAttrPlanError> => {
-  const metadata = getAttrMetadataDeep(field.type) ?? getAttrMetadata(field)
-  const fieldSchema = Schema.make<unknown, unknown, never>(field.type)
+  const metadata = getAttrMetadataDeep(field.type) ?? getAttrMetadata({ annotations: field.type.context?.annotations })
+  const fieldSchema = Schema.make<Schema.Codec<unknown, unknown, never, never>>(field.type)
   return Effect.gen(function* () {
     const attrKey = yield* decodeAttributeKey(metadata?.key ?? String(field.name))
     const tag = typeConstructorTagDeep(field.type)
     if (
-      tag === 'effect/Redacted' &&
+      tag === 'effect/schema/Redacted' &&
       metadata?.encode !== undefined &&
       metadata.encode !== 'auto' &&
       metadata.encode !== 'redacted' &&
@@ -923,7 +923,7 @@ const compileField = (
       sourceKey: field.name,
       attrKey,
       ...(metadata?.role === undefined ? {} : { role: metadata.role }),
-      optional: field.isOptional || isUndefinedAst(field.type),
+      optional: field.type.context?.isOptional === true || isUndefinedAst(field.type),
       encodePolicy,
       ...(cardinality === undefined ? {} : { cardinality }),
       ...(schemaIdentifier === undefined ? {} : { schemaIdentifier }),
@@ -945,7 +945,7 @@ const fieldMetadata = (field: FieldPlan): OtelAttrFieldMetadata => ({
 })
 
 const compilePlan = (
-  schema: Schema.Schema.AnyNoContext,
+  schema: Schema.Codec<any>,
 ): Effect.Effect<ReadonlyArray<FieldPlan>, OtelAttrPlanError> =>
   Effect.gen(function* () {
     const root = rootTypeLiteral(schema)
@@ -977,7 +977,7 @@ const compilePlan = (
 
 /** Constructors for schema-backed OTEL attribute contracts. */
 export const OtelAttrs = {
-  define<S extends Schema.Schema.AnyNoContext>(
+  define<S extends Schema.Codec<any>>(
     schema: S,
   ): Effect.Effect<OtelAttrs<S>, OtelAttrPlanError> {
     return Effect.gen(function* () {
@@ -1007,21 +1007,21 @@ export const OtelAttrs = {
       }
     })
   },
-  defineSync<S extends Schema.Schema.AnyNoContext>(schema: S): OtelAttrs<S> {
+  defineSync<S extends Schema.Codec<any>>(schema: S): OtelAttrs<S> {
     return runSyncOrThrow(OtelAttrs.define(schema))
   },
 }
 
-function withSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(options: {
+function withSpanContract<S extends Schema.Codec<any>, A, E, R>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
   readonly effect: Effect.Effect<A, E, R>
 }): Effect.Effect<A, E | OtelAttrEncodeError, R>
-function withSpanContract<S extends Schema.Schema.AnyNoContext>(options: {
+function withSpanContract<S extends Schema.Codec<any>>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
 }): <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | OtelAttrEncodeError, R>
-function withSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(options: {
+function withSpanContract<S extends Schema.Codec<any>, A, E, R>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
   readonly effect?: Effect.Effect<A, E, R>
@@ -1040,16 +1040,16 @@ function withSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(options
   return options.effect === undefined ? wrap : wrap(options.effect)
 }
 
-function unsafeWithSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(options: {
+function unsafeWithSpanContract<S extends Schema.Codec<any>, A, E, R>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
   readonly effect: Effect.Effect<A, E, R>
 }): Effect.Effect<A, E, R>
-function unsafeWithSpanContract<S extends Schema.Schema.AnyNoContext>(options: {
+function unsafeWithSpanContract<S extends Schema.Codec<any>>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
 }): <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
-function unsafeWithSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(options: {
+function unsafeWithSpanContract<S extends Schema.Codec<any>, A, E, R>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
   readonly effect?: Effect.Effect<A, E, R>
@@ -1064,16 +1064,16 @@ function unsafeWithSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(o
   return options.effect === undefined ? wrap : wrap(options.effect)
 }
 
-function withStreamSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(options: {
+function withStreamSpanContract<S extends Schema.Codec<any>, A, E, R>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
   readonly stream: Stream.Stream<A, E, R>
 }): Stream.Stream<A, E | OtelAttrEncodeError, R>
-function withStreamSpanContract<S extends Schema.Schema.AnyNoContext>(options: {
+function withStreamSpanContract<S extends Schema.Codec<any>>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
 }): <A, E, R>(stream: Stream.Stream<A, E, R>) => Stream.Stream<A, E | OtelAttrEncodeError, R>
-function withStreamSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(options: {
+function withStreamSpanContract<S extends Schema.Codec<any>, A, E, R>(options: {
   readonly span: OtelSpanDefinition<S>
   readonly attributes: Schema.Schema.Type<S>
   readonly stream?: Stream.Stream<A, E, R>
@@ -1094,7 +1094,7 @@ function withStreamSpanContract<S extends Schema.Schema.AnyNoContext, A, E, R>(o
   return options.stream === undefined ? wrap : wrap(options.stream)
 }
 
-const spanMetadata = <S extends Schema.Schema.AnyNoContext>(
+const spanMetadata = <S extends Schema.Codec<any>>(
   options: Omit<OtelSpanDefinition<S>, 'metadata'>,
 ): OtelSpanMetadata => ({
   kind: 'span',
@@ -1105,20 +1105,20 @@ const spanMetadata = <S extends Schema.Schema.AnyNoContext>(
   hasSpanLabel: options.attributes.hasSpanLabel,
 })
 
-const normalizeSpanLabel = (label: string): Either.Either<string, OtelAttrEncodeError> => {
+const normalizeSpanLabel = (label: string): Result.Result<string, OtelAttrEncodeError> => {
   const normalized = label.trim()
   if (normalized.length === 0) {
-    return Either.left(
+    return Result.fail(
       new OtelAttrEncodeError({
         key: 'span.label',
         message: 'OtelOperation label must be a non-empty string',
       }),
     )
   }
-  return Either.right(normalized)
+  return Result.succeed(normalized)
 }
 
-const operationMetadata = <S extends Schema.Schema.AnyNoContext>(options: {
+const operationMetadata = <S extends Schema.Codec<any>>(options: {
   readonly name: string
   readonly root?: boolean
   readonly attributes: OtelAttrs<S>
@@ -1131,7 +1131,7 @@ const operationMetadata = <S extends Schema.Schema.AnyNoContext>(options: {
   derivesSpanLabel: true,
 })
 
-const metricLabelsMetadata = <S extends Schema.Schema.AnyNoContext>(
+const metricLabelsMetadata = <S extends Schema.Codec<any>>(
   attributes: OtelAttrs<S>,
 ): OtelMetricLabelsMetadata => ({
   kind: 'metric.labels',
@@ -1151,7 +1151,7 @@ const invalidMetricLabel = ({
     message,
   })
 
-const assertMetricLabels = <S extends Schema.Schema.AnyNoContext>(
+const assertMetricLabels = <S extends Schema.Codec<any>>(
   attributes: OtelAttrs<S>,
 ): OtelMetricLabels<S> => {
   for (const field of attributes.fields) {
@@ -1185,7 +1185,7 @@ const assertMetricLabels = <S extends Schema.Schema.AnyNoContext>(
   }
 }
 
-const metricMetadata = <S extends Schema.Schema.AnyNoContext>(options: {
+const metricMetadata = <S extends Schema.Codec<any>>(options: {
   readonly instrument: OtelMetricInstrumentKind
   readonly name: string
   readonly description?: string
@@ -1226,18 +1226,18 @@ const validateHistogramBoundaries = (
   return boundaries
 }
 
-const encodeOperationAttributes = <S extends Schema.Schema.AnyNoContext>(options: {
+const encodeOperationAttributes = <S extends Schema.Codec<any>>(options: {
   readonly attributes: OtelAttrs<S>
   readonly label: (value: Schema.Schema.Type<S>) => string
   readonly value: Schema.Schema.Type<S>
 }) =>
   Effect.gen(function* () {
     const attributes = yield* options.attributes.encode(options.value)
-    const label = yield* effectFromEither(normalizeSpanLabel(options.label(options.value)))
+    const label = yield* effectFromResult(normalizeSpanLabel(options.label(options.value)))
     return { ...attributes, 'span.label': label }
   })
 
-const isEffectOperationCall = <S extends Schema.Schema.AnyNoContext, A, E, R>(
+const isEffectOperationCall = <S extends Schema.Codec<any>, A, E, R>(
   call:
     | {
         readonly attributes: Schema.Schema.Type<S>
@@ -1249,7 +1249,7 @@ const isEffectOperationCall = <S extends Schema.Schema.AnyNoContext, A, E, R>(
   readonly effect: Effect.Effect<A, E, R>
 } => typeof call === 'object' && call !== null && 'attributes' in call && 'effect' in call
 
-const isStreamOperationCall = <S extends Schema.Schema.AnyNoContext, A, E, R>(
+const isStreamOperationCall = <S extends Schema.Codec<any>, A, E, R>(
   call:
     | {
         readonly attributes: Schema.Schema.Type<S>
@@ -1261,19 +1261,19 @@ const isStreamOperationCall = <S extends Schema.Schema.AnyNoContext, A, E, R>(
   readonly stream: Stream.Stream<A, E, R>
 } => typeof call === 'object' && call !== null && 'attributes' in call && 'stream' in call
 
-function defineOperation<S extends Schema.Schema.AnyNoContext>(options: {
+function defineOperation<S extends Schema.Codec<any>>(options: {
   readonly name: string
   readonly schema: S
   readonly label: (value: Schema.Schema.Type<S>) => string
   readonly root?: boolean
 }): OtelOperationDefinition<S>
-function defineOperation<S extends Schema.Schema.AnyNoContext>(options: {
+function defineOperation<S extends Schema.Codec<any>>(options: {
   readonly name: string
   readonly attributes: OtelAttrs<S>
   readonly label: (value: Schema.Schema.Type<S>) => string
   readonly root?: boolean
 }): OtelOperationDefinition<S>
-function defineOperation<S extends Schema.Schema.AnyNoContext>(
+function defineOperation<S extends Schema.Codec<any>>(
   options:
     | {
         readonly name: string
@@ -1385,15 +1385,15 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
   }
 }
 
-const defineMetricLabels = <S extends Schema.Schema.AnyNoContext>(schema: S): OtelMetricLabels<S> =>
+const defineMetricLabels = <S extends Schema.Codec<any>>(schema: S): OtelMetricLabels<S> =>
   assertMetricLabels(OtelAttrs.defineSync(schema))
 
-const metricLabelsFromInput = <S extends Schema.Schema.AnyNoContext>(
+const metricLabelsFromInput = <S extends Schema.Codec<any>>(
   labels: S | OtelMetricLabels<S>,
 ): OtelMetricLabels<S> => ('metadata' in labels ? labels : defineMetricLabels(labels))
 
 const metricTagPairs =
-  <S extends Schema.Schema.AnyNoContext>(
+  <S extends Schema.Codec<any>>(
     encodeLabels: (
       value: Schema.Schema.Type<S>,
     ) => Effect.Effect<OtelAttributeMap, OtelAttrEncodeError>,
@@ -1408,7 +1408,7 @@ const metricTagPairs =
     )
 
 const trustedMetricTagPairs =
-  <S extends Schema.Schema.AnyNoContext>(
+  <S extends Schema.Codec<any>>(
     encodeLabels: (
       value: Schema.Schema.Type<S>,
     ) => Effect.Effect<OtelAttributeMap, OtelAttrEncodeError>,
@@ -1418,7 +1418,7 @@ const trustedMetricTagPairs =
       Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
     ) as Effect.Effect<ReadonlyArray<readonly [string, string]>>
 
-const defineCounter = <S extends Schema.Schema.AnyNoContext>(options: {
+const defineCounter = <S extends Schema.Codec<any>>(options: {
   readonly name: string
   readonly description?: string
   readonly unit?: string
@@ -1448,7 +1448,7 @@ const defineCounter = <S extends Schema.Schema.AnyNoContext>(options: {
   }
 }
 
-const defineHistogram = <S extends Schema.Schema.AnyNoContext>(options: {
+const defineHistogram = <S extends Schema.Codec<any>>(options: {
   readonly name: string
   readonly description?: string
   readonly unit?: string
@@ -1482,7 +1482,7 @@ const defineHistogram = <S extends Schema.Schema.AnyNoContext>(options: {
   }
 }
 
-const defineGauge = <S extends Schema.Schema.AnyNoContext>(options: {
+const defineGauge = <S extends Schema.Codec<any>>(options: {
   readonly name: string
   readonly description?: string
   readonly unit?: string
@@ -1512,15 +1512,15 @@ const defineGauge = <S extends Schema.Schema.AnyNoContext>(options: {
   }
 }
 
-const taggedMetric = <Type, In, Out>({
+const taggedMetric = <Input, State>({
   metric,
   tags,
 }: {
-  metric: Metric.Metric<Type, In, Out>
+  metric: Metric.Metric<Input, State>
   tags: ReadonlyArray<readonly [string, string]>
-}): Metric.Metric<Type, In, Out> =>
-  tags.reduce<Metric.Metric<Type, In, Out>>(
-    (tagged, [key, value]) => Metric.tagged(tagged, key, value),
+}): Metric.Metric<Input, State> =>
+  tags.reduce<Metric.Metric<Input, State>>(
+    (tagged, [key, value]) => Metric.withAttributes(tagged, { [key]: value }),
     metric,
   )
 
@@ -1529,7 +1529,7 @@ const trustedMetricEmission = (
 ): Effect.Effect<void> =>
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
-const effectCounter = <S extends Schema.Schema.AnyNoContext>(
+const effectCounter = <S extends Schema.Codec<any>>(
   definition: OtelMetricDefinition<S>,
 ): OtelEffectCounter<S> => {
   if (definition.instrument !== 'counter') {
@@ -1545,7 +1545,7 @@ const effectCounter = <S extends Schema.Schema.AnyNoContext>(
   const incrementBy = ({ labels, amount }: { labels: Schema.Schema.Type<S>; amount: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
-      yield* Metric.incrementBy(taggedMetric({ metric, tags }), amount)
+      yield* Metric.update(taggedMetric({ metric, tags }), amount)
     })
 
   return {
@@ -1559,14 +1559,13 @@ const effectCounter = <S extends Schema.Schema.AnyNoContext>(
   }
 }
 
-const effectHistogram = <S extends Schema.Schema.AnyNoContext>(
+const effectHistogram = <S extends Schema.Codec<any>>(
   definition: OtelHistogramDefinition<S>,
 ): OtelEffectHistogram<S> => {
-  const metric = Metric.histogram(
-    definition.name,
-    MetricBoundaries.fromIterable(definition.boundaries ?? []),
-    definition.description,
-  )
+  const metric = Metric.histogram(definition.name, {
+    description: definition.description,
+    boundaries: Metric.boundariesFromIterable(definition.boundaries ?? []),
+  })
   const record = ({ labels, value }: { labels: Schema.Schema.Type<S>; value: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
@@ -1581,7 +1580,7 @@ const effectHistogram = <S extends Schema.Schema.AnyNoContext>(
   }
 }
 
-const effectGauge = <S extends Schema.Schema.AnyNoContext>(
+const effectGauge = <S extends Schema.Codec<any>>(
   definition: OtelGaugeDefinition<S>,
 ): OtelEffectGauge<S> => {
   if (definition.instrument !== 'gauge') {
@@ -1597,7 +1596,7 @@ const effectGauge = <S extends Schema.Schema.AnyNoContext>(
   const set = ({ labels, value }: { labels: Schema.Schema.Type<S>; value: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
-      yield* Metric.set(taggedMetric({ metric, tags }), value)
+      yield* Metric.update(taggedMetric({ metric, tags }), value)
     })
 
   return {
@@ -1610,7 +1609,7 @@ const effectGauge = <S extends Schema.Schema.AnyNoContext>(
 
 /** Helpers for applying schema-backed span contracts to Effects. */
 export const OtelSpan = {
-  defineSync<S extends Schema.Schema.AnyNoContext>(options: {
+  defineSync<S extends Schema.Codec<any>>(options: {
     readonly name: string
     readonly schema: S
     readonly root?: boolean
@@ -1621,7 +1620,7 @@ export const OtelSpan = {
       ...(options.root === undefined ? {} : { root: options.root }),
     })
   },
-  define<S extends Schema.Schema.AnyNoContext>(options: {
+  define<S extends Schema.Codec<any>>(options: {
     readonly name: string
     readonly attributes: OtelAttrs<S>
     readonly root?: boolean
@@ -1643,7 +1642,7 @@ export const OtelSpan = {
   with: withSpanContract,
   withStream: withStreamSpanContract,
   unsafeWith: unsafeWithSpanContract,
-  annotate<S extends Schema.Schema.AnyNoContext>(options: {
+  annotate<S extends Schema.Codec<any>>(options: {
     readonly attributes: OtelAttrs<S>
     readonly value: Schema.Schema.Type<S>
   }): Effect.Effect<void, OtelAttrEncodeError> {
@@ -1659,7 +1658,7 @@ export const OtelSpan = {
       { discard: true },
     )
   },
-  unsafeAnnotate<S extends Schema.Schema.AnyNoContext>(options: {
+  unsafeAnnotate<S extends Schema.Codec<any>>(options: {
     readonly attributes: OtelAttrs<S>
     readonly value: Schema.Schema.Type<S>
   }): Effect.Effect<void> {

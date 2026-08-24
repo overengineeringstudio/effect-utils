@@ -155,7 +155,7 @@ const unwrapAst = (ast: SchemaAST.AST): SchemaAST.AST => {
 }
 
 /** v4 annotation records are string-keyed at the type level but hold symbol keys at runtime */
-const readSymbolAnnotation = (ast: SchemaAST.AST, id: symbol): unknown => {
+const readSymbolAnnotation = ({ ast, id }: { ast: SchemaAST.AST; id: symbol }): unknown => {
   const annotations = ast.annotations as Record<symbol, unknown> | undefined
   if (annotations === undefined) return undefined
   return annotations[id]
@@ -174,14 +174,14 @@ const readAnnotation = <A>(args: {
 }): A | undefined => {
   const { schema, id, decoder } = args
   const decode = Schema.decodeUnknownOption(decoder)
-  const raw = readSymbolAnnotation(schema.ast, id)
+  const raw = readSymbolAnnotation({ ast: schema.ast, id })
   if (raw !== undefined) {
     const decoded = decode(raw)
     if (Option.isSome(decoded) === true) return decoded.value
   }
   const unwrapped = unwrapAst(schema.ast)
   if (unwrapped !== schema.ast) {
-    const innerRaw = readSymbolAnnotation(unwrapped, id)
+    const innerRaw = readSymbolAnnotation({ ast: unwrapped, id })
     if (innerRaw !== undefined) {
       const decoded = decode(innerRaw)
       if (Option.isSome(decoded) === true) return decoded.value

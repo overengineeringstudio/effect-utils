@@ -1,5 +1,7 @@
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
 import { expect } from 'vitest'
@@ -25,8 +27,9 @@ const normalizePath = (path: string): string => path.replace(/\/+$/, '')
 
 const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    const result = yield* Command.string(command)
+    const result = yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', args, { cwd })),
+    )
     return result.trim()
   })
 
@@ -65,12 +68,12 @@ describe('store-liveness', () => {
           EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile('local')),
         )
 
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         const livePaths = yield* collectWorkspaceLivePaths({ workspaceRoot: workspacePath, store })
 
         expect(livePaths).toEqual(new Set([normalizePath(mainWorktreePath)]))
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -100,7 +103,7 @@ describe('store-liveness', () => {
             },
           },
         })
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         const commitWorktreePath = store.getWorktreePath({
           source: {
             type: 'github',
@@ -140,7 +143,7 @@ describe('store-liveness', () => {
           livePaths: [normalizePath(commitWorktreePath), normalizePath(mainWorktreePath)].sort(),
         })
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -160,7 +163,7 @@ describe('store-liveness', () => {
         ])
         const mainWorktreePath = worktreePaths['github.com/test-owner/commit-live-repo#main']!
         const commit = yield* getWorktreeCommit(mainWorktreePath)
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         const commitWorktreePath = store.getWorktreePath({
           source: {
             type: 'github',
@@ -206,7 +209,7 @@ describe('store-liveness', () => {
 
         expect(liveSet.paths).toContain(normalizePath(commitWorktreePath))
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -226,7 +229,7 @@ describe('store-liveness', () => {
         ])
         const mainWorktreePath = worktreePaths['github.com/test-owner/repin-repo#main']!
         const featureWorktreePath = worktreePaths['github.com/test-owner/repin-repo#feature']!
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
 
         // Workspace initially points its member at the `main` worktree and
         // registers that as live.
@@ -285,7 +288,7 @@ describe('store-liveness', () => {
         expect(record.updatedAt).toBe(new Date(1_700_000_001_000).toISOString())
         expect(record.livePaths).toEqual([normalizePath(featureWorktreePath)])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -304,7 +307,7 @@ describe('store-liveness', () => {
           },
         ])
         const mainWorktreePath = worktreePaths['github.com/test-owner/unreadable-repo#main']!
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
 
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: { repo: 'test-owner/unreadable-repo#main' },
@@ -330,9 +333,9 @@ describe('store-liveness', () => {
         const strictResult = yield* collectWorkspaceLivePathsStrict({
           workspaceRoot: workspacePath,
           store,
-        }).pipe(Effect.either)
+        }).pipe(Effect.result)
         // Restore perms regardless of assertion outcome so scoped cleanup works.
-        yield* fs.chmod(reposDir, 0o755).pipe(Effect.catchAll(() => Effect.void))
+        yield* fs.chmod(reposDir, 0o755).pipe(Effect.catch(() => Effect.void))
         // Re-break for the reconcile-all assertion below.
         yield* fs.chmod(reposDir, 0o000)
         expect(strictResult._tag).toBe('Left')
@@ -344,7 +347,7 @@ describe('store-liveness', () => {
           reconcileAllWorkspaces: true,
           now: 1_700_000_002_000,
         })
-        yield* fs.chmod(reposDir, 0o755).pipe(Effect.catchAll(() => Effect.void))
+        yield* fs.chmod(reposDir, 0o755).pipe(Effect.catch(() => Effect.void))
 
         expect(reconciled.paths).toContain(normalizePath(mainWorktreePath))
         expect([...reconciled.uncleanReconcilePaths]).toContain(normalizePath(mainWorktreePath))
@@ -361,7 +364,7 @@ describe('store-liveness', () => {
         const record = decodeJson(content) as { updatedAt: string }
         expect(record.updatedAt).toBe(new Date(1_700_000_000_000).toISOString())
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -380,7 +383,7 @@ describe('store-liveness', () => {
           },
         ])
         const mainWorktreePath = worktreePaths['github.com/test-owner/gone-repo#main']!
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
 
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: { repo: 'test-owner/gone-repo#main' },
@@ -415,7 +418,7 @@ describe('store-liveness', () => {
         const entries = yield* fs.readDirectory(registryDir)
         expect(entries.filter((e) => e.endsWith('.json'))).toHaveLength(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

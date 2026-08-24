@@ -37,7 +37,6 @@ const runtimeDeps = catalog.compose({
     workspace: [utilsDevPkg],
     external: {
       ...catalog.pick(
-        '@effect/platform',
         '@effect/vitest',
         '@types/node',
         'effect',

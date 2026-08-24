@@ -7,7 +7,7 @@
  * Uses megarepo's design system components for consistent styling.
  */
 
-import type { Atom } from '@effect-atom/atom'
+import type { Atom } from 'effect/unstable/reactivity'
 import React from 'react'
 
 import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'

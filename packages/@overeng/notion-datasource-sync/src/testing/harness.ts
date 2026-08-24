@@ -89,7 +89,7 @@ import {
 } from '../store/store.ts'
 
 /** Decode an unknown value against a schema using sync semantics — throws on invalid input (test-only helper, mirrors `Schema.decodeUnknownSync(schema)(value)`). */
-export const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+export const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {
@@ -259,7 +259,7 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
   const countWrite = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
     Effect.sync(() => {
       writeCallCount += 1
-    }).pipe(Effect.zipRight(effect))
+    }).pipe(Effect.andThen(effect))
   const dataSource =
     input.dataSource ??
     ({
@@ -267,7 +267,7 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
       dataSourceId: testIds.dataSourceId,
       parentDatabaseId: testIds.databaseId,
       requestId: testIds.requestId,
-      observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+      observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
       schemaHash: hash('schema'),
       schemaProperties: [
         {
@@ -360,42 +360,42 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
       patchPageProperties: (command) =>
         countWrite(
           Effect.sync(() => attemptedPatchPageProperties.push(command)).pipe(
-            Effect.zipRight(baseGateway.patchPageProperties(command)),
+            Effect.andThen(baseGateway.patchPageProperties(command)),
             Effect.tap(() => Effect.sync(() => patchedPageProperties.push(command))),
           ),
         ),
       patchDataSourceSchema: (command) =>
         countWrite(
           Effect.sync(() => attemptedPatchDataSourceSchemas.push(command)).pipe(
-            Effect.zipRight(baseGateway.patchDataSourceSchema(command)),
+            Effect.andThen(baseGateway.patchDataSourceSchema(command)),
             Effect.tap(() => Effect.sync(() => patchedDataSourceSchemas.push(command))),
           ),
         ),
       patchDataSourceMetadata: (command) =>
         countWrite(
           Effect.sync(() => attemptedPatchDataSourceMetadata.push(command)).pipe(
-            Effect.zipRight(baseGateway.patchDataSourceMetadata(command)),
+            Effect.andThen(baseGateway.patchDataSourceMetadata(command)),
             Effect.tap(() => Effect.sync(() => patchedDataSourceMetadata.push(command))),
           ),
         ),
       patchDatabaseMetadata: (command) =>
         countWrite(
           Effect.sync(() => attemptedPatchDatabaseMetadata.push(command)).pipe(
-            Effect.zipRight(baseGateway.patchDatabaseMetadata(command)),
+            Effect.andThen(baseGateway.patchDatabaseMetadata(command)),
             Effect.tap(() => Effect.sync(() => patchedDatabaseMetadata.push(command))),
           ),
         ),
       trashPage: (command) =>
         countWrite(
           Effect.sync(() => attemptedTrashPages.push(command)).pipe(
-            Effect.zipRight(baseGateway.trashPage(command)),
+            Effect.andThen(baseGateway.trashPage(command)),
             Effect.tap(() => Effect.sync(() => trashedPages.push(command))),
           ),
         ),
       restorePage: (command) =>
         countWrite(
           Effect.sync(() => attemptedRestorePages.push(command)).pipe(
-            Effect.zipRight(baseGateway.restorePage(command)),
+            Effect.andThen(baseGateway.restorePage(command)),
             Effect.tap(() => Effect.sync(() => restoredPages.push(command))),
           ),
         ),
@@ -459,7 +459,7 @@ export const rowSnapshot = (overrides: Partial<RowPageSnapshot> = {}): RowPageSn
   _tag: 'RowPageSnapshot',
   pageId: testIds.pageId,
   propertiesHash: hash('properties-a'),
-  lastEditedTime: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+  lastEditedTime: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
   inTrash: false,
   ...overrides,
 })
@@ -470,7 +470,7 @@ export const pageSnapshot = (overrides: Partial<PageSnapshot> = {}): PageSnapsho
   pageId: testIds.pageId,
   dataSourceId: testIds.dataSourceId,
   requestId: testIds.requestId,
-  observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+  observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
   propertiesHash: hash('properties-a'),
   inTrash: false,
   ...overrides,

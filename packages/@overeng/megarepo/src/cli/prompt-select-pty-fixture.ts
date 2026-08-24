@@ -1,6 +1,6 @@
-import { Prompt } from '@effect/cli'
-import { NodeContext } from '@effect/platform-node'
-import type { QuitException } from '@effect/platform/Terminal'
+import { Prompt } from 'effect/unstable/cli'
+import { NodeServices } from '@effect/platform-node'
+import type { QuitError } from 'effect/Terminal'
 import { Effect } from 'effect'
 
 type PromptTrace =
@@ -27,11 +27,11 @@ const prompt = (message: string) =>
     ],
   })
 
-const run = (caseId: string): Effect.Effect<PromptTrace, QuitException, never> =>
+const run = (caseId: string): Effect.Effect<PromptTrace, QuitError, never> =>
   caseId === 'select'
     ? Prompt.run(prompt('Choose missing-ref action')).pipe(
         Effect.map((result) => ({ case: 'select', result, rawAfter: isRaw() }) as const),
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
       )
     : Prompt.run(prompt('Abort missing-ref action')).pipe(
         Effect.map(
@@ -42,10 +42,10 @@ const run = (caseId: string): Effect.Effect<PromptTrace, QuitException, never> =
               rawAfter: isRaw(),
             }) as const,
         ),
-        Effect.catchTag('QuitException', () =>
+        Effect.catchTag('QuitError', () =>
           Effect.succeed({ case: 'interrupt', exit: 'Quit', rawAfter: isRaw() } as const),
         ),
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
       )
 
 const trace: PromptTrace = await Effect.runPromise(run(process.argv[2] ?? ''))

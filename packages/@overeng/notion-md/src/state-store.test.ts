@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { Path } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer, Schema } from 'effect'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, Layer, Path, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -29,8 +29,11 @@ import {
 } from './state-store.ts'
 import { TreeIndex } from './tree-index.ts'
 
-const withPath = async <A>(fn: (path: Path.Path) => A): Promise<A> =>
-  Effect.runPromise(Path.Path.pipe(Effect.map(fn), Effect.provide(NodeContext.layer)))
+const withPath = <A>(fn: (path: Path.Path) => A): Promise<A> =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path
+    return fn(path)
+  }).pipe(Effect.provide(NodeServices.layer), Effect.runPromise)
 
 describe('notion-md state store path safety', () => {
   it('accepts content-addressed object paths under the local metadata root', async () => {
@@ -56,10 +59,10 @@ describe('notion-md state store path safety', () => {
   })
 })
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
-const runStore = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext | NmdStateStore>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeContext.layer))))
+const runStore = <A, E>(effect: Effect.Effect<A, E, NodeServicesEnv | NmdStateStore>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeServices.layer))))
 
 const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), 'notion-md-state-store-'))
@@ -91,22 +94,40 @@ const syncStateFor = (opts: {
   data_source: null,
 })
 
-const encodeJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A): string =>
-  Schema.encodeSync(Schema.parseJson(schema, { space: 2 }))(value)
+interface JsonCodec<T> {
+  readonly encode: (value: T) => string
+  readonly decode: (input: unknown) => T
+}
 
-const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string): A =>
-  Schema.decodeUnknownSync(Schema.parseJson(schema), {
-    errors: 'all',
-    onExcessProperty: 'error',
-  } as const)(encoded)
+const strictParse = {
+  errors: 'all',
+  onExcessProperty: 'error',
+} as const
 
-const canonicalFileJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A): string =>
-  `${encodeJson(schema, value).trimEnd()}\n`
+const SyncStateV1Codec: JsonCodec<NmdSyncStateV1> = {
+  encode: (value) => Schema.encodeSync(Schema.fromJsonString(NmdSyncStateV1Schema, { space: 2 }))(value),
+  decode: (input) => Schema.decodeUnknownSync(Schema.fromJsonString(NmdSyncStateV1Schema), strictParse)(input),
+}
 
-const roundTripFileJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A) => {
-  const encoded = canonicalFileJson(schema, value)
-  const decoded = decodeJson(schema, encoded)
-  const reencoded = canonicalFileJson(schema, decoded)
+const BaseSnapshotV2Codec: JsonCodec<NmdBaseSnapshotV2> = {
+  encode: (value) => Schema.encodeSync(Schema.fromJsonString(NmdBaseSnapshotV2, { space: 2 }))(value),
+  decode: (input) => Schema.decodeUnknownSync(Schema.fromJsonString(NmdBaseSnapshotV2), strictParse)(input),
+}
+
+const StorageObjectV2Codec: JsonCodec<NmdStorageObjectV2> = {
+  encode: (value) => Schema.encodeSync(Schema.fromJsonString(NmdStorageObjectV2, { space: 2 }))(value),
+  decode: (input) => Schema.decodeUnknownSync(Schema.fromJsonString(NmdStorageObjectV2), strictParse)(input),
+}
+
+const TreeIndexCodec: JsonCodec<TreeIndex> = {
+  encode: (value) => Schema.encodeSync(Schema.fromJsonString(TreeIndex, { space: 2 }))(value),
+  decode: (input) => Schema.decodeUnknownSync(Schema.fromJsonString(TreeIndex), strictParse)(input),
+}
+
+const roundTripFileJson = <T>(codec: JsonCodec<T>, value: T) => {
+  const encoded = `${codec.encode(value).trimEnd()}\n`
+  const decoded = codec.decode(JSON.parse(encoded))
+  const reencoded = `${codec.encode(decoded).trimEnd()}\n`
 
   return {
     encoded,
@@ -116,9 +137,9 @@ const roundTripFileJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A) =
   }
 }
 
-const decodeFailure = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string) => {
+const decodeFailure = <T>(codec: JsonCodec<T>, encoded: string) => {
   try {
-    return { _tag: 'decoded' as const, value: decodeJson(schema, encoded) }
+    return { _tag: 'decoded' as const, value: codec.decode(JSON.parse(encoded)) }
   } catch (error) {
     return {
       _tag: 'failed' as const,
@@ -177,7 +198,7 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
       },
     }
 
-    expect(roundTripFileJson(NmdSyncStateV1Schema, syncState)).toMatchInlineSnapshot(`
+    expect(roundTripFileJson(SyncStateV1Codec, syncState)).toMatchInlineSnapshot(`
       {
         "byteIdentical": true,
         "decoded": {
@@ -411,17 +432,17 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
     `)
 
     expect({
-      nullDocument: decodeFailure(NmdSyncStateV1Schema, 'null'),
+      nullDocument: decodeFailure(SyncStateV1Codec, 'null'),
       missingStorage: decodeFailure(
-        NmdSyncStateV1Schema,
+        SyncStateV1Codec,
         '{"version":1,"page_id":"00000000-0000-4000-8000-000000000101","body":{},"read_only_properties":{},"data_source":null}',
       ),
       nullBase: decodeFailure(
-        NmdSyncStateV1Schema,
+        SyncStateV1Codec,
         '{"version":1,"page_id":"00000000-0000-4000-8000-000000000101","body":{"format":"notion-enhanced-markdown","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base":null,"last_pulled_at":"2026-07-28T10:15:00.000Z","remote_last_edited_time":"2026-07-28T10:15:00.000Z","truncated":false,"unknown_block_ids":[]},"storage":{"_tag":"self_contained","unsupported_blocks":[],"files":[],"comments":[]},"read_only_properties":{},"data_source":null}',
       ),
       excessTopLevel: decodeFailure(
-        NmdSyncStateV1Schema,
+        SyncStateV1Codec,
         '{"version":1,"page_id":"00000000-0000-4000-8000-000000000101","body":{"format":"notion-enhanced-markdown","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base":{"_tag":"object_ref","role":"base_snapshot","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","path":".notion-md/objects/aa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json","media_type":"application/json","byte_length":1},"last_pulled_at":"2026-07-28T10:15:00.000Z","remote_last_edited_time":"2026-07-28T10:15:00.000Z","truncated":false,"unknown_block_ids":[]},"storage":{"_tag":"self_contained","unsupported_blocks":[],"files":[],"comments":[]},"read_only_properties":{},"data_source":null,"extra":true}',
       ),
     }).toMatchInlineSnapshot(`
@@ -550,8 +571,8 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
     }
 
     expect({
-      baseSnapshot: roundTripFileJson(NmdBaseSnapshotV2, baseSnapshot),
-      storageObject: roundTripFileJson(NmdStorageObjectV2, storageObject),
+      baseSnapshot: roundTripFileJson(BaseSnapshotV2Codec, baseSnapshot),
+      storageObject: roundTripFileJson(StorageObjectV2Codec, storageObject),
     }).toMatchInlineSnapshot(`
       {
         "baseSnapshot": {
@@ -749,17 +770,17 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
     `)
 
     expect({
-      baseNullDocument: decodeFailure(NmdBaseSnapshotV2, 'null'),
+      baseNullDocument: decodeFailure(BaseSnapshotV2Codec, 'null'),
       baseBadVersion: decodeFailure(
-        NmdBaseSnapshotV2,
+        BaseSnapshotV2Codec,
         '{"version":1,"page_id":"00000000-0000-4000-8000-000000000201","body_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","body":""}',
       ),
       storageUnknownTag: decodeFailure(
-        NmdStorageObjectV2,
+        StorageObjectV2Codec,
         '{"version":2,"page_id":"00000000-0000-4000-8000-000000000201","reason":"too_large","storage":{"_tag":"unknown"}}',
       ),
       storageNullPayload: decodeFailure(
-        NmdStorageObjectV2,
+        StorageObjectV2Codec,
         '{"version":2,"page_id":"00000000-0000-4000-8000-000000000201","reason":"too_large","storage":null}',
       ),
     }).toMatchInlineSnapshot(`
@@ -808,7 +829,7 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
   // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) for these failures; preserve the tree-index structural partition and adjudicate internal-only text before re-baselining.
   it('captures tree-index JSON bytes and failure partition', () => {
     expect(
-      roundTripFileJson(TreeIndex, {
+      roundTripFileJson(TreeIndexCodec, {
         version: 1,
         root_page_id: '00000000-0000-4000-8000-000000000301',
         root_file: 'README.nmd',
@@ -862,17 +883,17 @@ describe('notion-md wire baselines (cross-major invariant)', () => {
     `)
 
     expect({
-      nullDocument: decodeFailure(TreeIndex, 'null'),
+      nullDocument: decodeFailure(TreeIndexCodec, 'null'),
       missingRootFile: decodeFailure(
-        TreeIndex,
+        TreeIndexCodec,
         '{"version":1,"root_page_id":"00000000-0000-4000-8000-000000000301","pages":{}}',
       ),
       nullPageId: decodeFailure(
-        TreeIndex,
+        TreeIndexCodec,
         '{"version":1,"root_page_id":"00000000-0000-4000-8000-000000000301","root_file":"README.nmd","pages":{"alpha.nmd":null}}',
       ),
       excessTopLevel: decodeFailure(
-        TreeIndex,
+        TreeIndexCodec,
         '{"version":1,"root_page_id":"00000000-0000-4000-8000-000000000301","root_file":"README.nmd","pages":{},"extra":true}',
       ),
     }).toMatchInlineSnapshot(`
@@ -966,8 +987,8 @@ describe('notion-md state store object lifecycle', () => {
   })
 })
 
-const runFs = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(NodeContext.layer)))
+const runFs = <A, E>(effect: Effect.Effect<A, E, NodeServicesEnv>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)))
 
 describe('notion-md gc command discovery', () => {
   it('readAllSyncStates returns empty array when no sync directory exists', async () => {

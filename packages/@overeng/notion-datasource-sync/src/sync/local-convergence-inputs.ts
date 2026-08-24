@@ -96,9 +96,9 @@ export const scanNmdPageSurfaces = ({
     } catch {
       continue
     }
-    const parsed = Effect.runSync(parseNmdFile({ content, path }).pipe(Effect.either))
-    if (parsed._tag === 'Left') continue
-    const body = parsed.right.frontmatter.notion_md
+    const parsed = Effect.runSync(parseNmdFile({ content, path }).pipe(Effect.result))
+    if (parsed._tag === 'Failure') continue
+    const body = parsed.success.frontmatter.notion_md
     if (body.page_id === null) continue
     surfaces.push({
       pageId: decodePageId(body.page_id),

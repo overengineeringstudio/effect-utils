@@ -3,7 +3,7 @@ import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 /**
  * Base schema for paginated responses from Notion API.
  */
-export const PaginatedResponse = <A, I, R>(itemSchema: Schema.Schema<A, I, R>) =>
+export const PaginatedResponse = <S extends Schema.Codec<any, any, any>>(itemSchema: S) =>
   Schema.Struct({
     object: Schema.Literal('list'),
     results: Schema.Array(itemSchema),
@@ -66,7 +66,7 @@ export interface PaginatedResult<A> {
  */
 export const toPaginatedResult = <A>(response: PaginatedResponse<A>): PaginatedResult<A> => ({
   results: response.results,
-  nextCursor: Option.fromNullable(response.next_cursor),
+  nextCursor: Option.fromNullOr(response.next_cursor),
   hasMore: response.has_more,
 })
 
@@ -108,12 +108,12 @@ export const paginate = <Page extends PaginatedResult<unknown>, Out, E, R>(
   fetchPage: FetchPage<Page, E, R>,
   options: PaginateOptions<Page, Out>,
 ): Stream.Stream<Out, E, R> =>
-  Stream.unfoldChunkEffect(Option.some(options.startCursor ?? Option.none<string>()), (state) =>
+  Stream.flattenIterable(Stream.unfold(Option.some(options.startCursor ?? Option.none<string>()), (state) =>
     Option.match(state, {
-      onNone: () => Effect.succeed(Option.none()),
+      onNone: () => Effect.succeed(undefined),
       onSome: (cursor) =>
         fetchPage(cursor).pipe(
-          Effect.map((page) => {
+          Effect.map((page): readonly [Chunk.Chunk<Out>, Option.Option<Option.Option<string>>] => {
             const chunk =
               options.emit._tag === 'items'
                 ? // In 'items' mode `Out` is the page's element type, but the
@@ -121,11 +121,11 @@ export const paginate = <Page extends PaginatedResult<unknown>, Out, E, R>(
                   (Chunk.fromIterable(page.results) as unknown as Chunk.Chunk<Out>)
                 : Chunk.of(options.emit.map(page))
             const done = page.hasMore === false || Option.isNone(page.nextCursor) === true
-            return Option.some([
+            return [
               chunk,
               done === true ? Option.none() : Option.some(Option.some(page.nextCursor.value)),
-            ] as const)
+            ]
           }),
         ),
     }),
-  )
+  ))

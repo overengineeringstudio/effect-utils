@@ -12,13 +12,13 @@ import { Schema } from 'effect'
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Reason why a path string is invalid */
-export const InvalidPathReason = Schema.Literal(
+export const InvalidPathReason = Schema.Literals([
   'empty',
   'null_byte',
   'invalid_characters',
   'reserved_name',
   'too_long',
-)
+])
 export type InvalidPathReason = typeof InvalidPathReason.Type
 
 /** Path string is malformed or contains invalid characters */
@@ -91,9 +91,9 @@ export class ConventionError extends Schema.TaggedError<ConventionError>()('Conv
   /** Human-readable error message */
   message: Schema.String,
   /** What was expected */
-  expected: Schema.Literal('file', 'directory'),
+  expected: Schema.Literals(['file', 'directory']),
   /** What convention violation was found */
-  violation: Schema.Literal('trailing_slash_on_file', 'no_trailing_slash_on_directory'),
+  violation: Schema.Literals(['trailing_slash_on_file', 'no_trailing_slash_on_directory']),
 }) {}
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -111,7 +111,7 @@ export class PathNotFoundError extends Schema.TaggedError<PathNotFoundError>()(
     /** The deepest existing ancestor path */
     nearestExisting: Schema.UndefinedOr(Schema.String),
     /** What was expected to exist */
-    expectedType: Schema.UndefinedOr(Schema.Literal('file', 'directory', 'any')),
+    expectedType: Schema.UndefinedOr(Schema.Literals(['file', 'directory', 'any'])),
   },
 ) {}
 
@@ -122,7 +122,7 @@ export class NotASymlinkError extends Schema.TaggedError<NotASymlinkError>()('No
   /** Human-readable error message */
   message: Schema.String,
   /** Actual type found */
-  actualType: Schema.Literal('file', 'directory'),
+  actualType: Schema.Literals(['file', 'directory']),
 }) {}
 
 /** Circular symlink detected during resolution */
@@ -162,7 +162,7 @@ export class PermissionError extends Schema.TaggedError<PermissionError>()('Perm
   /** Human-readable error message */
   message: Schema.String,
   /** Operation that was attempted */
-  operation: Schema.Literal('read', 'write', 'execute', 'stat'),
+  operation: Schema.Literals(['read', 'write', 'execute', 'stat']),
 }) {}
 
 // ═══════════════════════════════════════════════════════════════════════════

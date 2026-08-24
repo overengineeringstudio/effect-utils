@@ -1,8 +1,22 @@
 import { basename, dirname, resolve } from 'node:path'
 
-import { Args, Command, Options } from '@effect/cli'
-import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
-import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream } from 'effect'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
+import { FetchHttpClient } from 'effect/unstable/http'
+import {
+  Cause,
+  Console,
+  Duration,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  Queue,
+  Schema,
+  Stream,
+} from 'effect'
+
+import { NodePath } from '@effect/platform-node'
 
 import {
   NMD_SYNC_DIRECTORY,
@@ -55,11 +69,11 @@ import {
 import type { SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
 
-const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
+const NonEmptyCliText = Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())).annotate({
   identifier: 'NotionMd.Cli.NonEmptyText',
 })
 
-const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive()).annotations({
+const PositiveInteger = Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))).annotate({
   identifier: 'NotionMd.Cli.PositiveInteger',
 })
 
@@ -71,33 +85,29 @@ const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive()).anno
  */
 
 /** Local `.nmd` paths (file or directory). `status`/`sync` take only local paths. */
-const localTargetsArg = Args.text({ name: 'path' }).pipe(
+const localTargetsArg = Args.string('path').pipe(
   Args.withDescription('Local .nmd file or directory (a directory means everything under it)'),
   Args.withSchema(NonEmptyCliText),
   Args.atLeast(1),
 )
 
 /** `track` is the only command that takes a Notion page id/url. */
-const trackPageRefArg = Args.text({ name: 'page-id-or-url' }).pipe(
+const trackPageRefArg = Args.string('page-id-or-url').pipe(
   Args.withDescription('Notion page id or URL to track'),
   Args.withSchema(NonEmptyCliText),
 )
 
-const trackOutPathArg = Args.text({ name: 'path' }).pipe(
+const trackOutPathArg = Args.string('path').pipe(
   Args.withDescription('Local .nmd file to write (default: <page-id>.nmd)'),
   Args.withSchema(NonEmptyCliText),
   Args.optional,
 )
 
-const SourceLiteral = Schema.Literal('local', 'remote', 'shared').annotations({
-  identifier: 'NotionMd.Cli.Source',
-})
 
-const trackAsOption = Options.text('as').pipe(
+const trackAsOption = Options.choice('as', ['local', 'remote', 'shared']).pipe(
   Options.withDescription(
     'Sync direction to record (local|remote|shared); default remote — this tracks existing Notion state',
   ),
-  Options.withSchema(SourceLiteral),
   Options.withDefault('remote'),
 )
 
@@ -193,7 +203,7 @@ const resolveToken = resolveNotionToken().pipe(
 )
 
 /** Live Notion gateway layer assembled from the process Notion token. */
-export const MainLayer = Layer.unwrapEffect(
+export const MainLayer = Layer.unwrap(
   resolveToken.pipe(
     Effect.map((token) => {
       const baseLayer = Layer.mergeAll(
@@ -205,13 +215,13 @@ export const MainLayer = Layer.unwrapEffect(
         baseLayer,
         NotionMdGatewayLive.pipe(Layer.provide(baseLayer)),
         NmdStateStoreLive,
-      ).pipe(Layer.provideMerge(Path.layer))
+      ).pipe(Layer.provideMerge(NodePath.layer))
     }),
   ),
 )
 
 const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  resolveToken.pipe(Effect.zipRight(Effect.provide(effect, MainLayer)))
+  resolveToken.pipe(Effect.andThen(Effect.provide(effect, MainLayer)))
 
 const logJson = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value, null, 2))
 
@@ -340,7 +350,7 @@ export const runWatch = (opts: {
               basename: watchedFile,
             },
           }),
-          Effect.catchAll((error: unknown) =>
+          Effect.catch((error: unknown) =>
             emit({ event: 'sync_error', reason, error: safeJsonError(error) }),
           ),
         )
@@ -349,17 +359,19 @@ export const runWatch = (opts: {
       const fileEvents = fs.watch(watchedDir).pipe(
         Stream.filter((event) => resolve(watchedDir, event.path) === watchedPath),
         Stream.map((): WatchTrigger => ({ reason: 'file' })),
-        Stream.catchAll((error) =>
-          Stream.fromEffect(
+        Stream.catchCause((cause) => {
+          const fail = Cause.findFail(cause)
+          const error = fail._tag === 'Success' ? fail.success.error : cause
+          return Stream.fromEffect(
             emit({ event: 'watch_error', path, error: safeJsonError(error) }).pipe(
               Effect.as<WatchTrigger>({ reason: 'poll' }),
             ),
-          ),
-        ),
+          )
+        }),
       )
       const pollEvents = Effect.forever(
         Effect.sleep(Duration.millis(opts.pollIntervalMs)).pipe(
-          Effect.zipRight(Queue.offer(queue, { reason: 'poll' })),
+          Effect.andThen(Queue.offer(queue, { reason: 'poll' })),
         ),
       )
 
@@ -635,7 +647,7 @@ const syncCommand = Command.make(
  * Token-free layer for the `gc` command: only NmdStateStore + filesystem.
  * GC is a local-only operation and must not require NOTION_API_TOKEN.
  */
-const GcLayer = NmdStateStoreLive.pipe(Layer.provideMerge(Path.layer))
+const GcLayer = NmdStateStoreLive.pipe(Layer.provideMerge(NodePath.layer))
 
 const withGc = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.provide(effect, GcLayer)
 
@@ -682,8 +694,8 @@ export const readAllSyncStates = (
       ),
     )
     const strictOptions = { errors: 'all', onExcessProperty: 'error' } as const
-    const decodeSyncState = Schema.decodeUnknown(
-      Schema.parseJson(NmdSyncStateV1Schema),
+    const decodeSyncState = Schema.decodeUnknownEffect(
+      Schema.fromJsonString(NmdSyncStateV1Schema),
       strictOptions,
     )
     const syncStates: NmdSyncStateV1[] = []
@@ -875,7 +887,7 @@ const gcCommand = Command.make(
 // Editor surfaces: cat / put / edit (VRS "Editor Surfaces")
 // ---------------------------------------------------------------------------
 
-const pageArg = Args.text({ name: 'page' }).pipe(
+const pageArg = Args.string('page').pipe(
   Args.withDescription('Notion page id, dashed id, or URL'),
   Args.withSchema(NonEmptyCliText),
 )
@@ -887,7 +899,7 @@ const frontmatterOption = Options.boolean('frontmatter').pipe(
   Options.withDefault(false),
 )
 
-const baseHashOption = Options.text('base-hash').pipe(
+const baseHashOption = Options.string('base-hash').pipe(
   Options.withDescription('Optimistic-concurrency token from a prior `cat` (guards the write)'),
   Options.optional,
 )
@@ -914,7 +926,7 @@ const resolvePageArg = (page: string): Effect.Effect<string, NmdUnresolvablePage
 
 /** Read all of stdin as a UTF-8 string (the `put` body buffer). */
 const readStdin = (): Effect.Effect<string> =>
-  Effect.async<string>((resume) => {
+  Effect.callback<string>((resume) => {
     const chunks: Buffer[] = []
     process.stdin.on('data', (chunk: Buffer) => chunks.push(chunk))
     process.stdin.on('end', () => resume(Effect.succeed(Buffer.concat(chunks).toString('utf8'))))
@@ -1062,16 +1074,13 @@ export const notionMdCommand = makeNotionMdCommand('notion-md')
 export const notionMdDispatchCommand = makeNotionMdCommand('md')
 
 /** Process argv runner for the notion-md command tree. */
-export const cli = Command.run(notionMdCommand, {
-  name: 'notion-md',
-  version: cliVersion,
-})
+export const cli = Command.runWith(notionMdCommand, { version: cliVersion })
 
 /** Render expected CLI failures without duplicating Effect's defect reporter. */
 export const renderCliError = (cause: Cause.Cause<unknown>) =>
-  Cause.isInterruptedOnly(cause) === true
+  Cause.hasInterruptsOnly(cause) === true
     ? Effect.void
-    : Option.match(Cause.failureOption(cause), {
+    : Option.match(Cause.findErrorOption(cause), {
         onNone: () => Effect.logError(cause),
         onSome: (error) => Effect.logError(error),
       })

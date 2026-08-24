@@ -1,8 +1,6 @@
 import { basename } from 'node:path'
 
-import type { Path } from '@effect/platform'
-import { FileSystem } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, FileSystem, Path } from 'effect'
 
 import type { BatchResult } from './batch.ts'
 import { NmdCliError, type NmdError } from './errors.ts'
@@ -65,9 +63,9 @@ export const targetKind = (
 ): Effect.Effect<PathTargetKind, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const info = yield* fs.stat(target).pipe(Effect.either)
-    if (info._tag === 'Left') return 'missing'
-    return info.right.type === 'Directory' ? 'directory' : 'file'
+    const info = yield* fs.stat(target).pipe(Effect.result)
+    if (info._tag === 'Failure') return 'missing'
+    return info.success.type === 'Directory' ? 'directory' : 'file'
   })
 
 /** Compare a local path with Notion, routing files, trees, and flat batches safely. */

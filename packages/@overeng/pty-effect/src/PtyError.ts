@@ -22,7 +22,7 @@ import { Schema } from 'effect'
 export class PtyError extends Schema.TaggedError<PtyError>('@overeng/pty-effect/PtyError')(
   'PtyError',
   {
-    reason: Schema.Literal(
+    reason: Schema.Literals([
       'SpawnFailed',
       'ConnectFailed',
       'WriteFailed',
@@ -31,10 +31,10 @@ export class PtyError extends Schema.TaggedError<PtyError>('@overeng/pty-effect/
       'UnexpectedExit',
       'BadName',
       'Closed',
-    ),
+    ]),
     method: Schema.String,
     name: Schema.optional(Schema.String),
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {

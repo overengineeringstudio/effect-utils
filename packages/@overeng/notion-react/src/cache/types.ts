@@ -1,4 +1,4 @@
-import { Schema, type Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import type { CacheError } from '../renderer/errors.ts'
 
@@ -58,7 +58,7 @@ interface CacheNodeEncoded {
   readonly coverHash?: string | undefined
 }
 
-export const CacheNode: Schema.Schema<CacheNode, CacheNodeEncoded> = Schema.suspend(() =>
+export const CacheNode = Schema.suspend((): Schema.Codec<CacheNode, CacheNodeEncoded> =>
   Schema.Struct({
     key: Schema.String,
     blockId: Schema.String,
@@ -68,9 +68,9 @@ export const CacheNode: Schema.Schema<CacheNode, CacheNodeEncoded> = Schema.susp
     // `optionalWith({ default })` keeps existing v2 caches decodable: entries
     // serialized before this field existed default to `'block'`, which matches
     // the legacy "every cache node is a block" invariant.
-    nodeKind: Schema.optionalWith(Schema.Literal('block', 'page'), {
-      default: () => 'block' as const,
-    }),
+    nodeKind: Schema.Literals(['block', 'page']).pipe(
+      Schema.withDecodingDefault(Effect.succeed('block')),
+    ),
     titleHash: Schema.optional(Schema.String),
     iconHash: Schema.optional(Schema.String),
     coverHash: Schema.optional(Schema.String),

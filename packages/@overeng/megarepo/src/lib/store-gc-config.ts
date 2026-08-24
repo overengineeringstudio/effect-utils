@@ -9,7 +9,8 @@
 
 import { isAbsolute, normalize } from 'node:path'
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
 import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -81,7 +82,7 @@ const StoreGcConfigOverride = Schema.Struct({
     Schema.Struct({
       enabled: Schema.optional(Schema.Boolean),
       retentionMs: Schema.optional(Schema.Number),
-      allowlist: Schema.optional(Schema.Array(Schema.Literal(...STORE_GC_GENERATED_ARTIFACTS))),
+      allowlist: Schema.optional(Schema.Array(Schema.Literals([...STORE_GC_GENERATED_ARTIFACTS]))),
       agentLivenessManifest: Schema.optional(Schema.String),
     }),
   ),
@@ -160,13 +161,13 @@ export const loadStoreGcConfig = ({
   storeBasePath,
 }: {
   storeBasePath: AbsoluteDirPath
-}): Effect.Effect<StoreGcConfig, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<StoreGcConfig, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = gcConfigPath(storeBasePath)
     const override = yield* fs.readFileString(path).pipe(
       Effect.flatMap((content) =>
-        Schema.decodeUnknown(Schema.parseJson(StoreGcConfigOverride))(content),
+        Schema.decodeUnknownEffect(Schema.fromJsonString(StoreGcConfigOverride))(content),
       ),
       Effect.orElseSucceed(() => ({}) as StoreGcConfigOverride),
     )

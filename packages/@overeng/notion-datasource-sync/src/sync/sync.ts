@@ -193,7 +193,7 @@ export type EstablishFromNotionResult = {
   readonly status: OneShotSyncStatus
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {

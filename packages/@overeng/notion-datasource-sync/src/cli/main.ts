@@ -5,10 +5,12 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { NonEmptyTrimmedString } from '../core/domain.ts'
 
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Effect, Either, Layer, Option, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import { NodeRuntime } from '@effect/platform-node'
+import * as NodeContext from '@effect/platform-node/NodeServices'
+import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
 
 import {
   NOTION_API_VERSION,
@@ -826,16 +828,16 @@ export const serviceNameForCliCommand = (command: CliCommand): string =>
 
 const SchemaPropertyObservationJson = Schema.Struct({
   propertyId: PropertyId,
-  name: Schema.optional(Schema.NonEmptyTrimmedString),
-  type: Schema.optional(Schema.NonEmptyTrimmedString),
+  name: Schema.optional(NonEmptyTrimmedString),
+  type: Schema.optional(NonEmptyTrimmedString),
   configHash: Hash,
-  writeClass: Schema.Literal('writable', 'computed', 'unsupported'),
+  writeClass: Schema.Literals(['writable', 'computed', 'unsupported']),
   configJson: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
+}).annotate({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
 
 const capabilityNames = new Set<CapabilityName>(allGatewayCapabilities)
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {
@@ -843,7 +845,7 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: unknown
 }): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
-const decodeJson = <TSchema extends Schema.Schema.AnyNoContext>({
+const decodeJson = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {
@@ -851,7 +853,7 @@ const decodeJson = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: string
 }): typeof schema.Type =>
   Schema.decodeUnknownSync(schema)(
-    Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))(value),
+    Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(value),
   )
 
 const withOptionalRuntimeOptions = (context: CliContext) => ({
@@ -957,7 +959,7 @@ const setupWatchWebhook = ({
     })
   }
 
-  return Effect.flatMap(Effect.runtime<never>(), (effectRuntime) =>
+  return Effect.flatMap(Effect.context<never>(), (effectContext) =>
     Effect.tryPromise({
       try: async () => {
         const wakeNotifier = makeWatchDaemonWakeNotifier()
@@ -970,7 +972,7 @@ const setupWatchWebhook = ({
           port: context.webhookReceiverPort ?? defaultWebhookReceiverPort,
           path: context.webhookReceiverPath ?? makeDefaultWebhookReceiverPath(),
           onSignalEnqueued: () => wakeNotifier.wake(),
-          effectRuntime,
+          effectContext,
         })
         context.webhookReceiverStarted?.(receiver)
 
@@ -3166,15 +3168,15 @@ const runWithCliSyncProgress = <A, E, R>({
         ),
       ),
     ),
-    Effect.either,
+    Effect.result,
   )
 
   return loadTuiProgress.pipe(
     Effect.flatMap((loaded) => {
-      if (Either.isLeft(loaded) === true) {
+      if (loaded._tag === 'Failure') {
         return runWithPlainSyncProgress({ command, effect })
       }
-      const { progressModule, tuiReact, tuiReactNode } = loaded.right
+      const { progressModule, tuiReact, tuiReactNode } = loaded.success
       const progressApp = progressModule.createSyncProgressApp(command._tag)
       const progressView = progressModule.createSyncProgressView(progressApp)
 

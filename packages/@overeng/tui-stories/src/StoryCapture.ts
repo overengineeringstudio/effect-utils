@@ -8,7 +8,7 @@
  * TuiStoryPreview element props before it mounts.
  */
 
-import type { Atom } from '@effect-atom/atom'
+import type { Atom } from 'effect/unstable/reactivity'
 import type { Schema } from 'effect'
 import React, { type ReactElement, type ComponentType } from 'react'
 
@@ -27,8 +27,8 @@ import type { ResolvedStory } from './StoryModule.ts'
 export interface CapturedStoryProps {
   readonly app: {
     readonly config: {
-      readonly stateSchema: Schema.Schema<unknown>
-      readonly actionSchema: Schema.Schema<unknown>
+      readonly stateSchema: Schema.Codec<unknown>
+      readonly actionSchema: Schema.Codec<unknown>
       readonly initial: unknown
       readonly reducer: (args: { state: unknown; action: unknown }) => unknown
     }

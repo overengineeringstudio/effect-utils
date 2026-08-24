@@ -269,7 +269,7 @@ export const fullscreenRenderConfig = altScreenRenderConfig
  * })
  * ```
  */
-export class OutputModeTag extends Context.Tag('OutputMode')<OutputModeTag, OutputMode>() {}
+export class OutputModeTag extends Context.Service<OutputModeTag, OutputMode>()('OutputMode') {}
 
 /**
  * Stream the TUI view renders into.
@@ -283,10 +283,10 @@ export class OutputModeTag extends Context.Tag('OutputMode')<OutputModeTag, Outp
  * and `process.stderr` qualify). Default and stderr layers are in the Node
  * entry point (`OutputMode.node.ts`) to keep this module browser-safe.
  */
-export class ViewOutputStreamTag extends Context.Tag('@overeng/tui-react/ViewOutputStream')<
+export class ViewOutputStreamTag extends Context.Service<
   ViewOutputStreamTag,
   NodeJS.WriteStream
->() {}
+>()('@overeng/tui-react/ViewOutputStream') {}
 
 // =============================================================================
 // Environment Helpers (browser-safe — use typeof process guards)

@@ -1,8 +1,7 @@
 import { join } from 'node:path'
 
-import { FileSystem } from '@effect/platform'
 import { NodeFileSystem } from '@effect/platform-node'
-import { Effect, Schema } from 'effect'
+import { Effect, FileSystem, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../core/commands.ts'
@@ -770,7 +769,7 @@ describe('realistic offline workflow E2E matrix', () => {
                 pageId: testIds.pageId,
                 path: bodyPath,
                 contentHash: hash('body-a'),
-                observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+                observedAt: decode({ schema: Schema.DateTimeUtcFromString, value: fixedObservedAt }),
                 state: 'delete-candidate',
               },
             ],

@@ -1,5 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -79,8 +79,8 @@ const makeTestLockFile = (members: Record<string, { ref: string; commit: string 
     ),
   }) as LockFile
 
-const runWithContext = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(NodeContext.layer)))
+const runWithContext = <A, E>(effect: Effect.Effect<A, E, NodeServices.NodeServices>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)))
 
 // =============================================================================
 // Tests

@@ -1,4 +1,5 @@
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
+import { layer as fetchHttpClientLayer } from 'effect/unstable/http/FetchHttpClient'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Effect, Layer, Redacted } from 'effect'
 
 import { NotionBlocks } from '../../blocks.ts'
@@ -79,8 +80,8 @@ export const NotionConfigLive = Layer.succeed(NotionConfig, {
 /** Complete layer for integration tests with real HTTP client */
 export const IntegrationTestLayer = Layer.mergeAll(
   NotionConfigLive,
-  FetchHttpClient.layer,
-) satisfies Layer.Layer<NotionConfig | HttpClient.HttpClient>
+  fetchHttpClientLayer,
+) satisfies Layer.Layer<NotionConfig | HttpClient>
 
 const text = (content: string, annotations?: Record<string, boolean>) => ({
   type: 'text',

@@ -4,7 +4,7 @@
  * Print environment variables for shell integration.
  */
 
-import * as Cli from '@effect/cli'
+import * as Cli from 'effect/unstable/cli'
 import { Effect } from 'effect'
 import React from 'react'
 
@@ -19,9 +19,9 @@ import { EnvApp, EnvView } from '../renderers/EnvOutput/mod.ts'
 export const envCommand = Cli.Command.make(
   'env',
   {
-    shell: Cli.Options.choice('shell', ['bash', 'zsh', 'fish']).pipe(
-      Cli.Options.withDescription('Shell type for output format'),
-      Cli.Options.withDefault('bash' as const),
+    shell: Cli.Flag.choice('shell', ['bash', 'zsh', 'fish']).pipe(
+      Cli.Flag.withDescription('Shell type for output format'),
+      Cli.Flag.withDefault('bash' as const),
     ),
     output: outputOption,
   },

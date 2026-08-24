@@ -4,7 +4,7 @@
  * Provides helpers for creating test stores with bare repos and worktrees.
  */
 
-import { FileSystem } from '@effect/platform'
+import * as FileSystem from 'effect/FileSystem'
 import { Effect, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -194,7 +194,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
         yield* Effect.gen(function* () {
           yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', pushTargetPath)
           yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main').pipe(
-            Effect.catchAll(() =>
+            Effect.catch(() =>
               // Try master if main fails
               runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'master'),
             ),
@@ -203,10 +203,10 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
           for (const branch of repoFixture.branches ?? []) {
             if (branch === 'main' || branch === 'master') continue
             yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha).pipe(
-              Effect.catchAll(() => Effect.void),
+              Effect.catch(() => Effect.void),
             )
             yield* runGitCommand(sourceRepoPath, 'push', 'origin', branch).pipe(
-              Effect.catchAll(() => Effect.void),
+              Effect.catch(() => Effect.void),
             )
           }
 
@@ -389,7 +389,7 @@ export const createWorkspaceWithLock = (args: {
     const config: MegarepoConfig = {
       members: args.members,
     }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+    const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
       config,
     )
     yield* fs.writeFileString(
@@ -463,7 +463,7 @@ export const repinWorkspace = ({
     yield* fs.makeDirectory(reposDir, { recursive: true })
     const symlinkPath = EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile(memberName))
     // Replace any existing symlink so the new target is the on-disk truth.
-    yield* fs.remove(symlinkPath, { force: true }).pipe(Effect.catchAll(() => Effect.void))
+    yield* fs.remove(symlinkPath, { force: true }).pipe(Effect.catch(() => Effect.void))
     yield* fs.symlink(newTarget.replace(/\/+$/, ''), symlinkPath)
 
     // Optionally rewrite the lock entry for this member (ref/commit repin),
@@ -516,7 +516,7 @@ export const materializeNonDetachedBranchWorktree = ({
     yield* runGitCommand(bareRepoPath, 'worktree', 'remove', '--force', worktreePath)
     yield* fs
       .remove(worktreePath, { recursive: true, force: true })
-      .pipe(Effect.catchAll(() => Effect.void))
+      .pipe(Effect.catch(() => Effect.void))
     // Ensure the branch ref points at this fixture commit, then check it out in
     // a fresh worktree (non-detached).
     yield* runGitCommand(bareRepoPath, 'branch', '-f', branch, commit)

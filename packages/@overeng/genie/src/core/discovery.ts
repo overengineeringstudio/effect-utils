@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import { Effect, FileSystem, Option, Path } from 'effect'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 import * as Observability from './observability.ts'
@@ -185,33 +185,24 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
           type: stat.type === 'Directory' ? 'directory' : 'file',
         }),
       ),
-      Effect.catchTags({
-        SystemError: (e) => {
-          // Handle broken symlinks and other stat failures gracefully
-          if (e.reason === 'NotFound') {
-            warnings.push(`Skipping broken symlink: ${fullPath}`)
-            return Effect.succeed({
-              type: 'skip',
-              reason: 'broken symlink',
-            } as StatResult)
-          }
-          warnings.push(`Skipping ${fullPath}: ${e.message}`)
+      Effect.catchTag('PlatformError', (e) => {
+        // Handle broken symlinks and other stat failures gracefully
+        if (e.reason._tag === 'NotFound') {
+          warnings.push(`Skipping broken symlink: ${fullPath}`)
           return Effect.succeed({
             type: 'skip',
-            reason: e.message,
+            reason: 'broken symlink',
           } as StatResult)
-        },
-        BadArgument: (e) => {
-          warnings.push(`Skipping ${fullPath}: ${e.message}`)
-          return Effect.succeed({
-            type: 'skip',
-            reason: e.message,
-          } as StatResult)
-        },
+        }
+        warnings.push(`Skipping ${fullPath}: ${e.message}`)
+        return Effect.succeed({
+          type: 'skip',
+          reason: e.message,
+        } as StatResult)
       }),
     )
 
-  const walk: (currentDir: string) => Effect.Effect<string[], PlatformError.PlatformError> =
+  const walk: (currentDir: string) => Effect.Effect<string[], PlatformError> =
     Effect.fnUntraced(function* (currentDir: string) {
       const entries = yield* fs.readDirectory(currentDir)
       const results: string[] = []
@@ -266,15 +257,9 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   for (const file of files) {
     const fullPath = pathService.isAbsolute(file) === true ? file : pathService.join(rootDir, file)
     const resolvedPath = yield* fs.realPath(fullPath).pipe(
-      Effect.catchTags({
-        SystemError: (e) => {
-          warnings.push(`Skipping ${file}: ${e.message}`)
-          return Effect.succeed(null)
-        },
-        BadArgument: (e) => {
-          warnings.push(`Skipping ${file}: ${e.message}`)
-          return Effect.succeed(null)
-        },
+      Effect.catchTag('PlatformError', (e) => {
+        warnings.push(`Skipping ${file}: ${e.message}`)
+        return Effect.succeed(null)
       }),
     )
 

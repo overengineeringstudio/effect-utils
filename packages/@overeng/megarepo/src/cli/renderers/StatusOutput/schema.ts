@@ -142,7 +142,7 @@ export interface MemberStatus {
 }
 
 /** Recursive schema for member status, using `Schema.suspend` to support nested megarepo trees. */
-export const MemberStatus: Schema.Schema<MemberStatus> = Schema.suspend(() =>
+export const MemberStatus: Schema.Codec<MemberStatus, MemberStatus> = Schema.suspend(() =>
   Schema.Struct({
     name: Schema.String,
     /** Whether the worktree exists in ~/.megarepo (for remote members) */
@@ -260,10 +260,10 @@ export type StatusState = Schema.Schema.Type<typeof StatusState>
  *
  * Status is static output, so we only need SetState to populate the final result.
  */
-export const StatusAction = Schema.Union(
+export const StatusAction = Schema.Union([
   /** Replace entire state */
   Schema.TaggedStruct('SetState', { state: StatusState }),
-)
+])
 
 /** Inferred type for status actions. */
 export type StatusAction = Schema.Schema.Type<typeof StatusAction>

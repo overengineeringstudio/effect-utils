@@ -1,4 +1,4 @@
-import { Either, Effect, Schema } from 'effect'
+import { Effect, Result, Schema } from 'effect'
 import React from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -326,15 +326,15 @@ describe('tui-stories baselines (cross-major invariant)', () => {
 
   it('pins schema decode failure partitions for durable output states', () => {
     const failures = {
-      inspect: Schema.decodeUnknownEither(InspectState)({
+      inspect: Schema.decodeUnknownResult(InspectState)({
         ...createSimpleState(),
         timelineEventCount: '0',
       }),
-      list: Schema.decodeUnknownEither(ListState)({
+      list: Schema.decodeUnknownResult(ListState)({
         ...createDefaultState(),
         skippedCount: '3',
       }),
-      render: Schema.decodeUnknownEither(RenderState)({
+      render: Schema.decodeUnknownResult(RenderState)({
         _tag: 'Complete',
         storyId: 'CLI/Status/Basic/Default',
         width: '80',
@@ -349,33 +349,29 @@ describe('tui-stories baselines (cross-major invariant)', () => {
     expect(
       Object.fromEntries(
         entries.map(([name, result]) => {
-          const either = result as Either.Either<unknown, unknown>
-          if (Either.isRight(either) === true) {
+          const resultValue = result as Result.Result<unknown, unknown>
+          if (Result.isSuccess(resultValue) === true) {
             throw new Error(`expected ${name} decode failure`)
           }
-          return [name, summarizeDecodeFailure(either.left)]
+          return [name, summarizeDecodeFailure(resultValue.failure)]
         }),
       ),
     ).toMatchInlineSnapshot(`
       {
         "inspect": {
-          "message": "{ readonly id: string; readonly title: string; readonly name: string; readonly filePath: string; readonly args: ReadonlyArray<{ readonly name: string; readonly controlType: string; readonly description?: string | undefined; readonly defaultValue?: string | undefined; readonly options?: ReadonlyArray<string> | undefined; readonly conditional?: string | undefined }>; readonly hasTimeline: boolean; readonly timelineEventCount: number }
-      └─ ["timelineEventCount"]
-         └─ Expected number, actual "0"",
-          "name": "ParseError",
+          "message": "Expected number
+        at ["timelineEventCount"]",
+          "name": "SchemaError",
         },
         "list": {
-          "message": "{ readonly groups: ReadonlyArray<{ readonly title: string; readonly stories: ReadonlyArray<{ readonly name: string; readonly hasTimeline: boolean; readonly argCount: number }> }>; readonly skippedCount: number; readonly packagePath: string }
-      └─ ["skippedCount"]
-         └─ Expected number, actual "3"",
-          "name": "ParseError",
+          "message": "Expected number
+        at ["skippedCount"]",
+          "name": "SchemaError",
         },
         "render": {
-          "message": "{ readonly _tag: "Rendering"; readonly storyId: string; readonly width: number; readonly timelineMode: string } | { readonly _tag: "Complete"; readonly storyId: string; readonly width: number; readonly timelineMode: string; readonly renderedLines: ReadonlyArray<string> } | { readonly _tag: "Error"; readonly storyId: string; readonly message: string }
-      └─ { readonly _tag: "Complete"; readonly storyId: string; readonly width: number; readonly timelineMode: string; readonly renderedLines: ReadonlyArray<string> }
-         └─ ["width"]
-            └─ Expected number, actual "80"",
-          "name": "ParseError",
+          "message": "Expected number
+        at ["width"]",
+          "name": "SchemaError",
         },
       }
     `)

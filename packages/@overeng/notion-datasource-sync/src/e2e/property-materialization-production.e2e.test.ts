@@ -22,8 +22,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
-import { Chunk, Effect, Layer, Stream } from 'effect'
+import * as NodeContext from '@effect/platform-node/NodeServices'
+import { Effect, Layer, Stream } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { parseNmdFile } from '@overeng/notion-md'
@@ -472,7 +472,7 @@ describe('SM5d property materialization (real pull → materialized .nmd frontma
         })
         return yield* workspace
           .scan(root)
-          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+          .pipe(Stream.runCollect)
       }).pipe(Effect.provide(NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)))),
     )
 

@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { describe, expect, it } from '@effect/vitest'
-import { Chunk, Effect, Exit, Option, Schedule, Schema, Stream } from 'effect'
+import { Effect, Exit, Option, Schedule, Schema, Stream } from 'effect'
 
 import { PtyError } from './PtyError.ts'
 import { make } from './PtySession.ts'
@@ -51,7 +51,7 @@ describe('PtyName schema', () => {
 })
 
 describe('PtySession (spawn mode)', () => {
-  it.scopedLive('captures echoed output via waitForText', () =>
+  it.live('captures echoed output via waitForText', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(
@@ -63,7 +63,7 @@ describe('PtySession (spawn mode)', () => {
     ),
   )
 
-  it.scopedLive('waitForText composes with Effect.timeout', () =>
+  it.live('waitForText composes with Effect.timeout', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(PtySpec_.spawn({ command: 'sh', args: ['-c', 'sleep 5'] }))
@@ -75,22 +75,23 @@ describe('PtySession (spawn mode)', () => {
     ),
   )
 
-  it.scopedLive('waitForText accepts an exponential Schedule', () =>
+  it.live('waitForText accepts an exponential Schedule', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(
           PtySpec_.spawn({ command: 'sh', args: ['-c', 'sleep 0.05; echo READY; sleep 1'] }),
         )
-        const exponential = Schedule.exponential('5 millis').pipe(
-          Schedule.either(Schedule.spaced('100 millis')),
-        )
+        const exponential = Schedule.min([
+          Schedule.exponential('5 millis'),
+          Schedule.spaced('100 millis'),
+        ])
         const ss = yield* session.waitForText({ needle: 'READY', schedule: exponential })
         expect(ss.text).toContain('READY')
       }),
     ),
   )
 
-  it.scopedLive('write + press are observable in subsequent screenshots', () =>
+  it.live('write + press are observable in subsequent screenshots', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         // `cat` echoes its stdin to stdout — perfect for verifying write/press.
@@ -104,7 +105,7 @@ describe('PtySession (spawn mode)', () => {
     ),
   )
 
-  it.scopedLive('screenshots Stream emits on schedule and stops on scope close', () =>
+  it.live('screenshots Stream emits on schedule and stops on scope close', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(
@@ -118,7 +119,7 @@ describe('PtySession (spawn mode)', () => {
         const chunk = yield* session
           .screenshots({ schedule: fastSchedule })
           .pipe(Stream.take(3), Stream.runCollect)
-        expect(Chunk.size(chunk)).toBe(3)
+        expect(chunk.length).toBe(3)
         for (const ss of chunk) {
           expect(ss.text).toContain('tick')
         }
@@ -129,7 +130,7 @@ describe('PtySession (spawn mode)', () => {
   // Note: upstream's `Session.resize` is server-mode only. We document this
   // by failing fast in spawn mode (test below) and exercising the happy path
   // in the server-mode block.
-  it.scopedLive('resize fails with ResizeFailed in spawn mode', () =>
+  it.live('resize fails with ResizeFailed in spawn mode', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(PtySpec_.spawn({ command: 'cat' }))
@@ -139,7 +140,7 @@ describe('PtySession (spawn mode)', () => {
     ),
   )
 
-  it.scopedLive('waitForAbsent succeeds when text disappears (clear screen)', () =>
+  it.live('waitForAbsent succeeds when text disappears (clear screen)', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         // Print marker, then clear screen with `clear`. The xterm-headless
@@ -157,7 +158,7 @@ describe('PtySession (spawn mode)', () => {
     ),
   )
 
-  it.scopedLive('custom waitFor predicate returns the projected value', () =>
+  it.live('custom waitFor predicate returns the projected value', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(
@@ -178,7 +179,7 @@ describe('PtySession (spawn mode)', () => {
 })
 
 describe('PtySession scope finalization', () => {
-  it.scopedLive('finalizes cleanly on normal exit', () =>
+  it.live('finalizes cleanly on normal exit', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         // Just verifies acquire/release runs without throwing across many specs.
@@ -217,7 +218,7 @@ describe('PtySession scope finalization', () => {
 })
 
 describe('PtySession (server mode)', () => {
-  it.scopedLive('spawns a server, attaches, reads text', () =>
+  it.live('spawns a server, attaches, reads text', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(
@@ -230,7 +231,7 @@ describe('PtySession (server mode)', () => {
     ),
   )
 
-  it.scopedLive('resize works in server mode', () =>
+  it.live('resize works in server mode', () =>
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(PtySpec_.server({ command: 'sh', args: ['-c', 'sleep 5'] }))
@@ -243,7 +244,7 @@ describe('PtySession (server mode)', () => {
   if (SKIP_SERVER_RECONNECT_ON_LINUX_CI === true) {
     it.skip('reconnect cycles the socket without losing scrollback', () => {})
   } else {
-    it.scopedLive(
+    it.live(
       'reconnect cycles the socket without losing scrollback',
       () =>
         withIsolatedDir(

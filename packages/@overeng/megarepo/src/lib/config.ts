@@ -13,8 +13,8 @@
  * - Local path: "./path", "../path", "/absolute/path"
  */
 
-import { FileSystem } from '@effect/platform'
-import { Effect, JSONSchema, Option, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { Effect, Option, Schema } from 'effect'
 
 import {
   EffectPath,
@@ -91,7 +91,7 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
    *
    * @example { "editor.formatOnSave": true }
    */
-  settings: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  settings: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 }) {}
 
 /**
@@ -152,7 +152,7 @@ export class MegarepoConfig extends Schema.Class<MegarepoConfig>('MegarepoConfig
   $schema: Schema.optional(Schema.String),
 
   /** Members: repos to include in this megarepo (name -> source string) */
-  members: Schema.Record({ key: Schema.String, value: Schema.String }),
+  members: Schema.Record(Schema.String, Schema.String),
 
   /** Generators: optional config file generation */
   generators: Schema.optional(GeneratorsConfig),
@@ -222,9 +222,14 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
   'ConfigNotFoundError',
   {
     megarepoRoot: Schema.String,
-    message: Schema.optionalWith(Schema.String, {
-      default: () => 'No megarepo config found (checked megarepo.kdl and megarepo.json)',
-    }),
+    message: Schema.String.pipe(
+      Schema.withDecodingDefault(
+        Effect.succeed('No megarepo config found (checked megarepo.kdl and megarepo.json)'),
+      ),
+      Schema.withConstructorDefault(
+        Effect.succeed('No megarepo config found (checked megarepo.kdl and megarepo.json)'),
+      ),
+    ),
   },
 ) {}
 
@@ -256,8 +261,8 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
       const content = yield* fs.readFileString(configPath)
       const format: ConfigFormat = fileName.endsWith('.kdl') === true ? 'kdl' : 'json'
 
-      const config = yield* Schema.decodeUnknown(
-        format === 'kdl' ? MegarepoConfigFromKdl : Schema.parseJson(MegarepoConfig),
+      const config = yield* Schema.decodeUnknownEffect(
+        format === 'kdl' ? MegarepoConfigFromKdl : Schema.fromJsonString(MegarepoConfig),
       )(content)
 
       return { config, format, path: configPath } as const
@@ -283,8 +288,8 @@ export const writeMegarepoConfig = ({
 
     const content =
       format === 'kdl'
-        ? yield* Schema.encode(MegarepoConfigFromKdl)(config)
-        : (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n'
+        ? yield* Schema.encodeEffect(MegarepoConfigFromKdl)(config)
+        : (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)) + '\n'
 
     yield* fs.writeFileString(configPath, content)
   })
@@ -294,7 +299,7 @@ export const writeMegarepoConfig = ({
 // =============================================================================
 
 /** Generate JSON Schema from Effect Schema */
-export const generateJsonSchema = () => JSONSchema.make(MegarepoConfig)
+export const generateJsonSchema = () => Schema.toJsonSchemaDocument(MegarepoConfig)
 
 // =============================================================================
 // Member Name Validation

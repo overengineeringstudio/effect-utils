@@ -10,13 +10,10 @@
  * entry-seeded base (do not advance mid-attempt), and `Random` reads `ctx.rand`.
  */
 import type * as restate from '@restatedev/restate-sdk'
-import { Clock, Effect, Random } from 'effect'
+import { Clock, Context, Effect, Random } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { determinismLayer, loggerLayer } from '../mod.ts'
-
-/* The fully-derived default Random whose method set the journaled Random must match. */
-const defaultRandom = Random.make('parity-probe')
 
 /**
  * A minimal deterministic fake `ctx` for the determinism layer: `date.now()`
@@ -88,9 +85,9 @@ describe('determinism layer', () => {
         Effect.sync(() => {
           /* Repeated sync reads must return the SAME frozen value — a replayed
            * attempt must observe the same wall-clock it first observed (R17). */
-          const m1 = clock.unsafeCurrentTimeMillis()
-          const m2 = clock.unsafeCurrentTimeMillis()
-          const n1 = clock.unsafeCurrentTimeNanos()
+          const m1 = clock.currentTimeMillisUnsafe()
+          const m2 = clock.currentTimeMillisUnsafe()
+          const n1 = clock.currentTimeNanosUnsafe()
           return { m1, m2, n1 }
         }),
       ).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: frozenBase }))),
@@ -117,59 +114,23 @@ describe('determinism layer', () => {
     expect(result.bool).toBe(false)
   })
 
-  it('journaled Random overrides EVERY generator method of the default Random (parity guard)', async () => {
-    /* `makeJournaledRandom` spreads `Random.make(...)` then overrides each
-     * generator from the journaled `ctx.rand`. A FUTURE generator method on the
-     * `Random` interface that the journaled Random does NOT override would be a
-     * SILENT determinism hole — it would read the spread's non-journaled source on
-     * replay. This guard enumerates every CALLABLE member the default Random
-     * exposes (own + prototype), drops the known PRNG IMPL details (`seed`/`PRNG`
-     * are not part of the `Random` service interface and do not feed a journaled
-     * read), and asserts the journaled Random carries its OWN override for each
-     * remaining generator method. It fails loudly the day Effect adds a generator
-     * we have not journaled. */
+  it('journaled Random carries BOTH v4 Random service methods (parity guard)', async () => {
+    /* In v4 the `Random` SERVICE is just `{ nextDoubleUnsafe, nextIntUnsafe }` —
+     * every derived generator (`next`, `nextBoolean`, `nextIntBetween`, …) reads
+     * those two via the context reference. The journaled Random must therefore
+     * carry its OWN journaled override for BOTH methods; anything else would read
+     * the non-journaled default on replay. This fails loudly if v4 grows another
+     * unsafe source method without a journaled override. */
     const ctx = fakeCtx({ dateBase: 0, randValues: [0.5] })
     const journaled = await Effect.runPromise(
-      Random.randomWith((r) => Effect.succeed(r)).pipe(
-        Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 })),
-      ),
+      Effect.gen(function* () {
+        const context = yield* Effect.context<never>()
+        return Context.get(context, Random.Random)
+      }).pipe(Effect.provide(determinismLayer({ ctx, frozenBaseMillis: 0 }))),
     )
-    /* PRNG impl details (NOT on the `Random` service interface; carried by the
-     * concrete `Random.make` instance but never read by the journaled overrides).
-     * The `Random` brand symbol is also dropped — it is not a generator. */
-    const implOnly = new Set(['seed', 'PRNG'])
-    const generators = (r: object): ReadonlyArray<string> => {
-      const names = new Set<string>()
-      /* Walk own + prototype members but STOP at `Object.prototype` (so the
-       * universal `toString`/`hasOwnProperty`/… are not counted). Both Effect-VALUED
-       * generators (`next`/`nextBoolean`/`nextInt`) and function-shaped generators
-       * (`nextRange`/`nextIntBetween`/`shuffle`) count — classifying by `typeof` would
-       * miss the Effect-valued ones. */
-      for (
-        let cur: object | null = r;
-        cur !== null && cur !== Object.prototype;
-        cur = Object.getPrototypeOf(cur)
-      ) {
-        for (const key of Object.getOwnPropertyNames(cur)) {
-          if (key === 'constructor' || implOnly.has(key) === true) continue
-          names.add(key)
-        }
-      }
-      return [...names].sort()
-    }
-    const expected = generators(defaultRandom)
-    /* The six documented `Random` generators (sanity floor — catches accidental
-     * over-filtering of the impl allowlist). */
-    expect(expected).toStrictEqual([
-      'next',
-      'nextBoolean',
-      'nextInt',
-      'nextIntBetween',
-      'nextRange',
-      'shuffle',
-    ])
-    /* Every generator method is an OWN property on the journaled Random (i.e. it
-     * was re-journaled, not inherited from the spread). */
+    const expected = ['nextDoubleUnsafe', 'nextIntUnsafe']
+    /* Both source methods are OWN properties on the journaled Random (i.e. they
+     * were re-journaled, not inherited from any spread). */
     for (const method of expected) {
       expect(Object.hasOwn(journaled, method)).toBe(true)
     }

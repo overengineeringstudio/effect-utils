@@ -230,17 +230,17 @@ export const runDeploy = (
             },
           })
 
-          const pullResult = yield* simulatePull(service).pipe(Effect.either)
-          if (pullResult._tag === 'Left') {
+          const pullResult = yield* simulatePull(service).pipe(Effect.result)
+          if (pullResult._tag === 'Failure') {
             failed = true
             failedService = service
-            failedError = pullResult.left.message
-            log({ level: 'error', message: pullResult.left.message, service })
+            failedError = pullResult.failure.message
+            log({ level: 'error', message: pullResult.failure.message, service })
             results.push({
               name: service,
               result: 'failed',
               duration: Date.now() - serviceStart,
-              error: pullResult.left.message,
+              error: pullResult.failure.message,
             })
             break
           }
@@ -256,17 +256,17 @@ export const runDeploy = (
             },
           })
 
-          const startResult = yield* simulateStart(service).pipe(Effect.either)
-          if (startResult._tag === 'Left') {
+          const startResult = yield* simulateStart(service).pipe(Effect.result)
+          if (startResult._tag === 'Failure') {
             failed = true
             failedService = service
-            failedError = startResult.left.message
-            log({ level: 'error', message: startResult.left.message, service })
+            failedError = startResult.failure.message
+            log({ level: 'error', message: startResult.failure.message, service })
             results.push({
               name: service,
               result: 'failed',
               duration: Date.now() - serviceStart,
-              error: startResult.left.message,
+              error: startResult.failure.message,
             })
             break
           }
@@ -282,17 +282,17 @@ export const runDeploy = (
             },
           })
 
-          const healthResult = yield* simulateHealthcheck(service).pipe(Effect.either)
-          if (healthResult._tag === 'Left') {
+          const healthResult = yield* simulateHealthcheck(service).pipe(Effect.result)
+          if (healthResult._tag === 'Failure') {
             failed = true
             failedService = service
-            failedError = healthResult.left.message
-            log({ level: 'error', message: healthResult.left.message, service })
+            failedError = healthResult.failure.message
+            log({ level: 'error', message: healthResult.failure.message, service })
             results.push({
               name: service,
               result: 'failed',
               duration: Date.now() - serviceStart,
-              error: healthResult.left.message,
+              error: healthResult.failure.message,
             })
             break
           }

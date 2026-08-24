@@ -1,5 +1,5 @@
-import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { Effect, Exit, Layer, Redacted } from 'effect'
+import { Cause, Effect, Exit, Layer, Redacted } from 'effect'
+import { HttpClient, HttpClientResponse } from 'effect/unstable/http'
 import { describe, expect, it } from 'vitest'
 
 import { NotionConfig, notionTokenFingerprint } from '@overeng/notion-effect-client'
@@ -39,7 +39,8 @@ describe('NmdGatewayError token fingerprint', () => {
 
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit) === false) return
-    const error = exit.cause._tag === 'Fail' ? exit.cause.error : undefined
+    const fail = Cause.findFail(exit.cause)
+    const error = fail._tag === 'Success' ? fail.success.error : undefined
     expect(error).toBeInstanceOf(NmdGatewayError)
     if (error instanceof NmdGatewayError === false) return
 

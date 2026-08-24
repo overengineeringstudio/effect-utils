@@ -5,9 +5,9 @@
  * These tests verify the core logic without invoking the CLI directly.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Option, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -48,7 +48,7 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
       current = EffectPath.ops.parent(current)
     }
 
-    return Option.fromNullable(outermost)
+    return Option.fromUndefinedOr(outermost)
   })
 
 // =============================================================================
@@ -81,7 +81,7 @@ describe('mr init', () => {
             'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
           members: {},
         }
-        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           initialConfig,
         )
         yield* fs.writeFileString(configPath, configContent + '\n')
@@ -94,7 +94,7 @@ describe('mr init', () => {
         expect(config.members).toEqual({})
         expect(config.$schema).toBeDefined()
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -119,7 +119,7 @@ describe('mr init', () => {
           workDir,
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
-        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        const configContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           existingConfig,
         )
         yield* fs.writeFileString(configPath, configContent + '\n')
@@ -133,7 +133,7 @@ describe('mr init', () => {
         const configAfter = yield* readConfig(workDir)
         expect(configAfter.members['existing-lib']).toBe('owner/existing-lib')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -167,7 +167,7 @@ describe('mr root', () => {
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(workDir)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -196,7 +196,7 @@ describe('mr root', () => {
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(workDir)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -235,7 +235,7 @@ describe('mr root', () => {
         expect(Option.isSome(root)).toBe(true)
         expect(Option.getOrNull(root)).toBe(outerDir)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -255,7 +255,7 @@ describe('mr root', () => {
         const root = yield* findMegarepoRoot(workDir)
         expect(Option.isNone(root)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -283,7 +283,7 @@ describe('mr add', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const initialConfig: MegarepoConfig = { members: {} }
-        const initialContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        const initialContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           initialConfig,
         )
         yield* fs.writeFileString(configPath, initialContent + '\n')
@@ -298,7 +298,7 @@ describe('mr add', () => {
           ...config,
           members: { ...config.members, [memberName]: memberSource },
         }
-        const updatedContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        const updatedContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           updatedConfig,
         )
         yield* fs.writeFileString(configPath, updatedContent + '\n')
@@ -307,7 +307,7 @@ describe('mr add', () => {
         const finalConfig = yield* readConfig(workDir)
         expect(finalConfig.members['effect']).toBe('effect-ts/effect')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -339,7 +339,7 @@ describe('mr add', () => {
           ...config,
           members: { ...config.members, [customName]: memberSource },
         }
-        const updatedContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        const updatedContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           updatedConfig,
         )
         yield* fs.writeFileString(configPath, updatedContent + '\n')
@@ -347,7 +347,7 @@ describe('mr add', () => {
         const finalConfig = yield* readConfig(workDir)
         expect(finalConfig.members['effect-v3']).toBe('effect-ts/effect#v3.0.0')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -379,7 +379,7 @@ describe('mr add', () => {
         const initialConfig: MegarepoConfig = {
           members: { effect: 'effect-ts/effect' },
         }
-        const initialContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+        const initialContent = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
           initialConfig,
         )
         yield* fs.writeFileString(configPath, initialContent + '\n')
@@ -391,7 +391,7 @@ describe('mr add', () => {
         // In real CLI, this would fail with "Member already exists"
         expect(memberName in config.members).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -428,7 +428,7 @@ describe('megarepo.json parsing', () => {
             local: './packages/local',
           },
         }
-        const content = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)
+        const content = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)
         yield* fs.writeFileString(configPath, content + '\n')
 
         const parsed = yield* readConfig(workDir)
@@ -437,7 +437,7 @@ describe('megarepo.json parsing', () => {
         expect(parsed.members['github-ref']).toBe('owner/repo#main')
         expect(parsed.members['local']).toBe('./packages/local')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -463,14 +463,14 @@ describe('megarepo.json parsing', () => {
             vscode: { enabled: true, exclude: ['large-repo'] },
           },
         }
-        const content = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)
+        const content = yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config)
         yield* fs.writeFileString(configPath, content + '\n')
 
         const parsed = yield* readConfig(workDir)
         expect(parsed.generators?.vscode?.enabled).toBe(true)
         expect(parsed.generators?.vscode?.exclude).toEqual(['large-repo'])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -492,7 +492,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
 
     const argv = ['node', 'mr', '--cwd', cwdPath, 'root', '--output', 'json']
-    const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provide(consoleLayer),
     )
     const exit = yield* Effect.exit(effect)
@@ -501,7 +501,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
 
     let state: RootState | undefined
     if (stdout.trim() !== '') {
-      state = yield* Schema.decodeUnknown(Schema.parseJson(RootState))(stdout)
+      state = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(RootState))(stdout)
     }
 
     return {
@@ -538,7 +538,7 @@ describe('--cwd option', () => {
           expect(state!.root).toBe(workDir)
         }
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -558,7 +558,7 @@ describe('--cwd option', () => {
         expect(state).toBeDefined()
         expect(state!._tag).toBe('Error')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -571,14 +571,14 @@ describe('--cwd option', () => {
 
         const cwdPath = '/nonexistent/path/that/does/not/exist/'
         const argv = ['node', 'mr', '--cwd', cwdPath, 'root', '--output', 'json']
-        const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+        const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
           Effect.provide(consoleLayer),
         )
         const exit = yield* Effect.exit(effect)
 
         expect(Exit.isFailure(exit)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

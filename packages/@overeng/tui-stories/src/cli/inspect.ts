@@ -1,4 +1,4 @@
-import { Args, Command, Options } from '@effect/cli'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
 import { Effect } from 'effect'
 import React from 'react'
 
@@ -10,11 +10,11 @@ import { discoverStories } from '../StoryDiscovery.ts'
 import { findStory } from '../StoryModule.ts'
 import { InspectApp, InspectView } from './renderers/InspectOutput/mod.ts'
 
-const storyIdArg = Args.text({ name: 'story-id' }).pipe(
+const storyIdArg = Args.string('story-id').pipe(
   Args.withDescription('Story title or ID to inspect'),
 )
 
-const pathOption = Options.text('path').pipe(
+const pathOption = Options.string('path').pipe(
   Options.withDescription('Package directory to search for stories'),
 )
 

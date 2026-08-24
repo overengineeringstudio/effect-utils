@@ -1,4 +1,4 @@
-import { HttpClient } from '@effect/platform'
+import { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Context, Effect, Layer, Option, Schema, type Scope, Stream } from 'effect'
 
 import {
@@ -217,10 +217,10 @@ export const makeThrottledProvideClientEnv = (
 ): Effect.Effect<
   (
     base: <A, E>(
-      effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
+      effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
     ) => Effect.Effect<A, E>,
   ) => <A, E>(
-    effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
+    effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
   ) => Effect.Effect<A, E>,
   never,
   Scope.Scope
@@ -251,7 +251,7 @@ const supportedNotionEffectClientCapabilities: ReadonlyArray<CapabilityName> = [
 
 const unavailableRequestId = NotionRequestId.make('notion-client-success-request-id-unavailable')
 
-const decodeDateTimeUtc = Schema.decodeUnknownSync(Schema.DateTimeUtc)
+const decodeDateTimeUtc = Schema.decodeUnknownSync(Schema.DateTimeUtcFromString)
 
 const observedNow = () => decodeDateTimeUtc(new Date().toISOString())
 
@@ -573,8 +573,8 @@ const optionValue = (option: CanonicalOptionValue) => ({
   ...(option.color === undefined ? {} : { color: option.color }),
 })
 
-const encodeDateTimeUtc = (value: typeof Schema.DateTimeUtc.Type): string =>
-  Schema.encodeSync(Schema.DateTimeUtc)(value)
+const encodeDateTimeUtc = (value: typeof Schema.DateTimeUtcFromString.Type): string =>
+  Schema.encodeSync(Schema.DateTimeUtcFromString)(value)
 
 /**
  * Map a schema-package `CanonicalEncodeError` back onto the gateway's
@@ -759,7 +759,7 @@ export const dataSourceOperationsToNotion = (
     )
   }
 
-  return Effect.reduce(operations, {} as Record<string, unknown>, (properties, operation) =>
+  return Effect.reduce(operations, () => ({}) as Record<string, unknown>, (properties, operation) =>
     schemaOperationToProperty(operation).pipe(
       Effect.flatMap(([key, value]) =>
         Object.prototype.hasOwnProperty.call(properties, key) === true
@@ -1109,7 +1109,7 @@ const pagePropertyItemsPageFromRemote = (input: {
  */
 export const makeNotionEffectClientGatewayClient = (
   provideClientEnv: <A, E>(
-    effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
+    effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
   ) => Effect.Effect<A, E>,
 ): NotionGatewayClient => ({
   retrieveDataSource: ({ dataSourceId }) =>
@@ -1240,7 +1240,7 @@ export const makeNotionDataSourceGatewayFromClient = ({
                   sorts,
                 }),
               {
-                startCursor: Option.fromNullable(input.startCursor),
+                startCursor: Option.fromNullOr(input.startCursor),
                 emit: {
                   _tag: 'page',
                   map: (result) =>
@@ -1272,7 +1272,7 @@ export const makeNotionDataSourceGatewayFromClient = ({
             startCursor: Option.getOrUndefined(cursor),
           }),
         {
-          startCursor: Option.fromNullable(input.startCursor),
+          startCursor: Option.fromNullOr(input.startCursor),
           emit: {
             _tag: 'page',
             map: (result) =>
@@ -1317,7 +1317,7 @@ export const makeNotionDataSourceGatewayFromClient = ({
             basePropertiesHash: command.basePropertiesHash,
           }),
         ),
-        Effect.zipRight(pagePropertyPatchToNotion(command.propertyPatch)),
+        Effect.andThen(pagePropertyPatchToNotion(command.propertyPatch)),
         Effect.flatMap((properties) =>
           client.updatePage({ pageId: command.pageId, properties }).pipe(
             Effect.map(() => unavailableRequestId),
@@ -1349,7 +1349,7 @@ export const makeNotionDataSourceGatewayFromClient = ({
                 }),
               )
         }),
-        Effect.zipRight(pagePropertyPatchToNotion(command.initialProperties)),
+        Effect.andThen(pagePropertyPatchToNotion(command.initialProperties)),
         Effect.flatMap((properties) =>
           client.createPage({ dataSourceId: command.dataSourceId, properties }).pipe(
             Effect.map((page) =>
@@ -1391,7 +1391,7 @@ export const makeNotionDataSourceGatewayFromClient = ({
                 }),
               )
         }),
-        Effect.zipRight(dataSourceOperationsToNotion(command.operations)),
+        Effect.andThen(dataSourceOperationsToNotion(command.operations)),
         Effect.flatMap((properties) =>
           client.updateDataSource({ dataSourceId: command.dataSourceId, properties }).pipe(
             Effect.as(unavailableRequestId),
@@ -1590,18 +1590,18 @@ export const guardRealAdapterCapabilities = (input: {
 export const NotionDataSourceGatewayLive: Layer.Layer<
   NotionDataSourceGateway,
   never,
-  NotionConfig | HttpClient.HttpClient
-> = Layer.scoped(
+  NotionConfig | HttpClient
+> = Layer.effect(
   NotionDataSourceGateway,
   Effect.gen(function* () {
     const config = yield* NotionConfig
-    const httpClient = yield* HttpClient.HttpClient
+    const httpClient = yield* HttpClient
     const provideClientEnv = <A, E>(
-      effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
+      effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
     ) =>
       effect.pipe(
         Effect.provideService(NotionConfig, config),
-        Effect.provideService(HttpClient.HttpClient, httpClient),
+        Effect.provideService(HttpClient, httpClient),
       )
 
     /* Explicit ~3 rps throttle so the live gateway keeps the pacing the

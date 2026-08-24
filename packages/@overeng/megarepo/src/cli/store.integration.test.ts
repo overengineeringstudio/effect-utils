@@ -4,9 +4,9 @@
  * Tests the store GC, ls, and fetch commands with realistic store fixtures.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import * as Cli from 'effect/unstable/cli'
+import * as FileSystem from 'effect/FileSystem'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Option, Schema } from 'effect'
 import { expect } from 'vitest'
@@ -39,7 +39,7 @@ const StoreGcJsonOutput = Schema.Struct({
   ),
 })
 
-const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 
 type StoreGcJsonResult = Schema.Schema.Type<typeof StoreGcJsonOutput>['results'][number]
 
@@ -79,7 +79,7 @@ const runMrCommand = ({
     )
 
     const argv = ['node', 'mr', ...command]
-    const exit = yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(consoleLayer),
       Effect.exit,
@@ -123,13 +123,13 @@ describe('mr store gc', () => {
 
           // Use the store to list worktrees
           const storeLayer = makeStoreLayer({ basePath: storePath })
-          const store = yield* Store.pipe(Effect.provide(storeLayer))
+          const store = yield* Effect.provide(Store, storeLayer)
 
           const repos = yield* store.listRepos()
           expect(repos).toHaveLength(1)
           expect(repos[0]?.relativePath).toBe('github.com/test-owner/test-repo/')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -162,12 +162,12 @@ describe('mr store gc', () => {
 
           // Use store to verify structure
           const storeLayer = makeStoreLayer({ basePath: storePath })
-          const store = yield* Store.pipe(Effect.provide(storeLayer))
+          const store = yield* Effect.provide(Store, storeLayer)
 
           const repos = yield* store.listRepos()
           expect(repos).toHaveLength(1)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -217,7 +217,7 @@ describe('mr store gc', () => {
           expect(lockFile.members['my-lib']).toBeDefined()
           expect(lockFile.members['my-lib']!.ref).toBe('main')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -287,7 +287,7 @@ describe('mr store gc', () => {
           )
 
           const env = { MEGAREPO_STORE: storePath }
-          const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
           yield* refreshWorkspaceRegistry({ workspaceRoot: workspaceB, store, now: Date.now() })
           const statusB = yield* runMrCommand({
             cwd: workspaceB,
@@ -311,7 +311,7 @@ describe('mr store gc', () => {
           expect(repoBResult?.status).toBe('kept')
           expect(yield* fs.exists(repoBPath)).toBe(true)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -355,7 +355,7 @@ describe('mr store gc', () => {
             commitWorktreePath.replace(/\/$/, ''),
             EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/repo')),
           )
-          const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
           yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: Date.now() })
 
           const gc = yield* runMrCommand({
@@ -373,7 +373,7 @@ describe('mr store gc', () => {
           expect(commitResult?.status).toBe('skipped_in_use')
           expect(yield* fs.exists(commitWorktreePath)).toBe(true)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -435,7 +435,7 @@ describe('mr store gc', () => {
             ),
           ).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -496,7 +496,7 @@ describe('store discovery is bounded to the layout', () => {
         yield* mkdirp('stray/.git')
         yield* mkdirp('stray/node_modules/deep/deeper')
 
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         const repos = (yield* store.listRepos()).map((r) => r.relativePath)
 
         expect(repos).toContain('github.com/acme/real/')
@@ -506,7 +506,7 @@ describe('store discovery is bounded to the layout', () => {
         expect(repos.some((p) => p.startsWith('stray/'))).toBe(false)
         expect(repos).toHaveLength(2)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -525,7 +525,7 @@ describe('store discovery is bounded to the layout', () => {
           .remove(EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('.git')), {
             recursive: true,
           })
-          .pipe(Effect.catchAll(() => Effect.void))
+          .pipe(Effect.catch(() => Effect.void))
         for (const sub of ['node_modules/a/b/c', 'src/x/y', 'dist/p/q']) {
           yield* fs.makeDirectory(
             EffectPath.ops.join(wt, EffectPath.unsafe.relativeDir(`${sub}/`)),
@@ -550,7 +550,7 @@ describe('store discovery is bounded to the layout', () => {
         expect(featureResults[0]?.ref).toBe('feature')
         expect(results.some((r) => r.ref.includes('node_modules'))).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -580,7 +580,7 @@ describe('store discovery is bounded to the layout', () => {
         )
 
         const source = parseSourceString('acme/r')!
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         const worktrees = yield* store.listWorktrees(source)
 
         // The real worktree is found...
@@ -593,7 +593,7 @@ describe('store discovery is bounded to the layout', () => {
         expect(worktrees.every((w) => w.ref.split('/').length <= 8)).toBe(true)
         expect(worktrees.some((w) => w.ref.includes('d29'))).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -621,7 +621,7 @@ describe('mr store ls', () => {
         ])
 
         const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Store.pipe(Effect.provide(storeLayer))
+        const store = yield* Effect.provide(Store, storeLayer)
 
         const repos = yield* store.listRepos()
         expect(repos).toHaveLength(2)
@@ -630,7 +630,7 @@ describe('mr store ls', () => {
         expect(paths).toContain('github.com/owner1/repo-a/')
         expect(paths).toContain('github.com/owner2/repo-b/')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -647,12 +647,12 @@ describe('mr store ls', () => {
         yield* fs.makeDirectory(storePath, { recursive: true })
 
         const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Store.pipe(Effect.provide(storeLayer))
+        const store = yield* Effect.provide(Store, storeLayer)
 
         const repos = yield* store.listRepos()
         expect(repos).toHaveLength(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -684,12 +684,12 @@ describe('mr store ls', () => {
         )
 
         const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Store.pipe(Effect.provide(storeLayer))
+        const store = yield* Effect.provide(Store, storeLayer)
 
         const repos = yield* store.listRepos()
         expect(repos.map((repo) => repo.relativePath)).toStrictEqual(['localhost/owner/repo/'])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -712,12 +712,12 @@ describe('mr store ls', () => {
         )
 
         const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Store.pipe(Effect.provide(storeLayer))
+        const store = yield* Effect.provide(Store, storeLayer)
 
         const repos = yield* store.listRepos()
         expect(repos.map((repo) => repo.relativePath)).toContain('example.com/refs/project/')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -736,7 +736,7 @@ describe('store worktree paths', () => {
         yield* fs.makeDirectory(storePath, { recursive: true })
 
         const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Store.pipe(Effect.provide(storeLayer))
+        const store = yield* Effect.provide(Store, storeLayer)
 
         // Test path generation for branch
         const branchSource = parseSourceString('owner/repo#main')!
@@ -763,7 +763,7 @@ describe('store worktree paths', () => {
         })
         expect(commitPath).toContain('refs/commits/')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -779,7 +779,7 @@ describe('store worktree paths', () => {
         yield* fs.makeDirectory(storePath, { recursive: true })
 
         const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Store.pipe(Effect.provide(storeLayer))
+        const store = yield* Effect.provide(Store, storeLayer)
 
         // Test path generation for branch with special characters
         const source = parseSourceString('owner/repo')!
@@ -789,7 +789,7 @@ describe('store worktree paths', () => {
         })
         expect(pathWithSlash).toContain('refs/heads/feature/my-branch/')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -834,7 +834,7 @@ describe('lock file pin/unpin operations', () => {
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -880,7 +880,7 @@ describe('lock file pin/unpin operations', () => {
           'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -929,7 +929,7 @@ describe('lock file pin/unpin operations', () => {
           '2222222222222222222222222222222222222222',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -968,7 +968,7 @@ describe('lock file operations', () => {
           'abc1234567890abcdef1234567890abcdef1234',
         )
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1017,7 +1017,7 @@ describe('lock file operations', () => {
         expect(lockFile.members['lib2']!.pinned).toBe(false)
         expect(lockFile.members['lib3']!.pinned).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

@@ -28,7 +28,7 @@ import { formatReasonMessage } from '@overeng/utils'
 export class RestateError extends Schema.TaggedError<RestateError>(
   '@overeng/restate-effect/RestateError',
 )('RestateError', {
-  reason: Schema.Literal(
+  reason: Schema.Literals([
     'RunFailed',
     'SleepFailed',
     'SerdeFailed',
@@ -36,9 +36,9 @@ export class RestateError extends Schema.TaggedError<RestateError>(
     'RegistrationFailed',
     'IngressFailed',
     'AdminFailed',
-  ),
+  ]),
   method: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
     return formatReasonMessage({ reason: this.reason, method: this.method, cause: this.cause })

@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { NodeContext } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -45,12 +46,12 @@ const runCli = (args: readonly string[]) =>
     },
   })
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 const runStore = <A, E>(
-  effect: Effect.Effect<A, E, NmdStateStore | NodeContext.NodeContext>,
+  effect: Effect.Effect<A, E, NmdStateStore | NodeServicesEnv>,
 ): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeContext.layer))))
+  Effect.runPromise(effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeServices.layer))))
 
 const syncStateFor = (opts: {
   readonly pageId: string

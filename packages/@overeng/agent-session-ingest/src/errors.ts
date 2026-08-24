@@ -6,7 +6,7 @@ export class SessionArtifactReadError extends Schema.TaggedError<SessionArtifact
   {
     message: Schema.String,
     path: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -18,7 +18,7 @@ export class SessionArtifactDecodeError extends Schema.TaggedError<SessionArtifa
     sourceId: Schema.String,
     artifactId: Schema.String,
     rawRecord: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -28,7 +28,7 @@ export class SessionCheckpointDecodeError extends Schema.TaggedError<SessionChec
   {
     message: Schema.String,
     path: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -38,7 +38,7 @@ export class SessionCheckpointWriteError extends Schema.TaggedError<SessionCheck
   {
     message: Schema.String,
     path: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -48,7 +48,7 @@ export class SessionSourceDiscoveryError extends Schema.TaggedError<SessionSourc
   {
     message: Schema.String,
     sourceId: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 

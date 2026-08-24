@@ -11,7 +11,7 @@
  * (`serverAvailable`) — e.g. outside the dedicated integration job.
  */
 import { it } from '@effect/vitest'
-import { Clock, Effect, Schema } from 'effect'
+import { Clock, Context, Effect, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { Greeter } from '../../examples/01-service.ts'
@@ -30,18 +30,19 @@ import {
   RestateIngress,
   result as ingressResult,
 } from '../mod.ts'
-import { RestateTestHarness } from '../testing/testing.ts'
+import { RestateTestHarness, type RestateTestHarnessService } from '../testing/testing.ts'
 
 /** The harness service value (for the `pollForId` helper's parameter type). */
-type Harness = Effect.Effect.Success<typeof RestateTestHarness>
+type Harness = RestateTestHarnessService
 
 const AwakeablePayload = Schema.Struct({ token: Schema.String })
 
 /* A REAL-time sleep, ignoring `@effect/vitest`'s `it.effect` TestClock (under
  * which `Effect.sleep` is virtual and never advances). We coordinate with a real
  * native server across suspend/resume, so wall-clock waits must actually elapse. */
+const liveClock: Clock.Clock = Context.get(Context.empty(), Clock.Clock)
 const liveSleep = (millis: number): Effect.Effect<void> =>
-  Effect.sleep(millis).pipe(Effect.withClock(Clock.make()))
+  Effect.sleep(millis).pipe(Effect.provideService(Clock.Clock, liveClock))
 
 describe.skipIf(!serverAvailable)('examples (verified end-to-end)', () => {
   it.layer(GreeterHarness, { timeout: 90_000 })('01-service', (it) => {

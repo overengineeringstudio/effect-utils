@@ -115,7 +115,7 @@ const findPage = ({
   readonly operation: string
   readonly pageId: PageId
 }) =>
-  Effect.fromNullable(pages.get(pageId)).pipe(
+  Effect.fromNullishOr(pages.get(pageId)).pipe(
     Effect.mapError(
       () =>
         new BodySyncError({

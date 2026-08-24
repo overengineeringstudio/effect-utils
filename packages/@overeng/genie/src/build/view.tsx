@@ -5,7 +5,7 @@
  * Handles both progress display (TTY) and final output (all modes).
  */
 
-import type { Atom } from '@effect-atom/atom'
+import type { Atom } from 'effect/unstable/reactivity'
 import React, { useMemo } from 'react'
 
 import {

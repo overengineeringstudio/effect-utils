@@ -36,7 +36,7 @@ describe('makeSubscriptionRefStore', () => {
     expect(store.getSnapshot()).toBe(1)
 
     await Effect.runPromise(SubscriptionRef.set(ref, 2))
-    await Effect.runPromise(Effect.yieldNow())
+    await Effect.runPromise(Effect.yieldNow)
 
     expect(store.getSnapshot()).toBe(2)
     expect(notifications).toEqual([1, 2])
@@ -73,7 +73,7 @@ describe('useSubscriptionRef', () => {
 
     await act(async () => {
       await Effect.runPromise(SubscriptionRef.set(ref, 2))
-      await Effect.runPromise(Effect.yieldNow())
+      await Effect.runPromise(Effect.yieldNow)
     })
 
     expect(values.at(-1)).toBe(2)

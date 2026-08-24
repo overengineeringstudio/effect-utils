@@ -2,7 +2,8 @@ import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
+import { NodeServices } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -181,26 +182,26 @@ class FakeGateway {
   }
 }
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
 const run = <A, E>(
-  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, E, NodeServicesEnv | NotionMdGateway | NmdStateStore>,
   fake: FakeGateway,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer))),
   )
 
 /** Runs an effect expected to fail and returns its typed expected error. */
 const runFailure = async <A, E>(
-  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, E, NodeServicesEnv | NotionMdGateway | NmdStateStore>,
   fake: FakeGateway,
 ): Promise<E> => {
   const exit = await Effect.runPromiseExit(
-    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeServices.layer))),
   )
   if (Exit.isSuccess(exit) === true) throw new Error('expected the effect to fail')
-  const failure = Cause.failureOption(exit.cause)
+  const failure = Cause.findErrorOption(exit.cause)
   if (Option.isNone(failure) === true) throw new Error('expected an expected failure, got a defect')
   return failure.value
 }

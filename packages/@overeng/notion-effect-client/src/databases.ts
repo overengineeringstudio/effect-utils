@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Effect, Option, type Schema, Stream } from 'effect'
 
 import type { DataSourceSchema, Page } from '@overeng/notion-effect-schema'
@@ -67,7 +67,7 @@ export interface QueryDatabaseWithSchemaOptions<
   R,
 > extends QueryDatabaseOptionsBase {
   /** Schema to decode page properties */
-  readonly schema: Schema.Schema<TProperties, I, R>
+  readonly schema: Schema.Codec<TProperties, I, R>
 }
 
 /** Options for retrieving a database */
@@ -298,7 +298,7 @@ const buildQueryParams = (opts: QueryDatabaseOptionsBase): string => {
 /** Internal raw query - always returns raw pages, used by both query and queryStream */
 const queryRaw = (
   opts: QueryDatabaseOptionsBase,
-): Effect.Effect<PaginatedResult<Page>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<PaginatedResult<Page>, NotionApiError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     const body = buildQueryBody(opts)
     const queryParams = buildQueryParams(opts)
@@ -336,13 +336,13 @@ const queryRaw = (
  */
 export function query(
   opts: QueryDatabaseOptions,
-): Effect.Effect<PaginatedResult<Page>, NotionApiError, NotionConfig | HttpClient.HttpClient>
+): Effect.Effect<PaginatedResult<Page>, NotionApiError, NotionConfig | HttpClient>
 export function query<TProperties, I, R>(
   opts: QueryDatabaseWithSchemaOptions<TProperties, I, R>,
 ): Effect.Effect<
   TypedPaginatedResult<TProperties>,
   NotionApiError | PageDecodeError,
-  NotionConfig | HttpClient.HttpClient | R
+  NotionConfig | HttpClient | R
 >
 // oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
 export function query<TProperties, I, R>(
@@ -350,7 +350,7 @@ export function query<TProperties, I, R>(
 ): Effect.Effect<
   PaginatedResult<Page> | TypedPaginatedResult<TProperties>,
   NotionApiError | PageDecodeError,
-  NotionConfig | HttpClient.HttpClient | R
+  NotionConfig | HttpClient | R
 > {
   return Effect.gen(function* () {
     const result = yield* queryRaw(opts)
@@ -397,13 +397,13 @@ export function query<TProperties, I, R>(
  */
 export function queryStream(
   opts: Omit<QueryDatabaseOptions, 'startCursor'>,
-): Stream.Stream<Page, NotionApiError, NotionConfig | HttpClient.HttpClient>
+): Stream.Stream<Page, NotionApiError, NotionConfig | HttpClient>
 export function queryStream<TProperties, I, R>(
   opts: Omit<QueryDatabaseWithSchemaOptions<TProperties, I, R>, 'startCursor'>,
 ): Stream.Stream<
   TypedPage<TProperties>,
   NotionApiError | PageDecodeError,
-  NotionConfig | HttpClient.HttpClient | R
+  NotionConfig | HttpClient | R
 >
 // oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
 export function queryStream<TProperties, I, R>(
@@ -413,9 +413,9 @@ export function queryStream<TProperties, I, R>(
 ): Stream.Stream<
   Page | TypedPage<TProperties>,
   NotionApiError | PageDecodeError,
-  NotionConfig | HttpClient.HttpClient | R
+  NotionConfig | HttpClient | R
 > {
-  const baseStream: Stream.Stream<Page, NotionApiError, NotionConfig | HttpClient.HttpClient> =
+  const baseStream: Stream.Stream<Page, NotionApiError, NotionConfig | HttpClient> =
     paginate(
       (cursor) =>
         queryRaw(

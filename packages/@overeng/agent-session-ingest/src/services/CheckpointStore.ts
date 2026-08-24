@@ -1,7 +1,6 @@
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, FileSystem, Layer, Schema } from 'effect'
 
 import { SessionCheckpointDecodeError, SessionCheckpointWriteError } from '../errors.ts'
 import type { ArtifactDescriptor, IngestionCheckpoint } from '../schema/core.ts'
@@ -13,7 +12,7 @@ export const buildCheckpointKey = (
 ) => JSON.stringify([descriptor.sourceId, descriptor.artifactId] as const)
 
 /** Service for loading and saving deduped ingestion checkpoints. */
-export class CheckpointStore extends Context.Tag('AgentSessionIngest/CheckpointStore')<
+export class CheckpointStore extends Context.Service<
   CheckpointStore,
   {
     readonly list: () => Effect.Effect<
@@ -24,7 +23,7 @@ export class CheckpointStore extends Context.Tag('AgentSessionIngest/CheckpointS
       checkpoints: ReadonlyArray<IngestionCheckpoint>,
     ) => Effect.Effect<void, SessionCheckpointWriteError>
   }
->() {}
+>()('AgentSessionIngest/CheckpointStore') {}
 
 /** File-backed checkpoint store for incremental source ingestion. */
 export const makeFileCheckpointStore = (options: { path: string }) =>
@@ -54,7 +53,7 @@ export const makeFileCheckpointStore = (options: { path: string }) =>
 
         const checkpoints: Array<IngestionCheckpoint> = []
         for (const line of lines) {
-          const decoded = yield* Schema.decodeUnknown(IngestionCheckpointJsonLine)(line).pipe(
+          const decoded = yield* Schema.decodeUnknownEffect(IngestionCheckpointJsonLine)(line).pipe(
             Effect.mapError(
               (cause) =>
                 new SessionCheckpointDecodeError({
@@ -87,7 +86,7 @@ export const makeFileCheckpointStore = (options: { path: string }) =>
           const directory = nodePath.dirname(options.path)
           yield* fs
             .makeDirectory(directory, { recursive: true })
-            .pipe(Effect.catchAll(() => Effect.void))
+            .pipe(Effect.catch(() => Effect.void))
 
           const deduped = new Map<string, IngestionCheckpoint>()
           for (const checkpoint of checkpoints) {
@@ -95,7 +94,7 @@ export const makeFileCheckpointStore = (options: { path: string }) =>
           }
 
           const encodedLines = yield* Effect.forEach([...deduped.values()], (checkpoint) =>
-            Schema.encode(IngestionCheckpointJsonLine)(checkpoint).pipe(
+            Schema.encodeEffect(IngestionCheckpointJsonLine)(checkpoint).pipe(
               Effect.mapError(
                 (cause) =>
                   new SessionCheckpointWriteError({

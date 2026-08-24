@@ -70,7 +70,7 @@ type UserActionOptions = {
   readonly authorityMode?: AuthorityMode
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {

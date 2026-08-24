@@ -35,7 +35,7 @@ const trustOtelContract = <A, E, R>(
   effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
 ): Effect.Effect<A, E, R> =>
   effect.pipe(
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       typeof error === 'object' &&
       error !== null &&
       '_tag' in error &&
@@ -46,7 +46,7 @@ const trustOtelContract = <A, E, R>(
   ) as Effect.Effect<A, E, R>
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -58,7 +58,7 @@ const trustedWith =
 
 /** Like {@link trustedWith} but forces a ROOT span (used for the top-level `genie/command`). */
 const trustedWithRoot =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -68,7 +68,7 @@ const trustedWithRoot =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.withRoot({ attributes, effect }))
 
-const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
+const trustedAnnotate = <S extends Schema.Codec<any>>({
   operation,
   attributes,
 }: {

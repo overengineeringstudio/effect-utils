@@ -5,21 +5,21 @@
  * Used for both visual rendering and JSON serialization.
  */
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 // =============================================================================
 // Service Status
 // =============================================================================
 
 /** Schema for the lifecycle status of a service during deployment. */
-export const ServiceStatus = Schema.Literal(
+export const ServiceStatus = Schema.Literals([
   'pending',
   'pulling',
   'starting',
   'healthcheck',
   'healthy',
   'failed',
-)
+])
 /** Inferred type for a service's deployment lifecycle status. */
 export type ServiceStatus = Schema.Schema.Type<typeof ServiceStatus>
 
@@ -39,7 +39,7 @@ export type ServiceProgress = Schema.Schema.Type<typeof ServiceProgress>
 /** Schema for a service's final deployment result (updated, unchanged, rolled-back, or failed). */
 export const ServiceResult = Schema.Struct({
   name: Schema.String,
-  result: Schema.Literal('updated', 'unchanged', 'rolled-back', 'failed'),
+  result: Schema.Literals(['updated', 'unchanged', 'rolled-back', 'failed']),
   duration: Schema.Number,
   error: Schema.optional(Schema.String),
 })
@@ -53,7 +53,7 @@ export type ServiceResult = Schema.Schema.Type<typeof ServiceResult>
 /** Schema for a timestamped log entry with level, message, and optional service context. */
 export const LogEntry = Schema.Struct({
   timestamp: Schema.String,
-  level: Schema.Literal('info', 'warn', 'error', 'debug'),
+  level: Schema.Literals(['info', 'warn', 'error', 'debug']),
   message: Schema.String,
   service: Schema.optional(Schema.String),
 })
@@ -65,7 +65,7 @@ export type LogEntry = Schema.Schema.Type<typeof LogEntry>
 // =============================================================================
 
 /** Union schema of all deploy states (Idle, Validating, Progress, Complete, Failed, RollingBack, Interrupted). */
-export const DeployState = Schema.Union(
+export const DeployState = Schema.Union([
   Schema.TaggedStruct('Idle', {}),
 
   Schema.TaggedStruct('Validating', {
@@ -114,7 +114,7 @@ export const DeployState = Schema.Union(
     startedAt: Schema.Number,
     interruptedAt: Schema.Number,
   }),
-)
+])
 
 /** Inferred type for the deploy state union. */
 export type DeployState = Schema.Schema.Type<typeof DeployState>
@@ -127,9 +127,9 @@ export type DeployState = Schema.Schema.Type<typeof DeployState>
 export const DeployOptions = Schema.Struct({
   services: Schema.Array(Schema.String),
   environment: Schema.String,
-  dryRun: Schema.optionalWith(Schema.Boolean, { default: () => false }),
-  force: Schema.optionalWith(Schema.Boolean, { default: () => false }),
-  timeout: Schema.optionalWith(Schema.Number, { default: () => 30000 }),
+  dryRun: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  force: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  timeout: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(30000))),
 })
 /** Inferred type for deploy command options. */
 export type DeployOptions = Schema.Schema.Type<typeof DeployOptions>
@@ -153,16 +153,16 @@ export type DeployResult = Schema.Schema.Type<typeof DeployResult>
 // =============================================================================
 
 /** Events emitted in NDJSON mode instead of full state snapshots */
-export const DeployNdjsonEvent = Schema.Union(
+export const DeployNdjsonEvent = Schema.Union([
   Schema.TaggedStruct('PhaseChanged', {
-    phase: Schema.Literal(
+    phase: Schema.Literals([
       'Validating',
       'Progress',
       'Complete',
       'Failed',
       'RollingBack',
       'Interrupted',
-    ),
+    ]),
   }),
   Schema.TaggedStruct('ServiceStatusChanged', {
     name: Schema.String,
@@ -170,7 +170,7 @@ export const DeployNdjsonEvent = Schema.Union(
     message: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('LogAdded', { log: LogEntry }),
-)
+])
 export type DeployNdjsonEvent = typeof DeployNdjsonEvent.Type
 
 type Phase = DeployNdjsonEvent extends { _tag: 'PhaseChanged'; phase: infer P } ? P : never
@@ -244,7 +244,7 @@ export const deployFromAction = ({
 // =============================================================================
 
 /** Union schema of deploy actions (SetState, UpdateServiceStatus, AddLog, Interrupted). */
-export const DeployAction = Schema.Union(
+export const DeployAction = Schema.Union([
   // Direct state transitions
   Schema.TaggedStruct('SetState', { state: DeployState }),
 
@@ -260,7 +260,7 @@ export const DeployAction = Schema.Union(
 
   // Interrupt handling (auto-dispatched on Ctrl+C)
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 /** Inferred type for the deploy action union. */
 export type DeployAction = Schema.Schema.Type<typeof DeployAction>

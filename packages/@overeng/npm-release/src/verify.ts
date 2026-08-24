@@ -8,25 +8,29 @@
 
 import { createHash } from 'node:crypto'
 
-import { Command, FileSystem } from '@effect/platform'
-import { Effect, Schema } from 'effect'
+import { ChildProcess } from 'effect/unstable/process'
+import { Effect, FileSystem, Schema, Stream } from 'effect'
 import type { Schedule } from 'effect'
 
 import { registryVerification, type RemoteRegistryState } from './mod.ts'
 
+const NonEmptyTrimmedString = Schema.NonEmptyString.check(
+  Schema.makeFilter((s: string) => s.trim().length === s.length),
+)
+
 /** One package to verify. `tarball` is absent when this run did not pack it. */
 export const PlanPackage = Schema.Struct({
-  name: Schema.NonEmptyTrimmedString,
-  tarball: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'NpmRelease.PlanPackage' })
+  name: NonEmptyTrimmedString,
+  tarball: Schema.optional(NonEmptyTrimmedString),
+}).annotate({ identifier: 'NpmRelease.PlanPackage' })
 
 /** The release a caller wants the registry to agree with. */
 export const VerifyPlan = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  version: Schema.NonEmptyTrimmedString,
-  npmTag: Schema.NonEmptyTrimmedString,
+  version: NonEmptyTrimmedString,
+  npmTag: NonEmptyTrimmedString,
   packages: Schema.NonEmptyArray(PlanPackage),
-}).annotations({ identifier: 'NpmRelease.VerifyPlan' })
+}).annotate({ identifier: 'NpmRelease.VerifyPlan' })
 
 export type VerifyPlan = typeof VerifyPlan.Type
 
@@ -35,7 +39,7 @@ export const VerifyFailure = Schema.Struct({
   package: Schema.String,
   reason: Schema.String,
   terminal: Schema.Boolean,
-}).annotations({ identifier: 'NpmRelease.VerifyFailure' })
+}).annotate({ identifier: 'NpmRelease.VerifyFailure' })
 
 export type VerifyFailure = typeof VerifyFailure.Type
 
@@ -64,7 +68,11 @@ const RegistryManifest = Schema.Struct({
   dist: Schema.optional(Schema.Struct({ integrity: Schema.optional(Schema.String) })),
 })
 
-const RegistryDistTags = Schema.Record({ key: Schema.String, value: Schema.String })
+const RegistryDistTags = Schema.Record(Schema.String, Schema.String)
+
+interface PlainSchema<A> extends Schema.Schema<A> {
+  readonly DecodingServices: never
+}
 
 /**
  * `npm view --json`, with every failure mode reported as absent data.
@@ -73,17 +81,28 @@ const RegistryDistTags = Schema.Record({ key: Schema.String, value: Schema.Strin
  * version, so neither exit code nor parseability distinguishes "not there yet" from
  * "broken". Both are absence; the retry budget decides when absence becomes failure.
  */
-const npmViewJson = Effect.fn('npmViewJson')(function* <A, I>(
+const npmViewJson = Effect.fn('npmViewJson')(function* <A>(
   args: ReadonlyArray<string>,
-  schema: Schema.Schema<A, I>,
+  schema: PlainSchema<A>,
   registry: string,
 ) {
-  const raw = yield* Command.make('npm', 'view', ...args, '--json', `--registry=${registry}`).pipe(
-    Command.string,
-    Effect.orElseSucceed(() => ''),
-  )
+  const raw = yield* Effect.scoped(
+    Effect.gen(function* () {
+      const handle = yield* ChildProcess.make('npm', [
+        'view',
+        ...args,
+        '--json',
+        `--registry=${registry}`,
+      ])
+      const [stdout] = yield* Effect.all(
+        [Stream.mkString(Stream.decodeText(handle.stdout)), Stream.runCollect(handle.stderr)],
+        { concurrency: 'unbounded' },
+      )
+      return stdout
+    }),
+  ).pipe(Effect.orElseSucceed(() => ''))
 
-  return yield* Schema.decodeUnknown(Schema.parseJson(schema))(raw.trim()).pipe(
+  return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(raw.trim()).pipe(
     Effect.orElseSucceed(() => undefined),
   )
 })
@@ -216,13 +235,13 @@ export const verifyPlan = Effect.fn('verifyPlan')(function* ({
         npmTag: plan.npmTag,
         registry,
         schedule,
-      }).pipe(Effect.either),
+      }).pipe(Effect.result),
     { concurrency: 4 },
   )
 
   const failures: Array<VerifyFailure> = []
   for (const outcome of outcomes) {
-    if (outcome._tag === 'Left') failures.push(...outcome.left.failures)
+    if (outcome._tag === 'Failure') failures.push(...outcome.failure.failures)
   }
 
   if (failures.length > 0) {
@@ -244,7 +263,7 @@ export const readPlan = Effect.fn('readPlan')(function* (path: string) {
       ),
     )
 
-  return yield* Schema.decodeUnknown(Schema.parseJson(VerifyPlan))(content).pipe(
+  return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(VerifyPlan))(content).pipe(
     Effect.mapError((cause) => new PlanError({ path, message: `Invalid plan: ${cause}` })),
   )
 })

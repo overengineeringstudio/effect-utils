@@ -265,29 +265,31 @@ describe('Notion webhook receiver', () => {
     })
   })
 
-  it('emits a webhookIntake span with outcome and event-type attributes when effectRuntime is wired', async () => {
+  it('emits a webhookIntake span with outcome and event-type attributes when effectContext is wired', async () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
     receiverFixtures.push(storeFixture)
 
     // Build a minimal recording tracer that captures span names + attributes.
     const recorded: Array<{ name: string; attributes: Record<string, unknown> }> = []
     const recordingTracer = Tracer.make({
-      span: (name, _parent, spanContext, links, startTime, kind, options) => {
-        const attributes = new Map<string, unknown>(Object.entries(options?.attributes ?? {}))
-        const entry = { name, attributes: Object.fromEntries(attributes) }
+      span(options) {
+        const attributes = new Map<string, unknown>(
+          Object.entries(options.annotations.mapUnsafe ?? {}),
+        )
+        const entry = { name: options.name, attributes: Object.fromEntries(attributes) }
         recorded.push(entry)
         return {
           _tag: 'Span',
-          name,
+          name: options.name,
           spanId: `test-span-${recorded.length.toString()}`,
           traceId: 'trace-test',
-          parent: _parent,
-          context: spanContext,
-          status: { _tag: 'Started', startTime },
+          parent: options.parent,
+          annotations: options.annotations,
+          status: { _tag: 'Started', startTime: options.startTime },
           attributes,
-          links,
-          sampled: true,
-          kind,
+          links: options.links,
+          sampled: options.sampled,
+          kind: options.kind,
           end: () => {},
           attribute: (key, value) => {
             attributes.set(key, value)
@@ -297,12 +299,11 @@ describe('Notion webhook receiver', () => {
           addLinks: () => {},
         }
       },
-      context: (f) => f(),
     })
 
-    // Capture a real Effect runtime that routes spans into the recording tracer.
-    const effectRuntime = await Effect.runPromise(
-      Effect.runtime<never>().pipe(Effect.withTracer(recordingTracer)),
+    // Capture a real Effect context that routes spans into the recording tracer.
+    const effectContext = await Effect.runPromise(
+      Effect.context<never>().pipe(Effect.withTracer(recordingTracer)),
     )
 
     const receiver = await startNotionWebhookReceiver({
@@ -310,7 +311,7 @@ describe('Notion webhook receiver', () => {
       store: storeFixture.store,
       verificationToken,
       path: '/notion/webhook',
-      effectRuntime,
+      effectContext,
     })
     receiverFixtures.push({ cleanup: () => receiver.close() })
 

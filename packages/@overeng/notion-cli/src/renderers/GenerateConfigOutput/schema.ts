@@ -3,12 +3,12 @@ import { Schema } from 'effect'
 const DatabaseEntry = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  status: Schema.Literal('pending', 'introspecting', 'generating', 'writing', 'done', 'error'),
+  status: Schema.Literals(['pending', 'introspecting', 'generating', 'writing', 'done', 'error']),
   outputPath: Schema.optional(Schema.String),
 })
 
 /** Schema for the generate-config command's UI state (Loading → Running → Done/Error). */
-export const GenerateConfigState = Schema.Union(
+export const GenerateConfigState = Schema.Union([
   Schema.TaggedStruct('Loading', {
     configPath: Schema.String,
   }),
@@ -23,12 +23,12 @@ export const GenerateConfigState = Schema.Union(
   Schema.TaggedStruct('Error', {
     message: Schema.String,
   }),
-)
+])
 
 export type GenerateConfigState = typeof GenerateConfigState.Type
 
 /** Actions dispatched during config-based generation to update database progress and completion status. */
-export const GenerateConfigAction = Schema.Union(
+export const GenerateConfigAction = Schema.Union([
   Schema.TaggedStruct('SetConfig', {
     configPath: Schema.String,
     databases: Schema.Array(
@@ -41,7 +41,7 @@ export const GenerateConfigAction = Schema.Union(
   }),
   Schema.TaggedStruct('UpdateDatabase', {
     id: Schema.String,
-    status: Schema.Literal('pending', 'introspecting', 'generating', 'writing', 'done', 'error'),
+    status: Schema.Literals(['pending', 'introspecting', 'generating', 'writing', 'done', 'error']),
     name: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct('SetDone', {
@@ -50,7 +50,7 @@ export const GenerateConfigAction = Schema.Union(
   Schema.TaggedStruct('SetError', {
     message: Schema.String,
   }),
-)
+])
 
 export type GenerateConfigAction = typeof GenerateConfigAction.Type
 

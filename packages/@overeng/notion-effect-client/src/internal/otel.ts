@@ -76,7 +76,7 @@ const NotionDatabasesQuerySpan = NotionDatabasesQueryOperation.operation
 const NotionPagesRetrieveSpan = NotionPagesRetrieveOperation.operation
 
 const withOperation =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -89,7 +89,7 @@ const withOperation =
       Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
     )
 
-const annotateAttrs = <S extends Schema.Schema.AnyNoContext>({
+const annotateAttrs = <S extends Schema.Codec<any>>({
   attributes,
   value,
 }: {

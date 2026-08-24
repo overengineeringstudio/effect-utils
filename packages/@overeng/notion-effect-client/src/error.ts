@@ -5,7 +5,7 @@ import { Option, Schema } from 'effect'
  *
  * @see https://developers.notion.com/reference/errors
  */
-export const NotionErrorCode = Schema.Literal(
+export const NotionErrorCode = Schema.Literals([
   'invalid_json',
   'invalid_request_url',
   'invalid_request',
@@ -20,7 +20,7 @@ export const NotionErrorCode = Schema.Literal(
   'service_unavailable',
   'database_connection_unavailable',
   'gateway_timeout',
-)
+])
 
 export type NotionErrorCode = typeof NotionErrorCode.Type
 
@@ -40,13 +40,13 @@ export class NotionApiError extends Schema.TaggedError<NotionApiError>()('Notion
   /** Human-readable error message */
   message: Schema.String,
   /** Retry delay in seconds (from retry-after header, typically for rate limits) */
-  retryAfterSeconds: Schema.OptionFromSelf(Schema.Number),
+  retryAfterSeconds: Schema.Option(Schema.Number),
   /** Request ID for Notion support (from x-request-id header) */
-  requestId: Schema.optionalWith(Schema.String, { as: 'Option' }),
+  requestId: Schema.OptionFromUndefinedOr(Schema.String),
   /** Original request URL for debugging */
-  url: Schema.optionalWith(Schema.String, { as: 'Option' }),
+  url: Schema.OptionFromUndefinedOr(Schema.String),
   /** Original request method for debugging */
-  method: Schema.optionalWith(Schema.String, { as: 'Option' }),
+  method: Schema.OptionFromUndefinedOr(Schema.String),
 }) {
   /** Check if error is retryable (rate limit or server error) */
   get isRetryable(): boolean {

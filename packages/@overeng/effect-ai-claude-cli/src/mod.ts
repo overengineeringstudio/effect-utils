@@ -6,7 +6,7 @@
  *
  * @example
  * ```ts
- * import { Chat } from '@effect/ai'
+ * import { Chat } from 'effect/unstable/ai'
  * import { NodeCommandExecutor } from '@effect/platform-node'
  * import { ClaudeCli } from '@overeng/effect-ai-claude-cli'
  * import { Effect, Layer } from 'effect'

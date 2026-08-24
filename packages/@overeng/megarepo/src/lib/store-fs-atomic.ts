@@ -10,7 +10,8 @@
 
 import { randomBytes } from 'node:crypto'
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
 import { Effect } from 'effect'
 
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
@@ -41,16 +42,16 @@ export const writeFileAtomic = ({
 }: {
   path: AbsoluteFilePath
   content: string
-}): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const tempPath = tempPathFor(path)
     yield* fs
       .writeFileString(tempPath, content)
-      .pipe(Effect.tapError(() => fs.remove(tempPath).pipe(Effect.catchAll(() => Effect.void))))
+      .pipe(Effect.tapError(() => fs.remove(tempPath).pipe(Effect.catch(() => Effect.void))))
     yield* fs
       .rename(tempPath, path)
-      .pipe(Effect.tapError(() => fs.remove(tempPath).pipe(Effect.catchAll(() => Effect.void))))
+      .pipe(Effect.tapError(() => fs.remove(tempPath).pipe(Effect.catch(() => Effect.void))))
   }).pipe(
     Observability.withLabelSpan({
       name: 'megarepo/store/fs/write-atomic',

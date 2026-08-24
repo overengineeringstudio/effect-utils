@@ -1,6 +1,6 @@
 import * as restate from '@restatedev/restate-sdk'
 import type { Brand, Exit } from 'effect'
-import { Context, Effect, Option, Runtime, Schema } from 'effect'
+import { Context, Effect, Option, Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
 import { contractSerdeFactory, invocationIdempotencyKey } from '../clients/InvocationPolicy.ts'
@@ -18,10 +18,9 @@ import { internalSerde } from '../schema/Serde.ts'
  * long-lived application `Layer`. Durable combinators carry `RestateContext`
  * in their `R` and reach the raw SDK context via `yield* RestateContext`.
  */
-export class RestateContext extends Context.Tag('@overeng/restate-effect/RestateContext')<
-  RestateContext,
-  restate.Context
->() {}
+export class RestateContext extends Context.Service<RestateContext, restate.Context>()(
+  '@overeng/restate-effect/RestateContext',
+) {}
 
 /* ── capability markers (flat, independent — see decision 0002) ──────────── */
 /*
@@ -40,28 +39,27 @@ export class RestateContext extends Context.Tag('@overeng/restate-effect/Restate
 type CapabilityMarker<Brand_ extends string> = { readonly [K in Brand_]: never }
 
 /** Permits `State.get` / `State.stateKeys`. Provided to object/workflow handlers. */
-export class StateRead extends Context.Tag('@overeng/restate-effect/StateRead')<
+export class StateRead extends Context.Service<
   StateRead,
   CapabilityMarker<'requires a State-readable (object/workflow) handler'>
->() {}
+>()('@overeng/restate-effect/StateRead') {}
 
 /** Permits `State.set` / `State.clear` / `State.clearAll`. Exclusive object / workflow `run` only. */
-export class StateWrite extends Context.Tag('@overeng/restate-effect/StateWrite')<
+export class StateWrite extends Context.Service<
   StateWrite,
   CapabilityMarker<'requires a write-enabled (exclusive object / workflow run) handler'>
->() {}
+>()('@overeng/restate-effect/StateWrite') {}
 
 /** Permits `DurablePromise.*`. Workflow handlers only. */
-export class DurablePromise extends Context.Tag('@overeng/restate-effect/DurablePromise')<
+export class DurablePromise extends Context.Service<
   DurablePromise,
   CapabilityMarker<'requires a Workflow handler (durable promises)'>
->() {}
+>()('@overeng/restate-effect/DurablePromise') {}
 
 /** Permits the `ctx.key` accessor. Object / workflow handlers (all keyed). */
-export class ObjectKey extends Context.Tag('@overeng/restate-effect/ObjectKey')<
-  ObjectKey,
-  { readonly key: string }
->() {}
+export class ObjectKey extends Context.Service<ObjectKey, { readonly key: string }>()(
+  '@overeng/restate-effect/ObjectKey',
+) {}
 
 /**
  * The full set of durable capabilities `Restate.run` scrubs from its inner
@@ -79,15 +77,10 @@ export type DurableCaps = RestateContext | StateRead | StateWrite | DurablePromi
  * "unset → undefined" semantics. The `Record<string, Schema>` impl detail does not
  * leak: `State.for` accepts the same field shapes `Schema.Struct` does.
  */
-export type StateSchemas = Record<string, Schema.Schema<any, any> | Schema.PropertySignature.All>
+export type StateSchemas = Record<string, Schema.Schema<any> | Schema.optional<Schema.Codec<any>>>
 
 /** The decoded value type of a State field (`T | undefined` for an optional field). */
-export type StateValueType<F> =
-  F extends Schema.Schema<infer A, any>
-    ? A
-    : F extends Schema.PropertySignature<any, infer A, any, any, any, any, any>
-      ? A
-      : never
+export type StateValueType<F> = F extends { readonly Type: infer A } ? A : never
 
 /**
  * Normalize a State field to a plain value `Schema` for serde: a `Schema` passes
@@ -98,25 +91,28 @@ export type StateValueType<F> =
  * `undefined` directly), and keeping `undefined` would break `JSONSchema.make`.
  */
 export const normalizeStateSchema = (
-  field: Schema.Schema<any, any> | Schema.PropertySignature.All,
-): Schema.Schema<any, any> => {
-  if (Schema.isSchema(field) === true) return field as Schema.Schema<any, any>
-  /* A `Schema.optional(s)` PropertySignature's `ast` is a `PropertySignatureDeclaration`
-   * (extends `OptionalType`) whose `.type` is the `value | undefined` AST. */
-  const ast = (field as unknown as { readonly ast?: { readonly type?: SchemaAST.AST } }).ast
-  const valueAst = ast?.type
-  if (valueAst === undefined) {
+  field: Schema.Schema<any> | Schema.optional<Schema.Codec<any>>,
+): Schema.Codec<any, any> => {
+  if (
+    (field as { readonly '~type.optionality'?: string })['~type.optionality'] !== 'optional'
+  ) {
+    return field as Schema.Codec<any, any>
+  }
+  /* An optional field's `.schema` is the `value | undefined` union codec; the
+   * `undefined` member is STRIPPED — a SET value is always the present `T`. */
+  const inner = (field as Schema.optional<Schema.Codec<any>>).schema
+  if (inner === undefined) {
     throw new Error('State field is neither a Schema nor a recoverable optional field')
   }
-  return Schema.make(stripUndefined(valueAst))
+  return Schema.make<Schema.Codec<any>>(stripUndefined(inner.ast))
 }
 
-/** Drop an `UndefinedKeyword` member from a recovered optional union (`T | undefined → T`). */
+/** Drop an `Undefined` member from a recovered optional union (`T | undefined → T`). */
 const stripUndefined = (ast: SchemaAST.AST): SchemaAST.AST => {
   if (ast._tag !== 'Union') return ast
-  const members = ast.types.filter((t) => t._tag !== 'UndefinedKeyword')
+  const members = ast.types.filter((t) => t._tag !== 'Undefined')
   if (members.length === ast.types.length) return ast
-  return members.length === 1 ? members[0]! : SchemaAST.Union.make(members)
+  return members.length === 1 ? members[0]! : new SchemaAST.Union(members, 'anyOf')
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -235,7 +231,7 @@ const awaitDurable = <A>({
   onError: (cause: unknown) => RestateError
   mode?: DurableRejectMode
 }): Effect.Effect<A, never, never> =>
-  Effect.async<A, never>((resume) => {
+  Effect.callback<A, never>((resume) => {
     thunk().then(
       (value) => resume(Effect.succeed(value)),
       (cause: unknown) => {
@@ -343,13 +339,13 @@ export const run = <A, R>({
 }): Effect.Effect<A, never, Exclude<R, DurableCaps> | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    const runtime = yield* Effect.runtime<Exclude<R, DurableCaps>>()
+    const context = yield* Effect.context<Exclude<R, DurableCaps>>()
     /* The `[R] extends [Exclude<R, DurableCaps>]` guard guarantees `R` carries no
      * durable capability, so the captured `Exclude<R, DurableCaps>` runtime can
      * run it; the cast just reconciles the conditional type. The inner runs to a
      * raw `A` (journaled by the SDK); a defect rejects the step. */
     const inner = effect as Effect.Effect<A, never, Exclude<R, DurableCaps>>
-    const action = (): Promise<A> => Runtime.runPromise(runtime)(inner)
+    const action = (): Promise<A> => Effect.runPromiseWith(context)(inner)
     const result = yield* awaitDurable({
       thunk: () =>
         options !== undefined
@@ -547,7 +543,7 @@ const readState = <S extends StateSchemas, K extends keyof S & string>({
         new RestateError({ reason: 'RunFailed', method: `State.get(${key})`, cause }),
     }).pipe(Effect.orDie)
     if (raw === null || raw === undefined) return undefined
-    return yield* Schema.decodeUnknown(normalizeStateSchema(schemas[key]!))(raw).pipe(
+    return yield* Schema.decodeUnknownEffect(normalizeStateSchema(schemas[key]!))(raw).pipe(
       Effect.mapError(
         (cause) => new RestateError({ reason: 'SerdeFailed', method: `State.get(${key})`, cause }),
       ),
@@ -577,7 +573,7 @@ const writeState = <S extends StateSchemas, K extends keyof S & string>({
       objectCtx.clear(key)
       return
     }
-    const encoded = yield* Schema.encode(normalizeStateSchema(schemas[key]!))(value).pipe(
+    const encoded = yield* Schema.encodeEffect(normalizeStateSchema(schemas[key]!))(value).pipe(
       Effect.mapError(
         (cause) => new RestateError({ reason: 'SerdeFailed', method: `State.set(${key})`, cause }),
       ),
@@ -646,7 +642,7 @@ export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext>
  * `Restate.race`/`all`/`any`.
  */
 
-const promiseSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> =>
+const promiseSerde = <T, I>(schema: Schema.Codec<T, I>): restate.Serde<T> =>
   internalSerde({ schema })
 
 /* A blocking durable-promise `get`, awaited through {@link awaitDurable} (the same
@@ -660,7 +656,7 @@ const promiseGet = <T, I>({
   schema,
 }: {
   name: string
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
 }): Effect.Effect<T, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
@@ -681,7 +677,7 @@ const promisePeek = <T, I>({
   schema,
 }: {
   name: string
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
 }): Effect.Effect<T | undefined, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
@@ -700,7 +696,7 @@ const promiseResolve = <T, I>({
   value,
 }: {
   name: string
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   value: T
 }): Effect.Effect<void, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
@@ -721,7 +717,7 @@ const promiseReject = <T, I>({
   reason,
 }: {
   name: string
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   reason: string
 }): Effect.Effect<void, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
@@ -741,7 +737,7 @@ const promiseReject = <T, I>({
  * combinator is capability-gated on `DurablePromise` (Workflow handlers only) and
  * payload-typed. `getDescriptor` issues the promise for deterministic concurrency.
  */
-export const durablePromiseFor = <T, I>(schema: Schema.Schema<T, I>) =>
+export const durablePromiseFor = <T, I>(schema: Schema.Codec<T, I>) =>
   ({
     get: (name: string) => promiseGet({ name, schema }),
     peek: (name: string) => promisePeek({ name, schema }),
@@ -785,7 +781,7 @@ export type AwakeableId<T> = string & AwakeableIdBrand & { readonly _payload?: T
  * typed `RestateError`.
  */
 export const makeAwakeable = <T, I>(
-  schema: Schema.Schema<T, I>,
+  schema: Schema.Codec<T, I>,
 ): Effect.Effect<
   {
     readonly id: AwakeableId<T>
@@ -832,7 +828,7 @@ export const resolveAwakeable = <T, I>({
   id,
   payload,
 }: {
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   id: AwakeableId<T>
   payload: T
 }): Effect.Effect<void, never, RestateContext> =>
@@ -877,11 +873,11 @@ const clientCallSerde = <T, I>({
   schema,
   redaction,
 }: {
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   redaction: RedactionCipher | undefined
 }): restate.Serde<T> =>
   contractSerdeFactory(redaction).forSchema({
-    schema: schema as Schema.Schema<unknown, unknown>,
+    schema: schema as Schema.Codec<unknown, unknown>,
     slot: 'internal',
   }) as restate.Serde<T>
 
@@ -898,8 +894,8 @@ export interface SendOptions {
 const callRpc = <In, InI, Out, OutI>(opts: {
   readonly service: string
   readonly handler: string
-  readonly inputSchema: Schema.Schema<In, InI>
-  readonly outputSchema: Schema.Schema<Out, OutI>
+  readonly inputSchema: Schema.Codec<In, InI>
+  readonly outputSchema: Schema.Codec<Out, OutI>
   readonly input: In
   readonly key?: string
 }): Effect.Effect<Out, never, RestateContext> =>
@@ -907,7 +903,7 @@ const callRpc = <In, InI, Out, OutI>(opts: {
     const ctx = yield* RestateContext
     const redaction = yield* resolveCallRedaction
     const idempotencyKey = invocationIdempotencyKey({
-      inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+      inputSchema: opts.inputSchema as Schema.Codec<unknown, unknown>,
       input: opts.input,
     })
     /* Await the peer-call `InvocationPromise` through the SHARED `awaitDurable`
@@ -947,7 +943,7 @@ const callRpc = <In, InI, Out, OutI>(opts: {
 const sendRpc = <In, InI>(opts: {
   readonly service: string
   readonly handler: string
-  readonly inputSchema: Schema.Schema<In, InI>
+  readonly inputSchema: Schema.Codec<In, InI>
   readonly input: In
   readonly key?: string
   readonly delayMillis?: number
@@ -956,7 +952,7 @@ const sendRpc = <In, InI>(opts: {
     const ctx = yield* RestateContext
     const redaction = yield* resolveCallRedaction
     const idempotencyKey = invocationIdempotencyKey({
-      inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+      inputSchema: opts.inputSchema as Schema.Codec<unknown, unknown>,
       input: opts.input,
     })
     yield* Effect.try({
@@ -1001,13 +997,13 @@ const sendRpc = <In, InI>(opts: {
 const callDescriptor = <In, InI, Out, OutI>(opts: {
   readonly service: string
   readonly handler: string
-  readonly inputSchema: Schema.Schema<In, InI>
-  readonly outputSchema: Schema.Schema<Out, OutI>
+  readonly inputSchema: Schema.Codec<In, InI>
+  readonly outputSchema: Schema.Codec<Out, OutI>
   readonly input: In
   readonly key?: string
 }): Descriptor<Out> => {
   const idempotencyKey = invocationIdempotencyKey({
-    inputSchema: opts.inputSchema as Schema.Schema<unknown, unknown>,
+    inputSchema: opts.inputSchema as Schema.Codec<unknown, unknown>,
     input: opts.input,
   })
   return descriptor<Out>({

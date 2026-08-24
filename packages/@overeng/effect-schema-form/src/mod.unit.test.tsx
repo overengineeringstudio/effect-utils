@@ -36,14 +36,14 @@ const propertyBytes = (properties: readonly PropertyInfo[]): string =>
 
 describe('effect-schema-form baselines (cross-major invariant)', () => {
   const Contact = Schema.TaggedStruct('Contact', {
-    name: Schema.String.annotations({
+    name: Schema.String.annotate({
       title: 'Display name',
       description: 'Shown to other people',
     }),
-    age: Schema.optional(Schema.Int.annotations({ title: 'Age' })),
-    role: Schema.Literal('admin', 'guest'),
+    age: Schema.optional(Schema.Int.annotate({ title: 'Age' })),
+    role: Schema.Literals(['admin', 'guest']),
     active: Schema.Boolean,
-    unsupported: Schema.Tuple(Schema.String),
+    unsupported: Schema.Tuple([Schema.String]),
   })
 
   const value: typeof Contact.Type = {
@@ -57,12 +57,12 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
   it('encodes schema introspection metadata with the current optional and unknown partitions', () => {
     const cases = {
       annotatedString: analyzeSchema(
-        Schema.String.annotations({ title: 'Title', description: 'Description' }),
+        Schema.String.annotate({ title: 'Title', description: 'Description' }),
       ),
       optionalInt: analyzeSchema(Schema.UndefinedOr(Schema.Int)),
-      literalUnion: analyzeSchema(Schema.Literal('', 'kebab-case', '東京')),
+      literalUnion: analyzeSchema(Schema.Literals(['', 'kebab-case', '東京'])),
       struct: analyzeSchema(Schema.Struct({ value: Schema.String })),
-      tuple: analyzeSchema(Schema.Tuple(Schema.String)),
+      tuple: analyzeSchema(Schema.Tuple([Schema.String])),
       unknown: analyzeSchema(Schema.Unknown),
     }
 
@@ -73,7 +73,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
         ),
       ),
     ).toMatchInlineSnapshot(
-      `"{"annotatedString":{"type":"string","title":"Title","description":"Description","isOptional":false,"innerAstTag":"StringKeyword"},"optionalInt":{"type":"number","title":"int","description":"an integer","isOptional":true,"innerAstTag":"Refinement"},"literalUnion":{"type":"literal","literals":["","kebab-case","東京"],"isOptional":false,"innerAstTag":"Union"},"struct":{"type":"struct","isOptional":false,"innerAstTag":"TypeLiteral"},"tuple":{"type":"unknown","isOptional":false,"innerAstTag":"TupleType"},"unknown":{"type":"unknown","title":"unknown","isOptional":false,"innerAstTag":"UnknownKeyword"}}"`,
+      `"{"annotatedString":{"type":"string","title":"Title","description":"Description","isOptional":false,"innerAstTag":"String"},"optionalInt":{"type":"number","isOptional":true,"innerAstTag":"Number"},"literalUnion":{"type":"literal","literals":["","kebab-case","東京"],"isOptional":false,"innerAstTag":"Union"},"struct":{"type":"struct","isOptional":false,"innerAstTag":"Objects"},"tuple":{"type":"unknown","isOptional":false,"innerAstTag":"Arrays"},"unknown":{"type":"unknown","isOptional":false,"innerAstTag":"Unknown"}}"`,
     )
   })
 
@@ -93,7 +93,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
         nonTagged: analyzeTaggedStruct(Schema.Struct({ value: Schema.String })).isTagged,
       }),
     ).toMatchInlineSnapshot(
-      `"{"properties":[{"key":"_tag","meta":{"type":"literal","literals":["Contact"],"isOptional":false,"innerAstTag":"Literal"}},{"key":"name","meta":{"type":"string","title":"Display name","description":"Shown to other people","isOptional":false,"innerAstTag":"StringKeyword"}},{"key":"age","meta":{"type":"number","title":"Age","description":"an integer","isOptional":true,"innerAstTag":"Refinement"}},{"key":"role","meta":{"type":"literal","literals":["admin","guest"],"isOptional":false,"innerAstTag":"Union"}},{"key":"active","meta":{"type":"boolean","title":"boolean","description":"a boolean","isOptional":false,"innerAstTag":"BooleanKeyword"}},{"key":"unsupported","meta":{"type":"unknown","isOptional":false,"innerAstTag":"TupleType"}}],"tagged":{"isTagged":true,"tagValue":"Contact","contentKeys":["name","age","role","active","unsupported"]},"nonStructProperties":0,"nonTagged":false}"`,
+      `"{"properties":[{"key":"_tag","meta":{"type":"literal","literals":["Contact"],"isOptional":false,"innerAstTag":"Literal"}},{"key":"name","meta":{"type":"string","title":"Display name","description":"Shown to other people","isOptional":false,"innerAstTag":"String"}},{"key":"age","meta":{"type":"number","title":"Age","isOptional":true,"innerAstTag":"Number"}},{"key":"role","meta":{"type":"literal","literals":["admin","guest"],"isOptional":false,"innerAstTag":"Union"}},{"key":"active","meta":{"type":"boolean","isOptional":false,"innerAstTag":"Boolean"}},{"key":"unsupported","meta":{"type":"unknown","isOptional":false,"innerAstTag":"Arrays"}}],"tagged":{"isTagged":true,"tagValue":"Contact","contentKeys":["name","age","role","active","unsupported"]},"nonStructProperties":0,"nonTagged":false}"`,
     )
   })
 
@@ -199,7 +199,7 @@ describe('effect-schema-form baselines (cross-major invariant)', () => {
     )
 
     expect(JSON.stringify({ html, changes })).toMatchInlineSnapshot(
-      `"{"html":"<output>{&quot;hasStringRenderer&quot;:true,&quot;fieldMeta&quot;:{&quot;type&quot;:&quot;number&quot;,&quot;title&quot;:&quot;number&quot;,&quot;description&quot;:&quot;a number&quot;,&quot;isOptional&quot;:true,&quot;innerAstTag&quot;:&quot;NumberKeyword&quot;},&quot;keys&quot;:[&quot;name&quot;,&quot;note&quot;],&quot;name&quot;:&quot;before&quot;,&quot;tagged&quot;:false}</output>","changes":[{"name":"after","note":""},{"name":"before","note":"東京"}]}"`,
+      `"{"html":"<output>{&quot;hasStringRenderer&quot;:true,&quot;fieldMeta&quot;:{&quot;type&quot;:&quot;number&quot;,&quot;isOptional&quot;:true,&quot;innerAstTag&quot;:&quot;Number&quot;},&quot;keys&quot;:[&quot;name&quot;,&quot;note&quot;],&quot;name&quot;:&quot;before&quot;,&quot;tagged&quot;:false}</output>","changes":[{"name":"after","note":""},{"name":"before","note":"東京"}]}"`,
     )
   })
 

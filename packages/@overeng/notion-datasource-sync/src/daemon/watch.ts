@@ -192,20 +192,20 @@ const WatchDaemonStateSchema = Schema.Struct({
   lastCompleteCycle: Schema.Number,
   lastStartedAt: Schema.optional(Schema.String),
   lastCompletedAt: Schema.optional(Schema.String),
-  repair: Schema.Union(
-    Schema.TaggedStruct('none', {}),
-    Schema.TaggedStruct('retry', {
+  repair: Schema.Union([
+Schema.TaggedStruct('none', {}),
+Schema.TaggedStruct('retry', {
       reason: Schema.String,
       retryAfterMillis: Schema.Number,
       failedCycle: Schema.Number,
     }),
-  ),
+]),
   lastStatus: Schema.optional(Schema.Unknown),
-}).annotations({ identifier: 'NotionDatasourceSync.WatchDaemonState' })
+}).annotate({ identifier: 'NotionDatasourceSync.WatchDaemonState' })
 
 const decodeState = Schema.decodeUnknownSync(WatchDaemonStateSchema)
-const decodeStateJson = Schema.decodeUnknownSync(Schema.parseJson(WatchDaemonStateSchema))
-const encodeStateJson = Schema.encodeSync(Schema.parseJson(WatchDaemonStateSchema, { space: 2 }))
+const decodeStateJson = Schema.decodeUnknownSync(Schema.fromJsonString(WatchDaemonStateSchema))
+const encodeStateJson = Schema.encodeSync(Schema.fromJsonString(WatchDaemonStateSchema, { space: 2 }))
 
 const modeBackoffMillis = (mode: WatchDaemonMode): number => {
   switch (mode) {
@@ -243,7 +243,7 @@ export const makeWatchDaemonWakeNotifier = (): WatchDaemonWakeNotifier => {
         return Effect.void
       }
 
-      return Effect.async<void>((resume, effectSignal) => {
+      return Effect.callback<void>((resume, effectSignal) => {
         let completed = false
         let timeout: ReturnType<typeof setTimeout> | undefined
         const complete = () => {
@@ -393,7 +393,7 @@ const abortSignalEffect = ({
   readonly rootId: SyncRootId
   readonly cycle: number
 }): Effect.Effect<never, WatchDaemonCancelled> =>
-  Effect.async<never, WatchDaemonCancelled>((resume, effectSignal) => {
+  Effect.callback<never, WatchDaemonCancelled>((resume, effectSignal) => {
     const cancel = () =>
       resume(
         Effect.fail(
@@ -447,7 +447,7 @@ const interruptOnTimeout = <TValue, TError, TContext>({
     : effect.pipe(
         Effect.raceFirst(
           Effect.sleep(Duration.millis(timeoutMs)).pipe(
-            Effect.zipRight(
+            Effect.andThen(
               Effect.fail(
                 new WatchDaemonCycleTimedOut({
                   rootId,
@@ -823,7 +823,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           }).pipe(
             // Failure-path state write is suppressed under dry-run too — a dry
             // run never persists `retry`/backoff bookkeeping.
-            Effect.zipRight(
+            Effect.andThen(
               options.dryRun === true
                 ? Effect.void
                 : writeWatchDaemonState({

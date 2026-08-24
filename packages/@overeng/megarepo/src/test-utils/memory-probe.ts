@@ -20,7 +20,7 @@
 
 import { readFileSync } from 'node:fs'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 
 import * as Git from '../lib/git.ts'
@@ -49,7 +49,7 @@ const program = Effect.gen(function* () {
   console.log(encodeJson({ rssStartKb, vmHwmKb, changesCount: status.changesCount }))
 })
 
-Effect.runPromise(program.pipe(Effect.provide(NodeContext.layer))).catch((error) => {
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).catch((error) => {
   console.error(error)
   process.exit(1)
 })

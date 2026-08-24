@@ -9,8 +9,9 @@
 
 import { createHash } from 'node:crypto'
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, Schema, type ParseResult } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
+import { Effect, Option, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -89,7 +90,7 @@ const collectWorkspaceSymlinkTargets = ({
    * error is propagated to the caller rather than masked as "no live paths".
    */
   strict?: boolean
-}): Effect.Effect<Set<string>, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<Set<string>, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targets = new Set<string>()
@@ -138,7 +139,7 @@ export const collectWorkspaceLivePaths = ({
   strict?: boolean
 }): Effect.Effect<
   Set<string>,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError | Schema.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -204,7 +205,7 @@ export const collectWorkspaceLivePathsStrict = ({
   store: MegarepoStore
 }): Effect.Effect<
   Set<string>,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError | Schema.SchemaError,
   FileSystem.FileSystem
 > => collectWorkspaceLivePaths({ workspaceRoot, store, strict: true })
 
@@ -224,7 +225,7 @@ export const refreshWorkspaceRegistry = ({
   now: number
 }): Effect.Effect<
   StoreWorkspaceRecord,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError | Schema.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -239,7 +240,7 @@ export const refreshWorkspaceRegistry = ({
 
     const registryDir = workspaceRegistryDir(store)
     yield* fs.makeDirectory(registryDir, { recursive: true })
-    const content = yield* Schema.encode(Schema.parseJson(StoreWorkspaceRecord, { space: 2 }))(
+    const content = yield* Schema.encodeEffect(Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }))(
       record,
     )
     // Atomic (write-temp-then-rename): a concurrent reader (e.g. an under-lock
@@ -285,7 +286,7 @@ const readRegistryRecords = ({
   reconcile?: { now: number } | undefined
 }): Effect.Effect<
   RegistryReadResult,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError | Schema.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -305,7 +306,7 @@ const readRegistryRecords = ({
       const recordPath = EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(entry))
       const parsed = yield* fs.readFileString(recordPath).pipe(
         Effect.flatMap((content) =>
-          Schema.decodeUnknown(Schema.parseJson(StoreWorkspaceRecord))(content),
+          Schema.decodeUnknownEffect(Schema.fromJsonString(StoreWorkspaceRecord))(content),
         ),
         Effect.orElseSucceed(() => null),
       )
@@ -320,7 +321,7 @@ const readRegistryRecords = ({
       // present-but-unreadable workspace must never be pruned.
       if (workspaceExists === false) {
         if (pruneStale === true) {
-          yield* fs.remove(recordPath).pipe(Effect.catchAll(() => Effect.void))
+          yield* fs.remove(recordPath).pipe(Effect.catch(() => Effect.void))
         }
         continue
       }
@@ -344,7 +345,7 @@ const readRegistryRecords = ({
           updatedAt: new Date(reconcile.now).toISOString(),
           livePaths: [...reconciled.paths].toSorted(),
         }
-        const content = yield* Schema.encode(Schema.parseJson(StoreWorkspaceRecord, { space: 2 }))(
+        const content = yield* Schema.encodeEffect(Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }))(
           record,
         )
         // Atomic rewrite so a concurrent reader never sees a torn record and
@@ -395,7 +396,7 @@ export const collectStoreLiveSet = ({
   now?: number | undefined
 }): Effect.Effect<
   StoreLiveSet,
-  ConfigNotFoundError | PlatformError.PlatformError | ParseResult.ParseError,
+  ConfigNotFoundError | PlatformError | Schema.SchemaError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {

@@ -1,7 +1,6 @@
 import { open as openFile } from 'node:fs/promises'
 
-import { FileSystem } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, FileSystem } from 'effect'
 
 import { SessionArtifactReadError } from '../errors.ts'
 import type { ContentVersion, ContentVersionCursor, MutableReadResult } from '../schema/core.ts'

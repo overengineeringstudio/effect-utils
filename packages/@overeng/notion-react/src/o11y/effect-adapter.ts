@@ -1,4 +1,3 @@
-import type { HttpClient } from '@effect/platform'
 /**
  * Effect-native OTEL adapter layering on the core `onEvent` hook.
  *
@@ -19,6 +18,7 @@ import type { HttpClient } from '@effect/platform'
  *     terminal events still resolve correctly.
  */
 import { Cause, Context, Effect, Exit, Option, Schema } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { Tracer } from 'effect'
 import type { ReactNode } from 'react'
 
@@ -60,8 +60,8 @@ const shortId = (id: string): string => id.replaceAll('-', '').slice(0, 8)
 /** Milliseconds → nanoseconds (bigint) for Tracer.Span APIs. */
 const msToNs = (ms: number): bigint => BigInt(Math.trunc(ms * 1_000_000))
 
-const OpKind = Schema.Literal('append', 'update', 'delete', 'retrieve')
-const CacheKind = Schema.Literal('hit', 'miss', 'drift', 'page-id-drift')
+const OpKind = Schema.Literals(['append', 'update', 'delete', 'retrieve'])
+const CacheKind = Schema.Literals(['hit', 'miss', 'drift', 'page-id-drift'])
 
 // Bundles are REBUILT from the registered `notion-react.*` catalog schemas (SC-R13/R14 — the
 // contract is the single SSOT for the projection AND these runtime encoders). `service.name`
@@ -190,14 +190,16 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
   return (event: SyncEvent): void => {
     switch (event._tag) {
       case 'SyncStart': {
-        rootSpan = tracer.span(
-          'notion-react.sync',
-          parentOption,
-          ctx,
-          [],
-          msToNs(event.at),
-          'internal',
-        )
+        rootSpan = tracer.span({
+          name: 'notion-react.sync',
+          parent: parentOption,
+          annotations: ctx,
+          links: [],
+          startTime: msToNs(event.at),
+          kind: 'internal',
+          root: false,
+          sampled: true,
+        })
         for (const [k, v] of Object.entries(
           SyncStartAttrs.encodeSync({
             serviceName,
@@ -234,14 +236,16 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
       case 'OpIssued': {
         const parent: Option.Option<Tracer.AnySpan> =
           rootSpan !== undefined ? Option.some(rootSpan) : parentOption
-        const span = tracer.span(
-          `notion-react.op.${event.kind}`,
+        const span = tracer.span({
+          name: `notion-react.op.${event.kind}`,
           parent,
-          ctx,
-          [],
-          msToNs(event.at),
-          'internal',
-        )
+          annotations: ctx,
+          links: [],
+          startTime: msToNs(event.at),
+          kind: 'internal',
+          root: false,
+          sampled: true,
+        })
         for (const [k, v] of Object.entries(
           OpStartAttrs.encodeSync({
             serviceName,
@@ -362,7 +366,7 @@ export const instrumentedSync = (
     readonly onEvent?: SyncEventHandler
     readonly onUploadIdRejected?: OnUploadIdRejected
   },
-): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     const tracer = yield* Effect.tracer
     const parent = yield* Effect.currentSpan.pipe(Effect.orElseSucceed(() => undefined))
@@ -405,7 +409,7 @@ export const emitSyncEndOnInterrupt =
       Effect.onExit((exit) =>
         Effect.sync(() => {
           if (Exit.isSuccess(exit)) return
-          if (Cause.isInterruptedOnly(exit.cause) === false) return
+          if (Cause.hasInterruptsOnly(exit.cause) === false) return
           args.onEvent(
             SyncEvent.SyncEnd({
               pageId: args.pageId,

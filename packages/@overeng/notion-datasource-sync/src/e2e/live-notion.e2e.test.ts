@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
-import { Chunk, Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import { type HttpClient } from 'effect/unstable/http/HttpClient'
+import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -83,7 +84,7 @@ const implementedLiveScenarioIds = new Set<ScenarioId>([
   'NDS-LIVE-notion-view-inventory-read',
 ])
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(
+const decode = <TSchema extends Schema.Codec<any, any, never>>(
   schema: TSchema,
   value: unknown,
 ): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
@@ -107,7 +108,7 @@ const liveLayer = (token: string) =>
 
 const runLive = <A, E>(
   env: { readonly token: string | undefined },
-  effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
+  effect: Effect.Effect<A, E, NotionConfig | HttpClient>,
 ) => {
   if (env.token === undefined) {
     throw new Error('live Notion test requires a token after configuration validation')
@@ -118,7 +119,7 @@ const runLive = <A, E>(
 
 const runLiveGateway = <A, E>(
   env: { readonly token: string | undefined },
-  effect: Effect.Effect<A, E, NotionDataSourceGateway | NotionConfig | HttpClient.HttpClient>,
+  effect: Effect.Effect<A, E, NotionDataSourceGateway | NotionConfig | HttpClient>,
 ) => {
   if (env.token === undefined) {
     throw new Error('live Notion gateway test requires a token after configuration validation')
@@ -336,7 +337,7 @@ const archiveDatabaseBestEffort = (
   runLive(
     env,
     NotionDatabases.archive({ databaseId }).pipe(
-      Effect.catchAll((cause) =>
+      Effect.catch((cause) =>
         String(cause).toLowerCase().includes('archived') === true
           ? Effect.void
           : Effect.fail(cause),
@@ -2444,7 +2445,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               const withThrottle = yield* makeThrottledProvideClientEnv()
               const baseClient = makeNotionEffectClientGatewayClient(
                 withThrottle(
-                  <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>) =>
+                  <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) =>
                     effect.pipe(Effect.provide(liveLayer(token))),
                 ),
               )
@@ -2583,7 +2584,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 },
               })
               const beforeMutation = decode(
-                Schema.DateTimeUtc,
+                Schema.DateTimeUtcFromString,
                 new Date(Date.now() - 60_000).toISOString(),
               )
               const alpha = yield* NotionPages.create({
@@ -3247,7 +3248,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             NotionDatabases.queryStream({
               dataSourceId: dataSource.dataSourceId,
               pageSize: 100,
-            }).pipe(Stream.runCollect, Effect.map(Chunk.size)),
+            }).pipe(Stream.runCollect, Effect.map((rows) => rows.length)),
           )
           return {
             title: remote.title?.map((part) => part.plain_text ?? '').join('') ?? '',

@@ -20,7 +20,8 @@
  * directly with fake gh output so no real `gh`/network is needed.
  */
 
-import { Command, CommandExecutor } from '@effect/platform'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
 
 import type { RelativeDirPath } from '@overeng/effect-path'
@@ -67,10 +68,9 @@ export interface PrStateResolverService {
 }
 
 /** PR-state resolver service tag. */
-export class PrStateResolver extends Context.Tag('megarepo/PrStateResolver')<
-  PrStateResolver,
-  PrStateResolverService
->() {}
+export class PrStateResolver
+  extends Context.Service<PrStateResolver, PrStateResolverService>()('megarepo/PrStateResolver')
+{}
 
 // =============================================================================
 // Pure seams (unit-tested directly with fake gh output)
@@ -98,7 +98,7 @@ export const parseRepoCoordinates = (
 const GhPr = Schema.Struct({
   number: Schema.Number,
   /** gh emits uppercase `MERGED`/`CLOSED`/`OPEN`. */
-  state: Schema.Literal('MERGED', 'CLOSED', 'OPEN'),
+  state: Schema.Literals(['MERGED', 'CLOSED', 'OPEN']),
   headRefName: Schema.String,
   /** ISO 8601, or `null` when not merged. */
   mergedAt: Schema.NullOr(Schema.String),
@@ -118,7 +118,7 @@ const GhPrList = Schema.Array(GhPr)
  * non-zero leaving empty stdout) ⇒ `none`, which the caller maps to keep.
  */
 export const decodePrListJson = (raw: string): Option.Option<ReadonlyArray<GhPr>> =>
-  Schema.decodeUnknownOption(Schema.parseJson(GhPrList))(raw)
+  Schema.decodeUnknownOption(Schema.fromJsonString(GhPrList))(raw)
 
 /** ISO 8601 ⇒ epoch ms; `null`/unparseable ⇒ `undefined`. */
 const isoToMs = (iso: string | null): number | undefined => {
@@ -185,15 +185,15 @@ export const makePrStateResolverLayer = ({
   timeout = DEFAULT_GH_TIMEOUT,
 }: {
   limit?: number
-  timeout?: Duration.DurationInput
-} = {}): Layer.Layer<PrStateResolver, never, CommandExecutor.CommandExecutor> =>
+  timeout?: Duration.Input
+} = {}): Layer.Layer<PrStateResolver, never, ChildProcessSpawner> =>
   Layer.effect(
     PrStateResolver,
     Effect.gen(function* () {
       // Capture the executor once at layer build so the service's `resolve`
       // effects discharge their `CommandExecutor` requirement here (the live
       // shelling is an implementation detail, not part of the service R-channel).
-      const executor = yield* CommandExecutor.CommandExecutor
+      const spawner = yield* ChildProcessSpawner
 
       /** repo `owner/repo` -> decoded PR rows (Option.none ⇒ resolved to no evidence). */
       const repoCache = new Map<string, Option.Option<ReadonlyArray<GhPr>>>()
@@ -206,28 +206,29 @@ export const makePrStateResolverLayer = ({
         repo: string
       }): Effect.Effect<Option.Option<ReadonlyArray<GhPr>>> =>
         Effect.gen(function* () {
-          const command = Command.make(
-            'gh',
-            'pr',
-            'list',
-            '--repo',
-            `${owner}/${repo}`,
-            '--state',
-            'all',
-            '--limit',
-            String(limit),
-            '--json',
-            'number,state,headRefName,mergedAt,closedAt',
-          )
-          const raw = yield* Command.string(command).pipe(
-            Effect.timeoutFail({
-              duration: timeout,
-              onTimeout: () => new Error('gh pr list timed out'),
-            }),
-            // Any spawn/exec/timeout failure ⇒ no evidence (keep).
-            Effect.option,
-            Effect.provideService(CommandExecutor.CommandExecutor, executor),
-          )
+          const raw = yield* spawner
+            .string(
+              Command.make(
+                'gh',
+                [
+                  'pr',
+                  'list',
+                  '--repo',
+                  `${owner}/${repo}`,
+                  '--state',
+                  'all',
+                  '--limit',
+                  String(limit),
+                  '--json',
+                  'number,state,headRefName,mergedAt,closedAt',
+                ],
+              ),
+            )
+            .pipe(
+              Effect.timeout(timeout),
+              // Any spawn/exec/timeout failure ⇒ no evidence (keep).
+              Effect.option,
+            )
           return Option.flatMap(raw, decodePrListJson)
         })
 

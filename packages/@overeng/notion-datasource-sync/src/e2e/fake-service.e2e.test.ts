@@ -1,4 +1,4 @@
-import { Cause, Chunk, Effect, Stream } from 'effect'
+import { Cause, Effect, Option, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { pageSurfaceKey, propertySurfaceKey, schemaSurfaceKey } from '../core/canonical.ts'
@@ -65,7 +65,7 @@ import {
 const collectStream = <TValue, TError>(
   stream: Stream.Stream<TValue, TError>,
 ): Promise<ReadonlyArray<TValue>> =>
-  Effect.runPromise(stream.pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)))
+  Effect.runPromise(stream.pipe(Stream.runCollect))
 
 const expectGatewayFailure = (
   result: Awaited<ReturnType<typeof Effect.runPromiseExit>>,
@@ -76,7 +76,7 @@ const expectGatewayFailure = (
 ) => {
   expect(result._tag).toBe('Failure')
   if (result._tag === 'Failure') {
-    expect(Chunk.toReadonlyArray(Cause.failures(result.cause)).at(0)).toMatchObject({
+    expect(Option.getOrUndefined(Cause.findErrorOption(result.cause))).toMatchObject({
       _tag: 'NotionGatewayError',
       ...expected,
     })
@@ -1164,7 +1164,7 @@ describe('notion datasource sync fake-service E2E harness', () => {
         Effect.sync(() => {
           attemptedPatches += 1
         }).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             Effect.fail(
               makeGatewayError({
                 operation: 'patchPageProperties',

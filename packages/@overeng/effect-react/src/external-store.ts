@@ -42,7 +42,7 @@ export const makeSubscriptionRefStore = <TSnapshot>(
 ): EffectExternalStore<TSnapshot> =>
   makeEffectExternalStore({
     getSnapshotEffect: SubscriptionRef.get(ref),
-    changes: ref.changes,
+    changes: SubscriptionRef.changes(ref),
   })
 
 /** Subscribes a component to an EffectExternalStore via useSyncExternalStore. */
