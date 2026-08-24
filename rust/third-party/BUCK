@@ -8,6 +8,23 @@ load("@prelude//rust:cargo_package.bzl", "cargo")
 load("//rust:reindeer.bzl", "reindeer_buildscript_run")
 
 http_archive(
+    name = "adler2-2.0.1.crate",
+    sha256 = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa",
+    strip_prefix = "adler2-2.0.1",
+    urls = ["https://static.crates.io/crates/adler2/2.0.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "adler2-2",
+    srcs = [":adler2-2.0.1.crate"],
+    crate = "adler2",
+    crate_root = "adler2-2.0.1.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+)
+
+http_archive(
     name = "anstream-1.0.0.crate",
     sha256 = "824a212faf96e9acacdbd09febd34438f8f711fb84e09a8916013cd7815ca28d",
     strip_prefix = "anstream-1.0.0",
@@ -608,6 +625,56 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "crc32fast-1.5.0.crate",
+    sha256 = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511",
+    strip_prefix = "crc32fast-1.5.0",
+    urls = ["https://static.crates.io/crates/crc32fast/1.5.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "crc32fast-1",
+    srcs = [":crc32fast-1.5.0.crate"],
+    crate = "crc32fast",
+    crate_root = "crc32fast-1.5.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "OUT_DIR": "$(location :crc32fast-1-build-script-run[out_dir])",
+    },
+    features = [
+        "default",
+        "std",
+    ],
+    rustc_flags = ["@$(location :crc32fast-1-build-script-run[rustc_flags])"],
+    visibility = [],
+    deps = [":cfg-if-1"],
+)
+
+cargo.rust_binary(
+    name = "crc32fast-1-build-script-build",
+    srcs = [":crc32fast-1.5.0.crate"],
+    crate = "build_script_build",
+    crate_root = "crc32fast-1.5.0.crate/build.rs",
+    edition = "2021",
+    features = [
+        "default",
+        "std",
+    ],
+    visibility = [],
+)
+
+reindeer_buildscript_run(
+    name = "crc32fast-1-build-script-run",
+    package_name = "crc32fast",
+    buildscript_rule = ":crc32fast-1-build-script-build",
+    features = [
+        "default",
+        "std",
+    ],
+    version = "1.5.0",
+)
+
+http_archive(
     name = "crypto-common-0.2.2.crate",
     sha256 = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453",
     strip_prefix = "crypto-common-0.2.2",
@@ -755,6 +822,39 @@ cargo.rust_library(
     deps = [
         ":cfg-if-1",
         ":libc-0.2",
+    ],
+)
+
+alias(
+    name = "flate2",
+    actual = ":flate2-1",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "flate2-1.1.9.crate",
+    sha256 = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c",
+    strip_prefix = "flate2-1.1.9",
+    urls = ["https://static.crates.io/crates/flate2/1.1.9/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "flate2-1",
+    srcs = [":flate2-1.1.9.crate"],
+    crate = "flate2",
+    crate_root = "flate2-1.1.9.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "any_impl",
+        "default",
+        "miniz_oxide",
+        "rust_backend",
+    ],
+    visibility = [],
+    deps = [
+        ":crc32fast-1",
+        ":miniz_oxide-0.8",
     ],
 )
 
@@ -1702,6 +1802,32 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "miniz_oxide-0.8.9.crate",
+    sha256 = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316",
+    strip_prefix = "miniz_oxide-0.8.9",
+    urls = ["https://static.crates.io/crates/miniz_oxide/0.8.9/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "miniz_oxide-0.8",
+    srcs = [":miniz_oxide-0.8.9.crate"],
+    crate = "miniz_oxide",
+    crate_root = "miniz_oxide-0.8.9.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "simd",
+        "simd-adler32",
+        "with-alloc",
+    ],
+    visibility = [],
+    deps = [
+        ":adler2-2",
+        ":simd-adler32-0.3",
+    ],
+)
+
+http_archive(
     name = "mio-1.2.2.crate",
     sha256 = "30d65c71f1ce40ab09135ce117d742b9f8a19ff91a41a8b57ed50bc2de59c427",
     strip_prefix = "mio-1.2.2",
@@ -2636,6 +2762,23 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "simd-adler32-0.3.9.crate",
+    sha256 = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214",
+    strip_prefix = "simd-adler32-0.3.9",
+    urls = ["https://static.crates.io/crates/simd-adler32/0.3.9/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "simd-adler32-0.3",
+    srcs = [":simd-adler32-0.3.9.crate"],
+    crate = "simd_adler32",
+    crate_root = "simd-adler32-0.3.9.crate/src/lib.rs",
+    edition = "2018",
+    visibility = [],
+)
+
+http_archive(
     name = "slab-0.4.12.crate",
     sha256 = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5",
     strip_prefix = "slab-0.4.12",
@@ -3430,18 +3573,18 @@ cargo.rust_library(
 )
 
 http_archive(
-    name = "zerocopy-0.8.55.crate",
-    sha256 = "b5a105cd7b140f6eeec8acff2ea38135d3cab283ada58540f629fe51e46696eb",
-    strip_prefix = "zerocopy-0.8.55",
-    urls = ["https://static.crates.io/crates/zerocopy/0.8.55/download"],
+    name = "zerocopy-0.8.56.crate",
+    sha256 = "556764e583adb45a9f8d413c2a147fa7e8d821e48e12b14fd560b607998b75eb",
+    strip_prefix = "zerocopy-0.8.56",
+    urls = ["https://static.crates.io/crates/zerocopy/0.8.56/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "zerocopy-0.8",
-    srcs = [":zerocopy-0.8.55.crate"],
+    srcs = [":zerocopy-0.8.56.crate"],
     crate = "zerocopy",
-    crate_root = "zerocopy-0.8.55.crate/src/lib.rs",
+    crate_root = "zerocopy-0.8.56.crate/src/lib.rs",
     edition = "2021",
     env = {
         "OUT_DIR": "$(location :zerocopy-0.8-build-script-run[out_dir])",
@@ -3453,9 +3596,9 @@ cargo.rust_library(
 
 cargo.rust_binary(
     name = "zerocopy-0.8-build-script-build",
-    srcs = [":zerocopy-0.8.55.crate"],
+    srcs = [":zerocopy-0.8.56.crate"],
     crate = "build_script_build",
-    crate_root = "zerocopy-0.8.55.crate/build.rs",
+    crate_root = "zerocopy-0.8.56.crate/build.rs",
     edition = "2021",
     features = ["simd"],
     visibility = [],
@@ -3466,7 +3609,7 @@ reindeer_buildscript_run(
     package_name = "zerocopy",
     buildscript_rule = ":zerocopy-0.8-build-script-build",
     features = ["simd"],
-    version = "0.8.55",
+    version = "0.8.56",
 )
 
 http_archive(

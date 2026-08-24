@@ -67,6 +67,30 @@
             ;
         };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
+        # Nix-authored Rust musl toolchain identity consumed as a Buck2
+        # --config-file by the native otel-scrape product admission tasks.
+        buck2-rust-musl-toolchain-config =
+          if system == "x86_64-linux" then
+            let
+              cross = pkgs.pkgsCross.musl64;
+              rustVersionParts = pkgs.lib.versions.splitVersion cross.rustc.version;
+              rustPackageSet =
+                cross.${"rust_${builtins.elemAt rustVersionParts 0}_${builtins.elemAt rustVersionParts 1}"};
+            in
+            (import ./nix/workspace-tools/lib/buck2-rust-local-toolchain-config.nix { inherit pkgs; } {
+              # The matching prebuilt archive supplies rustc and the musl
+              # standard library without rebuilding Rust/LLVM.
+              clippyDriver = "${pkgs.clippy}/bin/clippy-driver";
+              rustc = "${rustPackageSet.packages.prebuilt.rustc}/bin/rustc";
+              rustdoc = "${rustPackageSet.packages.prebuilt.rustc}/bin/rustdoc";
+              linker = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}cc";
+              cxx = "${cross.stdenv.cc}/bin/${cross.stdenv.cc.targetPrefix}c++";
+              binutils = cross.binutils;
+              python = "${pkgs.python3}/bin/python3";
+              toolPath = "${pkgs.bash}/bin:${pkgs.coreutils}/bin";
+            }).config
+          else
+            null;
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -227,6 +251,9 @@
             node-pty-native = nodePtyNative;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            # Nix-authored Rust musl toolchain identity consumed as a Buck2
+            # --config-file by the native otel-scrape admission tasks.
+            inherit buck2-rust-musl-toolchain-config;
           };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
