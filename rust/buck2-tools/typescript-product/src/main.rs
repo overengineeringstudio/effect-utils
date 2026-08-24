@@ -279,10 +279,12 @@ fn stage(common: &CommonArgs, workspace: &Path) -> ToolResult<()> {
             .map_err(|error| fail("BUCK2_TS_NATIVE", error.to_string()))?;
         }
         let parent = destination.parent().ok_or_else(|| {
-            fail("BUCK2_TS_NATIVE", "native package destination has no parent")
+            fail(
+                "BUCK2_TS_NATIVE",
+                "native package destination has no parent",
+            )
         })?;
-        fs::create_dir_all(parent)
-            .map_err(|error| fail("BUCK2_TS_NATIVE", error.to_string()))?;
+        fs::create_dir_all(parent).map_err(|error| fail("BUCK2_TS_NATIVE", error.to_string()))?;
         symlink(source, destination).map_err(|error| fail("BUCK2_TS_NATIVE", error.to_string()))?;
     }
     Ok(())
@@ -610,7 +612,10 @@ mod tests {
         let second = tempdir().unwrap();
         let partitioned = digest_args(first.path(), vec!["a", "bc"], vec!["b", "d"]);
         let regrouped = digest_args(second.path(), vec!["a"], vec!["b\0bcd"]);
-        assert_ne!(input_digest(&partitioned).unwrap(), input_digest(&regrouped).unwrap());
+        assert_ne!(
+            input_digest(&partitioned).unwrap(),
+            input_digest(&regrouped).unwrap()
+        );
     }
 
     #[test]
