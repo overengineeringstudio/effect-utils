@@ -8,7 +8,7 @@ Host class: x86_64-linux development host
 Can repository setup and Buck stage-0 realization be removed from shell activation
 while retaining a fast, validated path to warm Buck builds?
 
-## Controls
+## Method
 
 - The evaluated `devenv:enterShell` task had no dependencies after the change.
 - `setup:gate` and `setup:record-cache` were absent from the evaluated task graph;
@@ -22,7 +22,7 @@ while retaining a fast, validated path to warm Buck builds?
 - A continuously changing semantic input failed after three attempts instead of
   recursing without a bound.
 
-## Results
+## Result
 
 | Workload                                                |                                           Observation | Verdict                |
 | ------------------------------------------------------- | ----------------------------------------------------: | ---------------------- |
@@ -39,7 +39,7 @@ between 9 and 19 did not exit reliably; they were interrupted and are not timing
 evidence. This experiment therefore does not claim that the shell latency budget
 is met.
 
-## Decision
+## Conclusion
 
 Shell activation is a mutation-free environment boundary. It does not run Buck,
 Nix stage-0 realization, package installation, Genie, or megarepo mutation.
@@ -52,3 +52,13 @@ single-flight lock with bounded instability retries.
 The remaining shell latency is a devenv evaluation-cache concern, independent of
 Buck warmth. It must be benchmarked again after the pinned devenv upgrade; the
 acceptance budget remains p50 at most 500 ms and p95 at most one second.
+
+## VRS Impact
+
+Moves repository setup and Buck stage-0 realization out of shell activation:
+shell entry becomes a mutation-free boundary, and stage-0 resolution happens
+lazily in repository tasks through a fingerprinted, GC-rooted, atomically
+published resolver with bounded retries. Warm Buck builds are confirmed fast
+and lazy realization is confirmed deduplicated, adversarial, and boundedly
+retrying. It deliberately records no verdict on the shell latency budget until
+the pinned devenv 2.2.1 upgrade can be re-benchmarked on an unloaded host.

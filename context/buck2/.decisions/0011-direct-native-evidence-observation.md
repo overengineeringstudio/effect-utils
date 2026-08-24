@@ -11,6 +11,15 @@ build reports and event logs remain execution truth. The launcher therefore
 duplicated an evidence schema and process boundary without owning a capability
 that required interposition.
 
+## Evidence and Argument
+
+The launcher's only functions were adding evidence flags and emitting a custom
+receipt; it held no execution authority that required interposition. The
+native-evidence design already assigns trace roots, retention, sampling,
+sanitization, and admission to the calling control plane, while Buck build
+reports and event logs remain execution truth, so a second evidence schema
+duplicated a process boundary without owning a capability.
+
 ## Options
 
 | Option                                                             | Tradeoff                                                                              | Outcome          |

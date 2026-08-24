@@ -88,6 +88,18 @@ independent target-platform dimension.
   but this run did not execute inside a separate filesystem namespace.
 - Independent rebuild reproducibility was not measured.
 
+## Conclusion
+
+The boundary works: a flake-pinned Nix cross-toolchain, exposed as exact
+local-store execution identities joined with semantic platform claims, lets a
+Buck action produce and run a self-contained static-musl ELF without ambient
+`PATH`, while the negative controls confirm fail-closed compatibility. The
+portable-tool archive is the wrong delivery mechanism for compilers; compiler
+delivery belongs in this Nix-supplied identity join. Static versus dynamic
+linkage must be modeled as an independent target-platform dimension. These
+conclusions hold only for the sampled `x86_64-linux` local slice; every
+boundary listed under No-Verdict Boundaries stays open.
+
 ## VRS Impact
 
 Confirms the existing one-way Nix-to-Buck local-store contract, independent

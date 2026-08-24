@@ -57,7 +57,7 @@ kind while remaining explicitly provisional.
 The canonical fixture descriptor digest was
 `sha256:920dafd10e3eb7c3d54a0ef6d80213a58ceac533019537cb9e7098177b72389d`.
 
-## Interpretation
+## Conclusion
 
 The contract is now strict enough for language adapters to target one shared
 shape without creating TypeScript or Rust importer branches. It deliberately

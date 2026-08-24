@@ -38,7 +38,7 @@ remain separate binaries and exec dependencies so changing one does not
 invalidate unrelated actions. A shared multi-command binary is admitted only
 if measured closure/transfer savings exceed that coarser invalidation cost.
 
-## Required Evidence
+## Method
 
 | Gate             | Required control                                                                                  | Current result                                                                                                                                                           |
 | ---------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -56,7 +56,7 @@ The invalidation harness must mutate a disposable repository/cell rather than a
 shared tracked source. RED and GREEN controls use the same target and
 observation queries.
 
-## Admission Result
+## Result
 
 The measured gates and net contraction admit the four repository-owned Rust
 stage-zero tools through
@@ -64,6 +64,19 @@ stage-zero tools through
 This admission does not generalize to Prelude Python actions: decision 0009
 continues to require an immutable, digest-pinned CPython closure for any such
 action until its consumer is removed.
+
+## Conclusion
+
+The contraction holds: one root Cargo authority removed the earlier
+second-lock objection, the measured gates passed, and the four stage-zero
+tools were admitted while six Python files, their tests and targets, the live
+CPython archive, and the empty legacy package were deleted. The admission is
+scoped to repository-owned support tools; Prelude Python actions remain under
+decision 0009's immutable, digest-pinned CPython requirement until their
+consumers are removed. What remains open is operational, not architectural:
+the full vendor graph pulled into stage-zero realization, the cold-host
+foundation check buried in the devenv task entrypoint, and native execution of
+real TypeScript and Rust products across explicitly generated platform tuples.
 
 ## Measurements
 
@@ -88,3 +101,13 @@ minimal foundation app or task closure is therefore a measured follow-up. The
 remaining product admission gate is native execution of real TypeScript and
 Rust products across explicitly generated platform tuples, not stage-0
 feasibility.
+
+## VRS Impact
+
+Admits the four repository-owned Rust stage-zero support tools through
+[decision 0010](../.decisions/0010-admit-rust-stage-zero-support-tools.md)
+and records the gate evidence behind that admission: golden behavior, failure
+parity, archive security, runtime absence, exact invalidation, independent
+bootstrap, Linux/Darwin platform proof, and net Python contraction. It changes
+no requirement elsewhere: decision 0003's per-platform proof rule and
+decision 0009's CPython closure boundary remain in force.

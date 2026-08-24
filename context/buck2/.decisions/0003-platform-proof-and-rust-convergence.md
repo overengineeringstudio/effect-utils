@@ -1,7 +1,6 @@
 # 0003 Per-Platform Proof and Measured Rust Convergence
 
-Status: accepted; the conditional repository-helper conclusion is superseded
-by [decision 0010](./0010-admit-rust-stage-zero-support-tools.md)
+Status: accepted
 
 ## Context
 
@@ -61,3 +60,8 @@ does not require an immediate Prelude fork.
 - The shared workspace reopened the Rust candidate under one Cargo authority.
   The follow-up experiment subsequently passed the parity, adversarial,
   invalidation, platform, and deletion gates and is admitted by decision 0010.
+- The conditional repository-helper conclusion of this decision is superseded
+  by [decision 0010](./0010-admit-rust-stage-zero-support-tools.md): the
+  shared-workspace candidate passed the gates this decision required and is
+  admitted. The per-platform admission proof requirement itself remains in
+  force.

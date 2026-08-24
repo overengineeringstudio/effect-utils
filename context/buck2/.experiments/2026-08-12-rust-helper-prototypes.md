@@ -45,7 +45,7 @@ prototype must include golden bytes, modes, failures, adversarial archives,
 ambient-runtime absence, exact action invalidation, Linux and Darwin proof, and
 net abstraction deletion.
 
-## Historical VRS Impact
+## VRS Impact
 
 This experiment did not admit either helper replacement. It established the
 parity, security, platform, invalidation, and abstraction-deletion gates for a
