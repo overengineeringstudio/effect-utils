@@ -39,7 +39,7 @@
 
 ## cli-A-nested-terminator-loss
 
-- **Bucket:** A — SUSPECTED V4 BUG.
+- **Bucket:** A — V4 BUG, RESOLVED FIXED UPSTREAM.
 - **Difference:** under a nested command, v4 beta.99 and beta.102 drop all argv after `--`. A
   required child positional supplied after the terminator becomes missing; an already-satisfied
   child silently loses its trailing operands.
@@ -53,14 +53,13 @@
   (`effect/src/unstable/cli/internal/lexer.ts:24-40`), but parser recursion constructs the child
   input with `trailingOperands: []` (`internal/parser.ts:87`) and attaches the originals to the
   parent parse record (`internal/parser.ts:97`).
-- **Decision:** report upstream and do not migrate affected commands until fixed upstream or
-  locally patched.
-- **Blast radius:** dash-prefixed positional values in nested commands, including `megarepo`
-  add/exec/pin/store, Notion database/schema commands, and TUI story render/inspect.
-- **Status:** ESCALATED to the orchestrator with a minimal deterministic reproduction; confirmed
-  against beta.102 after the related positional-overflow fix `c917bb94a` (#6561), which did not
-  touch `internal/parser.ts`. Four exact diff paths are allowlisted only to freeze the
-  characterization.
+- **Decision:** reported upstream; do not migrate affected commands until fixed upstream.
+  RESOLVED: fixed upstream in beta.103 via PR #6692 (issue #6690 closed); verified against the
+  pinned rc.111 — nested terminators deliver trailing operands byte-for-byte.
+- **Blast radius:** was dash-prefixed positional values in nested commands (`megarepo`
+  add/exec/pin/store, Notion database/schema commands, TUI story render/inspect). No longer
+  gated; any allowlist traces gating on this entry should be removed.
+- **Status:** RESOLVED-FIXED-UPSTREAM (beta.103, PR #6692).
 
 ## cli-B-accepted-grammar-improvements
 
@@ -241,6 +240,15 @@
   trace path. Raw event ordering is deliberately not gated after five same-major runs produced
   four unique v3 traces and three unique v4 traces. No matching upstream issue was found; a draft
   report is in `recipes/filesystem-watch-ordering.md` pending orchestrator duplicate review.
+- **Amendment 1 (2026-08-24, rc.111):** the premise no longer holds at rc.111 —
+  `WatchOptions.recursive` is opt-in again (`effect/src/FileSystem.ts:1171-1176`), and the Node
+  backend defaults it to false (`@effect/platform-node-shared/src/NodeFileSystem.ts:557-558`).
+  Migration must pass `{ recursive: true }` explicitly per call site that wants recursion.
+  Design study landed in `watch-recursion-experiments.md`: megarepo has no watch usage; genie
+  should embrace recursion (fixes latent nested-genie-file blindness) with a 250ms coalescing
+  window; notion-md keeps an exact-path filter for single-file watch and collapses batch watch
+  to one recursive common-root watch; a shared `watchScoped` helper for @overeng/utils is
+  proposed only after both migrations land.
 
 ## prompt-pty-ansi-rendering
 
