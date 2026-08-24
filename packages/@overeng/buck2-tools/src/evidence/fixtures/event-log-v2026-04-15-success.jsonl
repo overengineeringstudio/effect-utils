@@ -1,0 +1,4 @@
+{"schema":"buck2.event-log/v1","buck_version":"2026-04-15","invocation_id":"inv-3f9a2c7"}
+{"type":"action_ended","payload":{"action_id":"a1","target":"//apps/demo:bin","status":"success","cache_class":"miss","duration_ms":412}}
+{"type":"action_ended","payload":{"action_id":"a2","target":"//libs/util:check","status":"success","cache_class":"hit","duration_ms":3}}
+{"type":"artifact_materialized","payload":{"path":"buck-out/v2/bin/apps/demo/a1/bin","digest_sha256":"5d41402abc4b2a76b9719d911017c59200000000000000000000000000000000","size_bytes":812}}

@@ -1,0 +1,16 @@
+{
+  "version": "3",
+  "outcome": "SUCCESS",
+  "targets": {
+    "//apps/demo:bin": {
+      "outcome": "SUCCESS",
+      "outputs": [
+        {
+          "label": "bin",
+          "path": "buck-out/v2/bin/apps/demo/a1/bin",
+          "digest_sha256": "5d41402abc4b2a76b9719d911017c59200000000000000000000000000000000"
+        }
+      ]
+    }
+  }
+}
