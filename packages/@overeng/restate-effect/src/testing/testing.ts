@@ -39,6 +39,7 @@ import { freePorts } from '@overeng/utils/node'
 
 import {
   type AdminClientConfig,
+  AdminHttpError,
   queryStateRows as adminQueryStateRows,
   putState as adminPutState,
   registerDeployment as adminRegisterDeployment,
@@ -390,11 +391,25 @@ const startServer = async (opts: {
 
     const register = async (uri: string): Promise<void> => {
       /* Reuse the shared bare admin client (the same one `./admin` lifts) so the
-       * harness and the public admin surface never drift on the registration call. */
-      try {
-        await adminRegisterDeployment({ config: { adminUrl }, uri, opts: { force: true } })
-      } catch (cause) {
-        fail(`deployment registration failed for uri=${uri}: ${String(cause)}`)
+       * harness and the public admin surface never drift on the registration call.
+       *
+       * The partition-readiness poll above can still race the worker: right
+       * after `/query` starts answering, a registration may 500 with
+       * `node lookup for partition N failed` while the worker finishes
+       * initializing. Retry such transient failures with backoff. */
+      const maxAttempts = 10
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await adminRegisterDeployment({ config: { adminUrl }, uri, opts: { force: true } })
+          return
+        } catch (cause) {
+          const transient =
+            cause instanceof AdminHttpError && cause.status >= 500 && attempt < maxAttempts
+          if (transient === false) {
+            fail(`deployment registration failed for uri=${uri}: ${String(cause)}`)
+          }
+          await sleep(200 * attempt)
+        }
       }
     }
 
