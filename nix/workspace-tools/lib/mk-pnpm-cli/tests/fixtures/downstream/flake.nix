@@ -351,36 +351,50 @@
             }
             ''
               fixture="$PWD/fixture"
-              logical_path=repos/effect-utils/packages/@overeng/utils
-              wrong_logical_path=repos/effect-utils/packages/@overeng/wrong-utils
-              locator='@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils(effect@3.21.4)(react-dom@19.2.4)(react@19.2.4)'
-              virtual_path='.pnpm/@overeng+utils@file+.devenv+pnpm-source-inputs+current+repos+effect-utils+packages+@overeng+utils/node_modules/@overeng/utils'
+              logical_path=repos/private-shared/packages/@overeng/geist-design-system
+              wrong_logical_path=repos/private-shared/packages/@overeng/wrong-geist-design-system
+              parentheses_logical_path='repos/private-shared/packages/@overeng/path(with-parentheses)'
+              locator='@overeng/geist-design-system@file:.devenv/pnpm-source-inputs/current/repos/private-shared/packages/@overeng/geist-design-system(react-aria-components@1.19.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tailwind-variants@1.0.0(tailwindcss@4.3.1))'
+              parentheses_locator='@overeng/path-with-parentheses@file:.devenv/pnpm-source-inputs/current/repos/private-shared/packages/@overeng/path(with-parentheses)(vite@8.0.16(@types/node@26.0.0)(yaml@2.9.0))'
+              virtual_path='.pnpm/@overeng+geist-design-system@file+.devenv+pnpm-source-inputs+current+repos+private-shared+packages+@overeng+geist-design-system/node_modules/@overeng/geist-design-system'
+              parentheses_virtual_path='.pnpm/@overeng+path-with-parentheses@file+.devenv+pnpm-source-inputs+current+repos+private-shared+packages+@overeng+path-with-parentheses/node_modules/@overeng/path-with-parentheses'
               mkdir -p \
                 "$fixture/$logical_path/src" \
                 "$fixture/$wrong_logical_path" \
+                "$fixture/$parentheses_logical_path/src" \
                 "$fixture/.devenv/pnpm-source-inputs/current/$logical_path" \
+                "$fixture/.devenv/pnpm-source-inputs/current/$parentheses_logical_path" \
                 "$fixture/node_modules/$virtual_path/node_modules/effect" \
+                "$fixture/node_modules/$parentheses_virtual_path" \
                 "$fixture/node_modules/@overeng"
 
               cat > "$fixture/$logical_path/package.json" <<'JSON'
-              {"name":"@overeng/utils","exports":{"./node/example":"./src/example.js"}}
+              {"name":"@overeng/geist-design-system","exports":{"./example":"./src/example.js"}}
               JSON
               cat > "$fixture/$logical_path/src/example.js" <<'JS'
               export const example = true
               JS
               cat > "$fixture/$wrong_logical_path/package.json" <<'JSON'
-              {"name":"@overeng/wrong-utils"}
+              {"name":"@overeng/wrong-geist-design-system"}
               JSON
+              cat > "$fixture/$parentheses_logical_path/package.json" <<'JSON'
+              {"name":"@overeng/path-with-parentheses"}
+              JSON
+              cat > "$fixture/$parentheses_logical_path/src/example.js" <<'JS'
+              export const parenthesesExample = true
+              JS
               touch "$fixture/node_modules/$virtual_path/node_modules/effect/retained-dependency"
               ln -s "$(realpath --relative-to="$fixture/.devenv/pnpm-source-inputs/current/$logical_path" "$fixture/$wrong_logical_path/package.json")" \
                 "$fixture/.devenv/pnpm-source-inputs/current/$logical_path/package.json"
+              ln -s "$(realpath --relative-to="$fixture/.devenv/pnpm-source-inputs/current/$parentheses_logical_path" "$fixture/$parentheses_logical_path/package.json")" \
+                "$fixture/.devenv/pnpm-source-inputs/current/$parentheses_logical_path/package.json"
               cat > "$fixture/node_modules/.package-map.json" <<JSON
-              {"packages":{"$locator":{"url":"./$virtual_path"}}}
+              {"packages":{"$locator":{"url":"./$virtual_path"},"$parentheses_locator":{"url":"./$parentheses_virtual_path"}}}
               JSON
               cat > "$fixture/node_modules/.modules.yaml" <<'JSON'
               {"injectedDeps":{}}
               JSON
-              ln -s "../$virtual_path" "$fixture/node_modules/@overeng/utils"
+              ln -s "../$virtual_path" "$fixture/node_modules/@overeng/geist-design-system"
 
               if (cd "$fixture" && PREPARED_WORKSPACE_PLACEHOLDER=/__pnpm_prepared_workspace__ \
                 node ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.rewritePreparedWorkspaceScript}) 2> "$fixture/wrong-alias.log"; then
@@ -409,12 +423,18 @@
                 node ${pureEvalFixture.passthru.depsBuildsByInstallRoot.root.rewritePreparedWorkspaceScript})
 
               package_target="$fixture/node_modules/$virtual_path"
+              parentheses_package_target="$fixture/node_modules/$parentheses_virtual_path"
               test -L "$package_target"
               test -f "$package_target/package.json"
               test -f "$package_target/src/example.js"
               test "$(realpath "$package_target")" = "$(realpath "$fixture/$logical_path")"
+              test -L "$parentheses_package_target"
+              test -f "$parentheses_package_target/src/example.js"
+              test "$(realpath "$parentheses_package_target")" = \
+                "$(realpath "$fixture/$parentheses_logical_path")"
               rm -rf "$fixture/.devenv"
               test -f "$package_target/src/example.js"
+              test -f "$parentheses_package_target/src/example.js"
 
               touch "$out"
             '';

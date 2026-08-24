@@ -84,13 +84,19 @@ real logical directory rather than the transient alias:
 - ordinary `file:` packages use pnpm's `.package-map.json`
   locator-to-target mapping, which retains the exact peer-context variant.
 
-Both paths consume pnpm's selected locator identity. Package-name or virtual
-directory scans are not selectors. For an ordinary `file:` target, this relink
-is required because pnpm accepts the manifest-only alias for frozen resolution
-but materializes no package source bytes from it. `.devenv` is then removed,
-and the prepared output must contain neither alias state nor broken references.
-This compatibility bridge does not run the live Source Input publisher, copy
-its generations, or add source-only files to manifest freshness.
+Both paths consume pnpm's selected locator identity. For an ordinary `file:`
+target, the longest locator prefix with a declared staged alias `package.json`
+is the logical source-path boundary; any remaining locator suffix is opaque
+pnpm-owned context. The alias manifest therefore owns source identity while
+`.package-map.json` owns the exact materialized target. Package-name scans,
+virtual-directory scans, and peer-suffix parsers are not selectors.
+
+This relink is required because pnpm accepts the manifest-only alias for frozen
+resolution but materializes no package source bytes from it. `.devenv` is then
+removed, and the prepared output must contain neither alias state nor broken
+references. This compatibility bridge does not run the live Source Input
+publisher, copy its generations, or add source-only files to manifest
+freshness.
 
 ## Install Policy
 
@@ -161,10 +167,11 @@ the final package.
 The full logical source snapshot is present before prepared dependency data is
 overlaid. Relinked injected and ordinary local-file package targets therefore
 resolve through the same logical source directories after overlay. The focused
-`prepared-workspace-source-input-file-links` regression covers an ordinary
-locator with several adjacent peer-context groups, verifies the exact
-package-map target is relinked, removes the transient alias, and still resolves
-package source bytes.
+`prepared-workspace-source-input-file-links` regression covers a real-shaped
+ordinary locator with nested peer context and a logical path containing
+parentheses, preserves wrong-alias and escaping-source negative controls,
+verifies the exact package-map targets are relinked, removes the transient
+aliases, and still resolves package source bytes.
 
 Downstream restore must not use pnpm to reconstruct dependency state.
 
