@@ -22,9 +22,9 @@ import { FetchHttpClient } from '@effect/platform'
  */
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Ref } from 'effect'
+import { Schema } from 'effect'
 
 import { captureTest, SpanRow } from '@overeng/utils-dev/otelite'
-import { Schema } from 'effect'
 
 import {
   decodeEvidence,
