@@ -13,9 +13,14 @@
     }
   },
   "dependencies": {
+    "@overeng/otel-contract": "workspace:^",
     "effect": "3.21.4"
   },
   "devDependencies": {
+    "@effect/opentelemetry": "0.63.0",
+    "@effect/platform": "0.96.2",
+    "@effect/platform-node": "0.107.0",
+    "@effect/vitest": "0.29.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.0.0",
     "typescript": "6.0.3",
@@ -26,6 +31,8 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/buck2-tools",
+      "packages/@overeng/content-address",
+      "packages/@overeng/otel-contract",
       "packages/@overeng/utils-dev"
     ]
   }
