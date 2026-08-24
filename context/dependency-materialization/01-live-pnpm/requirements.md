@@ -108,10 +108,10 @@ parallel Dependency Graph.
   Refines: DMP-R02, DMP-R11, DMP-R12.
 - **DMP.LIVE-R13 Root-scoped source isolation:** When a composed topology
   consumes canonical source owned by another Materialization Root, the
-  aggregate root must expose one read-only, validated source generation to its Package
-  Instances. Writes through a consumer must not alter canonical source, and
-  writable source-generation state must not be shared across Materialization
-  Roots or create consumer-scoped materialization authority.
+  aggregate root must expose one read-only, validated source generation to its
+  Package Instances. Writes through a consumer must not alter canonical source,
+  and writable source-generation state must not be shared across
+  Materialization Roots or create consumer-scoped materialization authority.
   Refines: DMP-R11, DMP-R12, DMP-R23.
 - **DMP.LIVE-R14 Boundary-convergent source refresh:** Managed readiness,
   install, update, and deduplicate entrypoints must derive source-generation

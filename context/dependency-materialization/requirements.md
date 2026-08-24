@@ -3,8 +3,8 @@
 ## Context
 
 These requirements define the dependency materialization contract used by
-effect-utils live pnpm tasks, Nix prepared dependency artifacts, CI jobs, and
-future Buck2 dependency evidence.
+effect-utils live pnpm tasks, immutable dependency artifacts, CI jobs, and
+declared repo-local build actions.
 
 Canonical shared terms and relationships are defined in
 [ontology.md](./ontology.md).
@@ -25,7 +25,7 @@ Subsystem requirements refine this root contract:
 - [04-store-authority](./04-store-authority/requirements.md) defines shared
   content, repair, prune, and GC authority.
 - [05-buck2-evidence](./05-buck2-evidence/requirements.md) defines the Buck2
-  evidence boundary.
+  realization and evidence boundary.
 - [06-observability](./06-observability/requirements.md) defines producer facts
   for materialization telemetry.
 - [07-verification](./07-verification/requirements.md) defines the proof,
@@ -38,15 +38,15 @@ Subsystem requirements refine this root contract:
 
 - **A01 pnpm base:** The supported package-manager surface is pnpm 11 with the
   repo's canonical workspace topology and lockfile.
-- **A02 Nix authority:** Native tools, compiled native bindings, and runtime
-  binaries that cannot be treated as pure package artifacts are supplied by Nix
-  or explicit wrappers, not by pnpm lifecycle scripts.
-- **A03 Materialization Profile consumers:** Prepared dependency artifacts and
-  Buck2 evidence use one immutable Materialization Profile vocabulary for
-  equivalent dependency inputs. Live installs use their declared inputs and
-  install contract directly.
-- **A04 Prepared artifacts are data:** Prepared pnpm dependency FODs are data
-  artifacts. Build-time executable shims and native/build outputs are
+- **A02 System integration authority:** Native tools, compiled native bindings,
+  and runtime binaries that cannot be treated as pure package artifacts are
+  supplied by explicit system inputs or wrappers, not by pnpm lifecycle scripts.
+- **A03 Materialization Profile consumers:** Immutable dependency artifacts and
+  build evidence use one Materialization Profile vocabulary for equivalent
+  dependency inputs. Live installs use their declared inputs and install
+  contract directly.
+- **A04 Dependency artifacts are data:** Immutable dependency artifacts contain
+  dependency data. Build-time executable shims and native/build outputs are
   projection or build-layer concerns unless explicitly modeled as pure package
   data.
 
@@ -82,15 +82,16 @@ Subsystem requirements refine this root contract:
 - **DMP-R03 No approve-builds gate:** `allowBuilds`, `onlyBuiltDependencies`,
   `pnpm approve-builds`, and related pnpm build-approval mechanisms must not be
   the primary trust boundary for effect-utils-managed installs.
-- **DMP-R04 Native purity:** Native dependencies must be represented as Nix
-  inputs, explicit wrappers, or pure package artifacts selected without running
+- **DMP-R04 Native purity:** Native dependencies must be represented as explicit
+  system inputs, wrappers, or pure package artifacts selected without running
   lifecycle scripts.
 
 ### Must separate dependency data from projections
 
-- **DMP-R05 Prepared FOD data surface:** A prepared pnpm dependency artifact
-  must contain only deterministic dependency data required by downstream
-  restores. It must not archive mutable pnpm store/home/state paths.
+- **DMP-R05 Dependency artifact data surface:** An immutable dependency artifact
+  must contain only deterministic dependency data required by declared
+  consumers. It must not archive mutable package-manager store, home, or state
+  paths.
 - **DMP-R06 Bin projection ownership:** `node_modules/.bin` entries are
   executable projection state. They must be created, checked, and repaired by a
   deterministic projection step rather than by dependency lifecycle scripts.
@@ -104,22 +105,24 @@ Subsystem requirements refine this root contract:
 
 ### Must make materialization identity explicit
 
-- **DMP-R09 Materialization Profile identity:** When prepared dependency or
-  Buck2 evidence groups equivalent immutable dependency work, its stable
-  Materialization Profile identity must derive from topology, dependency
-  inputs, package-manager policy, and toolchain inputs, not physical root or
-  storage placement.
-- **DMP-R10 Shared Materialization Profile schema:** Nix prepared dependency
-  artifacts and Buck2 evidence must use the same Materialization Profile fields
-  when describing equivalent dependency work.
+- **DMP-R09 Materialization Profile identity:** When an immutable artifact or
+  build-evidence target groups equivalent dependency work, its stable
+  Materialization Profile identity must derive from topology, dependency inputs,
+  package-manager policy, and toolchain inputs, not physical root or storage
+  placement.
+- **DMP-R10 Shared Materialization Profile schema:** Artifact producers and
+  build-evidence targets must use the same Materialization Profile fields when
+  describing equivalent dependency work.
 - **DMP-R11 Topology and edge authority:** Each Materialization Root must name
-  authoritative workspace topology and one Authoritative Materializer.
+  authoritative workspace topology and exactly one Authoritative Materializer.
+  The repository must also declare exactly one build authority for repo-local
+  compilation, generation, tests, bundles, and dependency/product artifacts.
   Package-local or sibling-root state must not become authoritative implicitly.
-  Only the Authoritative Materializer may
-  select or change the Package Instance targeted by a Dependency Edge. A
-  faithful restore may reproduce an already-selected edge, and repair may
-  discard an owned realization and reinvoke the Authoritative Materializer;
-  neither may select a replacement target.
+  Only the Authoritative Materializer may select or change the Package Instance
+  targeted by a Dependency Edge. A faithful restore may reproduce an
+  already-selected edge, and repair may discard an owned realization and
+  reinvoke the Authoritative Materializer; neither may select a replacement
+  target.
 
 ### Must preserve correctness under sharing
 
@@ -138,9 +141,9 @@ Subsystem requirements refine this root contract:
 
 ### Must be measured and verifiable
 
-- **DMP-R16 Real-repo gates:** Changes to storage sharing, prepared artifact
-  purity, or projection ownership must be validated on at least one real
-  downstream graph in addition to synthetic fixtures.
+- **DMP-R16 Real-repo gates:** Changes to build authority, storage sharing,
+  artifact purity, or projection ownership must be validated on at least one
+  real downstream graph in addition to synthetic fixtures.
 - **DMP-R17 Negative lifecycle tests:** Test fixtures must prove that managed
   install plus projection does not run `preinstall`, `install`, `postinstall`,
   `prepare`, rebuild, or approval paths.
@@ -178,4 +181,4 @@ Subsystem requirements refine this root contract:
   lifecycle-free and atomic, consumers cannot mutate the result, and corruption
   or eviction can be repaired without coordinating those consumers. Root-local
   mutable realization is a compatibility boundary, not the long-term reuse
-  ideal.
+  ideal. A reusable artifact producer must not create a parallel build authority.

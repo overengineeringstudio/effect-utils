@@ -1,7 +1,7 @@
 # Buck2 Evidence Spec
 
-This document specifies Buck2 dependency materialization evidence. It builds on
-[requirements.md](./requirements.md).
+This document specifies the current Buck2 dependency materialization evidence
+boundary. It builds on [requirements.md](./requirements.md).
 
 Status: **Draft**
 
@@ -11,9 +11,9 @@ Status: **Draft**
 | -------------- | -------------------------- |
 | Boundary       | DMP.BUCK-R01, DMP.BUCK-R04 |
 | Evidence Shape | DMP.BUCK-R02, DMP.BUCK-R03 |
-| Future Builder | DMP.BUCK-R05               |
+| Future Builder | DMP.BUCK-R05, DMP.BUCK-R06 |
 
-## Boundary
+## Current Boundary
 
 ```text
 package manifests
@@ -29,8 +29,13 @@ dependency-profile.evidence.json
 Buck2 task graph
 ```
 
-The initial Buck2 target emits evidence. It does not run live dependency
-installation or shared-store repair.
+The current Buck2 target emits evidence. It does not run dependency installation
+or shared-store repair and does not claim build authority for its consumers.
+
+[Decision 0010](../.decisions/0010-select-buck2-build-authority.md) selects
+Buck2 as the repo-local build authority. The difference between the current
+evidence-only boundary and that decision is recorded in
+[DELTA-003](../.delta/DELTA-003-buck2-single-build-authority.md).
 
 ## Evidence Shape
 
@@ -52,10 +57,10 @@ Paths are repo-relative and safe for public artifacts.
 
 ## Future Builder
 
-A future Buck2 action may materialize dependencies only when it:
+A Buck2 action may materialize dependencies only when it:
 
 1. declares the same profile inputs;
 2. disables lifecycle scripts by construction;
-3. proves output equivalence with the accepted profile realization;
-4. has an explicit repair and GC story for mutable state or uses immutable
-   outputs only.
+3. proves that its output satisfies the accepted consumer contract;
+4. uses immutable outputs and keeps mutable caches outside correctness; and
+5. is the sole build authority for the consumers in its declared scope.

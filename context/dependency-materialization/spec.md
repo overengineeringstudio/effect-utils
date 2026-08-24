@@ -13,7 +13,7 @@ This spec defines:
 - the separation between dependency data, executable projections, and native
   build outputs;
 - the prepared dependency FOD purity boundary;
-- the prepared dependency profile shape shared by Nix and Buck2 evidence;
+- the prepared dependency profile shape shared by Nix and build evidence;
 - the repair, doctor, and benchmark gates for changing the policy.
 
 This spec does not define package-specific native integrations. Those belong in
@@ -30,7 +30,7 @@ dependency-materialization/
     01-fod-hash-evidence/   cross-system FOD hash evidence
     02-native-node-packages/ native package classification and grafting
   04-store-authority/        shared content, repair, prune, and GC authority
-  05-buck2-evidence/         Buck2 evidence-only boundary
+  05-buck2-evidence/         current Buck2 evidence boundary
   06-observability/          producer facts and build-log bridge records
   07-verification/           proof, benchmark, and regression architecture
   08-ci-store-cache/         CI-profile pnpm store persistence and write coordination
@@ -59,19 +59,23 @@ canonical workspace inputs
   -> pure pnpm materialization
      -> dependency data
      -> pure executable projection
-     -> Nix/native wrapper integration
+     -> system/native wrapper integration
      -> prepared profile evidence and live health reports
 ```
 
-pnpm is responsible for resolving and linking package contents. It is not the
-authority for executing package lifecycle code in effect-utils-managed paths.
+pnpm is responsible for resolving and linking package contents in the current
+live and prepared realizations. It is not the authority for executing package
+lifecycle code in effect-utils-managed paths.
 
 The long-term reuse unit is a hermetic dependency artifact keyed by every input
 that can affect package identity and topology. It is constructed atomically,
 never mutated by consumers, and may be reused as broadly as compatibility
 permits. Today's root-local pnpm graph is the mutable compatibility boundary
 used where pnpm cannot yet expose that artifact; it is not the architectural
-ceiling.
+ceiling. [Decision 0010](./.decisions/0010-select-buck2-build-authority.md)
+selects Buck2 as the repo-local build authority. The current evidence-only
+divergence from that decision is recorded in
+[DELTA-003](./.delta/DELTA-003-buck2-single-build-authority.md).
 
 ## Strict pnpm Install Policy
 
