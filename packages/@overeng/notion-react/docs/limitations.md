@@ -145,6 +145,29 @@ Our `@overeng/notion-effect-client` handles this transparently under
 `retryEnabled: true`, but if you layer your own retry on top, don't rely
 on headers.
 
+## Append-only page lifecycle (R41)
+
+### Tail placement, not order preservation
+
+Under `pageLifecycle: 'append-only'`, new `<ChildPage>`s are legal only
+at the tail of their parent's page-sibling run — Notion creates
+children at the tail, and reordering is a second, non-atomic lifecycle
+op the mode exists to forbid. JSX that inserts a page mid-run fails the
+whole sync (`page-lifecycle-violation`) rather than silently landing at
+the tail and diverging server order from JSX order. Wanting a fixed
+presentation order under this mode means authoring pages append-last.
+
+### The guard is per-sync, not a server-side lock
+
+The predicate constrains what THIS library will do in the guarded sync.
+It cannot prevent out-of-band writers (or the same consumer running in
+`'managed'` mode) from archiving or moving pages. Note the interaction
+with cold syncs: the cold-`'clean'` baseline sweep emits block removes
+for pre-existing live children — a live `child_page` under a
+cold-`'clean'` root still surfaces as a lifecycle-legal block `remove`
+targeting the mirrored block. For irreplaceable trees, pair
+`'append-only'` with `coldBaseline: 'merge'` and a persistent cache.
+
 ## Readback verification scope
 
 ### Masked dimensions (T12)

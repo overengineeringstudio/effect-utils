@@ -44,8 +44,23 @@ sync(element, {
   coldBaseline?,       // 'clean' (default) | 'merge' — how to treat pre-existing live children on cold sync
   onUploadIdRejected?, // retry hook for evicted file_upload_ids
   reorderSiblings?,    // opt-in intra-parent <ChildPage> reorder (phase 4d, #618)
+  pageLifecycle?,      // 'managed' (default) | 'append-only' (#1124)
 })
 ```
+
+`pageLifecycle: 'append-only'` — for irreplaceable live trees (page
+identity carries grants; recreation is impossible through the public
+API). Block ops and page content (`updatePage` title/icon/cover) stay
+fully managed, but the sync guarantees it never archives, moves, or
+reorders a page and never creates one out of tail position: a single
+post-diff predicate fails the WHOLE sync before any op applies with
+`NotionSyncError { reason: 'page-lifecycle-violation', violations }`
+(the offending `DiffOp[]`). Fail, not skip — JSX implying page
+destruction under this mode is a caller bug. Notion creates children at
+the tail, so new pages must be appended after the retained run; wanting
+a fixed order means accepting tail placement, not reordering. #1100
+crash recovery (pending-adoption) stays legal. See
+[Limitations → Append-only page lifecycle](./limitations.md#append-only-page-lifecycle-r41).
 
 `reorderSiblings` values:
 
@@ -68,6 +83,7 @@ plan(element, {
   reorderSiblings?, // same semantics as sync()
   staleness?,       // 'live' (default) | 'cache-only'
   onEvent?,         // retrieve op events + one PlanComputed; nothing else
+  pageLifecycle?,   // same semantics as sync(); plan() reports, never fails
 })
 // → Effect<SyncPlan, NotionSyncError, NotionConfig | HttpClient>
 ```
@@ -88,6 +104,11 @@ siblings emits a same-parent `movePage` that Notion rejects and `sync()`
 deliberately swallows (a documented no-op), so server sibling order
 never converges and subsequent live plans keep reporting that move — opt
 into `reorderSiblings: true` for a true fixpoint.
+
+Under `pageLifecycle: 'append-only'`, `SyncPlan.lifecycleViolations`
+carries the ops the sync-side guard would reject (same predicate — the
+preview and the guard cannot disagree); `plan()` itself never fails on
+violations. The field is present only when the option was passed.
 
 `staleness`:
 
@@ -291,13 +312,15 @@ import {
 import { NotionSyncError, CacheError } from '@overeng/notion-react'
 ```
 
-| Error             | Reasons (so far)                                                                                                                                                                 |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NotionSyncError` | `"notion-append-failed"`, `"notion-insert-failed"`, `"notion-update-failed"`, `"notion-delete-failed"`, `"notion-retrieve-failed"`, `"cache-load-failed"`, `"cache-save-failed"` |
-| `CacheError`      | `"fs-cache-read-failed"`, `"fs-cache-parse-failed"`, `"fs-cache-write-failed"`                                                                                                   |
+| Error             | Reasons (so far)                                                                                                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NotionSyncError` | `"notion-append-failed"`, `"notion-insert-failed"`, `"notion-update-failed"`, `"notion-delete-failed"`, `"notion-retrieve-failed"`, `"cache-load-failed"`, `"cache-save-failed"`, `"page-lifecycle-violation"` |
+| `CacheError`      | `"fs-cache-read-failed"`, `"fs-cache-parse-failed"`, `"fs-cache-write-failed"`                                                                                                                                 |
 
 Both are `Data.TaggedError` classes with `reason: string` and optional
-`cause: unknown`.
+`cause: unknown`. For `"page-lifecycle-violation"` (#1124),
+`NotionSyncError.violations` carries the offending `DiffOp[]` the
+`'append-only'` predicate rejected — before any op was applied.
 
 ## Uploads
 

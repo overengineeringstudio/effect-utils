@@ -25,6 +25,7 @@ export {
   type SyncFallbackReason,
 } from './render-to-notion.ts'
 export { sync, plan, type SyncPlan, type PlanStaleness } from './sync.ts'
+export { pageLifecycleViolations, type PageLifecycle } from './page-lifecycle.ts'
 export { SyncEvent, type SyncEventHandler } from './sync-events.ts'
 export {
   extractFileUploadId,
