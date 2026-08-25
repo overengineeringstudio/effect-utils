@@ -145,6 +145,45 @@ Our `@overeng/notion-effect-client` handles this transparently under
 `retryEnabled: true`, but if you layer your own retry on top, don't rely
 on headers.
 
+## Readback verification scope
+
+### Masked dimensions (T12)
+
+`compareReadback` / `compareReadbackPage` certify managed content, not
+byte-total equality. Explicitly outside the comparison:
+
+- **Uploaded media content.** A `fileUploadId` request comes back as a
+  `file` envelope with an expiring signed URL; the bytes are not
+  verifiable through block JSON. Uploaded sources mask to an `uploaded`
+  sentinel — position, type, and caption still compare exactly.
+- **Built-in icon identity (A07).** An external icon URL under
+  `notion.so/icons/` resolves server-side to the undocumented
+  `{type:'icon', icon:{name,color}}` envelope with no public name↔URL
+  mapping. That pairing masks to `builtin-unverified`: presence is
+  verified, the exact glyph is not.
+- **Provider-owned defaults.** Fields the JSX never claimed — callout
+  `icon`, code `language`, column `widthRatio`, table `tableWidth` —
+  are server-injected and excluded. Claim the prop to make it exact
+  managed content.
+- **Sub-page content.** `child_page` blocks compare by title identity
+  only and are never recursed into. Run a per-page readback for each
+  sub-page (mirrors the R26 per-page sync boundary).
+
+### Unsupported: raw escape-hatch blocks
+
+`<Raw>` and its passthrough wrappers (`Template`, `LinkPreview`,
+`SyncedBlock`, `ChildDatabase`, `Breadcrumb`) forward opaque
+request-shape payloads; their response-shape delta cannot be normalized
+generically. Readback normalization throws on them rather than
+comparing best-effort.
+
+### No snapshot isolation
+
+`observeBlockTree` is a paginated multi-request walk; a concurrent
+writer can produce an observation no single instant exhibited. Treat
+readback equality as advisory for the observed window, exactly like a
+`plan()` (T11).
+
 ## Web renderer (Storybook preview)
 
 ### Not API-stable (T05)

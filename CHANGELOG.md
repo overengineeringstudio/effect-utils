@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-react**: add the readback verification oracle (#1123).
+  `compareReadback({candidate, observed})` folds server-observed block JSON
+  and rendered candidate trees into one canonical form and compares them by
+  hash, absorbing Notion's response-shape deltas (decorated/re-segmented rich
+  text, explicit defaults, provider-injected fields). Ships with
+  `compareReadbackPage` for the page title/icon/cover envelope and
+  `observeBlockTree`, a GET-only walk producing the observed tree. Readback
+  hashes are a **separate hash space** from `CacheNode.hash` — never compare
+  across the two. Masking is candidate-contextual (no context-free observed
+  hash exists): unclaimed provider-owned fields, uploaded-media signed URLs,
+  and built-in-icon rewrites are masked and documented rather than compared
+  best-effort. `child_page` blocks compare by title identity; sub-pages get
+  their own per-page readback pass.
 - **@overeng/notion-react**: add `plan()`, a read-only companion to `sync()`
   (#1122). It computes the exact op sequence a sync would apply — through the
   same pre-flight and diff code path, root-page metadata update included —
