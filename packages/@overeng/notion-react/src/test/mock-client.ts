@@ -1,20 +1,20 @@
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer, Redacted, Schema } from 'effect'
+import { HttpClient, type HttpClientRequest, HttpClientResponse } from 'effect/unstable/http'
 
 import { NotionConfig } from '@overeng/notion-effect-client'
 
 /** Notion's error-envelope wire shape, as emitted by the fake on a rejected request. */
 const NotionErrorEnvelope = Schema.Struct({
   object: Schema.Literal('error'),
-  status: Schema.Number,
+  status: Schema.Finite,
   code: Schema.String,
   message: Schema.String,
 })
 
 /** Encode an arbitrary handler result to a JSON response string. */
-const encodeResponseJson = Schema.encodeSync(Schema.parseJson())
+const encodeResponseJson = (value: unknown): string => JSON.stringify(value)
 /** Encode a Notion error envelope to its JSON response string. */
-const encodeErrorEnvelopeJson = Schema.encodeSync(Schema.parseJson(NotionErrorEnvelope))
+const encodeErrorEnvelopeJson = Schema.encodeSync(Schema.fromJsonString(NotionErrorEnvelope))
 
 /**
  * In-memory Notion API stub for driver-level tests.

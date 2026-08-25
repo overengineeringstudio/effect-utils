@@ -34,7 +34,7 @@ import { DurablePromise, Restate, RestateObject, RestateWorkflow, State } from '
 
 export const IncidentState = {
   /** The incident lifecycle the operator inspects via `QUERY object state`. */
-  status: Schema.Literal('open', 'acknowledged', 'resolved'),
+  status: Schema.Literals(['open', 'acknowledged', 'resolved']),
   /** A free-form human note recorded on the last transition. */
   note: Schema.String,
 } as const
@@ -79,7 +79,7 @@ export const IncidentLive = RestateObject.implement<typeof IncidentObj>({
 
 export const DeliveryState = {
   /** Where the delivery is in its lifecycle — inspected via `INSPECT workflow state`. */
-  phase: Schema.Literal('delivering', 'delivered', 'gave-up'),
+  phase: Schema.Literals(['delivering', 'delivered', 'gave-up']),
 } as const
 
 const Delivery = State.for(DeliveryState)
@@ -99,7 +99,7 @@ const Release = DurablePromise.for(Schema.Struct({ go: Schema.Boolean }))
  */
 export class DiscordUnavailable extends Schema.TaggedError<DiscordUnavailable>(
   'example/DiscordUnavailable',
-)('DiscordUnavailable', { retryAfterMillis: Schema.Number }) {}
+)('DiscordUnavailable', { retryAfterMillis: Schema.Finite }) {}
 
 export const DiscordUnavailableRetryable = Restate.retryable({
   self: DiscordUnavailable,
@@ -164,7 +164,7 @@ export const InvocationRow = Schema.Struct({
   target_service_name: Schema.String,
   target_handler_name: Schema.String,
   status: Schema.String,
-  retry_count: Schema.optional(Schema.NullishOr(Schema.Number)),
+  retry_count: Schema.optional(Schema.NullishOr(Schema.Finite)),
 })
 export type InvocationRow = Schema.Schema.Type<typeof InvocationRow>
 

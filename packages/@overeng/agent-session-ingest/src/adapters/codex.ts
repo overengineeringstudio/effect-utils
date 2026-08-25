@@ -1,8 +1,7 @@
 import { lstatSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, FileSystem, Option, Schema } from 'effect'
 
 import { SessionSourceDiscoveryError } from '../errors.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
@@ -10,7 +9,7 @@ import { ArtifactDescriptor, SourceId } from '../schema/core.ts'
 import { makeAppendOnlyJsonlAdapter } from './jsonl.ts'
 
 const TextPart = Schema.Struct({
-  type: Schema.Literal('input_text', 'output_text'),
+  type: Schema.Literals(['input_text', 'output_text']),
   text: Schema.String,
 })
 
@@ -23,8 +22,8 @@ const InputImagePart = Schema.Struct({
 
 const MessageResponsePayload = Schema.Struct({
   type: Schema.Literal('message'),
-  role: Schema.Literal('assistant', 'developer', 'system', 'user'),
-  content: Schema.Array(Schema.Union(TextPart, InputImagePart)),
+  role: Schema.Literals(['assistant', 'developer', 'system', 'user']),
+  content: Schema.Array(Schema.Union([TextPart, InputImagePart])),
 })
 
 const ReasoningSummaryPart = Schema.Struct({
@@ -85,7 +84,7 @@ const SessionMetaPayload = Schema.Struct({
 
 const LegacySessionMetaRecord = Schema.Struct({
   id: Schema.String,
-  timestamp: Schema.DateTimeUtc,
+  timestamp: Schema.DateTimeUtcFromString,
   instructions: Schema.optional(Schema.NullOr(Schema.String)),
   git: Schema.optional(Schema.Unknown),
 })
@@ -96,7 +95,7 @@ const LegacyStateRecord = Schema.Struct({
 
 const LegacyTopLevelRecord = Schema.Struct({
   type: Schema.String,
-  timestamp: Schema.optional(Schema.DateTimeUtc),
+  timestamp: Schema.optional(Schema.DateTimeUtcFromString),
   id: Schema.optional(Schema.NullOr(Schema.String)),
   role: Schema.optional(Schema.String),
   content: Schema.optional(Schema.Unknown),
@@ -106,7 +105,7 @@ const LegacyTopLevelRecord = Schema.Struct({
 const TokenCountInfo = Schema.Struct({
   total_token_usage: Schema.optional(Schema.Unknown),
   last_token_usage: Schema.optional(Schema.Unknown),
-  model_context_window: Schema.optional(Schema.Number),
+  model_context_window: Schema.optional(Schema.Finite),
 })
 
 /**
@@ -116,16 +115,16 @@ const TokenCountInfo = Schema.Struct({
  * - Native transcript store: `~/.codex-<profile>/sessions/(nested path).jsonl`
  * - Discovery index: `state_5.sqlite` / `threads.rollout_path`
  */
-export const CodexSessionRecord = Schema.Union(
+export const CodexSessionRecord = Schema.Union([
   Schema.Struct({
-    timestamp: Schema.DateTimeUtc,
+    timestamp: Schema.DateTimeUtcFromString,
     type: Schema.Literal('session_meta'),
     payload: SessionMetaPayload,
   }),
   Schema.Struct({
-    timestamp: Schema.DateTimeUtc,
+    timestamp: Schema.DateTimeUtcFromString,
     type: Schema.Literal('response_item'),
-    payload: Schema.Union(
+    payload: Schema.Union([
       MessageResponsePayload,
       FunctionCallPayload,
       FunctionCallOutputPayload,
@@ -134,10 +133,10 @@ export const CodexSessionRecord = Schema.Union(
       CustomToolCallOutputPayload,
       GhostSnapshotPayload,
       WebSearchCallPayload,
-    ),
+    ]),
   }),
   Schema.Struct({
-    timestamp: Schema.DateTimeUtc,
+    timestamp: Schema.DateTimeUtcFromString,
     type: Schema.Literal('event_msg'),
     payload: Schema.Struct({
       type: Schema.String,
@@ -146,7 +145,7 @@ export const CodexSessionRecord = Schema.Union(
     }),
   }),
   Schema.Struct({
-    timestamp: Schema.DateTimeUtc,
+    timestamp: Schema.DateTimeUtcFromString,
     type: Schema.Literal('turn_context'),
     payload: Schema.Struct({
       cwd: Schema.String,
@@ -160,7 +159,7 @@ export const CodexSessionRecord = Schema.Union(
   LegacySessionMetaRecord,
   LegacyStateRecord,
   LegacyTopLevelRecord,
-).annotations({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
+]).annotate({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
 export type CodexSessionRecord = typeof CodexSessionRecord.Type
 
 /**
@@ -174,7 +173,7 @@ export const CodexSessionIndexEntry = Schema.Struct({
   id: Schema.String,
   thread_name: Schema.String,
   updated_at: Schema.String,
-}).annotations({ identifier: 'AgentSessionIngest.CodexSessionIndexEntry' })
+}).annotate({ identifier: 'AgentSessionIngest.CodexSessionIndexEntry' })
 export type CodexSessionIndexEntry = typeof CodexSessionIndexEntry.Type
 
 const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')(

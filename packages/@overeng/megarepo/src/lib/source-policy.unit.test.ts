@@ -1,6 +1,6 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, type Scope } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -29,8 +29,9 @@ const makeLockFile = (): LockFile =>
     },
   }) as LockFile
 
-const runWithContext = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext | Scope.Scope>) =>
-  Effect.runPromise(effect.pipe(Effect.scoped, Effect.provide(NodeContext.layer)))
+const runWithContext = <A, E>(
+  effect: Effect.Effect<A, E, NodeServices.NodeServices | Scope.Scope>,
+) => Effect.runPromise(effect.pipe(Effect.scoped, Effect.provide(NodeServices.layer)))
 
 const writeFile = ({
   root,
@@ -49,7 +50,7 @@ const writeFile = ({
   })
 
 const withWorkspace = <A, E>(
-  use: (root: AbsoluteDirPath) => Effect.Effect<A, E, NodeContext.NodeContext>,
+  use: (root: AbsoluteDirPath) => Effect.Effect<A, E, NodeServices.NodeServices>,
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem

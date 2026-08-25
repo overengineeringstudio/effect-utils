@@ -20,7 +20,9 @@ import { Schema } from 'effect'
 import { DataSourceId, NotionPropertyType, PropertyId, PropertyName } from './canonical.ts'
 
 /** Validated `sha256:<hex64>` content-hash form shared by the descriptor identity hashes. */
-const Sha256Hash = Schema.NonEmptyTrimmedString.pipe(Schema.pattern(/^sha256:[0-9a-f]{64}$/))
+const Sha256Hash = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed(), Schema.isPattern(/^sha256:[0-9a-f]{64}$/)),
+)
 
 /**
  * Identity of a property's current schema *configuration* (options, format,
@@ -29,7 +31,7 @@ const Sha256Hash = Schema.NonEmptyTrimmedString.pipe(Schema.pattern(/^sha256:[0-
  */
 export const ConfigHash = Sha256Hash.pipe(
   Schema.brand('Notion.ConfigHash'),
-  Schema.annotations({ identifier: 'Notion.ConfigHash' }),
+  Schema.annotate({ identifier: 'Notion.ConfigHash' }),
 )
 export type ConfigHash = typeof ConfigHash.Type
 
@@ -43,7 +45,7 @@ export type ConfigHash = typeof ConfigHash.Type
  */
 export const SchemaHash = Sha256Hash.pipe(
   Schema.brand('Notion.SchemaHash'),
-  Schema.annotations({ identifier: 'Notion.SchemaHash' }),
+  Schema.annotate({ identifier: 'Notion.SchemaHash' }),
 )
 export type SchemaHash = typeof SchemaHash.Type
 
@@ -59,11 +61,11 @@ export type SchemaHash = typeof SchemaHash.Type
  * Shared foundation with no Phase 1 consumer: the Phase 3 PropertyWriteCore /
  * proof providers tag stable-identity evidence with this source.
  */
-export const PropertyIdentityEvidenceSource = Schema.Union(
+export const PropertyIdentityEvidenceSource = Schema.Union([
   Schema.TaggedStruct('descriptor', {}),
   Schema.TaggedStruct('workspace_state', {}),
   Schema.TaggedStruct('live_schema', {}),
-).annotations({ identifier: 'Notion.PropertyIdentityEvidenceSource' })
+]).annotate({ identifier: 'Notion.PropertyIdentityEvidenceSource' })
 export type PropertyIdentityEvidenceSource = typeof PropertyIdentityEvidenceSource.Type
 
 /**
@@ -81,7 +83,7 @@ export const PropertyDescriptor = Schema.Struct({
   property_type: NotionPropertyType,
   data_source_id: DataSourceId,
   config_hash: ConfigHash,
-}).annotations({ identifier: 'Notion.PropertyDescriptor' })
+}).annotate({ identifier: 'Notion.PropertyDescriptor' })
 export type PropertyDescriptor = typeof PropertyDescriptor.Type
 
 /**
@@ -94,10 +96,9 @@ export type PropertyDescriptor = typeof PropertyDescriptor.Type
  * Phase 3 proof provider against fresh remote schema (spec.md ~207), not at this
  * schema layer. Decode via {@link decodePropertyDescriptors} to stay fail-closed.
  */
-export const PropertyDescriptors = Schema.Record({
-  key: PropertyName,
-  value: PropertyDescriptor,
-}).annotations({ identifier: 'Notion.PropertyDescriptors' })
+export const PropertyDescriptors = Schema.Record(PropertyName, PropertyDescriptor).annotate({
+  identifier: 'Notion.PropertyDescriptors',
+})
 export type PropertyDescriptors = typeof PropertyDescriptors.Type
 
 /**
@@ -105,12 +106,12 @@ export type PropertyDescriptors = typeof PropertyDescriptors.Type
  * fields. Use this entry point rather than a bare `Schema.decode` so callers
  * cannot accidentally accept excess (proof-shaped) keys.
  */
-export const decodePropertyDescriptor = Schema.decodeUnknown(PropertyDescriptor, {
+export const decodePropertyDescriptor = Schema.decodeUnknownEffect(PropertyDescriptor, {
   onExcessProperty: 'error',
 })
 
 /** Decode an unknown value as a {@link PropertyDescriptors} map, rejecting unknown descriptor fields. */
-export const decodePropertyDescriptors = Schema.decodeUnknown(PropertyDescriptors, {
+export const decodePropertyDescriptors = Schema.decodeUnknownEffect(PropertyDescriptors, {
   onExcessProperty: 'error',
 })
 

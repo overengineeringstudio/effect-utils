@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import { type DateTime, Effect, Exit, Option, Schema } from 'effect'
+import { type DateTime, Cause, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -41,6 +41,14 @@ const stableStringify = (value: unknown): string => {
   }
   return JSON.stringify(value)
 }
+
+/** Extracts the typed error channel from a failed `Effect.runPromiseExit` result (v4 Cause shape). */
+const exitError = (exit: Exit.Exit<unknown, unknown>): CanonicalEncodeError | undefined =>
+  Exit.isFailure(exit) === true
+    ? Option.getOrUndefined(
+        Cause.findErrorOption(exit.cause) as Option.Option<CanonicalEncodeError>,
+      )
+    : undefined
 
 const canonicalHash = (value: unknown): string =>
   `sha256:${createHash('sha256').update(stableStringify(value)).digest('hex')}`
@@ -400,7 +408,6 @@ describe('canonical decode (golden byte-identity)', () => {
 })
 
 describe('canonical wire baselines (cross-major invariant)', () => {
-  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw 2026-02-31 date (effect#6608); adjudicate the date contract instead of refreshing this baseline.
   it('decodes a representative property map to byte-identical canonical JSON', async () => {
     const decoded = await Effect.runPromise(
       codec.decodePageProperties({
@@ -457,7 +464,6 @@ describe('canonical wire baselines (cross-major invariant)', () => {
     )
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; preserve these ISO Notion wire strings with the approved DateFromString mapping rather than refreshing the bytes.
   it('encodes a representative write patch to byte-identical Notion JSON', async () => {
     const patch = await Effect.runPromise(
       encodeCanonicalPatch({
@@ -502,10 +508,7 @@ describe('canonical wire baselines (cross-major invariant)', () => {
   it('captures the encode failure partition as stable JSON', async () => {
     const failureJson = async (value: CanonicalPropertyValue) => {
       const exit = await Effect.runPromiseExit(encodeCanonicalPatch({ value }))
-      const error =
-        Exit.isFailure(exit) === true
-          ? (exit.cause as { error?: CanonicalEncodeError }).error
-          : undefined
+      const error = exitError(exit)
       expect(error).toBeInstanceOf(CanonicalEncodeError)
       return JSON.stringify({
         _tag: error?._tag,
@@ -527,7 +530,8 @@ describe('canonical wire baselines (cross-major invariant)', () => {
   })
 })
 
-const dateTimeUtc = (iso: string): DateTime.Utc => Schema.decodeSync(Schema.DateTimeUtc)(iso)
+const dateTimeUtc = (iso: string): DateTime.Utc =>
+  Schema.decodeUnknownSync(Schema.DateTimeUtcFromString)(iso)
 
 type Opt = Extract<CanonicalPropertyValue, { _tag: 'select' }>['option'] & object
 
@@ -629,10 +633,7 @@ describe('canonical encode (Notion write-payload matrix)', () => {
       encodeCanonicalPatch({ f: { _tag: 'computed', valueHash: 'sha256:abc' } }),
     )
     expect(Exit.isFailure(exit)).toBe(true)
-    const error =
-      Exit.isFailure(exit) === true
-        ? (exit.cause as { error?: CanonicalEncodeError }).error
-        : undefined
+    const error = exitError(exit)
     expect(error).toBeInstanceOf(CanonicalEncodeError)
     expect(error?.reason).toBe('computed')
   })
@@ -642,10 +643,7 @@ describe('canonical encode (Notion write-payload matrix)', () => {
       encodeCanonicalPatch({ f: { _tag: 'files', files: [] } }),
     )
     expect(Exit.isFailure(exit)).toBe(true)
-    const error =
-      Exit.isFailure(exit) === true
-        ? (exit.cause as { error?: CanonicalEncodeError }).error
-        : undefined
+    const error = exitError(exit)
     expect(error).toBeInstanceOf(CanonicalEncodeError)
     expect(error?.reason).toBe('unsupported_remote_shape')
   })
@@ -653,10 +651,7 @@ describe('canonical encode (Notion write-payload matrix)', () => {
   it('fails empty canonical value with reason unsupported_remote_shape', async () => {
     const exit = await Effect.runPromiseExit(encodeCanonicalPatch({ e: { _tag: 'empty' } }))
     expect(Exit.isFailure(exit)).toBe(true)
-    const error =
-      Exit.isFailure(exit) === true
-        ? (exit.cause as { error?: CanonicalEncodeError }).error
-        : undefined
+    const error = exitError(exit)
     expect(error?.reason).toBe('unsupported_remote_shape')
   })
 })

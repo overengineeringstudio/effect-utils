@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect, Schema } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import {
   classifyBodyCompleteness,
@@ -129,7 +129,7 @@ const observeStable = (opts: {
 }): Effect.Effect<
   NotionBodyObservation,
   NotionApiError | NotionBodyObservationChangedError,
-  NotionConfig | HttpClient.HttpClient
+  NotionConfig | HttpClient
 > =>
   Effect.gen(function* () {
     const before = yield* NotionPages.retrieve({ pageId: opts.pageId })

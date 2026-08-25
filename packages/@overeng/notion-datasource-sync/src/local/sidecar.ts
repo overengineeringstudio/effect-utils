@@ -17,7 +17,7 @@ import {
   type WorkspaceRelativePath as WorkspaceRelativePathType,
 } from '../core/domain.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {
@@ -87,7 +87,7 @@ export const FilesystemWorkspaceSidecar = Schema.Struct({
   materializedContentHash: Hash,
   ownWriteSuppressionToken: OwnWriteSuppressionToken,
   observedAt: Schema.String,
-}).annotations({ identifier: 'NotionDatasourceSync.FilesystemWorkspaceSidecar' })
+}).annotate({ identifier: 'NotionDatasourceSync.FilesystemWorkspaceSidecar' })
 export type FilesystemWorkspaceSidecar = typeof FilesystemWorkspaceSidecar.Type
 
 /** Constructs a sidecar record, deriving the own-write suppression token from `pageId`/`path`/`bodyHash` and stamping `observedAt` (defaults to now). */

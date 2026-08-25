@@ -30,7 +30,7 @@ const megarepoStoreCacheKey = (skip?: readonly string[]): string => {
     skip === undefined || skip.length === 0
       ? 'full'
       : `skip-${[...skip]
-          .sort()
+          .toSorted()
           .join('.')
           .replace(/[^a-zA-Z0-9._-]/g, '_')}`
   // Concatenate (not a template literal) so the GitHub `${{ … }}` expressions stay literal.

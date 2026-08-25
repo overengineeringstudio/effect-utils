@@ -1,6 +1,6 @@
-import { Schema } from 'effect'
+import { Schema, SchemaGetter, SchemaTransformation } from 'effect'
 
-import { docsPath, shouldNeverHappen } from '../common.ts'
+import { docsPath } from '../common.ts'
 
 // -----------------------------------------------------------------------------
 // Checkbox Property
@@ -12,16 +12,16 @@ import { docsPath, shouldNeverHappen } from '../common.ts'
  * @see https://developers.notion.com/reference/property-value-object#checkbox
  */
 export const CheckboxProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('checkbox').annotations({
+  type: Schema.Literal('checkbox').annotate({
     description: 'Property type identifier.',
   }),
-  checkbox: Schema.Boolean.annotations({
+  checkbox: Schema.Boolean.annotate({
     description: 'The checkbox value (checked or unchecked).',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.CheckboxProperty',
   title: 'Checkbox Property',
   description: 'A checkbox property value.',
@@ -37,7 +37,7 @@ export type CheckboxProperty = typeof CheckboxProperty.Type
  */
 export const CheckboxWrite = Schema.Struct({
   checkbox: Schema.Boolean,
-}).annotations({
+}).annotate({
   identifier: 'Notion.CheckboxWrite',
   title: 'Checkbox (Write)',
   description: 'Write payload for a checkbox property (used in page create/update).',
@@ -47,11 +47,15 @@ export const CheckboxWrite = Schema.Struct({
 export type CheckboxWrite = typeof CheckboxWrite.Type
 
 /** Transform schema for converting boolean to CheckboxWrite payload */
-export const CheckboxWriteFromBoolean = Schema.transform(Schema.Boolean, CheckboxWrite, {
-  strict: false,
-  decode: (checkbox) => ({ checkbox }),
-  encode: (write) => write.checkbox,
-}).annotations({
+export const CheckboxWriteFromBoolean = Schema.Boolean.pipe(
+  Schema.decodeTo(
+    CheckboxWrite,
+    SchemaTransformation.transform({
+      decode: (checkbox) => ({ checkbox }),
+      encode: (write) => write.checkbox,
+    }),
+  ),
+).annotate({
   identifier: 'Notion.CheckboxWriteFromBoolean',
   title: 'Checkbox (Write) From Boolean',
   description: 'Transform a boolean into a checkbox write payload.',
@@ -64,24 +68,25 @@ export const Checkbox = {
   Property: CheckboxProperty,
 
   /** Transform to raw boolean. */
-  raw: Schema.transform(CheckboxProperty, Schema.Boolean, {
-    strict: false,
-    decode: (prop) => prop.checkbox,
-    encode: () =>
-      shouldNeverHappen(
-        'Checkbox.raw encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
+  raw: CheckboxProperty.pipe(
+    Schema.decodeTo(Schema.Boolean, {
+      decode: SchemaGetter.transform((prop) => prop.checkbox),
+      encode: SchemaGetter.forbidden(
+        () => 'Checkbox.raw encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
       ),
-  }),
+    }),
+  ),
 
   /** Alias for raw (checkbox is always boolean). */
-  asBoolean: Schema.transform(CheckboxProperty, Schema.Boolean, {
-    strict: false,
-    decode: (prop) => prop.checkbox,
-    encode: () =>
-      shouldNeverHappen(
-        'Checkbox.asBoolean encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
+  asBoolean: CheckboxProperty.pipe(
+    Schema.decodeTo(Schema.Boolean, {
+      decode: SchemaGetter.transform((prop) => prop.checkbox),
+      encode: SchemaGetter.forbidden(
+        () =>
+          'Checkbox.asBoolean encode is not supported. Use CheckboxWrite / CheckboxWriteFromBoolean.',
       ),
-  }),
+    }),
+  ),
 
   Write: {
     Schema: CheckboxWrite,

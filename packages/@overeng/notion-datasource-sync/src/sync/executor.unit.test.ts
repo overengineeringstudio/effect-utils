@@ -283,7 +283,7 @@ describe('outbox executor', () => {
         Effect.sync(() => {
           patchAttempts += 1
         }).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             Effect.fail(
               makeGatewayError({
                 operation: 'patchPageProperties',

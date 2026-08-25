@@ -1,82 +1,163 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/MegarepoConfigEncoded",
   "$defs": {
-    "MegarepoConfig": {
+    "VscodeGeneratorConfigEncoded": {
       "type": "object",
-      "required": ["members"],
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exclude": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "colorEnvVar": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "settings": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "GeneratorsConfigEncoded": {
+      "type": "object",
+      "properties": {
+        "vscode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VscodeGeneratorConfigEncoded"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LockSyncConfigEncoded": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exclude": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sharedInputSource": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "MegarepoConfigEncoded": {
+      "type": "object",
       "properties": {
         "$schema": {
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "members": {
           "type": "object",
-          "required": [],
-          "properties": {},
           "additionalProperties": {
             "type": "string"
           }
         },
         "generators": {
-          "$ref": "#/$defs/GeneratorsConfig"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GeneratorsConfigEncoded"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "lockSync": {
-          "$ref": "#/$defs/LockSyncConfig"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LockSyncConfigEncoded"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
-      "additionalProperties": false
-    },
-    "GeneratorsConfig": {
-      "type": "object",
-      "required": [],
-      "properties": {
-        "vscode": {
-          "$ref": "#/$defs/VscodeGeneratorConfig"
-        }
-      },
-      "additionalProperties": false
-    },
-    "VscodeGeneratorConfig": {
-      "type": "object",
-      "required": [],
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "exclude": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "color": {
-          "type": "string"
-        },
-        "colorEnvVar": {
-          "type": "string"
-        },
-        "settings": {
-          "type": "object",
-          "additionalProperties": {}
-        }
-      },
-      "additionalProperties": false
-    },
-    "LockSyncConfig": {
-      "type": "object",
-      "required": [],
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "exclude": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
+      "required": ["members"],
       "additionalProperties": false
     }
-  },
-  "$ref": "#/$defs/MegarepoConfig"
+  }
 }

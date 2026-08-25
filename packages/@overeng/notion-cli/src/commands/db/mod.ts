@@ -2,9 +2,9 @@
  * Database subcommand - database information plus Node-backed replica commands.
  */
 
-import { Args, Command } from '@effect/cli'
-import { FetchHttpClient } from '@effect/platform'
 import { Effect, Layer } from 'effect'
+import { Argument as Args, Command } from 'effect/unstable/cli'
+import { FetchHttpClient } from 'effect/unstable/http'
 import React from 'react'
 
 import {
@@ -19,14 +19,14 @@ import { InfoView } from '../../renderers/InfoOutput/view.tsx'
 /** Re-export internal types for TypeScript declaration emit */
 export type { Cause, Channel, Sink, Stream } from 'effect'
 export type { NodeInspectSymbol } from 'effect/Inspectable'
-export type { PlatformError } from '@effect/platform/Error'
+export type { PlatformError } from 'effect/PlatformError'
 
 import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'
 
 import { resolveNotionToken, tokenOption } from '../shared.ts'
 
-const databaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const databaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to operate on'),
 )
 
@@ -84,7 +84,7 @@ const infoCommand = Command.make(
             })
 
             yield* program.pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 Effect.sync(() => {
                   tui.dispatch({ _tag: 'SetError', message: String(error) })
                 }),

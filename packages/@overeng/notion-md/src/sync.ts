@@ -1,7 +1,6 @@
 import { basename } from 'node:path'
 
-import type { FileSystem } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { Effect, type FileSystem, Option } from 'effect'
 
 import { describeBodyLossyRefusal, tolerateTreeChildPages } from '@overeng/notion-core'
 import {

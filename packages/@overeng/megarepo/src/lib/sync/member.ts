@@ -6,8 +6,8 @@
 
 import path from 'node:path'
 
-import { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -538,12 +538,12 @@ export const syncMember = <R = never>({
         }
         yield* Observability.annotateSyncMemberAction('skip-dry-run')
       } else if (isFetchMode === true && dryRun === false) {
-        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catch(() => Effect.void))
         yield* Observability.annotateSyncMemberAction('fetch')
       } else if (isApplyMode === true && targetCommit !== undefined && dryRun === false) {
         const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
         if (commitExists === false) {
-          yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+          yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catch(() => Effect.void))
           yield* Observability.annotateSyncMemberAction('fetch-missing-commit')
         } else {
           yield* Observability.annotateSyncMemberAction('noop')
@@ -570,7 +570,7 @@ export const syncMember = <R = never>({
        */
       if (commitExists === false) {
         yield* Git.fetchPullRequestHeads({ repoPath: bareRepoPath }).pipe(
-          Effect.catchAll(() => Effect.void),
+          Effect.catch(() => Effect.void),
         )
         yield* Observability.annotateSyncMemberAction('fetch-pull-request-heads')
         commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
@@ -707,17 +707,13 @@ export const syncMember = <R = never>({
             resolvedCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/tags/${targetRef}`,
-            }).pipe(
-              Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
-            )
+            }).pipe(Effect.catch(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
           } else if (refInfo.type === 'branch') {
             resolvedRefType = 'branch'
             resolvedCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/remotes/origin/${targetRef}`,
-            }).pipe(
-              Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
-            )
+            }).pipe(Effect.catch(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
           } else {
             const heuristicType = classifyRef(targetRef)
             resolvedRefType = heuristicType
@@ -726,14 +722,14 @@ export const syncMember = <R = never>({
                 repoPath: bareRepoPath,
                 ref: `refs/tags/${targetRef}`,
               }).pipe(
-                Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+                Effect.catch(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
               )
             } else {
               resolvedCommit = yield* Git.resolveRef({
                 repoPath: bareRepoPath,
                 ref: `refs/remotes/origin/${targetRef}`,
               }).pipe(
-                Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+                Effect.catch(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
               )
             }
           }
@@ -859,7 +855,7 @@ export const syncMember = <R = never>({
                 branch: targetRef,
                 createBranch: false,
               }).pipe(
-                Effect.catchAll(() =>
+                Effect.catch(() =>
                   Git.createWorktree({
                     repoPath: bareRepoPath,
                     worktreePath,
@@ -1034,7 +1030,7 @@ export const syncMember = <R = never>({
     } satisfies MemberSyncResult
   }).pipe(
     Effect.tap((result) => Observability.annotateSyncMemberResult(result.status)),
-    Effect.catchAll((error) => {
+    Effect.catch((error) => {
       // Interpret git errors to provide user-friendly messages
       if (error instanceof Git.GitCommandError) {
         const interpreted = Git.interpretGitError(error)

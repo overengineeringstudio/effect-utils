@@ -134,45 +134,45 @@ export const updateWindow = ({
 // =============================================================================
 
 const WindowSchema = Schema.Struct({
-  id: Schema.Number,
-  x: Schema.Number,
-  y: Schema.Number,
-  vx: Schema.Number,
-  vy: Schema.Number,
-  width: Schema.Number,
-  height: Schema.Number,
+  id: Schema.Finite,
+  x: Schema.Finite,
+  y: Schema.Finite,
+  vx: Schema.Finite,
+  vy: Schema.Finite,
+  width: Schema.Finite,
+  height: Schema.Finite,
   title: Schema.String,
-  color: Schema.Literal('red', 'green', 'yellow', 'blue', 'magenta', 'cyan'),
+  color: Schema.Literals(['red', 'green', 'yellow', 'blue', 'magenta', 'cyan']),
   stats: Schema.Struct({
-    cpu: Schema.Number,
-    mem: Schema.Number,
-    disk: Schema.Number,
-    net: Schema.Number,
+    cpu: Schema.Finite,
+    mem: Schema.Finite,
+    disk: Schema.Finite,
+    net: Schema.Finite,
   }),
 })
 
 /** Schema for the running bouncing windows state with window array, frame count, and terminal size. */
 export const RunningState = Schema.TaggedStruct('Running', {
   windows: Schema.Array(WindowSchema),
-  frame: Schema.Number,
-  termWidth: Schema.Number,
-  termHeight: Schema.Number,
+  frame: Schema.Finite,
+  termWidth: Schema.Finite,
+  termHeight: Schema.Finite,
 })
 
 /** Schema for the finished bouncing windows state with total frames and window count. */
 export const FinishedState = Schema.TaggedStruct('Finished', {
-  totalFrames: Schema.Number,
-  windowCount: Schema.Number,
+  totalFrames: Schema.Finite,
+  windowCount: Schema.Finite,
 })
 
 /** Schema for the interrupted bouncing windows state preserving frame and window count. */
 export const InterruptedState = Schema.TaggedStruct('Interrupted', {
-  frame: Schema.Number,
-  windowCount: Schema.Number,
+  frame: Schema.Finite,
+  windowCount: Schema.Finite,
 })
 
 /** Union schema of all bouncing windows app states. */
-export const AppState = Schema.Union(RunningState, FinishedState, InterruptedState)
+export const AppState = Schema.Union([RunningState, FinishedState, InterruptedState])
 
 /** Inferred type for the bouncing windows app state union. */
 export type AppState = Schema.Schema.Type<typeof AppState>
@@ -182,12 +182,12 @@ export type AppState = Schema.Schema.Type<typeof AppState>
 // =============================================================================
 
 /** Union schema of bouncing windows actions (Tick, Resize, Finish, Interrupted). */
-export const AppAction = Schema.Union(
+export const AppAction = Schema.Union([
   Schema.TaggedStruct('Tick', {}),
-  Schema.TaggedStruct('Resize', { width: Schema.Number, height: Schema.Number }),
+  Schema.TaggedStruct('Resize', { width: Schema.Finite, height: Schema.Finite }),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 /** Inferred type for the bouncing windows app action union. */
 export type AppAction = Schema.Schema.Type<typeof AppAction>

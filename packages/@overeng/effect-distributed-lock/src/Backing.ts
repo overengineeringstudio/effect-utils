@@ -45,6 +45,7 @@ export interface DistributedSemaphoreBacking {
 }
 
 /** Effect service tag for the distributed semaphore backing store. */
-export const DistributedSemaphoreBacking = Context.GenericTag<DistributedSemaphoreBacking>(
-  '@effect-distributed-lock/DistributedSemaphoreBacking',
-)
+export const DistributedSemaphoreBacking = Context.Service<
+  DistributedSemaphoreBacking,
+  DistributedSemaphoreBacking
+>()('@effect-distributed-lock/DistributedSemaphoreBacking')

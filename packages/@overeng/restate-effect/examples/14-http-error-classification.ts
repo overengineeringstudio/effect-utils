@@ -1,3 +1,6 @@
+import { Effect, Schema, SchemaIssue } from 'effect'
+import { HttpClient } from 'effect/unstable/http/HttpClient'
+import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 /**
  * Classifying real HTTP outcomes from an `HttpClient` call (Molty consumer recipe
  * #3 — the union-member classification, made concrete). A handler that calls an
@@ -36,8 +39,7 @@
  * upstream returning controlled statuses, and asserts each union member lands in the
  * right channel. Skips when no native server is available.
  */
-import { HttpClient, HttpClientRequest, type HttpClientResponse } from '@effect/platform'
-import { Effect, ParseResult, Schema } from 'effect'
+import type * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
 
 import { Restate, RestateService } from '../src/mod.ts'
 
@@ -91,8 +93,8 @@ export const MalformedUpstreamTerminal = Restate.terminal({
 export class UpstreamUnavailable extends Schema.TaggedError<UpstreamUnavailable>(
   'http/UpstreamUnavailable',
 )('UpstreamUnavailable', {
-  status: Schema.Number,
-  retryAfterMillis: Schema.Number,
+  status: Schema.Finite,
+  retryAfterMillis: Schema.Finite,
 }) {}
 export const UpstreamUnavailableRetryable = Restate.retryable({
   self: UpstreamUnavailable,
@@ -148,12 +150,11 @@ const decodeWidget = (
   response: HttpClientResponse.HttpClientResponse,
 ): Effect.Effect<Widget, MalformedUpstream> =>
   response.json.pipe(
-    Effect.flatMap(Schema.decodeUnknown(Widget)),
-    Effect.catchAll(
+    Effect.flatMap(Schema.decodeUnknownEffect(Widget)),
+    Effect.catch(
       (e) =>
         new MalformedUpstream({
-          detail:
-            ParseResult.isParseError(e) === true ? 'body did not match Widget schema' : String(e),
+          detail: SchemaIssue.isIssue(e) === true ? 'body did not match Widget schema' : String(e),
         }),
     ),
   )
@@ -163,13 +164,13 @@ const decodeWidget = (
  * ════════════════════════════════════════════════════════════════════════ */
 
 const FetchInput = Schema.Struct({ baseUrl: Schema.String, widgetId: Schema.String })
-const FetchErrorUnion = Schema.Union(
+const FetchErrorUnion = Schema.Union([
   BadRequestTerminal,
   ForbiddenTerminal,
   NotFoundTerminal,
   MalformedUpstreamTerminal,
   UpstreamUnavailableRetryable,
-)
+])
 
 export const WidgetApi = RestateService.contract({
   name: 'widget-api',
@@ -196,7 +197,7 @@ type Definitive =
  * application Layer (a `FetchHttpClient.layer` in production / the test). It is
  * provided ONCE at the endpoint and shared by every invocation.
  */
-export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClient.HttpClient>({
+export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClient>({
   contractValue: WidgetApi,
   impl: {
     /**
@@ -214,7 +215,7 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
      */
     fetch: ({ baseUrl, widgetId }) =>
       Effect.gen(function* () {
-        const client = yield* HttpClient.HttpClient
+        const client = yield* HttpClient
         /* The fetch step: commit a definitive outcome, or FAIL on a transient so the
          * step retries (re-fetching). A decode mismatch fails terminally too. */
         const outcome = yield* Restate.run({
@@ -227,7 +228,7 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
                  * final (the same bytes fail identically on a retry). */
                 return decodeWidget(response).pipe(
                   Effect.map((widget): Definitive => ({ _tag: 'ok', widget })),
-                  Effect.catchAll((e) =>
+                  Effect.catch((e) =>
                     Effect.succeed<Definitive>({ _tag: 'malformed', detail: e.detail }),
                   ),
                 )
@@ -241,10 +242,7 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
               return Effect.die(new Error(`transient upstream: HTTP ${status}`))
             }),
             /* A transport-level failure (refused / timeout) → also FAIL the step. */
-            Effect.catchTags({
-              RequestError: (e) => Effect.die(e),
-              ResponseError: (e) => Effect.die(e),
-            }),
+            Effect.catchTag('HttpClientError', (e) => Effect.die(e)),
           ),
         })
         switch (outcome._tag) {
@@ -271,18 +269,18 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
      */
     fetchRetryable: ({ baseUrl, widgetId }) =>
       Effect.gen(function* () {
-        const client = yield* HttpClient.HttpClient
+        const client = yield* HttpClient
         /* The fetch runs each handler attempt (re-fetching on retry); only the
          * transport failure is treated as transient via `catchTag`. */
         const response = yield* client
           .execute(HttpClientRequest.get(`${baseUrl}/widgets/${widgetId}`))
           .pipe(
             /* No usable response (refused / timeout / broken stream) → transient with
-             * default backoff; `HttpClientError` is `RequestError | ResponseError`. */
-            Effect.catchTags({
-              RequestError: () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
-              ResponseError: () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
-            }),
+             * default backoff; the transport arm of `HttpClientError`. */
+            Effect.catchTag(
+              'HttpClientError',
+              () => new UpstreamUnavailable({ status: 0, retryAfterMillis: 0 }),
+            ),
           )
         const status = response.status
         if (status === 200) return yield* decodeWidget(response)

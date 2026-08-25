@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+import { NonNegativeInt } from './domain.ts'
 import { CommandId, DataSourceId, PageId, SupportedNotionApiVersion } from './domain.ts'
 import { GuardName } from './guards.ts'
 
@@ -32,9 +33,9 @@ export class NotionGatewayError extends Schema.TaggedError<NotionGatewayError>()
     pageId: Schema.optional(PageId),
     requestId: Schema.optional(Schema.String),
     guard: Schema.optional(GuardName),
-    retryAfterMillis: Schema.optional(Schema.NonNegativeInt),
+    retryAfterMillis: Schema.optional(NonNegativeInt),
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -42,7 +43,7 @@ export class NotionGatewayError extends Schema.TaggedError<NotionGatewayError>()
 export class LocalStoreError extends Schema.TaggedError<LocalStoreError>()('LocalStoreError', {
   operation: Schema.String,
   message: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {}
 
 /** Alias for `LocalStoreError`; used in port signatures that deal with filesystem-level storage. */
@@ -53,7 +54,7 @@ export class BodySyncError extends Schema.TaggedError<BodySyncError>()('BodySync
   operation: Schema.String,
   pageId: PageId,
   message: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {}
 
 /** Raised when a sync guard blocks an operation that would normally be a defect; carries the guard name and optional command context. */
@@ -74,11 +75,11 @@ export class SyncGuardError extends Schema.TaggedError<SyncGuardError>()('SyncGu
 export class WorkspaceNamespaceError extends Schema.TaggedError<WorkspaceNamespaceError>()(
   'WorkspaceNamespaceError',
   {
-    guard: Schema.Literal(
+    guard: Schema.Literals([
       'UnknownWorkspaceNamespace',
       'MixedWorkspaceNamespace',
       'InvalidLinkedView',
-    ),
+    ]),
     message: Schema.String,
   },
 ) {}

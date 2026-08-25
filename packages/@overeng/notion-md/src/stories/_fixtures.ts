@@ -1,15 +1,15 @@
 import { Schema } from 'effect'
 
-export const Severity = Schema.Literal('critical', 'warning')
+export const Severity = Schema.Literals(['critical', 'warning'])
 export type Severity = 'critical' | 'warning'
 
-export const CommandFixtureId = Schema.Literal(
+export const CommandFixtureId = Schema.Literals([
   'clean-status',
   'body-conflict',
   'unknown-blocks',
   'watch-sync',
   'missing-token',
-)
+])
 export type CommandFixtureId =
   | 'clean-status'
   | 'body-conflict'
@@ -31,14 +31,14 @@ export type ProblemFixture = typeof ProblemFixture.Type
 export const DetailSectionFixture = Schema.Struct({
   title: Schema.String,
   items: Schema.Array(Schema.String),
-  more: Schema.optional(Schema.Number),
+  more: Schema.optional(Schema.Finite),
 })
 export type DetailSectionFixture = typeof DetailSectionFixture.Type
 
 export const MainItemFixture = Schema.Struct({
   name: Schema.String,
   ref: Schema.String,
-  status: Schema.optional(Schema.Literal('error', 'modified', 'ok', 'synced')),
+  status: Schema.optional(Schema.Literals(['error', 'modified', 'ok', 'synced'])),
   relationship: Schema.optional(Schema.String),
   sections: Schema.Array(DetailSectionFixture),
 })
@@ -54,11 +54,11 @@ export const CommandFixture = Schema.Struct({
 })
 export type CommandFixture = typeof CommandFixture.Type
 
-export const CommandFixtureAction = Schema.Union(
+export const CommandFixtureAction = Schema.Union([
   Schema.TaggedStruct('SetFixture', {
     fixture: CommandFixture,
   }),
-)
+])
 export type CommandFixtureAction = typeof CommandFixtureAction.Type
 
 export const commandFixtureIds: readonly CommandFixtureId[] = [

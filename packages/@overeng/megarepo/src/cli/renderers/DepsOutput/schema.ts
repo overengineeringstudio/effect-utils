@@ -51,7 +51,7 @@ export const DepsErrorState = Schema.TaggedStruct('Error', {
 })
 
 /** Tagged union of all deps command output states */
-export const DepsState = Schema.Union(DepsSuccessState, DepsEmptyState, DepsErrorState)
+export const DepsState = Schema.Union([DepsSuccessState, DepsEmptyState, DepsErrorState])
 
 /** Inferred type for the deps command state union */
 export type DepsState = typeof DepsState.Type
@@ -77,13 +77,13 @@ export const isDepsError = (state: DepsState): state is typeof DepsErrorState.Ty
 // =============================================================================
 
 /** Schema for actions that transition the deps command state */
-export const DepsAction = Schema.Union(
+export const DepsAction = Schema.Union([
   Schema.TaggedStruct('SetDeps', {
     members: Schema.Array(DepsMember),
   }),
   Schema.TaggedStruct('SetEmpty', {}),
   Schema.TaggedStruct('SetError', { message: Schema.String }),
-)
+])
 
 /** Inferred type for deps command actions */
 export type DepsAction = Schema.Schema.Type<typeof DepsAction>

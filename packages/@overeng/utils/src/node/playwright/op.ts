@@ -27,7 +27,7 @@ export class PwOpError extends Schema.TaggedError<PwOpError>()('PwOpError', {
   /** Stable operation identifier (e.g. `pw.page.goto`, `pw.context.cookies`). */
   op: Schema.String,
   /** Underlying Playwright/Node defect. */
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 // DYNAMIC-NAME BRIDGE: the span name is the runtime `op` string, so it has no stable single-signal
@@ -50,7 +50,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {

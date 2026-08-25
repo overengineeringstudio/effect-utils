@@ -70,7 +70,8 @@ describe('Effect 4 consumer schema compatibility', () => {
     expect(getSchemaInfo(handle).constraints).toEqual([
       { label: 'min length', value: '1' },
       { label: 'max length', value: '20' },
-      { label: 'pattern', value: '/^[a-z]+$/i' },
+      // rc.111 check metadata stores the pattern source only — flags are not recoverable
+      { label: 'pattern', value: '/^[a-z]+$/' },
     ])
   })
 

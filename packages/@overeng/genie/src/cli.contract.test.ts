@@ -4,14 +4,18 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const cliPath = fileURLToPath(new URL('../bin/genie.tsx', import.meta.url))
+/* Absolute checkout root of this worktree — v4 CLI error rendering embeds
+ * stack-frame paths under it; snapshots must not gate on the machine. */
+const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url))
 
 /**
  * CLI contract capture: `status` and `signal` are cross-major invariants; stdout/stderr help,
  * usage, and error prose are captured for review but may be re-baselined by the genie owner during
  * Effect 4 repair with an alignment-register entry.
- * ANSI control bytes are normalized, so colour/styling changes are not gated by this baseline.
- * The local-source version suffix and log timestamps are normalized, so version-string content and
- * log timing are not gated by this baseline.
+ * The local-source version suffix, log timestamps, and absolute checkout paths
+ * (v4 `CliError` output embeds stack-frame file paths) are normalized, so
+ * version-string content, log timing, and machine-specific paths are not gated
+ * by this baseline.
  */
 // LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
 const stripAnsi = (output: string) =>
@@ -25,6 +29,7 @@ const normalizeOutput = (output: string) =>
   stripAnsi(output)
     .replace(/ — running from local source \([^)]+\)/gu, '')
     .replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\]/gmu, '[time]')
+    .replaceAll(repoRoot, '<repo>')
 // LIVE-MIGRATION END effect-3-4
 
 const runCli = (...args: ReadonlyArray<string>) => {

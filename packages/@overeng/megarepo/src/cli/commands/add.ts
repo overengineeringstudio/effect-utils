@@ -4,13 +4,18 @@
  * Adds a new member repository to the megarepo configuration.
  */
 
-import * as Cli from '@effect/cli'
 import { Effect, Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
 
-import { parseSourceString, readMegarepoConfig, writeMegarepoConfig } from '../../lib/config.ts'
+import {
+  MegarepoConfig,
+  parseSourceString,
+  readMegarepoConfig,
+  writeMegarepoConfig,
+} from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'
@@ -58,18 +63,18 @@ const parseRepoRef = (ref: string): { sourceString: string; suggestedName: strin
 export const addCommand = Cli.Command.make(
   'add',
   {
-    repo: Cli.Args.text({ name: 'repo' }).pipe(
-      Cli.Args.withDescription('Repository reference (github shorthand, URL, or path)'),
+    repo: Cli.Argument.string('repo').pipe(
+      Cli.Argument.withDescription('Repository reference (github shorthand, URL, or path)'),
     ),
-    name: Cli.Options.text('name').pipe(
-      Cli.Options.withAlias('n'),
-      Cli.Options.withDescription('Override the member name (defaults to repo name)'),
-      Cli.Options.optional,
+    name: Cli.Flag.string('name').pipe(
+      Cli.Flag.withAlias('n'),
+      Cli.Flag.withDescription('Override the member name (defaults to repo name)'),
+      Cli.Flag.optional,
     ),
-    sync: Cli.Options.boolean('sync').pipe(
-      Cli.Options.withAlias('s'),
-      Cli.Options.withDescription('Sync the added repo immediately'),
-      Cli.Options.withDefault(true),
+    sync: Cli.Flag.boolean('sync').pipe(
+      Cli.Flag.withAlias('s'),
+      Cli.Flag.withDescription('Sync the added repo immediately'),
+      Cli.Flag.withDefault(true),
     ),
     output: outputOption,
   },
@@ -118,13 +123,13 @@ export const addCommand = Cli.Command.make(
             }
 
             // Add the new member
-            const newConfig = {
+            const newConfig = new MegarepoConfig({
               ...config,
               members: {
                 ...config.members,
                 [memberName]: parsed.sourceString,
               },
-            }
+            })
 
             // Write updated config (preserves format)
             yield* writeMegarepoConfig({ configPath: configPath, config: newConfig })

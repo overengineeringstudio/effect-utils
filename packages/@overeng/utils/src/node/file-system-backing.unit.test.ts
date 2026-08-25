@@ -1,10 +1,19 @@
 import * as fs from 'node:fs'
-import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { FileSystem, Path } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Context, Data, Deferred, Duration, Effect, Fiber, Layer, Schema, Stream } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import {
+  Context,
+  Data,
+  Deferred,
+  Duration,
+  Effect,
+  FileSystem,
+  Fiber,
+  Layer,
+  Schema,
+  Stream,
+} from 'effect'
 import { expect } from 'vitest'
 
 import { DistributedSemaphoreBacking } from '@overeng/effect-distributed-lock'
@@ -16,80 +25,16 @@ import * as FileSystemBacking from './file-system-backing.ts'
 
 /** Schema for lock file content structure */
 const LockFileContent = Schema.Struct({
-  permits: Schema.Number,
-  expiresAt: Schema.Number,
+  permits: Schema.Finite,
+  expiresAt: Schema.Finite,
 })
 
 /**
- * Minimal FileSystem layer using Node.js native fs module directly.
- * This avoids importing @effect/platform-node which has transitive
- * dependency issues with @effect/rpc.
+ * v4 note: the hand-rolled node-fs mock layer previously avoided
+ * `@effect/platform-node` for transitive-dependency reasons; that package is now
+ * a first-class dependency, so use its real layers.
  */
-const makeNodeFsLayer = (): Layer.Layer<FileSystem.FileSystem | Path.Path> => {
-  const nodeFs = {
-    access: () => Effect.void,
-    chmod: () => Effect.void,
-    chown: () => Effect.void,
-    copy: () => Effect.void,
-    copyFile: () => Effect.void,
-    exists: (filePath: string) => Effect.sync(() => fs.existsSync(filePath)),
-    link: () => Effect.void,
-    makeDirectory: (dirPath: string, options?: { recursive?: boolean }) =>
-      Effect.sync(() => {
-        fs.mkdirSync(dirPath, { recursive: options?.recursive ?? false })
-      }),
-    makeTempDirectory: (options?: { prefix?: string }) =>
-      Effect.sync(() => fs.mkdtempSync(path.join(os.tmpdir(), options?.prefix ?? 'effect-'))),
-    makeTempDirectoryScoped: () => Effect.die('not implemented'),
-    makeTempFile: () => Effect.die('not implemented'),
-    makeTempFileScoped: () => Effect.die('not implemented'),
-    open: () => Effect.die('not implemented'),
-    readDirectory: (dirPath: string) => Effect.sync(() => fs.readdirSync(dirPath)),
-    readFile: (filePath: string) => Effect.sync(() => new Uint8Array(fs.readFileSync(filePath))),
-    readFileString: (filePath: string) => Effect.sync(() => fs.readFileSync(filePath, 'utf-8')),
-    readLink: () => Effect.die('not implemented'),
-    realPath: () => Effect.die('not implemented'),
-    remove: (filePath: string) =>
-      Effect.sync(() => fs.rmSync(filePath, { recursive: true, force: true })),
-    rename: (oldPath: string, newPath: string) =>
-      Effect.sync(() => fs.renameSync(oldPath, newPath)),
-    sink: () => Effect.die('not implemented'),
-    stat: () => Effect.die('not implemented'),
-    stream: () => Effect.die('not implemented'),
-    symlink: () => Effect.void,
-    truncate: () => Effect.void,
-    utimes: () => Effect.void,
-    watch: () => Effect.die('not implemented'),
-    writeFile: () => Effect.void,
-    writeFileString: (filePath: string, content: string) =>
-      Effect.sync(() => fs.writeFileSync(filePath, content)),
-  } as FileSystem.FileSystem
-
-  const nodePath = {
-    [Path.TypeId]: Path.TypeId,
-    basename: (filePath: string, suffix?: string) => path.basename(filePath, suffix),
-    dirname: (filePath: string) => path.dirname(filePath),
-    extname: (filePath: string) => path.extname(filePath),
-    fromFileUrl: (url: URL) => Effect.sync(() => new URL(url).pathname),
-    isAbsolute: (filePath: string) => path.isAbsolute(filePath),
-    join: (...paths: string[]) => path.join(...paths),
-    normalize: (filePath: string) => path.normalize(filePath),
-    parse: (filePath: string) => path.parse(filePath),
-    relative: (from: string, to: string) => path.relative(from, to),
-    resolve: (...paths: string[]) => path.resolve(...paths),
-    sep: path.sep,
-    toFileUrl: (filePath: string) => Effect.sync(() => new URL(`file://${filePath}`)),
-    toNamespacedPath: (filePath: string) => filePath,
-    format: (pathObject: Partial<path.ParsedPath>) => path.format(pathObject),
-  } as Path.Path
-
-  return Layer.mergeAll(
-    Layer.succeed(FileSystem.FileSystem, nodeFs),
-    Layer.succeed(Path.Path, nodePath),
-  )
-}
-
-const TestLayer = makeNodeFsLayer()
+const TestLayer = NodeServices.layer
 
 const watchEventPath = (event: FileSystem.WatchEvent): string | undefined =>
   'path' in event && typeof event.path === 'string' ? event.path : undefined
@@ -121,13 +66,18 @@ Vitest.describe('FileSystemBacking', () => {
         const baseContext = yield* Layer.build(ReexportedFileSystemBacking.layer({ lockDir })).pipe(
           Effect.scoped,
         )
-        const baseBacking = Context.get(baseContext, DistributedSemaphoreBacking)
+        // NOTE: annotated explicitly because the upstream service key is
+        // mid-migration in @overeng/effect-distributed-lock.
+        const baseBacking: DistributedSemaphoreBacking = Context.get(
+          baseContext,
+          DistributedSemaphoreBacking,
+        ) as DistributedSemaphoreBacking
         const observedBacking = {
           ...baseBacking,
           release: (releaseKey: string, releaseHolderId: string, permits: number) =>
             Effect.sync(() => {
               events.push('release')
-            }).pipe(Effect.zipRight(baseBacking.release(releaseKey, releaseHolderId, permits))),
+            }).pipe(Effect.andThen(baseBacking.release(releaseKey, releaseHolderId, permits))),
           refresh: (
             refreshKey: string,
             refreshHolderId: string,
@@ -594,15 +544,15 @@ Vitest.describe('FileSystemBacking', () => {
           expect(entries).toEqual(['holder-a.lock', 'holder-b.lock'])
 
           // Verify lock file content
-          const holderAContent = yield* Schema.decodeUnknown(Schema.parseJson(LockFileContent))(
-            fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'),
-          )
+          const holderAContent = yield* Schema.decodeUnknownEffect(
+            Schema.fromJsonString(LockFileContent),
+          )(fs.readFileSync(`${keyDir}/holder-a.lock`, 'utf-8'))
           expect(holderAContent.permits).toBe(2)
           expect(typeof holderAContent.expiresAt).toBe('number')
 
-          const holderBContent = yield* Schema.decodeUnknown(Schema.parseJson(LockFileContent))(
-            fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'),
-          )
+          const holderBContent = yield* Schema.decodeUnknownEffect(
+            Schema.fromJsonString(LockFileContent),
+          )(fs.readFileSync(`${keyDir}/holder-b.lock`, 'utf-8'))
           expect(holderBContent.permits).toBe(1)
         }).pipe(Effect.provide(backingLayer))
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
@@ -679,11 +629,11 @@ Vitest.describe('FileSystemBacking', () => {
           options,
           key: 'test-key',
           targetHolderId: 'nonexistent',
-        }).pipe(Effect.either)
+        }).pipe(Effect.result)
 
-        expect(result._tag).toBe('Left')
-        if (result._tag === 'Left') {
-          expect(result.left._tag).toBe('HolderNotFoundError')
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure') {
+          expect(result.failure._tag).toBe('HolderNotFoundError')
         }
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
     )
@@ -829,18 +779,22 @@ Vitest.describe('FileSystemBacking', () => {
         const now = Date.now()
 
         yield* fsService.makeDirectory(keyDir, { recursive: true })
-        const expiredLockContent = yield* Schema.encode(Schema.parseJson(LockFileContent))({
+        const expiredLockContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(LockFileContent),
+        )({
           permits: 2,
           expiresAt: now - 60_000,
-        })
+        }).pipe(Effect.orDie)
         yield* fsService.writeFileString(
           `${keyDir}/${encodeURIComponent('holder-expired')}.lock`,
           expiredLockContent,
         )
-        const activeLockContent = yield* Schema.encode(Schema.parseJson(LockFileContent))({
+        const activeLockContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(LockFileContent),
+        )({
           permits: 3,
           expiresAt: now + 60_000,
-        })
+        }).pipe(Effect.orDie)
         yield* fsService.writeFileString(
           `${keyDir}/${encodeURIComponent('holder-active')}.lock`,
           activeLockContent,
@@ -925,7 +879,7 @@ Vitest.describe('FileSystemBacking', () => {
         const awaitObservedPath = (
           fileName: string,
         ): Effect.Effect<FileSystem.WatchEvent, WatchEventTimeout> =>
-          Effect.async<FileSystem.WatchEvent, WatchEventTimeout>((resume) => {
+          Effect.callback<FileSystem.WatchEvent, WatchEventTimeout>((resume) => {
             const waiter: WatchWaiter = {
               fileName,
               resume,
@@ -970,19 +924,19 @@ Vitest.describe('FileSystemBacking', () => {
 
         const watchFiber = yield* fsService
           .watch(watchDir)
-          .pipe(Stream.runForEach(recordEvent), Effect.fork)
-        yield* Effect.yieldNow()
+          .pipe(Stream.runForEach(recordEvent), Effect.forkChild)
+        yield* Effect.yieldNow
 
         const writeDirectFileUntilObserved = (fileName: string, content: string) =>
           Effect.gen(function* () {
-            const eventFiber = yield* awaitObservedPath(fileName).pipe(Effect.fork)
+            const eventFiber = yield* awaitObservedPath(fileName).pipe(Effect.forkChild)
 
             for (const attempt of [1, 2, 3, 4, 5]) {
               yield* fsService.writeFileString(
                 path.join(watchDir, fileName),
                 `${content}-${attempt}`,
               )
-              yield* Effect.yieldNow()
+              yield* Effect.yieldNow
             }
 
             return yield* Fiber.join(eventFiber)
@@ -1002,12 +956,8 @@ Vitest.describe('FileSystemBacking', () => {
 
         expect(observedPathNames).toContain(directBefore)
         expect(observedPathNames).toContain(directAfter)
-        // TODO(live-migration:effect-3-4): beta.102 removes the recursive option and always watches
-        // recursively — this nested-child assertion is EXPECTED to fail at the flip. Do NOT rebaseline:
-        // it is the signal that the compatibility shim (register entry
-        // filesystem-watch-recursive-option-removed) is still owed.
         expect(observedPathNames).not.toContain(nestedChild)
-      }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
   })
 
@@ -1035,7 +985,7 @@ Vitest.describe('FileSystemBacking', () => {
           // Stream should complete (not hang) — the 5s timeout is a safety net
           yield* stream.pipe(Stream.runDrain, Effect.timeout(Duration.seconds(5)))
         }).pipe(Effect.provide(backingLayer))
-      }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
   })
 })

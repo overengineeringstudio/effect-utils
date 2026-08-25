@@ -4,8 +4,7 @@
  * Main CLI entry point for the `mr` command.
  */
 
-import * as Cli from '@effect/cli'
-import { Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 
@@ -32,23 +31,24 @@ import {
 // Re-export context for use by other modules
 export {
   Cwd,
+  CwdFromGlobalFlag,
   createSymlink,
-  cwdOption,
+  cwdGlobalFlag,
   findMegarepoRoot,
   findNearestMegarepoRoot,
   outputOption,
   verboseOption,
 } from './context.ts'
 
-// Import Cwd and cwdOption for CLI assembly
-import { Cwd, cwdOption } from './context.ts'
+// Import Cwd wiring for CLI assembly
+import { CwdFromGlobalFlag, cwdGlobalFlag } from './context.ts'
 
 // =============================================================================
 // Main CLI
 // =============================================================================
 
 /** Root CLI command */
-export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
+export const mrCommand = Cli.Command.make('mr').pipe(
   Cli.Command.withSubcommands([
     initCommand,
     rootCommand,
@@ -66,14 +66,13 @@ export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
     generateCommand,
     depsCommand,
   ]),
-  Cli.Command.provide(({ cwd }) =>
-    Option.isSome(cwd) === true ? Cwd.fromPath(cwd.value) : Cwd.live,
-  ),
+  Cli.Command.withGlobalFlags([cwdGlobalFlag]),
+  Cli.Command.provide(CwdFromGlobalFlag),
   Cli.Command.withDescription('Multi-repo workspace management tool'),
 )
 
 /** Exported CLI for external use */
-export const cli = Cli.Command.run(mrCommand, {
-  name: 'mr',
-  version: MR_VERSION,
-})(rewriteHelpSubcommand(process.argv))
+export const cli = (args: ReadonlyArray<string>) =>
+  Cli.Command.runWith(mrCommand, { version: MR_VERSION })(
+    rewriteHelpSubcommand(['mr', ...args]).slice(1),
+  )

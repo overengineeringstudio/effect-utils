@@ -35,7 +35,7 @@
 import type { CliRenderer, CliRendererConfig, KeyEvent } from '@opentui/core'
 import type { Root } from '@opentui/react'
 import type { Scope, SubscriptionRef } from 'effect'
-import { Effect, PubSub, Runtime } from 'effect'
+import { Effect, PubSub } from 'effect'
 import type { FC } from 'react'
 
 import type { InputEvent } from './events.ts'
@@ -242,7 +242,7 @@ export const useOpenTuiRenderer = <S>(
     // Import React for createElement
     const React = yield* Effect.promise(() => import('react'))
 
-    const runtime = yield* Effect.runtime<never>()
+    const runtime = yield* Effect.context<never>()
 
     // Create wrapper component that bridges events
     const WrapperComponent: FC = () => {
@@ -251,7 +251,7 @@ export const useOpenTuiRenderer = <S>(
         (key) => {
           if (eventPubSub !== undefined) {
             const event = bridgeKeyEvent(key)
-            void Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
+            void Effect.runForkWith(runtime)(PubSub.publish(eventPubSub, event))
           }
         },
         { release: false },
@@ -261,7 +261,7 @@ export const useOpenTuiRenderer = <S>(
       reactLib.useOnResize((width, height) => {
         if (eventPubSub !== undefined) {
           const event = bridgeResizeEvent({ width, height })
-          void Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
+          void Effect.runForkWith(runtime)(PubSub.publish(eventPubSub, event))
         }
       })
 

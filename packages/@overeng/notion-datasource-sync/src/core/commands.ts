@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import {
   CanonicalFileValue as SchemaCanonicalFileValue,
@@ -6,6 +6,7 @@ import {
   CanonicalPropertyValue as SchemaCanonicalPropertyValue,
 } from '@overeng/notion-effect-schema'
 
+import { NonEmptyTrimmedString } from './domain.ts'
 import {
   BodyPointer,
   CommandId,
@@ -24,17 +25,17 @@ import {
 } from './domain.ts'
 
 /** Defines how row membership is determined: `all-data-source-rows` treats any absence as potential removal; `explicit-filter` limits absence proofs to the filter scope. */
-export const QueryMembershipScope = Schema.Literal(
+export const QueryMembershipScope = Schema.Literals([
   'all-data-source-rows',
   'explicit-filter',
-).annotations({ identifier: 'NotionDatasourceSync.QueryMembershipScope' })
+]).annotate({ identifier: 'NotionDatasourceSync.QueryMembershipScope' })
 export type QueryMembershipScope = typeof QueryMembershipScope.Type
 
 /** Canonical sort specification for a Notion query: property-based with an explicit direction. */
 export const CanonicalNotionSort = Schema.TaggedStruct('CanonicalNotionSort', {
   propertyId: PropertyId,
-  direction: Schema.Literal('ascending', 'descending'),
-}).annotations({ identifier: 'NotionDatasourceSync.CanonicalNotionSort' })
+  direction: Schema.Literals(['ascending', 'descending']),
+}).annotate({ identifier: 'NotionDatasourceSync.CanonicalNotionSort' })
 export type CanonicalNotionSort = typeof CanonicalNotionSort.Type
 
 /**
@@ -63,17 +64,17 @@ export const CanonicalPropertyValue = SchemaCanonicalPropertyValue
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
 /** Stable data-source icon identity; transient Notion-hosted signed URLs are intentionally excluded from the canonical surface. */
-export const CanonicalDataSourceIcon = Schema.Union(
+export const CanonicalDataSourceIcon = Schema.Union([
   Schema.TaggedStruct('none', {}),
   Schema.TaggedStruct('emoji', { emoji: Schema.String }),
-  Schema.TaggedStruct('custom_emoji', { id: Schema.NonEmptyTrimmedString }),
+  Schema.TaggedStruct('custom_emoji', { id: NonEmptyTrimmedString }),
   Schema.TaggedStruct('notion_icon', {
-    name: Schema.NonEmptyTrimmedString,
-    color: Schema.optional(Schema.NonEmptyTrimmedString),
+    name: NonEmptyTrimmedString,
+    color: Schema.optional(NonEmptyTrimmedString),
   }),
   Schema.TaggedStruct('external', { urlHash: Hash }),
   Schema.TaggedStruct('transient_file', {}),
-).annotations({ identifier: 'NotionDatasourceSync.CanonicalDataSourceIcon' })
+]).annotate({ identifier: 'NotionDatasourceSync.CanonicalDataSourceIcon' })
 export type CanonicalDataSourceIcon = typeof CanonicalDataSourceIcon.Type
 
 /** Canonical data-source metadata kept separate from schema, rows, and body materialization. */
@@ -81,14 +82,14 @@ export const CanonicalDataSourceMetadata = Schema.TaggedStruct('CanonicalDataSou
   titlePlainText: Schema.String,
   descriptionPlainText: Schema.String,
   icon: CanonicalDataSourceIcon,
-}).annotations({ identifier: 'NotionDatasourceSync.CanonicalDataSourceMetadata' })
+}).annotate({ identifier: 'NotionDatasourceSync.CanonicalDataSourceMetadata' })
 export type CanonicalDataSourceMetadata = typeof CanonicalDataSourceMetadata.Type
 
 /** Canonical schema descriptor for a single Notion database property; `configHash` covers all type-configuration details not in the `type` discriminator. */
 export const CanonicalDataSourceProperty = Schema.TaggedStruct('CanonicalDataSourceProperty', {
   propertyId: PropertyId,
   name: PropertyName,
-  type: Schema.Literal(
+  type: Schema.Literals([
     'title',
     'rich_text',
     'number',
@@ -109,17 +110,17 @@ export const CanonicalDataSourceProperty = Schema.TaggedStruct('CanonicalDataSou
     'created_by',
     'last_edited_time',
     'last_edited_by',
-  ),
+  ]),
   configHash: Hash,
-}).annotations({ identifier: 'NotionDatasourceSync.CanonicalDataSourceProperty' })
+}).annotate({ identifier: 'NotionDatasourceSync.CanonicalDataSourceProperty' })
 export type CanonicalDataSourceProperty = typeof CanonicalDataSourceProperty.Type
 
 /** Canonical filter expression for a Notion query; complex filters are represented as a hash to keep the contract stable. */
-export const CanonicalNotionFilter = Schema.Union(
+export const CanonicalNotionFilter = Schema.Union([
   Schema.TaggedStruct('none', {}),
   Schema.TaggedStruct('property_value', {
     propertyId: PropertyId,
-    operator: Schema.Literal(
+    operator: Schema.Literals([
       'equals',
       'does_not_equal',
       'contains',
@@ -132,14 +133,14 @@ export const CanonicalNotionFilter = Schema.Union(
       'less_than',
       'on_or_before',
       'on_or_after',
-    ),
+    ]),
     value: Schema.NullOr(CanonicalPropertyValue),
   }),
   Schema.TaggedStruct('compound_hash', {
-    kind: Schema.Literal('and', 'or'),
+    kind: Schema.Literals(['and', 'or']),
     expressionHash: Hash,
   }),
-).annotations({ identifier: 'NotionDatasourceSync.CanonicalNotionFilter' })
+]).annotate({ identifier: 'NotionDatasourceSync.CanonicalNotionFilter' })
 export type CanonicalNotionFilter = typeof CanonicalNotionFilter.Type
 
 /** Immutable contract describing how rows are queried; any change invalidates prior absence proofs and query checkpoints. */
@@ -148,9 +149,9 @@ export const QueryContract = Schema.TaggedStruct('QueryContract', {
   filter: Schema.NullOr(CanonicalNotionFilter),
   sorts: Schema.Array(CanonicalNotionSort),
   pageSize: NotionPageSize,
-  highWatermark: Schema.NullOr(Schema.DateTimeUtc),
+  highWatermark: Schema.NullOr(Schema.DateTimeUtcFromString),
   membershipScope: QueryMembershipScope,
-}).annotations({ identifier: 'NotionDatasourceSync.QueryContract' })
+}).annotate({ identifier: 'NotionDatasourceSync.QueryContract' })
 export type QueryContract = typeof QueryContract.Type
 
 /** Input to a paginated row query: identifies the data source, the query contract, and the optional resume cursor. */
@@ -158,7 +159,7 @@ export const QueryRowsInput = Schema.TaggedStruct('QueryRowsInput', {
   dataSourceId: DataSourceId,
   queryContract: QueryContract,
   startCursor: Schema.NullOr(QueryCursor),
-}).annotations({ identifier: 'NotionDatasourceSync.QueryRowsInput' })
+}).annotate({ identifier: 'NotionDatasourceSync.QueryRowsInput' })
 export type QueryRowsInput = typeof QueryRowsInput.Type
 
 /** A single page of query results; `hasMore` and `nextCursor` drive pagination, `cappedAtLimit` indicates a result-cap was hit. */
@@ -171,15 +172,15 @@ export const QueryRowsPage = Schema.TaggedStruct('QueryRowsPage', {
       pageId: PageId,
       dataSourceId: Schema.optional(DataSourceId),
       propertiesHash: Hash,
-      propertyValuesJson: Schema.optional(Schema.Record({ key: PropertyId, value: Schema.String })),
-      lastEditedTime: Schema.DateTimeUtc,
+      propertyValuesJson: Schema.optional(Schema.Record(PropertyId, Schema.String)),
+      lastEditedTime: Schema.DateTimeUtcFromString,
       inTrash: Schema.Boolean,
     }),
   ),
   nextCursor: Schema.NullOr(QueryCursor),
   hasMore: Schema.Boolean,
   cappedAtLimit: Schema.Boolean,
-}).annotations({ identifier: 'NotionDatasourceSync.QueryRowsPage' })
+}).annotate({ identifier: 'NotionDatasourceSync.QueryRowsPage' })
 export type QueryRowsPage = typeof QueryRowsPage.Type
 
 /** Input to a paginated property-value retrieval for a specific page + property combination. */
@@ -187,7 +188,7 @@ export const RetrievePagePropertyInput = Schema.TaggedStruct('RetrievePageProper
   pageId: PageId,
   propertyId: PropertyId,
   startCursor: Schema.NullOr(QueryCursor),
-}).annotations({ identifier: 'NotionDatasourceSync.RetrievePagePropertyInput' })
+}).annotate({ identifier: 'NotionDatasourceSync.RetrievePagePropertyInput' })
 export type RetrievePagePropertyInput = typeof RetrievePagePropertyInput.Type
 
 /** A single page of property items returned by a paginated property retrieval. */
@@ -200,7 +201,7 @@ export const PagePropertyItemPage = Schema.TaggedStruct('PagePropertyItemPage', 
   listMetadataHash: Schema.optional(Hash),
   nextCursor: Schema.NullOr(QueryCursor),
   hasMore: Schema.Boolean,
-}).annotations({ identifier: 'NotionDatasourceSync.PagePropertyItemPage' })
+}).annotate({ identifier: 'NotionDatasourceSync.PagePropertyItemPage' })
 export type PagePropertyItemPage = typeof PagePropertyItemPage.Type
 
 /** Remote write command: applies a partial property patch to a Notion page, gated on the base properties hash matching. */
@@ -208,18 +209,18 @@ export const PatchPagePropertiesCommand = Schema.TaggedStruct('PatchPageProperti
   commandId: CommandId,
   pageId: PageId,
   basePropertiesHash: Hash,
-  propertyPatch: Schema.Record({ key: PropertyId, value: CanonicalPropertyValue }),
-}).annotations({ identifier: 'NotionDatasourceSync.PatchPagePropertiesCommand' })
+  propertyPatch: Schema.Record(PropertyId, CanonicalPropertyValue),
+}).annotate({ identifier: 'NotionDatasourceSync.PatchPagePropertiesCommand' })
 export type PatchPagePropertiesCommand = typeof PatchPagePropertiesCommand.Type
 
 /** Remote write command: creates a new Notion page in a data source with initial property values. */
 export const CreatePageCommand = Schema.TaggedStruct('CreatePageCommand', {
   commandId: CommandId,
   dataSourceId: DataSourceId,
-  clientRequestKey: Schema.NonEmptyTrimmedString,
+  clientRequestKey: NonEmptyTrimmedString,
   baseSchemaHash: Hash,
-  initialProperties: Schema.Record({ key: PropertyId, value: CanonicalPropertyValue }),
-}).annotations({ identifier: 'NotionDatasourceSync.CreatePageCommand' })
+  initialProperties: Schema.Record(PropertyId, CanonicalPropertyValue),
+}).annotate({ identifier: 'NotionDatasourceSync.CreatePageCommand' })
 export type CreatePageCommand = typeof CreatePageCommand.Type
 
 /** Result of a successful Notion page creation, carrying the server-minted page id. */
@@ -227,7 +228,7 @@ export const CreatePageResult = Schema.TaggedStruct('CreatePageResult', {
   requestId: NotionRequestId,
   pageId: PageId,
   propertiesHash: Hash,
-}).annotations({ identifier: 'NotionDatasourceSync.CreatePageResult' })
+}).annotate({ identifier: 'NotionDatasourceSync.CreatePageResult' })
 export type CreatePageResult = typeof CreatePageResult.Type
 
 /**
@@ -241,7 +242,7 @@ export type CreatePageResult = typeof CreatePageResult.Type
  * the properties that cannot be updated via the API; advertising it here
  * would suggest behavior the adapter cannot actually deliver.
  */
-export const AddPropertyDefinition = Schema.Union(
+export const AddPropertyDefinition = Schema.Union([
   Schema.TaggedStruct('rich_text', {}),
   Schema.TaggedStruct('number', {}),
   Schema.TaggedStruct('checkbox', {}),
@@ -252,7 +253,7 @@ export const AddPropertyDefinition = Schema.Union(
   Schema.TaggedStruct('people', {}),
   Schema.TaggedStruct('select', { options: Schema.Array(CanonicalOptionValue) }),
   Schema.TaggedStruct('multi_select', { options: Schema.Array(CanonicalOptionValue) }),
-).annotations({ identifier: 'NotionDatasourceSync.AddPropertyDefinition' })
+]).annotate({ identifier: 'NotionDatasourceSync.AddPropertyDefinition' })
 export type AddPropertyDefinition = typeof AddPropertyDefinition.Type
 
 /**
@@ -272,7 +273,7 @@ export type AddPropertyDefinition = typeof AddPropertyDefinition.Type
  * options) are deliberately absent so unsupported intents fail closed at the
  * planner/adapter boundary.
  */
-export const SchemaPatchOperation = Schema.Union(
+export const SchemaPatchOperation = Schema.Union([
   Schema.TaggedStruct('AddProperty', {
     name: PropertyName,
     definition: AddPropertyDefinition,
@@ -283,11 +284,11 @@ export const SchemaPatchOperation = Schema.Union(
   }),
   Schema.TaggedStruct('AddSelectOptions', {
     propertyId: PropertyId,
-    propertyType: Schema.Literal('select', 'multi_select'),
+    propertyType: Schema.Literals(['select', 'multi_select']),
     existingOptions: Schema.Array(CanonicalOptionValue),
     newOptions: Schema.Array(CanonicalOptionValue),
   }),
-).annotations({ identifier: 'NotionDatasourceSync.SchemaPatchOperation' })
+]).annotate({ identifier: 'NotionDatasourceSync.SchemaPatchOperation' })
 export type SchemaPatchOperation = typeof SchemaPatchOperation.Type
 
 /**
@@ -304,11 +305,11 @@ export const PatchDataSourceSchemaCommand = Schema.TaggedStruct('PatchDataSource
   commandId: CommandId,
   dataSourceId: DataSourceId,
   baseSchemaHash: Hash,
-  schemaPatch: Schema.Record({ key: PropertyId, value: CanonicalDataSourceProperty }),
-  operations: Schema.optionalWith(Schema.Array(SchemaPatchOperation), {
-    default: () => [] as ReadonlyArray<SchemaPatchOperation>,
-  }),
-}).annotations({ identifier: 'NotionDatasourceSync.PatchDataSourceSchemaCommand' })
+  schemaPatch: Schema.Record(PropertyId, CanonicalDataSourceProperty),
+  operations: Schema.Array(SchemaPatchOperation).pipe(
+    Schema.withDecodingDefault(Effect.succeed([] as ReadonlyArray<SchemaPatchOperation>)),
+  ),
+}).annotate({ identifier: 'NotionDatasourceSync.PatchDataSourceSchemaCommand' })
 export type PatchDataSourceSchemaCommand = typeof PatchDataSourceSchemaCommand.Type
 
 /** Remote write command: patches data-source presentation metadata, gated on the base metadata hash matching. */
@@ -323,7 +324,7 @@ export const PatchDataSourceMetadataCommand = Schema.TaggedStruct(
       descriptionPlainText: Schema.optional(Schema.String),
     }),
   },
-).annotations({ identifier: 'NotionDatasourceSync.PatchDataSourceMetadataCommand' })
+).annotate({ identifier: 'NotionDatasourceSync.PatchDataSourceMetadataCommand' })
 export type PatchDataSourceMetadataCommand = typeof PatchDataSourceMetadataCommand.Type
 
 /** Remote write command: patches database/container metadata, verified through the owning data source metadata projection. */
@@ -336,7 +337,7 @@ export const PatchDatabaseMetadataCommand = Schema.TaggedStruct('PatchDatabaseMe
     titlePlainText: Schema.optional(Schema.String),
     descriptionPlainText: Schema.optional(Schema.String),
   }),
-}).annotations({ identifier: 'NotionDatasourceSync.PatchDatabaseMetadataCommand' })
+}).annotate({ identifier: 'NotionDatasourceSync.PatchDatabaseMetadataCommand' })
 export type PatchDatabaseMetadataCommand = typeof PatchDatabaseMetadataCommand.Type
 
 /** Remote write command: moves a Notion page to the trash, gated on the base properties hash. */
@@ -344,7 +345,7 @@ export const TrashPageCommand = Schema.TaggedStruct('TrashPageCommand', {
   commandId: CommandId,
   pageId: PageId,
   basePropertiesHash: Hash,
-}).annotations({ identifier: 'NotionDatasourceSync.TrashPageCommand' })
+}).annotate({ identifier: 'NotionDatasourceSync.TrashPageCommand' })
 export type TrashPageCommand = typeof TrashPageCommand.Type
 
 /** Remote write command: restores a trashed Notion page, gated on the base properties hash. */
@@ -352,13 +353,13 @@ export const RestorePageCommand = Schema.TaggedStruct('RestorePageCommand', {
   commandId: CommandId,
   pageId: PageId,
   basePropertiesHash: Hash,
-}).annotations({ identifier: 'NotionDatasourceSync.RestorePageCommand' })
+}).annotate({ identifier: 'NotionDatasourceSync.RestorePageCommand' })
 export type RestorePageCommand = typeof RestorePageCommand.Type
 
 /** Input to `PageBodySyncPort.observe`: fetches the current body state and returns a `BodyPointer`. */
 export const ObserveBodyInput = Schema.TaggedStruct('ObserveBodyInput', {
   pageId: PageId,
-}).annotations({ identifier: 'NotionDatasourceSync.ObserveBodyInput' })
+}).annotate({ identifier: 'NotionDatasourceSync.ObserveBodyInput' })
 export type ObserveBodyInput = typeof ObserveBodyInput.Type
 
 /** Input to `PageBodySyncPort.planLocalChange`: describes the local body modification to be evaluated for conflicts or intent promotion. */
@@ -368,7 +369,7 @@ export const BodyLocalChangeInput = Schema.TaggedStruct('BodyLocalChangeInput', 
   localBodyHash: Hash,
   localBodyPath: Schema.optional(WorkspaceRelativePath),
   localBodyContent: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.BodyLocalChangeInput' })
+}).annotate({ identifier: 'NotionDatasourceSync.BodyLocalChangeInput' })
 export type BodyLocalChangeInput = typeof BodyLocalChangeInput.Type
 
 /** A confirmed local body intent: the desired next body hash relative to a known base pointer, ready to become a `BodyPushCommand`. */
@@ -378,11 +379,11 @@ export const BodyIntent = Schema.TaggedStruct('BodyIntent', {
   nextBodyHash: Hash,
   localBodyPath: Schema.optional(WorkspaceRelativePath),
   localBodyContent: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.BodyIntent' })
+}).annotate({ identifier: 'NotionDatasourceSync.BodyIntent' })
 export type BodyIntent = typeof BodyIntent.Type
 
 /** Named reason for a body conflict; maps directly to the `GuardName` values that can block a body push. */
-export const BodyConflictReason = Schema.Literal(
+export const BodyConflictReason = Schema.Literals([
   'StaleSurfaceBase',
   'BodyLossyRemote',
   'MarkdownUnknownBlocksAmbiguous',
@@ -391,7 +392,7 @@ export const BodyConflictReason = Schema.Literal(
   'MarkdownSyncedPageUnsupported',
   'BodyAdapterConflict',
   'BodyAdapterNonBodyMutation',
-).annotations({ identifier: 'NotionDatasourceSync.BodyConflictReason' })
+]).annotate({ identifier: 'NotionDatasourceSync.BodyConflictReason' })
 export type BodyConflictReason = typeof BodyConflictReason.Type
 
 /** Conflict detected by the body adapter between local and remote body states; prevents the push from proceeding without resolution. */
@@ -402,7 +403,7 @@ export const BodyConflict = Schema.TaggedStruct('BodyConflict', {
   remoteBodyHash: Hash,
   reason: Schema.optional(BodyConflictReason),
   message: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.BodyConflict' })
+}).annotate({ identifier: 'NotionDatasourceSync.BodyConflict' })
 export type BodyConflict = typeof BodyConflict.Type
 
 /** Remote write command: pushes the next body hash to Notion, gated on the base body pointer. */
@@ -413,7 +414,7 @@ export const BodyPushCommand = Schema.TaggedStruct('BodyPushCommand', {
   nextBodyHash: Hash,
   localBodyPath: Schema.optional(WorkspaceRelativePath),
   localBodyContent: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.BodyPushCommand' })
+}).annotate({ identifier: 'NotionDatasourceSync.BodyPushCommand' })
 export type BodyPushCommand = typeof BodyPushCommand.Type
 
 /** Result of a successful body push; carries the updated `BodyPointer` for post-write verification. */
@@ -421,18 +422,18 @@ export const BodyPushResult = Schema.TaggedStruct('BodyPushResult', {
   pageId: PageId,
   requestId: NotionRequestId,
   bodyPointer: BodyPointer,
-}).annotations({ identifier: 'NotionDatasourceSync.BodyPushResult' })
+}).annotate({ identifier: 'NotionDatasourceSync.BodyPushResult' })
 export type BodyPushResult = typeof BodyPushResult.Type
 
 /** Input to `PageBodySyncPort.repair`: re-reads the current body state to reconcile a prior desynchronization. */
 export const BodyRepairInput = Schema.TaggedStruct('BodyRepairInput', {
   pageId: PageId,
   currentBodyPointer: BodyPointer,
-}).annotations({ identifier: 'NotionDatasourceSync.BodyRepairInput' })
+}).annotate({ identifier: 'NotionDatasourceSync.BodyRepairInput' })
 export type BodyRepairInput = typeof BodyRepairInput.Type
 
 /** Discriminated union of all commands that cause a remote write to Notion; the `_tag` selects the operation kind. */
-export const RemoteWriteCommand = Schema.Union(
+export const RemoteWriteCommand = Schema.Union([
   CreatePageCommand,
   PatchPagePropertiesCommand,
   PatchDataSourceSchemaCommand,
@@ -441,11 +442,11 @@ export const RemoteWriteCommand = Schema.Union(
   TrashPageCommand,
   RestorePageCommand,
   BodyPushCommand,
-).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteCommand' })
+]).annotate({ identifier: 'NotionDatasourceSync.RemoteWriteCommand' })
 export type RemoteWriteCommand = typeof RemoteWriteCommand.Type
 
 /** Payload stored in the outbox for a planned remote write; wraps the command so the outbox projection can decode it without knowing the concrete type. */
 export const RemoteWritePlanPayload = Schema.Struct({
   command: RemoteWriteCommand,
-}).annotations({ identifier: 'NotionDatasourceSync.RemoteWritePlanPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.RemoteWritePlanPayload' })
 export type RemoteWritePlanPayload = typeof RemoteWritePlanPayload.Type

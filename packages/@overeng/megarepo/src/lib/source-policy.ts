@@ -1,5 +1,6 @@
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -406,7 +407,7 @@ export const checkSourcePolicy = ({
   config: MegarepoConfig
   lockFile: LockFile
   includeMembers: boolean
-}): Effect.Effect<SourcePolicyCheckResult, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<SourcePolicyCheckResult, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const violations: SourcePolicyViolation[] = [
       ...checkConfigMemberSources({

@@ -1,4 +1,4 @@
-import { Chunk, Duration, Effect, Layer, Logger, LogLevel, Ref, Runtime } from 'effect'
+import { Chunk, Duration, Effect, Layer, Logger, References, Ref } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -13,18 +13,18 @@ import {
 /** Test logger that captures log messages at all levels */
 const makeTestLogger = Effect.fnUntraced(function* () {
   const logs = yield* Ref.make<Chunk.Chunk<string>>(Chunk.empty())
-  const runtime = yield* Effect.runtime<never>()
 
   const logger = Logger.make<unknown, void>(({ message }) => {
     const msg = Array.isArray(message) === true ? message.join(' ') : String(message)
-    Runtime.runSync(runtime)(Ref.update(logs, Chunk.append(msg)))
+    // @effect-diagnostics-next-line runEffectInsideEffect:off -- Logger.make callback is not logically inside an Effect; synchronous capture is required here
+    Effect.runSync(Ref.update(logs, Chunk.append(msg)))
   })
 
   const getLogs = Ref.get(logs).pipe(Effect.map(Chunk.toArray))
 
   const loggerLayer = Layer.merge(
-    Logger.replace(Logger.defaultLogger, logger),
-    Logger.minimumLogLevel(LogLevel.All),
+    Logger.layer([logger], { mergeWithExisting: false }),
+    Layer.succeed(References.MinimumLogLevel, 'All'),
   )
 
   return { getLogs, loggerLayer } as const

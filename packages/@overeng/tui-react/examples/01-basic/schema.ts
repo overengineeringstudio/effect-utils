@@ -10,7 +10,7 @@ import { Schema } from 'effect'
 
 /** Schema for the active display state with a countdown timer. */
 export const DisplayingState = Schema.TaggedStruct('Displaying', {
-  secondsRemaining: Schema.Number,
+  secondsRemaining: Schema.Finite,
 })
 
 /** Schema for the finished state with a completion message. */
@@ -22,7 +22,7 @@ export const FinishedState = Schema.TaggedStruct('Finished', {
 export const InterruptedState = Schema.TaggedStruct('Interrupted', {})
 
 /** Union schema of all hello world app states. */
-export const AppState = Schema.Union(DisplayingState, FinishedState, InterruptedState)
+export const AppState = Schema.Union([DisplayingState, FinishedState, InterruptedState])
 
 /** Inferred type for the hello world app state union. */
 export type AppState = Schema.Schema.Type<typeof AppState>
@@ -32,11 +32,11 @@ export type AppState = Schema.Schema.Type<typeof AppState>
 // =============================================================================
 
 /** Union schema of all hello world app actions (Tick, Finish, Interrupted). */
-export const AppAction = Schema.Union(
+export const AppAction = Schema.Union([
   Schema.TaggedStruct('Tick', {}),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 /** Inferred type for the hello world app action union. */
 export type AppAction = Schema.Schema.Type<typeof AppAction>

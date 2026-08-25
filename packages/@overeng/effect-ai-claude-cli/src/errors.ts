@@ -11,7 +11,7 @@ export class ClaudeCliNotFoundError extends Schema.TaggedError<ClaudeCliNotFound
   'ClaudeCliNotFoundError',
   {
     message: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {}
 
@@ -28,7 +28,7 @@ export class ClaudeCliAuthError extends Schema.TaggedError<ClaudeCliAuthError>()
   'ClaudeCliAuthError',
   {
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -37,7 +37,7 @@ export class ClaudeCliExitError extends Schema.TaggedError<ClaudeCliExitError>()
   'ClaudeCliExitError',
   {
     message: Schema.String,
-    exitCode: Schema.Number,
+    exitCode: Schema.Finite,
     stderr: Schema.String,
     stdout: Schema.String,
     command: Schema.String,
@@ -50,7 +50,7 @@ export class ClaudeCliParseError extends Schema.TaggedError<ClaudeCliParseError>
   {
     message: Schema.String,
     rawOutput: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 

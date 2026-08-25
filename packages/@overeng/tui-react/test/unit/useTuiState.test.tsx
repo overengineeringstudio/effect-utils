@@ -13,25 +13,28 @@ import { createTuiApp } from '../../src/effect/TuiApp.tsx'
 // Test State and Action Schemas
 // =============================================================================
 
-const TestState = Schema.Union(
+const TestState = Schema.Union([
   Schema.TaggedStruct('Idle', {}),
   Schema.TaggedStruct('Running', {
-    count: Schema.Number,
+    count: Schema.Finite,
   }),
   Schema.TaggedStruct('Complete', {
-    total: Schema.Number,
+    total: Schema.Finite,
   }),
-)
+])
 
 type TestState = Schema.Schema.Type<typeof TestState>
 
-const TestAction = Schema.Union(
+const TestAction = Schema.Union([
   Schema.TaggedStruct('Start', {}),
   Schema.TaggedStruct('Increment', {}),
-  Schema.TaggedStruct('Finish', { total: Schema.Number }),
-)
+  Schema.TaggedStruct('Finish', { total: Schema.Finite }),
+])
 
 type TestAction = Schema.Schema.Type<typeof TestAction>
+
+const decodeState = (json: string): TestState =>
+  Schema.decodeSync(Schema.fromJsonString(TestState))(json)
 
 // =============================================================================
 // Reducer
@@ -134,11 +137,13 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(() => {
-          expect(capturedOutput).toHaveLength(1)
-          const parsed = JSON.parse(capturedOutput[0]!)
-          expect(parsed).toEqual({ _tag: 'Complete', total: 10 })
-        }),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(1)
+            const parsed = decodeState(capturedOutput[0]!)
+            expect(parsed).toEqual({ _tag: 'Complete', total: 10 })
+          }),
+        ),
       ),
     )
 
@@ -146,11 +151,13 @@ describe('createTuiApp', () => {
       TestApp.run().pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
-        Effect.andThen(() => {
-          expect(capturedOutput).toHaveLength(1)
-          const parsed = JSON.parse(capturedOutput[0]!)
-          expect(parsed).toEqual({ _tag: 'Idle' })
-        }),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(1)
+            const parsed = decodeState(capturedOutput[0]!)
+            expect(parsed).toEqual({ _tag: 'Idle' })
+          }),
+        ),
       ),
     )
   })
@@ -167,20 +174,24 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
-        Effect.andThen(() => {
-          // Initial snapshot + one line per state change. No trailing envelope.
-          expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
+        Effect.andThen(
+          Effect.sync(() => {
+            // Initial snapshot + one line per state change. No trailing envelope.
+            expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
-          for (const line of capturedOutput) {
-            expect(() => JSON.parse(line)).not.toThrow()
-          }
+            // The point of this assertion is that each line is raw parseable JSON
+            // (wire-format check), not that it matches a schema.
+            for (const line of capturedOutput) {
+              expect(() => JSON.parse(line)).not.toThrow()
+            }
 
-          const firstParsed = JSON.parse(capturedOutput[0]!)
-          expect(firstParsed._tag).toBe('Idle')
+            const firstParsed = decodeState(capturedOutput[0]!)
+            expect(firstParsed._tag).toBe('Idle')
 
-          const lastParsed = JSON.parse(capturedOutput[capturedOutput.length - 1]!)
-          expect(lastParsed._tag).toBe('Complete')
-        }),
+            const lastParsed = decodeState(capturedOutput[capturedOutput.length - 1]!)
+            expect(lastParsed._tag).toBe('Complete')
+          }),
+        ),
       ),
     )
   })
@@ -194,9 +205,11 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('log')),
-        Effect.andThen(() => {
-          expect(capturedOutput).toHaveLength(0)
-        }),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(capturedOutput).toHaveLength(0)
+          }),
+        ),
       ),
     )
   })
@@ -218,9 +231,11 @@ describe('createTuiApp', () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('log')),
-        Effect.andThen(() => {
-          expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
-        }),
+        Effect.andThen(
+          Effect.sync(() => {
+            expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
+          }),
+        ),
       )
     })
   })

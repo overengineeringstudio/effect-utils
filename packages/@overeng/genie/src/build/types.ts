@@ -1,6 +1,6 @@
-import type { Error as PlatformError, FileSystem, Path } from '@effect/platform'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type { Option } from 'effect'
+import type { FileSystem, Option, Path } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import type * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
 
 import type { OutputModeValue } from '@overeng/tui-react/node'
 import type { CurrentWorkingDirectory } from '@overeng/utils/node'
@@ -26,7 +26,7 @@ export type GenieCommandConfig = {
 export type GenieCommandEnv =
   | FileSystem.FileSystem
   | Path.Path
-  | CommandExecutor.CommandExecutor
+  | CommandExecutor.ChildProcessSpawner
   | CurrentWorkingDirectory
 
 /** Possible errors from genie command execution */
@@ -34,4 +34,4 @@ export type GenieCommandError =
   | GenieCheckError
   | GenieGenerationFailedError
   | GenieImportError
-  | PlatformError.PlatformError
+  | PlatformError

@@ -25,11 +25,11 @@ import { RestateTestHarness, serverAvailable } from './testing.ts'
 
 /* A trivial application service the handler depends on, to prove `appLayer` is
  * threaded into the served runtime (handler `R` is satisfied). */
-class Step extends Context.Tag('test/Step')<Step, { readonly by: number }>() {
+class Step extends Context.Service<Step, { readonly by: number }>()('test/Step') {
   static readonly Default = Layer.succeed(Step, { by: 1 })
 }
 
-const CounterState = { count: Schema.Number } as const
+const CounterState = { count: Schema.Finite } as const
 const Counter = State.for(CounterState)
 
 const CounterObj = RestateObject.contract({
@@ -39,9 +39,9 @@ const CounterObj = RestateObject.contract({
     handlers: {
       /* Exclusive: read-modify-write typed `count` by the injected `Step.by`, with a
        * journaled `Restate.run` step so `alwaysReplay` exercises a real suspension. */
-      bump: { input: Schema.Void, success: Schema.Number },
+      bump: { input: Schema.Void, success: Schema.Finite },
       /* Shared (read-only): reads the typed `count` back. */
-      read: { input: Schema.Void, success: Schema.Number, shared: true },
+      read: { input: Schema.Void, success: Schema.Finite, shared: true },
     },
   },
 })
@@ -121,7 +121,7 @@ describe.skipIf(!serverAvailable)('restate-effect ./testing harness', () => {
         const harness = yield* RestateTestHarness
         const state = harness.stateOf({ contract: CounterObj, key: 'cart-2' })
         yield* state.setAll({ count: 7 })
-        expect(yield* state.getAll()).toEqual({ count: 7 })
+        expect(yield* state.getAll).toEqual({ count: 7 })
       }),
     )
 

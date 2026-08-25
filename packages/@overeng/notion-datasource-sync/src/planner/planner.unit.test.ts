@@ -51,7 +51,7 @@ import {
   type PlannerProjectionSnapshot,
 } from '../mod.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
+const decode = <TSchema extends Schema.Codec<any, any, never>>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (char: string) => decode(Hash, `sha256:${char.repeat(64)}`)

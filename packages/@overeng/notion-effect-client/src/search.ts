@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
@@ -17,9 +17,9 @@ import {
 
 /** Search result can be a page or data source */
 const SearchResultSchema = Schema.Struct({
-  object: Schema.Literal('page', 'data_source'),
+  object: Schema.Literals(['page', 'data_source']),
   id: Schema.String,
-}).annotations({ identifier: 'SearchResult' })
+}).annotate({ identifier: 'SearchResult' })
 
 type SearchResult = typeof SearchResultSchema.Type
 
@@ -87,11 +87,8 @@ const searchRaw = Effect.fn('NotionSearch.search')(function* (opts: SearchOption
  */
 export const search = (
   opts: SearchOptions = {},
-): Effect.Effect<
-  PaginatedResult<SearchResult>,
-  NotionApiError,
-  NotionConfig | HttpClient.HttpClient
-> => searchRaw(opts)
+): Effect.Effect<PaginatedResult<SearchResult>, NotionApiError, NotionConfig | HttpClient> =>
+  searchRaw(opts)
 
 /**
  * Search pages and databases with automatic pagination.
@@ -102,26 +99,29 @@ export const search = (
  */
 export const searchStream = (
   opts: Omit<SearchOptions, 'startCursor'> = {},
-): Stream.Stream<SearchResult, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
-    Option.match(maybeNextCursor, {
-      onNone: () => Effect.succeed(Option.none()),
-      onSome: (cursor) => {
-        const searchOpts: SearchOptions =
-          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
-        return searchRaw(searchOpts).pipe(
-          Effect.map((result) => {
-            const chunk = Chunk.fromIterable(result.results)
+): Stream.Stream<SearchResult, NotionApiError, NotionConfig | HttpClient> =>
+  Stream.flattenIterable(
+    Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
+      Option.match(maybeNextCursor, {
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
+        onNone: () => Effect.succeed(undefined),
+        onSome: (cursor) => {
+          const searchOpts: SearchOptions =
+            Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
+          return searchRaw(searchOpts).pipe(
+            Effect.map((result) => {
+              const chunk = Chunk.fromIterable(result.results)
 
-            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-              return Option.some([chunk, Option.none()] as const)
-            }
+              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
+                return [chunk, Option.none()] as const
+              }
 
-            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
-          }),
-        )
-      },
-    }),
+              return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
+            }),
+          )
+        },
+      }),
+    ),
   )
 
 // -----------------------------------------------------------------------------

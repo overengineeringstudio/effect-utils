@@ -31,6 +31,37 @@ Vitest.describe('formatReasonMessage', () => {
     )
   })
 
+  /* Effect 4 defect shapes can reach `cause` without a primitive conversion
+   * path (null-prototype objects); `String()` throws on them, which used to
+   * crash every consumer's `get message()` (CI: "Cannot convert object to
+   * primitive value"). Formatting must never be the failure. */
+  Vitest.it('renders a null-prototype cause via its message instead of throwing', () => {
+    const nullProtoCause = Object.assign(Object.create(null), { message: 'null-proto boom' })
+    expect(
+      formatReasonMessage({ reason: 'RunFailed', method: 'run(step)', cause: nullProtoCause }),
+    ).toBe('RunFailed (run(step)) : null-proto boom')
+  })
+
+  Vitest.it('falls back to JSON for a null-prototype cause without a message', () => {
+    const nullProtoCause = Object.assign(Object.create(null), { code: 42 })
+    expect(
+      formatReasonMessage({ reason: 'SerdeFailed', method: 'State.get', cause: nullProtoCause }),
+    ).toBe('SerdeFailed (State.get) : {"code":42}')
+  })
+
+  Vitest.it('survives a cause whose toString throws', () => {
+    const hostile = Object.create(Object.prototype, {
+      toString: {
+        value: () => {
+          throw new Error('nope')
+        },
+      },
+    })
+    expect(formatReasonMessage({ reason: 'EndpointFailed', cause: hostile })).toBe(
+      'EndpointFailed : {}',
+    )
+  })
+
   Vitest.it('omits absent parts (reason only)', () => {
     expect(formatReasonMessage({ reason: 'Closed' })).toBe('Closed')
   })

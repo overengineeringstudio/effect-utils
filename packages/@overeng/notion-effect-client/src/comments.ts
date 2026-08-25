@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import { type Comment, CommentSchema } from '@overeng/notion-effect-schema'
 
@@ -105,7 +105,7 @@ const listRaw = Effect.fn('NotionComments.list')(function* (opts: ListCommentsOp
  */
 export const list = (
   opts: ListCommentsOptions,
-): Effect.Effect<PaginatedResult<Comment>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<PaginatedResult<Comment>, NotionApiError, NotionConfig | HttpClient> =>
   listRaw(opts)
 
 /**
@@ -115,26 +115,29 @@ export const list = (
  */
 export const listStream = (
   opts: Omit<ListCommentsOptions, 'startCursor'>,
-): Stream.Stream<Comment, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
-    Option.match(maybeNextCursor, {
-      onNone: () => Effect.succeed(Option.none()),
-      onSome: (cursor) => {
-        const listOpts: ListCommentsOptions =
-          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
-        return listRaw(listOpts).pipe(
-          Effect.map((result) => {
-            const chunk = Chunk.fromIterable(result.results)
+): Stream.Stream<Comment, NotionApiError, NotionConfig | HttpClient> =>
+  Stream.flattenIterable(
+    Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
+      Option.match(maybeNextCursor, {
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
+        onNone: () => Effect.succeed(undefined),
+        onSome: (cursor) => {
+          const listOpts: ListCommentsOptions =
+            Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
+          return listRaw(listOpts).pipe(
+            Effect.map((result) => {
+              const chunk = Chunk.fromIterable(result.results)
 
-            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-              return Option.some([chunk, Option.none()] as const)
-            }
+              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
+                return [chunk, Option.none()] as const
+              }
 
-            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
-          }),
-        )
-      },
-    }),
+              return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
+            }),
+          )
+        },
+      }),
+    ),
   )
 
 // -----------------------------------------------------------------------------

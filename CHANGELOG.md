@@ -4,6 +4,74 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Repository-wide**: atomic Effect 4 cohort flip to `effect@4.0.0-rc.111`
+  (with `@effect/platform-node`, `@effect/vitest`, `@effect/opentelemetry`,
+  `@effect/atom-react`, all rc.111). Platform, CLI, RPC, Schema, AI, Cluster,
+  Workflow, SQL and Atom reactivity are now core modules
+  (`effect` / `effect/unstable/*`). Services use the v4 `Context.Service`
+  model; error handling uses `Effect.catch`/`catchCause`; forks are
+  `forkChild`/`forkDetach`; wire formats preserved via `DateFromString`/
+  `DateTimeUtcFromString`. The mixed-major duplicate exception and the v3
+  http.client span-header patch are retired — see
+  `context/effect-4/rc111-followups.md` for known behavior changes and
+  follow-ups.
+- **@overeng/tui-react, @overeng/tui-stories, @overeng/effect-react,
+  @overeng/effect-schema-form, @overeng/effect-schema-form-aria**: migrate to
+  effect@4.0.0-rc.111. Schema AST introspection updated to v4 node kinds
+  (`String`/`Number`/`Boolean`/`Objects`/`Arrays`, `Undefined` union members;
+  refinements are now checks, transformations are `encoding` links) with
+  title/description reads via `SchemaAST.resolveTitle`/`resolveDescription`;
+  variadic `Schema.Union`/`Schema.Literal` → array-form
+  `Schema.Union([...])`/`Schema.Literals([...])`; services migrated from
+  `Context.Tag` to `Context.Service` (accessor `.use`, static layers);
+  `Runtime.Runtime` removed — the React provider now stores a
+  `Context.Context` and runs effects via `Effect.runForkWith`; `Cause`
+  accessors replaced (`findErrorOption`/`findDefect`, `hasInterrupts`),
+  `Effect.tapErrorCause` → `tapCause`, `Effect.fork` → `forkChild`,
+  `Exit.isInterrupted` → `hasInterrupts`, `SubscriptionRef.changes(ref)`
+  standalone form; CLI moved to `effect/unstable/cli` (`Flag.string`,
+  `Command.runWith`, repetition via `between`) and bins provide
+  `NodeServices.layer`. tui-react's `testModeLayer` binds the Effect Console
+  service to the caller's global console (effect 4 vitest otherwise scopes
+  tests to its own TestConsole), and TUI app runs reset module-level atoms to
+  their configured initial state so consecutive runs don't inherit prior
+  mutations. Cross-major wire baselines rebaselined for effect 4 drift:
+  keyword schemas no longer carry built-in `title`/`description` annotations,
+  CLI help/validation prose renders on stdout with new formatting, schema
+  decode failure prose follows the v4 formatter, and SubscriptionRef change
+  streams emit the initial value at subscribe time.
+
+- **@overeng/content-address, @overeng/kdl-effect, @overeng/otel-contract**:
+  migrate to effect@4.0.0-rc.111. `Schema.pattern`/`maxLength`/
+  `NonEmptyTrimmedString` replaced by v4 checks (`check(isPattern(...))`,
+  `check(isMaxLength(...))`, `NonEmptyString.pipe(check(isTrimmed()))`);
+  `Schema.Defect` → `Schema.Defect()`; `AnyNoContext` constraints →
+  `Schema.Codec<any>`; kdl-effect's KDL codec rebuilt on `Schema.decodeTo` +
+  `SchemaGetter` (v4 removed `transformOrFail`/`ParseResult`) with the AST
+  normalizer ported to the v4 node kinds (`Arrays`/`Objects`, `encoding`
+  links, `Suspend.thunk`); otel-contract's weaver registry annotation walk and
+  metric bridge updated (AST `representation.id` declarations,
+  `Metric.update` with `withAttributes`, `Metric.snapshot`, `Result`
+  instead of `Either`); `ServiceIdentity` remains a plain v4 Struct so
+  downstream `decodeSync` consumers are unaffected.
+
+- **@overeng/utils-dev, @overeng/utils**: finish the effect@4.0.0-rc.111 migration
+  for `utils-dev` and the residual `utils` sources/tests. Highlights: OTLP moved
+  from `@effect/opentelemetry` to `effect/unstable/observability`
+  (`OtlpTracer`/`OtlpSerialization`/`Otlp.layerJson`); `@effect/platform`
+  surfaces moved into Effect core (`effect/unstable/http`,
+  `effect/unstable/process`, `effect/FileSystem`) with `NodeContext.layer`
+  replaced by `NodeServices.layer` and platform `Command` replaced by
+  `ChildProcessSpawner`; services migrated from `Effect.Service` (accessors,
+  `.Default`) to `Context.Service` with explicit static layers; FastCheck now
+  imports from `effect/testing/FastCheck`; schema codecs renamed per v4
+  (`decodeUnknownEffect`, `fromJsonString`, `Literals`, `.annotate`);
+  `Duration.Input`, `Cause.TimeoutError`, `Effect.callback`/`forkChild`/
+  `andThen`/`catch`, string-union `LogLevel`, and `Metric.update`/
+  `withAttributes` replace their removed v3 counterparts.
+
 ### Added
 
 - **devenv pnpm / Genie**: add root-local, read-only source generations for

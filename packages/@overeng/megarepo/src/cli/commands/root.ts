@@ -4,8 +4,8 @@
  * Find and print the megarepo root directory.
  */
 
-import * as Cli from '@effect/cli'
 import { Effect, Option } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'

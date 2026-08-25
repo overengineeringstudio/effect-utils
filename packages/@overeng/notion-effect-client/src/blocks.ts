@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import { type Block, BlockSchema, type BlockType } from '@overeng/notion-effect-schema'
 
@@ -116,7 +116,7 @@ const retrieveChildrenRaw = (opts: RetrieveBlockChildrenOptions) =>
  */
 export const retrieveChildren = (
   opts: RetrieveBlockChildrenOptions,
-): Effect.Effect<PaginatedResult<Block>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<PaginatedResult<Block>, NotionApiError, NotionConfig | HttpClient> =>
   retrieveChildrenRaw(opts)
 
 /**
@@ -128,26 +128,29 @@ export const retrieveChildren = (
  */
 export const retrieveChildrenStream = (
   opts: Omit<RetrieveBlockChildrenOptions, 'startCursor'>,
-): Stream.Stream<Block, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
-    Option.match(maybeNextCursor, {
-      onNone: () => Effect.succeed(Option.none()),
-      onSome: (cursor) => {
-        const childrenOpts: RetrieveBlockChildrenOptions =
-          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
-        return retrieveChildrenRaw(childrenOpts).pipe(
-          Effect.map((result) => {
-            const chunk = Chunk.fromIterable(result.results)
+): Stream.Stream<Block, NotionApiError, NotionConfig | HttpClient> =>
+  Stream.flattenIterable(
+    Stream.unfold(Option.some(Option.none<string>()), (maybeNextCursor) =>
+      Option.match(maybeNextCursor, {
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off -- Stream.unfold terminates via Effect<[A, S] | undefined>; Effect.void (Effect<void>) is not assignable to it under exactOptionalPropertyTypes.
+        onNone: () => Effect.succeed(undefined),
+        onSome: (cursor) => {
+          const childrenOpts: RetrieveBlockChildrenOptions =
+            Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
+          return retrieveChildrenRaw(childrenOpts).pipe(
+            Effect.map((result) => {
+              const chunk = Chunk.fromIterable(result.results)
 
-            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-              return Option.some([chunk, Option.none()] as const)
-            }
+              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
+                return [chunk, Option.none()] as const
+              }
 
-            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
-          }),
-        )
-      },
-    }),
+              return [chunk, Option.some(Option.some(result.nextCursor.value))] as const
+            }),
+          )
+        },
+      }),
+    ),
   )
 
 /**
@@ -288,7 +291,7 @@ const canHaveChildren = (opts: { block: Block; skipTypes: ReadonlySet<BlockType>
  */
 export const retrieveAllNested = (
   opts: RetrieveNestedOptions,
-): Stream.Stream<BlockWithDepth, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+): Stream.Stream<BlockWithDepth, NotionApiError, NotionConfig | HttpClient> => {
   const skipTypes = new Set(opts.skipChildrenFor ?? [])
   const maxDepth = opts.maxDepth
   const concurrency = opts.concurrency ?? 3
@@ -298,7 +301,7 @@ export const retrieveAllNested = (
     blockId: string
     parentId: string | null
     depth: number
-  }): Stream.Stream<BlockWithDepth, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+  }): Stream.Stream<BlockWithDepth, NotionApiError, NotionConfig | HttpClient> => {
     const { blockId, parentId, depth } = args
     // Bail if we've exceeded max depth
     if (maxDepth !== undefined && depth > maxDepth) {
@@ -369,7 +372,7 @@ export const retrieveAllNested = (
  */
 export const retrieveAsTree = (
   opts: RetrieveNestedOptions,
-): Effect.Effect<BlockTree, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+): Effect.Effect<BlockTree, NotionApiError, NotionConfig | HttpClient> => {
   const skipTypes = new Set(opts.skipChildrenFor ?? [])
   const maxDepth = opts.maxDepth
   const concurrency = opts.concurrency ?? 3
@@ -378,7 +381,7 @@ export const retrieveAsTree = (
   const fetchTreeRecursive = (args: {
     blockId: string
     depth: number
-  }): Effect.Effect<BlockTree, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
+  }): Effect.Effect<BlockTree, NotionApiError, NotionConfig | HttpClient> =>
     Effect.gen(function* () {
       const { blockId, depth } = args
       // Bail if we've exceeded max depth

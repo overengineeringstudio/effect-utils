@@ -1,4 +1,4 @@
-import type { FileSystem } from '@effect/platform'
+import type { FileSystem } from 'effect'
 import { Schedule, Stream } from 'effect'
 
 import type { SessionIngestError, SessionSourceDiscoveryError } from './errors.ts'
@@ -17,11 +17,11 @@ export const watchSource = <TRecord>(options: {
 > => {
   const interval = options.intervalMs ?? 2000
 
-  return Stream.repeatEffectWithSchedule(
-    ingestSource(options.adapter),
+  return Stream.repeat(
+    Stream.fromEffect(ingestSource(options.adapter)),
     Schedule.spaced(interval),
   ).pipe(
-    Stream.mapConcat((artifacts) => artifacts),
+    Stream.flatMap((artifacts) => Stream.fromIterable(artifacts)),
     Stream.filter((artifact) => artifact.records.length > 0),
   )
 }

@@ -1,26 +1,9 @@
 import fs from 'node:fs'
 
-import * as Command from '@effect/platform/Command'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import type { Process } from '@effect/platform/CommandExecutor'
-import type { PlatformError } from '@effect/platform/Error'
 import type { Scope } from 'effect'
-import {
-  Cause,
-  Chunk,
-  type Duration,
-  Effect,
-  Fiber,
-  FiberId,
-  FiberRefs,
-  HashMap,
-  identity,
-  List,
-  LogLevel,
-  Option,
-  Schema,
-  Stream,
-} from 'effect'
+import { Cause, type Duration, Effect, Fiber, Option, Schema, Stream } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
+import * as Process from 'effect/unstable/process'
 
 import { type OtelAttrEncodeError, type OtelOperationDefinition } from '@overeng/otel-contract'
 
@@ -35,7 +18,8 @@ import * as FileLogger from './FileLogger.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
 // Branded zero value so we can compare exit codes without touching internals.
-const SUCCESS_EXIT_CODE: CommandExecutor.ExitCode = 0 as CommandExecutor.ExitCode
+const SUCCESS_EXIT_CODE: Process.ChildProcessSpawner.ExitCode =
+  0 as Process.ChildProcessSpawner.ExitCode
 
 // Runtime spans DERIVED from the registered seam contract (`./cmd.contract.ts`, namespace `cmd`),
 // the single SSOT for the Weaver registry projection AND these runtime encoders (SC-R13/R14).
@@ -49,7 +33,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -96,13 +80,13 @@ export const cmd: (
         /** Optional number of archived logs to retain; defaults to 50 */
         logRetention?: number
         /** Grace period before escalating from SIGTERM to SIGKILL on cleanup. Defaults to 5 seconds. */
-        killTimeout?: Duration.DurationInput
+        killTimeout?: Duration.Input
       }
     | undefined,
 ) => Effect.Effect<
-  CommandExecutor.ExitCode,
+  Process.ChildProcessSpawner.ExitCode,
   PlatformError | CmdError,
-  CommandExecutor.CommandExecutor | CurrentWorkingDirectory
+  Process.ChildProcessSpawner.ChildProcessSpawner | CurrentWorkingDirectory
 > = Effect.fn('cmd')(function* (commandInput, options) {
   const cwd = yield* CurrentWorkingDirectory
 
@@ -152,15 +136,16 @@ export const cmd: (
     shell: useShell,
   })
 
-  const baseArgs = {
+  const baseArgs: TRunBaseArgs = {
     commandInput: finalInput,
     cwd,
-    env: options?.env ?? {},
+    // v4 spawner treats an explicit env as authoritative; undefined inherits.
+    env: options?.env,
     stdoutMode,
     stderrMode,
     useShell,
     killTimeout: options?.killTimeout,
-  } as const
+  }
 
   const exitCode = yield* isNotUndefined(logPath) === true
     ? Effect.gen(function* () {
@@ -212,9 +197,9 @@ export const cmdStart: (
       }
     | undefined,
 ) => Effect.Effect<
-  CommandExecutor.Process,
+  Process.ChildProcessSpawner.ChildProcessHandle,
   PlatformError,
-  CommandExecutor.CommandExecutor | CurrentWorkingDirectory | Scope.Scope
+  Process.ChildProcessSpawner.ChildProcessSpawner | CurrentWorkingDirectory | Scope.Scope
 > = Effect.fn('cmdStart')(function* (commandInput, options) {
   const cwd = yield* CurrentWorkingDirectory
 
@@ -252,15 +237,15 @@ export const cmdStart: (
     shell: useShell,
   })
 
-  return yield* buildCommand({ input: normalizedInput, useShell }).pipe(
-    Command.stdin('inherit'),
-    Command.stdout(options?.stdout ?? 'inherit'),
-    Command.stderr(options?.stderr ?? 'inherit'),
-    Command.workingDirectory(cwd),
-    useShell === true ? Command.runInShell(true) : identity,
-    Command.env(options?.env ?? {}),
-    Command.start,
-  )
+  return yield* buildCommand({
+    input: normalizedInput,
+    useShell,
+    cwd,
+    ...(options?.env !== undefined ? { env: options.env } : {}),
+    stdin: 'inherit',
+    stdout: options?.stdout ?? 'inherit',
+    stderr: options?.stderr ?? 'inherit',
+  })
 })
 
 /**
@@ -282,7 +267,7 @@ export const cmdText: (
 ) => Effect.Effect<
   string,
   PlatformError,
-  CommandExecutor.CommandExecutor | CurrentWorkingDirectory
+  Process.ChildProcessSpawner.ChildProcessSpawner | CurrentWorkingDirectory
 > = Effect.fn('cmdText')(function* (commandInput, options) {
   const cwd = yield* CurrentWorkingDirectory
   const [command, ...args] =
@@ -309,13 +294,17 @@ export const cmdText: (
     shell: options?.runInShell === true,
   })
 
-  return yield* Command.make(command, ...args).pipe(
-    // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
-    Command.stderr(options?.stderr ?? 'inherit'),
-    Command.workingDirectory(cwd),
-    options?.runInShell === true ? Command.runInShell(true) : identity,
-    Command.env(options?.env ?? {}),
-    Command.string,
+  const spawner = yield* Process.ChildProcessSpawner.ChildProcessSpawner
+
+  return yield* spawner.string(
+    buildCommand({
+      input: [command, ...args],
+      useShell: options?.runInShell === true,
+      cwd,
+      // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
+      stderr: options?.stderr ?? 'inherit',
+      ...(options?.env !== undefined ? { env: options.env } : {}),
+    }),
   )
 })
 
@@ -346,7 +335,7 @@ export const cmdCollect = <R = never>(opts: {
 }): Effect.Effect<
   CmdCollectResult,
   PlatformError,
-  CommandExecutor.CommandExecutor | CurrentWorkingDirectory | R
+  Process.ChildProcessSpawner.ChildProcessSpawner | CurrentWorkingDirectory | R
 > =>
   Effect.gen(function* () {
     const cwd = opts.workingDirectory ?? (yield* CurrentWorkingDirectory)
@@ -367,43 +356,40 @@ export const cmdCollect = <R = never>(opts: {
 
     yield* Effect.logDebug(`Collecting '${debugStr}' in '${cwd}'`)
 
-    const builtCmd = buildCommand({ input: normalizedInput, useShell }).pipe(
-      Command.stdout('pipe'),
-      Command.stderr('pipe'),
-      Command.workingDirectory(cwd),
-      useShell === true ? Command.runInShell(true) : identity,
-      Command.env(opts.env ?? {}),
-    )
+    const builtCmd = buildCommand({
+      input: normalizedInput,
+      useShell,
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      ...(opts.env !== undefined ? { env: opts.env } : {}),
+    })
 
     const { onOutput } = opts
 
     return yield* Effect.scoped(
-      Command.start(builtCmd).pipe(
-        Effect.flatMap((proc) =>
-          Effect.all(
-            {
-              stdout: proc.stdout.pipe(
-                Stream.decodeText('utf8'),
-                Stream.splitLines,
-                Stream.tap((line) =>
-                  onOutput !== undefined ? onOutput('stdout', line) : Effect.void,
-                ),
-                Stream.runCollect,
-                Effect.map(Chunk.toReadonlyArray),
+      Effect.flatMap(builtCmd, (proc) =>
+        Effect.all(
+          {
+            stdout: proc.stdout.pipe(
+              Stream.decodeText({ encoding: 'utf8' }),
+              Stream.splitLines,
+              Stream.tap((line) =>
+                onOutput !== undefined ? onOutput('stdout', line) : Effect.void,
               ),
-              stderr: proc.stderr.pipe(
-                Stream.decodeText('utf8'),
-                Stream.splitLines,
-                Stream.tap((line) =>
-                  onOutput !== undefined ? onOutput('stderr', line) : Effect.void,
-                ),
-                Stream.runCollect,
-                Effect.map(Chunk.toReadonlyArray),
+              Stream.runCollect,
+            ),
+            stderr: proc.stderr.pipe(
+              Stream.decodeText({ encoding: 'utf8' }),
+              Stream.splitLines,
+              Stream.tap((line) =>
+                onOutput !== undefined ? onOutput('stderr', line) : Effect.void,
               ),
-              exitCode: proc.exitCode,
-            },
-            { concurrency: 'unbounded' },
-          ),
+              Stream.runCollect,
+            ),
+            exitCode: proc.exitCode,
+          },
+          { concurrency: 'unbounded' },
         ),
       ),
     )
@@ -423,8 +409,8 @@ export const cmdCollect = <R = never>(opts: {
 
 /** Internal error for process signal operations */
 class ProcessSignalError extends Schema.TaggedError<ProcessSignalError>()('ProcessSignalError', {
-  cause: Schema.Defect,
-  code: Schema.optionalWith(Schema.String, { as: 'Option' }),
+  cause: Schema.Unknown,
+  code: Schema.optional(Schema.String),
 }) {}
 
 /** Error thrown when a shell command exits with non-zero status */
@@ -432,21 +418,18 @@ export class CmdError extends Schema.TaggedError<CmdError>()('CmdError', {
   command: Schema.String,
   args: Schema.Array(Schema.String),
   cwd: Schema.String,
-  env: Schema.Record({
-    key: Schema.String,
-    value: Schema.String.pipe(Schema.UndefinedOr),
-  }),
-  stderr: Schema.Literal('inherit', 'pipe'),
+  env: Schema.Record(Schema.String, Schema.UndefinedOr(Schema.String)),
+  stderr: Schema.Literals(['inherit', 'pipe']),
 }) {}
 
 type TRunBaseArgs = {
   readonly commandInput: string | string[]
   readonly cwd: string
-  readonly env: Record<string, string | undefined>
+  readonly env: Record<string, string | undefined> | undefined
   readonly stdoutMode: 'inherit' | 'pipe'
   readonly stderrMode: 'inherit' | 'pipe'
   readonly useShell: boolean
-  readonly killTimeout: Duration.DurationInput | undefined
+  readonly killTimeout: Duration.Input | undefined
 }
 
 const runWithoutLogging = ({
@@ -457,14 +440,19 @@ const runWithoutLogging = ({
   stderrMode,
   useShell,
 }: TRunBaseArgs) =>
-  buildCommand({ input: commandInput, useShell }).pipe(
-    Command.stdin('inherit'),
-    Command.stdout(stdoutMode),
-    Command.stderr(stderrMode),
-    Command.workingDirectory(cwd),
-    useShell === true ? Command.runInShell(true) : identity,
-    Command.env(env),
-    Command.exitCode,
+  Effect.scoped(
+    Effect.flatMap(
+      buildCommand({
+        input: commandInput,
+        useShell,
+        cwd,
+        ...(env !== undefined ? { env } : {}),
+        stdin: 'inherit',
+        stdout: stdoutMode,
+        stderr: stderrMode,
+      }),
+      (proc) => proc.exitCode,
+    ),
   )
 
 type TRunWithLoggingArgs = TRunBaseArgs & {
@@ -491,45 +479,45 @@ const runWithLogging = ({
 }: TRunWithLoggingArgs) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const envWithColor = env.FORCE_COLOR === undefined ? { ...env, FORCE_COLOR: '1' } : env
+      const inheritedEnv = env ?? process.env
+      const envWithColor =
+        inheritedEnv.FORCE_COLOR === undefined
+          ? { ...inheritedEnv, FORCE_COLOR: '1' }
+          : inheritedEnv
 
       const logFile = yield* Effect.acquireRelease(
         Effect.sync(() => fs.openSync(logPath, 'a', 0o666)),
         (fd) => Effect.sync(() => fs.closeSync(fd)),
       )
 
-      const prettyLogger = FileLogger.prettyLoggerTty({
+      const prettyLogger = FileLogger.formatPrettyEntry({
         colors: true,
-        stderr: false,
         formatDate: (date) => `${FileLogger.defaultDateFormat(date)} ${threadName}`,
       })
 
       const appendLog = ({ channel, content }: { channel: 'stdout' | 'stderr'; content: string }) =>
         Effect.sync(() => {
-          const formatted = prettyLogger.log({
-            fiberId: FiberId.none,
-            logLevel: channel === 'stdout' ? LogLevel.Info : LogLevel.Warning,
+          const formatted = prettyLogger({
+            date: new Date(),
+            logLevel: channel === 'stdout' ? ('Info' as const) : ('Warn' as const),
             message: [`[${channel}]${content.length > 0 ? ` ${content}` : ''}`],
             cause: Cause.empty,
-            context: FiberRefs.empty(),
-            spans: List.empty(),
-            annotations: HashMap.empty(),
-            date: new Date(),
           })
           fs.writeSync(logFile, formatted)
         })
 
-      const command = buildCommand({ input: commandInput, useShell }).pipe(
-        Command.stdin('inherit'),
-        Command.stdout('pipe'),
-        Command.stderr('pipe'),
-        Command.workingDirectory(cwd),
-        useShell === true ? Command.runInShell(true) : identity,
-        Command.env(envWithColor),
-      )
+      const command = buildCommand({
+        input: commandInput,
+        useShell,
+        cwd,
+        env: envWithColor,
+        stdin: 'inherit',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
 
       // Acquire/start the command and make sure we kill the process group on interruption.
-      const runningProcess = yield* Effect.acquireRelease(command.pipe(Command.start), (proc) =>
+      const runningProcess = yield* Effect.acquireRelease(command, (proc) =>
         proc.isRunning.pipe(
           Effect.flatMap((running) =>
             running === true
@@ -555,13 +543,13 @@ const runWithLogging = ({
       })
 
       const stdoutFiber = yield* runningProcess.stdout.pipe(
-        Stream.decodeText('utf8'),
+        Stream.decodeText({ encoding: 'utf8' }),
         Stream.runForEach((chunk) => stdoutHandler.onChunk(chunk)),
         Effect.forkScoped,
       )
 
       const stderrFiber = yield* runningProcess.stderr.pipe(
-        Stream.decodeText('utf8'),
+        Stream.decodeText({ encoding: 'utf8' }),
         Stream.runForEach((chunk) => stderrHandler.onChunk(chunk)),
         Effect.forkScoped,
       )
@@ -598,14 +586,14 @@ const runWithLogging = ({
   )
 
 /** Default grace period before escalating from SIGTERM to SIGKILL */
-const DEFAULT_KILL_TIMEOUT: Duration.DurationInput = '5 seconds'
+const DEFAULT_KILL_TIMEOUT: Duration.Input = '5 seconds'
 
 /**
  * Send a signal to a process group (or individual process as fallback).
  * On Unix, uses negative PID to signal the entire group.
  */
 const sendSignalToProcessGroup = (opts: {
-  proc: Process
+  proc: Process.ChildProcessSpawner.ChildProcessHandle
   signal: NodeJS.Signals
 }): Effect.Effect<void> => {
   const { proc, signal } = opts
@@ -619,62 +607,72 @@ const sendSignalToProcessGroup = (opts: {
         const errno = e as NodeJS.ErrnoException
         return new ProcessSignalError({
           cause: e,
-          code: Option.fromNullable(errno.code),
+          code: errno.code,
         })
       },
     }).pipe(
-      Effect.catchAll((e) => {
+      Effect.catch((e) => {
         // ESRCH = no such process (already dead) - that's fine
-        if (Option.getOrUndefined(e.code) === 'ESRCH') return Effect.void
+        if (e.code === 'ESRCH') return Effect.void
         // Other errors: fall back to individual kill (ignore errors)
-        return proc.kill(signal).pipe(Effect.ignore)
+        return proc.kill({ killSignal: signal }).pipe(Effect.ignore)
       }),
     )
   }
 
   // Windows: just use individual kill (taskkill /T would need shell)
-  return proc.kill(signal).pipe(Effect.ignore)
+  return proc.kill({ killSignal: signal }).pipe(Effect.ignore)
 }
 
 /**
  * Kill a process group with SIGTERM → wait → SIGKILL escalation.
  * Sends SIGTERM first, waits for graceful exit, then SIGKILL if needed.
  */
-const killProcessGroup = Effect.fn('cmd/killProcessGroup')(function* (opts: {
-  proc: Process
-  timeout?: Duration.DurationInput
-}) {
+const killProcessGroup = (opts: {
+  proc: Process.ChildProcessSpawner.ChildProcessHandle
+  timeout?: Duration.Input
+}): Effect.Effect<void> => {
   const { proc } = opts
   const timeout = opts.timeout ?? DEFAULT_KILL_TIMEOUT
 
-  // Send SIGTERM first
-  yield* sendSignalToProcessGroup({ proc, signal: 'SIGTERM' })
+  return Effect.gen(function* () {
+    // Send SIGTERM first
+    yield* sendSignalToProcessGroup({ proc, signal: 'SIGTERM' })
 
-  // Wait for process to exit gracefully (with timeout)
-  const exited = yield* proc.exitCode.pipe(Effect.timeout(timeout), Effect.option)
+    // Wait for process to exit gracefully (with timeout)
+    const exited = yield* proc.exitCode.pipe(Effect.timeout(timeout), Effect.option)
 
-  // If still running after timeout, escalate to SIGKILL
-  if (Option.isNone(exited) === true) {
-    yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
-    yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
-  }
-}, Effect.ignore)
+    // If still running after timeout, escalate to SIGKILL
+    if (Option.isNone(exited) === true) {
+      yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
+      yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
+    }
+  }).pipe(Effect.ignore)
+}
 
-const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => {
-  const { input, useShell } = opts
+const buildCommand = (
+  opts: {
+    input: string | string[]
+    useShell: boolean
+  } & Process.ChildProcess.CommandOptions,
+): Process.ChildProcess.StandardCommand => {
+  const { input, useShell, ...options } = opts
   if (Array.isArray(input) === true) {
     const [command, ...args] = input
     if (command === undefined) throw new Error('Command cannot be empty')
-    return Command.make(command, ...args)
+    return Process.ChildProcess.make(command, args, {
+      ...(useShell === true ? { shell: true } : {}),
+      ...options,
+    })
   }
 
-  if (useShell === true) {
-    return Command.make(input)
-  }
-
-  const [command, ...args] = input.split(' ')
-  if (command === undefined) throw new Error('Command cannot be empty')
-  return Command.make(command, ...args)
+  // Single-string form is tokenized on whitespace at execution time.
+  const [command, ...args] = input.trim().split(/\s+/)
+  if (command === undefined || command === '') throw new Error('Command cannot be empty')
+  return Process.ChildProcess.make(command, args, {
+    ...(useShell === true ? { shell: true } : {}),
+    ...options,
+  })
 }
 
 type TLineTerminator = 'newline' | 'carriage-return' | 'none'

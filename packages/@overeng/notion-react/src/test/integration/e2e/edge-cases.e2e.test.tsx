@@ -195,13 +195,13 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
               <Image url="ftp://not-a-real-host/image.png" />
             </Page>,
             { pageId },
-          ).pipe(Effect.either)
+          ).pipe(Effect.result)
           // Either the API rejects the URL (we get a Left tagged error) or
           // Notion silently accepts it. Both outcomes are acceptable —
           // we just assert the renderer does not throw an unhandled error
           // and that a Left carries a typed `NotionSyncError`.
-          if (result._tag === 'Left') {
-            expect(result.left._tag).toBe('NotionSyncError')
+          if (result._tag === 'Failure') {
+            expect(result.failure._tag).toBe('NotionSyncError')
           }
         }),
       )

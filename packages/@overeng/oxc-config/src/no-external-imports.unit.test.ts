@@ -43,12 +43,18 @@ tsRuleTester.run('no-external-imports: valid node builtins', rule, {
 tsRuleTester.run('no-external-imports: valid type-only imports', rule, {
   valid: [
     { code: `import type { Effect } from 'effect'` },
-    { code: `import type { FileSystem, Path } from '@effect/platform'` },
+    {
+      code: `import type { type FileSystem } from 'effect/FileSystem'
+import type { type Path } from 'effect/Path'`,
+    },
     { code: `import type React from 'react'` },
     // Inline type specifiers
     { code: `import { type Effect } from 'effect'` },
     { code: `import { type Effect, type pipe } from 'effect'` },
-    { code: `import { type FileSystem, type Path } from '@effect/platform'` },
+    {
+      code: `import { type FileSystem } from 'effect/FileSystem'
+import { type Path } from 'effect/Path'`,
+    },
   ],
   invalid: [],
 })
@@ -61,8 +67,9 @@ tsRuleTester.run('no-external-imports: invalid value imports from npm', rule, {
       errors: [{ messageId: 'noExternalImport' }],
     },
     {
-      code: `import { FileSystem, Path } from '@effect/platform'`,
-      errors: [{ messageId: 'noExternalImport' }],
+      code: `import { FileSystem } from 'effect/FileSystem'
+import { Path } from 'effect/Path'`,
+      errors: [{ messageId: 'noExternalImport' }, { messageId: 'noExternalImport' }],
     },
     {
       code: `import React from 'react'`,

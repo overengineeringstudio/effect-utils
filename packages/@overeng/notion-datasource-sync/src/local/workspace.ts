@@ -46,7 +46,7 @@ export const FilesystemWorkspaceSidecar = FilesystemWorkspaceSidecarSchema
 /** Decoded shape of {@link FilesystemWorkspaceSidecar}. */
 export type FilesystemWorkspaceSidecar = FilesystemWorkspaceSidecarType
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+const decode = <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   value,
 }: {
@@ -288,15 +288,16 @@ export const classifyLocalDelete = ({
   remoteTrash: 'blocked-by-default',
 })
 
-const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date().toISOString() })
+const observedAtNow = () =>
+  decode({ schema: Schema.DateTimeUtcFromString, value: new Date().toISOString() })
 
 const FilesystemPathClaim = Schema.Struct({
   pageId: PageId,
   path: WorkspaceRelativePath,
-}).annotations({ identifier: 'NotionDatasourceSync.FilesystemPathClaim' })
+}).annotate({ identifier: 'NotionDatasourceSync.FilesystemPathClaim' })
 type FilesystemPathClaim = typeof FilesystemPathClaim.Type
 
-const FilesystemPathClaims = Schema.Array(FilesystemPathClaim).annotations({
+const FilesystemPathClaims = Schema.Array(FilesystemPathClaim).annotate({
   identifier: 'NotionDatasourceSync.FilesystemPathClaims',
 })
 
@@ -421,7 +422,7 @@ const safeWorkspacePath = async ({
   return { relativePath: decision.path, absolutePath }
 }
 
-const readJsonFile = async <TSchema extends Schema.Schema.AnyNoContext>({
+const readJsonFile = async <TSchema extends Schema.Codec<any, any, never>>({
   schema,
   path,
   operation,

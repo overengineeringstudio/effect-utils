@@ -5,9 +5,10 @@
  * Used by pre-flight checks (sync/lock/pin) and `mr store fix`.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import type { CommandExecutor } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import {
   type MegarepoConfig,
@@ -74,7 +75,7 @@ export class StoreHygieneError extends Schema.TaggedError<StoreHygieneError>()(
     message: Schema.String,
     issues: Schema.Array(
       Schema.Struct({
-        severity: Schema.Literal('error', 'warning', 'info'),
+        severity: Schema.Literals(['error', 'warning', 'info']),
         type: Schema.String,
         memberName: Schema.String,
         message: Schema.String,
@@ -108,11 +109,7 @@ export const validateStoreMembers = ({
   config: MegarepoConfig
   lockFile: LockFile
   store: MegarepoStore
-}): Effect.Effect<
-  StoreIssue[],
-  PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
-> =>
+}): Effect.Effect<StoreIssue[], PlatformError, FileSystem.FileSystem | ChildProcessSpawner> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const issues: StoreIssue[] = []
@@ -277,8 +274,8 @@ export const runPreflightChecks = ({
   store: MegarepoStore
 }): Effect.Effect<
   void,
-  StoreHygieneError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  StoreHygieneError | PlatformError,
+  FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const issues = yield* validateStoreMembers({
@@ -359,11 +356,7 @@ export const fixStoreIssues = ({
   issues: readonly StoreIssue[]
   store: MegarepoStore
   dryRun?: boolean | undefined
-}): Effect.Effect<
-  FixResult[],
-  PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
-> =>
+}): Effect.Effect<FixResult[], PlatformError, FileSystem.FileSystem | ChildProcessSpawner> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const results: FixResult[] = []
@@ -444,15 +437,13 @@ export const fixStoreIssues = ({
           }
 
           // Remove existing broken worktree
-          yield* fs
-            .remove(worktreePath, { recursive: true })
-            .pipe(Effect.catchAll(() => Effect.void))
+          yield* fs.remove(worktreePath, { recursive: true }).pipe(Effect.catch(() => Effect.void))
 
           // Recreate the worktree
           yield* Effect.gen(function* () {
             yield* fs
               .makeDirectory(worktreePath, { recursive: true })
-              .pipe(Effect.catchAll(() => Effect.void))
+              .pipe(Effect.catch(() => Effect.void))
 
             const parsed = parseWorktreeRef(worktreePath)
 
@@ -486,7 +477,7 @@ export const fixStoreIssues = ({
               })
             }
           }).pipe(
-            Effect.catchAll((err) => {
+            Effect.catch((err) => {
               results.push({
                 memberName: issue.memberName,
                 issueType: issue.type,
@@ -552,7 +543,7 @@ export const fixStoreIssues = ({
               message: `cloned bare repo from ${cloneUrl}`,
             })
           }).pipe(
-            Effect.catchAll((err) => {
+            Effect.catch((err) => {
               results.push({
                 memberName: issue.memberName,
                 issueType: issue.type,

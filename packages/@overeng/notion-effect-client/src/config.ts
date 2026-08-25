@@ -17,7 +17,9 @@ export interface NotionClientConfig {
 }
 
 /** Context tag for NotionClientConfig */
-export class NotionConfig extends Context.Tag('NotionConfig')<NotionConfig, NotionClientConfig>() {}
+export class NotionConfig extends Context.Service<NotionConfig, NotionClientConfig>()(
+  'NotionConfig',
+) {}
 
 /**
  * Environment variable names checked for the Notion API token, in precedence order.

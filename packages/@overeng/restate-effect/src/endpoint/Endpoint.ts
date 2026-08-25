@@ -3,7 +3,7 @@ import * as http2 from 'node:http2'
 import * as restate from '@restatedev/restate-sdk'
 import { createEndpointHandler } from '@restatedev/restate-sdk/node'
 import type { Config, Schema, Scope } from 'effect'
-import { type ConfigError, Context, Duration, Effect, Exit, Layer, Option, Runtime } from 'effect'
+import { Context, Duration, Effect, Exit, Layer, Option } from 'effect'
 
 import { RestateContext, type StateSchemas } from '../authoring/RestateContext.ts'
 import type {
@@ -95,8 +95,8 @@ const runEffectHandler =
     readonly service: string
     readonly handler: string
     readonly run: EffectHandler
-    readonly errorSchema: Schema.Schema<any, any> | undefined
-    readonly runtime: Runtime.Runtime<AppR>
+    readonly errorSchema: Schema.Codec<any, any> | undefined
+    readonly runtime: Context.Context<AppR>
     readonly markers: HandlerMarkers
     /* The inbound-bridge transform (`./otel` supplies it; undefined in the
      * otel-free core). Applied INSIDE the handler so `trace.getActiveSpan()`
@@ -138,7 +138,7 @@ const runEffectHandler =
      * `ctx.isProcessing()` inside the emit (replays do not re-increment). The
      * start is a monotonic real-time read — only used on a real (non-replay) emit. */
     const attemptStartMs = monotonicMs()
-    Runtime.runSync(opts.runtime)(
+    Effect.runSyncWith(opts.runtime)(
       emitAttempt({ ctx, service: opts.service, handler: opts.handler }),
     )
     /* DYNAMIC USER-HANDLER DISPATCH BOUNDARY (next ~20 lines, through `runPromiseExit`):
@@ -170,14 +170,14 @@ const runEffectHandler =
      * the hook's `context.with` window, just before the program runs (R23). */
     // @effect-diagnostics-next-line anyUnknownInErrorContext:off
     const program = opts.inboundBridge !== undefined ? opts.inboundBridge(bridged) : bridged
-    const exit = await Runtime.runPromiseExit(opts.runtime)(
+    const exit = await Effect.runPromiseExitWith(opts.runtime)(
       // @effect-diagnostics-next-line anyUnknownInErrorContext:off
       program as Effect.Effect<unknown, unknown, AppR>,
     )
     const emitInvocation = (
       outcomeTag: 'success' | 'terminal' | 'retryable' | 'cancelled',
     ): void => {
-      Runtime.runSync(opts.runtime)(
+      Effect.runSyncWith(opts.runtime)(
         emitInvocationMetrics({
           ctx,
           service: opts.service,
@@ -230,7 +230,7 @@ const mapRetention = ({
   retention: RetentionOptions
   includeWorkflow: boolean
 }): Record<string, unknown> => {
-  const toMillis = (d: Duration.DurationInput): number => Duration.toMillis(Duration.decode(d))
+  const toMillis = (d: Duration.Input): number => Duration.toMillis(Duration.fromInputUnsafe(d))
   return {
     ...(retention.idempotency !== undefined
       ? { idempotencyRetention: toMillis(retention.idempotency) }
@@ -254,8 +254,8 @@ const handlerOpts = ({
   redaction,
 }: {
   spec: {
-    readonly input: Schema.Schema<any, any>
-    readonly success: Schema.Schema<any, any>
+    readonly input: Schema.Codec<any, any>
+    readonly success: Schema.Codec<any, any>
     readonly options?: HandlerOptions
   }
   redaction: RedactionCipher | undefined
@@ -290,7 +290,7 @@ const validateContractAnnotations = ({
   handlerInputs,
 }: {
   contractName: string
-  handlerInputs: ReadonlyArray<readonly [string, Schema.Schema<any, any>]>
+  handlerInputs: ReadonlyArray<readonly [string, Schema.Codec<any, any>]>
 }): void => {
   const violations = handlerInputs.flatMap(([handler, input]) =>
     validateInputAnnotations({ ast: input.ast, label: `${contractName}.${handler}` }),
@@ -361,8 +361,8 @@ export interface MaterializeWiring {
  * fails with a clear `RedactionCipherMissingError` at encode/decode — never
  * plaintext (see `./Redaction.ts`). Resolved once per `materialize*`.
  */
-const resolveRedaction = <AppR>(runtime: Runtime.Runtime<AppR>): RedactionCipher | undefined =>
-  Context.getOption(runtime.context, RestateRedaction).pipe(Option.getOrUndefined)
+const resolveRedaction = <AppR>(runtime: Context.Context<AppR>): RedactionCipher | undefined =>
+  Context.getOption(runtime, RestateRedaction).pipe(Option.getOrUndefined)
 
 /* Build the service-level `options.hooks` fragment from the wiring (omitted when
  * no hooks are configured, so the otel-free path produces an identical bag). The
@@ -395,7 +395,7 @@ const withHooks = ({
  * the application Layer), with `RestateContext` provided PER INVOCATION, and
  * maps the exit to a return value or a thrown `TerminalError`/retryable error.
  *
- * `AppR` is EXPLICIT (from `Runtime.Runtime<AppR>`) — never inferred from
+ * `AppR` is EXPLICIT (from `Context.Context<AppR>`) — never inferred from
  * handler bodies (decision 0002). The contract's precise phantom map survives on
  * the public type; only this boundary widens to `any` (invisible to users).
  */
@@ -405,7 +405,7 @@ export const materialize = <AppR>({
   wiring,
 }: {
   implementation: ServiceImplementation<Contract<string, HandlerSpecMap>, AppR>
-  runtime: Runtime.Runtime<AppR>
+  runtime: Context.Context<AppR>
   wiring?: MaterializeWiring
 }): restate.ServiceDefinition<string, unknown> => {
   const { contract, impl } = implementation
@@ -467,7 +467,7 @@ export const materializeObject = <AppR>({
     ObjectContract<string, StateSchemas, ObjectHandlerSpecMap>,
     AppR
   >
-  runtime: Runtime.Runtime<AppR>
+  runtime: Context.Context<AppR>
   wiring?: MaterializeWiring
 }): restate.VirtualObjectDefinition<string, unknown> => {
   const { contract, impl } = implementation
@@ -549,7 +549,7 @@ export const materializeWorkflow = <AppR>({
     >,
     AppR
   >
-  runtime: Runtime.Runtime<AppR>
+  runtime: Context.Context<AppR>
   wiring?: MaterializeWiring
 }): restate.WorkflowDefinition<string, unknown> => {
   const { contract, impl } = implementation
@@ -643,7 +643,7 @@ export const materializeAny = <AppR>({
   wiring,
 }: {
   implementation: AnyImplementation<AppR>
-  runtime: Runtime.Runtime<AppR>
+  runtime: Context.Context<AppR>
   wiring?: MaterializeWiring
 }):
   | restate.ServiceDefinition<string, unknown>
@@ -745,10 +745,9 @@ export interface EndpointServer {
 }
 
 /** Context service carrying the actual address of a scoped endpoint server. */
-export class BoundEndpoint extends Context.Tag('@overeng/restate-effect/BoundEndpoint')<
-  BoundEndpoint,
-  EndpointServer
->() {}
+export class BoundEndpoint extends Context.Service<BoundEndpoint, EndpointServer>()(
+  '@overeng/restate-effect/BoundEndpoint',
+) {}
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 /**
@@ -777,14 +776,14 @@ export class BoundEndpoint extends Context.Tag('@overeng/restate-effect/BoundEnd
  */
 export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Effect.Effect<EndpointServer, RestateError | ConfigError.ConfigError, AppROf<S> | Scope.Scope> =>
+): Effect.Effect<EndpointServer, RestateError | Config.ConfigError, AppROf<S> | Scope.Scope> =>
   Effect.gen(function* () {
     type AppR = AppROf<S>
     /* Resolve a `Config<number>` port (e.g. `Config.integer('PORT')`) on
      * acquisition; a literal `number` passes through. A failing Config fails
      * the layer with a `ConfigError`. */
     const port = typeof opts.port === 'number' ? opts.port : yield* opts.port
-    const runtime = yield* Effect.runtime<AppR>()
+    const runtime = yield* Effect.context<AppR>()
     const wiring: MaterializeWiring = {
       hooks: opts.hooks,
       inboundBridge: opts.inboundBridge,
@@ -804,7 +803,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
     const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])
 
     const bound = yield* Effect.acquireRelease(
-      Effect.async<EndpointServer, RestateError>((resume) => {
+      Effect.callback<EndpointServer, RestateError>((resume) => {
         const onError = (cause: Error) => {
           server.off('error', onError)
           resume(
@@ -833,7 +832,7 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
         })
       }),
       () =>
-        Effect.async<void>((resume) => {
+        Effect.callback<void>((resume) => {
           server.close(() => resume(Effect.void))
         }),
     )
@@ -845,8 +844,8 @@ export const make = <const S extends ReadonlyArray<AnyImplementation<any>>>(
 /** A scoped `Layer` wrapper around {@link make} that exposes the bound address. */
 export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Layer.Layer<BoundEndpoint, RestateError | ConfigError.ConfigError, AppROf<S>> =>
-  Layer.scoped(BoundEndpoint, make(opts))
+): Layer.Layer<BoundEndpoint, RestateError | Config.ConfigError, AppROf<S>> =>
+  Layer.effect(BoundEndpoint, make(opts))
 
 /**
  * A scoped `Layer` that starts the endpoint server and discards the bound
@@ -855,8 +854,8 @@ export const layerWithBoundEndpoint = <const S extends ReadonlyArray<AnyImplemen
  */
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Layer.Layer<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
-  Layer.scopedDiscard(make(opts))
+): Layer.Layer<never, RestateError | Config.ConfigError, AppROf<S>> =>
+  Layer.effectDiscard(make(opts))
 
 /**
  * Long-lived production entrypoint: launch the endpoint `layer` and block until
@@ -872,6 +871,5 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
  */
 export const serve = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Effect.Effect<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
-  Layer.launch(layer(opts))
+): Effect.Effect<never, RestateError | Config.ConfigError, AppROf<S>> => Layer.launch(layer(opts))
 /* eslint-enable @typescript-eslint/no-explicit-any */

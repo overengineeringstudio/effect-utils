@@ -16,7 +16,7 @@ import { serverAvailable, withRestateServer } from '../testing/testing.ts'
 
 /* ── demo app: an injected Effect service + a greeter Restate service ── */
 
-class Greeting extends Context.Tag('test/Greeting')<Greeting, { readonly prefix: string }>() {
+class Greeting extends Context.Service<Greeting, { readonly prefix: string }>()('test/Greeting') {
   static readonly Default = Layer.succeed(Greeting, { prefix: 'Hello' })
 }
 

@@ -36,14 +36,7 @@ const runtimeDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick(
-        '@effect/platform',
-        '@effect/vitest',
-        '@types/node',
-        'effect',
-        'typescript',
-        'vitest',
-      ),
+      ...catalog.pick('@effect/vitest', '@types/node', 'effect', 'typescript', 'vitest'),
     },
   },
   // `@overeng/utils` is a runtime workspace dep that carries peer dependencies

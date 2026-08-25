@@ -31,9 +31,10 @@
  * on this persistence path.
  */
 
-import type { CommandExecutor } from '@effect/platform'
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -162,8 +163,8 @@ export const archiveWorktree = (args: {
   readonly now: number
 }): Effect.Effect<
   ArchiveOutcome,
-  Git.GitCommandError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  Git.GitCommandError | PlatformError,
+  FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -201,7 +202,7 @@ export const archiveWorktree = (args: {
       Effect.flatMap(() =>
         Git.deleteBranch({ repoPath: args.bareRepoPath, branch: args.branch, force: true }),
       ),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           warnings.push(
             `branch '${args.branch}' could not be freed (re-add may fail until cleaned up): ${error.message}`,
@@ -220,7 +221,7 @@ export const archiveWorktree = (args: {
     yield* fs.readFileString(readmePath).pipe(
       Effect.orElseSucceed(() => ''),
       Effect.flatMap((existing) => writeFileAtomic({ path: readmePath, content: existing + line })),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           warnings.push(`archive README metadata not recorded: ${error.message}`)
         }),
@@ -258,8 +259,8 @@ export const archiveRefMismatchWorktree = (args: {
   readonly now: number
 }): Effect.Effect<
   ArchiveOutcome,
-  Git.GitCommandError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  Git.GitCommandError | PlatformError,
+  FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -284,7 +285,7 @@ export const archiveRefMismatchWorktree = (args: {
     const warnings: Array<string> = []
 
     yield* Git.detachWorktreeHead({ worktreePath: destPath }).pipe(
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           warnings.push(
             `archived worktree HEAD could not be detached (branch refs were preserved): ${error.message}`,
@@ -301,7 +302,7 @@ export const archiveRefMismatchWorktree = (args: {
     yield* fs.readFileString(readmePath).pipe(
       Effect.orElseSucceed(() => ''),
       Effect.flatMap((existing) => writeFileAtomic({ path: readmePath, content: existing + line })),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.sync(() => {
           warnings.push(`archive README metadata not recorded: ${error.message}`)
         }),
@@ -330,8 +331,8 @@ export const scanArchives = (args: {
   readonly bareRepoPath: AbsoluteDirPath
 }): Effect.Effect<
   ReadonlyArray<ArchiveEntry>,
-  Git.GitCommandError | PlatformError.PlatformError,
-  CommandExecutor.CommandExecutor
+  Git.GitCommandError | PlatformError,
+  ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const archiveDir = archiveDirPath(args.repoRoot)
@@ -381,8 +382,8 @@ export const reapArchive = (args: {
   readonly path: AbsoluteDirPath
 }): Effect.Effect<
   void,
-  Git.GitCommandError | PlatformError.PlatformError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  Git.GitCommandError | PlatformError,
+  FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem

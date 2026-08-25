@@ -19,13 +19,15 @@ export const InspectState = Schema.Struct({
   filePath: Schema.String,
   args: Schema.Array(ArgInfo),
   hasTimeline: Schema.Boolean,
-  timelineEventCount: Schema.Number,
+  timelineEventCount: Schema.Finite,
 })
 
 export type InspectStateType = typeof InspectState.Type
 
 /** Actions dispatched to update inspect output state */
-export const InspectAction = Schema.Union(Schema.TaggedStruct('SetState', { state: InspectState }))
+export const InspectAction = Schema.Union([
+  Schema.TaggedStruct('SetState', { state: InspectState }),
+])
 
 export type InspectActionType = typeof InspectAction.Type
 

@@ -31,8 +31,8 @@ import { Awakeable, Restate, type RestateContext, RestateService } from '../src/
 
 export const DemoInput = Schema.Struct({ label: Schema.String })
 export const DemoSuccess = Schema.Struct({
-  at: Schema.Number,
-  roll: Schema.Number,
+  at: Schema.Finite,
+  roll: Schema.Finite,
   token: Schema.String,
 })
 

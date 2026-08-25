@@ -14,9 +14,9 @@
  *   bun examples/01-basic/hello-world.tsx --help
  */
 
-import { Command, Options } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 import React from 'react'
 
 import { createTuiApp, run } from '../../src/mod.tsx'
@@ -83,10 +83,9 @@ const helloWorldCommand = Command.make(
   ({ duration, output }) => runHelloWorld(duration).pipe(Effect.provide(outputModeLayer(output))),
 )
 
-const cli = Command.run(helloWorldCommand, {
-  name: 'Hello World',
+const cli = Command.runWith(helloWorldCommand, {
   version: '1.0.0',
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

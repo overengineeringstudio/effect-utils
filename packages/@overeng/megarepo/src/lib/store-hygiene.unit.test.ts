@@ -1,6 +1,6 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -48,7 +48,7 @@ const makeTestStore = (basePath: AbsoluteDirPath): MegarepoStore => ({
   },
   hasBareRepo: () => Effect.succeed(true),
   hasWorktree: () => Effect.succeed(true),
-  listRepos: () => Effect.succeed([]),
+  listRepos: Effect.succeed([]),
   listWorktrees: () => Effect.succeed([]),
   getRepoPath: (source) => {
     if (source.type === 'github') {
@@ -79,8 +79,8 @@ const makeTestLockFile = (members: Record<string, { ref: string; commit: string 
     ),
   }) as LockFile
 
-const runWithContext = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(NodeContext.layer)))
+const runWithContext = <A, E>(effect: Effect.Effect<A, E, NodeServices.NodeServices>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)))
 
 // =============================================================================
 // Tests

@@ -7,8 +7,8 @@
  * - ndjson: Timeline events as newline-delimited JSON
  */
 
-import { Atom, Registry } from '@effect-atom/atom'
 import { Effect, Schema } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 import React from 'react'
 
 import {
@@ -159,7 +159,7 @@ const renderReact = ({
 }): Effect.Effect<string> =>
   Effect.gen(function* () {
     const targetState = computeState({ captured, timelineMode })
-    const registry = Registry.make()
+    const registry = AtomRegistry.make()
     const stateAtom = Atom.make(targetState)
 
     const viewElement = React.createElement(captured.View, { stateAtom })
@@ -185,9 +185,9 @@ const renderReact = ({
 // =============================================================================
 
 /** Encode an arbitrary (already schema-encoded) value to a JSON string. */
-const encodeJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 /** Same, but pretty-printed with a 2-space indent (json output mode). */
-const encodeJsonPretty = Schema.encodeSync(Schema.parseJson(Schema.Unknown, { space: 2 }))
+const encodeJsonPretty = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown, { space: 2 }))
 
 /** Encode state as JSON via the app's stateSchema */
 const renderJson = ({
@@ -201,7 +201,7 @@ const renderJson = ({
     const targetState = computeState({ captured, timelineMode })
     // Best-effort: encode through the app's schema, falling back to the raw
     // state on a schema mismatch (display-only path, never fails).
-    const encoded = yield* Schema.encode(captured.app.config.stateSchema)(targetState).pipe(
+    const encoded = yield* Schema.encodeEffect(captured.app.config.stateSchema)(targetState).pipe(
       Effect.orElseSucceed(() => targetState),
     )
     return encodeJsonPretty(encoded)

@@ -27,15 +27,16 @@ import {
   updateTags as upstreamUpdateTags,
   validateName,
 } from '@myobie/pty/client'
+import type { Cause } from 'effect'
 import {
   Context,
   Deferred,
   Effect,
+  Filter,
   Layer,
   Option,
   Predicate,
   Queue,
-  Runtime,
   Schedule,
   Schema,
   Stream,
@@ -61,7 +62,7 @@ import type { Screenshot } from './Screenshot.ts'
 
 /* ───────────────────────────── specs ────────────────────────────── */
 
-const PtyTags = Schema.Record({ key: Schema.String, value: Schema.String })
+const PtyTags = Schema.Record(Schema.String, Schema.String)
 
 // DYNAMIC-NAME BRIDGE (SC-DQ5): a `spanName`-parameterized operation family; kept inline (the name
 // is not fixed per contract entry) but rebuilt from the imported catalog schemas.
@@ -101,7 +102,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -162,8 +163,8 @@ export const PtyDaemonSpec = Schema.Struct({
   ephemeral: Schema.optional(Schema.Boolean),
   size: Schema.optional(
     Schema.Struct({
-      rows: Schema.Number.pipe(Schema.int(), Schema.positive()),
-      cols: Schema.Number.pipe(Schema.int(), Schema.positive()),
+      rows: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
+      cols: Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))),
     }),
   ),
   /** Extra environment variables to set for the spawned daemon process.
@@ -273,7 +274,7 @@ export interface PtyClientSession {
 /* ───────────────────────────── service ──────────────────────────── */
 
 /** Effect service wrapping the detached `@myobie/pty/client` API. */
-export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
+export class PtyClient extends Context.Service<
   PtyClient,
   {
     readonly spawnDaemon: (spec: PtyDaemonSpec) => Effect.Effect<void, PtyError>
@@ -296,7 +297,7 @@ export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
     readonly followEvents: (spec: PtyFollowEventsSpec) => Stream.Stream<PtyEvent, PtyError>
     readonly kill: (input: { readonly name: PtyName }) => Effect.Effect<void, PtyError>
   }
->() {}
+>()('@overeng/pty-effect/PtyClient') {}
 
 /* ─────────────────────────── implementation ─────────────────────── */
 
@@ -366,7 +367,7 @@ const matches = (input: { readonly haystack: string; readonly needle: string | R
 }
 
 /** Convenience re-export: decode a raw string into a branded PtyName. */
-export const decodePtyName = Schema.decodeUnknown(PtyName)
+export const decodePtyName = Schema.decodeUnknownEffect(PtyName)
 
 const validateNameOrFail = (name: string) =>
   Effect.try({
@@ -585,7 +586,7 @@ const readRecentEvents = (spec: PtyReadRecentEventsSpec) =>
   }).pipe(withPtyNameSpan({ spanName: 'pty-client.readRecentEvents', name: spec.name }))
 
 const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyError> =>
-  Stream.asyncPush<PtyEvent, PtyError>((emit) =>
+  Stream.callback<PtyEvent, PtyError>((queue) =>
     Effect.gen(function* () {
       const names = spec.names !== undefined ? [...spec.names] : undefined
 
@@ -597,7 +598,7 @@ const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyErr
 
       const onEvent = (event: EventRecord) => {
         try {
-          emit.single(decodePtyEvent(event))
+          Queue.offerUnsafe(queue, decodePtyEvent(event))
         } catch {
           // Ignore malformed lines from the append-only event log.
         }
@@ -635,9 +636,9 @@ const kill = (input: { readonly name: PtyName }) =>
 
 const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, Scope.Scope> =>
   Effect.gen(function* () {
-    const queue = yield* Queue.bounded<Uint8Array>(1024)
+    const queue = yield* Queue.bounded<Uint8Array, Cause.Done>(1024)
     const exitDeferred = yield* Deferred.make<{ readonly code: number }, PtyError>()
-    const runtime = yield* Effect.runtime<Scope.Scope>()
+    const context = yield* Effect.context<Scope.Scope>()
     const enc = new TextEncoder()
 
     const opts: SessionConnectionOptions = {
@@ -654,14 +655,14 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
     })
 
     const runAsync = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) => {
-      void Runtime.runFork(runtime)(effect)
+      void Effect.runForkWith(context)(effect)
     }
 
     conn.on('data', (chunk: string) => {
       runAsync(Queue.offer(queue, enc.encode(chunk)))
     })
     conn.on('exit', (code: number) => {
-      runAsync(Deferred.succeed(exitDeferred, { code }).pipe(Effect.andThen(Queue.shutdown(queue))))
+      runAsync(Deferred.succeed(exitDeferred, { code }).pipe(Effect.andThen(Queue.end(queue))))
     })
     conn.on('error', (err: Error) => {
       runAsync(
@@ -673,7 +674,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
             name: spec.name,
             cause: err,
           }),
-        ).pipe(Effect.andThen(Queue.shutdown(queue))),
+        ).pipe(Effect.andThen(Queue.end(queue))),
       )
     })
     conn.on('close', () => {
@@ -681,7 +682,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
         Deferred.fail(
           exitDeferred,
           new PtyError({ reason: 'Closed', method: 'attach.close', name: spec.name }),
-        ).pipe(Effect.andThen(Queue.shutdown(queue))),
+        ).pipe(Effect.andThen(Queue.end(queue))),
       )
     })
 
@@ -723,9 +724,11 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
 
     const waitForText: PtyClientSession['waitForText'] = ({ needle, schedule }) =>
       pipe(
-        Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
-        Stream.filterMap((ss) =>
-          matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
+        Stream.fromEffectSchedule(screenshot, schedule ?? defaultPollSchedule),
+        Stream.filterMap(
+          Filter.fromPredicateOption((ss) =>
+            matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
+          ),
         ),
         Stream.runHead,
         Effect.flatMap(
@@ -746,9 +749,11 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
 
     const waitForAbsent: PtyClientSession['waitForAbsent'] = ({ needle, schedule }) =>
       pipe(
-        Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
-        Stream.filterMap((ss) =>
-          matches({ haystack: ss.text, needle }) === false ? Option.some(ss) : Option.none(),
+        Stream.fromEffectSchedule(screenshot, schedule ?? defaultPollSchedule),
+        Stream.filterMap(
+          Filter.fromPredicateOption((ss) =>
+            matches({ haystack: ss.text, needle }) === false ? Option.some(ss) : Option.none(),
+          ),
         ),
         Stream.runHead,
         Effect.flatMap(

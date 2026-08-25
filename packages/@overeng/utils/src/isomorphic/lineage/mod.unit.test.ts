@@ -20,14 +20,20 @@ import {
   sourceOfTruth,
 } from './mod.ts'
 
+/*
+ * Generic number placeholder for annotation round-trip tests: only the AST
+ * shape matters here, so the concrete numeric domain is irrelevant.
+ */
+// @effect-diagnostics-next-line schemaNumber:off -- generic test placeholder; Schema.Finite changes AST shape and breaks annotation lookups under test
+const NumberSchema = Schema.Number
 describe('Lineage annotations: round-trip', () => {
   it('sourceOfTruth', () => {
-    const s = Schema.Number.pipe(sourceOfTruth({ owner: 'orders', system: 'pg' }))
+    const s = NumberSchema.pipe(sourceOfTruth({ owner: 'orders', system: 'pg' }))
     expect(getLineage(s)).toEqual({ _tag: 'SourceOfTruth', owner: 'orders', system: 'pg' })
   })
 
   it('derivedFrom (bare field names + default Pure)', () => {
-    const s = Schema.Number.pipe(derivedFrom({ from: ['subtotal', 'tax'] }))
+    const s = NumberSchema.pipe(derivedFrom({ from: ['subtotal', 'tax'] }))
     expect(getLineage(s)).toEqual({
       _tag: 'Derived',
       from: [
@@ -39,7 +45,7 @@ describe('Lineage annotations: round-trip', () => {
   })
 
   it('derivedFrom (explicit DerivationKind + pure flag)', () => {
-    const s = Schema.Number.pipe(
+    const s = NumberSchema.pipe(
       derivedFrom({
         from: [{ _tag: 'Field', path: '$.items' }],
         how: { _tag: 'Aggregation', op: 'sum' },
@@ -56,12 +62,12 @@ describe('Lineage annotations: round-trip', () => {
   })
 
   it('projection / cache / mirror / external / computed', () => {
-    expect(getLineage(Schema.Number.pipe(projection({ of: 'total', stalenessMs: 5000 })))).toEqual({
+    expect(getLineage(NumberSchema.pipe(projection({ of: 'total', stalenessMs: 5000 })))).toEqual({
       _tag: 'Projection',
       of: { _tag: 'Field', path: '$.total' },
       stalenessMs: 5000,
     })
-    expect(getLineage(Schema.Number.pipe(cache({ of: 'total', ttlMs: 1000 })))).toEqual({
+    expect(getLineage(NumberSchema.pipe(cache({ of: 'total', ttlMs: 1000 })))).toEqual({
       _tag: 'Cache',
       of: { _tag: 'Field', path: '$.total' },
       ttlMs: 1000,
@@ -76,17 +82,17 @@ describe('Lineage annotations: round-trip', () => {
       system: 'stripe',
       ref: 'cus_123',
     })
-    expect(getLineage(Schema.Number.pipe(computed({ fn: 'now()' })))).toEqual({
+    expect(getLineage(NumberSchema.pipe(computed({ fn: 'now()' })))).toEqual({
       _tag: 'Computed',
       fn: 'now()',
     })
   })
 
   it('companion annotations: authority / freshness / foreignKey', () => {
-    const a = Schema.Number.pipe(authority({ writers: ['svc-orders'], readers: ['svc-billing'] }))
+    const a = NumberSchema.pipe(authority({ writers: ['svc-orders'], readers: ['svc-billing'] }))
     expect(getAuthority(a)).toEqual({ writers: ['svc-orders'], readers: ['svc-billing'] })
 
-    const f = Schema.Number.pipe(freshness({ capturedAt: 'event-time', maxAgeMs: 60000 }))
+    const f = NumberSchema.pipe(freshness({ capturedAt: 'event-time', maxAgeMs: 60000 }))
     expect(getFreshness(f)).toEqual({ capturedAt: 'event-time', maxAgeMs: 60000 })
 
     const r = Schema.String.pipe(foreignKey({ targetSchema: 'Order', targetField: 'id' }))
@@ -98,24 +104,26 @@ describe('Lineage annotations: round-trip', () => {
   })
 
   it('reads annotations through Refinement wrappers', () => {
-    const inner = Schema.Number.pipe(sourceOfTruth())
-    /* Refinement wrapper around an inner-annotated schema. */
-    const wrapped = inner.pipe(Schema.positive())
+    const inner = NumberSchema.pipe(sourceOfTruth())
+    /* Check (v4 refinement) wrapper around an inner-annotated schema. */
+    const wrapped = inner.pipe(Schema.check(Schema.isGreaterThan(0)))
     expect(getLineage(wrapped)).toEqual({ _tag: 'SourceOfTruth' })
   })
 })
 
 describe('Lineage annotations: fail-soft', () => {
   it('returns undefined for malformed annotation payloads', () => {
-    const bogus = Schema.Number.annotations({ [LineageAnnotationId]: { _tag: 'Bogus' } })
+    const bogus = NumberSchema.annotate({
+      [LineageAnnotationId as unknown as string]: { _tag: 'Bogus' },
+    })
     expect(getLineage(bogus)).toBeUndefined()
   })
 
   it('returns undefined when annotation is absent', () => {
-    expect(getLineage(Schema.Number)).toBeUndefined()
-    expect(getAuthority(Schema.Number)).toBeUndefined()
-    expect(getFreshness(Schema.Number)).toBeUndefined()
-    expect(getReference(Schema.Number)).toBeUndefined()
+    expect(getLineage(NumberSchema)).toBeUndefined()
+    expect(getAuthority(NumberSchema)).toBeUndefined()
+    expect(getFreshness(NumberSchema)).toBeUndefined()
+    expect(getReference(NumberSchema)).toBeUndefined()
   })
 })
 

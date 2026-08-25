@@ -17,6 +17,13 @@ const allowedRawOtelFiles = new Set([
   'packages/@overeng/utils-dev/src/otelite/otel.ts',
 ])
 
+const allowedRawMetricFiles = new Set([
+  ...allowedRawOtelFiles,
+  // v4: `Metric.update` is the only emission API; utils/node/otel.ts is the shared
+  // runtime bridge layer that owns raw emission on behalf of the contracts.
+  'packages/@overeng/utils/src/node/otel.ts',
+])
+
 const isProductionSource = (path: string) =>
   path.endsWith('.ts') &&
   path.includes('/src/') &&
@@ -60,7 +67,7 @@ describe('raw OTEL boundary', () => {
   it('routes production metric instrumentation through schema-backed helpers', () => {
     const violations = sourceFiles(packagesRoot).flatMap((path) => {
       const relativePath = relative(repoRoot, path)
-      if (allowedRawOtelFiles.has(relativePath) === true) return []
+      if (allowedRawMetricFiles.has(relativePath) === true) return []
 
       const source = removeComments(readFileSync(path, 'utf8'))
       return [...source.matchAll(rawMetricCall)].map((match) => `${relativePath}:${match[0]}`)

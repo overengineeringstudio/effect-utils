@@ -1,7 +1,9 @@
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -16,8 +18,9 @@ import {
 
 const git = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    return (yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', args, { cwd })),
+    )).trim()
   })
 
 describe('store-setup fixtures', () => {
@@ -46,7 +49,7 @@ describe('store-setup fixtures', () => {
         const unpushed = yield* git(bare, 'rev-list', head, '--not', '--remotes')
         expect(unpushed).toBe('')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -78,7 +81,7 @@ describe('store-setup fixtures', () => {
         const list = yield* git(bare, 'worktree', 'list', '--porcelain')
         expect(list).toContain(archivePath.replace(/\/+$/, ''))
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -112,7 +115,7 @@ describe('store-setup fixtures', () => {
         )
         expect(yield* fs.exists(registryDir)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

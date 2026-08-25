@@ -16,9 +16,9 @@
  *   bun examples/03-cli/deploy/main.ts --help
  */
 
-import { Command, Options } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
+import { Command, Flag as Options } from 'effect/unstable/cli'
 
 import { outputOption, outputModeLayer } from '../../../src/node/mod.ts'
 import { DeployError, runDeploy } from './deploy.tsx'
@@ -27,12 +27,12 @@ import { DeployError, runDeploy } from './deploy.tsx'
 // Command Options
 // =============================================================================
 
-const services = Options.text('services').pipe(
+const services = Options.string('services').pipe(
   Options.withAlias('s'),
   Options.withDescription('Comma-separated list of services to deploy'),
 )
 
-const env = Options.text('env').pipe(
+const env = Options.string('env').pipe(
   Options.withAlias('e'),
   Options.withDefault('production'),
   Options.withDescription('Environment to deploy to'),
@@ -103,10 +103,9 @@ const deploy = Command.make(
 // CLI Runner
 // =============================================================================
 
-const cli = Command.run(deploy, {
-  name: 'deploy',
+const cli = Command.runWith(deploy, {
   version: '1.0.0',
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

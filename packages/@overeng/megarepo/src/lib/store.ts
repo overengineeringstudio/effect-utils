@@ -20,8 +20,9 @@
  * ```
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Context, Effect, Layer, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
@@ -61,9 +62,7 @@ export interface MegarepoStore {
   }) => AbsoluteDirPath
 
   /** Check if a bare repo exists in the store */
-  readonly hasBareRepo: (
-    source: MemberSource,
-  ) => Effect.Effect<boolean, PlatformError.PlatformError>
+  readonly hasBareRepo: (source: MemberSource) => Effect.Effect<boolean, PlatformError>
 
   /** Check if a worktree exists for a specific ref.
    * If refType is not provided, uses heuristic-based classification.
@@ -72,15 +71,15 @@ export interface MegarepoStore {
     source: MemberSource
     ref: string
     refType?: RefType
-  }) => Effect.Effect<boolean, PlatformError.PlatformError>
+  }) => Effect.Effect<boolean, PlatformError>
 
   /** List all repos in the store */
-  readonly listRepos: () => Effect.Effect<
+  readonly listRepos: Effect.Effect<
     ReadonlyArray<{
       readonly relativePath: RelativeDirPath
       readonly fullPath: AbsoluteDirPath
     }>,
-    PlatformError.PlatformError
+    PlatformError
   >
 
   /** List all worktrees for a repo (includes broken worktrees with missing .git) */
@@ -91,7 +90,7 @@ export interface MegarepoStore {
       readonly path: AbsoluteDirPath
       readonly broken: boolean
     }>,
-    PlatformError.PlatformError
+    PlatformError
   >
 
   // === Legacy compatibility (deprecated) ===
@@ -100,11 +99,11 @@ export interface MegarepoStore {
   readonly getRepoPath: (source: MemberSource) => AbsoluteDirPath
 
   /** @deprecated Use hasBareRepo instead */
-  readonly hasRepo: (source: MemberSource) => Effect.Effect<boolean, PlatformError.PlatformError>
+  readonly hasRepo: (source: MemberSource) => Effect.Effect<boolean, PlatformError>
 }
 
 /** Store service tag */
-export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>() {}
+export class Store extends Context.Service<Store, MegarepoStore>()('megarepo/Store') {}
 
 // =============================================================================
 // Store Implementation
@@ -192,7 +191,7 @@ const make = ({
       path: AbsoluteDirPath
       broken: boolean
     }>,
-    PlatformError.PlatformError
+    PlatformError
   > =>
     Effect.gen(function* () {
       const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
@@ -274,112 +273,111 @@ const make = ({
     // Legacy compatibility
     hasRepo: (source) => fs.exists(getBareRepoPath(source)),
 
-    listRepos: () =>
-      Effect.gen(function* () {
-        const exists = yield* fs.exists(basePath)
-        if (exists === false) {
-          return []
-        }
+    listRepos: Effect.gen(function* () {
+      const exists = yield* fs.exists(basePath)
+      if (exists === false) {
+        return []
+      }
 
-        const result: Array<{
-          relativePath: RelativeDirPath
-          fullPath: AbsoluteDirPath
-        }> = []
+      const result: Array<{
+        relativePath: RelativeDirPath
+        fullPath: AbsoluteDirPath
+      }> = []
 
-        const walk = ({
-          dir,
-          depth,
-        }: {
-          dir: AbsoluteDirPath
-          depth: number
-        }): Effect.Effect<void, PlatformError.PlatformError> =>
+      const walk = ({
+        dir,
+        depth,
+      }: {
+        dir: AbsoluteDirPath
+        depth: number
+      }): Effect.Effect<void, PlatformError> =>
+        Effect.gen(function* () {
+          yield* Effect.yieldNow
+          const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
+          const hasBare = yield* fs.exists(barePath)
+          if (hasBare === true) {
+            const relativePath = `${dir.slice(basePath.length).replace(/^\/+/, '').replace(/\/?$/, '/')}`
+            result.push({
+              relativePath: EffectPath.unsafe.relativeDir(relativePath),
+              fullPath: dir,
+            })
+            return
+          }
+
+          // Membership-contract stops (a member is `<host>/<owner>/<repo>/.bare`).
+          // Without these the walk descends into directories that are NOT part of
+          // this store and enumerates their entire contents — exhausting memory on
+          // a real store and mis-claiming non-members:
+          //  - `.git` present  → a checked-out worktree, never a namespace dir;
+          //    its working tree (node_modules, …) must never be walked.
+          //  - `.state`/`.locks` present → a NESTED megarepo store (e.g. an
+          //    isolated experiment store), whose repos belong to it, not here.
+          const hasGit = yield* fs.exists(
+            EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile('.git')),
+          )
+          if (hasGit === true) return
+          const isNestedStore = yield* Effect.all([
+            fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.state/'))),
+            fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.locks/'))),
+          ]).pipe(Effect.map(([state, locks]) => state === true || locks === true))
+          if (isNestedStore === true) return
+
+          // Backstop: never descend past the layout's plausible repo depth, so a
+          // pathological non-git directory tree can't drive an unbounded walk.
+          if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
+            yield* Effect.logWarning(
+              'store listRepos: walk depth limit reached; not descending',
+            ).pipe(Effect.annotateLogs({ dir, depth }))
+            return
+          }
+
+          const entries = yield* fs.readDirectory(dir)
+          yield* Effect.all(
+            entries.map((entry) =>
+              Effect.gen(function* () {
+                if (entry.startsWith('.') === true) {
+                  return
+                }
+
+                const entryPath = EffectPath.ops.join(
+                  dir,
+                  EffectPath.unsafe.relativeDir(`${entry}/`),
+                )
+                const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
+                if (entryStat?.type !== 'Directory') return
+
+                yield* walk({ dir: entryPath, depth: depth + 1 })
+              }),
+            ),
+            { concurrency: 32 },
+          )
+        })
+
+      const namespaces = yield* fs.readDirectory(basePath)
+      yield* Effect.all(
+        namespaces.map((entry) =>
           Effect.gen(function* () {
-            yield* Effect.yieldNow()
-            const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
-            const hasBare = yield* fs.exists(barePath)
-            if (hasBare === true) {
-              const relativePath = `${dir.slice(basePath.length).replace(/^\/+/, '').replace(/\/?$/, '/')}`
-              result.push({
-                relativePath: EffectPath.unsafe.relativeDir(relativePath),
-                fullPath: dir,
-              })
+            if (shouldSkipStoreRootEntry(entry) === true) {
               return
             }
 
-            // Membership-contract stops (a member is `<host>/<owner>/<repo>/.bare`).
-            // Without these the walk descends into directories that are NOT part of
-            // this store and enumerates their entire contents — exhausting memory on
-            // a real store and mis-claiming non-members:
-            //  - `.git` present  → a checked-out worktree, never a namespace dir;
-            //    its working tree (node_modules, …) must never be walked.
-            //  - `.state`/`.locks` present → a NESTED megarepo store (e.g. an
-            //    isolated experiment store), whose repos belong to it, not here.
-            const hasGit = yield* fs.exists(
-              EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile('.git')),
+            const entryPath = EffectPath.ops.join(
+              basePath,
+              EffectPath.unsafe.relativeDir(`${entry}/`),
             )
-            if (hasGit === true) return
-            const isNestedStore = yield* Effect.all([
-              fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.state/'))),
-              fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.locks/'))),
-            ]).pipe(Effect.map(([state, locks]) => state === true || locks === true))
-            if (isNestedStore === true) return
+            const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
+            if (entryStat?.type !== 'Directory') return
 
-            // Backstop: never descend past the layout's plausible repo depth, so a
-            // pathological non-git directory tree can't drive an unbounded walk.
-            if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
-              yield* Effect.logWarning(
-                'store listRepos: walk depth limit reached; not descending',
-              ).pipe(Effect.annotateLogs({ dir, depth }))
-              return
-            }
+            yield* walk({ dir: entryPath, depth: 1 })
+          }),
+        ),
+        { concurrency: 32 },
+      ).pipe(
+        Observability.withLabelSpan({ name: 'megarepo/store/list-repos', labelValue: 'repos' }),
+      )
 
-            const entries = yield* fs.readDirectory(dir)
-            yield* Effect.all(
-              entries.map((entry) =>
-                Effect.gen(function* () {
-                  if (entry.startsWith('.') === true) {
-                    return
-                  }
-
-                  const entryPath = EffectPath.ops.join(
-                    dir,
-                    EffectPath.unsafe.relativeDir(`${entry}/`),
-                  )
-                  const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
-                  if (entryStat?.type !== 'Directory') return
-
-                  yield* walk({ dir: entryPath, depth: depth + 1 })
-                }),
-              ),
-              { concurrency: 32 },
-            )
-          })
-
-        const namespaces = yield* fs.readDirectory(basePath)
-        yield* Effect.all(
-          namespaces.map((entry) =>
-            Effect.gen(function* () {
-              if (shouldSkipStoreRootEntry(entry) === true) {
-                return
-              }
-
-              const entryPath = EffectPath.ops.join(
-                basePath,
-                EffectPath.unsafe.relativeDir(`${entry}/`),
-              )
-              const entryStat = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => null))
-              if (entryStat?.type !== 'Directory') return
-
-              yield* walk({ dir: entryPath, depth: 1 })
-            }),
-          ),
-          { concurrency: 32 },
-        ).pipe(
-          Observability.withLabelSpan({ name: 'megarepo/store/list-repos', labelValue: 'repos' }),
-        )
-
-        return result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
-      }),
+      return result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
+    }),
 
     listWorktrees: (source) =>
       Effect.gen(function* () {
@@ -479,7 +477,7 @@ export const StoreLayer = Layer.effect(
   Store,
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
+    const storePathRaw = Option.fromUndefinedOr(process.env[ENV_VARS.STORE]).pipe(
       Option.getOrElse(() => DEFAULT_STORE_PATH),
     )
     const basePath = expandStorePath(storePathRaw)
@@ -488,7 +486,7 @@ export const StoreLayer = Layer.effect(
 ).pipe((storeOnly) => {
   /* Derive basePath at provision time for the lock layer.
    * We read the env var again (same as storeOnly) so both use the same path. */
-  const lockLayer = Layer.scoped(
+  const lockLayer = Layer.effect(
     StoreLock,
     Effect.gen(function* () {
       const store = yield* Store

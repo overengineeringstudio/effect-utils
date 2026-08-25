@@ -16,7 +16,7 @@
  * `RestateTestEnv`.
  */
 import { it } from '@effect/vitest'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, Fiber, Layer, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { Awakeable, type AwakeableId, RestateObject, RestateService, State } from '../mod.ts'
@@ -24,7 +24,9 @@ import { RestateTestEnv, serverAvailable } from './testing.ts'
 
 /* ── demo app: a greeter Service (typed error) + a counter Object (typed State) ── */
 
-class Greeting extends Context.Tag('test-env/Greeting')<Greeting, { readonly prefix: string }>() {
+class Greeting extends Context.Service<Greeting, { readonly prefix: string }>()(
+  'test-env/Greeting',
+) {
   static readonly Default = Layer.succeed(Greeting, { prefix: 'Hello' })
 }
 
@@ -53,7 +55,7 @@ const GreeterLive = RestateService.implement<typeof Greeter, Greeting>({
   },
 })
 
-const CounterState = { count: Schema.Number } as const
+const CounterState = { count: Schema.Finite } as const
 const Counter = State.for(CounterState)
 
 const CounterObj = RestateObject.contract({
@@ -61,8 +63,8 @@ const CounterObj = RestateObject.contract({
   def: {
     state: CounterState,
     handlers: {
-      add: { input: Schema.Number, success: Schema.Number },
-      get: { input: Schema.Void, success: Schema.Number, shared: true },
+      add: { input: Schema.Finite, success: Schema.Finite },
+      get: { input: Schema.Void, success: Schema.Finite, shared: true },
     },
   },
 })
@@ -87,7 +89,7 @@ const CounterLive = RestateObject.implement<typeof CounterObj>({
  * and `set(key, undefined)`/`clear(key)` REMOVES it. This is the `notion-datasource-sync`
  * cursor shape that was previously unexpressible (optional/nullable State, #1). */
 const CursorState = {
-  highWatermark: Schema.optional(Schema.Number),
+  highWatermark: Schema.optional(Schema.Finite),
   name: Schema.String,
 } as const
 const Cursor = State.for(CursorState)
@@ -96,7 +98,7 @@ const Cursor = State.for(CursorState)
  * JSON schema), since a top-level `Schema.UndefinedOr` handler return breaks
  * `JSONSchema.make` at endpoint registration — State, not handler I/O, is the
  * nullable surface (#1). */
-const PeekOutput = Schema.Struct({ highWatermark: Schema.optional(Schema.Number) })
+const PeekOutput = Schema.Struct({ highWatermark: Schema.optional(Schema.Finite) })
 
 const CursorObj = RestateObject.contract({
   name: 'test-env-cursor',
@@ -104,7 +106,7 @@ const CursorObj = RestateObject.contract({
     state: CursorState,
     handlers: {
       /** Set the nullable watermark to a present value. */
-      advance: { input: Schema.Number, success: Schema.Void },
+      advance: { input: Schema.Finite, success: Schema.Void },
       /** Clear the watermark by writing `undefined` (≡ remove the key). */
       reset: { input: Schema.Void, success: Schema.Void },
       /** Read the watermark (`{ highWatermark }` omitted when unset). */
@@ -313,7 +315,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
         Effect.gen(function* () {
           const env = yield* RestateTestEnv
           /* Fork the suspending `start` (it parks on the awakeable promise). */
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             env.invokeObject({
               contract: WaiterObj,
               key: 'job-1',
@@ -332,7 +334,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
                 input: undefined,
               })
               if (read !== '') return read
-              yield* Effect.yieldNow()
+              yield* Effect.yieldNow
             }
             return ''
           })
@@ -344,7 +346,7 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
             id: id as AwakeableId<Schema.Schema.Type<typeof Payload>>,
             payload: { token: 'resumed-ok' },
           })
-          const resumed = yield* fiber.await
+          const resumed = yield* Effect.exit(Fiber.join(fiber))
           expect(resumed._tag).toBe('Success')
         }),
       )

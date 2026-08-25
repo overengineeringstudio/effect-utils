@@ -195,7 +195,6 @@ describe('notion-md frontmatter wire baselines (cross-major invariant)', () => {
       body: '# Frontmatter 世界\r\n\r\nBody with unicode résumé.\r\n',
     })
 
-  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw impossible date strings (effect#6608); preserve the frontmatter bytes or explicitly adjudicate the contract.
   it('renders the persisted .nmd envelope to byte-identical JSON frontmatter', () => {
     expect(rendered()).toMatchInlineSnapshot(`
       "---
@@ -293,7 +292,6 @@ describe('notion-md frontmatter wire baselines (cross-major invariant)', () => {
     `)
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw impossible date strings (effect#6608); preserve the frontmatter bytes or explicitly adjudicate the contract.
   it('parses the persisted .nmd envelope and re-renders byte-identically', async () => {
     const parsed = await parse(rendered().replaceAll('\n', '\r\n'))
     expect(JSON.stringify(parsed.frontmatter)).toMatchInlineSnapshot(
@@ -332,7 +330,7 @@ describe('notion-md frontmatter wire baselines (cross-major invariant)', () => {
     }
 
     expect(await failureJson('# Missing frontmatter\n')).toMatchInlineSnapshot(
-      `"{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}"`,
+      `"{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"Error: Expected \`.nmd\` frontmatter to start with \`---\`"}"`,
     )
     expect(
       Object.fromEntries(
@@ -345,11 +343,11 @@ describe('notion-md frontmatter wire baselines (cross-major invariant)', () => {
       ),
     ).toMatchInlineSnapshot(`
       {
-        "descriptorExcessProperty": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
-        "invalidRelativePath": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
-        "invalidSha256": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
-        "malformedJson": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
-        "remoteWithoutPageId": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"undefined"}",
+        "descriptorExcessProperty": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"SchemaError(Expected no excess property\\n  at [\\"notion_md\\"][\\"property_descriptors\\"][\\"Status\\"][\\"extra\\"])"}",
+        "invalidRelativePath": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"SchemaError(Expected a non-empty relative path without parent traversal\\n  at [\\"notion_md\\"][\\"properties\\"][\\"Attachments\\"][\\"value\\"][0][\\"path\\"])"}",
+        "invalidSha256": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"SchemaError(Expected a string matching the RegExp ^sha256:[a-f0-9]{64}$\\n  at [\\"notion_md\\"][\\"properties\\"][\\"Attachments\\"][\\"value\\"][0][\\"content_hash\\"])"}",
+        "malformedJson": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"SchemaError(Expected a valid JSON string)"}",
+        "remoteWithoutPageId": "{"message":"Failed to parse strict .nmd frontmatter in probe.nmd","cause":"SchemaError(source: remote requires a page_id (only source: local may be unbound / create-on-push)\\n  at [\\"notion_md\\"][\\"page_id\\"])"}",
       }
     `)
   })

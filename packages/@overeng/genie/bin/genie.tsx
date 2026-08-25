@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import * as Cli from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Schema } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
 import { runTuiMain } from '@overeng/tui-react/node'
@@ -31,15 +31,18 @@ const command = Cli.Command.provide(genieCommand, CurrentWorkingDirectory.live)
 const program = Effect.gen(function* () {
   const endpoint = yield* otelEndpointFromConfig()
 
-  yield* Cli.Command.run(command, {
-    name: 'genie',
+  yield* Cli.Command.runWith(command, {
     version,
-  })(rewriteHelpSubcommand(process.argv)).pipe(
+  })(
+    // rewriteHelpSubcommand still speaks the effect 3 full-argv convention;
+    // v4 runWith wants pure args.
+    rewriteHelpSubcommand(process.argv).slice(2),
+  ).pipe(
     Effect.scoped,
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'genie', version }),
     Effect.provide(
-      Layer.mergeAll(NodeContext.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
+      Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
     ),
   )
 })

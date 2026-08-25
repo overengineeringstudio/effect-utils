@@ -4,10 +4,10 @@
  * @since 0.1.0
  */
 
-import { FetchHttpClient } from '@effect/platform'
-import type * as HttpClient from '@effect/platform/HttpClient'
-import { RpcClient, RpcSerialization } from '@effect/rpc'
 import { Layer } from 'effect'
+import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient'
+import type * as HttpClient from 'effect/unstable/http/HttpClient'
+import { RpcClient, RpcSerialization } from 'effect/unstable/rpc'
 
 type FetchLike = typeof globalThis.fetch
 

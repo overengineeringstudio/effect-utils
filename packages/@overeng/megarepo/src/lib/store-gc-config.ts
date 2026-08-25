@@ -9,8 +9,9 @@
 
 import { isAbsolute, normalize } from 'node:path'
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Effect, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -74,14 +75,14 @@ export const DEFAULT_STORE_GC_CONFIG: StoreGcConfig = {
 
 /** On-disk override shape: every key optional; only provided keys override defaults. */
 const StoreGcConfigOverride = Schema.Struct({
-  absenceGraceMs: Schema.optional(Schema.Number),
-  postMergeGraceMs: Schema.optional(Schema.Number),
-  archiveRetentionMs: Schema.optional(Schema.Number),
+  absenceGraceMs: Schema.optional(Schema.Finite),
+  postMergeGraceMs: Schema.optional(Schema.Finite),
+  archiveRetentionMs: Schema.optional(Schema.Finite),
   generatedArtifacts: Schema.optional(
     Schema.Struct({
       enabled: Schema.optional(Schema.Boolean),
-      retentionMs: Schema.optional(Schema.Number),
-      allowlist: Schema.optional(Schema.Array(Schema.Literal(...STORE_GC_GENERATED_ARTIFACTS))),
+      retentionMs: Schema.optional(Schema.Finite),
+      allowlist: Schema.optional(Schema.Array(Schema.Literals([...STORE_GC_GENERATED_ARTIFACTS]))),
       agentLivenessManifest: Schema.optional(Schema.String),
     }),
   ),
@@ -160,13 +161,13 @@ export const loadStoreGcConfig = ({
   storeBasePath,
 }: {
   storeBasePath: AbsoluteDirPath
-}): Effect.Effect<StoreGcConfig, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<StoreGcConfig, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = gcConfigPath(storeBasePath)
     const override = yield* fs.readFileString(path).pipe(
       Effect.flatMap((content) =>
-        Schema.decodeUnknown(Schema.parseJson(StoreGcConfigOverride))(content),
+        Schema.decodeUnknownEffect(Schema.fromJsonString(StoreGcConfigOverride))(content),
       ),
       Effect.orElseSucceed(() => ({}) as StoreGcConfigOverride),
     )

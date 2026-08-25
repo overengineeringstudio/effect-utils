@@ -9,10 +9,12 @@
  * not.
  */
 
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -24,25 +26,10 @@ const GIT_USER = ['-c', 'user.email=test@example.com', '-c', 'user.name=Test Use
 /** Run git in `cwd`, returning trimmed stdout. */
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...GIT_USER, ...args).pipe(Command.workingDirectory(cwd))
-    const result = yield* Command.string(command)
-    return result.trim()
-  })
-
-/**
- * Create a real git stash (`refs/stash`) in `worktreeCwd`.
- *
- * Bare `git stash` is intercepted by the agent-policy wrapper, so we bypass it
- * to produce a genuine standard stash ref — exactly the artifact the lossless
- * floor must detect. This is a fixture concern, not product behavior.
- */
-const createStash = (worktreeCwd: string) =>
-  Effect.gen(function* () {
-    const command = Command.make('git', ...GIT_USER, 'stash').pipe(
-      Command.workingDirectory(worktreeCwd),
-      Command.env({ AGENT_POLICY_BYPASS: '1' }),
+    const result = yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', [...GIT_USER, ...args], { cwd })),
     )
-    yield* Command.string(command)
+    return result.trim()
   })
 
 /**
@@ -109,7 +96,7 @@ describe('store-lossless', () => {
         })
         expect(count).toBe(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -151,7 +138,7 @@ describe('store-lossless', () => {
         })
         expect(assessment.unpushed).toBe(1)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -179,7 +166,7 @@ describe('store-lossless', () => {
         // Still reachable via refs/remotes/origin/main ⇒ recoverable ⇒ 0.
         expect(count).toBe(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -212,7 +199,7 @@ describe('store-lossless', () => {
         // No remote-tracking refs ⇒ everything reads as unpushed ⇒ keep.
         expect(count).toBeGreaterThan(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -232,11 +219,20 @@ describe('store-lossless', () => {
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('f.txt')),
           'dirty\n',
         )
-        yield* createStash(wt)
+        // Bare `git stash` is intercepted by the agent-policy wrapper, so bypass
+        // it to produce a genuine `refs/stash` (fixture concern, not product).
+        yield* ChildProcessSpawner.use((spawner) =>
+          spawner.string(
+            Command.make('git', [...GIT_USER, 'stash'], {
+              cwd: wt,
+              env: { AGENT_POLICY_BYPASS: '1' },
+            }),
+          ),
+        )
 
         expect(yield* hasStash({ bareRepoPath: bare })).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -256,7 +252,16 @@ describe('store-lossless', () => {
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('f.txt')),
           'to-stash\n',
         )
-        yield* createStash(wt)
+        // Bare `git stash` is intercepted by the agent-policy wrapper, so bypass
+        // it to produce a genuine `refs/stash` (fixture concern, not product).
+        yield* ChildProcessSpawner.use((spawner) =>
+          spawner.string(
+            Command.make('git', [...GIT_USER, 'stash'], {
+              cwd: wt,
+              env: { AGENT_POLICY_BYPASS: '1' },
+            }),
+          ),
+        )
         yield* fs.writeFileString(
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('untracked.txt')),
           'new dirt\n',
@@ -270,7 +275,7 @@ describe('store-lossless', () => {
 
         expect(assessment).toEqual({ unpushed: 0, dirty: true, hasStash: true })
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

@@ -26,11 +26,13 @@
  * (`status`/`reason` in the JSON document and the on-disk effect).
  */
 
-import * as Cli from '@effect/cli'
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Clock, Effect, Exit, Layer, Schema } from 'effect'
+import { Clock, Duration, Effect, Exit, Layer, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect, vi } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
@@ -63,11 +65,25 @@ vi.setConfig({
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    return (yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', args, { cwd })),
+    )).trim()
   })
 
-const liveClock = Clock.make()
+/** Live wall-clock for infra timers; decision time is overridden per test. */
+const liveClock: Clock.Clock = {
+  currentTimeMillisUnsafe: () => Date.now(),
+  currentTimeMillis: Effect.sync(() => Date.now()),
+  currentTimeNanosUnsafe: () => BigInt(Date.now()) * 1_000_000n,
+  currentTimeNanos: Effect.sync(() => BigInt(Date.now()) * 1_000_000n),
+  monotonicTimeNanosUnsafe: () => process.hrtime.bigint(),
+  monotonicTimeNanos: Effect.sync(() => process.hrtime.bigint()),
+  sleep: (duration) =>
+    Effect.callback((resume) => {
+      const timer = setTimeout(() => resume(Effect.void), Duration.toMillis(duration))
+      timer.unref?.()
+    }),
+}
 
 /**
  * Deterministic decision clock so grace/retention decisions are reproducible.
@@ -75,13 +91,14 @@ const liveClock = Clock.make()
  * deadlines instead of firing immediately under the fixed decision time.
  */
 const fixedClockLayer = (nowMs: number) =>
-  Layer.setClock({
-    [Clock.ClockTypeId]: Clock.ClockTypeId,
+  Layer.succeed(Clock.Clock, {
+    currentTimeMillisUnsafe: () => nowMs,
     currentTimeMillis: Effect.succeed(nowMs),
+    currentTimeNanosUnsafe: () => BigInt(nowMs) * 1_000_000n,
     currentTimeNanos: Effect.succeed(BigInt(nowMs) * 1_000_000n),
+    monotonicTimeNanosUnsafe: liveClock.monotonicTimeNanosUnsafe,
+    monotonicTimeNanos: liveClock.monotonicTimeNanos,
     sleep: (duration) => liveClock.sleep(duration),
-    unsafeCurrentTimeMillis: () => nowMs,
-    unsafeCurrentTimeNanos: () => BigInt(nowMs) * 1_000_000n,
   })
 
 const StoreGcJsonOutput = Schema.Struct({
@@ -99,7 +116,7 @@ const StoreGcJsonOutput = Schema.Struct({
     }),
   ),
 })
-const decodeGc = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+const decodeGc = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 type GcResult = Schema.Schema.Type<typeof StoreGcJsonOutput>['results'][number]
 
 const findByRef = (results: ReadonlyArray<GcResult>, ref: string) =>
@@ -127,11 +144,16 @@ const runGc = ({
     const previous = process.env['MEGAREPO_STORE']
     process.env['MEGAREPO_STORE'] = storePath
 
-    const argv = ['node', 'mr', 'store', 'gc', ...args, '--output', 'json']
-    const exit = yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const argv = ['store', 'gc', ...args, '--output', 'json']
+    const exit = yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(
-        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now)),
+        Layer.mergeAll(
+          consoleLayer,
+          makeStubPrStateResolverLayer(prRepos),
+          fixedClockLayer(now),
+          NodeServices.layer,
+        ),
       ),
       Effect.exit,
     )
@@ -255,7 +277,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         yield* git(bareRepoPath, 'worktree', 'add', reAddPath, 'feature/merged')
         expect(yield* fs.exists(reAddPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -292,7 +314,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(yield* fs.exists(worktreePath)).toBe(true)
         expect(yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/trunk' })).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -335,7 +357,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           ),
         ).toBe('uncommitted changes\n')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -375,7 +397,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('unrecoverable-local-work')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -414,7 +436,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('unrecoverable-local-work')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -442,7 +464,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('not-stale')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -471,7 +493,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('not-stale')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -510,7 +532,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('post-merge-grace')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -541,7 +563,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('absence-grace')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -577,7 +599,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           livePath.replace(/\/+$/, ''),
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/widget')),
         )
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: NOW })
 
         const cwd = yield* outsideCwd()
@@ -601,7 +623,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(yield* fs.exists(livePath)).toBe(true)
         expect(yield* fs.exists(deadPath)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -635,7 +657,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           oldPath.replace(/\/+$/, ''),
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/widget')),
         )
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: NOW })
         yield* repinWorkspace({ workspacePath, memberName: 'widget', newTarget: newPath })
 
@@ -659,7 +681,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(findByRef(results, 'feature/new')?.reason).toBe('live')
         expect(yield* fs.exists(newPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -688,7 +710,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           protectedPath.replace(/\/+$/, ''),
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/widget')),
         )
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: NOW })
 
         // Make the workspace's members dir unreadable so a strict reconcile errors;
@@ -713,7 +735,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         // live (last-known path retained) — NOT archived.
         expect(yield* fs.exists(protectedPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -752,7 +774,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.actualHeadBranch).toBe('feature/other')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -811,7 +833,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(readme).toContain('ref_mismatch_clean')
         expect(readme).toContain('actualHeadBranch=feature/other')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -849,7 +871,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.recoverPath).toBeUndefined()
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -885,7 +907,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('fetch-failed')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -946,7 +968,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           }),
         ).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -998,7 +1020,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           results.some((r) => r.status === 'reaped' && r.ref === 'feature/fresh-archive'),
         ).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1039,7 +1061,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           archivePath.replace(/\/+$/, ''),
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/widget')),
         )
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: NOW })
 
         const cwd = yield* outsideCwd()
@@ -1054,7 +1076,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('live')
         expect(yield* fs.exists(archivePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1094,7 +1116,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           worktreePath.replace(/\/+$/, ''),
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/widget')),
         )
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: NOW })
 
         const cwd = yield* outsideCwd()
@@ -1121,7 +1143,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           }),
         ).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1159,7 +1181,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/feature/closed' }),
         ).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1201,7 +1223,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/feature/merged' }),
         ).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1244,7 +1266,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         )
         expect(yield* fs.exists(archivePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1274,7 +1296,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           worktreePath.replace(/\/+$/, ''),
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/other')),
         )
-        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
         yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: NOW })
 
         // First run, 20d in the past, but with the workspace UNREADABLE so the
@@ -1313,7 +1335,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBe('absence-grace')
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1346,7 +1368,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(result?.reason).toBeUndefined()
         expect(yield* fs.exists(worktreePath)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1381,7 +1403,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         // archive based on a clock the dry-run started.
         expect(yield* fs.exists(ledgerPath)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1423,7 +1445,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(reaped?.status).toBe('reaped')
         expect(yield* fs.exists(archivePath)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

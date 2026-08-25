@@ -10,7 +10,6 @@ import {
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [
   '@effect/opentelemetry',
-  '@effect/platform',
   '@effect/platform-node',
   '@effect/vitest',
   'effect',

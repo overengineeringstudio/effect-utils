@@ -31,10 +31,9 @@ export interface ProgressReporterShape {
 }
 
 /** Render seam for staged write-path sync progress (decision 0018, R43–R45). */
-export class ProgressReporter extends Context.Tag('ProgressReporter')<
-  ProgressReporter,
-  ProgressReporterShape
->() {}
+export class ProgressReporter extends Context.Service<ProgressReporter, ProgressReporterShape>()(
+  'ProgressReporter',
+) {}
 
 /**
  * Emit a reporter call without adding to the engine's `R`, and swallowing ALL
@@ -46,7 +45,7 @@ export class ProgressReporter extends Context.Tag('ProgressReporter')<
 const emit = (f: (r: ProgressReporterShape) => Effect.Effect<void>): Effect.Effect<void> =>
   Effect.serviceOption(ProgressReporter).pipe(
     Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: f })),
-    Effect.catchAllCause(() => Effect.void),
+    Effect.catchCause(() => Effect.void),
   )
 
 /** Emit an `active` transition for a stage. */
@@ -80,13 +79,13 @@ export const withStage = <A, E, R>(
   eff: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> =>
   reportStageActive(stage).pipe(
-    Effect.zipRight(eff),
+    Effect.andThen(eff),
     Effect.tap(() =>
       reportStageSucceed(
         stage.doneMessage === undefined ? stage : { ...stage, message: stage.doneMessage },
       ),
     ),
-    Effect.tapErrorCause(() => reportStageFail(stage)),
+    Effect.tapCause(() => reportStageFail(stage)),
   )
 
 /** Write a single line to stderr (no animated control sequences). */

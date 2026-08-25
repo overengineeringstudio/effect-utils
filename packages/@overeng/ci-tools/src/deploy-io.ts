@@ -26,7 +26,8 @@ const appendGithubOutput = (opts: {
 }
 
 export const encodeWorkflowReportRecord = Effect.fn('ci-tools.deploy.io.encode-record')(
-  (record: WorkflowReportRecord) => Schema.encode(Schema.parseJson(Schema.Unknown))(record),
+  (record: WorkflowReportRecord) =>
+    Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(record),
 )
 
 export const emitWorkflowReportRecord = Effect.fn('ci-tools.deploy.io.emit-record')(
@@ -69,7 +70,9 @@ export const writeGithubDeployOutputs = Effect.fn('ci-tools.deploy.io.write-gith
   }) {
     const finalUrl = opts.result.finalUrl.toString()
     const rawDeployUrl = opts.result.rawDeployUrl.toString()
-    const deployedAtUtc = yield* Schema.encode(Schema.DateTimeUtc)(opts.result.endedAtUtc)
+    const deployedAtUtc = yield* Schema.encodeEffect(Schema.DateTimeUtcFromString)(
+      opts.result.endedAtUtc,
+    )
 
     yield* Effect.sync(() => {
       if (opts.githubOutputFile !== undefined) {

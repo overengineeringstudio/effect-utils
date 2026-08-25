@@ -160,13 +160,11 @@ export const commonPnpmWorkspaceData = {
   patchedDependencies: { ...effectUtilsWorkspacePatches },
   allowUnusedPatches: true as const,
   peerDependencyRules: {
-    /** @effect-atom/atom@0.5.3 pins pre-1.0 Effect peer ranges that don't cover our versions */
     allowedVersions: {
-      '@effect/experimental': '>=0.58.0',
-      '@effect/platform': '>=0.94.2',
-      '@effect/rpc': '>=0.73.0',
-      eslint: '>=10.0.0',
+      // bun-ffi-structs@0.2.3 (via @myobie/pty) declares typescript ^5 but the
+      // repo compiles with TS 6; resolution is proven fine.
       typescript: '>=6.0.0',
+      eslint: '>=10.0.0',
       vitest: '>=4.0.0',
     },
   },

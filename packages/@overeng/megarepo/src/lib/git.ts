@@ -4,8 +4,8 @@
  * Provides Effect-wrapped git operations for cloning, fetching, and managing worktrees.
  */
 
-import { Command } from '@effect/platform'
-import { Cause, Chunk, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
+import { Cause, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
+import * as Command from 'effect/unstable/process/ChildProcess'
 
 import * as Observability from './observability.ts'
 
@@ -189,15 +189,15 @@ const withGitCommandTimeout =
   <A, E, R>({ args, timeoutMillis }: { args: ReadonlyArray<string>; timeoutMillis: number }) =>
   (effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
-      Effect.timeoutFail({
-        duration: Duration.millis(timeoutMillis),
-        onTimeout: () => new GitCommandTimeoutError({ args, timeoutMillis }),
-      }),
+      Effect.timeout(Duration.millis(timeoutMillis)),
+      Effect.catchTag('TimeoutError', () =>
+        Effect.fail(new GitCommandTimeoutError({ args, timeoutMillis })),
+      ),
     )
 
 /** Decode a chunk of byte buffers into a string with a single O(n) allocation. */
-const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
-  const arr = Chunk.toReadonlyArray(chunks)
+const decodeChunks = (chunks: ReadonlyArray<Uint8Array>): string => {
+  const arr = chunks
   let total = 0
   for (const chunk of arr) total += chunk.length
   const merged = new Uint8Array(total)
@@ -215,23 +215,22 @@ const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
  */
 const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   Effect.gen(function* () {
-    const cmd = Command.make('git', ...args).pipe(
-      cwd !== undefined ? Command.workingDirectory(cwd) : (x) => x,
-      Command.stderr('pipe'),
-      Command.stdout('pipe'),
-    )
+    const process = yield* Command.make('git', args, {
+      cwd,
+      stderr: 'pipe',
+      stdout: 'pipe',
+    })
 
-    const process = yield* Command.start(cmd)
     yield* Effect.addFinalizer((exit) =>
       Effect.gen(function* () {
-        if (exit._tag !== 'Failure' || Cause.isInterruptedOnly(exit.cause) === false) {
+        if (exit._tag !== 'Failure' || Cause.hasInterruptsOnly(exit.cause) === false) {
           return
         }
 
         const isRunning = yield* process.isRunning.pipe(Effect.orElseSucceed(() => false))
         if (isRunning === false) return
 
-        yield* process.kill('SIGKILL').pipe(Effect.catchAll(() => Effect.void))
+        yield* process.kill({ killSignal: 'SIGKILL' }).pipe(Effect.catch(() => Effect.void))
       }),
     )
     return process
@@ -307,7 +306,7 @@ const streamGitCommandLines = <A>({
 }: {
   args: ReadonlyArray<string>
   cwd?: string
-  sink: Sink.Sink<A, string>
+  sink: Sink.Sink<A, string, string>
 }) =>
   (() => {
     const timeoutMillis = gitCommandTimeoutMillis(args)
@@ -324,7 +323,7 @@ const streamGitCommandLines = <A>({
       const [result, stderrChunks, exitCode] = yield* Effect.all(
         [
           process.stdout.pipe(
-            Stream.decodeText('utf-8'),
+            Stream.decodeText({ encoding: 'utf-8' }),
             Stream.splitLines,
             Stream.tap((line) =>
               Effect.sync(() => {
@@ -392,9 +391,10 @@ export const isTransientGitError = (error: GitCommandError): boolean => {
 
 const GIT_MAX_RETRIES = 3
 
-const transientGitRetrySchedule = Schedule.exponential('2 seconds').pipe(
-  Schedule.intersect(Schedule.recurs(GIT_MAX_RETRIES)),
-)
+const transientGitRetrySchedule = Schedule.max([
+  Schedule.exponential('2 seconds'),
+  Schedule.recurs(GIT_MAX_RETRIES),
+])
 
 /**
  * Run a git command with automatic retry on transient network errors.
@@ -402,15 +402,15 @@ const transientGitRetrySchedule = Schedule.exponential('2 seconds').pipe(
  */
 const runGitCommandWithRetry = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   Effect.gen(function* () {
-    const meta = yield* Schedule.CurrentIterationMetadata
-    if (meta.recurrence > 0) {
+    const meta = yield* Schedule.CurrentMetadata
+    if (meta.attempt > 0) {
       const prevError = meta.input as GitCommandError
       yield* Effect.logWarning('Retrying git command after transient error').pipe(
         Effect.annotateLogs({
           command: `git ${args.join(' ')}`,
-          attempt: meta.recurrence,
+          attempt: meta.attempt,
           maxRetries: GIT_MAX_RETRIES,
-          elapsed: Duration.format(meta.elapsed),
+          elapsed: Duration.format(Duration.millis(meta.elapsed)),
           error: prevError.stderr.trim().split('\n')[0] ?? '',
         }),
       )
@@ -592,7 +592,7 @@ export const listWorktrees = (repoPath: string) =>
         worktrees.push({
           path: current.path,
           head: current.head,
-          branch: Option.fromNullable(current.branch),
+          branch: Option.fromUndefinedOr(current.branch),
         })
       }
       current = {}
@@ -982,8 +982,10 @@ export const getWorktreeStatus = (worktreePath: string) =>
     const changesCount = yield* streamGitCommandLines({
       args: ['status', '--porcelain', '--untracked-files=all'],
       cwd: worktreePath,
-      sink: Sink.foldLeft<number, string>(0, (count, line) =>
-        line.trim() !== '' ? count + 1 : count,
+      sink: Sink.fold<number, string>(
+        () => 0,
+        () => true,
+        (count, line) => Effect.succeed(line.trim() !== '' ? count + 1 : count),
       ),
     })
     const isDirty = changesCount > 0
@@ -1019,8 +1021,10 @@ export const getWorktreeRemovalStatus = (worktreePath: string) =>
       cwd: worktreePath,
       // `=normal` collapses large untracked dirs to one entry, but stream-count
       // anyway so the dirty preflight stays constant-memory regardless of tree.
-      sink: Sink.foldLeft<number, string>(0, (count, line) =>
-        line.trim() !== '' ? count + 1 : count,
+      sink: Sink.fold<number, string>(
+        () => 0,
+        () => true,
+        (count, line) => Effect.succeed(line.trim() !== '' ? count + 1 : count),
       ),
     }).pipe(
       Observability.withWorktreePathSpan({

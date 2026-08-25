@@ -118,7 +118,7 @@ export const AppView: React.FC<{ state: AppState }> = ({ state }) => {
 ### 4. Create CLI Entry Point (`cli.tsx`)
 
 ```typescript
-import { Command } from '@effect/cli'
+import { Command } from 'effect/unstable/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
 import React from 'react'
@@ -149,7 +149,7 @@ const command = Command.make('my-app', { output: outputOption }, ({ output }) =>
   runApp.pipe(Effect.provide(outputModeLayer(output))),
 )
 
-Command.run(command, { name: 'my-app', version: '1.0.0' })(process.argv).pipe(
+Command.runWith(command, { version: '1.0.0' })(process.argv.slice(2)).pipe(
   Effect.provide(NodeContext.layer),
   NodeRuntime.runMain,
 )

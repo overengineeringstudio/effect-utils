@@ -12,15 +12,14 @@ import { docsPath, NotionUUID } from './common.ts'
  * @see https://developers.notion.com/reference/user#people
  */
 export const PersonData = Schema.Struct({
-  email: Schema.optionalWith(
-    Schema.String.annotations({
+  email: Schema.OptionFromOptionalKey(
+    Schema.String.annotate({
       examples: ['user@example.com'],
     }),
-    { as: 'Option' },
-  ).annotations({
+  ).annotate({
     description: 'Email address of the person. Only present with proper capabilities.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PersonData',
   title: 'Person Data',
   description: 'Person-specific properties within a user object.',
@@ -35,33 +34,31 @@ export type PersonData = typeof PersonData.Type
  * @see https://developers.notion.com/reference/user#people
  */
 export const Person = Schema.Struct({
-  object: Schema.Literal('user').annotations({
+  object: Schema.Literal('user').annotate({
     description: 'Always "user" for user objects.',
   }),
-  id: NotionUUID.annotations({
+  id: NotionUUID.annotate({
     description: 'Unique identifier for this user.',
   }),
-  type: Schema.Literal('person').annotations({
+  type: Schema.Literal('person').annotate({
     description: 'Type identifier for person users.',
   }),
-  name: Schema.optionalWith(
-    Schema.String.annotations({
+  name: Schema.OptionFromOptionalKey(
+    Schema.String.annotate({
       examples: ['Jane Doe'],
     }),
-    { as: 'Option' },
-  ).annotations({
+  ).annotate({
     description: "User's name as displayed in Notion.",
   }),
-  avatar_url: Schema.optionalWith(
-    Schema.String.annotations({
+  avatar_url: Schema.OptionFromOptionalKey(
+    Schema.String.annotate({
       examples: ['https://s3.us-west-2.amazonaws.com/...'],
     }),
-    { as: 'Option' },
-  ).annotations({
+  ).annotate({
     description: "URL of the user's avatar image.",
   }),
   person: PersonData,
-}).annotations({
+}).annotate({
   identifier: 'Notion.Person',
   title: 'Person',
   description: 'A human user in Notion.',
@@ -77,7 +74,7 @@ export type Person = typeof Person.Type
 /**
  * Bot owner information.
  */
-export const BotOwner = Schema.Union(
+export const BotOwner = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('workspace'),
     workspace: Schema.Literal(true),
@@ -89,7 +86,7 @@ export const BotOwner = Schema.Union(
       id: NotionUUID,
     }),
   }),
-).annotations({
+]).annotate({
   identifier: 'Notion.BotOwner',
   title: 'Bot Owner',
   description: 'The owner of a bot, either a workspace or a user.',
@@ -104,15 +101,13 @@ export type BotOwner = typeof BotOwner.Type
  * @see https://developers.notion.com/reference/user#bots
  */
 export const BotData = Schema.Struct({
-  owner: BotOwner.annotations({
+  owner: BotOwner.annotate({
     description: 'Owner of the bot (workspace or user).',
   }),
-  workspace_name: Schema.optionalWith(Schema.String, {
-    as: 'Option',
-  }).annotations({
+  workspace_name: Schema.OptionFromOptionalKey(Schema.String).annotate({
     description: 'Name of the workspace owning the bot.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.BotData',
   title: 'Bot Data',
   description: 'Bot-specific properties within a user object.',
@@ -127,28 +122,27 @@ export type BotData = typeof BotData.Type
  * @see https://developers.notion.com/reference/user#bots
  */
 export const Bot = Schema.Struct({
-  object: Schema.Literal('user').annotations({
+  object: Schema.Literal('user').annotate({
     description: 'Always "user" for user objects.',
   }),
-  id: NotionUUID.annotations({
+  id: NotionUUID.annotate({
     description: 'Unique identifier for this bot.',
   }),
-  type: Schema.Literal('bot').annotations({
+  type: Schema.Literal('bot').annotate({
     description: 'Type identifier for bot users.',
   }),
-  name: Schema.optionalWith(
-    Schema.String.annotations({
+  name: Schema.OptionFromOptionalKey(
+    Schema.String.annotate({
       examples: ['My Integration'],
     }),
-    { as: 'Option' },
-  ).annotations({
+  ).annotate({
     description: "Bot's name as displayed in Notion.",
   }),
-  avatar_url: Schema.optionalWith(Schema.String, { as: 'Option' }).annotations({
+  avatar_url: Schema.OptionFromOptionalKey(Schema.String).annotate({
     description: "URL of the bot's avatar image.",
   }),
   bot: BotData,
-}).annotations({
+}).annotate({
   identifier: 'Notion.Bot',
   title: 'Bot',
   description: 'A bot user (integration) in Notion.',
@@ -166,13 +160,13 @@ export type Bot = typeof Bot.Type
  * Contains only the id and object type.
  */
 export const PartialUser = Schema.Struct({
-  object: Schema.Literal('user').annotations({
+  object: Schema.Literal('user').annotate({
     description: 'Always "user" for user objects.',
   }),
-  id: NotionUUID.annotations({
+  id: NotionUUID.annotate({
     description: 'Unique identifier for this user.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.PartialUser',
   title: 'Partial User',
   description: 'A minimal user reference containing only the ID.',
@@ -190,7 +184,7 @@ export type PartialUser = typeof PartialUser.Type
  *
  * @see https://developers.notion.com/reference/user
  */
-export const User = Schema.Union(Person, Bot).annotations({
+export const User = Schema.Union([Person, Bot]).annotate({
   identifier: 'Notion.User',
   title: 'User',
   description: 'A Notion user, which can be either a person or a bot.',

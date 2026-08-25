@@ -9,7 +9,7 @@ import { User, UserApi, UserNotFoundError } from './api.ts'
 /**
  * In-memory user store (for demo purposes)
  */
-const usersRef = Ref.unsafeMake<User[]>([
+const usersRef = Ref.makeUnsafe<User[]>([
   new User({ id: '1', name: 'Alice', email: 'alice@example.com' }),
   new User({ id: '2', name: 'Bob', email: 'bob@example.com' }),
 ])

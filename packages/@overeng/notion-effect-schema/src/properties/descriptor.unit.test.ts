@@ -1,4 +1,5 @@
-import { Effect, Exit, type ParseResult, Schema } from 'effect'
+import { Effect, Exit, Schema } from 'effect'
+import type { SchemaError } from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 
 import { NOTION_PROPERTY_TYPES } from '@overeng/notion-core'
@@ -24,7 +25,7 @@ const validDescriptor = {
 
 const isFailure = <A>(exit: Exit.Exit<A, unknown>): boolean => Exit.isFailure(exit)
 
-const decode = <A>(effect: Effect.Effect<A, ParseResult.ParseError>): Exit.Exit<A, unknown> =>
+const decode = <A>(effect: Effect.Effect<A, SchemaError>): Exit.Exit<A, unknown> =>
   Effect.runSyncExit(effect)
 
 describe('PropertyDescriptor decoding', () => {
@@ -95,16 +96,16 @@ describe('DataSourceId brand', () => {
   })
 
   it('rejects empty / whitespace input', () => {
-    expect(isFailure(decode(Schema.decodeUnknown(DataSourceId)('')))).toBe(true)
-    expect(isFailure(decode(Schema.decodeUnknown(DataSourceId)('  ')))).toBe(true)
+    expect(isFailure(decode(Schema.decodeUnknownEffect(DataSourceId)('')))).toBe(true)
+    expect(isFailure(decode(Schema.decodeUnknownEffect(DataSourceId)('  ')))).toBe(true)
   })
 })
 
 describe('ConfigHash brand', () => {
   it('accepts a sha256 hash and rejects other shapes', () => {
     expect(Schema.decodeUnknownSync(ConfigHash)(hashOf(7))).toBe(hashOf(7))
-    expect(isFailure(decode(Schema.decodeUnknown(ConfigHash)('md5:abc')))).toBe(true)
-    expect(isFailure(decode(Schema.decodeUnknown(ConfigHash)('sha256:XYZ')))).toBe(true)
+    expect(isFailure(decode(Schema.decodeUnknownEffect(ConfigHash)('md5:abc')))).toBe(true)
+    expect(isFailure(decode(Schema.decodeUnknownEffect(ConfigHash)('sha256:XYZ')))).toBe(true)
   })
 })
 
@@ -119,7 +120,9 @@ describe('PropertyIdentityEvidenceSource', () => {
 
   it('rejects an unknown evidence source', () => {
     expect(
-      isFailure(decode(Schema.decodeUnknown(PropertyIdentityEvidenceSource)({ _tag: 'remote' }))),
+      isFailure(
+        decode(Schema.decodeUnknownEffect(PropertyIdentityEvidenceSource)({ _tag: 'remote' })),
+      ),
     ).toBe(true)
   })
 })

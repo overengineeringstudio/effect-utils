@@ -1,6 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import { Data, Effect } from 'effect'
+import { Data, Effect, FileSystem } from 'effect'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
@@ -79,7 +78,7 @@ export const formatCode = (
 ): Effect.Effect<
   string,
   never,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | CurrentWorkingDirectory
+  FileSystem.FileSystem | ChildProcessSpawner | CurrentWorkingDirectory
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem

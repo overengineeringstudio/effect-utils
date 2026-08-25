@@ -5,7 +5,6 @@ import type {
   DatabaseSchema,
   DataSourceSchema,
   NumberFormat,
-  NotionPropertyMeta,
   PropertySchema,
   RollupFunction,
   SelectOptionConfig,
@@ -101,7 +100,7 @@ export const getPropertiesFromRecord = (
 
   return Arr.sort(
     results,
-    Order.mapInput(Order.string, (p: PropertySchema) => p.name),
+    Order.mapInput(Order.String, (p: PropertySchema) => p.name),
   )
 }
 
@@ -176,9 +175,9 @@ export const validateProperties = Effect.fnUntraced(function* (args: {
 /** Extracts required property metadata from a Schema.Struct by reading Notion property annotations */
 export const getRequiredPropertiesFromSchema = Effect.fn(
   'SchemaHelpers.getRequiredPropertiesFromSchema',
-)(function* (schema: Schema.Schema.AnyNoContext) {
+)(function* (schema: Schema.Schema<any>) {
   const ast = schema.ast
-  if (ast._tag !== 'TypeLiteral') {
+  if (ast._tag !== 'Objects') {
     return yield* new SchemaMetaMissingError({
       message: 'Schema must be a Struct to extract Notion property metadata',
       missing: [],
@@ -193,9 +192,15 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
       continue
     }
 
-    const annotation = SchemaAST.getAnnotation<NotionPropertyMeta>(prop.type, notionPropertyMeta)
-    if (Option.isSome(annotation) === true) {
-      required.push({ name: prop.name, tag: annotation.value._tag })
+    const annotations = SchemaAST.resolve(prop.type)
+    const meta =
+      annotations === undefined
+        ? Option.none()
+        : Schema.decodeUnknownOption(PropertySchemaCodec)(
+            Reflect.get(annotations, notionPropertyMeta),
+          )
+    if (Option.isSome(meta) === true) {
+      required.push({ name: prop.name, tag: meta.value._tag })
     } else {
       missing.push(prop.name)
     }
@@ -213,11 +218,7 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
 
 /** Validates database properties using metadata extracted from a Schema.Struct */
 export const validatePropertiesFromSchema = Effect.fn('SchemaHelpers.validatePropertiesFromSchema')(
-  function* (args: {
-    schema: Schema.Schema.AnyNoContext
-    databaseId: string
-    schemaSource: SchemaSource
-  }) {
+  function* (args: { schema: Schema.Schema<any>; databaseId: string; schemaSource: SchemaSource }) {
     const required = yield* getRequiredPropertiesFromSchema(args.schema)
     return yield* validateProperties({
       schema: args.schemaSource,

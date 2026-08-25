@@ -1,4 +1,7 @@
 import { Context, Effect, Layer, SubscriptionRef } from 'effect'
+import type { Stream } from 'effect'
+
+// oxlint-disable eslint-plugin-react-hooks(rules-of-hooks) -- Context.Service `.use` accessors are Effect v4 service requests, not React hooks
 
 /**
  * Generic progress state for tracking completion of multi-step operations.
@@ -18,29 +21,26 @@ export const initialProgress: Progress = { total: 0, completed: 0 }
 /**
  * Service for reporting progress during Effect execution.
  */
-export class ProgressReporter extends Context.Tag('ProgressReporter')<
+export class ProgressReporter extends Context.Service<
   ProgressReporter,
   {
     /** Set progress to a specific state. */
     readonly set: (progress: Progress) => Effect.Effect<void>
     /** Stream of progress changes. */
-    readonly changes: SubscriptionRef.SubscriptionRef<Progress>['changes']
+    readonly changes: Stream.Stream<Progress>
   }
->() {
+>()('ProgressReporter') {
   /**
    * Set progress to a specific state.
    */
   static set = (progress: Progress): Effect.Effect<void, never, ProgressReporter> =>
-    ProgressReporter.pipe(Effect.flatMap((r) => r.set(progress)))
+    ProgressReporter.use((r) => r.set(progress))
 
   /**
    * Access the changes stream.
    */
-  static changes: Effect.Effect<
-    SubscriptionRef.SubscriptionRef<Progress>['changes'],
-    never,
-    ProgressReporter
-  > = ProgressReporter.pipe(Effect.map((r) => r.changes))
+  static changes: Effect.Effect<Stream.Stream<Progress>, never, ProgressReporter> =
+    ProgressReporter.use((r) => Effect.succeed(r.changes))
 
   /**
    * Layer that creates a ProgressReporter backed by a SubscriptionRef.
@@ -51,7 +51,7 @@ export class ProgressReporter extends Context.Tag('ProgressReporter')<
       const ref = yield* SubscriptionRef.make(initialProgress)
       return {
         set: (progress: Progress) => SubscriptionRef.set(ref, progress),
-        changes: ref.changes,
+        changes: SubscriptionRef.changes(ref),
       }
     }),
   )

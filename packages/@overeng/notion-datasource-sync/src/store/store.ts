@@ -164,7 +164,7 @@ export type QueryCheckpointRow = {
   readonly complete: boolean
   readonly cappedAtLimit: boolean
   readonly contractChanged: boolean
-  readonly highWatermark: typeof Schema.DateTimeUtc.Type | null
+  readonly highWatermark: typeof Schema.DateTimeUtcFromString.Type | null
   readonly eventId: SyncEventId
 }
 
@@ -288,7 +288,7 @@ export type WorkspaceBindingRow = {
   readonly storeIdentity: string
 }
 
-const decodeEventFromJson = Schema.decodeSync(Schema.parseJson(SyncEvent))
+const decodeEventFromJson = Schema.decodeSync(Schema.fromJsonString(SyncEvent))
 const encodeEvent = Schema.encodeSync(SyncEvent)
 const decodeCapabilityName = Schema.decodeUnknownSync(CapabilityName)
 const decodeDataSourceId = Schema.decodeSync(DataSourceId)
@@ -300,30 +300,32 @@ const decodePropertyId = Schema.decodeSync(PropertyId)
 const decodeQueryCursor = Schema.decodeSync(QueryCursor)
 const decodeWorkspaceRelativePath = Schema.decodeUnknownSync(WorkspaceRelativePath)
 const decodeRemoteWritePlanPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(RemoteWritePlanPayload),
+  Schema.fromJsonString(RemoteWritePlanPayload),
 )
 const decodeSurfaceKey = Schema.decodeUnknownSync(SurfaceKey)
 const decodeSyncEventId = Schema.decodeSync(SyncEventId)
 const decodeDataSourceProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(DataSourceProjectionPayload),
+  Schema.fromJsonString(DataSourceProjectionPayload),
 )
-const decodeRowProjectionPayload = Schema.decodeUnknownSync(Schema.parseJson(RowProjectionPayload))
+const decodeRowProjectionPayload = Schema.decodeUnknownSync(
+  Schema.fromJsonString(RowProjectionPayload),
+)
 const decodeBodyProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(BodyProjectionPayload),
+  Schema.fromJsonString(BodyProjectionPayload),
 )
 const encodeBodyProjectionPayload = Schema.encodeSync(BodyProjectionPayload)
 const encodeBodyPointer = Schema.encodeSync(BodyPointer)
 const decodePropertyCheckpointProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(PropertyCheckpointProjectionPayload),
+  Schema.fromJsonString(PropertyCheckpointProjectionPayload),
 )
 const decodeQueryCheckpointProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(QueryCheckpointProjectionPayload),
+  Schema.fromJsonString(QueryCheckpointProjectionPayload),
 )
 const decodeQueryAbsenceProjectionPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(QueryAbsenceProjectionPayload),
+  Schema.fromJsonString(QueryAbsenceProjectionPayload),
 )
 const decodeConflictPayloadMessage = Schema.decodeUnknownSync(
-  Schema.parseJson(Schema.Struct({ message: Schema.optional(Schema.String) })),
+  Schema.fromJsonString(Schema.Struct({ message: Schema.optional(Schema.String) })),
 )
 
 const projectionName = 'core'
@@ -422,7 +424,7 @@ const readConflictState = ({
   readonly key: string
 }): ConflictProjectionRow['state'] =>
   Schema.decodeUnknownSync(
-    Schema.Literal('open', 'resolving', 'resolved', 'superseded', 'ignored'),
+    Schema.Literals(['open', 'resolving', 'resolved', 'superseded', 'ignored']),
   )(readString({ row, key }))
 
 const readTombstoneClassification = ({
@@ -433,14 +435,14 @@ const readTombstoneClassification = ({
   readonly key: string
 }): TombstoneProjectionRow['classification'] =>
   Schema.decodeUnknownSync(
-    Schema.Literal(
+    Schema.Literals([
       'unclassified',
       'remote_trash',
       'moved_out',
       'moved_between_tracked_sources',
       'inaccessible',
       'unknown',
-    ),
+    ]),
   )(readString({ row, key }))
 
 const readSignalState = ({
@@ -695,7 +697,7 @@ export class NotionSyncStore {
             ? undefined
             : decodeHash(readString({ row: row, key: 'base_hash' })),
         desiredHash: decodeHash(readString({ row: row, key: 'desired_hash' })),
-        preflight: Schema.decodeSync(Schema.parseJson(Schema.Array(GuardName)))(
+        preflight: Schema.decodeSync(Schema.fromJsonString(Schema.Array(GuardName)))(
           readString({ row: row, key: 'preflight_json' }),
         ),
         attempt,
@@ -893,7 +895,9 @@ export class NotionSyncStore {
       cappedAtLimit: readBoolean({ row: row, key: 'capped_at_limit' }),
       contractChanged: readBoolean({ row: row, key: 'contract_changed' }),
       highWatermark:
-        highWatermark === undefined ? null : Schema.decodeSync(Schema.DateTimeUtc)(highWatermark),
+        highWatermark === undefined
+          ? null
+          : Schema.decodeSync(Schema.DateTimeUtcFromString)(highWatermark),
       eventId: decodeSyncEventId(readString({ row: row, key: 'event_id' })),
     }
   }
@@ -937,7 +941,9 @@ export class NotionSyncStore {
       cappedAtLimit: readBoolean({ row: row, key: 'capped_at_limit' }),
       contractChanged: readBoolean({ row: row, key: 'contract_changed' }),
       highWatermark:
-        highWatermark === undefined ? null : Schema.decodeSync(Schema.DateTimeUtc)(highWatermark),
+        highWatermark === undefined
+          ? null
+          : Schema.decodeSync(Schema.DateTimeUtcFromString)(highWatermark),
       eventId: decodeSyncEventId(readString({ row: row, key: 'event_id' })),
     }
   }
@@ -1491,7 +1497,7 @@ export class NotionSyncStore {
           schemaHash: decodeHash(readString({ row: row, key: 'schema_hash' })),
           configHash: decodeHash(readString({ row: row, key: 'config_hash' })),
           writeClass: Schema.decodeUnknownSync(
-            Schema.Literal('writable', 'computed', 'unsupported'),
+            Schema.Literals(['writable', 'computed', 'unsupported']),
           )(readString({ row: row, key: 'write_class' })),
         })),
       rows: this.#db
@@ -1528,14 +1534,14 @@ export class NotionSyncStore {
             baseHash: decodeHash(readString({ row: row, key: 'base_hash' })),
             remoteHash: decodeHash(readString({ row: row, key: 'remote_hash' })),
             availability: Schema.decodeUnknownSync(
-              Schema.Literal(
+              Schema.Literals([
                 'complete',
                 'computed',
                 'unsupported',
                 'paginated-incomplete',
                 'relation-target-inaccessible',
                 'related-data-source-unshared',
-              ),
+              ]),
             )(readString({ row: row, key: 'availability' })),
             pendingLocal: pendingProperties.get(`${pageId}\0${propertyId}`),
           }
@@ -1567,7 +1573,7 @@ export class NotionSyncStore {
             pointer: payload.pointer,
             sidecarIdentityProven: readBoolean({ row: row, key: 'sidecar_identity_proven' }),
             ownWriteMaterializationIds: Schema.decodeSync(
-              Schema.parseJson(Schema.Array(Schema.String)),
+              Schema.fromJsonString(Schema.Array(Schema.String)),
             )(readString({ row: row, key: 'own_write_materialization_ids_json' })),
             safety: payload.safety,
           }
@@ -2289,7 +2295,7 @@ CREATE TABLE _nds_conflict (
                   ? classification
                   : 'not-run'
             : Schema.decodeUnknownSync(
-                Schema.Literal(
+                Schema.Literals([
                   'not-run',
                   'accessible',
                   'in-trash',
@@ -2297,7 +2303,7 @@ CREATE TABLE _nds_conflict (
                   'permission-ambiguous',
                   'inaccessible',
                   'unknown',
-                ),
+                ]),
               )(readString({ row: row, key: 'direct_retrieve' }))
 
         return {
@@ -2360,11 +2366,11 @@ CREATE TABLE _nds_conflict (
         absence: {
           classified: readBoolean({ row: row, key: 'classified' }),
           membershipScope: Schema.decodeUnknownSync(
-            Schema.Literal('all-data-source-rows', 'explicit-filter'),
+            Schema.Literals(['all-data-source-rows', 'explicit-filter']),
           )(readString({ row: row, key: 'membership_scope' })),
           filtered: readBoolean({ row: row, key: 'filtered' }),
           directRetrieve: Schema.decodeUnknownSync(
-            Schema.Literal(
+            Schema.Literals([
               'not-run',
               'accessible',
               'in-trash',
@@ -2372,7 +2378,7 @@ CREATE TABLE _nds_conflict (
               'permission-ambiguous',
               'inaccessible',
               'unknown',
-            ),
+            ]),
           )(readString({ row: row, key: 'direct_retrieve' })),
         },
       }))
@@ -2621,7 +2627,7 @@ CREATE TABLE _nds_conflict (
             event.requestId,
             event.schemaHash,
             event.eventId,
-            Schema.encodeSync(Schema.DateTimeUtc)(event.observedAt),
+            Schema.encodeSync(Schema.DateTimeUtcFromString)(event.observedAt),
             currentIso(this.#now),
           )
 
@@ -2760,7 +2766,7 @@ CREATE TABLE _nds_conflict (
             payload?.movedOut === true ? 1 : 0,
             payload?.localDeleteCandidate === true ? 1 : 0,
             event.eventId,
-            Schema.encodeSync(Schema.DateTimeUtc)(event.observedAt),
+            Schema.encodeSync(Schema.DateTimeUtcFromString)(event.observedAt),
             currentIso(this.#now),
           )
 
@@ -3463,7 +3469,7 @@ CREATE TABLE _nds_conflict (
             payload?.contractChanged === true ? 1 : 0,
             event.highWatermark === null
               ? null
-              : Schema.encodeSync(Schema.DateTimeUtc)(event.highWatermark),
+              : Schema.encodeSync(Schema.DateTimeUtcFromString)(event.highWatermark),
             event.eventId,
             currentIso(this.#now),
           )

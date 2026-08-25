@@ -3,8 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { FetchHttpClient, HttpClient } from '@effect/platform'
-import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
+import { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import {
   NOTION_API_VERSION,
@@ -1094,20 +1095,17 @@ const formatDemoVerificationBlocks = (result: LiveNotionDemoShowcaseResult) => [
 ]
 
 const collectBlocks = (pageId: string) =>
-  NotionBlocks.retrieveChildrenStream({ blockId: pageId, pageSize: 100 }).pipe(
-    Stream.runCollect,
-    Effect.map(Chunk.toReadonlyArray),
-  )
+  NotionBlocks.retrieveChildrenStream({ blockId: pageId, pageSize: 100 }).pipe(Stream.runCollect)
 
 const archiveDemoDatabase = (databaseId: string) =>
   NotionDatabases.archive({ databaseId }).pipe(
-    Effect.catchAll(() =>
+    Effect.catch(() =>
       NotionDatabases.update({ databaseId, in_trash: false }).pipe(
-        Effect.zipRight(NotionDatabases.archive({ databaseId })),
+        Effect.andThen(NotionDatabases.archive({ databaseId })),
         Effect.ignore,
       ),
     ),
-    Effect.zipRight(NotionBlocks.delete({ blockId: databaseId }).pipe(Effect.ignore)),
+    Effect.andThen(NotionBlocks.delete({ blockId: databaseId }).pipe(Effect.ignore)),
     Effect.asVoid,
   )
 
@@ -1242,13 +1240,11 @@ const patchDemoDataSourceMetadata = ({
 }) =>
   Effect.gen(function* () {
     const notionConfig = yield* NotionConfig
-    const httpClient = yield* HttpClient.HttpClient
-    const provideClientEnv = <A, E>(
-      effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
-    ) =>
+    const httpClient = yield* HttpClient
+    const provideClientEnv = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) =>
       effect.pipe(
         Effect.provideService(NotionConfig, notionConfig),
-        Effect.provideService(HttpClient.HttpClient, httpClient),
+        Effect.provideService(HttpClient, httpClient),
       )
     /* Explicit ~3 rps throttle so this live path mirrors production pacing. */
     const withThrottle = yield* makeThrottledProvideClientEnv()
@@ -1322,7 +1318,7 @@ const createDemoDatabase = ({
       })
       yield* patchDemoDataSourceMetadata({ dataSourceId, runId, spec })
       return { databaseId: existing.databaseId, dataSourceId }
-    }).pipe(Effect.catchAll(() => createFresh))
+    }).pipe(Effect.catch(() => createFresh))
   })
 
 const queryDemoRowIds = (dataSourceId: string) =>
@@ -1333,7 +1329,6 @@ const queryDemoRowIds = (dataSourceId: string) =>
   }).pipe(
     Stream.map((page) => page.id),
     Stream.runCollect,
-    Effect.map(Chunk.toReadonlyArray),
   )
 
 const createDemoRows = ({
@@ -1465,7 +1460,7 @@ export const runLiveNotionDemoShowcase = async ({
   const demoPageId = config.demoPageId
 
   const layer = makeNotionLiveLayer({ token: env.token, maxRetries: 8, retryBaseDelay: 1_000 })
-  const run = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>) =>
+  const run = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) =>
     Effect.runPromise(effect.pipe(Effect.provide(layer)))
 
   const created = await run(
@@ -1631,7 +1626,7 @@ export const makeLiveNotionFixtureLifecycleClient = ({
   }
 
   const layer = makeNotionLiveLayer({ token: env.token })
-  const run = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>) =>
+  const run = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient>) =>
     Effect.runPromise(effect.pipe(Effect.provide(layer)))
 
   const titlePropertyName = Effect.gen(function* () {

@@ -19,9 +19,9 @@ import type {
  * handler map (`InputOf`/`SuccessOf`/`ErrorOf`).
  */
 export interface HandlerSpec {
-  readonly input: Schema.Schema<any, any>
-  readonly success: Schema.Schema<any, any>
-  readonly error?: Schema.Schema<any, any>
+  readonly input: Schema.Codec<any, any>
+  readonly success: Schema.Codec<any, any>
+  readonly error?: Schema.Codec<any, any>
   /** Per-handler SDK options (retry policy, retention, timeouts, …; R35, docs/vrs/04-error-boundary/spec.md §3). */
   readonly options?: HandlerOptions
 }
@@ -70,7 +70,7 @@ export type SuccessOf<C, M extends string> =
 export type ErrorOf<C, M extends string> =
   C extends Contract<any, infer H>
     ? M extends keyof H
-      ? H[M]['error'] extends Schema.Schema<any, any>
+      ? H[M]['error'] extends Schema.Codec<any, any>
         ? Schema.Schema.Type<H[M]['error']>
         : never
       : never
@@ -91,7 +91,7 @@ export type ServiceImpl<C, AppR> =
           input: Schema.Schema.Type<H[M]['input']>,
         ) => Effect.Effect<
           Schema.Schema.Type<H[M]['success']>,
-          H[M]['error'] extends Schema.Schema<any, any> ? Schema.Schema.Type<H[M]['error']> : never,
+          H[M]['error'] extends Schema.Codec<any, any> ? Schema.Schema.Type<H[M]['error']> : never,
           AppR | RestateContext
         >
       }
@@ -223,7 +223,7 @@ export type ObjectImpl<H extends ObjectHandlerSpecMap, AppR> = {
     input: Schema.Schema.Type<H[M]['input']>,
   ) => Effect.Effect<
     Schema.Schema.Type<H[M]['success']>,
-    H[M]['error'] extends Schema.Schema<any, any> ? Schema.Schema.Type<H[M]['error']> : never,
+    H[M]['error'] extends Schema.Codec<any, any> ? Schema.Schema.Type<H[M]['error']> : never,
     AppR | CapsForObjectHandler<H[M]>
   >
 }
@@ -320,7 +320,7 @@ type WorkflowSharedCaps = RestateContext | ObjectKey | StateRead | DurablePromis
 
 /** The error type of a handler spec (`never` when no `error` schema is declared). */
 type SpecError<HS extends HandlerSpec> =
-  HS['error'] extends Schema.Schema<any, any> ? Schema.Schema.Type<HS['error']> : never
+  HS['error'] extends Schema.Codec<any, any> ? Schema.Schema.Type<HS['error']> : never
 
 /**
  * The expected Workflow `implement` shape: the single `run` handler (full caps +
@@ -508,7 +508,7 @@ export type ObjectSuccessOf<C, M extends string> =
 export type ObjectErrorOf<C, M extends string> =
   C extends ObjectContract<any, any, infer H>
     ? M extends keyof H
-      ? H[M]['error'] extends Schema.Schema<any, any>
+      ? H[M]['error'] extends Schema.Codec<any, any>
         ? Schema.Schema.Type<H[M]['error']>
         : never
       : never
@@ -532,7 +532,7 @@ export type WorkflowRunSuccessOf<C> =
 /** The decoded `run` declared-error of a Workflow contract (`never` if none). */
 export type WorkflowRunErrorOf<C> =
   C extends WorkflowContract<any, any, infer Run, any, any>
-    ? Run['error'] extends Schema.Schema<any, any>
+    ? Run['error'] extends Schema.Codec<any, any>
       ? Schema.Schema.Type<Run['error']>
       : never
     : never

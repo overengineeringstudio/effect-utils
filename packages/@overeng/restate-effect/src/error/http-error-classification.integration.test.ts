@@ -19,9 +19,9 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import { FetchHttpClient } from '@effect/platform'
 import { it } from '@effect/vitest'
 import { Effect } from 'effect'
+import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient'
 import { afterAll, beforeAll, describe, expect } from 'vitest'
 
 import {
@@ -210,7 +210,7 @@ describe.skipIf(!serverAvailable)('14-http-error-classification (verified end-to
             method: 'fetchRetryable',
             input: { baseUrl, widgetId: 'throttled-1' },
           })
-          .pipe(Effect.ignore, Effect.fork)
+          .pipe(Effect.ignore, Effect.forkChild)
         expect(yield* climbsPastOne(() => hits['throttled-1'] ?? 0)).toBe(true)
       }),
     )

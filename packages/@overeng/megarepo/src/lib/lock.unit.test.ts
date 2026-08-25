@@ -420,20 +420,20 @@ describe('lock', () => {
     })
 
     it('should ignore lockedAt differences', () => {
-      const member1: LockedMember = {
+      const member1: LockedMember = new LockedMember({
         url: 'url',
         ref: 'main',
         commit: 'abc',
         pinned: false,
         lockedAt: '2024-01-01T00:00:00Z',
-      }
-      const member2: LockedMember = {
+      })
+      const member2: LockedMember = new LockedMember({
         url: 'url',
         ref: 'main',
         commit: 'abc',
         pinned: false,
         lockedAt: '2024-12-31T23:59:59Z',
-      }
+      })
       expect(lockedMembersEqual({ a: member1, b: member2 })).toBe(true)
     })
   })

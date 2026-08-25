@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { describe, expect, it } from 'vitest'
 
 import { NotionBlocks, type NotionConfig, NotionPages } from '@overeng/notion-effect-client'
@@ -17,7 +17,7 @@ import { createFakeNotion, type FakeNotion } from './mock-client.ts'
 
 const runWith = <A, E>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, E, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, E, HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const PARENT_ID = '11111111-1111-4111-8111-0000000000aa'
@@ -131,10 +131,10 @@ describe('FakeNotion stateful page model', () => {
     const listing = await Effect.runPromise(
       NotionBlocks.retrieveChildren({ blockId: created.id }).pipe(
         Effect.provide(fake.layer),
-        Effect.either,
+        Effect.result,
       ),
     )
-    expect(listing._tag).toBe('Left')
+    expect(listing._tag).toBe('Failure')
     // Restore.
     await runWith(fake, NotionPages.update({ pageId: created.id, in_trash: false }))
     expect(fake.pages.get(created.id)!.archived).toBe(false)

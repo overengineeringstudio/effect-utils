@@ -7,17 +7,17 @@
  * - commitDrift field
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
-import { createLockedMember, type LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
+import { createLockedMember, LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   addCommit,
@@ -42,8 +42,8 @@ const runStatusCommand = ({
   Effect.gen(function* () {
     const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
 
-    const argv = ['node', 'mr', '--cwd', cwd, 'status', '--output', 'json', ...args]
-    const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const argv = ['--cwd', cwd, 'status', '--output', 'json', ...args]
+    const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provide(consoleLayer),
     )
     const exit = yield* Effect.exit(effect)
@@ -53,7 +53,7 @@ const runStatusCommand = ({
     // Parse JSON output
     let status: StatusState | undefined
     if (stdout.trim() !== '') {
-      status = yield* Schema.decodeUnknown(Schema.parseJson(StatusState))(stdout)
+      status = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StatusState))(stdout)
     }
 
     return {
@@ -86,12 +86,10 @@ const createTestWorkspace = (args: {
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: MegarepoConfig = {
-      members: args.members,
-    }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-      config,
-    )
+    const config: MegarepoConfig = new MegarepoConfig({ members: args.members })
+    const configContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(config)
     yield* fs.writeFileString(
       EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
       configContent + '\n',
@@ -110,10 +108,7 @@ const createTestWorkspace = (args: {
         })
       }
 
-      const lockFile: LockFile = {
-        version: 1,
-        members,
-      }
+      const lockFile: LockFile = new LockFile({ version: 1, members })
 
       const lockPath = EffectPath.ops.join(
         workspacePath,
@@ -173,7 +168,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(false)
           expect(status!.syncReasons).toEqual([])
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -202,7 +197,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'effect' symlink missing")
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -224,7 +219,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain('Lock file missing')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       { timeout: 20000 },
@@ -257,7 +252,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'another-lib' not in lock file")
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -294,7 +289,7 @@ describe('mr status --output json', () => {
           expect(member).toBeDefined()
           expect(member!.symlinkExists).toBe(true)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -323,7 +318,7 @@ describe('mr status --output json', () => {
           expect(member).toBeDefined()
           expect(member!.symlinkExists).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -373,7 +368,7 @@ describe('mr status --output json', () => {
           expect(member!.commitDrift!.localCommit).toBe(actualCommit)
           expect(member!.commitDrift!.lockedCommit).toBe(lockedCommit)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -414,7 +409,7 @@ describe('mr status --output json', () => {
           expect(member).toBeDefined()
           expect(member!.commitDrift).toBeUndefined()
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -447,7 +442,7 @@ describe('mr status --output json', () => {
           expect(member!.isLocal).toBe(true)
           expect(member!.commitDrift).toBeUndefined()
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -510,7 +505,7 @@ describe('mr status --output json', () => {
           expect(status!.syncNeeded).toBe(true)
           expect(status!.syncReasons).toContain("Member 'remote-lib' symlink missing")
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -533,9 +528,9 @@ describe('mr status --output json', () => {
 
           const writeConfig = (workspacePath: AbsoluteDirPath, members: Record<string, string>) =>
             Effect.gen(function* () {
-              const configContent = yield* Schema.encode(
-                Schema.parseJson(MegarepoConfig, { space: 2 }),
-              )({ members })
+              const configContent = yield* Schema.encodeEffect(
+                Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+              )(new MegarepoConfig({ members }))
               yield* fs.writeFileString(
                 EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
                 `${configContent}\n`,
@@ -576,7 +571,7 @@ describe('mr status --output json', () => {
           expect(cycleClosingMember?.isMegarepo).toBe(true)
           expect(cycleClosingMember?.nestedMembers).toEqual([])
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )

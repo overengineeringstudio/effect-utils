@@ -5,9 +5,9 @@
 import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { Args, Command, Options } from '@effect/cli'
-import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { Effect, Layer, Option, Schema } from 'effect'
+import { Effect, FileSystem, Layer, Option, Schema } from 'effect'
+import { Argument as Args, Command, Flag as Options } from 'effect/unstable/cli'
+import { FetchHttpClient } from 'effect/unstable/http'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -30,7 +30,7 @@ import { IntrospectView } from '../../renderers/IntrospectOutput/view.tsx'
 import { resolveNotionToken, tokenOption } from '../shared.ts'
 
 /** Re-export internal types for TypeScript declaration emit */
-export type { PlatformError } from '@effect/platform/Error'
+export type { PlatformError } from 'effect/PlatformError'
 
 import { type GenerateOptions, generateApiCode, generateSchemaCode } from '../../codegen.ts'
 import { loadConfig } from '../../config.ts'
@@ -73,7 +73,9 @@ const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const pkgJsonPath = fileURLToPath(new URL('../../../package.json', import.meta.url))
   const content = yield* fs.readFileString(pkgJsonPath)
-  const pkg = yield* Schema.decodeUnknown(Schema.parseJson(GeneratorPackageJsonSchema))(content)
+  const pkg = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(GeneratorPackageJsonSchema))(
+    content,
+  )
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 
@@ -81,7 +83,7 @@ const getGeneratorVersion = Effect.gen(function* () {
 // Generate Command
 // -----------------------------------------------------------------------------
 
-const generateDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const generateDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to generate schema from'),
 )
 
@@ -103,13 +105,13 @@ const tuiOutputModeOption = Options.choice('output-mode', OUTPUT_MODE_VALUES).pi
   Options.withDefault('auto' as (typeof OUTPUT_MODE_VALUES)[number]),
 )
 
-const nameOption = Options.text('name').pipe(
+const nameOption = Options.string('name').pipe(
   Options.withAlias('n'),
   Options.withDescription('Name for the generated schema (defaults to database title)'),
   Options.optional,
 )
 
-const transformOption = Options.keyValueMap('transform').pipe(
+const transformOption = Options.keyValuePair('transform').pipe(
   Options.withDescription(
     'Property transform config: property=transform (e.g., Status=asName, Title=asString)',
   ),
@@ -197,7 +199,7 @@ export const generateCommand = Command.make(
 
       const transformConfig: PropertyTransformConfig = {}
       if (Option.isSome(transform) === true) {
-        for (const [key, value] of transform.value) {
+        for (const [key, value] of Object.entries(transform.value)) {
           transformConfig[key] = value
         }
       }
@@ -300,7 +302,7 @@ export const generateCommand = Command.make(
             })
 
             yield* program.pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 Effect.sync(() => {
                   tui.dispatch({ _tag: 'SetError', message: String(error) })
                 }),
@@ -317,7 +319,7 @@ export const generateCommand = Command.make(
 // Introspect Command
 // -----------------------------------------------------------------------------
 
-const introspectDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const introspectDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to introspect'),
 )
 
@@ -397,7 +399,7 @@ const introspectCommand = Command.make(
             })
 
             yield* program.pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 Effect.sync(() => {
                   tui.dispatch({ _tag: 'SetError', message: String(error) })
                 }),
@@ -527,7 +529,7 @@ const generateFromConfigCommand = Command.make(
             })
 
             yield* program.pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 Effect.sync(() => {
                   tui.dispatch({ _tag: 'SetError', message: String(error) })
                 }),
@@ -546,7 +548,7 @@ const generateFromConfigCommand = Command.make(
 // Diff Command
 // -----------------------------------------------------------------------------
 
-const diffDatabaseIdArg = Args.text({ name: 'database-id' }).pipe(
+const diffDatabaseIdArg = Args.string('database-id').pipe(
   Args.withDescription('The Notion database ID to compare against'),
 )
 
@@ -635,7 +637,7 @@ const diffCommand = Command.make(
             })
 
             yield* program.pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 Effect.sync(() => {
                   tui.dispatch({ _tag: 'SetError', message: String(error) })
                 }),

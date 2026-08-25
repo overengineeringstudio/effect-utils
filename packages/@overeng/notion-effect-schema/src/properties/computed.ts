@@ -1,6 +1,6 @@
-import { Schema } from 'effect'
+import { Schema, SchemaGetter } from 'effect'
 
-import { docsPath, shouldNeverHappen } from '../common.ts'
+import { docsPath } from '../common.ts'
 import { DateValue } from './date.ts'
 
 // -----------------------------------------------------------------------------
@@ -10,14 +10,14 @@ import { DateValue } from './date.ts'
 /**
  * Formula result value.
  */
-export const FormulaValue = Schema.Union(
+export const FormulaValue = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('string'),
     string: Schema.NullOr(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal('number'),
-    number: Schema.NullOr(Schema.Number),
+    number: Schema.NullOr(Schema.Finite),
   }),
   Schema.Struct({
     type: Schema.Literal('boolean'),
@@ -27,7 +27,7 @@ export const FormulaValue = Schema.Union(
     type: Schema.Literal('date'),
     date: Schema.NullOr(DateValue),
   }),
-).annotations({
+]).annotate({
   identifier: 'Notion.FormulaValue',
   title: 'Formula Value',
   description: 'The computed result of a formula.',
@@ -42,16 +42,16 @@ export type FormulaValue = typeof FormulaValue.Type
  * @see https://developers.notion.com/reference/property-value-object#formula
  */
 export const FormulaProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('formula').annotations({
+  type: Schema.Literal('formula').annotate({
     description: 'Property type identifier.',
   }),
-  formula: FormulaValue.annotations({
+  formula: FormulaValue.annotate({
     description: 'The computed formula result.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.FormulaProperty',
   title: 'Formula Property',
   description: 'A formula property value (read-only, computed).',
@@ -66,82 +66,73 @@ export const Formula = {
   Property: FormulaProperty,
 
   /** Transform to raw FormulaValue. */
-  raw: Schema.transform(FormulaProperty, FormulaValue, {
-    strict: false,
-    decode: (prop) => prop.formula,
-    encode: () => shouldNeverHappen('Formula.raw encode is not supported (formula is read-only).'),
-  }),
+  raw: FormulaProperty.pipe(
+    Schema.decodeTo(FormulaValue, {
+      decode: SchemaGetter.transform((prop) => prop.formula),
+      encode: SchemaGetter.forbidden(
+        () => 'Formula.raw encode is not supported (formula is read-only).',
+      ),
+    }),
+  ),
 
   /** Transform to required number (fails if not a number formula). */
-  asNumber: Schema.transform(
-    FormulaProperty.pipe(
-      Schema.filter(
-        (p): p is typeof p & { formula: { type: 'number'; number: number } } =>
-          p.formula.type === 'number' && p.formula.number !== null,
-        { message: () => 'Formula must be a non-null number' },
-      ),
+  asNumber: FormulaProperty.pipe(
+    Schema.refine(
+      (p): p is typeof p & { formula: { type: 'number'; number: number } } =>
+        p.formula.type === 'number' && p.formula.number !== null,
+      { message: 'Formula must be a non-null number' },
     ),
-    Schema.Number,
-    {
-      strict: false,
-      decode: (prop) => prop.formula.number,
-      encode: () =>
-        shouldNeverHappen('Formula.asNumber encode is not supported (formula is read-only).'),
-    },
+    Schema.decodeTo(Schema.Finite, {
+      decode: SchemaGetter.transform((prop) => prop.formula.number),
+      encode: SchemaGetter.forbidden(
+        () => 'Formula.asNumber encode is not supported (formula is read-only).',
+      ),
+    }),
   ),
 
   /** Transform to required string (fails if not a string formula). */
-  asString: Schema.transform(
-    FormulaProperty.pipe(
-      Schema.filter(
-        (p): p is typeof p & { formula: { type: 'string'; string: string } } =>
-          p.formula.type === 'string' && p.formula.string !== null,
-        { message: () => 'Formula must be a non-null string' },
-      ),
+  asString: FormulaProperty.pipe(
+    Schema.refine(
+      (p): p is typeof p & { formula: { type: 'string'; string: string } } =>
+        p.formula.type === 'string' && p.formula.string !== null,
+      { message: 'Formula must be a non-null string' },
     ),
-    Schema.String,
-    {
-      strict: false,
-      decode: (prop) => prop.formula.string,
-      encode: () =>
-        shouldNeverHappen('Formula.asString encode is not supported (formula is read-only).'),
-    },
+    Schema.decodeTo(Schema.String, {
+      decode: SchemaGetter.transform((prop) => prop.formula.string),
+      encode: SchemaGetter.forbidden(
+        () => 'Formula.asString encode is not supported (formula is read-only).',
+      ),
+    }),
   ),
 
   /** Transform to required boolean (fails if not a boolean formula). */
-  asBoolean: Schema.transform(
-    FormulaProperty.pipe(
-      Schema.filter(
-        (p): p is typeof p & { formula: { type: 'boolean'; boolean: boolean } } =>
-          p.formula.type === 'boolean' && p.formula.boolean !== null,
-        { message: () => 'Formula must be a non-null boolean' },
-      ),
+  asBoolean: FormulaProperty.pipe(
+    Schema.refine(
+      (p): p is typeof p & { formula: { type: 'boolean'; boolean: boolean } } =>
+        p.formula.type === 'boolean' && p.formula.boolean !== null,
+      { message: 'Formula must be a non-null boolean' },
     ),
-    Schema.Boolean,
-    {
-      strict: false,
-      decode: (prop) => prop.formula.boolean,
-      encode: () =>
-        shouldNeverHappen('Formula.asBoolean encode is not supported (formula is read-only).'),
-    },
+    Schema.decodeTo(Schema.Boolean, {
+      decode: SchemaGetter.transform((prop) => prop.formula.boolean),
+      encode: SchemaGetter.forbidden(
+        () => 'Formula.asBoolean encode is not supported (formula is read-only).',
+      ),
+    }),
   ),
 
   /** Transform to required date (fails if not a date formula). */
-  asDate: Schema.transform(
-    FormulaProperty.pipe(
-      Schema.filter(
-        (p): p is typeof p & { formula: { type: 'date'; date: DateValue } } =>
-          p.formula.type === 'date' && p.formula.date !== null,
-        { message: () => 'Formula must be a non-null date' },
-      ),
+  asDate: FormulaProperty.pipe(
+    Schema.refine(
+      (p): p is typeof p & { formula: { type: 'date'; date: DateValue } } =>
+        p.formula.type === 'date' && p.formula.date !== null,
+      { message: 'Formula must be a non-null date' },
     ),
-    DateValue,
-    {
-      strict: false,
-      decode: (prop) => prop.formula.date,
-      encode: () =>
-        shouldNeverHappen('Formula.asDate encode is not supported (formula is read-only).'),
-    },
+    Schema.decodeTo(DateValue, {
+      decode: SchemaGetter.transform((prop) => prop.formula.date),
+      encode: SchemaGetter.forbidden(
+        () => 'Formula.asDate encode is not supported (formula is read-only).',
+      ),
+    }),
   ),
 } as const
 
@@ -155,25 +146,25 @@ export const Formula = {
  * @see https://developers.notion.com/reference/property-value-object#unique-id
  */
 export const UniqueIdProperty = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: 'Property identifier.',
   }),
-  type: Schema.Literal('unique_id').annotations({
+  type: Schema.Literal('unique_id').annotate({
     description: 'Property type identifier.',
   }),
   unique_id: Schema.Struct({
-    prefix: Schema.NullOr(Schema.String).annotations({
+    prefix: Schema.NullOr(Schema.String).annotate({
       description: 'Optional text prefix for the ID.',
       examples: ['TASK', 'BUG'],
     }),
-    number: Schema.Number.annotations({
+    number: Schema.Finite.annotate({
       description: 'Auto-incrementing number.',
       examples: [1, 42, 100],
     }),
-  }).annotations({
+  }).annotate({
     description: 'The unique ID value.',
   }),
-}).annotations({
+}).annotate({
   identifier: 'Notion.UniqueIdProperty',
   title: 'Unique ID Property',
   description: 'An auto-incrementing unique ID (read-only).',
@@ -188,21 +179,25 @@ export const UniqueId = {
   Property: UniqueIdProperty,
 
   /** Transform to formatted string (e.g., "TASK-42"). */
-  asString: Schema.transform(UniqueIdProperty, Schema.String, {
-    strict: false,
-    decode: (prop) => {
-      const { prefix, number } = prop.unique_id
-      return prefix !== null ? `${prefix}-${number}` : String(number)
-    },
-    encode: () =>
-      shouldNeverHappen('UniqueId.asString encode is not supported (unique_id is read-only).'),
-  }),
+  asString: UniqueIdProperty.pipe(
+    Schema.decodeTo(Schema.String, {
+      decode: SchemaGetter.transform((prop) => {
+        const { prefix, number } = prop.unique_id
+        return prefix !== null ? `${prefix}-${number}` : String(number)
+      }),
+      encode: SchemaGetter.forbidden(
+        () => 'UniqueId.asString encode is not supported (unique_id is read-only).',
+      ),
+    }),
+  ),
 
   /** Transform to just the number. */
-  asNumber: Schema.transform(UniqueIdProperty, Schema.Number, {
-    strict: false,
-    decode: (prop) => prop.unique_id.number,
-    encode: () =>
-      shouldNeverHappen('UniqueId.asNumber encode is not supported (unique_id is read-only).'),
-  }),
+  asNumber: UniqueIdProperty.pipe(
+    Schema.decodeTo(Schema.Finite, {
+      decode: SchemaGetter.transform((prop) => prop.unique_id.number),
+      encode: SchemaGetter.forbidden(
+        () => 'UniqueId.asNumber encode is not supported (unique_id is read-only).',
+      ),
+    }),
+  ),
 } as const

@@ -4,12 +4,11 @@
  * @since 0.1.0
  */
 
-import { NodeHttpServer } from '@effect/platform-node'
-import type * as HttpApp from '@effect/platform/HttpApp'
-import type * as HttpRouter from '@effect/platform/HttpRouter'
-import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from '@effect/rpc'
 import type * as Context from 'effect/Context'
 import * as Layer from 'effect/Layer'
+import type { HttpMiddleware } from 'effect/unstable/http/HttpMiddleware'
+import * as HttpRouter from 'effect/unstable/http/HttpRouter'
+import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from 'effect/unstable/rpc'
 
 /** Web handler interface returned by makeHandler for use in TanStack Start API routes */
 export type RpcWebHandler = {
@@ -21,7 +20,7 @@ export type RpcWebHandler = {
 }
 
 type HandlerLayer<TRpcs extends Rpc.Any, TError, TRuntime> = Layer.Layer<
-  Rpc.ToHandler<TRpcs> | Rpc.Middleware<TRpcs>,
+  Rpc.ToHandler<TRpcs> | Rpc.Middleware<TRpcs> | Rpc.ServicesServer<TRpcs>,
   TError,
   TRuntime
 >
@@ -29,15 +28,18 @@ type HandlerLayer<TRpcs extends Rpc.Any, TError, TRuntime> = Layer.Layer<
 type HandlerBaseOptions<TRpcs extends Rpc.Any, TError> = {
   readonly group: RpcGroup.RpcGroup<TRpcs>
   readonly handlerLayer: HandlerLayer<TRpcs, TError, never>
-  readonly routerLayer?: Layer.Layer<HttpRouter.HttpRouter.DefaultServices, never, never>
+  /**
+   * The HTTP route path the RPC protocol is registered on.
+   * Defaults to '/api/rpc'.
+   */
+  readonly path?: `/${string}` | undefined
+  readonly routerLayer?: Layer.Layer<HttpRouter.HttpRouter, never, never>
   readonly serializationLayer?: Layer.Layer<RpcSerialization.RpcSerialization, never, never>
   readonly disableTracing?: boolean | undefined
   readonly spanPrefix?: string | undefined
   readonly spanAttributes?: Record<string, unknown> | undefined
   readonly disableFatalDefects?: boolean | undefined
-  readonly middleware?: (
-    httpApp: HttpApp.Default,
-  ) => HttpApp.Default<never, HttpRouter.HttpRouter.DefaultServices>
+  readonly middleware?: HttpMiddleware
   readonly memoMap?: Layer.MemoMap
 }
 
@@ -56,8 +58,9 @@ const buildHandlerLayer = <TRpcs extends Rpc.Any, TRuntime, TError>(
 ): Layer.Layer<
   | Rpc.ToHandler<TRpcs>
   | Rpc.Middleware<TRpcs>
+  | Rpc.ServicesServer<TRpcs>
   | RpcSerialization.RpcSerialization
-  | HttpRouter.HttpRouter.DefaultServices,
+  | HttpRouter.HttpRouter,
   TError,
   never
 > => {
@@ -67,7 +70,7 @@ const buildHandlerLayer = <TRpcs extends Rpc.Any, TRuntime, TError>(
       : options.handlerLayer
 
   const serializationLayer = options.serializationLayer ?? RpcSerialization.layerNdjson
-  const routerLayer = options.routerLayer ?? NodeHttpServer.layerContext
+  const routerLayer = options.routerLayer ?? HttpRouter.layer
 
   return Layer.mergeAll(handlerLayer, serializationLayer, routerLayer)
 }
@@ -83,21 +86,27 @@ export const makeHandler: {
 } = <TRpcs extends Rpc.Any, TRuntime, TError>(
   options: HandlerOptions<TRpcs, TError> | HandlerOptionsWithRuntime<TRpcs, TRuntime, TError>,
 ): RpcWebHandler => {
-  const layer = buildHandlerLayer(options)
+  const handlerLayer = buildHandlerLayer(options)
 
-  const handlerOptions = {
-    layer,
-    ...(options.disableTracing === undefined ? {} : { disableTracing: options.disableTracing }),
-    ...(options.spanPrefix === undefined ? {} : { spanPrefix: options.spanPrefix }),
-    ...(options.spanAttributes === undefined ? {} : { spanAttributes: options.spanAttributes }),
-    ...(options.disableFatalDefects === undefined
-      ? {}
-      : { disableFatalDefects: options.disableFatalDefects }),
+  const appLayer: Layer.Layer<never, TError> = Layer.provide(
+    RpcServer.layerHttp({
+      group: options.group,
+      path: options.path ?? '/api/rpc',
+      protocol: 'http',
+      ...(options.disableTracing === undefined ? {} : { disableTracing: options.disableTracing }),
+      ...(options.spanPrefix === undefined ? {} : { spanPrefix: options.spanPrefix }),
+      ...(options.spanAttributes === undefined ? {} : { spanAttributes: options.spanAttributes }),
+      ...(options.disableFatalDefects === undefined
+        ? {}
+        : { disableFatalDefects: options.disableFatalDefects }),
+    }),
+    handlerLayer,
+  )
+
+  return HttpRouter.toWebHandler(appLayer, {
     ...(options.middleware === undefined ? {} : { middleware: options.middleware }),
     ...(options.memoMap === undefined ? {} : { memoMap: options.memoMap }),
-  }
-
-  return RpcServer.toWebHandler(options.group, handlerOptions)
+  })
 }
 
 /**
@@ -107,21 +116,21 @@ export const makeHandlerWithRuntime: <TRpcs extends Rpc.Any, TRuntime, TError>(o
   readonly group: RpcGroup.RpcGroup<TRpcs>
   readonly handlerLayer: HandlerLayer<TRpcs, TError, TRuntime>
   readonly runtimeLayer: Layer.Layer<TRuntime, never, never>
-  readonly routerLayer?: Layer.Layer<HttpRouter.HttpRouter.DefaultServices, never, never>
+  readonly path?: `/${string}` | undefined
+  readonly routerLayer?: Layer.Layer<HttpRouter.HttpRouter, never, never>
   readonly serializationLayer?: Layer.Layer<RpcSerialization.RpcSerialization, never, never>
   readonly disableTracing?: boolean | undefined
   readonly spanPrefix?: string | undefined
   readonly spanAttributes?: Record<string, unknown> | undefined
   readonly disableFatalDefects?: boolean | undefined
-  readonly middleware?: (
-    httpApp: HttpApp.Default,
-  ) => HttpApp.Default<never, HttpRouter.HttpRouter.DefaultServices>
+  readonly middleware?: HttpMiddleware
   readonly memoMap?: Layer.MemoMap
 }) => RpcWebHandler = (options) =>
   makeHandler({
     group: options.group,
     handlerLayer: options.handlerLayer,
     runtimeLayer: options.runtimeLayer,
+    ...(options.path === undefined ? {} : { path: options.path }),
     ...(options.routerLayer === undefined ? {} : { routerLayer: options.routerLayer }),
     ...(options.serializationLayer === undefined
       ? {}

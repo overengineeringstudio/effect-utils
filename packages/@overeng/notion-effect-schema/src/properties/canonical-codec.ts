@@ -31,7 +31,7 @@ export class CanonicalDecodeError extends Schema.TaggedError<CanonicalDecodeErro
   'Notion.CanonicalDecodeError',
   {
     propertyType: Schema.String,
-    reason: Schema.Literal('unsupported_type', 'malformed_payload'),
+    reason: Schema.Literals(['unsupported_type', 'malformed_payload']),
     message: Schema.String,
   },
 ) {}
@@ -41,7 +41,7 @@ export class CanonicalEncodeError extends Schema.TaggedError<CanonicalEncodeErro
   'Notion.CanonicalEncodeError',
   {
     tag: Schema.String,
-    reason: Schema.Literal('computed', 'unsupported_remote_shape'),
+    reason: Schema.Literals(['computed', 'unsupported_remote_shape']),
     message: Schema.String,
   },
 ) {}
@@ -205,12 +205,12 @@ const optionValue = (option: CanonicalOptionValue) => ({
   ...(option.color === undefined ? {} : { color: option.color }),
 })
 
-const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
+const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtcFromString)
 
 /**
  * Encode is only ever fed values produced by decoding a write command, where
  * `date.start`/`date.end` are real `DateTime.Utc` instances — so they are
- * serialized to ISO strings via `Schema.DateTimeUtc`. The end field is omitted
+ * serialized to ISO strings via `Schema.DateTimeUtcFromString`. The end field is omitted
  * (not `null`) when absent, matching the Notion API shape.
  */
 const encodeDate = (value: Extract<CanonicalPropertyValue, { _tag: 'date' }>) => ({

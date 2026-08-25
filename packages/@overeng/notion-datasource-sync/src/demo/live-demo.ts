@@ -1,41 +1,45 @@
-import { Either, Schema } from 'effect'
+import { Result, Schema } from 'effect'
+
+import { NonEmptyTrimmedString } from '../core/domain.ts'
 
 /** Stable keys for the durable Notion datasource-sync demo domains. */
-export const NotionDatasourceSyncDemoDataSourceKey = Schema.Literal(
+export const NotionDatasourceSyncDemoDataSourceKey = Schema.Literals([
   'projects',
   'incidents',
   'customers',
   'activity',
-)
+])
 
 export type NotionDatasourceSyncDemoDataSourceKey =
   typeof NotionDatasourceSyncDemoDataSourceKey.Type
 
 /** Separates read-only verification from the guarded public synthetic fixture provisioner. */
-export const NotionDatasourceSyncLiveFixtureLane = Schema.Literal(
+export const NotionDatasourceSyncLiveFixtureLane = Schema.Literals([
   'read-only-verifier',
   'provisioner',
-)
+])
 
 export type NotionDatasourceSyncLiveFixtureLane = typeof NotionDatasourceSyncLiveFixtureLane.Type
 
-const NotionId = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+const NotionId = Schema.String.check(
+  Schema.isPattern(
+    /^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  ),
 )
 
-const NotionUrl = Schema.String.pipe(Schema.pattern(/^https:\/\/www\.notion\.so\//))
+const NotionUrl = Schema.String.check(Schema.isPattern(/^https:\/\/www\.notion\.so\//))
 
 /** Expected live Notion database/data-source shape for one demo domain. */
 export const NotionDatasourceSyncDemoDataSourceSchema = Schema.Struct({
   key: NotionDatasourceSyncDemoDataSourceKey,
-  title: Schema.NonEmptyTrimmedString,
+  title: NonEmptyTrimmedString,
   databaseId: NotionId,
   databaseUrl: NotionUrl,
   dataSourceId: NotionId,
-  expectedRows: Schema.Number,
-  expectedPropertyNames: Schema.Array(Schema.NonEmptyTrimmedString),
+  expectedRows: Schema.Finite,
+  expectedPropertyNames: Schema.Array(NonEmptyTrimmedString),
   fastReplica: Schema.Boolean,
-}).annotations({ identifier: 'NotionDatasourceSync.DemoDataSource' })
+}).annotate({ identifier: 'NotionDatasourceSync.DemoDataSource' })
 
 export type NotionDatasourceSyncDemoDataSource =
   typeof NotionDatasourceSyncDemoDataSourceSchema.Type
@@ -46,8 +50,8 @@ export const NotionDatasourceSyncDemoProvisionerContractSchema = Schema.Struct({
   ownedBy: Schema.Literal('notion-datasource-sync-demo-provisioner'),
   writes: Schema.Literal('public-synthetic-fixtures-only'),
   emittedIds: Schema.Literal('env-or-public-synthetic-manifest'),
-  requiredMarker: Schema.NonEmptyTrimmedString,
-}).annotations({ identifier: 'NotionDatasourceSync.DemoProvisionerContract' })
+  requiredMarker: NonEmptyTrimmedString,
+}).annotate({ identifier: 'NotionDatasourceSync.DemoProvisionerContract' })
 
 /** Durable online demo page plus every child data source the package verifies. */
 export const NotionDatasourceSyncDemoManifestSchema = Schema.Struct({
@@ -57,12 +61,12 @@ export const NotionDatasourceSyncDemoManifestSchema = Schema.Struct({
   pageUrl: NotionUrl,
   readOnlyContract: Schema.Struct({
     lane: Schema.Literal('read-only-verifier'),
-    minDurableRows: Schema.Number,
+    minDurableRows: Schema.Finite,
     localFullReplica: Schema.Literal('explicit-opt-in'),
   }),
   provisionerContract: NotionDatasourceSyncDemoProvisionerContractSchema,
   dataSources: Schema.Array(NotionDatasourceSyncDemoDataSourceSchema),
-}).annotations({ identifier: 'NotionDatasourceSync.DemoManifest' })
+}).annotate({ identifier: 'NotionDatasourceSync.DemoManifest' })
 
 export type NotionDatasourceSyncDemoManifest = typeof NotionDatasourceSyncDemoManifestSchema.Type
 
@@ -75,17 +79,19 @@ export type NotionDatasourceSyncDemoChildDatabase = {
 
 const NotionApiFailureBodySchema = Schema.Struct({
   object: Schema.optional(Schema.String),
-  status: Schema.optional(Schema.Number),
+  status: Schema.optional(Schema.Finite),
   code: Schema.optional(Schema.String),
   message: Schema.optional(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.DemoApiFailureBody' })
+}).annotate({ identifier: 'NotionDatasourceSync.DemoApiFailureBody' })
 
 const decodeNotionApiFailureBody = (
   body: string | undefined,
 ): typeof NotionApiFailureBodySchema.Type | undefined => {
   if (body === undefined) return undefined
-  const decoded = Schema.decodeUnknownEither(Schema.parseJson(NotionApiFailureBodySchema))(body)
-  return Either.isRight(decoded) === true ? decoded.right : undefined
+  const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(NotionApiFailureBodySchema))(
+    body,
+  )
+  return Result.isSuccess(decoded) === true ? decoded.success : undefined
 }
 
 /** Format live demo access failures without echoing raw Notion response bodies, request IDs, integration IDs, or object IDs. */

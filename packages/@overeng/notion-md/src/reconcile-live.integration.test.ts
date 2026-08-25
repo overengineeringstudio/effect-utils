@@ -2,10 +2,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { FileSystem, HttpClient } from '@effect/platform'
-import { FetchHttpClient } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Deferred, Effect, Fiber, Layer, Redacted } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import { Deferred, Effect, type FileSystem, Fiber, Layer, Redacted } from 'effect'
+import { FetchHttpClient, type HttpClient } from 'effect/unstable/http'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { NotionConfigLive, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
@@ -48,8 +47,8 @@ const ConfigLayer = NotionConfigLive({
 const BaseLayer = Layer.mergeAll(ConfigLayer, FetchHttpClient.layer)
 const TestLayer = Layer.mergeAll(
   BaseLayer,
-  NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
-  NodeContext.layer,
+  NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer)),
+  NodeServices.layer,
   NotionMdGatewayLive.pipe(Layer.provide(BaseLayer)),
 )
 
@@ -128,7 +127,7 @@ describe.skipIf(skipLive)('notion-md v-next live smoke (R27)', () => {
           Effect.gen(function* () {
             const initialNoop = yield* Deferred.make<void>()
             const pulled = yield* Deferred.make<void>()
-            const fiber = yield* Effect.fork(
+            const fiber = yield* Effect.forkChild(
               runWatch({
                 syncOptions: { path },
                 pollIntervalMs: 250,

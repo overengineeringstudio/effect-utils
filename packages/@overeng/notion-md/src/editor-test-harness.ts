@@ -4,8 +4,7 @@
  * the engine through one fake instead of duplicating ~100 lines. Lives in a
  * non-`.test.ts` module so vitest does not collect it as a suite.
  */
-import { FileSystem } from '@effect/platform'
-import { Effect, Layer } from 'effect'
+import { Effect, FileSystem, Layer } from 'effect'
 
 import type { BodyCompleteness } from '@overeng/notion-core'
 
@@ -116,17 +115,17 @@ export class FakeGateway {
         }
         return Effect.succeed({ markdown: pull(this.state).markdown })
       }),
-    updatePageProperties: () => Effect.dieMessage('unexpected updatePageProperties'),
-    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
+    updatePageProperties: () => Effect.die(new Error('unexpected updatePageProperties')),
+    retrieveDataSource: () => Effect.die(new Error('unexpected retrieveDataSource')),
     updatePageMetadata: ({ metadata }) =>
       Effect.sync(() => {
         if (metadata.title !== undefined) this.state.title = metadata.title.value
         return snapshot(this.state)
       }),
     listChildPages: () => Effect.succeed([]),
-    createPage: () => Effect.dieMessage('unexpected createPage'),
-    movePage: () => Effect.dieMessage('unexpected movePage'),
-    archivePage: () => Effect.dieMessage('unexpected archivePage'),
+    createPage: () => Effect.die(new Error('unexpected createPage')),
+    movePage: () => Effect.die(new Error('unexpected movePage')),
+    archivePage: () => Effect.die(new Error('unexpected archivePage')),
   } satisfies NotionMdGatewayShape)
 }
 

@@ -1,6 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Effect, Either, Schema } from 'effect'
+import { NodeServices as NodeContext } from '@effect/platform-node'
+import { Effect, FileSystem, Result, Schema } from 'effect'
 import { expect, it } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -30,8 +29,8 @@ Vitest.describe('convention parsing', () => {
       Effect.gen(function* () {
         const result = yield* EffectPath.convention
           .absoluteFile('relative/path.txt')
-          .pipe(Effect.either)
-        expect(Either.isLeft(result)).toBe(true)
+          .pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }).pipe(Effect.provide(NodeContext.layer)),
     )
 
@@ -39,8 +38,8 @@ Vitest.describe('convention parsing', () => {
       Effect.gen(function* () {
         const result = yield* EffectPath.convention
           .absoluteFile('/path/to/dir/')
-          .pipe(Effect.either)
-        expect(Either.isLeft(result)).toBe(true)
+          .pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }).pipe(Effect.provide(NodeContext.layer)),
     )
   })
@@ -55,8 +54,8 @@ Vitest.describe('convention parsing', () => {
 
     Vitest.it.effect('fails on file path (no trailing slash)', () =>
       Effect.gen(function* () {
-        const result = yield* EffectPath.convention.absoluteDir('/path/to/file').pipe(Effect.either)
-        expect(Either.isLeft(result)).toBe(true)
+        const result = yield* EffectPath.convention.absoluteDir('/path/to/file').pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }).pipe(Effect.provide(NodeContext.layer)),
     )
   })
@@ -307,7 +306,7 @@ Vitest.describe('schema', () => {
   Vitest.describe('AbsoluteFilePath', () => {
     Vitest.it.effect('decodes valid absolute file path', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFilePath)(
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteFilePath)(
           '/home/user/file.txt',
         )
         expect(result).toBe('/home/user/file.txt')
@@ -316,19 +315,19 @@ Vitest.describe('schema', () => {
 
     Vitest.it.effect('rejects relative path', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFilePath)(
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteFilePath)(
           'relative/file.txt',
-        ).pipe(Effect.either)
-        expect(Either.isLeft(result)).toBe(true)
+        ).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }),
     )
 
     Vitest.it.effect('rejects directory path', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFilePath)(
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteFilePath)(
           '/path/to/dir/',
-        ).pipe(Effect.either)
-        expect(Either.isLeft(result)).toBe(true)
+        ).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }),
     )
   })
@@ -336,17 +335,19 @@ Vitest.describe('schema', () => {
   Vitest.describe('AbsoluteDirPath', () => {
     Vitest.it.effect('decodes valid absolute directory path', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteDirPath)('/home/user/')
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteDirPath)(
+          '/home/user/',
+        )
         expect(result).toBe('/home/user/')
       }),
     )
 
     Vitest.it.effect('rejects file path (no trailing slash)', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteDirPath)(
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteDirPath)(
           '/home/user/file.txt',
-        ).pipe(Effect.either)
-        expect(Either.isLeft(result)).toBe(true)
+        ).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }),
     )
   })
@@ -354,7 +355,9 @@ Vitest.describe('schema', () => {
   Vitest.describe('RelativeFilePath', () => {
     Vitest.it.effect('decodes valid relative file path', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EffectPath.schema.RelativeFilePath)('src/mod.ts')
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.RelativeFilePath)(
+          'src/mod.ts',
+        )
         expect(result).toBe('src/mod.ts')
       }),
     )
@@ -363,7 +366,7 @@ Vitest.describe('schema', () => {
   Vitest.describe('RelativeDirPath', () => {
     Vitest.it.effect('decodes valid relative directory path', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EffectPath.schema.RelativeDirPath)(
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.RelativeDirPath)(
           'src/components/',
         )
         expect(result).toBe('src/components/')
@@ -374,7 +377,7 @@ Vitest.describe('schema', () => {
   Vitest.describe('AbsoluteFileInfo', () => {
     Vitest.it.effect('decodes to PathInfo structure', () =>
       Effect.gen(function* () {
-        const result = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFileInfo())(
+        const result = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteFileInfo())(
           '/path/to/file.txt',
         )
         expect(result.original).toBe('/path/to/file.txt')
@@ -385,10 +388,10 @@ Vitest.describe('schema', () => {
 
     Vitest.it.effect('encodes back to normalized string by default', () =>
       Effect.gen(function* () {
-        const decoded = yield* Schema.decodeUnknown(EffectPath.schema.AbsoluteFileInfo())(
+        const decoded = yield* Schema.decodeUnknownEffect(EffectPath.schema.AbsoluteFileInfo())(
           '/path/to/file.txt',
         )
-        const encoded = yield* Schema.encode(EffectPath.schema.AbsoluteFileInfo())(decoded)
+        const encoded = yield* Schema.encodeEffect(EffectPath.schema.AbsoluteFileInfo())(decoded)
         expect(encoded).toBe('/path/to/file.txt')
       }),
     )
@@ -397,7 +400,7 @@ Vitest.describe('schema', () => {
   Vitest.describe('RelativeFileInfo', () => {
     Vitest.it.effect('uses ./ as parent for root-level relative files', () =>
       Effect.gen(function* () {
-        const decoded = yield* Schema.decodeUnknown(EffectPath.schema.RelativeFileInfo())(
+        const decoded = yield* Schema.decodeUnknownEffect(EffectPath.schema.RelativeFileInfo())(
           'file.txt',
         )
         expect(decoded.parent.normalized).toBe('./')
@@ -416,59 +419,59 @@ Vitest.describe('sandbox', () => {
   Vitest.describe('validate', () => {
     it('validates safe relative path', () => {
       const result = sandbox.validate(EffectPath.unsafe.relativeFile('file.txt'))
-      expect(Either.isRight(result)).toBe(true)
+      expect(Result.isSuccess(result)).toBe(true)
     })
 
     it('validates nested relative path', () => {
       const result = sandbox.validate(EffectPath.unsafe.relativeFile('sub/dir/file.txt'))
-      expect(Either.isRight(result)).toBe(true)
+      expect(Result.isSuccess(result)).toBe(true)
     })
 
     it('rejects path escaping with ..', () => {
       const result = sandbox.validate(EffectPath.unsafe.relativeFile('../../../etc/passwd'))
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result) === true) {
-        expect(result.left._tag).toBe('TraversalError')
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result) === true) {
+        expect(result.failure._tag).toBe('TraversalError')
       }
     })
 
     it('rejects paths that escape and then re-enter', () => {
       const result = sandbox.validate(EffectPath.unsafe.relativeFile('../safe/file.txt'))
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
     })
 
     it('rejects absolute paths passed as relative', () => {
       const result = sandbox.validate(EffectPath.unsafe.relativeFile('/etc/passwd'))
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
     })
 
     it('allows .. that stays within sandbox', () => {
       const result = sandbox.validate(EffectPath.unsafe.relativeFile('sub/../file.txt'))
-      expect(Either.isRight(result)).toBe(true)
+      expect(Result.isSuccess(result)).toBe(true)
     })
   })
 
   Vitest.describe('resolve', () => {
     it('resolves relative path to absolute', () => {
       const result = sandbox.resolve(EffectPath.unsafe.relativeFile('file.txt'))
-      expect(Either.isRight(result)).toBe(true)
-      if (Either.isRight(result) === true) {
-        expect(result.right).toBe('/home/user/file.txt')
+      expect(Result.isSuccess(result)).toBe(true)
+      if (Result.isSuccess(result) === true) {
+        expect(result.success).toBe('/home/user/file.txt')
       }
     })
 
     it('resolves nested path', () => {
       const result = sandbox.resolve(EffectPath.unsafe.relativeFile('sub/dir/file.txt'))
-      expect(Either.isRight(result)).toBe(true)
-      if (Either.isRight(result) === true) {
-        expect(result.right).toBe('/home/user/sub/dir/file.txt')
+      expect(Result.isSuccess(result)).toBe(true)
+      if (Result.isSuccess(result) === true) {
+        expect(result.success).toBe('/home/user/sub/dir/file.txt')
       }
     })
 
     it('rejects escaping path', () => {
       // Need at least 3 .. to escape /home/user/ (which is 2 levels deep)
       const result = sandbox.resolve(EffectPath.unsafe.relativeFile('../../../etc/passwd'))
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
     })
   })
 
@@ -510,7 +513,7 @@ Vitest.describe('utility functions', () => {
       const root = EffectPath.unsafe.absoluteDir('/home/user/')
       const path = EffectPath.unsafe.relativeFile('file.txt')
       const result = EffectPath.validatePath({ root, path })
-      expect(Either.isRight(result)).toBe(true)
+      expect(Result.isSuccess(result)).toBe(true)
     })
   })
 
@@ -537,8 +540,8 @@ Vitest.describe('edge cases', () => {
   Vitest.describe('path validation', () => {
     Vitest.it.effect('rejects empty path', () =>
       Effect.gen(function* () {
-        const result = yield* EffectPath.convention.absoluteFile('').pipe(Effect.either)
-        expect(Either.isLeft(result)).toBe(true)
+        const result = yield* EffectPath.convention.absoluteFile('').pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }).pipe(Effect.provide(NodeContext.layer)),
     )
 
@@ -546,8 +549,8 @@ Vitest.describe('edge cases', () => {
       Effect.gen(function* () {
         const result = yield* EffectPath.convention
           .absoluteFile('/path/to\0file.txt')
-          .pipe(Effect.either)
-        expect(Either.isLeft(result)).toBe(true)
+          .pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }).pipe(Effect.provide(NodeContext.layer)),
     )
   })

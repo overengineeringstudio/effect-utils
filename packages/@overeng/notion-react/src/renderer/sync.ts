@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
-import { Chunk, Effect, Stream } from 'effect'
+import { Effect, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { ReactNode } from 'react'
 
 import {
@@ -380,9 +380,9 @@ const flushAppendRun = (
   resolve: (id: string) => string,
   onBatch: (
     committed: readonly { op: AppendLike; serverId: string; afterId: string | undefined }[],
-  ) => Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient>,
+  ) => Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient>,
   o11y: O11yCtx,
-): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     if (run.length === 0) return
     const parentId = resolve(run[0]!.parent)
@@ -432,7 +432,7 @@ const flushAppendRun = (
           ...(position !== undefined ? { position } : {}),
         })
       const res = yield* issueAppend(batchProps).pipe(
-        Effect.catchAll((cause) =>
+        Effect.catch((cause) =>
           Effect.gen(function* () {
             if (!isUploadIdRejection(cause) || o11y.onUploadIdRejected === undefined) {
               return yield* cause
@@ -661,7 +661,7 @@ const resolveAbsorbedTmpIds = (
   containerServerId: string,
   descendants: readonly { readonly tmpId: string; readonly depth: number }[],
   idMap: Map<string, string>,
-): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     if (descendants.length === 0) return
     // Retrieve the full subtree by DFS. Order: for each child of a given
@@ -671,7 +671,7 @@ const resolveAbsorbedTmpIds = (
     const walk = (
       parentId: string,
       depth: number,
-    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
       Effect.gen(function* () {
         const live = yield* Stream.runCollect(
           NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
@@ -680,7 +680,7 @@ const resolveAbsorbedTmpIds = (
             (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
           ),
         )
-        for (const child of Chunk.toReadonlyArray(live)) {
+        for (const child of Array.from(live)) {
           if (cursor >= descendants.length) return
           const expected = descendants[cursor]!
           if (expected.depth !== depth) return
@@ -718,7 +718,7 @@ const resolveInlineChildrenIds = (
   candidate: PageOp & { readonly kind: 'createPage' },
   cands: readonly CandidateNode[],
   idMap: Map<string, string>,
-): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     // Resolve the newly-created page's tmp id.
     idMap.set(candidate.tmpPageId, createdPageId)
@@ -729,7 +729,7 @@ const resolveInlineChildrenIds = (
     const walk = (
       parentId: string,
       nodes: readonly CandidateNode[],
-    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
       Effect.gen(function* () {
         const live = yield* Stream.runCollect(
           NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
@@ -738,7 +738,7 @@ const resolveInlineChildrenIds = (
             (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
           ),
         )
-        const liveArr = Chunk.toReadonlyArray(live)
+        const liveArr = Array.from(live)
         // `nodes` can mix block candidates (which were inlined into the
         // pages.create body and therefore appear in `liveArr`) with page
         // candidates (tailed out as follow-up createPage ops and NOT present
@@ -787,7 +787,7 @@ const applyDiff = (
   ) => Effect.Effect<void, NotionSyncError>,
   o11y: O11yCtx,
   priorHashById: ReadonlyMap<string, string>,
-): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     const resolve = (id: string): string => idMap.get(id) ?? id
     const { plan: ops, absorbed } = foldAtomicContainers(rawOps)
@@ -878,7 +878,7 @@ const applyDiff = (
           const issueUpdate = (props: Record<string, unknown>) =>
             issueBlockUpdate(op.blockId, op.type, props)
           yield* issueUpdate(updateProps).pipe(
-            Effect.catchAll((cause) =>
+            Effect.catch((cause) =>
               Effect.gen(function* () {
                 if (!isUploadIdRejection(cause) || o11y.onUploadIdRejected === undefined) {
                   return yield* cause
@@ -948,7 +948,7 @@ const applyDiff = (
           // distinguish from a real delete (pixeltrail dogfood v5).
           const alreadyGone = yield* NotionBlocks.delete({ blockId: op.blockId }).pipe(
             Effect.map(() => false),
-            Effect.catchAll((cause) =>
+            Effect.catch((cause) =>
               isAlreadyGoneError(cause)
                 ? Effect.succeed(true)
                 : Effect.sync(() => {
@@ -1138,7 +1138,7 @@ export const sync = (
      */
     readonly reorderSiblings?: boolean | { readonly holdingParentId: string }
   },
-): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> => {
+): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient> => {
   /* Compose the user `onEvent` with an internal metrics aggregator iff
      `onMetrics` was supplied. Fan-out is cheap: both handlers receive
      every event. The aggregator's `getMetrics()` is called once after
@@ -1186,7 +1186,7 @@ export const sync = (
     const adoptInlineChildren = (
       parentId: string,
       nodes: readonly PendingInlineNode[],
-    ): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+    ): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionConfig | HttpClient> =>
       Effect.gen(function* () {
         const live = yield* Stream.runCollect(
           NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
@@ -1195,7 +1195,7 @@ export const sync = (
             (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
           ),
         )
-        const liveBlocks = Chunk.toReadonlyArray(live)
+        const liveBlocks = Array.from(live)
         const adopted: CacheNode[] = []
         let liveIdx = 0
         for (const node of nodes) {
@@ -1258,7 +1258,7 @@ export const sync = (
     ): Effect.Effect<
       { readonly nodes: readonly CacheNode[]; readonly changed: boolean },
       NotionSyncError,
-      NotionConfig | HttpClient.HttpClient
+      NotionConfig | HttpClient
     > =>
       Effect.gen(function* () {
         let changed = false
@@ -1389,13 +1389,13 @@ export const sync = (
             id: retrieveOpId,
             kind: 'retrieve',
             durationMs: performance.now() - t0,
-            resultCount: Chunk.size(liveChildren),
+            resultCount: liveChildren.length,
             at: Date.now(),
           }),
         )
       }
       const liveIds: string[] = []
-      for (const b of Chunk.toReadonlyArray(liveChildren)) {
+      for (const b of Array.from(liveChildren)) {
         if (b.in_trash !== true) liveIds.push(b.id)
       }
       liveTopLevelIds = liveIds
@@ -1812,11 +1812,11 @@ export const sync = (
         const tail = pageScopedBlockPlan.get(op.tmpPageId) ?? []
         if (tail.length > 0) {
           yield* applyDiff(tail, idMap, checkpointAppended, o11y, priorHashById).pipe(
-            Effect.catchAll((cause) =>
+            Effect.catch((cause) =>
               Effect.gen(function* () {
                 partialCreateFallback = true
                 yield* NotionPages.update({ pageId: createdId, in_trash: true }).pipe(
-                  Effect.catchAll(() => Effect.void),
+                  Effect.catch(() => Effect.void),
                 )
                 return yield* cause
               }),
@@ -1852,7 +1852,7 @@ export const sync = (
           pageId: op.pageId,
           parent: { type: 'page_id', page_id: resolve(op.parent.pageId) },
         }).pipe(
-          Effect.catchAll((cause) =>
+          Effect.catch((cause) =>
             cause instanceof NotionApiError &&
             cause.code === 'validation_error' &&
             /must be different from the current parent/i.test(cause.message)
@@ -2219,7 +2219,7 @@ export const sync = (
         yield* NotionPages.archive({ pageId: holdingId }).pipe(
           // Best-effort: if archive fails we still succeeded on the reorder,
           // and the scratch page is recognizable by its title.
-          Effect.catchAll(() => Effect.void),
+          Effect.catch(() => Effect.void),
         )
         o11y.opCount.n += 1
       }

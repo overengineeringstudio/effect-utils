@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import {
   type Page,
@@ -55,7 +55,7 @@ export interface RetrievePageOptions extends RetrievePageOptionsBase {
 /** Options for retrieving a page with schema-based decoding */
 export interface RetrievePageWithSchemaOptions<TProperties, I, R> extends RetrievePageOptionsBase {
   /** Schema to decode page properties */
-  readonly schema: Schema.Schema<TProperties, I, R>
+  readonly schema: Schema.Codec<TProperties, I, R>
 }
 
 /** Options for creating a page */
@@ -144,9 +144,9 @@ const MarkdownContentUpdateSchema = Schema.Struct({
   old_str: Schema.String,
   new_str: Schema.String,
   replace_all_matches: Schema.optional(Schema.Boolean),
-}).annotations({ identifier: 'NotionPages.MarkdownContentUpdate' })
+}).annotate({ identifier: 'NotionPages.MarkdownContentUpdate' })
 
-const UpdateMarkdownRequestSchema = Schema.Union(
+const UpdateMarkdownRequestSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('update_content'),
     update_content: Schema.Struct({
@@ -161,9 +161,9 @@ const UpdateMarkdownRequestSchema = Schema.Union(
       allow_deleting_content: Schema.optional(Schema.Boolean),
     }),
   }),
-).annotations({ identifier: 'NotionPages.UpdateMarkdownRequest' })
+]).annotate({ identifier: 'NotionPages.UpdateMarkdownRequest' })
 
-const decodeUpdateMarkdownRequest = Schema.decodeUnknown(UpdateMarkdownRequestSchema)
+const decodeUpdateMarkdownRequest = Schema.decodeUnknownEffect(UpdateMarkdownRequestSchema)
 
 /** Options for moving a page */
 export interface MovePageOptions {
@@ -203,13 +203,13 @@ export interface MovePageOptions {
  */
 export function retrieve(
   opts: RetrievePageOptions,
-): Effect.Effect<Page, NotionApiError, NotionConfig | HttpClient.HttpClient>
+): Effect.Effect<Page, NotionApiError, NotionConfig | HttpClient>
 export function retrieve<TProperties, I, R>(
   opts: RetrievePageWithSchemaOptions<TProperties, I, R>,
 ): Effect.Effect<
   TypedPage<TProperties>,
   NotionApiError | PageDecodeError,
-  NotionConfig | HttpClient.HttpClient | R
+  NotionConfig | HttpClient | R
 >
 // oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
 export function retrieve<TProperties, I, R>(
@@ -217,7 +217,7 @@ export function retrieve<TProperties, I, R>(
 ): Effect.Effect<
   Page | TypedPage<TProperties>,
   NotionApiError | PageDecodeError,
-  NotionConfig | HttpClient.HttpClient | R
+  NotionConfig | HttpClient | R
 > {
   return Effect.gen(function* () {
     const page = yield* get({

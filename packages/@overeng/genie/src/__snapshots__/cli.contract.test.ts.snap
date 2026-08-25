@@ -4,11 +4,33 @@ exports[`genie CLI contract baselines (status/signal invariant, prose owner-reba
 {
   "signal": null,
   "status": 1,
-  "stderr": "Expected one of the following cases: bootstrap, design-time
-
-Error: {"_tag":"InvalidValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"Expected one of the following cases: bootstrap, design-time"}}}
+  "stderr": "
+ERROR
+  Invalid value for flag --phase: "nope". Expected: "bootstrap" | "design-time"
+~effect/cli/CliError/ShowHelp: Help requested (genie 0.1.0)
+    at <anonymous> (<repo>node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
-  "stdout": "",
+  "stdout": "USAGE
+  genie [flags]
+
+FLAGS
+  --cwd string           Working directory to search for .genie.ts files
+  --watch                Watch for changes and regenerate automatically
+  --writeable            Generate files as writable (default: read-only)
+  --check                Check if generated files are up to date (for CI)
+  --dry-run              Preview changes without writing files
+  --defer-validation     Generate projections before a repair step; the caller must finish with genie --check
+  --phase choice         Only run generators declaring this phase (bootstrap runs before install; default: all phases) (choices: bootstrap, design-time)
+  --oxfmt-config file    Path to oxfmt config file (default: .oxfmtrc.json or oxfmt.json)
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+",
 }
 `;
 
@@ -16,11 +38,33 @@ exports[`genie CLI contract baselines (status/signal invariant, prose owner-reba
 {
   "signal": null,
   "status": 1,
-  "stderr": "Received unknown argument: '--cwd'
-
-Error: {"_tag":"InvalidValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"Received unknown argument: '--cwd'"}}}
+  "stderr": "
+ERROR
+  Missing value for flag --cwd. Expected: string
+~effect/cli/CliError/ShowHelp: Help requested (genie 0.1.0)
+    at <anonymous> (<repo>node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1070:34)
 ",
-  "stdout": "",
+  "stdout": "USAGE
+  genie [flags]
+
+FLAGS
+  --cwd string           Working directory to search for .genie.ts files
+  --watch                Watch for changes and regenerate automatically
+  --writeable            Generate files as writable (default: read-only)
+  --check                Check if generated files are up to date (for CI)
+  --dry-run              Preview changes without writing files
+  --defer-validation     Generate projections before a repair step; the caller must finish with genie --check
+  --phase choice         Only run generators declaring this phase (bootstrap runs before install; default: all phases) (choices: bootstrap, design-time)
+  --oxfmt-config file    Path to oxfmt config file (default: .oxfmtrc.json or oxfmt.json)
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+",
 }
 `;
 
@@ -29,138 +73,26 @@ exports[`genie CLI contract baselines (status/signal invariant, prose owner-reba
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "genie
-
-genie 0.1.0
-
-USAGE
-
-$ genie [--cwd text] [--watch] [--writeable] [--check] [--dry-run] [--defer-validation] [--phase bootstrap | design-time] [--oxfmt-config file] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]
-
-OPTIONS
-
---cwd text
-
-  A user-defined piece of text.
-
-  Working directory to search for .genie.ts files
-
-  This setting is optional.
-
---watch
-
-  A true or false value.
-
-  Watch for changes and regenerate automatically
-
-  This setting is optional.
-
-  This setting is optional.
-
---writeable
-
-  A true or false value.
-
-  Generate files as writable (default: read-only)
-
-  This setting is optional.
-
-  This setting is optional.
-
---check
-
-  A true or false value.
-
-  Check if generated files are up to date (for CI)
-
-  This setting is optional.
-
-  This setting is optional.
-
---dry-run
-
-  A true or false value.
-
-  Preview changes without writing files
-
-  This setting is optional.
-
-  This setting is optional.
-
---defer-validation
-
-  A true or false value.
-
-  Generate projections before a repair step; the caller must finish with genie --check
-
-  This setting is optional.
-
-  This setting is optional.
-
---phase bootstrap | design-time
-
-  One of the following: bootstrap, design-time
-
-  Only run generators declaring this phase (bootstrap runs before install; default: all phases)
-
-  This setting is optional.
-
---oxfmt-config file
-
-  A file.
-
-  Path to oxfmt config file (default: .oxfmtrc.json or oxfmt.json)
-
-  This setting is optional.
-
-(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)
-
-  One of the following: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson
-
-  Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson
-
-  This setting is optional.
-
---completions sh | bash | fish | zsh
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
---log-level all | trace | debug | info | warning | error | fatal | none
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-(-h, --help)
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
---wizard
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
---version
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
+  "stdout": "USAGE
+  genie [flags]
+
+FLAGS
+  --cwd string           Working directory to search for .genie.ts files
+  --watch                Watch for changes and regenerate automatically
+  --writeable            Generate files as writable (default: read-only)
+  --check                Check if generated files are up to date (for CI)
+  --dry-run              Preview changes without writing files
+  --defer-validation     Generate projections before a repair step; the caller must finish with genie --check
+  --phase choice         Only run generators declaring this phase (bootstrap runs before install; default: all phases) (choices: bootstrap, design-time)
+  --oxfmt-config file    Path to oxfmt config file (default: .oxfmtrc.json or oxfmt.json)
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 ",
 }
 `;
@@ -170,8 +102,7 @@ exports[`genie CLI contract baselines (status/signal invariant, prose owner-reba
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "0.1.0
-
+  "stdout": "genie v0.1.0
 ",
 }
 `;

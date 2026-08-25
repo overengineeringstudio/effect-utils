@@ -6,8 +6,10 @@
 
 import os from 'node:os'
 
-import { Command, FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -54,8 +56,9 @@ export interface WorkspaceResult {
 /** Run a git command in a specific directory */
 export const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    const result = yield* Command.string(command)
+    const result = yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', args, { cwd })),
+    )
     return result.trim()
   })
 
@@ -191,12 +194,12 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: MegarepoConfig = {
-      members: fixture?.members ?? {},
-    }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-      config,
-    )
+    // Effect v4 class schemas require a real instance on the encode side — a
+    // plain literal fails `SchemaError: Expected MegarepoConfig`.
+    const config = new MegarepoConfig({ members: fixture?.members ?? {} })
+    const configContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(config)
     yield* fs.writeFileString(
       EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
       configContent + '\n',
@@ -331,7 +334,7 @@ export const readConfig = (workspacePath: AbsoluteDirPath) =>
       EffectPath.unsafe.relativeFile('megarepo.json'),
     )
     const content = yield* fs.readFileString(configPath)
-    return yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(content)
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(content)
   })
 
 /** Generate a megarepo.json config object */

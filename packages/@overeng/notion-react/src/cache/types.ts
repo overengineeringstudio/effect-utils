@@ -1,4 +1,4 @@
-import { Schema, type Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import type { CacheError } from '../renderer/errors.ts'
 
@@ -12,13 +12,14 @@ export interface PendingInlineNode {
   readonly children: readonly PendingInlineNode[]
 }
 
-export const PendingInlineNode: Schema.Schema<PendingInlineNode> = Schema.suspend(() =>
-  Schema.Struct({
-    key: Schema.String,
-    type: Schema.String,
-    hash: Schema.String,
-    children: Schema.Array(PendingInlineNode),
-  }),
+export const PendingInlineNode: Schema.Codec<PendingInlineNode, PendingInlineNode> = Schema.suspend(
+  (): Schema.Codec<PendingInlineNode, PendingInlineNode> =>
+    Schema.Struct({
+      key: Schema.String,
+      type: Schema.String,
+      hash: Schema.String,
+      children: Schema.Array(PendingInlineNode),
+    }),
 )
 
 export interface CacheNode {
@@ -80,28 +81,29 @@ interface CacheNodeEncoded {
   readonly pendingInlineResolution?: readonly PendingInlineNode[] | undefined
 }
 
-export const CacheNode: Schema.Schema<CacheNode, CacheNodeEncoded> = Schema.suspend(() =>
-  Schema.Struct({
-    key: Schema.String,
-    blockId: Schema.String,
-    type: Schema.String,
-    hash: Schema.String,
-    children: Schema.Array(CacheNode),
-    // `optionalWith({ default })` keeps existing v2 caches decodable: entries
-    // serialized before this field existed default to `'block'`, which matches
-    // the legacy "every cache node is a block" invariant.
-    nodeKind: Schema.optionalWith(Schema.Literal('block', 'page'), {
-      default: () => 'block' as const,
+export const CacheNode = Schema.suspend(
+  (): Schema.Codec<CacheNode, CacheNodeEncoded> =>
+    Schema.Struct({
+      key: Schema.String,
+      blockId: Schema.String,
+      type: Schema.String,
+      hash: Schema.String,
+      children: Schema.Array(CacheNode),
+      // `optionalWith({ default })` keeps existing v2 caches decodable: entries
+      // serialized before this field existed default to `'block'`, which matches
+      // the legacy "every cache node is a block" invariant.
+      nodeKind: Schema.Literals(['block', 'page']).pipe(
+        Schema.withDecodingDefault(Effect.succeed('block')),
+      ),
+      titleHash: Schema.optional(Schema.String),
+      iconHash: Schema.optional(Schema.String),
+      coverHash: Schema.optional(Schema.String),
+      pendingInlineResolution: Schema.optional(Schema.Array(PendingInlineNode)),
     }),
-    titleHash: Schema.optional(Schema.String),
-    iconHash: Schema.optional(Schema.String),
-    coverHash: Schema.optional(Schema.String),
-    pendingInlineResolution: Schema.optional(Schema.Array(PendingInlineNode)),
-  }),
 )
 
 export const CacheTree = Schema.Struct({
-  schemaVersion: Schema.Number,
+  schemaVersion: Schema.Finite,
   rootId: Schema.String,
   children: Schema.Array(CacheNode),
   /**

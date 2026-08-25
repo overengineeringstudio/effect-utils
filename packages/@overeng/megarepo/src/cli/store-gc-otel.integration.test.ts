@@ -19,11 +19,13 @@
  * clock (the old clock-coupled sampler would hot-loop and hang).
  */
 
-import * as Cli from '@effect/cli'
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Clock, Effect, Layer, Option, Ref, Schema } from 'effect'
+import { Clock, Duration, Effect, Layer, Option, Ref, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
@@ -43,8 +45,9 @@ const NOW = Date.parse('2026-06-11T12:00:00.000Z')
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    return (yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', args, { cwd })),
+    )).trim()
   })
 
 /**
@@ -60,15 +63,29 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
  * still fixed) lets the infra timers tick on wall time while keeping gc decisions
  * deterministic — the root-cause fix, with no production workaround.
  */
-const liveClock = Clock.make()
+/** Live wall-clock for infra timers; decision time is overridden per test. */
+const liveClock: Clock.Clock = {
+  currentTimeMillisUnsafe: () => Date.now(),
+  currentTimeMillis: Effect.sync(() => Date.now()),
+  currentTimeNanosUnsafe: () => BigInt(Date.now()) * 1_000_000n,
+  currentTimeNanos: Effect.sync(() => BigInt(Date.now()) * 1_000_000n),
+  monotonicTimeNanosUnsafe: () => process.hrtime.bigint(),
+  monotonicTimeNanos: Effect.sync(() => process.hrtime.bigint()),
+  sleep: (duration) =>
+    Effect.callback((resume) => {
+      const timer = setTimeout(() => resume(Effect.void), Duration.toMillis(duration))
+      timer.unref?.()
+    }),
+}
 const fixedClockLayer = (nowMs: number) =>
-  Layer.setClock({
-    [Clock.ClockTypeId]: Clock.ClockTypeId,
+  Layer.succeed(Clock.Clock, {
+    currentTimeMillisUnsafe: () => nowMs,
     currentTimeMillis: Effect.succeed(nowMs),
+    currentTimeNanosUnsafe: () => BigInt(nowMs) * 1_000_000n,
     currentTimeNanos: Effect.succeed(BigInt(nowMs) * 1_000_000n),
+    monotonicTimeNanosUnsafe: liveClock.monotonicTimeNanosUnsafe,
+    monotonicTimeNanos: liveClock.monotonicTimeNanos,
     sleep: (duration) => liveClock.sleep(duration),
-    unsafeCurrentTimeMillis: () => nowMs,
-    unsafeCurrentTimeNanos: () => BigInt(nowMs) * 1_000_000n,
   })
 
 const REPO = { host: 'github.com', owner: 'acme', repo: 'widget' } as const
@@ -94,7 +111,7 @@ const StoreGcJsonOutput = Schema.Struct({
     }),
   ),
 })
-const decodeGc = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+const decodeGc = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
 type GcResults = (typeof StoreGcJsonOutput.Type)['results']
 
 /**
@@ -127,12 +144,17 @@ const runGc = ({
     const previous = process.env['MEGAREPO_STORE']
     process.env['MEGAREPO_STORE'] = storePath
 
-    const argv = ['node', 'mr', 'store', 'gc', '--output', 'json']
-    yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const argv = ['store', 'gc', '--output', 'json']
+    yield* Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provideService(OtelConfig, { endpoint: telemetry }),
       Effect.provide(
-        Layer.mergeAll(consoleLayer, makeStubPrStateResolverLayer(prRepos), fixedClockLayer(now)),
+        Layer.mergeAll(
+          consoleLayer,
+          makeStubPrStateResolverLayer(prRepos),
+          fixedClockLayer(now),
+          NodeServices.layer,
+        ),
       ),
       Effect.scoped,
       Effect.exit,
@@ -164,7 +186,7 @@ const EXPECTED_PHASES = [
 ] as const
 
 describe('mr store gc — OTEL instrumentation contract', () => {
-  it.scopedLive(
+  it.live(
     'exports observable store fixture setup spans and bounded git command spans',
     () =>
       Effect.gen(function* () {
@@ -204,11 +226,11 @@ describe('mr store gc — OTEL instrumentation contract', () => {
           name: 'git/cmd',
           attrs: { 'git.subcommand': 'fetch', 'git.timeout_ms': attr.int(600_000) },
         })
-      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.layer, NodeServices.layer))),
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'exports the gc phase spans, a git/cmd span with git.output.bytes, and the RSS gauge',
     () =>
       Effect.gen(function* () {
@@ -290,7 +312,7 @@ describe('mr store gc — OTEL instrumentation contract', () => {
           value: metricValue.predicate('rss > 0', (rss) => rss > 0),
           attrs: { 'megarepo.store.gc.repo_concurrency': telemetryAttr.present() },
         })
-      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.layer, NodeServices.layer))),
     60_000,
   )
 })

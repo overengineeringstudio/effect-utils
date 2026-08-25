@@ -3,7 +3,7 @@
  */
 
 import { it } from '@effect/vitest'
-import { Chunk, Effect, Fiber, Stream } from 'effect'
+import { Effect, Fiber, Option, Schema, Stream, SubscriptionRef } from 'effect'
 import { describe, expect, beforeEach, afterEach } from 'vitest'
 
 import { createLogCapture } from '../../src/effect/LogCapture.ts'
@@ -11,6 +11,8 @@ import type { LogCaptureHandle } from '../../src/effect/LogCapture.ts'
 import { testModeLayer } from '../../src/effect/testing.tsx'
 import type { TuiLogEntry } from '../../src/effect/TuiLogger.ts'
 import { createTuiApp } from '../../src/mod.tsx'
+
+const CountState = Schema.Struct({ count: Schema.Finite })
 
 /**
  * Wait for captured logs to satisfy a predicate by subscribing to ref.changes.
@@ -20,11 +22,12 @@ const awaitLogs = (
   handle: LogCaptureHandle,
   predicate: (logs: readonly TuiLogEntry[]) => boolean,
 ): Effect.Effect<readonly TuiLogEntry[]> =>
-  handle.logsRef.changes.pipe(
+  handle.logsRef.pipe(
+    SubscriptionRef.changes,
     Stream.filter(predicate),
     Stream.take(1),
-    Stream.runCollect,
-    Effect.map((chunk) => Chunk.unsafeGet(chunk, 0)),
+    Stream.runHead,
+    Effect.map(Option.getOrThrow),
   )
 
 // =============================================================================
@@ -59,14 +62,14 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle, loggerLayer } = yield* createLogCapture()
 
-      const fiber = yield* Effect.fork(awaitLogs(handle, (logs) => logs.length >= 1))
+      const fiber = yield* Effect.forkChild(awaitLogs(handle, (logs) => logs.length >= 1))
 
       yield* Effect.log('hello from effect').pipe(Effect.provide(loggerLayer))
 
       const logs = yield* Fiber.join(fiber)
       expect(logs).toHaveLength(1)
       expect(logs[0]!.message).toBe('hello from effect')
-      expect(logs[0]!.level).toBe('INFO')
+      expect(logs[0]!.level).toBe('Info')
     }).pipe(Effect.scoped),
   )
 
@@ -74,7 +77,7 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture()
 
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         awaitLogs(handle, (logs) => logs.some((l) => l.message === 'hello from console')),
       )
 
@@ -89,7 +92,7 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture()
 
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         awaitLogs(handle, (logs) => logs.some((l) => l.message === 'error message')),
       )
 
@@ -106,7 +109,7 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture()
 
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         awaitLogs(handle, (logs) => logs.some((l) => l.message === 'warning message')),
       )
 
@@ -123,7 +126,7 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture()
 
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         awaitLogs(
           handle,
           (logs) =>
@@ -160,7 +163,7 @@ describe('createLogCapture', () => {
     Effect.gen(function* () {
       const { handle } = yield* createLogCapture({ maxEntries: 3 })
 
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         awaitLogs(handle, (logs) => logs.some((l) => l.message === 'five')),
       )
 
@@ -191,7 +194,7 @@ describe('createLogCapture', () => {
         capturedConsoleLog(...args)
       }
 
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         awaitLogs(handle, (logs) => logs.some((l) => l.message === 'should not print')),
       )
 
@@ -199,10 +202,12 @@ describe('createLogCapture', () => {
       yield* Fiber.join(fiber)
     }).pipe(
       Effect.scoped,
-      Effect.andThen(() => {
-        // The Effect.log message should not appear as direct stdout output
-        expect(printed.filter((p) => p.includes('should not print'))).toHaveLength(0)
-      }),
+      Effect.andThen(
+        Effect.sync(() => {
+          // The Effect.log message should not appear as direct stdout output
+          expect(printed.filter((p) => p.includes('should not print'))).toHaveLength(0)
+        }),
+      ),
     )
   })
 })
@@ -229,10 +234,9 @@ describe('log capture integration', () => {
 
   it.effect('json mode is unaffected by log capture', () =>
     Effect.gen(function* () {
-      const Schema = yield* Effect.promise(() => import('effect').then((m) => m.Schema))
       const App = createTuiApp({
-        stateSchema: Schema.Struct({ count: Schema.Number }),
-        actionSchema: Schema.Union(Schema.TaggedStruct('Inc', {})),
+        stateSchema: CountState,
+        actionSchema: Schema.Union([Schema.TaggedStruct('Inc', {})]),
         initial: { count: 0 },
         reducer: ({ state, action }) => {
           switch (action._tag) {
@@ -247,12 +251,15 @@ describe('log capture integration', () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(testModeLayer('json')),
-      Effect.andThen(() => {
-        // JSON mode should still output to console.log (our captured output)
-        expect(capturedOutput).toHaveLength(1)
-        const state = JSON.parse(capturedOutput[0]!)
-        expect(state).toEqual({ count: 1 })
-      }),
+      Effect.andThen(
+        Effect.sync(() => {
+          // JSON mode should still output to console.log (our captured output)
+          expect(capturedOutput).toHaveLength(1)
+          // @effect-diagnostics-next-line schemaSyncInEffect:off -- asserting the captured NDJSON wire payload inside a scoped assertion block
+          const state = Schema.decodeSync(Schema.fromJsonString(CountState))(capturedOutput[0]!)
+          expect(state).toEqual({ count: 1 })
+        }),
+      ),
     ),
   )
 })

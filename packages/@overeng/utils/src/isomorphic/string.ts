@@ -5,12 +5,42 @@ export const lowercaseFirstChar = (str: string) => str.charAt(0).toLowerCase() +
 export const uppercaseFirstChar = (str: string) => str.charAt(0).toUpperCase() + str.slice(1)
 
 /**
+ * Render a non-`Error` cause defensively.
+ *
+ * Some causes have no primitive conversion path — e.g. null-prototype defect
+ * objects under Effect 4 or a hostile `toString` — and `String()` throws
+ * instead of rendering. Degrade to the cause's own `message`, then to JSON, so
+ * error formatting can never be the crash itself.
+ */
+const renderCause = (cause: unknown): string => {
+  try {
+    return String(cause)
+  } catch {
+    /* Some causes have no primitive conversion path — e.g. null-prototype
+     * defect objects under Effect 4 or a hostile `toString` — and `String()`
+     * throws instead of rendering. Degrade to the cause's own `message`, then
+     * to JSON, so error formatting itself can never be the crash. */
+    if (typeof cause === 'object' && cause !== null && 'message' in cause) {
+      const { message } = cause
+      if (typeof message === 'string') return message
+    }
+    try {
+      return JSON.stringify(cause) ?? '[unrenderable cause]'
+    } catch {
+      return '[unrenderable cause]'
+    }
+  }
+}
+
+/**
  * Format the human-readable `message` for a tagged "reason" error.
  *
  * The SSOT for the `get message()` body our tagged errors hand-copy (e.g.
  * `RestateError`, `PtyError`): space-join the `reason` discriminator, an optional
  * `[label]` (a key/name that scopes the failure), the `(method)` that failed, and
- * `: <cause.message>` (or `: <String(cause)>` for a non-`Error` cause). Omitted
+ * `: <cause.message>` (or `: <String(cause)>` for a non-`Error` cause, falling
+ * back to `cause.message` / JSON when the value has no primitive conversion
+ * path — e.g. null-prototype defect objects under Effect 4). Omitted
  * parts are dropped. The cause segment is space-separated like the others, so it
  * reads `... (method) : message` — preserving the existing `RestateError` /
  * `PtyError` output verbatim (this is a behavior-preserving consolidation).
@@ -32,7 +62,7 @@ export const formatReasonMessage = (input: {
   if (input.label !== undefined) parts.push(`[${input.label}]`)
   if (input.method !== undefined) parts.push(`(${input.method})`)
   if (input.cause instanceof Error) parts.push(`: ${input.cause.message}`)
-  else if (input.cause !== undefined) parts.push(`: ${String(input.cause)}`)
+  else if (input.cause !== undefined) parts.push(`: ${renderCause(input.cause)}`)
   return parts.join(' ')
 }
 

@@ -1,4 +1,4 @@
-import { Either, Schema } from 'effect'
+import { Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -84,8 +84,8 @@ describe('deploy domain schemas', () => {
 
   it('rejects invalid provider, URL, and unsafe alias shapes', () => {
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(DeployInputV1)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(DeployInputV1)({
           ...sampleInput,
           provider: 'github-pages',
         }),
@@ -93,8 +93,8 @@ describe('deploy domain schemas', () => {
     ).toBe(true)
 
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(DeployResultV1)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(DeployResultV1)({
           ...sampleResult,
           finalUrl: 'http://preview.example.netlify.app',
         }),
@@ -102,8 +102,8 @@ describe('deploy domain schemas', () => {
     ).toBe(true)
 
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(DeployInputV1)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(DeployInputV1)({
           ...sampleInput,
           alias: 'Unsafe_Alias',
         }),

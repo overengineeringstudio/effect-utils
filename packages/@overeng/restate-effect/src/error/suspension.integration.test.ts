@@ -45,7 +45,12 @@ import {
   result as ingressResult,
   State,
 } from '../mod.ts'
-import { liveSleep, RestateTestHarness, serverAvailable } from '../testing/testing.ts'
+import {
+  liveSleep,
+  RestateTestHarness,
+  type RestateTestHarnessService,
+  serverAvailable,
+} from '../testing/testing.ts'
 
 /* ── awakeable suspension: create, store id, await; resolved from ingress ──── */
 
@@ -193,7 +198,7 @@ const RetryingHarness = RestateTestHarness.layer({
   appLayer: Layer.empty,
 })
 
-type Harness = Effect.Effect.Success<typeof RestateTestHarness>
+type Harness = RestateTestHarnessService
 
 /** Poll the shared `awakeableId` query until the parked handler has stored it. */
 const pollForAwakeableId = (harness: Harness, key: string): Effect.Effect<string> =>

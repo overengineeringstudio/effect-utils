@@ -9,9 +9,11 @@ import type { Dir, Stats } from 'node:fs'
 import { lstat, opendir } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 
-import * as Cli from '@effect/cli'
-import { type CommandExecutor, FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Clock, Effect, Option, Schedule, Schema, Stream } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
+import * as Cli from 'effect/unstable/cli'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -145,7 +147,7 @@ type GeneratedArtifactScan =
 
 const AgentLivenessManifest = Schema.Struct({
   version: Schema.Literal(1),
-  expiresAtMs: Schema.Number,
+  expiresAtMs: Schema.Finite,
   activeWorkspacePaths: Schema.Array(Schema.String),
 })
 
@@ -154,7 +156,7 @@ type GeneratedArtifactRepoWorktrees = ReadonlyArray<{
   readonly worktrees: ReadonlyArray<CollectedWorktree>
 }>
 
-const encodeCanonicalPlan = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+const encodeCanonicalPlan = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 const planGeneratedArtifacts = ({
   config,
@@ -177,7 +179,7 @@ const planGeneratedArtifacts = ({
 }): Effect.Effect<
   { readonly results: ReadonlyArray<StoreGcResult>; readonly planSha256: string },
   never,
-  CommandExecutor.CommandExecutor
+  ChildProcessSpawner
 > =>
   Effect.gen(function* () {
     const generatedResults: StoreGcResult[] = []
@@ -188,9 +190,9 @@ const planGeneratedArtifacts = ({
           .readFileString(config.generatedArtifacts.agentLivenessManifest)
           .pipe(Effect.orElseSucceed(() => undefined))
         if (manifestContent === undefined) return undefined
-        const parsed = yield* Schema.decodeUnknown(Schema.parseJson(AgentLivenessManifest))(
-          manifestContent,
-        ).pipe(Effect.orElseSucceed(() => undefined))
+        const parsed = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(AgentLivenessManifest),
+        )(manifestContent).pipe(Effect.orElseSucceed(() => undefined))
         if (
           parsed === undefined ||
           Number.isFinite(parsed.expiresAtMs) === false ||
@@ -228,7 +230,7 @@ const planGeneratedArtifacts = ({
             cwd: worktree.path,
           }).pipe(
             Effect.as('ignored' as const),
-            Effect.catchAll((error) =>
+            Effect.catch((error) =>
               Effect.succeed(
                 error instanceof Git.GitCommandError && error.exitCode === 1
                   ? ('not-ignored' as const)
@@ -303,7 +305,7 @@ const planGeneratedArtifacts = ({
                   cwd: worktree.path,
                 }).pipe(
                   Effect.as('ignored' as const),
-                  Effect.catchAll((error) =>
+                  Effect.catch((error) =>
                     Effect.succeed(
                       error instanceof Git.GitCommandError && error.exitCode === 1
                         ? ('not-ignored' as const)
@@ -389,7 +391,7 @@ const planGeneratedArtifacts = ({
   })
 
 const scanGeneratedArtifact = ({ path }: { path: string }) =>
-  Effect.async<GeneratedArtifactScan>((resume) => {
+  Effect.callback<GeneratedArtifactScan>((resume) => {
     let settled = false
     const openDirectories = new Set<Dir>()
     const finish = (result: GeneratedArtifactScan) => {
@@ -565,7 +567,7 @@ const classifyGcProtection = ({
   worktree,
   all,
 }: {
-  store: Effect.Effect.Success<typeof Store>
+  store: Effect.Success<typeof Store>
   currentWorkspaceRoot: Option.Option<AbsoluteDirPath>
   worktree: CollectedWorktree
   all: boolean
@@ -618,7 +620,7 @@ const collectStoreWorktrees = ({
   currentPath: AbsoluteDirPath
   refType: 'heads' | 'tags' | 'commits'
   knownRefs: ReadonlySet<string>
-}): Effect.Effect<Array<CollectedWorktree>, PlatformError.PlatformError> =>
+}): Effect.Effect<Array<CollectedWorktree>, PlatformError> =>
   Effect.gen(function* () {
     const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
     const isWorktree = yield* fs.exists(gitPath).pipe(Effect.orElseSucceed(() => false))
@@ -730,11 +732,11 @@ const collectRepoStoreWorktrees = ({
           )
         }),
       ),
-      Effect.either,
+      Effect.result,
     )
 
-    if (gitWorktreesResult._tag === 'Right') {
-      for (const worktree of gitWorktreesResult.right) {
+    if (gitWorktreesResult._tag === 'Success') {
+      for (const worktree of gitWorktreesResult.success) {
         const normalizedPath = worktree.path.replace(/\/+$/, '')
         const relativePath =
           normalizedPath.startsWith(refsPrefix) === true
@@ -846,7 +848,7 @@ const classifyGcWorktree = ({
 
     const statusResult = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
       Effect.map((status) => ({ _tag: 'status' as const, status })),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.succeed({
           _tag: 'status_failed' as const,
           message: error instanceof Error === true ? error.message : String(error),
@@ -947,7 +949,7 @@ const reReconcileLiveSet = ({
   root,
   now,
 }: {
-  store: Effect.Effect.Success<typeof Store>
+  store: Effect.Success<typeof Store>
   root: Option.Option<AbsoluteDirPath>
   now: number
 }) =>
@@ -990,8 +992,8 @@ const coldReclaimRepo = ({
   now,
   dryRun,
 }: {
-  store: Effect.Effect.Success<typeof Store>
-  storeLock: Effect.Effect.Success<typeof StoreLock>
+  store: Effect.Success<typeof Store>
+  storeLock: Effect.Success<typeof StoreLock>
   prResolver: PrStateResolverService
   root: Option.Option<AbsoluteDirPath>
   repoRelativePath: string
@@ -1020,15 +1022,15 @@ const coldReclaimRepo = ({
     if (dryRun === true) {
       classify = true
     } else {
-      const fetchResult = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.either)
-      classify = fetchResult._tag === 'Right'
-      if (fetchResult._tag === 'Left') {
+      const fetchResult = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.result)
+      classify = fetchResult._tag === 'Success'
+      if (fetchResult._tag === 'Failure') {
         // Classification needs fresh `refs/remotes/*`, so keep all named worktrees;
         // do NOT return — archive reaping below is time/veto-based and needs no fetch.
         const message =
-          fetchResult.left instanceof Error === true
-            ? fetchResult.left.message
-            : String(fetchResult.left)
+          fetchResult.failure instanceof Error === true
+            ? fetchResult.failure.message
+            : String(fetchResult.failure)
         for (const target of namedWorktrees) {
           results.push(coldResult({ target, status: 'kept', reason: 'fetch-failed', message }))
         }
@@ -1178,7 +1180,7 @@ const coldReclaimRepo = ({
             }),
           )
           .pipe(
-            Effect.catchAll((error) =>
+            Effect.catch((error) =>
               Effect.succeed({
                 _tag: 'error' as const,
                 message: error instanceof Error === true ? error.message : String(error),
@@ -1292,7 +1294,7 @@ const coldReclaimRepo = ({
           }),
         )
         .pipe(
-          Effect.catchAll((error) =>
+          Effect.catch((error) =>
             Effect.succeed({
               _tag: 'error' as const,
               message: error instanceof Error === true ? error.message : String(error),
@@ -1367,7 +1369,7 @@ const coldReclaimRepo = ({
           }),
         )
         .pipe(
-          Effect.catchAll((error) =>
+          Effect.catch((error) =>
             Effect.succeed({
               _tag: 'error' as const,
               message: error instanceof Error === true ? error.message : String(error),
@@ -1398,7 +1400,7 @@ const coldReclaimRepo = ({
 const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
   Effect.gen(function* () {
     const store = yield* Store
-    const repos = yield* store.listRepos()
+    const repos = yield* store.listRepos
 
     yield* runStoreCommand({
       output,
@@ -1437,7 +1439,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     })
 
     // List all repos and analyze worktrees in parallel
-    const repos = yield* store.listRepos()
+    const repos = yield* store.listRepos
 
     const repoResults = yield* Effect.all(
       repos.map((repo) =>
@@ -1584,7 +1586,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
 const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({ output }) =>
   Effect.gen(function* () {
     const store = yield* Store
-    const repos = yield* store.listRepos()
+    const repos = yield* store.listRepos
     const startTime = Date.now()
 
     // Fetch repos with limited concurrency
@@ -1600,7 +1602,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
             repoPath: bareRepoPath,
           }).pipe(
             Effect.map(() => ({ path: repo.relativePath, status: 'fetched' as const })),
-            Effect.catchAll((error) => {
+            Effect.catch((error) => {
               const message = error instanceof Error === true ? error.message : String(error)
               return Effect.succeed({
                 path: repo.relativePath,
@@ -1645,26 +1647,26 @@ const storeGcCommand = Cli.Command.make(
   'gc',
   {
     output: outputOption,
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would be removed without removing'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Show what would be removed without removing'),
+      Cli.Flag.withDefault(false),
     ),
-    force: Cli.Options.boolean('force').pipe(
-      Cli.Options.withAlias('f'),
-      Cli.Options.withDescription('Remove dirty worktrees (with uncommitted changes)'),
-      Cli.Options.withDefault(false),
+    force: Cli.Flag.boolean('force').pipe(
+      Cli.Flag.withAlias('f'),
+      Cli.Flag.withDescription('Remove dirty worktrees (with uncommitted changes)'),
+      Cli.Flag.withDefault(false),
     ),
-    all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Remove all worktrees (not just unused ones)'),
-      Cli.Options.withDefault(false),
+    all: Cli.Flag.boolean('all').pipe(
+      Cli.Flag.withDescription('Remove all worktrees (not just unused ones)'),
+      Cli.Flag.withDefault(false),
     ),
-    generatedArtifacts: Cli.Options.boolean('generated-artifacts').pipe(
-      Cli.Options.withDescription('Plan configured generated-artifact cleanup'),
-      Cli.Options.withDefault(false),
+    generatedArtifacts: Cli.Flag.boolean('generated-artifacts').pipe(
+      Cli.Flag.withDescription('Plan configured generated-artifact cleanup'),
+      Cli.Flag.withDefault(false),
     ),
-    expectedPlan: Cli.Options.text('expected-plan').pipe(
-      Cli.Options.withDescription('Apply only the exact generated-artifact dry-run plan'),
-      Cli.Options.optional,
+    expectedPlan: Cli.Flag.string('expected-plan').pipe(
+      Cli.Flag.withDescription('Apply only the exact generated-artifact dry-run plan'),
+      Cli.Flag.optional,
     ),
   },
   ({ output, dryRun, force, all, generatedArtifacts, expectedPlan }) =>
@@ -1768,7 +1770,7 @@ const storeGcCommand = Cli.Command.make(
                 }),
               )
               .pipe(
-                Effect.catchAll((error) =>
+                Effect.catch((error) =>
                   Effect.succeed({
                     _tag: 'error' as const,
                     message: error instanceof Error === true ? error.message : String(error),
@@ -1921,9 +1923,9 @@ const storeGcCommand = Cli.Command.make(
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
-          const repos = yield* store
-            .listRepos()
-            .pipe(Observability.withStoreGcPhaseSpan({ phase: 'list-repos' }))
+          const repos = yield* store.listRepos.pipe(
+            Observability.withStoreGcPhaseSpan({ phase: 'list-repos' }),
+          )
           repoCount = repos.length
           statusMessage = 'checking worktrees'
           if (progressive === true) {
@@ -2157,7 +2159,7 @@ const storeGcCommand = Cli.Command.make(
                                 Effect.sync(() => {
                                   activeWorktreeCount -= 1
                                 }).pipe(
-                                  Effect.zipRight(
+                                  Effect.andThen(
                                     progressive === true
                                       ? dispatchGc({ done: false, forceDispatch: true })
                                       : Effect.void,
@@ -2173,7 +2175,7 @@ const storeGcCommand = Cli.Command.make(
 
                     if (removedForRepo > 0) {
                       yield* Git.pruneWorktrees(bareRepoPath).pipe(
-                        Effect.catchAll((error) =>
+                        Effect.catch((error) =>
                           Effect.sync(() => {
                             results.push({
                               repo: repo.relativePath,
@@ -2299,8 +2301,8 @@ const storeGcCommand = Cli.Command.make(
 const storeAddCommand = Cli.Command.make(
   'add',
   {
-    source: Cli.Args.text({ name: 'source' }).pipe(
-      Cli.Args.withDescription('Repository source (owner/repo, URL, or owner/repo#ref)'),
+    source: Cli.Argument.string('source').pipe(
+      Cli.Argument.withDescription('Repository source (owner/repo, URL, or owner/repo#ref)'),
     ),
     output: outputOption,
   },
@@ -2406,7 +2408,7 @@ const storeAddCommand = Cli.Command.make(
             branch: targetRef,
             createBranch: false,
           }).pipe(
-            Effect.catchAll(() =>
+            Effect.catch(() =>
               Git.createWorktree({
                 repoPath: bareRepoPath,
                 worktreePath,
@@ -2414,7 +2416,7 @@ const storeAddCommand = Cli.Command.make(
                 createBranch: false,
               }),
             ),
-            Effect.catchAll(() =>
+            Effect.catch(() =>
               Git.createWorktreeDetached({
                 repoPath: bareRepoPath,
                 worktreePath,
@@ -2459,13 +2461,13 @@ const storeFixCommand = Cli.Command.make(
   'fix',
   {
     output: outputOption,
-    member: Cli.Args.text({ name: 'member' }).pipe(
-      Cli.Args.withDescription('Member to fix (optional, fixes all if omitted)'),
-      Cli.Args.optional,
+    member: Cli.Argument.string('member').pipe(
+      Cli.Argument.withDescription('Member to fix (optional, fixes all if omitted)'),
+      Cli.Argument.optional,
     ),
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would be fixed without making changes'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Show what would be fixed without making changes'),
+      Cli.Flag.withDefault(false),
     ),
   },
   ({ output, member, dryRun }) =>
@@ -2582,26 +2584,26 @@ const storeFixCommand = Cli.Command.make(
 const storeWorktreeNewCommand = Cli.Command.make(
   'new',
   {
-    repo: Cli.Args.text({ name: 'repo' }).pipe(
-      Cli.Args.withDescription('Repository (owner/repo, URL, or store-relative path)'),
+    repo: Cli.Argument.string('repo').pipe(
+      Cli.Argument.withDescription('Repository (owner/repo, URL, or store-relative path)'),
     ),
-    ref: Cli.Options.text('ref').pipe(
-      Cli.Options.withDescription('Branch or tag name to check out'),
-      Cli.Options.optional,
+    ref: Cli.Flag.string('ref').pipe(
+      Cli.Flag.withDescription('Branch or tag name to check out'),
+      Cli.Flag.optional,
     ),
-    base: Cli.Options.text('base').pipe(
-      Cli.Options.withDescription('Base ref for creating a new branch (used with --ref)'),
-      Cli.Options.optional,
+    base: Cli.Flag.string('base').pipe(
+      Cli.Flag.withDescription('Base ref for creating a new branch (used with --ref)'),
+      Cli.Flag.optional,
     ),
-    commit: Cli.Options.text('commit').pipe(
-      Cli.Options.withDescription('Commit SHA to check out (detached HEAD)'),
-      Cli.Options.optional,
+    commit: Cli.Flag.string('commit').pipe(
+      Cli.Flag.withDescription('Commit SHA to check out (detached HEAD)'),
+      Cli.Flag.optional,
     ),
-    porcelain: Cli.Options.boolean('porcelain').pipe(
-      Cli.Options.withDescription(
+    porcelain: Cli.Flag.boolean('porcelain').pipe(
+      Cli.Flag.withDescription(
         'Output only the worktree path for scripting (e.g. cd $(mr store worktree new ... --porcelain))',
       ),
-      Cli.Options.withDefault(false),
+      Cli.Flag.withDefault(false),
     ),
     output: outputOption,
   },
@@ -2797,7 +2799,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
             branch: targetRef,
             createBranch: false,
           }).pipe(
-            Effect.catchAll(() =>
+            Effect.catch(() =>
               Git.createWorktree({
                 repoPath: bareRepoPath,
                 worktreePath,
@@ -2805,7 +2807,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
                 createBranch: false,
               }),
             ),
-            Effect.catchAll(() =>
+            Effect.catch(() =>
               Git.createWorktreeDetached({
                 repoPath: bareRepoPath,
                 worktreePath,

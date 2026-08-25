@@ -9,7 +9,7 @@ import {
 } from '../../../genie/internal.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
-const peerDepNames = ['@effect/platform', 'effect'] as const
+const peerDepNames = ['effect'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/agent-session-ingest' }),

@@ -4,11 +4,30 @@ exports[`megarepo CLI contract baselines (status/signal invariant, prose owner-r
 {
   "signal": null,
   "status": 1,
-  "stderr": "Expected one of the following cases: bash, zsh, fish
+  "stderr": "
+ERROR
+  Invalid value for flag --shell: "nope". Expected: "bash" | "zsh" | "fish"
+~effect/cli/CliError/ShowHelp: Help requested (mr 0.1.0)
 
-Error: {"_tag":"InvalidValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"Expected one of the following cases: bash, zsh, fish"}}}
 ",
-  "stdout": "",
+  "stdout": "DESCRIPTION
+  Output environment variables for shell integration
+
+USAGE
+  mr env [flags]
+
+FLAGS
+  --shell choice         Shell type for output format (choices: bash, zsh, fish)
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+  --cwd string                                                        Override the working directory
+",
 }
 `;
 
@@ -16,11 +35,34 @@ exports[`megarepo CLI contract baselines (status/signal invariant, prose owner-r
 {
   "signal": null,
   "status": 1,
-  "stderr": "Missing argument <repo>
+  "stderr": "
+ERROR
+  Missing required argument: repo
+~effect/cli/CliError/ShowHelp: Help requested (mr 0.1.0)
 
-Error: {"_tag":"MissingValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"Missing argument <repo>"}}}
 ",
-  "stdout": "",
+  "stdout": "DESCRIPTION
+  Add a new member repository
+
+USAGE
+  mr add [flags] <repo>
+
+ARGUMENTS
+  repo string    Repository reference (github shorthand, URL, or path)
+
+FLAGS
+  --name, -n string      Override the member name (defaults to repo name)
+  --sync, -s             Sync the added repo immediately
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+  --cwd string                                                        Override the working directory
+",
 }
 `;
 
@@ -29,128 +71,36 @@ exports[`megarepo CLI contract baselines (status/signal invariant, prose owner-r
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "mr
-
-mr 0.1.0
+  "stdout": "DESCRIPTION
+  Multi-repo workspace management tool
 
 USAGE
+  mr <subcommand> [flags]
 
-$ mr [--cwd text]
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+  --cwd string                                                        Override the working directory
 
-DESCRIPTION
-
-Multi-repo workspace management tool
-
-OPTIONS
-
---cwd text
-
-  A user-defined piece of text.
-
-  Override the working directory
-
-  This setting is optional.
-
---completions sh | bash | fish | zsh
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
---log-level all | trace | debug | info | warning | error | fatal | none
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-(-h, --help)
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
---wizard
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
---version
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
-COMMANDS
-
-  - init [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                                                Initialize a new megarepo in the current directory
-
-  - root [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                                                Print the megarepo root directory
-
-  - env [--shell bash | zsh | fish] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                     Output environment variables for shell integration
-
-  - status [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--all]                                                                                                                                                                                                                                      Show workspace status and member states
-
-  - ls [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--all]                                                                                                                                                                                                                                          List all members in the megarepo
-
-  - check [--all] [--json]                                                                                                                                                                                                                                                                                                             Check that the megarepo is structurally valid
-
-  - fetch [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all] [--only text] [--skip text] [--git-protocol ssh | https | auto] [--worktree-mode commit | tracking | auto] [--lock-sync auto | off | direct | recursive] [(-v, --verbose)] [--apply] [--create-branches]  Remote → Lock: fetch upstream refs, resolve commits, write lock. Use --apply to also materialize workspace.
-
-  - apply [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all] [--only text] [--skip text] [--git-protocol ssh | https | auto] [--worktree-mode commit | tracking | auto] [--lock-sync auto | off | direct | recursive] [(-v, --verbose)]                                Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.
-
-  - lock [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all] [--only text] [--skip text] [--git-protocol ssh | https | auto] [(-v, --verbose)]                                                                                                                          Workspace → Lock: record current worktree HEAD commits into megarepo.lock.
-
-  - add [(-n, --name text)] [(-s, --sync)] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <repo>                                                                                                                                                                                                       Add a new member repository
-
-  - config                                                                                                                                                                                                                                                                                                                             Configuration operations: push refs, pin/unpin members
-
-  - config push-refs [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [--all] [--only text]                                                                                                                                                                                                  Propagate member refs from this megarepo to nested megarepo configs
-
-  - config pin [(-c, --checkout text)] [--dry-run] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <member>                                                                                                                                                                                             Pin a member to a specific ref
-
-  - config unpin [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <member>                                                                                                                                                                                                                               Unpin a member to allow updates
-
-  - exec [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [(-m, --member text)] [--mode parallel | sequential] [(-v, --verbose)] <command>                                                                                                                                                               Execute a command in member directories
-
-  - store                                                                                                                                                                                                                                                                                                                              Manage the shared git store
-
-  - store add [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <source>                                                                                                                                                                                                                                  Add a repository to the store (without adding to megarepo)
-
-  - store ls [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                                            List repositories in the store
-
-  - store status [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                                        Show store status and detect issues
-
-  - store fetch [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                                         Fetch all repositories in the store
-
-  - store gc [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all] [--generated-artifacts] [--expected-plan text]                                                                                                                                                         Garbage collect unused worktrees
-
-  - store fix [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [<member>]                                                                                                                                                                                                                    Fix store issues
-
-  - store worktree                                                                                                                                                                                                                                                                                                                     Manage worktrees in the store
-
-  - store store worktree new [--ref text] [--base text] [--commit text] [--porcelain] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <repo>                                                                                                                                                            Create a new worktree in the store
-
-  - generate                                                                                                                                                                                                                                                                                                                           Generate configuration files
-
-  - generate all [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                                        Generate all configured outputs
-
-  - generate schema [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [(-p, --output-path text)]                                                                                                                                                                                                          Generate JSON schema for megarepo.json
-
-  - generate vscode [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--exclude text]                                                                                                                                                                                                                    Generate VS Code workspace file
-
-  - deps [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                                                                                                                Show the Nix input dependency graph between megarepo members.
-
+SUBCOMMANDS
+  init        Initialize a new megarepo in the current directory
+  root        Print the megarepo root directory
+  env         Output environment variables for shell integration
+  status      Show workspace status and member states
+  ls          List all members in the megarepo
+  check       Check that the megarepo is structurally valid
+  fetch       Remote → Lock: fetch upstream refs, resolve commits, write lock. Use --apply to also materialize workspace.
+  apply       Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.
+  lock        Workspace → Lock: record current worktree HEAD commits into megarepo.lock.
+  add         Add a new member repository
+  config      Configuration operations: push refs, pin/unpin members
+  exec        Execute a command in member directories
+  store       Manage the shared git store
+  generate    Generate configuration files
+  deps        Show the Nix input dependency graph between megarepo members.
 ",
 }
 `;
@@ -160,78 +110,28 @@ exports[`megarepo CLI contract baselines (status/signal invariant, prose owner-r
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "mr
-
-mr 0.1.0
+  "stdout": "DESCRIPTION
+  Manage the shared git store
 
 USAGE
+  mr store <subcommand> [flags]
 
-$ store
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+  --cwd string                                                        Override the working directory
 
-DESCRIPTION
-
-Manage the shared git store
-
-OPTIONS
-
---completions sh | bash | fish | zsh
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
---log-level all | trace | debug | info | warning | error | fatal | none
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-(-h, --help)
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
---wizard
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
---version
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
-COMMANDS
-
-  - add [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <source>                                                                           Add a repository to the store (without adding to megarepo)
-
-  - ls [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                     List repositories in the store
-
-  - status [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                 Show store status and detect issues
-
-  - fetch [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                  Fetch all repositories in the store
-
-  - gc [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [(-f, --force)] [--all] [--generated-artifacts] [--expected-plan text]  Garbage collect unused worktrees
-
-  - fix [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] [--dry-run] [<member>]                                                             Fix store issues
-
-  - worktree                                                                                                                                                              Manage worktrees in the store
-
-  - worktree new [--ref text] [--base text] [--commit text] [--porcelain] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <repo>           Create a new worktree in the store
-
+SUBCOMMANDS
+  add         Add a repository to the store (without adding to megarepo)
+  ls          List repositories in the store
+  status      Show store status and detect issues
+  fetch       Fetch all repositories in the store
+  gc          Garbage collect unused worktrees
+  fix         Fix store issues
+  worktree    Manage worktrees in the store
 ",
 }
 `;
@@ -241,8 +141,7 @@ exports[`megarepo CLI contract baselines (status/signal invariant, prose owner-r
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "0.1.0
-
+  "stdout": "mr v0.1.0
 ",
 }
 `;

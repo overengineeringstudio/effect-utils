@@ -7,7 +7,7 @@
  * - Which finalizers are registered and when
  */
 
-import { Effect, Exit, FiberRef, Scope } from 'effect'
+import { Context, Effect, Exit, Scope } from 'effect'
 
 /** Info about a registered finalizer for debugging */
 export interface FinalizerInfo {
@@ -25,10 +25,12 @@ export interface FinalizerExecutionInfo extends FinalizerInfo {
 }
 
 /**
- * FiberRef to track whether scope debugging is enabled for the current fiber.
+ * Context reference to track whether scope debugging is enabled for the current fiber.
  * When enabled, `addTracedFinalizer` will log registration and execution.
  */
-export const ScopeDebugEnabled = FiberRef.unsafeMake(false)
+export const ScopeDebugEnabled = Context.Reference<boolean>('@overeng/utils/ScopeDebugEnabled', {
+  defaultValue: () => false,
+})
 
 /**
  * Enables scope debugging for an effect and its children.
@@ -42,7 +44,7 @@ export const ScopeDebugEnabled = FiberRef.unsafeMake(false)
  * ```
  */
 export const withScopeDebug = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-  Effect.locally(effect, ScopeDebugEnabled, true)
+  Effect.provideService(effect, ScopeDebugEnabled, true)
 
 /**
  * Adds a finalizer with debug tracing.
@@ -64,7 +66,7 @@ export const addTracedFinalizer = Effect.fn('ScopeDebugger.addTracedFinalizer')(
   finalizer: Effect.Effect<void>
 }) {
   const { name, finalizer } = opts
-  const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
+  const debugEnabled = yield* ScopeDebugEnabled
   const scope = yield* Effect.scope
 
   if (debugEnabled === false) {
@@ -99,7 +101,7 @@ export const addTracedFinalizer = Effect.fn('ScopeDebugger.addTracedFinalizer')(
         durationMs,
       })
     },
-    Effect.catchAllCause((cause) =>
+    Effect.catchCause((cause) =>
       Effect.logError(`Finalizer failed: ${name}`, {
         finalizer: name,
         cause,
@@ -173,7 +175,7 @@ export const traceFinalizer = Effect.fn('ScopeDebugger.traceFinalizer')(function
   finalizer: Effect.Effect<void>
 }) {
   const { name, finalizer } = opts
-  const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
+  const debugEnabled = yield* ScopeDebugEnabled
 
   if (debugEnabled === false) {
     yield* finalizer

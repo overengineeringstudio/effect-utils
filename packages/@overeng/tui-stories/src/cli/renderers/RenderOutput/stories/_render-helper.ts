@@ -6,8 +6,8 @@
  * actual CLI output.
  */
 
-import type { Atom } from '@effect-atom/atom'
-import { Registry } from '@effect-atom/atom'
+import type { Atom } from 'effect/unstable/reactivity'
+import { AtomRegistry } from 'effect/unstable/reactivity'
 import React from 'react'
 
 import {
@@ -30,7 +30,7 @@ export const renderViewToLines = async <S>({
   readonly width?: number
   readonly renderConfig?: RenderConfig
 }): Promise<string[]> => {
-  const registry = Registry.make()
+  const registry = AtomRegistry.make()
 
   const viewElement = React.createElement(View, { stateAtom })
   const configElement = React.createElement(

@@ -1,12 +1,12 @@
 import { NodeRuntime } from '@effect/platform-node'
-import type { Socket as SocketType } from '@effect/platform/Socket'
+import { Duration, Effect, Fiber, Stream } from 'effect'
+import type { Socket as SocketType } from 'effect/unstable/socket/Socket'
 import {
   CloseEvent,
   layerWebSocketConstructorGlobal,
   makeWebSocket,
   toChannelString,
-} from '@effect/platform/Socket'
-import { Duration, Effect, Fiber, Stream } from 'effect'
+} from 'effect/unstable/socket/Socket'
 
 /**
  * Example: WebSocket broadcast client.

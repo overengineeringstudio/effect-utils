@@ -1,5 +1,5 @@
-import type { RpcClientError } from '@effect/rpc'
 import { Effect } from 'effect'
+import type { RpcClientError } from 'effect/unstable/rpc'
 import { useState, type SyntheticEvent } from 'react'
 
 import {
@@ -53,7 +53,7 @@ const UserList = ({ initialUsers }: { initialUsers: readonly User[] }): React.Re
             setEmail('')
           }),
         ),
-        Effect.catchAll((err) => Effect.sync(() => setError(String(err)))),
+        Effect.catch((err) => Effect.sync(() => setError(String(err)))),
         Effect.runPromise,
       )
       .finally(() => setLoading(false))

@@ -10,7 +10,10 @@ export type SemVer = readonly [major: number, minor: number, patch: number]
 
 /** Parse a version string like `1.2.3` into a `[major, minor, patch]` tuple. */
 export const parseVersion = (version: string): SemVer => {
-  const cleaned = version.replace(/\.x/g, '.0')
+  // Prerelease/build suffixes (`4.0.0-rc.111`, `1.2.3+build`) must not leak
+  // into the numeric tuple: `Number('0-rc')` is NaN and poisons comparisons.
+  const release = version.split('-', 1)[0]!.split('+', 1)[0]!
+  const cleaned = release.replace(/\.x/g, '.0')
   const parts = cleaned.split('.').map(Number)
   return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0] as const
 }

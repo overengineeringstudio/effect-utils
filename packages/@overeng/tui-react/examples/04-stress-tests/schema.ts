@@ -10,28 +10,28 @@ import { Schema } from 'effect'
 
 /** Schema for the running stress test state with frame count, FPS, and progress. */
 export const RunningState = Schema.TaggedStruct('Running', {
-  frame: Schema.Number,
-  startTime: Schema.Number,
-  fps: Schema.Number,
-  progress: Schema.Number,
+  frame: Schema.Finite,
+  startTime: Schema.Finite,
+  fps: Schema.Finite,
+  progress: Schema.Finite,
 })
 
 /** Schema for the finished stress test state with total frames, average FPS, and duration. */
 export const FinishedState = Schema.TaggedStruct('Finished', {
-  totalFrames: Schema.Number,
-  averageFps: Schema.Number,
-  duration: Schema.Number,
+  totalFrames: Schema.Finite,
+  averageFps: Schema.Finite,
+  duration: Schema.Finite,
 })
 
 /** Schema for the interrupted stress test state preserving last frame, FPS, and progress. */
 export const InterruptedState = Schema.TaggedStruct('Interrupted', {
-  frame: Schema.Number,
-  fps: Schema.Number,
-  progress: Schema.Number,
+  frame: Schema.Finite,
+  fps: Schema.Finite,
+  progress: Schema.Finite,
 })
 
 /** Union schema of all stress test states. */
-export const StressTestState = Schema.Union(RunningState, FinishedState, InterruptedState)
+export const StressTestState = Schema.Union([RunningState, FinishedState, InterruptedState])
 
 /** Inferred type for the stress test state union. */
 export type StressTestState = Schema.Schema.Type<typeof StressTestState>
@@ -41,11 +41,11 @@ export type StressTestState = Schema.Schema.Type<typeof StressTestState>
 // =============================================================================
 
 /** Union schema of stress test actions (Tick, Finish, Interrupted). */
-export const StressTestAction = Schema.Union(
+export const StressTestAction = Schema.Union([
   Schema.TaggedStruct('Tick', {}),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 /** Inferred type for the stress test action union. */
 export type StressTestAction = Schema.Schema.Type<typeof StressTestAction>

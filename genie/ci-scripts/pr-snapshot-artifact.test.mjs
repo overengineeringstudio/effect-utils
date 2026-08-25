@@ -59,7 +59,7 @@ test('requires a trusted verification receipt before declaring a registry cohort
   )
 })
 
-const writeOctal = (header, start, length, value) => {
+const writeOctal = ({ header, start, length, value }) => {
   const encoded = value.toString(8).padStart(length - 1, '0')
   header.write(encoded, start, length - 1, 'ascii')
   header[start + length - 1] = 0
@@ -71,21 +71,21 @@ const tar = (entries) => {
     const body = Buffer.from(content)
     const header = Buffer.alloc(512)
     header.write(name, 0, 100, 'utf8')
-    writeOctal(header, 100, 8, 0o644)
-    writeOctal(header, 108, 8, 0)
-    writeOctal(header, 116, 8, 0)
-    writeOctal(header, 124, 12, body.length)
-    writeOctal(header, 136, 12, 0)
+    writeOctal({ header, start: 100, length: 8, value: 0o644 })
+    writeOctal({ header, start: 108, length: 8, value: 0 })
+    writeOctal({ header, start: 116, length: 8, value: 0 })
+    writeOctal({ header, start: 124, length: 12, value: body.length })
+    writeOctal({ header, start: 136, length: 12, value: 0 })
     header.fill(0x20, 148, 156)
     header[156] = '0'.charCodeAt(0)
     header.write('ustar\0', 257, 6, 'ascii')
     header.write('00', 263, 2, 'ascii')
-    writeOctal(
+    writeOctal({
       header,
-      148,
-      8,
-      header.reduce((sum, byte) => sum + byte, 0),
-    )
+      start: 148,
+      length: 8,
+      value: header.reduce((sum, byte) => sum + byte, 0),
+    })
     chunks.push(header, body, Buffer.alloc(Math.ceil(body.length / 512) * 512 - body.length))
   }
   chunks.push(Buffer.alloc(1024))
@@ -101,7 +101,7 @@ const fixture = async () => {
   const version = `0.0.0-snapshot-pr.42.${headSha}`
   const packageNames = ['@livestore/a', '@livestore/b']
   await writeFile(topologyPath, JSON.stringify({ publishablePackageNames: packageNames }))
-  for (const name of packageNames) {
+  const files = packageNames.map((name) => {
     const file = `${name.slice('@livestore/'.length)}.tgz`
     const packageJson = {
       name,
@@ -109,14 +109,15 @@ const fixture = async () => {
       dependencies: name.endsWith('/b') === true ? { '@livestore/a': version } : {},
       scripts: { test: 'node --test' },
     }
-    await writeFile(
-      path.join(artifactDir, file),
-      tar([
+    return {
+      file,
+      bytes: tar([
         ['package/package.json', JSON.stringify(packageJson)],
         ['package/dist/index.js', 'export {}\n'],
       ]),
-    )
-  }
+    }
+  })
+  await Promise.all(files.map(({ file, bytes }) => writeFile(path.join(artifactDir, file), bytes)))
   return { dir: artifactDir, topologyPath, headSha, version }
 }
 

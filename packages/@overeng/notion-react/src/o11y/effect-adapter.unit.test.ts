@@ -22,14 +22,13 @@ const makeFakeTracer = (): { tracer: Tracer.Tracer; spans: RecordedSpan[] } => {
   const tracer: Tracer.Tracer = {
     // eslint-disable-next-line @typescript-eslint/naming-convention
     ['~effect/Tracer' as never]: undefined as never,
-    span: (
-      name: string,
-      parent: Option.Option<Tracer.AnySpan>,
-      _context: Context.Context<never>,
-      _links: ReadonlyArray<Tracer.SpanLink>,
-      startTime: bigint,
-      kind: Tracer.SpanKind,
-    ): Tracer.Span => {
+    span: (options: {
+      readonly name: string
+      readonly parent: Option.Option<Tracer.AnySpan>
+      readonly startTime: bigint
+      readonly kind: Tracer.SpanKind
+    }): Tracer.Span => {
+      const { name, parent, startTime, kind } = options
       const rec: RecordedSpan = {
         name,
         startTimeNs: startTime,
@@ -48,7 +47,7 @@ const makeFakeTracer = (): { tracer: Tracer.Tracer; spans: RecordedSpan[] } => {
         spanId: String(spans.length),
         traceId: 'trace-1',
         parent,
-        context: Context.empty(),
+        annotations: Context.empty(),
         status: { _tag: 'Started', startTime },
         attributes: new Map() as ReadonlyMap<string, unknown>,
         links: [],
@@ -167,14 +166,15 @@ describe('emitSyncEndOnInterrupt', () => {
 
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(program)
+        const fiber = yield* Effect.forkChild(program)
         yield* Effect.sleep('10 millis')
         yield* Fiber.interrupt(fiber)
-        return yield* fiber.await
+        return yield* Fiber.join(fiber)
       }),
     )
 
-    expect(Exit.isSuccess(exit)).toBe(true)
+    // v4 `Fiber.join` propagates the child's interruption to the parent.
+    expect(Exit.isFailure(exit)).toBe(true)
     expect(events).toHaveLength(1)
     const [ev] = events
     expect(ev!._tag).toBe('SyncEnd')
@@ -202,7 +202,7 @@ describe('emitSyncEndOnInterrupt', () => {
     await Effect.runPromise(
       Effect.fail('boom').pipe(
         emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler }),
-        Effect.catchAll(() => Effect.void),
+        Effect.catch(() => Effect.void),
       ),
     )
 

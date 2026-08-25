@@ -1,5 +1,5 @@
 import { Session as UpstreamSession } from '@myobie/pty/testing'
-import { Effect, Option, Predicate, Schedule, Stream, pipe } from 'effect'
+import { Effect, Filter, Option, Predicate, Schedule, Stream, pipe } from 'effect'
 import type { Schema, Scope } from 'effect'
 
 import { type OtelAttrEncodeError, type OtelOperationDefinition } from '@overeng/otel-contract'
@@ -74,7 +74,7 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -222,7 +222,7 @@ export const make = (spec: PtySpec): Effect.Effect<PtySession, PtyError, Scope.S
     })
 
     const screenshots: PtySession['screenshots'] = ({ schedule }) =>
-      Stream.repeatEffectWithSchedule(screenshot, schedule)
+      Stream.fromEffectSchedule(screenshot, schedule)
 
     /**
      * Poll the terminal on a `Schedule` until `predicate` returns `Some`.
@@ -242,7 +242,7 @@ export const make = (spec: PtySpec): Effect.Effect<PtySession, PtyError, Scope.S
     }): Effect.Effect<A, PtyError> =>
       pipe(
         screenshots({ schedule: opts.schedule }),
-        Stream.filterMap(opts.predicate),
+        Stream.filterMap(Filter.fromPredicateOption(opts.predicate)),
         Stream.runHead,
         Effect.flatMap(
           Option.match({

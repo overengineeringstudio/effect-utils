@@ -13,7 +13,7 @@ import { Restate, validateInputAnnotations } from './Annotations.ts'
 
 describe('validateInputAnnotations (decision 0020)', () => {
   it('a correctly-placed idempotencyKey FIELD passes (no violations)', () => {
-    const input = Schema.Struct({ key: Restate.idempotencyKey(Schema.String), n: Schema.Number })
+    const input = Schema.Struct({ key: Restate.idempotencyKey(Schema.String), n: Schema.Finite })
     expect(validateInputAnnotations({ ast: input.ast, label: 'Svc.handler' })).toEqual([])
   })
 

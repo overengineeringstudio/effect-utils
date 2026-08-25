@@ -1,4 +1,4 @@
-import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import { Effect, Option, Schema, Stream } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -110,12 +110,12 @@ const pageResult = <A>(input: {
   nextCursor?: string
 }): PaginatedResult<A> => ({
   results: input.results,
-  nextCursor: Option.fromNullable(input.nextCursor),
+  nextCursor: input.nextCursor === undefined ? Option.none() : Option.some(input.nextCursor),
   hasMore: input.nextCursor !== undefined,
 })
 
 Vitest.describe('paginate (items mode)', () => {
-  Vitest.it.scoped('fetches single page when hasMore is false', () =>
+  Vitest.it.effect('fetches single page when hasMore is false', () =>
     Effect.gen(function* () {
       let fetchCount = 0
 
@@ -128,14 +128,14 @@ Vitest.describe('paginate (items mode)', () => {
         { emit: { _tag: 'items' } },
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => chunks.slice()))
 
       expect(items).toEqual([{ id: '1' }, { id: '2' }])
       expect(fetchCount).toBe(1)
     }),
   )
 
-  Vitest.it.scoped('flattens multiple pages and threads the cursor', () =>
+  Vitest.it.effect('flattens multiple pages and threads the cursor', () =>
     Effect.gen(function* () {
       const cursors: Option.Option<string>[] = []
 
@@ -160,7 +160,7 @@ Vitest.describe('paginate (items mode)', () => {
         { emit: { _tag: 'items' } },
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => chunks.slice()))
 
       expect(items).toEqual([{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }, { id: '5' }])
       expect(cursors.length).toBe(3)
@@ -170,7 +170,7 @@ Vitest.describe('paginate (items mode)', () => {
     }),
   )
 
-  Vitest.it.scoped('seeds the first fetch with the provided start cursor', () =>
+  Vitest.it.effect('seeds the first fetch with the provided start cursor', () =>
     Effect.gen(function* () {
       const cursors: Option.Option<string>[] = []
 
@@ -183,7 +183,7 @@ Vitest.describe('paginate (items mode)', () => {
         { startCursor: Option.some('seed-cursor'), emit: { _tag: 'items' } },
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
+      const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => chunks.slice()))
 
       expect(items).toEqual([{ id: 'a' }])
       expect(Option.getOrNull(cursors[0] ?? Option.none())).toBe('seed-cursor')
@@ -206,7 +206,7 @@ Vitest.describe('paginate (items mode)', () => {
 })
 
 Vitest.describe('paginate (page mode)', () => {
-  Vitest.it.scoped('emits one mapped value per page without flattening', () =>
+  Vitest.it.effect('emits one mapped value per page without flattening', () =>
     Effect.gen(function* () {
       const stream = paginate(
         (cursor) =>
@@ -218,7 +218,7 @@ Vitest.describe('paginate (page mode)', () => {
         { emit: { _tag: 'page', map: (page) => page.results.length } },
       )
 
-      const pages = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
+      const pages = yield* Stream.runCollect(stream).pipe(Effect.map((chunks) => chunks.slice()))
 
       expect(pages).toEqual([2, 1])
     }),

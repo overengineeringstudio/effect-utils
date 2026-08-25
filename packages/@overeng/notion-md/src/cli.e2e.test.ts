@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
+import type { NodeServices as NodeServicesEnv } from '@effect/platform-node/NodeServices'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -45,12 +46,12 @@ const runCli = (args: readonly string[]) =>
     },
   })
 
-const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeServices.layer))
 
-const runStore = <A, E>(
-  effect: Effect.Effect<A, E, NmdStateStore | NodeContext.NodeContext>,
-): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeContext.layer))))
+const runStore = <A, E>(effect: Effect.Effect<A, E, NmdStateStore | NodeServicesEnv>): Promise<A> =>
+  Effect.runPromise(
+    effect.pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, NodeServices.layer))),
+  )
 
 const syncStateFor = (opts: {
   readonly pageId: string
@@ -139,7 +140,7 @@ describe('notion-md CLI boundary', () => {
   it(
     'validates missing sync targets before resolving Notion credentials',
     async () => {
-      await expect(runCli(['sync'])).rejects.toThrow('Missing argument <path>')
+      await expect(runCli(['sync'])).rejects.toThrow('Expected: at least 1 value')
     },
     cliTestTimeoutMs,
   )
@@ -149,7 +150,7 @@ describe('notion-md CLI boundary', () => {
     async () => {
       await expect(
         runCli(['sync', 'page.nmd', '--watch', '--poll-interval-ms', '0']),
-      ).rejects.toThrow('Expected a positive number')
+      ).rejects.toThrow('Expected a value greater than 0')
     },
     cliTestTimeoutMs,
   )
@@ -207,7 +208,7 @@ describe('notion-md CLI boundary', () => {
   it(
     'gc validates missing targets without requiring a Notion token',
     async () => {
-      await expect(runCli(['gc'])).rejects.toThrow('Missing argument <path>')
+      await expect(runCli(['gc'])).rejects.toThrow('Expected: at least 1 value')
     },
     cliTestTimeoutMs,
   )

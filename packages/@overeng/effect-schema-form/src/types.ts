@@ -17,13 +17,13 @@ export interface FieldMeta {
   /** Whether the field is optional */
   isOptional: boolean
   /** The underlying schema for the field (unwrapped from optional if needed) */
-  innerSchema: Schema.Schema.AnyNoContext
+  innerSchema: Schema.Top
 }
 
 /** Property signature with key and schema */
 export interface PropertyInfo {
   key: string
-  schema: Schema.Schema.AnyNoContext
+  schema: Schema.Top
   meta: FieldMeta
 }
 

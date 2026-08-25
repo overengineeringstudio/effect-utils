@@ -1,6 +1,6 @@
-import { make as makeRpc } from '@effect/rpc/Rpc'
-import { make as makeRpcGroup } from '@effect/rpc/RpcGroup'
 import { Schema } from 'effect'
+import { make as makeRpc } from 'effect/unstable/rpc/Rpc'
+import { make as makeRpcGroup } from 'effect/unstable/rpc/RpcGroup'
 
 /**
  * Example: shared RPC schema for WS client + server.
@@ -19,8 +19,8 @@ export const Ping = makeRpc('ping', {
 
 /** RPC procedure for adding two numbers */
 export const Add = makeRpc('math.add', {
-  payload: Schema.Struct({ a: Schema.Number, b: Schema.Number }),
-  success: Schema.Number,
+  payload: Schema.Struct({ a: Schema.Finite, b: Schema.Finite }),
+  success: Schema.Finite,
 })
 
 /** RPC group containing all API procedures (Ping, Add) */

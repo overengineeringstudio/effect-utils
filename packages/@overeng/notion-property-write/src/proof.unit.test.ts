@@ -1,4 +1,4 @@
-import { Effect, Exit, type ParseResult } from 'effect'
+import { Effect, Exit, type Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { decodeDesiredPropertyWrite, decodePropertyWriteProof } from './proof.ts'
@@ -34,7 +34,7 @@ const validDesired = {
 }
 
 const isFailure = <A>(exit: Exit.Exit<A, unknown>): boolean => Exit.isFailure(exit)
-const run = <A>(effect: Effect.Effect<A, ParseResult.ParseError>): Exit.Exit<A, unknown> =>
+const run = <A>(effect: Effect.Effect<A, Schema.SchemaError>): Exit.Exit<A, unknown> =>
   Effect.runSyncExit(effect)
 
 describe('decodePropertyWriteProof', () => {

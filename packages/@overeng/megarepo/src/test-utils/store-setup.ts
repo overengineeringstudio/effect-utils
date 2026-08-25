@@ -4,16 +4,16 @@
  * Provides helpers for creating test stores with bare repos and worktrees.
  */
 
-import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { MegarepoConfig } from '../lib/config.ts'
 import * as Git from '../lib/git.ts'
 import {
+  LockFile,
   createLockedMember,
-  type LockFile,
   type LockedMember,
   LOCK_FILE_NAME,
   readLockFile,
@@ -194,7 +194,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
         yield* Effect.gen(function* () {
           yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', pushTargetPath)
           yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main').pipe(
-            Effect.catchAll(() =>
+            Effect.catch(() =>
               // Try master if main fails
               runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'master'),
             ),
@@ -203,10 +203,10 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
           for (const branch of repoFixture.branches ?? []) {
             if (branch === 'main' || branch === 'master') continue
             yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha).pipe(
-              Effect.catchAll(() => Effect.void),
+              Effect.catch(() => Effect.void),
             )
             yield* runGitCommand(sourceRepoPath, 'push', 'origin', branch).pipe(
-              Effect.catchAll(() => Effect.void),
+              Effect.catch(() => Effect.void),
             )
           }
 
@@ -386,12 +386,12 @@ export const createWorkspaceWithLock = (args: {
     yield* initGitRepo(workspacePath)
 
     // Create megarepo.json
-    const config: MegarepoConfig = {
-      members: args.members,
-    }
-    const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-      config,
-    )
+    // Effect v4 class schemas require a real instance on the encode side — a
+    // plain literal fails `SchemaError: Expected MegarepoConfig`.
+    const config = new MegarepoConfig({ members: args.members })
+    const configContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(config)
     yield* fs.writeFileString(
       EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('megarepo.json')),
       configContent + '\n',
@@ -411,10 +411,10 @@ export const createWorkspaceWithLock = (args: {
         })
       }
 
-      const lockFile: LockFile = {
+      const lockFile: LockFile = new LockFile({
         version: 1,
         members,
-      }
+      })
 
       const lockPath = EffectPath.ops.join(
         workspacePath,
@@ -463,7 +463,7 @@ export const repinWorkspace = ({
     yield* fs.makeDirectory(reposDir, { recursive: true })
     const symlinkPath = EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile(memberName))
     // Replace any existing symlink so the new target is the on-disk truth.
-    yield* fs.remove(symlinkPath, { force: true }).pipe(Effect.catchAll(() => Effect.void))
+    yield* fs.remove(symlinkPath, { force: true }).pipe(Effect.catch(() => Effect.void))
     yield* fs.symlink(newTarget.replace(/\/+$/, ''), symlinkPath)
 
     // Optionally rewrite the lock entry for this member (ref/commit repin),
@@ -486,7 +486,7 @@ export const repinWorkspace = ({
         commit: lockEntry.commit,
         ...(lockEntry.pinned !== undefined ? { pinned: lockEntry.pinned } : {}),
       })
-      const lockFile: LockFile = { version: 1, members }
+      const lockFile: LockFile = new LockFile({ version: 1, members })
       yield* writeLockFile({ lockPath, lockFile })
     }
   })
@@ -516,7 +516,7 @@ export const materializeNonDetachedBranchWorktree = ({
     yield* runGitCommand(bareRepoPath, 'worktree', 'remove', '--force', worktreePath)
     yield* fs
       .remove(worktreePath, { recursive: true, force: true })
-      .pipe(Effect.catchAll(() => Effect.void))
+      .pipe(Effect.catch(() => Effect.void))
     // Ensure the branch ref points at this fixture commit, then check it out in
     // a fresh worktree (non-detached).
     yield* runGitCommand(bareRepoPath, 'branch', '-f', branch, commit)

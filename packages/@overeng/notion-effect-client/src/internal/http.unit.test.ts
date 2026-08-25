@@ -1,5 +1,6 @@
-import type { HttpClientRequest } from '@effect/platform'
-import { Effect, Fiber, Option, Redacted, Schema, TestClock, Tracer } from 'effect'
+import { Effect, Fiber, Option, Redacted, Result, Schema, Tracer } from 'effect'
+import { adjust as testClockAdjust } from 'effect/testing/TestClock'
+import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -31,8 +32,9 @@ const makeRecordingTracer = (): {
   return {
     spans,
     tracer: Tracer.make({
-      span: (name, parent, context, links, startTime, kind, options) => {
-        const attributes = new Map<string, unknown>(Object.entries(options?.attributes ?? {}))
+      span(options) {
+        const { name, parent, annotations, links, startTime, kind } = options
+        const attributes = new Map<string, unknown>()
         const recorded: RecordedSpan = {
           name,
           attributes: Object.fromEntries(attributes),
@@ -45,7 +47,7 @@ const makeRecordingTracer = (): {
           spanId: `span-${spans.length}`,
           traceId: 'trace-notion-http',
           parent,
-          context,
+          annotations,
           status: { _tag: 'Started', startTime },
           attributes,
           links,
@@ -62,7 +64,6 @@ const makeRecordingTracer = (): {
           addLinks: () => {},
         }
       },
-      context: (f) => f(),
     }),
   }
 }
@@ -479,7 +480,7 @@ Vitest.describe('executeRequest retry schedule', () => {
       const events: NotionHttpTelemetryEvent[] = []
 
       const fiber = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
-        Effect.either,
+        Effect.result,
         Effect.provideService(NotionHttpTelemetry, {
           report: (event) =>
             Effect.sync(() => {
@@ -493,11 +494,11 @@ Vitest.describe('executeRequest retry schedule', () => {
             return response ?? { status: 200, body: sampleResponses.database }
           }, retryConfig),
         ),
-        Effect.fork,
+        Effect.forkChild,
       )
 
       // Enough virtual time for all exponential + Retry-After sleeps to fire.
-      yield* TestClock.adjust('60 seconds')
+      yield* testClockAdjust('60 seconds')
       const result = yield* Fiber.join(fiber)
 
       const retryEvents = events.filter(
@@ -508,7 +509,7 @@ Vitest.describe('executeRequest retry schedule', () => {
       return { result, retryEvents, responseEvents, calls: call }
     })
 
-  Vitest.it.scoped(
+  Vitest.it.effect(
     'floors exponential backoff with Retry-After (max(backoff, Retry-After)) then succeeds',
     () =>
       Effect.gen(function* () {
@@ -528,7 +529,7 @@ Vitest.describe('executeRequest retry schedule', () => {
           { status: 200, body: sampleResponses.database },
         ])
 
-        expect(result._tag).toBe('Right')
+        expect(Result.isSuccess(result)).toBe(true)
         expect(calls).toBe(3)
         expect(retryEvents.map((event) => event.attempt)).toEqual([0, 1])
         expect(retryEvents.map((event) => event.delayMs)).toEqual([5000, 2000])
@@ -537,29 +538,29 @@ Vitest.describe('executeRequest retry schedule', () => {
       }),
   )
 
-  Vitest.it.scoped('stops after maxRetries with pure exponential backoff', () =>
+  Vitest.it.effect('stops after maxRetries with pure exponential backoff', () =>
     Effect.gen(function* () {
       const { result, retryEvents, calls } = yield* runWithRetries([
         { status: 500, body: sampleResponses.error(500, 'internal_server_error', 'Boom') },
       ])
 
       // Initial attempt + 3 retries = 4 calls; delays 1000, 2000, 4000.
-      expect(result._tag).toBe('Left')
+      expect(Result.isFailure(result)).toBe(true)
       expect(calls).toBe(4)
       expect(retryEvents.map((event) => event.delayMs)).toEqual([1000, 2000, 4000])
-      if (result._tag === 'Left') {
-        expect(result.left.code).toBe('internal_server_error')
+      if (Result.isFailure(result) === true) {
+        expect(result.failure.code).toBe('internal_server_error')
       }
     }),
   )
 
-  Vitest.it.scoped('does not retry non-retryable errors', () =>
+  Vitest.it.effect('does not retry non-retryable errors', () =>
     Effect.gen(function* () {
       const { result, retryEvents, calls } = yield* runWithRetries([
         { status: 404, body: sampleResponses.error(404, 'object_not_found', 'Missing') },
       ])
 
-      expect(result._tag).toBe('Left')
+      expect(Result.isFailure(result)).toBe(true)
       expect(calls).toBe(1)
       expect(retryEvents).toHaveLength(0)
     }),

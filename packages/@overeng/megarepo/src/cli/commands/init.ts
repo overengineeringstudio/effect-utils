@@ -4,14 +4,19 @@
  * Initialize a new megarepo in the current directory.
  */
 
-import * as Cli from '@effect/cli'
 import { Effect } from 'effect'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { CONFIG_FILE_NAME_KDL, findConfigPath, writeMegarepoConfig } from '../../lib/config.ts'
+import {
+  CONFIG_FILE_NAME_KDL,
+  MegarepoConfig,
+  findConfigPath,
+  writeMegarepoConfig,
+} from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { Cwd, outputOption, outputModeLayer } from '../context.ts'
 import * as Observability from '../observability.ts'
@@ -51,9 +56,9 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_KDL),
           )
 
-          const initialConfig = {
+          const initialConfig = new MegarepoConfig({
             members: {},
-          }
+          })
 
           yield* writeMegarepoConfig({ configPath: configPath, config: initialConfig })
 

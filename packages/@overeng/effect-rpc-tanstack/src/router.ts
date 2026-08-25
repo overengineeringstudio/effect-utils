@@ -10,17 +10,13 @@ import {
   type FileRoutesByPath,
   type RouteComponent,
 } from '@tanstack/react-router'
-import { Cause, Effect, Exit, type Layer, Option, Schema } from 'effect'
+import { Cause, Effect, Exit, type Layer, Option, Result, Schema } from 'effect'
 
 /**
  * Schema for encoding Exit values for SSR serialization.
  * Uses Effect's built-in Exit schema with Unknown types for flexibility.
  */
-const ExitSchema = Schema.Exit({
-  success: Schema.Unknown,
-  failure: Schema.Unknown,
-  defect: Schema.Defect,
-})
+const ExitSchema = Schema.Exit(Schema.Unknown, Schema.Unknown, Schema.Defect())
 
 /**
  * Encoded Exit type for SSR serialization.
@@ -137,7 +133,7 @@ export const makeEffectLoaderResult = <A, E>(encoded: ExitEncoded): EffectLoader
     isSuccess: Exit.isSuccess(exit),
     isFailure: Exit.isFailure(exit),
     value: Exit.isSuccess(exit) === true ? Option.some(exit.value) : Option.none(),
-    error: Exit.isFailure(exit) === true ? Cause.failureOption(exit.cause) : Option.none(),
+    error: Exit.isFailure(exit) === true ? Cause.findErrorOption(exit.cause) : Option.none(),
     getOrThrow: () => {
       if (Exit.isSuccess(exit) === true) {
         return exit.value
@@ -148,12 +144,12 @@ export const makeEffectLoaderResult = <A, E>(encoded: ExitEncoded): EffectLoader
       Exit.match(exit, {
         onSuccess: handlers.onSuccess,
         onFailure: (cause) => {
-          const failure = Cause.failureOption(cause)
+          const failure = Cause.findErrorOption(cause)
           if (Option.isSome(failure) === true) {
             return handlers.onFailure(failure.value)
           }
           if (handlers.onDefect !== undefined) {
-            const defect = Cause.dieOption(cause)
+            const defect = Option.map(Result.getSuccess(Cause.findDie(cause)), (die) => die.defect)
             if (Option.isSome(defect) === true) {
               return handlers.onDefect(defect.value)
             }

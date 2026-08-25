@@ -1,6 +1,5 @@
-import type { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer, Schema } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, type FileSystem, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -32,7 +31,7 @@ import { NmdStateStore, type NmdStateStoreShape } from './state-store.ts'
 const pageId = '00000000-0000-4000-8000-000000000001'
 const path = '/tmp/page.nmd'
 
-const encodeJson = Schema.encodeSync(Schema.parseJson())
+const encodeJson = (value: unknown): string => JSON.stringify(value)
 
 const emptyStorage = (): NmdStorage => ({
   _tag: 'self_contained',
@@ -112,7 +111,7 @@ class FakeStore {
         this.writeNmdFileCalls.push({ path: filePath, content })
         this.nmdContent.set(filePath, content)
       }),
-    writeConflictFile: () => Effect.dieMessage('unexpected writeConflictFile call'),
+    writeConflictFile: () => Effect.die(new Error('unexpected writeConflictFile call')),
     writeBaseSnapshot: (opts) =>
       Effect.sync((): NmdObjectRef => {
         this.writeBaseSnapshotCalls.push(opts)
@@ -128,16 +127,17 @@ class FakeStore {
           content,
         })
       }),
-    readBaseSnapshot: () => Effect.dieMessage('unexpected readBaseSnapshot call'),
-    writeStorageObject: () => Effect.dieMessage('unexpected writeStorageObject call'),
-    validateReferencedObjects: () => Effect.dieMessage('unexpected validateReferencedObjects call'),
-    garbageCollectObjects: () => Effect.dieMessage('unexpected garbageCollectObjects call'),
+    readBaseSnapshot: () => Effect.die(new Error('unexpected readBaseSnapshot call')),
+    writeStorageObject: () => Effect.die(new Error('unexpected writeStorageObject call')),
+    validateReferencedObjects: () =>
+      Effect.die(new Error('unexpected validateReferencedObjects call')),
+    garbageCollectObjects: () => Effect.die(new Error('unexpected garbageCollectObjects call')),
     writeSyncState: (opts) =>
       Effect.sync(() => {
         this.writeSyncStateCalls.push(opts)
       }),
-    readSyncState: () => Effect.dieMessage('unexpected readSyncState call'),
-    readSyncStateOptional: () => Effect.dieMessage('unexpected readSyncStateOptional call'),
+    readSyncState: () => Effect.die(new Error('unexpected readSyncState call')),
+    readSyncStateOptional: () => Effect.die(new Error('unexpected readSyncStateOptional call')),
   } satisfies NmdStateStoreShape)
 }
 
@@ -210,7 +210,7 @@ const runWithGatewayAndStore = <A, E>(
   store: FakeStore,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(Layer.mergeAll(gateway.layer, store.layer, NodeContext.layer))),
+    effect.pipe(Effect.provide(Layer.mergeAll(gateway.layer, store.layer, NodeServices.layer))),
   )
 
 describe('notion-md body facade', () => {

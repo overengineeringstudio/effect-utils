@@ -5,84 +5,29 @@ exports[`notion-cli CLI contract baselines (status/signal invariant, prose owner
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "notion
-
-notion 0.1.0
+  "stdout": "DESCRIPTION
+  Database operations and SQLite replica sync
 
 USAGE
+  notion db <subcommand> [flags]
 
-$ db
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
-DESCRIPTION
-
-Database operations and SQLite replica sync
-
-OPTIONS
-
---completions sh | bash | fish | zsh
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
---log-level all | trace | debug | info | warning | error | fatal | none
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-(-h, --help)
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
---wizard
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
---version
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
-COMMANDS
-
-  - info [(-t, --token text)] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <database-id>                                                                                                                                                                                                                     Display information about a Notion database
-
-  - track [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--mode local | remote | shared] [--dry-run] [--limit integer] [--no-materialize-bodies] [<remote-ref>] [<workspace-root>]                                                                                                                     Adopt a Notion data source into a workspace (the adoption verb)
-
-  - sync [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--dry-run] [--watch] [--state file] [--max-cycles integer] [--watch-priority development | normal | low-priority] [--webhook none | tailscale | manual] [--webhook-required] [--non-interactive] [--no-materialize-bodies] [<workspace-root>]  Reconcile an established workspace, or run the watch daemon with --watch
-
-  - export [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--output file] [--refresh] [--format ndjson | json] [--require-clean] [--dry-run] [--no-materialize-bodies] [<workspace-root>]                                                                                                               Export rows, schema, and sync metadata from SQLite
-
-  - status [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [<workspace-root>]                                                                                                                                                                                                                            Print workspace sync status
-
-  - conflicts                                                                                                                                                                                                                                                                                                                                  Inspect and resolve SQLite sync conflicts
-
-  - conflicts list [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory]                                                                                                                                                                                                                                       List unresolved conflicts
-
-  - conflicts resolve [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--conflict-id text] [--strategy keep-remote | keep-local | manual] [--value-json text] [--dry-run]                                                                                                                                Resolve a conflict
-
-  - forget [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--page-id text] [--dry-run]                                                                                                                                                                                                                  Archive or forget a page locally
-
-  - restore [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--page-id text] [--dry-run]                                                                                                                                                                                                                 Restore a forgotten page locally
-
-  - doctor [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory]                                                                                                                                                                                                                                               Print diagnostics
-
+SUBCOMMANDS
+  info         Display information about a Notion database
+  track        Adopt a Notion data source into a workspace (the adoption verb)
+  sync         Reconcile an established workspace, or run the watch daemon with --watch
+  export       Export rows, schema, and sync metadata from SQLite
+  status       Print workspace sync status
+  conflicts    Inspect and resolve SQLite sync conflicts
+  forget       Archive or forget a page locally
+  restore      Restore a forgotten page locally
+  doctor       Print diagnostics
 ",
 }
 `;
@@ -91,11 +36,32 @@ exports[`notion-cli CLI contract baselines (status/signal invariant, prose owner
 {
   "signal": null,
   "status": 1,
-  "stderr": "'nope' is not a integer
-
+  "stderr": "
+ERROR
+  Invalid value for flag --concurrency: "nope". Expected a string representing a finite number
 ",
-  "stdout": "[time] ERROR (#84):
-  Error: {"_tag":"InvalidValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"'nope' is not a integer"}}}
+  "stdout": "DESCRIPTION
+  Read-only: report the live in-sync decision per file in git-porcelain words (never mutates)
+
+USAGE
+  notion md status [flags] <path...>
+
+ARGUMENTS
+  path... string    Local .nmd file or directory (a directory means everything under it)
+
+FLAGS
+  --recursive, -r          Discover existing .nmd files recursively under a directory target
+  --concurrency integer    Maximum number of .nmd files to reconcile concurrently
+  --json                   Emit machine-readable JSON instead of git-porcelain text
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+[time] ERROR (#73): ~effect/cli/CliError/ShowHelp: Help requested
+    at <anonymous> (<repo>/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
 }
 `;
@@ -104,11 +70,31 @@ exports[`notion-cli CLI contract baselines (status/signal invariant, prose owner
 {
   "signal": null,
   "status": 1,
-  "stderr": "Missing argument <database-id>
-
+  "stderr": "
+ERROR
+  Missing required argument: database-id
 ",
-  "stdout": "[time] ERROR (#84):
-  Error: {"_tag":"MissingValue","error":{"_tag":"Paragraph","value":{"_tag":"Text","value":"Missing argument <database-id>"}}}
+  "stdout": "DESCRIPTION
+  Display information about a Notion database
+
+USAGE
+  notion db info [flags] <database-id>
+
+ARGUMENTS
+  database-id string    The Notion database ID to operate on
+
+FLAGS
+  --token, -t string     Notion API token (defaults to NOTION_API_TOKEN env var)
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+[time] ERROR (#73): ~effect/cli/CliError/ShowHelp: Help requested
+    at <anonymous> (<repo>/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
 }
 `;
@@ -118,114 +104,24 @@ exports[`notion-cli CLI contract baselines (status/signal invariant, prose owner
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "notion
-
-notion 0.1.0
+  "stdout": "DESCRIPTION
+  Notion CLI - database operations, schema generation, and markdown sync
 
 USAGE
+  notion <subcommand> [flags]
 
-$ notion
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 
-DESCRIPTION
-
-Notion CLI - database operations, schema generation, and markdown sync
-
-OPTIONS
-
---completions sh | bash | fish | zsh
-
-  One of the following: sh, bash, fish, zsh
-
-  Generate a completion script for a specific shell.
-
-  This setting is optional.
-
---log-level all | trace | debug | info | warning | error | fatal | none
-
-  One of the following: all, trace, debug, info, warning, error, fatal, none
-
-  Sets the minimum log level for a command.
-
-  This setting is optional.
-
-(-h, --help)
-
-  A true or false value.
-
-  Show the help documentation for a command.
-
-  This setting is optional.
-
---wizard
-
-  A true or false value.
-
-  Start wizard mode for a command.
-
-  This setting is optional.
-
---version
-
-  A true or false value.
-
-  Show the version of the application.
-
-  This setting is optional.
-
-COMMANDS
-
-  - edit [--frontmatter] [--read-only] <page>                                                                                                                                                                                                                                                                                                     Edit a Notion page in $EDITOR via an ephemeral .nmd session, then push the change through the sync engine; \`--read-only\` inspects without pushing
-
-  - schema                                                                                                                                                                                                                                                                                                                                        Schema generation commands
-
-  - schema generate (-o, --output file) [(-n, --name text)] [(-t, --token text)] [--transform text] [(-d, --dry-run)] [(-w, --include-write)] [--typed-options] [--schema-meta] [--no-schema-meta] [(-a, --include-api)] [--writable] [--output-mode auto | tty | alt-screen | ci | ci-plain | log | json | ndjson] <database-id>                 Generate Effect schema from a Notion database
-
-  - schema introspect [(-t, --token text)] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <database-id>                                                                                                                                                                                                           Introspect a Notion database and display its schema
-
-  - schema generate-config [(-c, --config file)] [(-t, --token text)] [(-d, --dry-run)] [--writable] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)]                                                                                                                                                               Generate schemas for all databases in a config file
-
-  - schema diff (-f, --file file) [(-t, --token text)] [--exit-code] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <database-id>                                                                                                                                                                                 Compare a Notion database schema with a generated file to detect drift
-
-  - db                                                                                                                                                                                                                                                                                                                                            Database operations and SQLite replica sync
-
-  - db info [(-t, --token text)] [(-o, --output auto | tty | alt-screen | ci | ci-plain | log | json | ndjson)] <database-id>                                                                                                                                                                                                                     Display information about a Notion database
-
-  - db track [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--mode local | remote | shared] [--dry-run] [--limit integer] [--no-materialize-bodies] [<remote-ref>] [<workspace-root>]                                                                                                                     Adopt a Notion data source into a workspace (the adoption verb)
-
-  - db sync [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--dry-run] [--watch] [--state file] [--max-cycles integer] [--watch-priority development | normal | low-priority] [--webhook none | tailscale | manual] [--webhook-required] [--non-interactive] [--no-materialize-bodies] [<workspace-root>]  Reconcile an established workspace, or run the watch daemon with --watch
-
-  - db export [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--output file] [--refresh] [--format ndjson | json] [--require-clean] [--dry-run] [--no-materialize-bodies] [<workspace-root>]                                                                                                               Export rows, schema, and sync metadata from SQLite
-
-  - db status [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [<workspace-root>]                                                                                                                                                                                                                            Print workspace sync status
-
-  - db conflicts                                                                                                                                                                                                                                                                                                                                  Inspect and resolve SQLite sync conflicts
-
-  - db db conflicts list [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory]                                                                                                                                                                                                                                    List unresolved conflicts
-
-  - db db conflicts resolve [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--conflict-id text] [--strategy keep-remote | keep-local | manual] [--value-json text] [--dry-run]                                                                                                                             Resolve a conflict
-
-  - db forget [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--page-id text] [--dry-run]                                                                                                                                                                                                                  Archive or forget a page locally
-
-  - db restore [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory] [--page-id text] [--dry-run]                                                                                                                                                                                                                 Restore a forgotten page locally
-
-  - db doctor [--sqlite file] [--root-id text] [--data-source-id text] [--workspace-root directory]                                                                                                                                                                                                                                               Print diagnostics
-
-  - md                                                                                                                                                                                                                                                                                                                                            Frictionless Notion enhanced Markdown sync, local object GC, and editor surfaces
-
-  - md track [--as text] [--dry-run] <page-id-or-url> [<path>]                                                                                                                                                                                                                                                                                    Track an existing Notion page as a local .nmd file (the only command taking a page id)
-
-  - md status [(-r, --recursive)] [--concurrency integer] [--json] <path>...                                                                                                                                                                                                                                                                      Read-only: report the live in-sync decision per file in git-porcelain words (never mutates)
-
-  - md sync [--watch] [--poll-interval-ms integer] [(-r, --recursive)] [--concurrency integer] [--force] [--allow-delete-unknown-blocks] [--allow-review-markup] [--gc-objects] [--dry-run] [--json] <path>...                                                                                                                                    Reconcile self-describing .nmd files toward in-sync; dispatch per file on frontmatter \`source\`
-
-  - md gc [(-r, --recursive)] [--prune] <path>...                                                                                                                                                                                                                                                                                                 Garbage-collect unreachable .notion-md/objects files (dry-run by default; pass --prune to delete)
-
-  - md cat [--frontmatter] <page>                                                                                                                                                                                                                                                                                                                 Print a Notion page as editor Markdown (\`# title\` + body) with the base hash on stderr; \`--frontmatter\` dumps the full \`.nmd\` envelope
-
-  - md put [--base-hash text] [--force] <page>                                                                                                                                                                                                                                                                                                    Write editor Markdown from stdin (\`# title\` + body) back to a Notion page; guarded by --base-hash, or --force to override concurrency
-
-  - md edit [--frontmatter] [--read-only] <page>                                                                                                                                                                                                                                                                                                  Edit a Notion page in $EDITOR via an ephemeral .nmd session, then push the change through the sync engine; \`--read-only\` inspects without pushing
-
+SUBCOMMANDS
+  edit      Edit a Notion page in $EDITOR via an ephemeral .nmd session, then push the change through the sync engine; \`--read-only\` inspects without pushing
+  schema    Schema generation commands
+  db        Database operations and SQLite replica sync
+  md        Frictionless Notion enhanced Markdown sync, local object GC, and editor surfaces
 ",
 }
 `;

@@ -24,11 +24,11 @@ const FileUploadResponseSchema = Schema.Struct({
   upload_url: Schema.String,
   filename: Schema.NullOr(Schema.String),
   content_type: Schema.NullOr(Schema.String),
-  content_length: Schema.NullOr(Schema.Number),
+  content_length: Schema.NullOr(Schema.Finite),
 })
 
 /** Request body for creating a single-part file upload. */
-const CreateFileUploadRequestJson = Schema.parseJson(
+const CreateFileUploadRequestJson = Schema.fromJsonString(
   Schema.Struct({
     mode: Schema.Literal('single_part'),
     filename: Schema.String,
@@ -87,7 +87,7 @@ export const upload = Effect.fn('NotionFiles.upload')(function* (opts: UploadFil
   }
 
   // Step 1: Create file upload object
-  const createBody = yield* Schema.encode(CreateFileUploadRequestJson)({
+  const createBody = yield* Schema.encodeEffect(CreateFileUploadRequestJson)({
     mode: 'single_part',
     filename: opts.filename,
     content_type: opts.contentType,
@@ -130,7 +130,7 @@ export const upload = Effect.fn('NotionFiles.upload')(function* (opts: UploadFil
       }),
   })
 
-  const parsed = yield* Schema.decodeUnknown(FileUploadResponseSchema)(createRes).pipe(
+  const parsed = yield* Schema.decodeUnknownEffect(FileUploadResponseSchema)(createRes).pipe(
     Effect.mapError(
       (cause) =>
         new NotionApiError({

@@ -1,10 +1,12 @@
-import { HttpClient, type HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { HttpClient, make as makeHttpClient } from 'effect/unstable/http/HttpClient'
+import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
+import * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
 
 import { type NotionClientConfig, NotionConfig } from '../config.ts'
 
 /** Encodes an arbitrary mock body to a JSON string (mirrors `JSON.stringify`). */
-const encodeJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 /** Mock response configuration */
 export interface MockResponse {
@@ -16,8 +18,8 @@ export interface MockResponse {
 /** Create a mock HttpClient that returns predefined responses */
 export const createMockHttpClient = (
   handler: (request: HttpClientRequest.HttpClientRequest) => MockResponse,
-): HttpClient.HttpClient =>
-  HttpClient.make((request) =>
+): HttpClient =>
+  makeHttpClient((request) =>
     Effect.sync(() => {
       const mockResponse = handler(request)
       return HttpClientResponse.fromWeb(
@@ -36,8 +38,7 @@ export const createMockHttpClient = (
 /** Create a Layer with mock HttpClient */
 export const mockHttpClientLayer = (
   handler: (request: HttpClientRequest.HttpClientRequest) => MockResponse,
-): Layer.Layer<HttpClient.HttpClient> =>
-  Layer.succeed(HttpClient.HttpClient, createMockHttpClient(handler))
+): Layer.Layer<HttpClient> => Layer.succeed(HttpClient, createMockHttpClient(handler))
 
 /** Create a Layer with NotionConfig for testing */
 export const testConfigLayer = (
@@ -54,14 +55,14 @@ export const createTestLayer = (
     authToken: Redacted.make('test-token'),
     retryEnabled: false,
   },
-): Layer.Layer<HttpClient.HttpClient | NotionConfig> =>
+): Layer.Layer<HttpClient | NotionConfig> =>
   Layer.mergeAll(mockHttpClientLayer(handler), testConfigLayer(config))
 
 /** Collect all items from a Stream into an array */
 export const collectStream = <A, E, R>(
   stream: Stream.Stream<A, E, R>,
 ): Effect.Effect<readonly A[], E, R> =>
-  Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
+  Effect.map(Stream.runCollect(stream), (chunks): readonly A[] => [...chunks])
 
 /** Sample Notion API responses for testing */
 export const sampleResponses = {

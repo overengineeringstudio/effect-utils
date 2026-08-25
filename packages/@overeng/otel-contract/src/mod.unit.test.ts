@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 
 import { expectTrace } from '@overeng/utils-dev/otelite'
 
+const NonNegativeInt = Schema.Int.pipe(
+  Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
+)
+
 import {
   type FleetServiceBinding,
   OtelAttr,
@@ -24,26 +28,26 @@ import {
 describe('OTEL schema names', () => {
   it('exports branded refined schemas for contract names and keys', async () => {
     await expect(
-      Effect.runPromise(Schema.decodeUnknown(OtelAttributeKey)('service.name')),
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelAttributeKey)('service.name')),
     ).resolves.toBe('service.name')
     await expect(
-      Effect.runPromise(Schema.decodeUnknown(OtelAttributeKey)('notion-react.page_id')),
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelAttributeKey)('notion-react.page_id')),
     ).resolves.toBe('notion-react.page_id')
     await expect(
-      Effect.runPromise(Schema.decodeUnknown(OtelSpanName)('notion-md.pull-page')),
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelSpanName)('notion-md.pull-page')),
     ).resolves.toBe('notion-md.pull-page')
     await expect(
-      Effect.runPromise(Schema.decodeUnknown(OtelMetricName)('restate_invocations_total')),
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelMetricName)('restate_invocations_total')),
     ).resolves.toBe('restate_invocations_total')
     await expect(
-      Effect.runPromise(Schema.decodeUnknown(OtelServiceName)('notion-md-cli')),
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelServiceName)('notion-md-cli')),
     ).resolves.toBe('notion-md-cli')
   })
 
   it('rejects invalid contract names and attribute keys at definition time', async () => {
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
               value: OtelAttr.string({ key: 'bad key' }),
@@ -52,8 +56,8 @@ describe('OTEL schema names', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
 
     const SpanAttrs = OtelAttrs.defineSync(
@@ -84,7 +88,7 @@ describe('OTEL schema names', () => {
 describe('ServiceIdentity', () => {
   it('decodes a valid identity into branded name/namespace/version', async () => {
     const identity = await Effect.runPromise(
-      Schema.decodeUnknown(ServiceIdentity)({
+      Schema.decodeUnknownEffect(ServiceIdentity)({
         name: 'megarepo',
         namespace: 'overeng',
         version: '1.2.3',
@@ -96,15 +100,15 @@ describe('ServiceIdentity', () => {
   it('rejects an invalid (non-pattern) service name', async () => {
     await expect(
       Effect.runPromise(
-        Effect.either(
-          Schema.decodeUnknown(ServiceIdentity)({
+        Effect.result(
+          Schema.decodeUnknownEffect(ServiceIdentity)({
             name: 'bad name',
             namespace: 'overeng',
             version: '1.0.0',
           }),
         ),
       ),
-    ).resolves.toMatchObject({ _tag: 'Left' })
+    ).resolves.toMatchObject({ _tag: 'Failure' })
   })
 
   it('rejects empty namespace/version', async () => {
@@ -113,8 +117,8 @@ describe('ServiceIdentity', () => {
       { name: 'svc', namespace: 'overeng', version: '' },
     ]) {
       await expect(
-        Effect.runPromise(Effect.either(Schema.decodeUnknown(ServiceIdentity)(bad))),
-      ).resolves.toMatchObject({ _tag: 'Left' })
+        Effect.runPromise(Effect.result(Schema.decodeUnknownEffect(ServiceIdentity)(bad))),
+      ).resolves.toMatchObject({ _tag: 'Failure' })
     }
   })
 })
@@ -122,13 +126,13 @@ describe('ServiceIdentity', () => {
 describe('ServiceNameFromParts', () => {
   it('builds `<project>-<role>` and validates it through the OtelServiceName brand', async () => {
     const name = await Effect.runPromise(
-      Schema.decode(ServiceNameFromParts)({ project: 'my-project', role: 'worker' }),
+      Schema.decodeEffect(ServiceNameFromParts)({ project: 'my-project', role: 'worker' }),
     )
     expect(name).toBe('my-project-worker')
     // The result is a real OtelServiceName (decodes through the brand unchanged).
-    await expect(Effect.runPromise(Schema.decodeUnknown(OtelServiceName)(name))).resolves.toBe(
-      'my-project-worker',
-    )
+    await expect(
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelServiceName)(name)),
+    ).resolves.toBe('my-project-worker')
   })
 
   it('rejects an empty or whitespace part as a decode failure', async () => {
@@ -142,8 +146,8 @@ describe('ServiceNameFromParts', () => {
       { project: '  ', role: 'worker' },
     ]) {
       await expect(
-        Effect.runPromise(Effect.either(Schema.decode(ServiceNameFromParts)(bad))),
-      ).resolves.toMatchObject({ _tag: 'Left' })
+        Effect.runPromise(Effect.result(Schema.decodeEffect(ServiceNameFromParts)(bad))),
+      ).resolves.toMatchObject({ _tag: 'Failure' })
     }
   })
 
@@ -151,9 +155,11 @@ describe('ServiceNameFromParts', () => {
     // A leading digit project breaks the brand's `^[A-Za-z]` law once joined.
     await expect(
       Effect.runPromise(
-        Effect.either(Schema.decode(ServiceNameFromParts)({ project: '1bad', role: 'worker' })),
+        Effect.result(
+          Schema.decodeEffect(ServiceNameFromParts)({ project: '1bad', role: 'worker' }),
+        ),
       ),
-    ).resolves.toMatchObject({ _tag: 'Left' })
+    ).resolves.toMatchObject({ _tag: 'Failure' })
   })
 })
 
@@ -169,7 +175,7 @@ describe('serviceIdentityFromBinding', () => {
     expect(identity).toEqual({ name: 'my-project-worker', namespace: 'acme', version: '1.2.3' })
     // Re-decoding through the struct confirms the result is a valid ServiceIdentity.
     await expect(
-      Effect.runPromise(Schema.decodeUnknown(ServiceIdentity)(identity)),
+      Effect.runPromise(Schema.decodeUnknownEffect(ServiceIdentity)(identity)),
     ).resolves.toEqual(identity)
   })
 
@@ -180,8 +186,8 @@ describe('serviceIdentityFromBinding', () => {
       { project: 'my-project', role: 'worker', namespace: 'acme', version: '' },
     ] satisfies ReadonlyArray<FleetServiceBinding>) {
       await expect(
-        Effect.runPromise(Effect.either(serviceIdentityFromBinding(bad))),
-      ).resolves.toMatchObject({ _tag: 'Left' })
+        Effect.runPromise(Effect.result(serviceIdentityFromBinding(bad))),
+      ).resolves.toMatchObject({ _tag: 'Failure' })
     }
   })
 })
@@ -189,12 +195,15 @@ describe('serviceIdentityFromBinding', () => {
 describe('OtelAttrs', () => {
   it('derives primitive, literal, uuid, option, date, duration, and explicit array attributes', async () => {
     const Attrs = Schema.Struct({
-      label: Schema.NonEmptyTrimmedString.pipe(OtelAttr.spanLabel()),
-      requestId: Schema.UUID.pipe(OtelAttr.key({ key: 'request.id' })),
-      outcome: Schema.Literal('approved', 'denied', 'timeout').pipe(
+      label: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()), OtelAttr.spanLabel()),
+      requestId: Schema.String.pipe(
+        Schema.check(Schema.isUUID()),
+        OtelAttr.key({ key: 'request.id' }),
+      ),
+      outcome: Schema.Literals(['approved', 'denied', 'timeout']).pipe(
         OtelAttr.key({ key: 'op.outcome' }),
       ),
-      count: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'op.count' })),
+      count: NonNegativeInt.pipe(OtelAttr.key({ key: 'op.count' })),
       cacheHit: Schema.Boolean.pipe(OtelAttr.key({ key: 'op.cache_hit' })),
       maybeShard: Schema.OptionFromNullOr(Schema.String).pipe(OtelAttr.key({ key: 'op.shard' })),
       at: Schema.DateTimeUtc.pipe(OtelAttr.key({ key: 'op.at' })),
@@ -202,7 +211,7 @@ describe('OtelAttrs', () => {
       tags: Schema.Array(Schema.String).pipe(OtelAttr.key({ key: 'op.tags', encode: 'json' })),
     })
     const attrs = await Effect.runPromise(OtelAttrs.define(Attrs))
-    const at = DateTime.unsafeMake('2026-06-11T10:00:00.000Z')
+    const at = DateTime.makeUnsafe('2026-06-11T10:00:00.000Z')
 
     await expect(
       Effect.runPromise(
@@ -250,7 +259,7 @@ describe('OtelAttrs', () => {
   it('rejects unsafe schemas unless policy is explicit', async () => {
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
               nested: Schema.Struct({ id: Schema.String }).pipe(OtelAttr.key({ key: 'nested' })),
@@ -259,13 +268,13 @@ describe('OtelAttrs', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
 
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
               secret: Schema.Redacted(Schema.String).pipe(OtelAttr.key({ key: 'secret' })),
@@ -274,13 +283,13 @@ describe('OtelAttrs', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
 
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
               tags: Schema.Array(Schema.String).pipe(OtelAttr.key({ key: 'tags' })),
@@ -289,8 +298,8 @@ describe('OtelAttrs', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
   })
 
@@ -321,7 +330,7 @@ describe('OtelAttrs', () => {
   it('only allows redacted-safe policies for redacted values', async () => {
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelAttrs.define(
             Schema.Struct({
               secret: Schema.Redacted(Schema.String).pipe(
@@ -332,8 +341,8 @@ describe('OtelAttrs', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrPlanError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrPlanError),
     })
 
     const attrs = await Effect.runPromise(
@@ -353,15 +362,16 @@ describe('OtelAttrs', () => {
 
   it('surfaces encoding errors on the error channel', async () => {
     const Attrs = Schema.Struct({
+      // @effect-diagnostics-next-line schemaNumber:off -- deliberately accepts non-finite values; this test encodes NaN to assert the error-channel path
       count: Schema.Number.pipe(OtelAttr.key({ key: 'count' })),
     })
     const attrs = await Effect.runPromise(OtelAttrs.define(Attrs))
 
     await expect(
-      Effect.runPromise(Effect.either(attrs.encode({ count: Number.NaN }))),
+      Effect.runPromise(Effect.result(attrs.encode({ count: Number.NaN }))),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrEncodeError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrEncodeError),
     })
   })
 
@@ -377,6 +387,7 @@ describe('OtelAttrs', () => {
     const attrs = await Effect.runPromise(
       OtelAttrs.define(
         Schema.Struct({
+          // @effect-diagnostics-next-line schemaNumber:off -- intentionally uses Schema.Number so NaN reaches encodeSync/unsafeEncode below
           count: Schema.Number.pipe(OtelAttr.key({ key: 'count' })),
         }),
       ),
@@ -391,8 +402,8 @@ describe('OtelAttrs', () => {
       asJson: Schema.Struct({ id: Schema.String }).pipe(
         OtelAttr.key({ key: 'json', encode: 'json' }),
       ),
-      asString: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'string', encode: 'string' })),
-      asNumber: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'number', encode: 'number' })),
+      asString: NonNegativeInt.pipe(OtelAttr.key({ key: 'string', encode: 'string' })),
+      asNumber: NonNegativeInt.pipe(OtelAttr.key({ key: 'number', encode: 'number' })),
       asBoolean: Schema.Boolean.pipe(OtelAttr.key({ key: 'boolean', encode: 'boolean' })),
       secret: Schema.Redacted(Schema.String).pipe(
         OtelAttr.key({ key: 'secret', encode: 'redacted' }),
@@ -439,14 +450,14 @@ describe('OtelAttrs', () => {
     ]
     const results = await Promise.all(
       invalidInputs.map((invalid) =>
-        Effect.runPromise(Effect.either(attrs.encode(invalid as never))),
+        Effect.runPromise(Effect.result(attrs.encode(invalid as never))),
       ),
     )
 
     for (const result of results) {
       expect(result).toMatchObject({
-        _tag: 'Left',
-        left: expect.any(OtelAttrEncodeError),
+        _tag: 'Failure',
+        failure: expect.any(OtelAttrEncodeError),
       })
     }
   })
@@ -456,7 +467,7 @@ describe('OtelAttrs', () => {
       OtelAttrs.define(
         Schema.Struct({
           label: Schema.String.pipe(OtelAttr.spanLabel()),
-          count: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'retry.count' })),
+          count: NonNegativeInt.pipe(OtelAttr.key({ key: 'retry.count' })),
         }),
       ),
     )
@@ -498,7 +509,7 @@ describe('OtelAttrs', () => {
     const attrs = await Effect.runPromise(
       OtelAttrs.define(
         Schema.Struct({
-          label: Schema.NonEmptyTrimmedString.pipe(OtelAttr.spanLabel()),
+          label: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()), OtelAttr.spanLabel()),
           outcome: OtelAttr.literal('op.outcome', 'success', 'retryable', 'terminal'),
           cacheHit: OtelAttr.boolean({ key: 'op.cache_hit' }),
           requestId: OtelAttr.string({ key: 'request.id', metadata: { cardinality: 'high' } }),
@@ -513,12 +524,11 @@ describe('OtelAttrs', () => {
     expect(attrs.fields).toMatchInlineSnapshot(`
       [
         {
-          "astTag": "Refinement",
+          "astTag": "String",
           "attrKey": "span.label",
           "encodePolicy": "auto",
           "optional": false,
           "role": "span.label",
-          "schemaIdentifier": "NonEmptyTrimmedString",
           "sourceKey": "label",
         },
         {
@@ -530,7 +540,7 @@ describe('OtelAttrs', () => {
           "sourceKey": "outcome",
         },
         {
-          "astTag": "BooleanKeyword",
+          "astTag": "Boolean",
           "attrKey": "op.cache_hit",
           "cardinality": "low",
           "encodePolicy": "auto",
@@ -538,7 +548,7 @@ describe('OtelAttrs', () => {
           "sourceKey": "cacheHit",
         },
         {
-          "astTag": "StringKeyword",
+          "astTag": "String",
           "attrKey": "request.id",
           "cardinality": "high",
           "encodePolicy": "auto",
@@ -546,7 +556,7 @@ describe('OtelAttrs', () => {
           "sourceKey": "requestId",
         },
         {
-          "astTag": "TypeLiteral",
+          "astTag": "Objects",
           "attrKey": "op.payload",
           "encodePolicy": "json",
           "optional": false,
@@ -619,7 +629,7 @@ describe('OtelSpan', () => {
 
     await expect(
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           OtelSpan.with({
             span,
             attributes: {},
@@ -628,8 +638,8 @@ describe('OtelSpan', () => {
         ),
       ),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrEncodeError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrEncodeError),
     })
   })
 
@@ -735,10 +745,10 @@ describe('OtelOperation', () => {
     })
 
     await expect(
-      Effect.runPromise(Effect.either(Operation.encode({ value: 'ok' }))),
+      Effect.runPromise(Effect.result(Operation.encode({ value: 'ok' }))),
     ).resolves.toMatchObject({
-      _tag: 'Left',
-      left: expect.any(OtelAttrEncodeError),
+      _tag: 'Failure',
+      failure: expect.any(OtelAttrEncodeError),
     })
   })
 
@@ -820,7 +830,7 @@ describe('OtelMetric', () => {
         ],
         "labels": [
           {
-            "astTag": "StringKeyword",
+            "astTag": "String",
             "attrKey": "restate.service",
             "cardinality": "bounded",
             "encodePolicy": "auto",
@@ -828,7 +838,7 @@ describe('OtelMetric', () => {
             "sourceKey": "service",
           },
           {
-            "astTag": "StringKeyword",
+            "astTag": "String",
             "attrKey": "restate.handler",
             "cardinality": "bounded",
             "encodePolicy": "auto",
@@ -844,7 +854,7 @@ describe('OtelMetric', () => {
             "sourceKey": "outcome",
           },
           {
-            "astTag": "BooleanKeyword",
+            "astTag": "Boolean",
             "attrKey": "restate.cache_hit",
             "cardinality": "low",
             "encodePolicy": "auto",
@@ -944,9 +954,9 @@ describe('OtelMetric', () => {
       }),
     })
     expect(Gauge.name).toBe('store_gc_rss_bytes')
-    await expect(Effect.runPromise(Schema.decodeUnknown(OtelMetricName)(Gauge.name))).resolves.toBe(
-      'store_gc_rss_bytes',
-    )
+    await expect(
+      Effect.runPromise(Schema.decodeUnknownEffect(OtelMetricName)(Gauge.name)),
+    ).resolves.toBe('store_gc_rss_bytes')
     expect(() => OtelMetric.gauge({ name: ' ', labels: Schema.Struct({}) })).toThrow()
   })
 
@@ -981,20 +991,19 @@ describe('OtelMetric', () => {
     })
     const bridge = OtelMetric.effect.gauge(Gauge)
 
-    const snapshotValue = () => {
-      const entry = Metric.unsafeSnapshot(undefined).find((candidate) => {
-        if (candidate.metricKey.name !== 'otel_contract_test_bridge_rss_bytes') return false
-        const tags = Object.fromEntries(candidate.metricKey.tags.map((tag) => [tag.key, tag.value]))
-        return tags.operation === 'gc'
+    const snapshotValue = async () => {
+      const entry = (await Effect.runPromise(Metric.snapshot)).find((candidate) => {
+        if (candidate.id !== 'otel_contract_test_bridge_rss_bytes') return false
+        return candidate.attributes?.operation === 'gc'
       })
-      return (entry?.metricState as { readonly value?: number } | undefined)?.value
+      return (entry?.state as { readonly value?: number } | undefined)?.value
     }
 
     await Effect.runPromise(bridge.set({ labels: { operation: 'gc' }, value: 100 }))
-    expect(snapshotValue()).toBe(100)
+    expect(await snapshotValue()).toBe(100)
 
     await Effect.runPromise(bridge.trustedSet({ labels: { operation: 'gc' }, value: 25 }))
-    expect(snapshotValue()).toBe(25)
+    expect(await snapshotValue()).toBe(25)
   })
 
   it('bridges schema-first counters to tagged Effect metrics', async () => {
@@ -1018,12 +1027,11 @@ describe('OtelMetric', () => {
       ),
     )
 
-    const pair = Metric.unsafeSnapshot(undefined).find((entry) => {
-      if (entry.metricKey.name !== 'otel_contract_test_bridge_counter_total') return false
-      const tags = Object.fromEntries(entry.metricKey.tags.map((tag) => [tag.key, tag.value]))
-      return tags.service === 'api' && tags.cache_hit === 'true'
+    const pair = (await Effect.runPromise(Metric.snapshot)).find((entry) => {
+      if (entry.id !== 'otel_contract_test_bridge_counter_total') return false
+      return entry.attributes?.service === 'api' && entry.attributes?.cache_hit === 'true'
     })
-    expect(pair?.metricState).toMatchObject({ count: 3 })
+    expect(pair?.state).toMatchObject({ count: 3 })
   })
 
   it('bridges schema-first histograms to tagged Effect metrics', async () => {
@@ -1040,12 +1048,11 @@ describe('OtelMetric', () => {
 
     await Effect.runPromise(bridge.trustedRecord({ labels: { route: 'sync' }, value: 42 }))
 
-    const pair = Metric.unsafeSnapshot(undefined).find((entry) => {
-      if (entry.metricKey.name !== 'otel_contract_test_bridge_duration_ms') return false
-      const tags = Object.fromEntries(entry.metricKey.tags.map((tag) => [tag.key, tag.value]))
-      return tags.route === 'sync'
+    const pair = (await Effect.runPromise(Metric.snapshot)).find((entry) => {
+      if (entry.id !== 'otel_contract_test_bridge_duration_ms') return false
+      return entry.attributes?.route === 'sync'
     })
-    expect(pair?.metricState).toMatchObject({ count: 1, min: 42, max: 42, sum: 42 })
+    expect(pair?.state).toMatchObject({ count: 1, min: 42, max: 42, sum: 42 })
   })
 
   it('rejects high-cardinality and unspecified-cardinality metric labels', () => {

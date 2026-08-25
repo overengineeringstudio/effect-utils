@@ -1,19 +1,8 @@
-import {
-  HttpClient,
-  type HttpClientError,
-  HttpClientRequest,
-  type HttpClientResponse,
-} from '@effect/platform'
-import {
-  Context,
-  Effect,
-  Option,
-  Redacted,
-  Schedule,
-  ScheduleDecision,
-  ScheduleInterval,
-  Schema,
-} from 'effect'
+import { Cause, Context, Duration, Effect, Option, Redacted, Schedule, Schema } from 'effect'
+import { HttpClient } from 'effect/unstable/http/HttpClient'
+import type { HttpClientError } from 'effect/unstable/http/HttpClientError'
+import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
+import type { HttpClientResponse } from 'effect/unstable/http/HttpClientResponse'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
@@ -66,9 +55,10 @@ export type NotionHttpTelemetryReporter = {
 }
 
 /** Optional Effect service used by callers that want realtime HTTP/rate-limit visibility. */
-export class NotionHttpTelemetry extends Context.Tag(
-  '@overeng/notion-effect-client/NotionHttpTelemetry',
-)<NotionHttpTelemetry, NotionHttpTelemetryReporter>() {}
+export class NotionHttpTelemetry extends Context.Service<
+  NotionHttpTelemetry,
+  NotionHttpTelemetryReporter
+>()('@overeng/notion-effect-client/NotionHttpTelemetry') {}
 
 /** Options for building a Notion API request */
 export interface BuildRequestOptions {
@@ -81,7 +71,7 @@ export interface BuildRequestOptions {
 export interface ExecuteRequestOptions<A, I, R> {
   readonly method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   readonly path: string
-  readonly responseSchema: Schema.Schema<A, I, R>
+  readonly responseSchema: Schema.Codec<A, I, R>
   readonly body?: unknown
 }
 
@@ -223,14 +213,14 @@ export const notionHttpRouteInfo = ({
 export interface PostRequestOptions<A, I, R> {
   readonly path: string
   readonly body: unknown
-  readonly responseSchema: Schema.Schema<A, I, R>
+  readonly responseSchema: Schema.Codec<A, I, R>
 }
 
 /** Options for PATCH request */
 export interface PatchRequestOptions<A, I, R> {
   readonly path: string
   readonly body: unknown
-  readonly responseSchema: Schema.Schema<A, I, R>
+  readonly responseSchema: Schema.Codec<A, I, R>
 }
 
 /**
@@ -330,13 +320,13 @@ export const buildRequest = ({
 
 /** Parse error response from Notion API. */
 const parseErrorResponse = (opts: {
-  response: HttpClientResponse.HttpClientResponse
+  response: HttpClientResponse
   requestUrl: string
   requestMethod: string
 }): Effect.Effect<NotionApiError> => {
   const { response, requestUrl, requestMethod } = opts
   return Effect.gen(function* () {
-    const requestId = Option.fromNullable(response.headers['x-request-id'])
+    const requestId = Option.fromUndefinedOr(response.headers['x-request-id'])
     const retryAfterSeconds =
       response.status === 429
         ? parseRateLimitHeaders(response.headers).pipe(
@@ -354,7 +344,7 @@ const parseErrorResponse = (opts: {
       })),
     )
 
-    const parsed = yield* Schema.decodeUnknown(NotionErrorResponse)(json).pipe(
+    const parsed = yield* Schema.decodeUnknownEffect(NotionErrorResponse)(json).pipe(
       Effect.orElseSucceed(() => ({
         object: 'error' as const,
         status: response.status,
@@ -380,7 +370,7 @@ const parseErrorResponse = (opts: {
 
 /** Map HttpClientError to NotionApiError. */
 const mapHttpClientError = (opts: {
-  error: HttpClientError.HttpClientError
+  error: HttpClientError
   path: string
   method: string
 }): NotionApiError =>
@@ -410,11 +400,11 @@ export const executeRequest = <A, I, R>({
 }: ExecuteRequestOptions<A, I, R>): Effect.Effect<
   A,
   NotionApiError,
-  NotionConfig | HttpClient.HttpClient | R
+  NotionConfig | HttpClient | R
 > =>
   Effect.gen(function* () {
     const config = yield* NotionConfig
-    const client = yield* HttpClient.HttpClient
+    const client = yield* HttpClient
 
     const retryEnabled = config.retryEnabled ?? true
     const maxRetries = config.maxRetries ?? 3
@@ -430,7 +420,7 @@ export const executeRequest = <A, I, R>({
      */
     const makeRequest = () =>
       Effect.gen(function* () {
-        const attempt = (yield* Schedule.CurrentIterationMetadata).recurrence
+        const attempt = (yield* Schedule.CurrentMetadata).attempt
         const request = yield* buildRequest({ method, path, body })
         /* HTTP-attempt PRESSURE counter (decision 0017 Half 2): incremented once
          * per INITIATED HTTP attempt — after the request is built, BEFORE the
@@ -480,7 +470,7 @@ export const executeRequest = <A, I, R>({
           Effect.mapError((error) => mapHttpClientError({ error, path, method })),
         )
 
-        return yield* Schema.decodeUnknown(responseSchema)(json).pipe(
+        return yield* Schema.decodeUnknownEffect(responseSchema)(json).pipe(
           Effect.mapError(
             (parseError) =>
               new NotionApiError({
@@ -488,7 +478,7 @@ export const executeRequest = <A, I, R>({
                 code: 'invalid_request',
                 message: `Failed to parse response: ${parseError.message}`,
                 retryAfterSeconds: Option.none(),
-                requestId: Option.fromNullable(response.headers['x-request-id']),
+                requestId: Option.fromUndefinedOr(response.headers['x-request-id']),
                 url: Option.some(`${NOTION_API_BASE_URL}${path}`),
                 method: Option.some(method),
               }),
@@ -516,21 +506,30 @@ export const executeRequest = <A, I, R>({
     /**
      * Retry schedule whose input is the failing `NotionApiError`. Stock
      * combinators cannot express `max(backoff, Retry-After)` because the delay
-     * depends on the error, so we build the schedule explicitly: the state is
-     * the zero-based attempt index, the decision continues only for retryable
-     * errors under the `maxRetries` bound, and the chosen interval is the
-     * floored backoff. Telemetry/span annotation are emitted here — exactly
-     * once per retry decision with the exact delay — preserving the legacy
-     * loop's observable behavior. The schedule output is the delay in ms.
+     * depends on the error, so we build the schedule explicitly: each step
+     * receives the attempt metadata (`attempt` is one-based; the zero-based
+     * index of the failed attempt is `attempt - 1`), decides whether to
+     * continue for retryable errors under the `maxRetries` bound, and produces
+     * the floored backoff as both schedule output and step delay. Telemetry and
+     * span annotation are emitted here — exactly once per retry decision with
+     * the exact delay — preserving the legacy loop's observable behavior.
      */
-    const retrySchedule = Schedule.makeWithState<number, NotionApiError, number>(
-      0,
-      (now, error, attempt) => {
+    const retrySchedule = Schedule.fromStepWithMetadata<
+      NotionApiError,
+      number,
+      never,
+      never,
+      never,
+      never
+    >(
+      Effect.succeed((metadata) => {
+        const attempt = metadata.attempt - 1
+        const error = metadata.input
         if (error.isRetryable === false || attempt >= maxRetries) {
-          return Effect.succeed([attempt, 0, ScheduleDecision.done] as const)
+          return Cause.done(0)
         }
 
-        const delayMs = retryDelayMs({ error, attempt })
+        const delayMs0 = retryDelayMs({ error, attempt })
         const rateLimit = retryRateLimit(error)
 
         /* Retry-After PRESSURE counters (decision 0017 Half 2): count + sum the
@@ -540,7 +539,7 @@ export const executeRequest = <A, I, R>({
         const emitRetryAfter =
           retryAfterMs === undefined
             ? Effect.void
-            : Effect.zipRight(
+            : Effect.andThen(
                 NotionRateLimitMetricBridges.retryAfterTotal.trustedIncrement({
                   method,
                   operation: route.operation,
@@ -561,7 +560,7 @@ export const executeRequest = <A, I, R>({
                 status: error.status,
                 attempt,
                 attempts: attempt + 1,
-                retryDelayMs: delayMs,
+                retryDelayMs: delayMs0,
                 rateLimit,
               }),
               reportHttpTelemetry({
@@ -572,19 +571,15 @@ export const executeRequest = <A, I, R>({
                 status: error.status,
                 attempt,
                 nextAttempt: attempt + 1,
-                delayMs,
+                delayMs: delayMs0,
                 rateLimit,
               }),
             ],
             { discard: true },
           ),
-          [
-            attempt + 1,
-            delayMs,
-            ScheduleDecision.continueWith(ScheduleInterval.after(now + delayMs)),
-          ] as const,
+          [delayMs0, Duration.millis(delayMs0)] as const,
         )
-      },
+      }),
     )
 
     /**
@@ -605,18 +600,15 @@ export const executeRequest = <A, I, R>({
 /** Options for GET request */
 export interface GetRequestOptions<A, I, R> {
   readonly path: string
-  readonly responseSchema: Schema.Schema<A, I, R>
+  readonly responseSchema: Schema.Codec<A, I, R>
 }
 
 /** GET request helper. */
 export const get = <A, I, R>({
   path,
   responseSchema,
-}: GetRequestOptions<A, I, R>): Effect.Effect<
-  A,
-  NotionApiError,
-  NotionConfig | HttpClient.HttpClient | R
-> => executeRequest({ method: 'GET', path, responseSchema })
+}: GetRequestOptions<A, I, R>): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient | R> =>
+  executeRequest({ method: 'GET', path, responseSchema })
 
 /**
  * POST request helper.
@@ -625,11 +617,8 @@ export const post = <A, I, R>({
   path,
   body,
   responseSchema,
-}: PostRequestOptions<A, I, R>): Effect.Effect<
-  A,
-  NotionApiError,
-  NotionConfig | HttpClient.HttpClient | R
-> => executeRequest({ method: 'POST', path, responseSchema, body })
+}: PostRequestOptions<A, I, R>): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient | R> =>
+  executeRequest({ method: 'POST', path, responseSchema, body })
 
 /**
  * PATCH request helper.
@@ -638,16 +627,13 @@ export const patch = <A, I, R>({
   path,
   body,
   responseSchema,
-}: PatchRequestOptions<A, I, R>): Effect.Effect<
-  A,
-  NotionApiError,
-  NotionConfig | HttpClient.HttpClient | R
-> => executeRequest({ method: 'PATCH', path, responseSchema, body })
+}: PatchRequestOptions<A, I, R>): Effect.Effect<A, NotionApiError, NotionConfig | HttpClient | R> =>
+  executeRequest({ method: 'PATCH', path, responseSchema, body })
 
 /** Options for DELETE request */
 export interface DeleteRequestOptions<A, I, R> {
   readonly path: string
-  readonly responseSchema: Schema.Schema<A, I, R>
+  readonly responseSchema: Schema.Codec<A, I, R>
 }
 
 /** DELETE request helper. */
@@ -657,5 +643,5 @@ export const del = <A, I, R>({
 }: DeleteRequestOptions<A, I, R>): Effect.Effect<
   A,
   NotionApiError,
-  NotionConfig | HttpClient.HttpClient | R
+  NotionConfig | HttpClient | R
 > => executeRequest({ method: 'DELETE', path, responseSchema })

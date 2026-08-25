@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { NodeContext } from '@effect/platform-node'
+import * as NodeContext from '@effect/platform-node/NodeServices'
 import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -115,7 +115,7 @@ const trackedWorkspace = () => {
         Effect.sync(() => {
           materializeCalls += 1
           return plan
-        }).pipe(Effect.zipRight(base.materialize(plan))),
+        }).pipe(Effect.andThen(base.materialize(plan))),
     } satisfies LocalWorkspacePortShape,
   }
 }
@@ -131,7 +131,7 @@ const bodyPortWithPushLedger = (body: PageBodySyncPortShape) => {
         Effect.sync(() => {
           pushed.push(command)
           return command
-        }).pipe(Effect.zipRight(body.push(command))),
+        }).pipe(Effect.andThen(body.push(command))),
     } satisfies PageBodySyncPortShape,
   }
 }
@@ -330,7 +330,7 @@ describe('body adapter E2E boundary', () => {
         Effect.sync(() => {
           calls.push('materialize')
           return plan
-        }).pipe(Effect.zipRight(baseWorkspace.materialize(plan))),
+        }).pipe(Effect.andThen(baseWorkspace.materialize(plan))),
     }
 
     try {

@@ -1,5 +1,5 @@
-import type { HttpClientRequest } from '@effect/platform'
-import { Effect, Either } from 'effect'
+import { Effect, Result } from 'effect'
+import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { describe, expect, it } from 'vitest'
 
 import type { Block } from '@overeng/notion-effect-schema'
@@ -440,20 +440,20 @@ describe('NotionBody.observe', () => {
     ])
 
     const result = await Effect.runPromise(
-      Effect.either(NotionBody.observe({ pageId }).pipe(Effect.provide(test.layer))),
+      Effect.result(NotionBody.observe({ pageId }).pipe(Effect.provide(test.layer))),
     )
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result) === true) {
-      expect(result.left).toBeInstanceOf(NotionBodyObservationChangedError)
-      expect(result.left).toMatchObject({
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result) === true) {
+      expect(result.failure).toBeInstanceOf(NotionBodyObservationChangedError)
+      expect(result.failure).toMatchObject({
         _tag: 'NotionBodyObservationChangedError',
         pageId,
         attempts: 3,
         beforeLastEditedTime: '2026-06-09T00:00:02.000Z',
         afterLastEditedTime: '2026-06-09T00:00:03.000Z',
       })
-      expect(result.left.message).toContain('all 3 observation attempts were unstable')
+      expect(result.failure.message).toContain('all 3 observation attempts were unstable')
     }
   })
 
@@ -486,10 +486,10 @@ describe('NotionBody.observe', () => {
     ])
 
     const result = await Effect.runPromise(
-      Effect.either(NotionBody.observe({ pageId }).pipe(Effect.provide(test.layer))),
+      Effect.result(NotionBody.observe({ pageId }).pipe(Effect.provide(test.layer))),
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(test.counts()).toEqual({
       pageCalls: 6,
       markdownCalls: 3,

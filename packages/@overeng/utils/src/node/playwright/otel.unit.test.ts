@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema, Tracer } from 'effect'
+import { Effect, Layer, Result, Schema, Tracer } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -21,7 +21,7 @@ Vitest.describe('playwright/otel', () => {
           spanId: 'b7ad6b7169203331',
         }
 
-        const result = yield* Schema.decodeUnknown(ParentSpanContextSchema)(validContext)
+        const result = yield* Schema.decodeUnknownEffect(ParentSpanContextSchema)(validContext)
         expect(result).toEqual(validContext)
       }),
     )
@@ -34,7 +34,7 @@ Vitest.describe('playwright/otel', () => {
           spanId: 'any-span-id',
         }
 
-        const result = yield* Schema.decodeUnknown(ParentSpanContextSchema)(context)
+        const result = yield* Schema.decodeUnknownEffect(ParentSpanContextSchema)(context)
         expect(result).toEqual(context)
       }),
     )
@@ -46,10 +46,10 @@ Vitest.describe('playwright/otel', () => {
           spanId: 'b7ad6b7169203331',
         }
 
-        const result = yield* Schema.decodeUnknown(ParentSpanContextSchema)(invalidContext).pipe(
-          Effect.either,
-        )
-        expect(result._tag).toBe('Left')
+        const result = yield* Schema.decodeUnknownEffect(ParentSpanContextSchema)(
+          invalidContext,
+        ).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }),
     )
 
@@ -60,10 +60,10 @@ Vitest.describe('playwright/otel', () => {
           traceId: '0af7651916cd43dd8448eb211c80319c',
         }
 
-        const result = yield* Schema.decodeUnknown(ParentSpanContextSchema)(invalidContext).pipe(
-          Effect.either,
-        )
-        expect(result._tag).toBe('Left')
+        const result = yield* Schema.decodeUnknownEffect(ParentSpanContextSchema)(
+          invalidContext,
+        ).pipe(Effect.result)
+        expect(Result.isFailure(result)).toBe(true)
       }),
     )
   })
@@ -103,10 +103,12 @@ Vitest.describe('playwright/otel', () => {
     Vitest.it.effect(
       'returns ExternalSpan for valid JSON',
       Effect.fnUntraced(function* () {
-        const validContext = yield* Schema.encode(Schema.parseJson(ParentSpanContextSchema))({
+        const validContext = yield* Schema.encodeEffect(
+          Schema.fromJsonString(ParentSpanContextSchema),
+        )({
           traceId: '0af7651916cd43dd8448eb211c80319c',
           spanId: 'b7ad6b7169203331',
-        })
+        }).pipe(Effect.orDie)
         process.env[PW_SPAN_CONTEXT_ENV_VAR] = validContext
 
         const result = yield* parentSpanFromEnv()
@@ -121,10 +123,12 @@ Vitest.describe('playwright/otel', () => {
     Vitest.it.effect(
       'returns ExternalSpan for valid JSON from custom env var',
       Effect.fnUntraced(function* () {
-        const validContext = yield* Schema.encode(Schema.parseJson(ParentSpanContextSchema))({
+        const validContext = yield* Schema.encodeEffect(
+          Schema.fromJsonString(ParentSpanContextSchema),
+        )({
           traceId: 'custom-trace-id',
           spanId: 'custom-span-id',
-        })
+        }).pipe(Effect.orDie)
         process.env.CUSTOM_SPAN_CONTEXT = validContext
 
         const result = yield* parentSpanFromEnv('CUSTOM_SPAN_CONTEXT')
@@ -151,9 +155,9 @@ Vitest.describe('playwright/otel', () => {
     Vitest.it.effect(
       'dies on malformed context (missing traceId)',
       Effect.fnUntraced(function* () {
-        const malformedContext = yield* Schema.encode(
-          Schema.parseJson(Schema.Struct({ spanId: Schema.String })),
-        )({ spanId: 'b7ad6b7169203331' })
+        const malformedContext = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Schema.Struct({ spanId: Schema.String })),
+        )({ spanId: 'b7ad6b7169203331' }).pipe(Effect.orDie)
         process.env[PW_SPAN_CONTEXT_ENV_VAR] = malformedContext
 
         const exit = yield* parentSpanFromEnv().pipe(Effect.exit)
@@ -166,9 +170,9 @@ Vitest.describe('playwright/otel', () => {
     Vitest.it.effect(
       'dies on malformed context (missing spanId)',
       Effect.fnUntraced(function* () {
-        const malformedContext = yield* Schema.encode(
-          Schema.parseJson(Schema.Struct({ traceId: Schema.String })),
-        )({ traceId: '0af7651916cd43dd8448eb211c80319c' })
+        const malformedContext = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Schema.Struct({ traceId: Schema.String })),
+        )({ traceId: '0af7651916cd43dd8448eb211c80319c' }).pipe(Effect.orDie)
         process.env[PW_SPAN_CONTEXT_ENV_VAR] = malformedContext
 
         const exit = yield* parentSpanFromEnv().pipe(Effect.exit)
@@ -211,10 +215,12 @@ Vitest.describe('playwright/otel', () => {
       'uses custom parent span env var',
       Effect.fnUntraced(function* () {
         delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-        const customParentSpan = yield* Schema.encode(Schema.parseJson(ParentSpanContextSchema))({
+        const customParentSpan = yield* Schema.encodeEffect(
+          Schema.fromJsonString(ParentSpanContextSchema),
+        )({
           traceId: '0af7651916cd43dd8448eb211c80319c',
           spanId: 'b7ad6b7169203331',
-        })
+        }).pipe(Effect.orDie)
         process.env.CUSTOM_PARENT_SPAN = customParentSpan
 
         const layer = makeOtelPlaywrightLayer({ parentSpanEnvVar: 'CUSTOM_PARENT_SPAN' })

@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { ReactNode } from 'react'
 
 import type { NotionApiError } from '@overeng/notion-effect-client'
@@ -260,7 +260,7 @@ export const issueBlockUpdate = (
   blockId: string,
   type: BlockType,
   props: Record<string, unknown>,
-): Effect.Effect<unknown, NotionApiError, NotionConfig | HttpClient.HttpClient> => {
+): Effect.Effect<unknown, NotionApiError, NotionConfig | HttpClient> => {
   if (type === 'child_page') {
     const spans = pageTitleSpans(props.title)
     const hasTitle = spans !== undefined
@@ -296,7 +296,7 @@ export const issueBlockUpdate = (
 export const renderToNotion = (
   element: ReactNode,
   opts: { readonly pageId: string },
-): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     const buffer = collectOps(element, opts.pageId)
     const idMap = new Map<string, string>()
@@ -314,7 +314,7 @@ export const renderToNotion = (
      */
     const flushOverflow = (
       containerTmpId: string,
-    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
       Effect.gen(function* () {
         const topKids = childrenIndex.get(containerTmpId) ?? []
         const overflow = topKids.slice(MAX_CHILDREN_PER_APPEND)

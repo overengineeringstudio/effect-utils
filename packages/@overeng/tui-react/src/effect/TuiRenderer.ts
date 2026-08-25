@@ -14,7 +14,7 @@
  *   // Do work...
  *   yield* Effect.sleep('5 seconds')
  *
- *   yield* tui.unmount()
+ *   yield* tui.unmount
  * })
  *
  * // Run with the live layer
@@ -32,6 +32,8 @@ import type { ReactElement } from 'react'
 import type { Terminal, TerminalLike } from '@overeng/tui-core'
 
 import { createRoot, type Root } from '../root.tsx'
+
+// oxlint-disable eslint-plugin-react-hooks(rules-of-hooks) -- Context.Service `.use` accessors are Effect v4 service requests, not React hooks
 
 // =============================================================================
 // Service Interface
@@ -57,7 +59,7 @@ export interface TuiRendererService {
    * Unmount the React tree and cleanup resources.
    * Shows cursor, clears dynamic region.
    */
-  readonly unmount: () => Effect.Effect<void>
+  readonly unmount: Effect.Effect<void>
 
   /**
    * The underlying React root instance.
@@ -80,25 +82,23 @@ export interface TuiRendererService {
  * })
  * ```
  */
-export class TuiRenderer extends Context.Tag('TuiRenderer')<TuiRenderer, TuiRendererService>() {
+export class TuiRenderer extends Context.Service<TuiRenderer, TuiRendererService>()('TuiRenderer') {
   /**
    * Render a React element to the terminal.
    */
   static render = (element: ReactElement): Effect.Effect<void, never, TuiRenderer> =>
-    TuiRenderer.pipe(Effect.flatMap((r) => r.render(element)))
+    TuiRenderer.use((r) => r.render(element))
 
   /**
    * Append content to the static region.
    */
   static appendStatic = (lines: readonly string[]): Effect.Effect<void, never, TuiRenderer> =>
-    TuiRenderer.pipe(Effect.flatMap((r) => r.appendStatic(lines)))
+    TuiRenderer.use((r) => r.appendStatic(lines))
 
   /**
    * Unmount the React tree.
    */
-  static unmount: Effect.Effect<void, never, TuiRenderer> = TuiRenderer.pipe(
-    Effect.flatMap((r) => r.unmount()),
-  )
+  static unmount: Effect.Effect<void, never, TuiRenderer> = TuiRenderer.use((r) => r.unmount)
 
   /**
    * Create a scoped layer that manages the TuiRenderer lifecycle.
@@ -110,7 +110,7 @@ export class TuiRenderer extends Context.Tag('TuiRenderer')<TuiRenderer, TuiRend
   static scoped = (
     terminal?: Terminal | TerminalLike,
   ): Layer.Layer<TuiRenderer, never, Scope.Scope> =>
-    Layer.scoped(
+    Layer.effect(
       TuiRenderer,
       Effect.gen(function* () {
         const target = terminal ?? process.stdout
@@ -134,10 +134,9 @@ export class TuiRenderer extends Context.Tag('TuiRenderer')<TuiRenderer, TuiRend
             // This is a no-op placeholder for direct static content injection
             Effect.void,
 
-          unmount: () =>
-            Effect.sync(() => {
-              root.unmount()
-            }),
+          unmount: Effect.sync(() => {
+            root.unmount()
+          }),
 
           root,
         }

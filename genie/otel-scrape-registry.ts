@@ -110,15 +110,15 @@ export const otelScrapeTelemetryRegistry = ${JSON.stringify(data, null, 2)} as c
 // fixed instrumentation constant. The registry owns the naming *scheme* per
 // span id; the emitted name is the program / descendant / adapter-phase
 // basename resolved at runtime.
-export const otelScrapeSpanNaming = ${mapObject(data.spans, 'naming')} as const
+export const otelScrapeSpanNaming = ${mapObject({ items: data.spans, field: 'naming' })} as const
 
-export const otelScrapeMetricNames = ${mapObject(data.metrics, 'name')} as const
+export const otelScrapeMetricNames = ${mapObject({ items: data.metrics, field: 'name' })} as const
 
-export const otelScrapeAttributeKeys = ${mapObject(data.attributes, 'key')} as const
+export const otelScrapeAttributeKeys = ${mapObject({ items: data.attributes, field: 'key' })} as const
 
-export const otelScrapeProfileFields = ${mapObject(data.profileFields, 'field')} as const
+export const otelScrapeProfileFields = ${mapObject({ items: data.profileFields, field: 'field' })} as const
 
-export const otelScrapeSchemas = ${mapObject(data.schemas, 'value')} as const
+export const otelScrapeSchemas = ${mapObject({ items: data.schemas, field: 'value' })} as const
 
 export type OtelScrapeSpanNaming =
   (typeof otelScrapeSpanNaming)[keyof typeof otelScrapeSpanNaming]
@@ -156,12 +156,12 @@ ${rustModule({ name: 'profile_fields', items: data.profileFields, field: 'field'
 ${rustModule({ name: 'schemas', items: data.schemas, field: 'value' })}
 `
 
-const mapObject = <T extends RegistryItem, K extends keyof T>(
-  items: readonly T[],
-  field: K,
-): string =>
+const mapObject = <T extends RegistryItem, K extends keyof T>(args: {
+  readonly items: readonly T[]
+  readonly field: K
+}): string =>
   JSON.stringify(
-    Object.fromEntries(items.map((item) => [camelCase(item.id), item[field]])),
+    Object.fromEntries(args.items.map((item) => [camelCase(item.id), item[args.field]])),
     null,
     2,
   )
@@ -202,38 +202,38 @@ const validateRegistry = (data: OtelScrapeTelemetryRegistry): void => {
   if (data.schemaVersion !== 1) throw new Error('otel-scrape registry schemaVersion must be 1')
   if (data.namespace !== 'otel_scrape') throw new Error('otel-scrape registry namespace mismatch')
 
-  assertUnique(
-    'span ids',
-    data.spans.map((item) => item.id),
-  )
-  assertUnique(
-    'metric ids',
-    data.metrics.map((item) => item.id),
-  )
-  assertUnique(
-    'metric names',
-    data.metrics.map((item) => item.name),
-  )
-  assertUnique(
-    'attribute ids',
-    data.attributes.map((item) => item.id),
-  )
-  assertUnique(
-    'attribute keys',
-    data.attributes.map((item) => item.key),
-  )
-  assertUnique(
-    'profile field ids',
-    data.profileFields.map((item) => item.id),
-  )
-  assertUnique(
-    'profile fields',
-    data.profileFields.map((item) => item.field),
-  )
-  assertUnique(
-    'schema ids',
-    data.schemas.map((item) => item.id),
-  )
+  assertUnique({
+    label: 'span ids',
+    values: data.spans.map((item) => item.id),
+  })
+  assertUnique({
+    label: 'metric ids',
+    values: data.metrics.map((item) => item.id),
+  })
+  assertUnique({
+    label: 'metric names',
+    values: data.metrics.map((item) => item.name),
+  })
+  assertUnique({
+    label: 'attribute ids',
+    values: data.attributes.map((item) => item.id),
+  })
+  assertUnique({
+    label: 'attribute keys',
+    values: data.attributes.map((item) => item.key),
+  })
+  assertUnique({
+    label: 'profile field ids',
+    values: data.profileFields.map((item) => item.id),
+  })
+  assertUnique({
+    label: 'profile fields',
+    values: data.profileFields.map((item) => item.field),
+  })
+  assertUnique({
+    label: 'schema ids',
+    values: data.schemas.map((item) => item.id),
+  })
 
   for (const span of data.spans) assertId(span.id)
   for (const metric of data.metrics) assertId(metric.id)
@@ -242,10 +242,10 @@ const validateRegistry = (data: OtelScrapeTelemetryRegistry): void => {
   for (const schema of data.schemas) assertId(schema.id)
 }
 
-const assertUnique = (label: string, values: readonly string[]): void => {
+const assertUnique = (args: { label: string; values: readonly string[] }): void => {
   const seen = new Set<string>()
-  for (const value of values) {
-    if (seen.has(value) === true) throw new Error(`Duplicate ${label}: ${value}`)
+  for (const value of args.values) {
+    if (seen.has(value) === true) throw new Error(`Duplicate ${args.label}: ${value}`)
     seen.add(value)
   }
 }

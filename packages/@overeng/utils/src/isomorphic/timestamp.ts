@@ -1,4 +1,4 @@
-import { Brand, Schema } from 'effect'
+import { type Brand, Schema } from 'effect'
 
 /** Unix timestamp integer in milliseconds since epoch */
 export type Timestamp = Brand.Branded<number, 'Timestamp'>
@@ -14,12 +14,8 @@ export const timestamp = (value: number | string | Date): Timestamp => {
   }
 }
 
-/** Schema that transforms between Timestamp and plain number */
-export const timestampSchema = Schema.transform(
-  Schema.fromBrand(Brand.nominal<Timestamp>())(Schema.Number),
-  Schema.Number,
-  { decode: (_) => _, encode: timestamp },
-)
+/** Schema for a `Timestamp` carried on the wire as a plain number */
+export const timestampSchema = Schema.Finite.pipe(Schema.brand('Timestamp'))
 
 /** Returns the current time as a Timestamp */
 export const timestampNow = (): Timestamp => Math.round(Date.now()) as Timestamp

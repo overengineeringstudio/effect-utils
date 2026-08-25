@@ -13,7 +13,7 @@
  *   absent-layer case).
  */
 
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer, Metric, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
@@ -36,14 +36,14 @@ const workload = Effect.gen(function* () {
   yield* Effect.annotateCurrentSpan('span.label', 'parent')
   yield* Effect.gen(function* () {
     yield* Effect.annotateCurrentSpan('span.label', 'child')
-    yield* Metric.increment(Metric.counter('telemetry_requests_total'))
-    yield* Metric.set(Metric.gauge('telemetry_queue_depth', { bigint: false }), 7)
+    yield* Metric.update(Metric.counter('telemetry_requests_total'), 1)
+    yield* Metric.update(Metric.gauge('telemetry_queue_depth', { bigint: false }), 7)
     yield* Effect.log('telemetry demo log line')
   }).pipe(Effect.withSpan('telemetry-child'))
 }).pipe(Effect.withSpan('telemetry-parent', { root: true }))
 
 Vitest.describe('withTelemetry — typed front door', () => {
-  Vitest.it.scoped('cli shape lands all three signals with the typed identity on each', () =>
+  Vitest.it.effect('cli shape lands all three signals with the typed identity on each', () =>
     Effect.gen(function* () {
       const otelite = yield* Otelite
       const cap = yield* otelite.capture({})
@@ -80,7 +80,7 @@ Vitest.describe('withTelemetry — typed front door', () => {
       // Logs: the Effect.log line bridged to OTLP.
       expectLogs(logs).expectOne({
         service: SERVICE,
-        severityText: 'INFO',
+        severityText: 'Info',
         body: 'telemetry demo log line',
       })
 
@@ -89,12 +89,12 @@ Vitest.describe('withTelemetry — typed front door', () => {
         expect(rows.length).toBeGreaterThan(0)
         expect(rows.every((r) => r.service === SERVICE)).toBe(true)
       }
-    }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer))),
+    }).pipe(Effect.provide(Layer.provideMerge(Otelite.layer, NodeServices.layer))),
   )
 })
 
 Vitest.describe('sampleGauge / telemetryEnabled — sampler primitive', () => {
-  Vitest.it.scoped('emits the gauge when an endpoint is configured', () =>
+  Vitest.it.effect('emits the gauge when an endpoint is configured', () =>
     Effect.gen(function* () {
       const otelite = yield* Otelite
       const cap = yield* otelite.capture({})
@@ -116,10 +116,10 @@ Vitest.describe('sampleGauge / telemetryEnabled — sampler primitive', () => {
         type: 'gauge',
         value: 1234,
       })
-    }).pipe(Effect.provide(Layer.provideMerge(Otelite.Default, NodeContext.layer))),
+    }).pipe(Effect.provide(Layer.provideMerge(Otelite.layer, NodeServices.layer))),
   )
 
-  Vitest.it.scoped('is a true no-op (never reads, never forks) when telemetry is off', () =>
+  Vitest.it.effect('is a true no-op (never reads, never forks) when telemetry is off', () =>
     Effect.gen(function* () {
       // The sampler's `read` is the per-tick side effect. If the gate short-
       // circuits before forking, it is NEVER invoked — so a plain mutable count
@@ -143,7 +143,7 @@ Vitest.describe('sampleGauge / telemetryEnabled — sampler primitive', () => {
     }),
   )
 
-  Vitest.it.scoped('telemetryEnabled is true when an endpoint is configured', () =>
+  Vitest.it.effect('telemetryEnabled is true when an endpoint is configured', () =>
     Effect.gen(function* () {
       const enabled = yield* telemetryEnabled.pipe(
         Effect.provide(

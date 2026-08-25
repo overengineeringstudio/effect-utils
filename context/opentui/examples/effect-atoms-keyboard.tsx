@@ -1,3 +1,7 @@
+import { RegistryContext, useAtomValue } from '@effect/atom-react'
+import { createCliRenderer } from '@opentui/core'
+import { createRoot } from '@opentui/react'
+import { Cause, Context, Effect, Fiber, Layer, ManagedRuntime } from 'effect'
 /**
  * TUI with Effect atoms, keyboard input, and Effect runtime integration.
  *
@@ -9,43 +13,49 @@
  *
  * Run: bun examples/effect-atoms-keyboard.tsx
  */
-import { Atom, Registry } from '@effect-atom/atom'
-import { RegistryContext, useAtomValue } from '@effect-atom/atom-react'
-import { createCliRenderer } from '@opentui/core'
-import { createRoot } from '@opentui/react'
-import { Cause, Effect, Fiber, Layer, ManagedRuntime, Runtime } from 'effect'
+import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
 
 // -----------------------------------------------------------------------------
 // Services (Layer-based dependencies)
 // -----------------------------------------------------------------------------
 
 /** Counter service demonstrating dependency injection */
-class CounterService extends Effect.Service<CounterService>()('CounterService', {
-  effect: Effect.sync(() => {
+class CounterService extends Context.Service<
+  CounterService,
+  {
+    readonly get: () => number
+    readonly increment: Effect.Effect<number>
+    readonly decrement: Effect.Effect<number>
+    readonly reset: Effect.Effect<number>
+  }
+>()('CounterService', {
+  make: Effect.sync(() => {
     let value = 0
 
     return {
       get: () => value,
-      increment: Effect.fnUntraced(function* () {
+      increment: Effect.gen(function* () {
         yield* Effect.sleep('100 millis') // Simulate async work
         value += 1
         return value
       }),
-      decrement: Effect.fnUntraced(function* () {
+      decrement: Effect.gen(function* () {
         yield* Effect.sleep('100 millis')
         value -= 1
         return value
       }),
-      reset: Effect.fnUntraced(function* () {
+      reset: Effect.gen(function* () {
         yield* Effect.sleep('50 millis')
         value = 0
         return value
       }),
     }
   }),
-}) {}
+}) {
+  static readonly layer = Layer.effect(this, this.make)
+}
 
-const AppLayer = Layer.mergeAll(CounterService.Default)
+const AppLayer = Layer.mergeAll(CounterService.layer)
 
 // -----------------------------------------------------------------------------
 // Atoms (Reactive UI state)
@@ -61,16 +71,17 @@ const messageAtom = Atom.make('Press ↑/↓ to change, r to reset, q to quit')
 
 type CancelFn = () => void
 
-/** Create an effect runner from a runtime with error handling */
+/** Create an effect runner from a managed runtime with error handling */
 const createEffectRunner = (options: {
-  runtime: Runtime.Runtime<CounterService>
+  runtime: ManagedRuntime.ManagedRuntime<CounterService, never>
   onError: (cause: Cause.Cause<never>) => void
 }) => {
   return (effect: Effect.Effect<void, never, CounterService>): CancelFn => {
-    const fiber = effect.pipe(
-      Effect.tapErrorCause((cause) => Effect.sync(() => options.onError(cause))),
-      Effect.withSpan('ui.effect', { root: true }),
-      Runtime.runFork(options.runtime),
+    const fiber = options.runtime.runFork(
+      effect.pipe(
+        Effect.tapCause((cause) => Effect.sync(() => options.onError(cause))),
+        Effect.withSpan('ui.effect', { root: true }),
+      ),
     )
     return () => {
       void Effect.runFork(Fiber.interrupt(fiber))
@@ -122,15 +133,14 @@ const App = () => {
 const main = async () => {
   const renderer = await createCliRenderer({ exitOnCtrlC: false })
   const root = createRoot(renderer)
-  const registry = Registry.make()
+  const registry = AtomRegistry.make()
 
   // Initialize Effect runtime from Layer
   const managedRuntime = ManagedRuntime.make(AppLayer)
-  const runtime = await Effect.runPromise(managedRuntime.runtimeEffect)
 
   // Create effect runner with error handling
   const runEffect = createEffectRunner({
-    runtime,
+    runtime: managedRuntime,
     onError: (cause) => {
       registry.set(statusAtom, 'error')
       registry.set(messageAtom, `Error: ${Cause.pretty(cause)}`)
@@ -158,7 +168,7 @@ const main = async () => {
           registry.set(messageAtom, 'Incrementing...')
 
           const counter = yield* CounterService
-          const newValue = yield* counter.increment()
+          const newValue = yield* counter.increment
 
           registry.set(countAtom, newValue)
           registry.set(statusAtom, 'idle')
@@ -174,7 +184,7 @@ const main = async () => {
           registry.set(messageAtom, 'Decrementing...')
 
           const counter = yield* CounterService
-          const newValue = yield* counter.decrement()
+          const newValue = yield* counter.decrement
 
           registry.set(countAtom, newValue)
           registry.set(statusAtom, 'idle')
@@ -190,7 +200,7 @@ const main = async () => {
           registry.set(messageAtom, 'Resetting...')
 
           const counter = yield* CounterService
-          const newValue = yield* counter.reset()
+          const newValue = yield* counter.reset
 
           registry.set(countAtom, newValue)
           registry.set(statusAtom, 'idle')

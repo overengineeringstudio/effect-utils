@@ -3,7 +3,6 @@
   "dependencyGraphContract": {
     "allowBuilds": {
       "@myobie/pty": false,
-      "@parcel/watcher": false,
       "esbuild": false,
       "fsevents": false,
       "msgpackr-extract": false,
@@ -26,7 +25,14 @@
   "installPolicy": {
     "dedupePeerDependents": true,
     "ignoreScripts": true,
-    "minimumReleaseAgeExclude": ["@effect/platform", "@types/node", "effect"],
+    "minimumReleaseAgeExclude": [
+      "@types/node",
+      "effect",
+      "@effect/platform-node",
+      "@effect/vitest",
+      "@effect/opentelemetry",
+      "@effect/atom-react"
+    ],
     "optimisticRepeatInstall": false,
     "packageImportMethod": {
       "live": {
@@ -40,9 +46,6 @@
     },
     "peerDependencyRules": {
       "allowedVersions": {
-        "@effect/experimental": ">=0.58.0",
-        "@effect/platform": ">=0.94.2",
-        "@effect/rpc": ">=0.73.0",
         "eslint": ">=10.0.0",
         "typescript": ">=6.0.0",
         "vitest": ">=4.0.0"
@@ -142,7 +145,6 @@
       "packages/@overeng/utils-dev"
     ],
     "patchedDependencies": {
-      "@effect/platform@0.96.2": "packages/@overeng/utils/patches/@effect__platform@0.96.0.patch",
       "@myobie/pty@0.10.0": "packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch"
     }
   }

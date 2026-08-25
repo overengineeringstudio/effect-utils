@@ -21,7 +21,7 @@
  *
  * // ✅ Good - type-only imports (erased at compile time)
  * import type { Effect } from 'effect'
- * import type { FileSystem } from '@effect/platform'
+ * import type { type FileSystem } from 'effect/FileSystem'
  * import { type Effect, type pipe } from 'effect'
  *
  * // ✅ Good - type-only re-exports
@@ -29,7 +29,7 @@
  *
  * // ❌ Bad - value imports from npm packages
  * import { Effect } from 'effect'
- * import { FileSystem } from '@effect/platform'
+ * import { FileSystem } from 'effect/FileSystem'
  *
  * // ❌ Bad - value re-exports from npm packages
  * export { something } from 'effect'

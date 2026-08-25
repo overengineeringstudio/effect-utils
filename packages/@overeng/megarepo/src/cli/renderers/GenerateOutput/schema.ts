@@ -54,12 +54,12 @@ export const GenerateErrorState = Schema.TaggedStruct('Error', {
 /**
  * State for generate command.
  */
-export const GenerateState = Schema.Union(
+export const GenerateState = Schema.Union([
   GenerateIdleState,
   GenerateRunningState,
   GenerateSuccessState,
   GenerateErrorState,
-)
+])
 
 /** Inferred type for the generate command state (idle, running, success, or error). */
 export type GenerateState = Schema.Schema.Type<typeof GenerateState>
@@ -91,12 +91,12 @@ export const isGenerateIdle = (state: GenerateState): state is typeof GenerateId
 // =============================================================================
 
 /** Tagged union of actions for the generate command (start, progress, success, error). */
-export const GenerateAction = Schema.Union(
+export const GenerateAction = Schema.Union([
   Schema.TaggedStruct('Start', { generator: Schema.String }),
   Schema.TaggedStruct('SetProgress', { generator: Schema.String, progress: Schema.String }),
   Schema.TaggedStruct('SetSuccess', { results: Schema.Array(GenerateResultItem) }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
-)
+])
 
 /** Inferred type for generate actions. */
 export type GenerateAction = Schema.Schema.Type<typeof GenerateAction>

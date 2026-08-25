@@ -1,12 +1,12 @@
-import { Rpc, RpcGroup } from '@effect/rpc'
 import { Effect, Exit, Schema } from 'effect'
+import { Rpc, RpcGroup } from 'effect/unstable/rpc'
 import { describe, expect, it } from 'vitest'
 
 import { encodeExit, decodeExit, makeEffectLoaderResult } from './router.ts'
 import { makeHandler } from './server.ts'
 
 class GreetingError extends Schema.TaggedError<GreetingError>()('GreetingError', {
-  reason: Schema.Literal('missing-user', 'blocked'),
+  reason: Schema.Literals(['missing-user', 'blocked']),
   userId: Schema.String,
 }) {}
 
@@ -78,7 +78,8 @@ const decodeExitFailure = (encoded: unknown) => {
 }
 
 describe('effect-rpc-tanstack RPC wire baselines (cross-major invariant)', () => {
-  // TODO(live-migration:effect-3-4): Effect 4 changes every failure cause from an object to an array; land #979's versioned compatibility server before updating these SSR Exit assertions.
+  // These SSR Exit bytes pin the v3 failure-cause shape (object form). #979's
+  // versioned compatibility server mediates the v4 array form before they change.
   it('captures SSR Exit JSON bytes and re-encoded identity', () => {
     const exits = {
       success: encodeExit(
@@ -121,7 +122,8 @@ describe('effect-rpc-tanstack RPC wire baselines (cross-major invariant)', () =>
     }).toMatchSnapshot()
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 changes every failure cause from an object to an array; land #979's versioned compatibility server before updating these HTTP assertions.
+  // These HTTP RPC bytes pin the v3 failure-cause shape (object form). #979's
+  // versioned compatibility server mediates the v4 array form before they change.
   it('captures HTTP RPC NDJSON bytes and failure partition', async () => {
     const handlers = Api.toLayer(
       Effect.succeed(

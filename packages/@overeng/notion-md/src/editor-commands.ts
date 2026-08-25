@@ -1,7 +1,8 @@
 import { join } from 'node:path'
 
-import { Command as PlatformCommand, type CommandExecutor, FileSystem } from '@effect/platform'
-import { Console, Effect } from 'effect'
+import { Console, Effect, FileSystem } from 'effect'
+import * as ChildProcess from 'effect/unstable/process/ChildProcess'
+import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { describeBodyLossyRefusal } from '@overeng/notion-core'
 import type { Sha256Digest } from '@overeng/notion-effect-client'
@@ -329,11 +330,7 @@ export interface EditOptions {
    */
   readonly runEditor?: (opts: {
     readonly filePath: string
-  }) => Effect.Effect<
-    number,
-    NmdGatewayError,
-    CommandExecutor.CommandExecutor | FileSystem.FileSystem
-  >
+  }) => Effect.Effect<number, NmdGatewayError, ChildProcessSpawner | FileSystem.FileSystem>
 }
 
 /** Outcome of an `edit` session: pushed, no-op, or relocated-conflict. */
@@ -347,28 +344,28 @@ const resolveEditorCommand = (): string => process.env['VISUAL'] ?? process.env[
 
 const defaultRunEditor = (opts: {
   readonly filePath: string
-}): Effect.Effect<number, NmdGatewayError, CommandExecutor.CommandExecutor> =>
-  Effect.gen(function* () {
-    const editor = resolveEditorCommand()
-    // Split a possibly-flagged editor command (e.g. `code --wait`) on whitespace.
-    // oxlint-disable-next-line unicorn/prefer-array-find -- tokenizing into ALL non-empty parts (bin + ...args), not finding one element
-    const [bin, ...args] = editor.split(/\s+/u).filter((part) => part.length > 0)
-    const command = PlatformCommand.make(bin ?? 'vi', ...args, opts.filePath).pipe(
-      PlatformCommand.stdin('inherit'),
-      PlatformCommand.stdout('inherit'),
-      PlatformCommand.stderr('inherit'),
-    )
-    return yield* PlatformCommand.exitCode(command).pipe(
-      Effect.mapError(
-        (cause) =>
-          new NmdGatewayError({
-            operation: 'edit_spawn_editor',
-            message: `Failed to launch editor \`${editor}\`: ${String(cause)}`,
-            cause,
-          }),
-      ),
-    )
-  })
+}): Effect.Effect<number, NmdGatewayError, ChildProcessSpawner> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const editor = resolveEditorCommand()
+      // Split a possibly-flagged editor command (e.g. `code --wait`) on whitespace.
+      // oxlint-disable-next-line unicorn/prefer-array-find -- tokenizing into ALL non-empty parts (bin + ...args), not finding one element
+      const [bin, ...args] = editor.split(/\s+/u).filter((part) => part.length > 0)
+      const mapSpawnError = (cause: unknown) =>
+        new NmdGatewayError({
+          operation: 'edit_spawn_editor',
+          message: `Failed to launch editor \`${editor}\`: ${String(cause)}`,
+          cause,
+        })
+      const handle = yield* ChildProcess.make(bin ?? 'vi', [...args, opts.filePath], {
+        stdin: 'inherit',
+        stdout: 'inherit',
+        stderr: 'inherit',
+      }).pipe(Effect.mapError(mapSpawnError))
+      const code = yield* handle.exitCode.pipe(Effect.mapError(mapSpawnError))
+      return code
+    }),
+  )
 
 /**
  * `edit <page> [--frontmatter]` — ephemeral file-engine editor session
@@ -385,7 +382,7 @@ export const editEditorPage = (
 ): Effect.Effect<
   EditResult,
   NmdError | NmdInvalidDocumentError | NmdEditorAbortedError,
-  FileSystem.FileSystem | NotionMdGateway | NmdStateStore | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | NotionMdGateway | NmdStateStore | ChildProcessSpawner
 > =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -463,7 +460,7 @@ export const editEditorPage = (
     ),
     Effect.catchTag('NmdEditorAbortedError', (error) =>
       annotateAttrs({ attributes: editResultAttrs, value: { outcome: 'aborted' } }).pipe(
-        Effect.zipRight(Effect.fail(error)),
+        Effect.andThen(Effect.fail(error)),
       ),
     ),
     withRootOperation({
@@ -491,11 +488,7 @@ export interface ReadOnlyEditOptions {
    */
   readonly runEditor?: (opts: {
     readonly filePath: string
-  }) => Effect.Effect<
-    number,
-    NmdGatewayError,
-    CommandExecutor.CommandExecutor | FileSystem.FileSystem
-  >
+  }) => Effect.Effect<number, NmdGatewayError, ChildProcessSpawner | FileSystem.FileSystem>
 }
 
 /** Outcome of a read-only `edit --read-only` session (always a discarding no-op). */
@@ -524,7 +517,7 @@ export const editReadOnlyPage = (
 ): Effect.Effect<
   ReadOnlyEditResult,
   NmdError,
-  FileSystem.FileSystem | NotionMdGateway | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | NotionMdGateway | ChildProcessSpawner
 > =>
   Effect.scoped(
     Effect.gen(function* () {

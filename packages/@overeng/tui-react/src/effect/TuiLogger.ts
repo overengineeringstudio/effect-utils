@@ -33,14 +33,13 @@ import type { Scope } from 'effect'
 import {
   Context,
   Effect,
-  FiberId,
   Layer,
   Logger,
   LogLevel,
+  References,
   Stream,
   SubscriptionRef,
   Fiber,
-  Runtime,
 } from 'effect'
 import { useSyncExternalStore } from 'react'
 
@@ -146,7 +145,7 @@ export const createTuiLogger = (
   options: TuiLoggerOptions = {},
 ): Effect.Effect<TuiLoggerResult, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const { maxEntries = 100, minLevel = LogLevel.All, logToConsole = true } = options
+    const { maxEntries = 100, minLevel = 'All', logToConsole = true } = options
 
     // Create the logs SubscriptionRef
     const logsRef = yield* SubscriptionRef.make<readonly TuiLogEntry[]>([])
@@ -159,40 +158,40 @@ export const createTuiLogger = (
         return newLogs.length > maxEntries ? newLogs.slice(-maxEntries) : newLogs
       })
 
-    const runtime = yield* Effect.runtime<never>()
+    const runtime = yield* Effect.context<never>()
 
     // Create the TUI logger
-    const tuiLogger = Logger.make<unknown, void>(
-      ({ logLevel, message, date, fiberId, annotations, spans }) => {
-        // Check minimum level
-        if (LogLevel.greaterThanEqual(logLevel, minLevel) === true) {
-          const spanLabel = spans._tag === 'Cons' ? spans.head.label : undefined
-          const entry: TuiLogEntry = {
-            id: ++logEntryId,
-            level: logLevel.label,
-            message: String(message),
-            timestamp: date,
-            fiberId: FiberId.threadName(fiberId),
-            annotations: Object.fromEntries(annotations),
-            ...(spanLabel !== undefined ? { span: spanLabel } : {}),
-          }
-
-          // Fire and forget - we don't want logging to block
-          void Runtime.runFork(runtime)(appendLog(entry))
+    const tuiLogger = Logger.make<unknown, void>(({ logLevel, message, date, fiber }) => {
+      // Check minimum level
+      if (LogLevel.isGreaterThanOrEqualTo(logLevel, minLevel) === true) {
+        const spans = fiber.getRef(References.CurrentLogSpans)
+        const annotations = fiber.getRef(References.CurrentLogAnnotations)
+        const spanLabel = spans.length > 0 ? (spans[0]?.[0] ?? undefined) : undefined
+        const entry: TuiLogEntry = {
+          id: ++logEntryId,
+          level: logLevel,
+          message: String(message),
+          timestamp: date,
+          fiberId: String(fiber.id),
+          annotations,
+          ...(spanLabel !== undefined ? { span: spanLabel } : {}),
         }
-      },
-    )
+
+        // Fire and forget - we don't want logging to block
+        void Effect.runForkWith(runtime)(appendLog(entry))
+      }
+    })
 
     // Create the layer - either TUI only or combined with console
     const layer =
       logToConsole === true
         ? Layer.merge(
-            Logger.replace(Logger.defaultLogger, Logger.zip(Logger.defaultLogger, tuiLogger)),
-            Logger.minimumLogLevel(minLevel),
+            Logger.layer([Logger.defaultLogger, tuiLogger]),
+            Layer.succeed(References.MinimumLogLevel, minLevel),
           )
         : Layer.merge(
-            Logger.replace(Logger.defaultLogger, tuiLogger),
-            Logger.minimumLogLevel(minLevel),
+            Logger.layer([tuiLogger], { mergeWithExisting: false }),
+            Layer.succeed(References.MinimumLogLevel, minLevel),
           )
 
     // Clear function
@@ -251,7 +250,7 @@ export const useTuiLogs = (
   // Subscribe to changes
   const subscribe = (onStoreChange: () => void): (() => void) => {
     const fiber = Effect.runFork(
-      logsRef.changes.pipe(
+      SubscriptionRef.changes(logsRef).pipe(
         Stream.runForEach(() =>
           Effect.sync(() => {
             onStoreChange()
@@ -276,10 +275,9 @@ export const useTuiLogs = (
  * Service tag for TUI Logger result.
  * Use this when you want to inject the logger via the Effect context.
  */
-export class TuiLoggerService extends Context.Tag('TuiLogger')<
-  TuiLoggerService,
-  TuiLoggerResult
->() {}
+export class TuiLoggerService extends Context.Service<TuiLoggerService, TuiLoggerResult>()(
+  'TuiLogger',
+) {}
 
 /**
  * Create a layer that provides TuiLoggerService.
@@ -294,7 +292,7 @@ export class TuiLoggerService extends Context.Tag('TuiLogger')<
  */
 export const TuiLoggerServiceLayer = (
   options: TuiLoggerOptions = {},
-): Layer.Layer<TuiLoggerService> => Layer.scoped(TuiLoggerService, createTuiLogger(options))
+): Layer.Layer<TuiLoggerService> => Layer.effect(TuiLoggerService, createTuiLogger(options))
 
 // =============================================================================
 // Utility Functions

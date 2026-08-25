@@ -8,7 +8,7 @@ export const ingestSource = Effect.fn('AgentSessionIngest.SessionIngestor.ingest
   <TRecord>(adapter: SessionSourceAdapter<TRecord>) =>
     Effect.gen(function* () {
       const checkpointStore = yield* CheckpointStore
-      const checkpoints = yield* checkpointStore.list()
+      const checkpoints = yield* checkpointStore.list
       const checkpointsByArtifact = new Map(
         checkpoints
           .filter((checkpoint) => checkpoint.sourceId === adapter.sourceId)

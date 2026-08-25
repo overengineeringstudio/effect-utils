@@ -14,7 +14,7 @@ import { Schema } from 'effect'
  * - `trace_id` / `span_id` / `parent_span_id` are nullable on row schemas.
  */
 
-const Attrs = Schema.Record({ key: Schema.String, value: Schema.String }).annotations({
+const Attrs = Schema.Record(Schema.String, Schema.String).annotate({
   identifier: 'Otelite.Attrs',
 })
 
@@ -22,7 +22,7 @@ const Attrs = Schema.Record({ key: Schema.String, value: Schema.String }).annota
 export const Endpoints = Schema.Struct({
   http: Schema.String,
   grpc: Schema.String,
-}).annotations({ identifier: 'Otelite.Endpoints' })
+}).annotate({ identifier: 'Otelite.Endpoints' })
 
 /**
  * `otelite.endpoints/v1` — the FIRST stdout line `capture` emits the instant
@@ -35,7 +35,7 @@ export const EndpointsEvent = Schema.Struct({
   http: Schema.String,
   grpc: Schema.String,
   out: Schema.String,
-}).annotations({ identifier: 'Otelite.EndpointsEvent' })
+}).annotate({ identifier: 'Otelite.EndpointsEvent' })
 export type EndpointsEvent = typeof EndpointsEvent.Type
 
 /** Per-signal capture file paths. */
@@ -43,20 +43,20 @@ export const CaptureFiles = Schema.Struct({
   traces: Schema.String,
   metrics: Schema.String,
   logs: Schema.String,
-}).annotations({ identifier: 'Otelite.CaptureFiles' })
+}).annotate({ identifier: 'Otelite.CaptureFiles' })
 
 /** Per-signal received-record counts. */
 export const Counts = Schema.Struct({
-  spans: Schema.Number,
-  metrics: Schema.Number,
-  logs: Schema.Number,
-}).annotations({ identifier: 'Otelite.Counts' })
+  spans: Schema.Finite,
+  metrics: Schema.Finite,
+  logs: Schema.Finite,
+}).annotate({ identifier: 'Otelite.Counts' })
 
 /** The child process otelite ran (`run` only; `null` for `capture`). */
 export const Child = Schema.Struct({
   argv: Schema.Array(Schema.String),
   exit_code: Schema.Int,
-}).annotations({ identifier: 'Otelite.Child' })
+}).annotate({ identifier: 'Otelite.Child' })
 
 /** `otelite.summary/v1` — emitted by `run` and `capture`. */
 export const Summary = Schema.Struct({
@@ -66,8 +66,8 @@ export const Summary = Schema.Struct({
   files: CaptureFiles,
   counts: Counts,
   child: Schema.NullOr(Child),
-  duration_ms: Schema.Number,
-}).annotations({ identifier: 'Otelite.Summary' })
+  duration_ms: Schema.Finite,
+}).annotate({ identifier: 'Otelite.Summary' })
 export type Summary = typeof Summary.Type
 
 /** `otelite.span/v1` — a flattened span row from `inspect --signal traces`. */
@@ -80,10 +80,10 @@ export const SpanRow = Schema.Struct({
   parent_span_id: Schema.NullOr(Schema.String),
   start_unix_nano: Schema.String,
   end_unix_nano: Schema.String,
-  duration_ms: Schema.Number,
+  duration_ms: Schema.Finite,
   status_code: Schema.Int,
   attrs: Attrs,
-}).annotations({ identifier: 'Otelite.SpanRow' })
+}).annotate({ identifier: 'Otelite.SpanRow' })
 export type SpanRow = typeof SpanRow.Type
 
 /** `otelite.metric/v1` — a flattened metric data point from `inspect --signal metrics`. */
@@ -93,13 +93,13 @@ export const MetricRow = Schema.Struct({
   name: Schema.String,
   type: Schema.String,
   unit: Schema.String,
-  value: Schema.optional(Schema.Number),
+  value: Schema.optional(Schema.Finite),
   time_unix_nano: Schema.String,
   start_time_unix_nano: Schema.optional(Schema.String),
   temporality: Schema.optional(Schema.String),
   monotonic: Schema.optional(Schema.Boolean),
   attrs: Attrs,
-}).annotations({ identifier: 'Otelite.MetricRow' })
+}).annotate({ identifier: 'Otelite.MetricRow' })
 export type MetricRow = typeof MetricRow.Type
 
 /** `otelite.log/v1` — a flattened log record from `inspect --signal logs`. */
@@ -114,19 +114,19 @@ export const LogRow = Schema.Struct({
   span_id: Schema.NullOr(Schema.String),
   time_unix_nano: Schema.String,
   attrs: Attrs,
-}).annotations({ identifier: 'Otelite.LogRow' })
+}).annotate({ identifier: 'Otelite.LogRow' })
 export type LogRow = typeof LogRow.Type
 
 // --- Summary report objects (`--summary`) ---
 
 const DurationGroup = Schema.Struct({
   key: Schema.String,
-  span_count: Schema.Number,
-  inclusive_duration_ms: Schema.Number,
-  exclusive_duration_ms: Schema.Number,
-  instant_event_span_count: Schema.Number,
-  zero_duration_span_count: Schema.Number,
-}).annotations({ identifier: 'Otelite.DurationGroup' })
+  span_count: Schema.Finite,
+  inclusive_duration_ms: Schema.Finite,
+  exclusive_duration_ms: Schema.Finite,
+  instant_event_span_count: Schema.Finite,
+  zero_duration_span_count: Schema.Finite,
+}).annotate({ identifier: 'Otelite.DurationGroup' })
 
 const SlowSpan = Schema.Struct({
   span_id: Schema.String,
@@ -134,21 +134,21 @@ const SlowSpan = Schema.Struct({
   name: Schema.String,
   service_name: Schema.String,
   label: Schema.NullOr(Schema.String),
-  inclusive_duration_ms: Schema.Number,
-  exclusive_duration_ms: Schema.Number,
-  relative_start_ms: Schema.Number,
+  inclusive_duration_ms: Schema.Finite,
+  exclusive_duration_ms: Schema.Finite,
+  relative_start_ms: Schema.Finite,
   instant_event: Schema.Boolean,
-}).annotations({ identifier: 'Otelite.SlowSpan' })
+}).annotate({ identifier: 'Otelite.SlowSpan' })
 
 const ErrorSpan = Schema.Struct({
   span_id: Schema.String,
   name: Schema.String,
   service_name: Schema.String,
   label: Schema.NullOr(Schema.String),
-  inclusive_duration_ms: Schema.Number,
-  exclusive_duration_ms: Schema.Number,
+  inclusive_duration_ms: Schema.Finite,
+  exclusive_duration_ms: Schema.Finite,
   instant_event: Schema.Boolean,
-}).annotations({ identifier: 'Otelite.ErrorSpan' })
+}).annotate({ identifier: 'Otelite.ErrorSpan' })
 
 /** `otelite.trace-summary/v1` — the per-trace report from `inspect --signal traces --summary`. */
 export const TraceSummary = Schema.Struct({
@@ -156,48 +156,48 @@ export const TraceSummary = Schema.Struct({
   trace_id: Schema.String,
   otlp_trace_id: Schema.NullOr(Schema.String),
   root_service: Schema.NullOr(Schema.String),
-  span_count: Schema.Number,
-  duration_ms: Schema.Number,
+  span_count: Schema.Finite,
+  duration_ms: Schema.Finite,
   timing_confidence: Schema.String,
-  zero_duration_span_count: Schema.Number,
-  zero_duration_work_span_count: Schema.Number,
-  instant_event_span_count: Schema.Number,
-  error_span_count: Schema.Number,
+  zero_duration_span_count: Schema.Finite,
+  zero_duration_work_span_count: Schema.Finite,
+  instant_event_span_count: Schema.Finite,
+  error_span_count: Schema.Finite,
   grouped_duration_by_name: Schema.Array(DurationGroup),
   grouped_duration_by_service: Schema.Array(DurationGroup),
   slow_spans: Schema.Array(SlowSpan),
   error_spans: Schema.Array(ErrorSpan),
-  top_labels: Schema.Array(Schema.Struct({ value: Schema.String, count: Schema.Number })),
+  top_labels: Schema.Array(Schema.Struct({ value: Schema.String, count: Schema.Finite })),
   warnings: Schema.Array(Schema.String),
-}).annotations({ identifier: 'Otelite.TraceSummary' })
+}).annotate({ identifier: 'Otelite.TraceSummary' })
 export type TraceSummary = typeof TraceSummary.Type
 
 /** `otelite.metric-summary/v1` — the aggregate report from `inspect --signal metrics --summary`. */
 export const MetricSummary = Schema.Struct({
   schema: Schema.Literal('otelite.metric-summary/v1'),
-  total_metrics: Schema.Number,
-  total_data_points: Schema.Number,
+  total_metrics: Schema.Finite,
+  total_data_points: Schema.Finite,
   metrics: Schema.Array(
     Schema.Struct({
       name: Schema.String,
       type: Schema.String,
       unit: Schema.String,
       services: Schema.Array(Schema.String),
-      data_points: Schema.Number,
+      data_points: Schema.Finite,
       // Present only for sum/gauge entries; absent for histogram/exphistogram.
-      value_min: Schema.optional(Schema.Number),
-      value_max: Schema.optional(Schema.Number),
-      value_sum: Schema.optional(Schema.Number),
+      value_min: Schema.optional(Schema.Finite),
+      value_max: Schema.optional(Schema.Finite),
+      value_sum: Schema.optional(Schema.Finite),
     }),
   ),
-}).annotations({ identifier: 'Otelite.MetricSummary' })
+}).annotate({ identifier: 'Otelite.MetricSummary' })
 export type MetricSummary = typeof MetricSummary.Type
 
 /** `otelite.log-summary/v1` — the aggregate report from `inspect --signal logs --summary`. */
 export const LogSummary = Schema.Struct({
   schema: Schema.Literal('otelite.log-summary/v1'),
-  total: Schema.Number,
-  by_service: Schema.Record({ key: Schema.String, value: Schema.Number }),
-  by_severity: Schema.Record({ key: Schema.String, value: Schema.Number }),
-}).annotations({ identifier: 'Otelite.LogSummary' })
+  total: Schema.Finite,
+  by_service: Schema.Record(Schema.String, Schema.Finite),
+  by_severity: Schema.Record(Schema.String, Schema.Finite),
+}).annotate({ identifier: 'Otelite.LogSummary' })
 export type LogSummary = typeof LogSummary.Type

@@ -148,14 +148,14 @@ export type WakePayload = Schema.Schema.Type<typeof WakePayload>
  * `cycle` body reads/writes via the typed `state` it is handed.
  * ════════════════════════════════════════════════════════════════════════ */
 
-const StatusSchema = Schema.Literal('idle', 'running', 'stopped', 'failed', 'completed')
+const StatusSchema = Schema.Literals(['idle', 'running', 'stopped', 'failed', 'completed'])
 
 /** The loop control-plane state, persisted in the Object's typed K/V State. */
 const ControlState = {
   /** Lifecycle tag (the source of truth for "is the chain live"). */
   status: StatusSchema,
   /** Monotonic cycle counter (cycles ATTEMPTED; drives `maxIterations`). */
-  iteration: Schema.Number,
+  iteration: Schema.Finite,
   /**
    * Re-arm GENERATION token. Every `start` bumps this; the delayed re-arm send
    * carries the generation it was armed under, and a landing `cycle` no-ops if its
@@ -164,7 +164,7 @@ const ControlState = {
    * us no timer handle). A `retryable` re-arm also bumps it so the pre-armed
    * `delayMillis` send no-ops and only the fresh `retryAfter` send lands.
    */
-  generation: Schema.Number,
+  generation: Schema.Finite,
   /** Last cycle error string (for `skipToNext`/`failed`/retry diagnostics). */
   lastError: Schema.String,
   /**
@@ -172,7 +172,7 @@ const ControlState = {
    * a successful / skipped / advancing cycle). Surfaced in `status` so an operator
    * can see a backoff is active; bounds the re-arm via `maxRetryBackoffs`.
    */
-  retryBackoffs: Schema.Number,
+  retryBackoffs: Schema.Finite,
   /**
    * The awakeable id of the CURRENT inter-cycle wait (wake mode), persisted so an
    * external caller (the webhook) can read it via the `wakeId` SHARED handler and
@@ -189,16 +189,16 @@ const ControlState = {
 } as const
 
 /** The cycle input the internal `cycle` handler is sent (carries the generation). */
-const CycleInput = Schema.Struct({ generation: Schema.Number })
+const CycleInput = Schema.Struct({ generation: Schema.Finite })
 type CycleInput = Schema.Schema.Type<typeof CycleInput>
 
 /** The status the `status` shared handler returns. */
 const StatusOutput = Schema.Struct({
   status: StatusSchema,
-  iteration: Schema.Number,
+  iteration: Schema.Finite,
   lastError: Schema.optional(Schema.String),
   /** Consecutive retryable backoffs for the current logical cycle (0 when none). */
-  retryBackoffs: Schema.Number,
+  retryBackoffs: Schema.Finite,
   /** The live wake awakeable id (wake mode); omitted when no wait is live. */
   wakeId: Schema.optional(Schema.String),
 })
@@ -278,7 +278,7 @@ export interface ScheduledConfig<DomainState extends StateSchemas, AppR, CycleE 
    * schema are kept in sync by the compiler — a typed cycle `Effect.fail`s its
    * declared error and composes WITHOUT a cast (#3).
    */
-  readonly errorSchema?: Schema.Schema<CycleE, any>
+  readonly errorSchema?: Schema.Codec<CycleE, any>
   /**
    * Cap consecutive `retryable` backoffs for ONE logical cycle. Past the cap the
    * retryable failure is DEMOTED to the `onCycleError` policy (so a permanently-429
@@ -367,7 +367,7 @@ const isStop = (r: { readonly stop?: boolean } | void): boolean =>
  * `onCycleError` decision — keeps the cycle body honest about whether the retry
  * re-arm path can ever fire.
  */
-const hasRetryableMember = (errorSchema: Schema.Schema<any, any> | undefined): boolean => {
+const hasRetryableMember = (errorSchema: Schema.Codec<any, any> | undefined): boolean => {
   if (errorSchema === undefined) return false
   const ast = errorSchema.ast
   const members = ast._tag === 'Union' ? ast.types : [ast]
@@ -481,8 +481,8 @@ export const RestateScheduled = {
        * therefore composes a typed cycle without an `as unknown as` (#3). */
       config.cycle(args).pipe(
         Effect.map((r): CycleOutcome => ({ _tag: 'ok', stop: isStop(r) })),
-        Effect.catchAllCause((cause) =>
-          Cause.isInterruptedOnly(cause) === true
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause) === true
             ? /* An interrupt-only cause carries NO typed error (the declared `E` is
                * absent here), so re-raising it keeps the outcome channel `never` — the
                * `Cause<never>` narrowing is sound under `isInterruptedOnly`. */

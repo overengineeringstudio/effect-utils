@@ -5,7 +5,7 @@ import { Box, Text, createTuiApp, useTuiAtomValue, type TuiApp } from '@overeng/
 
 import type { SyncProgressEvent, SyncProgressPhase } from '../core/progress.ts'
 
-const Phase = Schema.Literal(
+const Phase = Schema.Literals([
   'preparing',
   'pulling',
   'querying',
@@ -16,35 +16,35 @@ const Phase = Schema.Literal(
   'projecting',
   'watching',
   'complete',
-)
+])
 
 const SyncProgressState = Schema.Struct({
   command: Schema.String,
   phase: Phase,
   message: Schema.String,
-  current: Schema.Number,
-  total: Schema.optional(Schema.Number),
-  pages: Schema.Number,
-  rows: Schema.Number,
-  executorSteps: Schema.Number,
-  requests: Schema.Number,
-  rateLimitRemaining: Schema.optional(Schema.Number),
-  rateLimitResetAfterSeconds: Schema.optional(Schema.Number),
-  retryDelayMs: Schema.optional(Schema.Number),
+  current: Schema.Finite,
+  total: Schema.optional(Schema.Finite),
+  pages: Schema.Finite,
+  rows: Schema.Finite,
+  executorSteps: Schema.Finite,
+  requests: Schema.Finite,
+  rateLimitRemaining: Schema.optional(Schema.Finite),
+  rateLimitResetAfterSeconds: Schema.optional(Schema.Finite),
+  retryDelayMs: Schema.optional(Schema.Finite),
   httpOperation: Schema.optional(Schema.String),
-  httpStatus: Schema.optional(Schema.Number),
+  httpStatus: Schema.optional(Schema.Finite),
 })
 
 export type SyncProgressState = typeof SyncProgressState.Type
 
-const SyncProgressAction = Schema.Union(
+const SyncProgressAction = Schema.Union([
   Schema.TaggedStruct('SetState', {
     state: SyncProgressState,
   }),
   Schema.TaggedStruct('ApplyEvent', {
     event: Schema.Any,
   }),
-)
+])
 
 export type SyncProgressAction = typeof SyncProgressAction.Type
 

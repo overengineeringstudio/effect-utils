@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { FileSystem, Path } from '@effect/platform'
-import { Context, Effect, Layer, type ParseResult, Schema } from 'effect'
+import { Context, Effect, FileSystem, Layer, Path, Schema } from 'effect'
 
 import {
   makeNmdObjectRef,
@@ -33,9 +32,9 @@ const objectRefs = (syncState: NmdSyncStateV1): readonly NmdObjectRef[] => [
 export const NmdStorageObjectV2 = Schema.Struct({
   version: Schema.Literal(2),
   page_id: Schema.String,
-  reason: Schema.Literal('too_large', 'volatile_url'),
+  reason: Schema.Literals(['too_large', 'volatile_url']),
   storage: NmdStorageSchema,
-}).annotations({ identifier: 'NotionMd.StorageObjectV2' })
+}).annotate({ identifier: 'NotionMd.StorageObjectV2' })
 
 export type NmdStorageObjectV2 = typeof NmdStorageObjectV2.Type
 
@@ -45,7 +44,7 @@ export const NmdBaseSnapshotV2 = Schema.Struct({
   page_id: Schema.String,
   body_hash: Sha256DigestSchema,
   body: Schema.String,
-}).annotations({ identifier: 'NotionMd.BaseSnapshotV2' })
+}).annotate({ identifier: 'NotionMd.BaseSnapshotV2' })
 
 export type NmdBaseSnapshotV2 = typeof NmdBaseSnapshotV2.Type
 
@@ -63,20 +62,24 @@ const strictOptions = {
 } as const
 
 const encodeStorageObjectJson = Schema.encodeSync(
-  Schema.parseJson(NmdStorageObjectV2, { space: 2 }),
+  Schema.fromJsonString(NmdStorageObjectV2, { space: 2 }),
 )
-const encodeBaseSnapshotJson = Schema.encodeSync(Schema.parseJson(NmdBaseSnapshotV2, { space: 2 }))
-const encodeSyncStateJson = Schema.encodeSync(Schema.parseJson(NmdSyncStateV1Schema, { space: 2 }))
-const decodeStorageObjectJson = Schema.decodeUnknown(
-  Schema.parseJson(NmdStorageObjectV2),
+const encodeBaseSnapshotJson = Schema.encodeSync(
+  Schema.fromJsonString(NmdBaseSnapshotV2, { space: 2 }),
+)
+const encodeSyncStateJson = Schema.encodeSync(
+  Schema.fromJsonString(NmdSyncStateV1Schema, { space: 2 }),
+)
+const decodeStorageObjectJson = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(NmdStorageObjectV2),
   strictOptions,
 )
-const decodeBaseSnapshotJson = Schema.decodeUnknown(
-  Schema.parseJson(NmdBaseSnapshotV2),
+const decodeBaseSnapshotJson = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(NmdBaseSnapshotV2),
   strictOptions,
 )
-const decodeSyncStateJson = Schema.decodeUnknown(
-  Schema.parseJson(NmdSyncStateV1Schema),
+const decodeSyncStateJson = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(NmdSyncStateV1Schema),
   strictOptions,
 )
 
@@ -114,7 +117,7 @@ export const isSafeRelativePath = (opts: {
 }
 
 const parseObjectJson = <A>(opts: {
-  readonly parse: (content: string) => Effect.Effect<A, ParseResult.ParseError>
+  readonly parse: (content: string) => Effect.Effect<A, Schema.SchemaError>
   readonly path: string
   readonly objectPath: string
   readonly content: string
@@ -240,10 +243,9 @@ export interface NmdStateStoreShape {
 }
 
 /** Service tag for the local notion-md state store. */
-export class NmdStateStore extends Context.Tag('NmdStateStore')<
-  NmdStateStore,
-  NmdStateStoreShape
->() {}
+export class NmdStateStore extends Context.Service<NmdStateStore, NmdStateStoreShape>()(
+  'NmdStateStore',
+) {}
 
 /** Live state-store implementation backed by `@effect/platform` filesystem services. */
 export const NmdStateStoreLive = Layer.effect(
@@ -700,14 +702,16 @@ export const writeBaseSnapshot = (opts: {
   readonly pageId: string
   readonly body: string
 }): Effect.Effect<NmdObjectRef, NmdFileSystemError, NmdStateStore> =>
-  NmdStateStore.pipe(Effect.flatMap((store) => store.writeBaseSnapshot(opts)))
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  NmdStateStore.use((store) => store.writeBaseSnapshot(opts))
 
 /** Load and validate the last clean body snapshot for conflict handling. */
 export const readBaseSnapshot = (opts: {
   readonly path: string
   readonly syncState: NmdSyncStateV1
 }): Effect.Effect<NmdBaseSnapshotV2, NmdObjectStoreError, NmdStateStore> =>
-  NmdStateStore.pipe(Effect.flatMap((store) => store.readBaseSnapshot(opts)))
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  NmdStateStore.use((store) => store.readBaseSnapshot(opts))
 
 /** Write a storage overflow payload and return the strict frontmatter reference. */
 export const writeStorageObject = (opts: {
@@ -716,14 +720,16 @@ export const writeStorageObject = (opts: {
   readonly reason: 'too_large' | 'volatile_url'
   readonly storage: NmdStorage
 }): Effect.Effect<NmdObjectRef, NmdFileSystemError, NmdStateStore> =>
-  NmdStateStore.pipe(Effect.flatMap((store) => store.writeStorageObject(opts)))
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  NmdStateStore.use((store) => store.writeStorageObject(opts))
 
 /** Load and validate object-store storage referenced by the sync state, if present. */
 export const validateReferencedObjects = (opts: {
   readonly path: string
   readonly syncState: NmdSyncStateV1
 }): Effect.Effect<NmdStorageObjectV2 | undefined, NmdObjectStoreError, NmdStateStore> =>
-  NmdStateStore.pipe(Effect.flatMap((store) => store.validateReferencedObjects(opts)))
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  NmdStateStore.use((store) => store.validateReferencedObjects(opts))
 
 /** Remove unreachable content-addressed objects for an explicit local state root. */
 export const garbageCollectObjects = (opts: {
@@ -731,25 +737,29 @@ export const garbageCollectObjects = (opts: {
   readonly syncStates: readonly NmdSyncStateV1[]
   readonly dryRun?: boolean
 }): Effect.Effect<NmdObjectGcResult, NmdFileSystemError | NmdObjectStoreError, NmdStateStore> =>
-  NmdStateStore.pipe(Effect.flatMap((store) => store.garbageCollectObjects(opts)))
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  NmdStateStore.use((store) => store.garbageCollectObjects(opts))
 
 /** Write the sidecar sync state at `.notion-md/sync/{page_id}.json`. */
 export const writeSyncState = (opts: {
   readonly path: string
   readonly syncState: NmdSyncStateV1
 }): Effect.Effect<void, NmdFileSystemError, NmdStateStore> =>
-  NmdStateStore.pipe(Effect.flatMap((store) => store.writeSyncState(opts)))
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  NmdStateStore.use((store) => store.writeSyncState(opts))
 
 /** Read the sidecar sync state for a known page id; fails if missing. */
 export const readSyncState = (opts: {
   readonly path: string
   readonly pageId: string
 }): Effect.Effect<NmdSyncStateV1, NmdObjectStoreError, NmdStateStore> =>
-  NmdStateStore.pipe(Effect.flatMap((store) => store.readSyncState(opts)))
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  NmdStateStore.use((store) => store.readSyncState(opts))
 
 /** Read the sidecar sync state if it exists, else undefined (pre-first-sync). */
 export const readSyncStateOptional = (opts: {
   readonly path: string
   readonly pageId: string
 }): Effect.Effect<NmdSyncStateV1 | undefined, NmdObjectStoreError, NmdStateStore> =>
-  NmdStateStore.pipe(Effect.flatMap((store) => store.readSyncStateOptional(opts)))
+  // oxlint-disable-next-line react-hooks(rules-of-hooks) -- `use` is a Context.Service combinator, not a React hook
+  NmdStateStore.use((store) => store.readSyncStateOptional(opts))

@@ -29,7 +29,7 @@ import {
 
 /* ── test watchers (distinct names so they coexist on one deployment) ─────── */
 
-const CounterState = { n: Schema.Number } as const
+const CounterState = { n: Schema.Finite } as const
 const C = State.for(CounterState)
 
 /* A read-only probe contract over the DOMAIN state. A scheduled watcher's domain
@@ -134,7 +134,7 @@ const StopOnError = RestateScheduled.make<typeof CounterState>({
  * for two cycles, then CLEARS it (`set(undefined)`) and stops, proving the shared
  * optional-State handling reaches `domainState`. */
 const OptionalState = {
-  highWatermark: Schema.optional(Schema.Number),
+  highWatermark: Schema.optional(Schema.Finite),
 } as const
 const Opt = State.for(OptionalState)
 const OptionalDomain = RestateObject.contract({

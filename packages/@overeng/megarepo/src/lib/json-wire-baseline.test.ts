@@ -3,15 +3,15 @@ import { describe, expect, it } from 'vitest'
 
 import { StoreState } from '../cli/renderers/StoreOutput/schema.ts'
 import { MegarepoConfig } from './config.ts'
-import { LockFile } from './lock.ts'
+import { LockFile, LockedMember } from './lock.ts'
 
-const encodeJson = <A, I>(schema: Schema.Schema<A, I, never>, value: A): string =>
-  Schema.encodeSync(Schema.parseJson(schema, { space: 2 }))(value)
+const encodeJson = <A, I>(schema: Schema.Codec<A, I>, value: A): string =>
+  Schema.encodeSync(Schema.fromJsonString(schema, { space: 2 }))(value)
 
-const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string): A =>
-  Schema.decodeUnknownSync(Schema.parseJson(schema))(encoded)
+const decodeJson = <A, I>(schema: Schema.Codec<A, I>, encoded: string): A =>
+  Schema.decodeUnknownSync(Schema.fromJsonString(schema))(encoded)
 
-const roundTrip = <A, I>(schema: Schema.Schema<A, I, never>, value: A) => {
+const roundTrip = <A, I>(schema: Schema.Codec<A, I>, value: A) => {
   const encoded = encodeJson(schema, value)
   const decoded = decodeJson(schema, encoded)
   const reencoded = encodeJson(schema, decoded)
@@ -24,7 +24,7 @@ const roundTrip = <A, I>(schema: Schema.Schema<A, I, never>, value: A) => {
   }
 }
 
-const decodeFailure = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string) => {
+const decodeFailure = <A, I>(schema: Schema.Codec<A, I>, encoded: string) => {
   try {
     return { _tag: 'decoded' as const, value: decodeJson(schema, encoded) }
   } catch (error) {
@@ -36,35 +36,37 @@ const decodeFailure = <A, I>(schema: Schema.Schema<A, I, never>, encoded: string
 }
 
 describe('megarepo wire baselines (cross-major invariant)', () => {
-  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) for these failures; preserve the structural partition and adjudicate internal-only text before re-baselining.
   it('captures megarepo config JSON bytes and failure partition', () => {
     expect(
-      roundTrip(MegarepoConfig, {
-        $schema: 'https://example.invalid/megarepo.schema.json',
-        members: {
-          '': './empty-name',
-          'unicode-ß': 'https://github.com/example/unicode#feature/ß',
-          windows: '../windows\r\npath',
-        },
-        generators: {
-          vscode: {
-            enabled: true,
-            exclude: ['tmp', 'unicode-ß'],
-            color: '#123abc',
-            colorEnvVar: 'MEGAREPO_COLOR',
-            settings: {
-              'editor.formatOnSave': true,
-              'terminal.integrated.defaultProfile.linux': 'bash\r\nzsh',
-              nullable: null,
+      roundTrip(
+        MegarepoConfig,
+        new MegarepoConfig({
+          $schema: 'https://example.invalid/megarepo.schema.json',
+          members: {
+            '': './empty-name',
+            'unicode-ß': 'https://github.com/example/unicode#feature/ß',
+            windows: '../windows\r\npath',
+          },
+          generators: {
+            vscode: {
+              enabled: true,
+              exclude: ['tmp', 'unicode-ß'],
+              color: '#123abc',
+              colorEnvVar: 'MEGAREPO_COLOR',
+              settings: {
+                'editor.formatOnSave': true,
+                'terminal.integrated.defaultProfile.linux': 'bash\r\nzsh',
+                nullable: null,
+              },
             },
           },
-        },
-        lockSync: {
-          enabled: false,
-          exclude: ['unicode-ß'],
-          sharedInputSource: 'nixpkgs',
-        },
-      }),
+          lockSync: {
+            enabled: false,
+            exclude: ['unicode-ß'],
+            sharedInputSource: 'nixpkgs',
+          },
+        }),
+      ),
     ).toMatchSnapshot()
 
     expect({
@@ -74,28 +76,30 @@ describe('megarepo wire baselines (cross-major invariant)', () => {
     }).toMatchSnapshot()
   })
 
-  // TODO(live-migration:effect-3-4): Keep lockedAt as a persisted plain string; normalizing it during Effect 4 repair would remove this gate's coverage.
   it('captures megarepo lock JSON bytes and failure partition', () => {
     expect(
-      roundTrip(LockFile, {
-        version: 1,
-        members: {
-          'unicode-ß': {
-            url: 'https://github.com/example/unicode',
-            ref: 'feature/ß',
-            commit: '0123456789abcdef0123456789abcdef01234567',
-            pinned: true,
-            lockedAt: '2026-07-28T11:50:00.000Z',
+      roundTrip(
+        LockFile,
+        new LockFile({
+          version: 1,
+          members: {
+            'unicode-ß': new LockedMember({
+              url: 'https://github.com/example/unicode',
+              ref: 'feature/ß',
+              commit: '0123456789abcdef0123456789abcdef01234567',
+              pinned: true,
+              lockedAt: '2026-07-28T11:50:00.000Z',
+            }),
+            'out-of-range-date-string': new LockedMember({
+              url: 'git@github.com:example/out-of-range.git',
+              ref: 'main',
+              commit: 'ffffffffffffffffffffffffffffffffffffffff',
+              pinned: false,
+              lockedAt: '99999-99-99T99:99:99.999Z',
+            }),
           },
-          'out-of-range-date-string': {
-            url: 'git@github.com:example/out-of-range.git',
-            ref: 'main',
-            commit: 'ffffffffffffffffffffffffffffffffffffffff',
-            pinned: false,
-            lockedAt: '99999-99-99T99:99:99.999Z',
-          },
-        },
-      }),
+        }),
+      ),
     ).toMatchSnapshot()
 
     expect({
@@ -108,7 +112,6 @@ describe('megarepo wire baselines (cross-major invariant)', () => {
     }).toMatchSnapshot()
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) for these failures; preserve the structural partition and adjudicate internal-only text before re-baselining.
   it('captures megarepo store state JSON bytes and failure partition', () => {
     expect(
       roundTrip(StoreState, {

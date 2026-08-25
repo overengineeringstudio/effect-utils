@@ -1,3 +1,4 @@
+import * as EffectTracer from '@effect/opentelemetry/OtelTracer'
 /**
  * Server-free observability test (docs/vrs/08-observability/spec.md, decision 0014): span ATTRIBUTES + the
  * replay-aware METRICS path, proving the package is operable from Grafana.
@@ -18,7 +19,6 @@
  *    emission does NOT increment (no double-count across attempts).
  */
 import * as Resource from '@effect/opentelemetry/Resource'
-import * as EffectTracer from '@effect/opentelemetry/Tracer'
 import { context, trace } from '@opentelemetry/api'
 import {
   AggregationTemporality,
@@ -259,7 +259,7 @@ describe('annotateSpanFrom strips sensitive fields (server-free)', () => {
    * alongside non-secret identity fields the operator legitimately slices on. */
   const Input = Schema.Struct({
     dataSourceId: Schema.String,
-    pageCount: Schema.Number,
+    pageCount: Schema.Finite,
     apiToken: Restate.sensitive(Schema.String),
   })
   const value = { dataSourceId: 'ds-42', pageCount: 7, apiToken: 'secret-xyz' }

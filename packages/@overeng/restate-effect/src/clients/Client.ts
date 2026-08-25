@@ -1,5 +1,5 @@
 import * as clients from '@restatedev/restate-sdk-clients'
-import { Config, type ConfigError, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
+import { Config, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
 
 import {
   type AwakeableId,
@@ -58,10 +58,9 @@ export interface RestateIngressService {
  * env-driven `RestateIngress.layerConfig`) and `yield* RestateIngress` (or thread
  * `call` / `callTyped`, which require it in `R`).
  */
-export class RestateIngress extends Context.Tag('@overeng/restate-effect/RestateIngress')<
-  RestateIngress,
-  RestateIngressService
->() {
+export class RestateIngress extends Context.Service<RestateIngress, RestateIngressService>()(
+  '@overeng/restate-effect/RestateIngress',
+) {
   /**
    * Build a `RestateIngress` layer bound to a `restate-server` ingress URL. The
    * PRIMITIVE form (a thin wrapper over `clients.connect`).
@@ -102,7 +101,7 @@ export class RestateIngress extends Context.Tag('@overeng/restate-effect/Restate
    * secret handling. Fails the layer with a `ConfigError` if `RESTATE_INGRESS_URL`
    * is unset.
    */
-  static layerConfig = (): Layer.Layer<RestateIngress, ConfigError.ConfigError> =>
+  static layerConfig = (): Layer.Layer<RestateIngress, Config.ConfigError> =>
     Layer.effect(
       RestateIngress,
       Effect.gen(function* () {
@@ -216,7 +215,7 @@ export const decodeTerminalError =
     self: Effect.Effect<A, RestateError, R>,
   ): Effect.Effect<A, RestateError | ErrorOf<C, M>, R> =>
     self.pipe(
-      Effect.catchAll((restateError) => decodeError<C, M, A>({ contract, method, restateError })),
+      Effect.catch((restateError) => decodeError<C, M, A>({ contract, method, restateError })),
     )
 
 /**
@@ -261,14 +260,14 @@ export const decodeErrorWith = <DomE, A = never>({
   errorSchema,
   restateError,
 }: {
-  errorSchema: Schema.Schema<DomE, any> | undefined
+  errorSchema: Schema.Codec<DomE, any> | undefined
   restateError: RestateError
 }): Effect.Effect<A, RestateError | DomE> => {
   const responseText = httpErrorBody(restateError.cause)
   if (errorSchema === undefined || responseText === undefined) {
     return Effect.fail(restateError)
   }
-  const decode = (value: unknown) => Schema.decodeUnknown(errorSchema)(value)
+  const decode = (value: unknown) => Schema.decodeUnknownEffect(errorSchema)(value)
   return Effect.sync(() => terminalBodyCandidates(responseText)).pipe(
     Effect.flatMap((candidates) =>
       /* Try each candidate body (the `responseText` may be the raw `_tag` body OR
@@ -318,11 +317,7 @@ const tryParse = (text: string): unknown => {
 
 /** Pull the `responseText` off a transport `HttpCallError` carried in the cause. */
 const httpErrorBody = (cause: unknown): string | undefined =>
-  Option.fromNullable(cause).pipe(
-    Option.filter((c): c is clients.HttpCallError => c instanceof clients.HttpCallError),
-    Option.map((c) => c.responseText),
-    Option.getOrUndefined,
-  )
+  cause instanceof clients.HttpCallError ? cause.responseText : undefined
 
 /* ════════════════════════════════════════════════════════════════════════
  * Virtual Object ingress client (keyed call / send).
@@ -395,7 +390,7 @@ export const objectCallTyped = <
   input: ObjectInputOf<C, M>
 }): Effect.Effect<ObjectSuccessOf<C, M>, RestateError | ObjectErrorOf<C, M>, RestateIngress> =>
   objectCall({ contract, key, method, input }).pipe(
-    Effect.catchAll((restateError) =>
+    Effect.catch((restateError) =>
       decodeErrorWith<ObjectErrorOf<C, M>, ObjectSuccessOf<C, M>>({
         errorSchema: (contract.handlers[method] as HandlerSpec).error,
         restateError,
@@ -544,7 +539,7 @@ export const workflowAttach = <C extends WorkflowContract<string, any, any, any,
         }),
     })
   }).pipe(
-    Effect.catchAll((restateError) =>
+    Effect.catch((restateError) =>
       decodeErrorWith<WorkflowRunErrorOf<C>, WorkflowRunSuccessOf<C>>({
         errorSchema: (contract.run as HandlerSpec).error,
         restateError,
@@ -640,7 +635,7 @@ export const resolveAwakeable = <T, I>({
   id,
   payload,
 }: {
-  schema: Schema.Schema<T, I>
+  schema: Schema.Codec<T, I>
   id: AwakeableId<T>
   payload: T
 }): Effect.Effect<void, RestateError, RestateIngress> =>
@@ -652,7 +647,7 @@ export const resolveAwakeable = <T, I>({
           id,
           payload,
           serdesOf(self).forSchema({
-            schema: schema as Schema.Schema<unknown, unknown>,
+            schema: schema as Schema.Codec<unknown, unknown>,
             slot: 'ingress',
           }) as never,
         ),
@@ -691,7 +686,7 @@ export const result = <T, I>({
   /* The send/submission is an opaque handle — `T` is inferred from `outputSchema`,
    * not the (often `unknown`-typed) `Send` returned by `objectSend`/`send`. */
   send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>
-  outputSchema: Schema.Schema<T, I>
+  outputSchema: Schema.Codec<T, I>
 }): Effect.Effect<T, RestateError, RestateIngress> =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
@@ -700,7 +695,7 @@ export const result = <T, I>({
         self.ingress.result<T>(
           send as clients.Send<T>,
           serdesOf(self).forSchema({
-            schema: outputSchema as Schema.Schema<unknown, unknown>,
+            schema: outputSchema as Schema.Codec<unknown, unknown>,
             slot: 'ingress',
           }) as never,
         ),

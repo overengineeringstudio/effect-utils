@@ -1,6 +1,7 @@
 import { it as fcIt } from '@effect/vitest'
 import * as restate from '@restatedev/restate-sdk'
 import { Schema } from 'effect'
+import * as FastCheck from 'effect/testing/FastCheck'
 import { describe, expect, it } from 'vitest'
 
 import { normalizeStateSchema } from '../authoring/RestateContext.ts'
@@ -13,7 +14,7 @@ const textEncoder = new TextEncoder()
 
 describe('effectSerde', () => {
   it('round-trips a plain struct', () => {
-    const schema = Schema.Struct({ name: Schema.String, age: Schema.Number })
+    const schema = Schema.Struct({ name: Schema.String, age: Schema.Finite })
     const serde = effectSerde({ schema })
     const value = { name: 'Sarah', age: 42 }
     const bytes = serde.serialize(value)
@@ -25,7 +26,7 @@ describe('effectSerde', () => {
   it('handles a transformed schema where encoded ≠ decoded', () => {
     /* Date <-> ISO string: encode produces the wire (`I`) shape, decode
      * reconstructs the rich (`A`) value. */
-    const schema = Schema.Struct({ at: Schema.Date })
+    const schema = Schema.Struct({ at: Schema.DateFromString })
     const serde = effectSerde({ schema })
     const value = { at: new Date('2026-06-08T12:00:00.000Z') }
 
@@ -48,14 +49,14 @@ describe('effectSerde', () => {
 
   it('honors the Restate.serde annotation contentType override', () => {
     const schema = Restate.serde({
-      self: Schema.Struct({ n: Schema.Number }),
+      self: Schema.Struct({ n: Schema.Finite }),
       options: { contentType: 'application/vnd.custom+json' },
     })
     expect(effectSerde({ schema }).contentType).toBe('application/vnd.custom+json')
   })
 
   it('throws TerminalError(400) on a malformed INGRESS input', () => {
-    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
     const badBytes = new TextEncoder().encode(JSON.stringify({ n: 'not-a-number' }))
     try {
       serde.deserialize(badBytes)
@@ -68,7 +69,7 @@ describe('effectSerde', () => {
 
   it('rethrows a raw defect (not a TerminalError) on a malformed INTERNAL slot', () => {
     /* A corrupt-journal decode failure must NOT become a 400 to the caller. */
-    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
     const badBytes = new TextEncoder().encode(JSON.stringify({ n: 'not-a-number' }))
     try {
       serde.deserialize(badBytes)
@@ -81,7 +82,7 @@ describe('effectSerde', () => {
 
 describe('effectSerde wire baselines (cross-major invariant)', () => {
   const WireBaseline = Schema.Struct({
-    at: Schema.Date,
+    at: Schema.DateFromString,
     note: Schema.optional(Schema.String),
     nullable: Schema.NullOr(Schema.String),
     empty: Schema.String,
@@ -92,7 +93,6 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     }),
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; use the approved DateFromString mapping to preserve the ISO wire bytes instead of refreshing this baseline.
   it('serializes representative input bytes with stable key order and null/absent partition', () => {
     const serde = effectSerde({ schema: WireBaseline })
     const value = {
@@ -124,9 +124,10 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     expect(serde.deserialize(new Uint8Array())).toBeUndefined()
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) here; use #978's stable error envelope instead of refreshing the v3 HTTP 400 parser text.
+  // Pins the v3 HTTP 400 parser rendering; #978's stable decode-error envelope
+  // replaces this transport text when it lands.
   it('captures ingress decode failure transport bytes for invalid input', () => {
-    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
     const cases = {
       wrongType: JSON.stringify({ n: 'not-a-number' }),
       malformedJson: '{"n":',
@@ -151,14 +152,15 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     expect(failures).toMatchInlineSnapshot(`
       {
         "malformedJson": "{"code":400,"message":"serde decode failed: Unexpected end of JSON input","metadata":{}}",
-        "wrongType": "{"code":400,"message":"serde decode failed: { readonly n: number }\\n└─ [\\"n\\"]\\n   └─ Expected number, actual \\"not-a-number\\"","metadata":{}}",
+        "wrongType": "{"code":400,"message":"serde decode failed: Expected number\\n  at [\\"n\\"]","metadata":{}}",
       }
     `)
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) here; re-baseline only after confirming this remains an internal structural failure outside #978's stable ingress envelope.
+  // Internal decode failure must stay outside #978's stable ingress 400
+  // envelope; re-baseline only after confirming that partition survives.
   it('keeps internal decode failures out of the ingress 400 transport partition', () => {
-    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Number }) })
+    const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
 
     try {
       serde.deserialize(textEncoder.encode(JSON.stringify({ n: 'not-a-number' })))
@@ -169,16 +171,14 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
           terminal: error instanceof restate.TerminalError,
           message: error instanceof Error ? error.message : String(error),
         }),
-      ).toMatchInlineSnapshot(
-        `"{"terminal":false,"message":"{ readonly n: number }\\n└─ [\\"n\\"]\\n   └─ Expected number, actual \\"not-a-number\\""}"`,
-      )
+      ).toMatchInlineSnapshot(`"{"terminal":false,"message":"Expected number\\n  at [\\"n\\"]"}"`)
     }
   })
 })
 
 describe('State.for optional field serde (papercut)', () => {
   it('a plain Schema state field passes through normalize unchanged', () => {
-    const serde = effectSerde({ schema: normalizeStateSchema(Schema.Number) })
+    const serde = effectSerde({ schema: normalizeStateSchema(Schema.Finite) })
     expect(serde.deserialize(serde.serialize(42))).toBe(42)
   })
 
@@ -197,7 +197,7 @@ describe('State.for optional field serde (papercut)', () => {
  * ≡ x` over an `Arbitrary` derived from the schema is first-class" is made REAL
  * here: `@effect/vitest` `it.prop` derives a `fast-check` arbitrary from each
  * schema and asserts `deserialize(serialize(x))` is equivalent to `x` for every
- * generated value. Comparison uses `Schema.equivalence(schema)` — NOT
+ * generated value. Comparison uses `Schema.toEquivalence(schema)` — NOT
  * `toStrictEqual` — so transformed/branded values compare by their decoded VALUE,
  * the property that actually matters for a serde.
  */
@@ -209,9 +209,9 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
     active: Schema.Boolean,
     tags: Schema.Array(Schema.String),
   })
-  fcIt.prop('round-trips a plain struct', [Plain], ([value]) => {
+  fcIt.prop('round-trips a plain struct', [Schema.toArbitrary(Plain)(FastCheck)], ([value]) => {
     const serde = effectSerde({ schema: Plain })
-    const eq = Schema.equivalence(Plain)
+    const eq = Schema.toEquivalence(Plain)
     expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
   })
 
@@ -219,14 +219,18 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const UserId = Schema.String.pipe(Schema.brand('UserId'))
   const Transformed = Schema.Struct({
     id: UserId,
-    createdAt: Schema.Date,
-    score: Schema.BigInt,
+    createdAt: Schema.DateFromString,
+    score: Schema.BigIntFromString,
   })
-  fcIt.prop('round-trips a transformed schema (encoded ≠ decoded)', [Transformed], ([value]) => {
-    const serde = effectSerde({ schema: Transformed })
-    const eq = Schema.equivalence(Transformed)
-    expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
-  })
+  fcIt.prop(
+    'round-trips a transformed schema (encoded ≠ decoded)',
+    [Schema.toArbitrary(Transformed)(FastCheck)],
+    ([value]) => {
+      const serde = effectSerde({ schema: Transformed })
+      const eq = Schema.toEquivalence(Transformed)
+      expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
+    },
+  )
 
   /* An OPTIONAL state field (the `normalizeStateSchema` papercut path): a present
    * value must round-trip through the recovered value schema. Constrained to a
@@ -237,17 +241,17 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const OptionalState = normalizeStateSchema(Schema.optional(FiniteValue))
   fcIt.prop(
     'round-trips an optional state field value (normalizeStateSchema)',
-    [FiniteValue],
+    [Schema.toArbitrary(FiniteValue)(FastCheck)],
     ([value]) => {
       const serde = effectSerde({ schema: OptionalState })
-      const eq = Schema.equivalence(OptionalState)
+      const eq = Schema.toEquivalence(OptionalState)
       expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
     },
   )
 
   /* CRITICAL: the redaction transform itself — `encrypt(decrypt(x)) ≡ x`. A fresh
    * IV per encrypt means the wire bytes differ each time, so the round-trip holds
-   * by VALUE (the whole point of `Schema.equivalence` over byte equality). */
+   * by VALUE (the whole point of `Schema.toEquivalence` over byte equality). */
   const Redacted = Schema.Struct({
     to: Schema.String,
     body: Restate.sensitive(Schema.String),
@@ -258,10 +262,10 @@ describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', (
   const cipher = aesGcmCipher(new Uint8Array(32).fill(7))
   fcIt.prop(
     'round-trips the redaction transform by value (encrypt∘decrypt ≡ id)',
-    [Redacted],
+    [Schema.toArbitrary(Redacted)(FastCheck)],
     ([value]) => {
       const serde = effectSerde({ schema: Redacted, slot: 'internal', redaction: cipher })
-      const eq = Schema.equivalence(Redacted)
+      const eq = Schema.toEquivalence(Redacted)
       expect(eq(serde.deserialize(serde.serialize(value)), value)).toBe(true)
     },
   )

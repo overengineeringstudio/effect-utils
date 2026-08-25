@@ -1,6 +1,5 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, FileSystem } from 'effect'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -9,7 +8,7 @@ import { Vitest } from '@overeng/utils-dev/node-vitest'
 import { writeSchemaToFile } from './output.ts'
 
 /** Layer providing NodeContext for file system operations */
-const TestLayer = NodeContext.layer
+const TestLayer = NodeServices.layer
 
 Vitest.describe('output', () => {
   Vitest.describe('writeSchemaToFile', () => {

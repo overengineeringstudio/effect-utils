@@ -1,7 +1,6 @@
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, FileSystem, Layer, Schema } from 'effect'
 
 import { SessionCheckpointDecodeError, SessionCheckpointWriteError } from '../errors.ts'
 import type { ArtifactDescriptor, IngestionCheckpoint } from '../schema/core.ts'
@@ -13,72 +12,68 @@ export const buildCheckpointKey = (
 ) => JSON.stringify([descriptor.sourceId, descriptor.artifactId] as const)
 
 /** Service for loading and saving deduped ingestion checkpoints. */
-export class CheckpointStore extends Context.Tag('AgentSessionIngest/CheckpointStore')<
+export class CheckpointStore extends Context.Service<
   CheckpointStore,
   {
-    readonly list: () => Effect.Effect<
-      ReadonlyArray<IngestionCheckpoint>,
-      SessionCheckpointDecodeError
-    >
+    readonly list: Effect.Effect<ReadonlyArray<IngestionCheckpoint>, SessionCheckpointDecodeError>
     readonly saveAll: (
       checkpoints: ReadonlyArray<IngestionCheckpoint>,
     ) => Effect.Effect<void, SessionCheckpointWriteError>
   }
->() {}
+>()('AgentSessionIngest/CheckpointStore') {}
 
 /** File-backed checkpoint store for incremental source ingestion. */
 export const makeFileCheckpointStore = (options: { path: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
-    const list = () =>
-      Effect.gen(function* () {
-        const exists = yield* fs.exists(options.path)
-        if (exists !== true) return [] as Array<IngestionCheckpoint>
+    const list = Effect.gen(function* () {
+      const exists = yield* fs.exists(options.path)
+      if (exists !== true) return [] as Array<IngestionCheckpoint>
 
-        const content = yield* fs.readFileString(options.path).pipe(
+      const content = yield* fs.readFileString(options.path).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SessionCheckpointDecodeError({
+              message: 'Failed to read checkpoint file',
+              path: options.path,
+              cause,
+            }),
+        ),
+      )
+
+      const lines = content
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+
+      const checkpoints: Array<IngestionCheckpoint> = []
+      for (const line of lines) {
+        const decoded = yield* Schema.decodeUnknownEffect(IngestionCheckpointJsonLine)(line).pipe(
           Effect.mapError(
             (cause) =>
               new SessionCheckpointDecodeError({
-                message: 'Failed to read checkpoint file',
+                message: 'Failed to decode checkpoint entry',
                 path: options.path,
                 cause,
               }),
           ),
         )
+        checkpoints.push(decoded)
+      }
 
-        const lines = content
-          .split('\n')
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0)
-
-        const checkpoints: Array<IngestionCheckpoint> = []
-        for (const line of lines) {
-          const decoded = yield* Schema.decodeUnknown(IngestionCheckpointJsonLine)(line).pipe(
-            Effect.mapError(
-              (cause) =>
-                new SessionCheckpointDecodeError({
-                  message: 'Failed to decode checkpoint entry',
-                  path: options.path,
-                  cause,
-                }),
-            ),
-          )
-          checkpoints.push(decoded)
-        }
-
-        return checkpoints
-      }).pipe(
-        Effect.mapError((cause) =>
-          cause instanceof SessionCheckpointDecodeError
-            ? cause
-            : new SessionCheckpointDecodeError({
-                message: 'Failed to load checkpoints',
-                path: options.path,
-                cause,
-              }),
-        ),
-      )
+      return checkpoints
+    }).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof SessionCheckpointDecodeError
+          ? cause
+          : new SessionCheckpointDecodeError({
+              message: 'Failed to load checkpoints',
+              path: options.path,
+              cause,
+            }),
+      ),
+    )
 
     return {
       list,
@@ -87,7 +82,7 @@ export const makeFileCheckpointStore = (options: { path: string }) =>
           const directory = nodePath.dirname(options.path)
           yield* fs
             .makeDirectory(directory, { recursive: true })
-            .pipe(Effect.catchAll(() => Effect.void))
+            .pipe(Effect.catch(() => Effect.void))
 
           const deduped = new Map<string, IngestionCheckpoint>()
           for (const checkpoint of checkpoints) {
@@ -95,7 +90,7 @@ export const makeFileCheckpointStore = (options: { path: string }) =>
           }
 
           const encodedLines = yield* Effect.forEach([...deduped.values()], (checkpoint) =>
-            Schema.encode(IngestionCheckpointJsonLine)(checkpoint).pipe(
+            Schema.encodeEffect(IngestionCheckpointJsonLine)(checkpoint).pipe(
               Effect.mapError(
                 (cause) =>
                   new SessionCheckpointWriteError({

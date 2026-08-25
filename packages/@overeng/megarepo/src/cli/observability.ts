@@ -78,7 +78,7 @@ const trustOtelContract = <A, E, R>(
   effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
 ): Effect.Effect<A, E, R> =>
   effect.pipe(
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       typeof error === 'object' &&
       error !== null &&
       '_tag' in error &&
@@ -89,7 +89,7 @@ const trustOtelContract = <A, E, R>(
   ) as Effect.Effect<A, E, R>
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -101,7 +101,7 @@ const trustedWith =
 
 /** Like {@link trustedWith} but forces a ROOT span (used for the top-level `megarepo/store/gc`). */
 const trustedWithRoot =
-  <S extends Schema.Schema.AnyNoContext>({
+  <S extends Schema.Codec<any>>({
     operation,
     attributes,
   }: {
@@ -111,7 +111,7 @@ const trustedWithRoot =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.withRoot({ attributes, effect }))
 
-const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>({
+const trustedAnnotate = <S extends Schema.Codec<any>>({
   operation,
   attributes,
 }: {
@@ -490,7 +490,7 @@ export const withStoreGcPhaseSpan = ({
 // The registry `metric()` DSL types `.metric` as the general `OtelMetricDefinition` (it does not
 // narrow by instrument); this contract authors it as a gauge, so narrow it for the effect bridge.
 const storeGcRssGaugeBridge = OtelMetric.effect.gauge(
-  StoreGcRssGauge.metric as OtelGaugeDefinition<Schema.Schema.AnyNoContext>,
+  StoreGcRssGauge.metric as OtelGaugeDefinition<Schema.Codec<any>>,
 )
 
 /**

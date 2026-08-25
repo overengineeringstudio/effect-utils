@@ -313,12 +313,14 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(ciWorkflowSource).toContain(
       `const defaultPnpmStateHashFilesExpression = "\${{ hashFiles('**/pnpm-lock.yaml') }}"`,
     )
-    expect(ciWorkflowSource).toContain('`${keyPrefix}-${pnpmStateCacheVersion}-')
+    expect(ciWorkflowSource).toContain('`${args.keyPrefix}-${pnpmStateCacheVersion}-')
   })
 
   it('allows repositories to narrow pnpm state hashing without redefining cache steps', () => {
     expect(ciWorkflowSource).toContain('hashFilesExpression?: string')
-    expect(ciWorkflowSource).toContain('pnpmStateCachePrimaryKey(keyPrefix, hashFilesExpression)')
+    expect(ciWorkflowSource).toContain(
+      'pnpmStateCachePrimaryKey({ keyPrefix, hashFilesExpression })',
+    )
   })
 
   it('defaults the pnpm store to a workspace-relative path stable across jobs', () => {

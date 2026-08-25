@@ -7,7 +7,7 @@ import { Schema } from 'effect'
  * named key the upstream adds should be added here so it's reachable from
  * the typed `Key` schema rather than via a free string.
  */
-export const NamedKey = Schema.Literal(
+export const NamedKey = Schema.Literals([
   'return',
   'enter',
   'tab',
@@ -36,7 +36,7 @@ export const NamedKey = Schema.Literal(
   'f10',
   'f11',
   'f12',
-)
+])
 export type NamedKey = typeof NamedKey.Type
 
 /**
@@ -49,7 +49,10 @@ export type NamedKey = typeof NamedKey.Type
  * checked by upstream's `resolveKey` (which throws on unknown specs —
  * we surface that as a `WriteFailed` PtyError).
  */
-export const Key = Schema.String.pipe(Schema.minLength(1), Schema.brand('@overeng/pty-effect/Key'))
+export const Key = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1)),
+  Schema.brand('@overeng/pty-effect/Key'),
+)
 export type Key = typeof Key.Type
 
 /** Helper to construct a Key from a string literal at call sites. */

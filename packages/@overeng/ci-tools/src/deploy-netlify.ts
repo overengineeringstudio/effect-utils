@@ -3,8 +3,9 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
-import { HttpClient, HttpClientRequest } from '@effect/platform'
-import { Effect, Either, Schema } from 'effect'
+import { Effect, Result, Schema } from 'effect'
+import * as HttpClient from 'effect/unstable/http/HttpClient'
+import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 
 import {
   DeployInputV1,
@@ -32,8 +33,8 @@ import {
   writeGithubWorkflowReportOutput,
 } from './deploy-io.ts'
 
-const decodeInputEither = Schema.decodeUnknownEither(DeployInputV1)
-const decodeResultEither = Schema.decodeUnknownEither(DeployResultV1)
+const decodeInputEither = Schema.decodeUnknownResult(DeployInputV1)
+const decodeResultEither = Schema.decodeUnknownResult(DeployResultV1)
 
 export type NetlifyDeployCommandOptions = {
   readonly target: string
@@ -61,21 +62,20 @@ export type NetlifyDeployCommandOptions = {
   readonly e2eVerifyText?: string | undefined
 }
 
-const HttpsUrlString = Schema.NonEmptyTrimmedString.pipe(
-  Schema.pattern(/^https:\/\/[^\s]+$/u),
-  Schema.annotations({ identifier: 'CiTools.Netlify.HttpsUrlString' }),
-)
+const HttpsUrlString = Schema.NonEmptyString.check(
+  Schema.isPattern(/^https:\/\/[^\s]+$/u),
+).annotate({ identifier: 'CiTools.Netlify.HttpsUrlString' })
 
 const NetlifyDeployJson = Schema.Struct({
-  deploy_id: Schema.NonEmptyTrimmedString,
-  site_name: Schema.NonEmptyTrimmedString,
+  deploy_id: Schema.NonEmptyString,
+  site_name: Schema.NonEmptyString,
   deploy_url: HttpsUrlString,
-}).annotations({ identifier: 'CiTools.Netlify.DeployJson' })
+}).annotate({ identifier: 'CiTools.Netlify.DeployJson' })
 
 const NetlifySiteJson = Schema.Struct({
-  name: Schema.optional(Schema.NonEmptyTrimmedString),
-  account_slug: Schema.optional(Schema.NonEmptyTrimmedString),
-}).annotations({ identifier: 'CiTools.Netlify.SiteJson' })
+  name: Schema.optional(Schema.NonEmptyString),
+  account_slug: Schema.optional(Schema.NonEmptyString),
+}).annotate({ identifier: 'CiTools.Netlify.SiteJson' })
 
 const isoNow = () => new Date().toISOString()
 
@@ -112,7 +112,7 @@ const decodeDeployInput = Effect.fn('ci-tools.deploy.netlify.decode-input')(func
   value: unknown,
 ) {
   const decoded = decodeInputEither(value)
-  if (Either.isRight(decoded) === true) return decoded.right
+  if (Result.isSuccess(decoded) === true) return decoded.success
   return yield* new InvalidProviderOutput({
     provider: 'netlify',
     target:
@@ -124,7 +124,7 @@ const decodeDeployInput = Effect.fn('ci-tools.deploy.netlify.decode-input')(func
         : 'netlify',
     outputKind: 'provider-response',
     message: 'Netlify deploy input did not match the ci-tools schema',
-    diagnostics: { cause: String(decoded.left) },
+    diagnostics: { cause: String(decoded.failure) },
   })
 })
 
@@ -182,22 +182,16 @@ const fetchNetlifyJson = Effect.fn('ci-tools.deploy.netlify.fetch-json')(functio
       Effect.flatMap((response) =>
         response.text.pipe(Effect.map((text) => ({ status: response.status, text }))),
       ),
-      Effect.catchTags({
-        RequestError: (cause) =>
+      Effect.catchTag(
+        'HttpClientError',
+        (cause) =>
           new ProviderProjectLookupFailed({
             provider: 'netlify',
             target: opts.target,
             transient: true,
             message: cause.message,
           }),
-        ResponseError: (cause) =>
-          new ProviderProjectLookupFailed({
-            provider: 'netlify',
-            target: opts.target,
-            transient: true,
-            message: cause.message,
-          }),
-      }),
+      ),
     )
 })
 
@@ -251,8 +245,8 @@ const resolveNetlifySite = Effect.fn('ci-tools.deploy.netlify.resolve-site')(fun
     })
   }
 
-  const decoded = Schema.decodeUnknownEither(Schema.parseJson(NetlifySiteJson))(response.text)
-  if (Either.isLeft(decoded) === true) {
+  const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(NetlifySiteJson))(response.text)
+  if (Result.isFailure(decoded) === true) {
     return yield* new ProviderProjectLookupFailed({
       provider: 'netlify',
       target: opts.target,
@@ -262,8 +256,8 @@ const resolveNetlifySite = Effect.fn('ci-tools.deploy.netlify.resolve-site')(fun
     })
   }
   return {
-    siteName: decoded.right.name,
-    accountSlug: decoded.right.account_slug,
+    siteName: decoded.success.name,
+    accountSlug: decoded.success.account_slug,
   }
 })
 
@@ -328,9 +322,9 @@ const parseDeployJson = Effect.fn('ci-tools.deploy.netlify.parse-json')(function
   readonly stdout: string
   readonly authToken: string
 }) {
-  const decoded = Schema.decodeUnknownEither(Schema.parseJson(NetlifyDeployJson))(opts.stdout)
-  if (Either.isRight(decoded) === true) {
-    return decoded.right
+  const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(NetlifyDeployJson))(opts.stdout)
+  if (Result.isSuccess(decoded) === true) {
+    return decoded.success
   }
   const sanitizedStdout = redactDeployDiagnosticText(opts.stdout, {
     secretValues: [opts.authToken],
@@ -363,8 +357,9 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.netlify.verify-once')(func
       Effect.flatMap((result) =>
         result.text.pipe(Effect.map((text) => ({ status: result.status, text }))),
       ),
-      Effect.catchTags({
-        RequestError: (cause) =>
+      Effect.catchTag(
+        'HttpClientError',
+        (cause) =>
           new VerificationFailed({
             provider: 'netlify',
             target: opts.target,
@@ -373,16 +368,7 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.netlify.verify-once')(func
             message: cause.message,
             diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
           }),
-        ResponseError: (cause) =>
-          new VerificationFailed({
-            provider: 'netlify',
-            target: opts.target,
-            finalUrl: opts.finalUrl,
-            transient: true,
-            message: cause.message,
-            diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
-          }),
-      }),
+      ),
     )
 
   if (response.status < 200 || response.status >= 300) {
@@ -416,9 +402,9 @@ const verifyFinalUrl = Effect.fn('ci-tools.deploy.netlify.verify')(function* (op
 }) {
   let lastFailure: VerificationFailed | undefined
   for (let attempt = 1; attempt <= 10; attempt += 1) {
-    const result = yield* verifyFinalUrlOnce({ ...opts, attempt }).pipe(Effect.either)
-    if (Either.isRight(result) === true) return
-    lastFailure = result.left
+    const result = yield* verifyFinalUrlOnce({ ...opts, attempt }).pipe(Effect.result)
+    if (Result.isSuccess(result) === true) return
+    lastFailure = result.failure
     if (attempt < 10) {
       yield* Effect.sleep('2 seconds')
     }
@@ -487,7 +473,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
         createdAtUtc,
         secretValues: authTokenValue === undefined ? [] : [authTokenValue],
       }),
-    }).pipe(Effect.zipRight(Effect.fail(failure)))
+    }).pipe(Effect.andThen(Effect.fail(failure)))
   const skipWithRecord = (reason: string) =>
     emitWorkflowReportRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
@@ -519,7 +505,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
     alias,
     allowSharedProject: options.e2eAllowSharedProject,
     reservedAliasPrefix: options.e2eReservedAliasPrefix,
-  }).pipe(Effect.catchAll(failWithRecord))
+  }).pipe(Effect.catch(failWithRecord))
 
   if (existsSync(options.artifactDir) === false) {
     const recordJson = yield* emitWorkflowReportRecord({
@@ -561,17 +547,20 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
     siteId,
     authToken: authTokenValue,
     apiBaseUrl: options.netlifyApiBaseUrl,
-  }).pipe(Effect.either)
-  if (Either.isLeft(resolvedSiteResult) === true) {
-    if (resolvedSiteResult.left._tag === 'Unauthorized' && options.unauthorizedPolicy === 'skip') {
+  }).pipe(Effect.result)
+  if (Result.isFailure(resolvedSiteResult) === true) {
+    if (
+      resolvedSiteResult.failure._tag === 'Unauthorized' &&
+      options.unauthorizedPolicy === 'skip'
+    ) {
       yield* skipWithRecord(
         `Skipping ${options.target} deploy because the configured Netlify credentials cannot retrieve the project.`,
       )
       return
     }
-    return yield* failWithRecord(resolvedSiteResult.left)
+    return yield* failWithRecord(resolvedSiteResult.failure)
   }
-  const resolvedSite = resolvedSiteResult.right
+  const resolvedSite = resolvedSiteResult.success
 
   const siteName = options.siteName ?? resolvedSite.siteName
   const args = [
@@ -618,7 +607,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
     target: options.target,
     stdout: result.stdout,
     authToken: authTokenValue,
-  }).pipe(Effect.catchAll(failWithRecord))
+  }).pipe(Effect.catch(failWithRecord))
   const finalSiteName = siteName ?? deployJson.site_name
   const finalUrl =
     alias === undefined ? deployJson.deploy_url : `https://${alias}--${finalSiteName}.netlify.app`
@@ -646,7 +635,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
       : {}),
   })
 
-  if (Either.isLeft(decoded) === true) {
+  if (Result.isFailure(decoded) === true) {
     return yield* failWithRecord(
       new InvalidProviderOutput({
         provider: 'netlify',
@@ -661,27 +650,27 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
   if (input.e2e?.verifyContent !== undefined) {
     yield* verifyFinalUrl({
       target: input.target,
-      finalUrl: decoded.right.finalUrl,
+      finalUrl: decoded.success.finalUrl,
       path: input.e2e.verifyContent.path,
       expectedText: input.e2e.verifyContent.expectedText,
-    }).pipe(Effect.catchAll(failWithRecord))
+    }).pipe(Effect.catch(failWithRecord))
   }
 
   process.stdout.write(`Netlify deploy URL: ${finalUrl}\n`)
   yield* writeDevenvTaskOutput({
-    result: decoded.right,
+    result: decoded.success,
     taskOutputFile: process.env.DEVENV_TASK_OUTPUT_FILE,
   })
   const recordJson = yield* emitWorkflowReportRecord({
     workflowReportOutputFile: options.workflowReportOutputFile,
     record: deploySuccessRecord({
       input,
-      result: decoded.right,
+      result: decoded.success,
       createdAtUtc,
     }),
   })
   yield* writeGithubDeployOutputs({
-    result: decoded.right,
+    result: decoded.success,
     recordJson,
     workflowReportOutputFile: options.workflowReportOutputFile,
     githubOutputFile: options.githubOutputFile,

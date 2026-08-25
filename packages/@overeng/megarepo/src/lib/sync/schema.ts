@@ -14,7 +14,7 @@ import { RefMismatch } from '../issues.ts'
 // =============================================================================
 
 /** Member sync status */
-export const MemberSyncStatus = Schema.Literal(
+export const MemberSyncStatus = Schema.Literals([
   'cloned',
   'synced',
   'already_synced',
@@ -24,12 +24,12 @@ export const MemberSyncStatus = Schema.Literal(
   'recorded',
   'applied',
   'removed',
-)
+])
 /** Inferred type for the possible outcomes of syncing a single member. */
 export type MemberSyncStatus = Schema.Schema.Type<typeof MemberSyncStatus>
 
 /** Sync mode. */
-export const SyncMode = Schema.Literal('fetch', 'apply', 'lock')
+export const SyncMode = Schema.Literals(['fetch', 'apply', 'lock'])
 /** Inferred type for sync mode. */
 export type SyncMode = Schema.Schema.Type<typeof SyncMode>
 
@@ -81,16 +81,16 @@ export const defaultSyncOptions: SyncOptions = {
 
 /** Schema for aggregated sync result counts by status category. */
 export const SyncSummary = Schema.Struct({
-  cloned: Schema.Number,
-  synced: Schema.Number,
-  updated: Schema.Number,
-  recorded: Schema.Number,
-  applied: Schema.Number,
-  alreadySynced: Schema.Number,
-  skipped: Schema.Number,
-  errors: Schema.Number,
-  removed: Schema.Number,
-  total: Schema.Number,
+  cloned: Schema.Finite,
+  synced: Schema.Finite,
+  updated: Schema.Finite,
+  recorded: Schema.Finite,
+  applied: Schema.Finite,
+  alreadySynced: Schema.Finite,
+  skipped: Schema.Finite,
+  errors: Schema.Finite,
+  removed: Schema.Finite,
+  total: Schema.Finite,
 })
 /** Inferred type for aggregated sync summary counts. */
 export type SyncSummary = Schema.Schema.Type<typeof SyncSummary>
@@ -108,13 +108,14 @@ export type MegarepoSyncTree = {
 }
 
 /** Recursive schema for nested megarepo sync results. */
-export const MegarepoSyncTree: Schema.Schema<MegarepoSyncTree> = Schema.suspend(() =>
-  Schema.Struct({
-    root: Schema.String,
-    results: Schema.Array(MemberSyncResult),
-    nestedMegarepos: Schema.Array(Schema.String),
-    nestedResults: Schema.Array(MegarepoSyncTree),
-  }),
+export const MegarepoSyncTree: Schema.Codec<MegarepoSyncTree, MegarepoSyncTree> = Schema.suspend(
+  () =>
+    Schema.Struct({
+      root: Schema.String,
+      results: Schema.Array(MemberSyncResult),
+      nestedMegarepos: Schema.Array(Schema.String),
+      nestedResults: Schema.Array(MegarepoSyncTree),
+    }),
 )
 
 /** Flattened error item (includes nested megarepo root). */

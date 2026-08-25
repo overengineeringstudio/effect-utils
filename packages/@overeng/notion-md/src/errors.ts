@@ -10,7 +10,7 @@ export class NmdFrontmatterError extends Schema.TaggedError<NmdFrontmatterError>
   {
     path: Schema.String,
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -21,7 +21,7 @@ export class NmdObjectStoreError extends Schema.TaggedError<NmdObjectStoreError>
     path: Schema.String,
     object_path: Schema.String,
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -33,7 +33,7 @@ export class NmdConflictError extends Schema.TaggedError<NmdConflictError>()('Nm
   local_changed: Schema.Boolean,
   remote_changed: Schema.Boolean,
   conflict_path: Schema.optional(Schema.String),
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {}
 
 /** Raised when local filesystem IO fails while reading or writing sync state. */
@@ -43,7 +43,7 @@ export class NmdFileSystemError extends Schema.TaggedError<NmdFileSystemError>()
     operation: Schema.String,
     path: Schema.String,
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -55,7 +55,7 @@ export class NmdGatewayError extends Schema.TaggedError<NmdGatewayError>()('NmdG
   /** Log-safe fingerprint of the active Notion integration token (see `notionTokenFingerprint`). */
   token_fingerprint: Schema.optional(Schema.String),
   message: Schema.String,
-  cause: Schema.optional(Schema.Defect),
+  cause: Schema.optional(Schema.Defect()),
 }) {}
 
 /** Raised when remote Markdown cannot safely become a clean body base. */
@@ -173,7 +173,7 @@ export class NmdUnresolvablePageError extends Schema.TaggedError<NmdUnresolvable
   {
     page: Schema.String,
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 
@@ -195,7 +195,7 @@ export class NmdEditorAbortedError extends Schema.TaggedError<NmdEditorAbortedEr
   {
     page_id: Schema.String,
     editor: Schema.String,
-    exit_code: Schema.Number,
+    exit_code: Schema.Finite,
     message: Schema.String,
   },
 ) {}
@@ -223,7 +223,7 @@ export class NmdPartialWriteError extends Schema.TaggedError<NmdPartialWriteErro
     body_written: Schema.Boolean,
     title_written: Schema.Boolean,
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {}
 

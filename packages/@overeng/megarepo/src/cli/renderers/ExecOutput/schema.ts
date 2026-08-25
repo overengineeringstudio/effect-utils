@@ -16,9 +16,9 @@ export const MemberExecStatus = Schema.Struct({
   /** Member name */
   name: Schema.String,
   /** Current execution status */
-  status: Schema.Literal('pending', 'running', 'success', 'error', 'skipped'),
+  status: Schema.Literals(['pending', 'running', 'success', 'error', 'skipped']),
   /** Exit code (0 = success, non-zero = error) */
-  exitCode: Schema.optional(Schema.Number),
+  exitCode: Schema.optional(Schema.Finite),
   /** Combined stdout output */
   stdout: Schema.optional(Schema.String),
   /** Combined stderr output */
@@ -40,7 +40,7 @@ export const ExecRunningState = Schema.TaggedStruct('Running', {
   /** Command being executed */
   command: Schema.String,
   /** Execution mode */
-  mode: Schema.Literal('parallel', 'sequential'),
+  mode: Schema.Literals(['parallel', 'sequential']),
   /** Verbose mode enabled */
   verbose: Schema.Boolean,
   /** All member statuses */
@@ -55,7 +55,7 @@ export const ExecCompleteState = Schema.TaggedStruct('Complete', {
   /** Command that was executed */
   command: Schema.String,
   /** Execution mode used */
-  mode: Schema.Literal('parallel', 'sequential'),
+  mode: Schema.Literals(['parallel', 'sequential']),
   /** Verbose mode enabled */
   verbose: Schema.Boolean,
   /** All member results */
@@ -76,7 +76,7 @@ export const ExecErrorState = Schema.TaggedStruct('Error', {
 /**
  * State for exec command - discriminated by _tag property.
  */
-export const ExecState = Schema.Union(ExecRunningState, ExecCompleteState, ExecErrorState)
+export const ExecState = Schema.Union([ExecRunningState, ExecCompleteState, ExecErrorState])
 
 export type ExecState = typeof ExecState.Type
 
@@ -101,11 +101,11 @@ export const isExecRunning = (state: ExecState): state is typeof ExecRunningStat
 // =============================================================================
 
 /** Tagged union of actions that can be dispatched to update exec state. */
-export const ExecAction = Schema.Union(
+export const ExecAction = Schema.Union([
   /** Initialize exec with members */
   Schema.TaggedStruct('Start', {
     command: Schema.String,
-    mode: Schema.Literal('parallel', 'sequential'),
+    mode: Schema.Literals(['parallel', 'sequential']),
     verbose: Schema.Boolean,
     members: Schema.Array(Schema.String),
   }),
@@ -113,8 +113,8 @@ export const ExecAction = Schema.Union(
   /** Update a member's status */
   Schema.TaggedStruct('UpdateMember', {
     name: Schema.String,
-    status: Schema.Literal('pending', 'running', 'success', 'error', 'skipped'),
-    exitCode: Schema.optional(Schema.Number),
+    status: Schema.Literals(['pending', 'running', 'success', 'error', 'skipped']),
+    exitCode: Schema.optional(Schema.Finite),
     stdout: Schema.optional(Schema.String),
     stderr: Schema.optional(Schema.String),
   }),
@@ -127,7 +127,7 @@ export const ExecAction = Schema.Union(
     error: Schema.String,
     message: Schema.String,
   }),
-)
+])
 
 /** Inferred type for exec actions. */
 export type ExecAction = Schema.Schema.Type<typeof ExecAction>

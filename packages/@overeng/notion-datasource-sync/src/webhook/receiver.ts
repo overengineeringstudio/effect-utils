@@ -1,7 +1,7 @@
 import { createServer, type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import { Effect, Runtime, Schema } from 'effect'
+import { type Context, Effect, Result, Schema } from 'effect'
 
 import { DataSourceId, PageId } from '../core/domain.ts'
 import type { SyncRootId } from '../core/events.ts'
@@ -34,12 +34,12 @@ export type NotionWebhookReceiverConfig = {
     result: Extract<NotionWebhookDeliveryResult, { readonly _tag: 'signal-enqueued' }>,
   ) => void
   /**
-   * Optional Effect runtime captured from the calling Effect pipeline.
+   * Optional Effect context captured from the calling Effect pipeline.
    * When provided, each webhook delivery is wrapped in a `notion_datasource.webhook.intake`
    * span so that intake attributes (outcome, event type, page/data-source IDs) flow through
    * the configured tracer. Without it the delivery still works — spans are simply not emitted.
    */
-  readonly effectRuntime?: Runtime.Runtime<never>
+  readonly effectContext?: Context.Context<never>
 }
 
 /** Current local receiver state and loopback callback target. */
@@ -144,12 +144,12 @@ const decodeOptional = <TValue>({
   schema,
   value,
 }: {
-  readonly schema: Schema.Schema<TValue, string>
+  readonly schema: Schema.Codec<TValue, string>
   readonly value: string | undefined
 }): TValue | undefined => {
   if (value === undefined) return undefined
-  const decoded = Schema.decodeUnknownEither(schema)(value)
-  return decoded._tag === 'Right' ? decoded.right : undefined
+  const decoded = Schema.decodeUnknownResult(schema)(value)
+  return Result.isSuccess(decoded) === true ? decoded.success : undefined
 }
 
 /** Convert a secret-safe Notion webhook signal into the durable signal-inbox contract. */
@@ -295,12 +295,12 @@ export const startNotionWebhookReceiver = async (
         verificationToken,
       })
 
-      // When an Effect runtime is present, emit the intake span with outcome/attribution
+      // When an Effect context is present, emit the intake span with outcome/attribution
       // attributes. Awaited so the span is deterministically recorded before the response
       // is sent; errors are swallowed so a tracer failure can never 500 a delivery.
-      if (config.effectRuntime !== undefined) {
+      if (config.effectContext !== undefined) {
         const outcome = webhookOutcomeFromResult(result)
-        await Runtime.runPromise(config.effectRuntime)(
+        await Effect.runPromise(
           Effect.void.pipe(
             withSpan({
               span: 'webhookIntake',
@@ -321,6 +321,7 @@ export const startNotionWebhookReceiver = async (
                   : {}),
               },
             }),
+            Effect.provide(config.effectContext),
           ),
         ).catch(() => {})
       }

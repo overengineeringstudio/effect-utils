@@ -15,9 +15,9 @@
  *   bun examples/viewport-overflow-stress.tsx footer 200 10    # 200 files, 10ms delay
  */
 
-import type { Atom } from '@effect-atom/atom'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
+import type { Atom } from 'effect/unstable/reactivity'
 import React, { useMemo } from 'react'
 
 import { createTuiApp, run, Box, Text, Spinner, useViewport, useTuiAtomValue } from '../src/mod.tsx'
@@ -34,36 +34,36 @@ const FileEntry = Schema.Struct({
   status: Schema.String,
 })
 
-const AppState = Schema.Union(
+const AppState = Schema.Union([
   Schema.TaggedStruct('Discovering', {
     files: Schema.Array(FileEntry),
   }),
   Schema.TaggedStruct('Generating', {
     files: Schema.Array(FileEntry),
-    processed: Schema.Number,
-    total: Schema.Number,
+    processed: Schema.Finite,
+    total: Schema.Finite,
   }),
   Schema.TaggedStruct('Complete', {
     files: Schema.Array(FileEntry),
-    total: Schema.Number,
+    total: Schema.Finite,
   }),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 type AppState = typeof AppState.Type
 
-const AppAction = Schema.Union(
+const AppAction = Schema.Union([
   Schema.TaggedStruct('StartGenerating', {}),
   Schema.TaggedStruct('ProcessFile', {
-    index: Schema.Number,
+    index: Schema.Finite,
     status: Schema.String,
   }),
   Schema.TaggedStruct('MarkActive', {
-    index: Schema.Number,
+    index: Schema.Finite,
   }),
   Schema.TaggedStruct('Finish', {}),
   Schema.TaggedStruct('Interrupted', {}),
-)
+])
 
 type AppAction = typeof AppAction.Type
 
@@ -210,11 +210,11 @@ const StressView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
 // Static scenarios (one-shot, for comparison)
 // =============================================================================
 
-const VerticalState = Schema.Union(
-  Schema.TaggedStruct('Showing', { count: Schema.Number }),
+const VerticalState = Schema.Union([
+  Schema.TaggedStruct('Showing', { count: Schema.Finite }),
   Schema.TaggedStruct('Interrupted', {}),
-)
-const VerticalAction = Schema.Union(Schema.TaggedStruct('Interrupted', {}))
+])
+const VerticalAction = Schema.Union([Schema.TaggedStruct('Interrupted', {})])
 const verticalReducer = ({
   state,
   action,
@@ -357,4 +357,4 @@ const program = Effect.gen(function* () {
   }
 }).pipe(Effect.provide(outputModeLayer('tty')))
 
-program.pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+program.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

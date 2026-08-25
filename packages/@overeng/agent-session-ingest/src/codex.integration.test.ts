@@ -1,8 +1,7 @@
 import { utimesSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
-import { FileSystem } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, FileSystem } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -207,7 +206,6 @@ Vitest.describe('codex adapter integration', () => {
 })
 
 Vitest.describe('codex adapter wire baselines (cross-major invariant)', () => {
-  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date and tightens date handling; preserve timestamp wire strings and keep impossibleDate opaque rather than refreshing these JSONL bytes.
   Vitest.it.effect('ingests representative Codex JSONL records as byte-identical JSON', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
@@ -257,20 +255,20 @@ Vitest.describe('codex adapter wire baselines (cross-major invariant)', () => {
       const artifact = yield* expectSingleArtifact(adapter)
       const result = yield* adapter
         .ingestArtifact({ artifact, checkpoint: undefined })
-        .pipe(Effect.either)
+        .pipe(Effect.result)
 
-      expect(result._tag).toBe('Left')
-      if (result._tag === 'Left') {
-        expect(result.left._tag).toBe('SessionArtifactDecodeError')
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') {
+        expect(result.failure._tag).toBe('SessionArtifactDecodeError')
       }
-      if (result._tag === 'Left' && result.left._tag === 'SessionArtifactDecodeError') {
+      if (result._tag === 'Failure' && result.failure._tag === 'SessionArtifactDecodeError') {
         expect(
           stringifyJson({
-            _tag: result.left._tag,
-            message: result.left.message,
-            sourceId: result.left.sourceId,
-            artifactId: result.left.artifactId,
-            rawRecord: result.left.rawRecord,
+            _tag: result.failure._tag,
+            message: result.failure.message,
+            sourceId: result.failure.sourceId,
+            artifactId: result.failure.artifactId,
+            rawRecord: result.failure.rawRecord,
           }),
         ).toMatchInlineSnapshot(
           `"{"_tag":"SessionArtifactDecodeError","message":"Failed to decode Codex session record","sourceId":"codex","artifactId":"bad","rawRecord":"{\\"timestamp\\":null,\\"type\\":\\"response_item\\",\\"payload\\":{\\"type\\":\\"function_call\\",\\"name\\":\\"tool\\",\\"arguments\\":\\"{}\\",\\"call_id\\":\\"call_bad\\"}}"}"`,

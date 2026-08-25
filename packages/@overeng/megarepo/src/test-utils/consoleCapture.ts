@@ -1,43 +1,63 @@
-import { Console, Effect, Ref } from 'effect'
+import { Writable } from 'node:stream'
+
+import { Console, Effect, Layer } from 'effect'
+
+import { ViewOutputStreamTag } from '@overeng/tui-react'
 
 /**
  * Capture Console output as an in-memory line buffer.
  */
-export const makeConsoleCapture = Effect.gen(function* () {
-  const stdoutLines = yield* Ref.make<ReadonlyArray<string>>([])
-  const stderrLines = yield* Ref.make<ReadonlyArray<string>>([])
+export const makeConsoleCapture = Effect.sync(() => {
+  const stdoutLines: Array<string> = []
+  const stderrLines: Array<string> = []
 
-  const appendStdout = (...args: ReadonlyArray<unknown>) =>
-    Ref.update(stdoutLines, (current) => [...current, ...args.map(String)])
-  const appendStderr = (...args: ReadonlyArray<unknown>) =>
-    Ref.update(stderrLines, (current) => [...current, ...args.map(String)])
-
-  const consoleService: Console.Console = {
-    [Console.TypeId]: Console.TypeId,
-    log: (...args) => appendStdout(...args),
-    error: (...args) => appendStderr(...args),
-    info: (...args) => appendStdout(...args),
-    warn: (...args) => appendStderr(...args),
-    debug: (...args) => appendStdout(...args),
-    trace: (...args) => appendStdout(...args),
-    assert: () => Effect.void,
-    clear: Effect.void,
-    count: () => Effect.void,
-    countReset: () => Effect.void,
-    dir: () => Effect.void,
-    dirxml: () => Effect.void,
-    group: () => Effect.void,
-    groupEnd: Effect.void,
-    table: () => Effect.void,
-    time: () => Effect.void,
-    timeEnd: () => Effect.void,
-    timeLog: () => Effect.void,
-    unsafe: globalThis.console,
+  const appendStdout = (...args: ReadonlyArray<unknown>) => {
+    stdoutLines.push(...args.map(String))
+  }
+  const appendStderr = (...args: ReadonlyArray<unknown>) => {
+    stderrLines.push(...args.map(String))
   }
 
+  const consoleService: Console.Console = Object.assign(Object.create(globalThis.console), {
+    log: appendStdout,
+    error: appendStderr,
+    info: appendStdout,
+    warn: appendStderr,
+    debug: appendStdout,
+    trace: appendStdout,
+    assert: () => {},
+    clear: () => {},
+    count: () => {},
+    countReset: () => {},
+    dir: () => {},
+    dirxml: () => {},
+    group: () => {},
+    groupCollapsed: () => {},
+    groupEnd: () => {},
+    table: () => {},
+    time: () => {},
+    timeEnd: () => {},
+    timeLog: () => {},
+  })
+  // TUI JSON/final output bypasses Console and writes directly to
+  // ViewOutputStreamTag (defaulting to process.stdout), so bind it to a
+  // capturing stream too.
+  // Only `.write()` is consumed, but the service type is NodeJS.WriteStream; narrow the capture.
+  const viewStream = new Writable({
+    write(chunk, _encoding, callback) {
+      for (const line of String(chunk).split('\n')) {
+        if (line !== '') stdoutLines.push(line)
+      }
+      callback()
+    },
+  }) as unknown as NodeJS.WriteStream
+
   return {
-    consoleLayer: Console.setConsole(consoleService),
-    getStdoutLines: Ref.get(stdoutLines),
-    getStderrLines: Ref.get(stderrLines),
+    consoleLayer: Layer.mergeAll(
+      Layer.succeed(Console.Console, consoleService),
+      Layer.succeed(ViewOutputStreamTag, viewStream),
+    ),
+    getStdoutLines: Effect.sync(() => stdoutLines.slice()),
+    getStderrLines: Effect.sync(() => stderrLines.slice()),
   }
 })

@@ -13,10 +13,9 @@ import { Restate, RestateService } from '../src/mod.ts'
 /* ── 1. The application service the handler depends on (ordinary Effect) ──── */
 
 /** An injected greeting prefix — satisfied from the application Layer, not per call. */
-export class Greeting extends Context.Tag('example/Greeting')<
-  Greeting,
-  { readonly prefix: string }
->() {
+export class Greeting extends Context.Service<Greeting, { readonly prefix: string }>()(
+  'example/Greeting',
+) {
   static readonly Default = Layer.succeed(Greeting, { prefix: 'Hello' })
 }
 

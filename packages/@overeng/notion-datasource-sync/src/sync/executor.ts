@@ -1,4 +1,4 @@
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 
 import type { PatchPagePropertiesCommand, RemoteWriteCommand } from '../core/commands.ts'
 import {
@@ -74,10 +74,10 @@ type RemoteWriteResult = {
 /** Canonical payload hashed to verify a relation property patch — the sorted target page ids under a stable tag. */
 const RelationVerificationPayload = Schema.TaggedStruct('relation', {
   pageIds: Schema.Array(Schema.String),
-}).annotations({ identifier: 'NotionDatasourceSync.RelationVerificationPayload' })
+}).annotate({ identifier: 'NotionDatasourceSync.RelationVerificationPayload' })
 
 const encodeRelationVerificationJson = Schema.encodeSync(
-  Schema.parseJson(RelationVerificationPayload),
+  Schema.fromJsonString(RelationVerificationPayload),
 )
 
 const relationPatchVerificationHash = (
@@ -106,7 +106,7 @@ const relationPatchVerificationHash = (
         propertyId: Schema.decodeUnknownSync(PropertyId)(propertyId),
         startCursor: null,
       })
-      .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+      .pipe(Stream.runCollect)
     const terminal = pages.at(-1)
     if (terminal === undefined || terminal.hasMore === true) return undefined
     const pageIds = pages
@@ -536,7 +536,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
         [spanAttr.pageId]: commandPageId(command),
       })
       const before = yield* observeCurrentSurface(command).pipe(
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           recordAttemptState({
             options,
             claimed,
@@ -616,7 +616,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
       }
 
       const writeResult = yield* executeRemoteWrite(command).pipe(
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           recordAttemptState({
             options,
             claimed,
@@ -645,7 +645,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
               requestId: writeResult.requestId,
             }
           : yield* observeCurrentSurface(command).pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 recordAttemptState({
                   options,
                   claimed,
@@ -668,7 +668,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
       const relationPatchHash =
         command._tag === 'PatchPagePropertiesCommand'
           ? yield* relationPatchVerificationHash(command).pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 recordAttemptState({
                   options,
                   claimed,

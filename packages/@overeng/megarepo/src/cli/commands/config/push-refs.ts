@@ -6,15 +6,16 @@
  * Matching is done by canonical URL (org/repo), not by member name.
  */
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
 import React from 'react'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
+  MegarepoConfig,
   findConfigPath,
   getBaseSourceString,
   getMemberPath,
@@ -132,7 +133,7 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
 
       // Write updated config (unless dry-run)
       if (options.dryRun === false) {
-        const updatedConfig = { ...nestedConfig, members: updatedMembers }
+        const updatedConfig = new MegarepoConfig({ ...nestedConfig, members: updatedMembers })
         yield* writeMegarepoConfig({ configPath: configPath, config: updatedConfig })
       }
 
@@ -153,17 +154,17 @@ export const pushRefsCommand = Cli.Command.make(
   'push-refs',
   {
     output: outputOption,
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would change without writing files'),
-      Cli.Options.withDefault(false),
+    dryRun: Cli.Flag.boolean('dry-run').pipe(
+      Cli.Flag.withDescription('Show what would change without writing files'),
+      Cli.Flag.withDefault(false),
     ),
-    all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Recursively push refs to nested-of-nested megarepos'),
-      Cli.Options.withDefault(false),
+    all: Cli.Flag.boolean('all').pipe(
+      Cli.Flag.withDescription('Recursively push refs to nested-of-nested megarepos'),
+      Cli.Flag.withDefault(false),
     ),
-    only: Cli.Options.text('only').pipe(
-      Cli.Options.withDescription('Only push refs for these shared members (comma-separated)'),
-      Cli.Options.optional,
+    only: Cli.Flag.string('only').pipe(
+      Cli.Flag.withDescription('Only push refs for these shared members (comma-separated)'),
+      Cli.Flag.optional,
     ),
   },
   ({ output, dryRun, all, only }) =>

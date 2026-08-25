@@ -5,8 +5,8 @@
  * Output: .vscode/megarepo.code-workspace in the megarepo root.
  */
 
-import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 
 import {
   type AbsoluteDirPath,

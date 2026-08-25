@@ -16,12 +16,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [
   '@effect/opentelemetry',
-  '@effect/experimental',
-  '@effect/cluster',
-  '@effect/workflow',
-  '@effect/platform',
   '@effect/platform-node',
-  '@effect/rpc',
   '@playwright/test',
   'effect',
 ] as const

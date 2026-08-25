@@ -1,7 +1,6 @@
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
-import { Effect, Layer, Metric, MetricLabel, Schema } from 'effect'
+import { Effect, FileSystem, Layer, Metric, Schema } from 'effect'
 
 import { TraceJson, writeCaptureDiagnostics } from './diagnostics.ts'
 import {
@@ -11,7 +10,7 @@ import {
 } from './test-harness.ts'
 
 describe('OteliteTestHarness', () => {
-  it.scopedLive(
+  it.live(
     'captures in-process spans through the provided OTLP layer',
     () =>
       Effect.gen(function* () {
@@ -40,11 +39,11 @@ describe('OteliteTestHarness', () => {
         expect(trace.expectSameTrace([{ name: root.name }, { name: child.name }])).toBe(
           child.trace_id,
         )
-      }).pipe(Effect.provide(OteliteTestHarness.Default)),
+      }).pipe(Effect.provide(OteliteTestHarness.layer)),
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'returns trace expectations from the ergonomic capture helper',
     () =>
       Effect.gen(function* () {
@@ -71,7 +70,7 @@ describe('OteliteTestHarness', () => {
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'writes reusable trace diagnostics JSON from a capture',
     () =>
       Effect.gen(function* () {
@@ -99,17 +98,17 @@ describe('OteliteTestHarness', () => {
           service: 'otelite-diagnostics',
         })
 
-        const traceJson = yield* Schema.decodeUnknown(Schema.parseJson(TraceJson))(
+        const traceJson = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(TraceJson))(
           yield* fs.readFileString(files.traceJson),
         )
         expect(traceJson.schema).toBe('otelite.trace-json/v1')
         expect(traceJson.summary.span_count).toBeGreaterThanOrEqual(2)
         expect(traceJson.spans.some((span) => span.name === 'otelite-diagnostics.child')).toBe(true)
-      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.Default, NodeContext.layer))),
+      }).pipe(Effect.provide(Layer.mergeAll(OteliteTestHarness.layer, NodeServices.layer))),
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'restores endpoint environment after scoped use',
     () =>
       Effect.gen(function* () {
@@ -150,11 +149,11 @@ describe('OteliteTestHarness', () => {
         expect(process.env.OTELITE_TEST_ENDPOINT).toBe(previousCustomEndpoint)
         expect(process.env.OTELITE_TEST_SERVICE).toBe(previousCustomService)
         expect(process.env.OTELITE_TEST_EXTRA).toBe(previousExtra)
-      }).pipe(Effect.provide(OteliteTestHarness.Default)),
+      }).pipe(Effect.provide(OteliteTestHarness.layer)),
     30_000,
   )
 
-  it.scopedLive(
+  it.live(
     'captures traces + metrics + logs in one in-process run',
     () => {
       const service = 'otelite-all-signals'
@@ -162,11 +161,8 @@ describe('OteliteTestHarness', () => {
       const gauge = Metric.gauge('otelite_all_signals_queue_depth', { bigint: false })
 
       const workload = Effect.gen(function* () {
-        yield* Metric.increment(counter)
-        yield* Metric.set(
-          gauge.pipe(Metric.taggedWithLabels([MetricLabel.make('queue', 'primary')])),
-          7,
-        )
+        yield* Metric.update(counter, 1)
+        yield* Metric.update(Metric.withAttributes(gauge, { queue: 'primary' }), 7)
         yield* Effect.log('all-signals demo log line')
       }).pipe(Effect.withSpan(`${service}.child`, { attributes: { 'span.label': 'child' } }))
 
@@ -200,7 +196,7 @@ describe('OteliteTestHarness', () => {
             // LOGS: the Effect.log line bridged to OTLP, correlated to the child span.
             const log = logs.expectOne({
               service,
-              severityText: 'INFO',
+              severityText: 'Info',
               body: 'all-signals demo log line',
             })
             expect(log.span_id).toBe(child.span_id)

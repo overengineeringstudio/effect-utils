@@ -5,9 +5,12 @@ import * as path from 'node:path'
 import { Effect, Schema } from 'effect'
 
 import { CacheError } from '../renderer/errors.ts'
-import { CACHE_SCHEMA_VERSION, CacheTree, type NotionCache } from './types.ts'
-
-const decode = Schema.decodeUnknown(CacheTree)
+import {
+  CACHE_SCHEMA_VERSION,
+  CacheTree,
+  type CacheTree as CacheTreeValue,
+  type NotionCache,
+} from './types.ts'
 
 /**
  * Parse the raw file contents as JSON only (no schema shape check yet) so a
@@ -15,10 +18,16 @@ const decode = Schema.decodeUnknown(CacheTree)
  * well-formed-but-stale payload can still be treated as a cold cache by the
  * separate schema `decode` below.
  */
-const parseJson = Schema.decode(Schema.parseJson())
+const parseJson = (contents: string): Effect.Effect<unknown, CacheError> =>
+  Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(contents).pipe(
+    Effect.mapError((cause) => new CacheError({ reason: 'fs-cache-parse-failed', cause })),
+  )
+
+const decode = Schema.decodeUnknownEffect(CacheTree)
 
 /** Encode a `CacheTree` to its on-disk JSON string (compact, schema field order). */
-const encodeJson = Schema.encode(Schema.parseJson(CacheTree))
+const encodeJson = (tree: CacheTreeValue): string =>
+  JSON.stringify(Schema.encodeSync(CacheTree)(tree))
 
 const readIfExists = (filePath: string): Effect.Effect<string | undefined, CacheError> =>
   Effect.tryPromise({
@@ -48,9 +57,7 @@ export const FsCache = {
     load: Effect.gen(function* () {
       const contents = yield* readIfExists(filePath)
       if (contents === undefined) return undefined
-      const raw = yield* parseJson(contents).pipe(
-        Effect.mapError((cause) => new CacheError({ reason: 'fs-cache-parse-failed', cause })),
-      )
+      const raw = yield* parseJson(contents)
       const decoded = yield* decode(raw).pipe(Effect.orElseSucceed(() => undefined))
       if (decoded === undefined) return undefined
       if (decoded.schemaVersion !== CACHE_SCHEMA_VERSION) return undefined
@@ -58,9 +65,7 @@ export const FsCache = {
     }),
     save: (tree) =>
       Effect.gen(function* () {
-        const body = yield* encodeJson(tree).pipe(
-          Effect.mapError((cause) => new CacheError({ reason: 'fs-cache-write-failed', cause })),
-        )
+        const body = encodeJson(tree)
         yield* Effect.tryPromise({
           try: async () => {
             const dir = path.dirname(filePath)

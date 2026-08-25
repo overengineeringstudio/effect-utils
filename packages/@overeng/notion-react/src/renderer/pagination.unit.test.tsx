@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
 import { Effect, Exit } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Fragment, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -25,12 +25,12 @@ const ROOT = '00000000-0000-4000-8000-0000000000aa'
 
 const runWith = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 const runWithExit = <A,>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, NotionSyncError, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, NotionSyncError, HttpClient | NotionConfig>,
 ): Promise<Exit.Exit<A, NotionSyncError>> =>
   Effect.runPromise(eff.pipe(Effect.provide(fake.layer), Effect.exit))
 

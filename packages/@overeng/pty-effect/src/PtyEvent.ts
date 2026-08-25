@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 
 import { PtyName } from './PtySpec.ts'
 
-const Tags = Schema.Record({ key: Schema.String, value: Schema.String })
+const Tags = Schema.Record(Schema.String, Schema.String)
 
 const Base = {
   session: PtyName,
@@ -30,7 +30,7 @@ export const NotificationEvent = Schema.Struct({
   type: Schema.Literal('notification'),
   title: Schema.optional(Schema.String),
   body: Schema.optional(Schema.String),
-  source: Schema.optional(Schema.Literal('osc9', 'osc99', 'osc777')),
+  source: Schema.optional(Schema.Literals(['osc9', 'osc99', 'osc777'])),
 })
 export type NotificationEvent = typeof NotificationEvent.Type
 
@@ -69,7 +69,7 @@ export type TagsChangeEvent = typeof TagsChangeEvent.Type
 export const SessionExitEvent = Schema.Struct({
   ...Base,
   type: Schema.Literal('session_exit'),
-  exitCode: Schema.Number.pipe(Schema.int()),
+  exitCode: Schema.Int,
 })
 export type SessionExitEvent = typeof SessionExitEvent.Type
 
@@ -77,8 +77,8 @@ export type SessionExitEvent = typeof SessionExitEvent.Type
 export const SessionRestartEvent = Schema.Struct({
   ...Base,
   type: Schema.Literal('session_restart'),
-  restartCount: Schema.Number.pipe(Schema.int()),
-  backoffMs: Schema.Number.pipe(Schema.int()),
+  restartCount: Schema.Int,
+  backoffMs: Schema.Int,
 })
 export type SessionRestartEvent = typeof SessionRestartEvent.Type
 
@@ -86,7 +86,7 @@ export type SessionRestartEvent = typeof SessionRestartEvent.Type
 export const SessionFailedEvent = Schema.Struct({
   ...Base,
   type: Schema.Literal('session_failed'),
-  restartCount: Schema.Number.pipe(Schema.int()),
+  restartCount: Schema.Int,
   reason: Schema.String,
 })
 export type SessionFailedEvent = typeof SessionFailedEvent.Type
@@ -106,7 +106,7 @@ export const SupervisorStopEvent = Schema.Struct({
 export type SupervisorStopEvent = typeof SupervisorStopEvent.Type
 
 /** Union of every structured PTY event exposed by the client wrapper. */
-export const PtyEvent = Schema.Union(
+export const PtyEvent = Schema.Union([
   BellEvent,
   TitleChangeEvent,
   NotificationEvent,
@@ -119,7 +119,7 @@ export const PtyEvent = Schema.Union(
   SessionFailedEvent,
   SupervisorStartEvent,
   SupervisorStopEvent,
-)
+])
 export type PtyEvent = typeof PtyEvent.Type
 
 /** Decode a raw upstream event payload into the typed PTY event union. */

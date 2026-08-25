@@ -1,20 +1,21 @@
 import { pathToFileURL } from 'node:url'
 
-import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Cause, Chunk, Effect, Exit, Option, Schema } from 'effect'
+import { Effect, Exit, Option, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { CONFIG_FILE_NAME_JSON, MegarepoConfig } from '../lib/config.ts'
 import {
+  LockFile,
+  LOCK_FILE_NAME,
   checkLockStaleness,
   createEmptyLockFile,
   createLockedMember,
-  LOCK_FILE_NAME,
   readLockFile,
   updateLockedMember,
   writeLockFile,
@@ -58,7 +59,7 @@ const SyncJsonOutput = Schema.Struct({
   ),
 })
 
-const decodeSyncJsonOutput = Schema.decodeUnknownSync(Schema.parseJson(SyncJsonOutput))
+const decodeSyncJsonOutput = Schema.decodeUnknownSync(Schema.fromJsonString(SyncJsonOutput))
 
 /** Run an `mr` CLI command and capture output. */
 const runMrCommand = ({
@@ -145,8 +146,8 @@ const runMrCommand = ({
         }),
     )
 
-    const argv = ['node', 'mr', ...command, ...args]
-    const effect = Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    const argv = [...command, ...args]
+    const effect = Cli.Command.runWith(mrCommand, { version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(consoleLayer),
     )
@@ -250,7 +251,7 @@ describe('mr apply', () => {
           // Note: Actually running the sync command would require more setup
           // (proper CLI runner, etc). This test verifies the workspace fixture works.
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -294,7 +295,7 @@ describe('mr apply', () => {
           // The link target should be the repo path without trailing slash
           expect(linkTarget).toBe(repoPaths['repo1']?.slice(0, -1))
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -457,7 +458,7 @@ describe('lock apply mode', () => {
           // Should not be stale - lock apply mode would succeed
           expect(result.isStale).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -499,7 +500,7 @@ describe('lock apply mode', () => {
           expect(result.isStale).toBe(true)
           expect(result.addedMembers).toContain('lib2')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -545,7 +546,7 @@ describe('lock apply mode', () => {
           expect(result.isStale).toBe(true)
           expect(result.removedMembers).toContain('old-lib')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -590,7 +591,7 @@ describe('lock apply mode', () => {
           const result = checkLockStaleness({ lockFile, configMemberNames })
           expect(result.isStale).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -627,14 +628,14 @@ const createNestedMegarepoFixture = () =>
     yield* initGitRepo(childPath)
 
     // Create child's megarepo.json pointing to grandchild
-    const childConfig: MegarepoConfig = {
+    const childConfig: MegarepoConfig = new MegarepoConfig({
       members: {
         'grandchild-lib': grandchildPath,
       },
-    }
-    const childConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-      childConfig,
-    )
+    })
+    const childConfigContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(childConfig)
     yield* fs.writeFileString(
       EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
       childConfigContent + '\n',
@@ -653,13 +654,13 @@ const createNestedMegarepoFixture = () =>
     yield* initGitRepo(parentPath)
 
     // Create parent's megarepo.json pointing to child
-    const parentConfig: MegarepoConfig = {
+    const parentConfig: MegarepoConfig = new MegarepoConfig({
       members: {
         'child-megarepo': childPath,
       },
-    }
-    const parentConfigContent = yield* Schema.encode(
-      Schema.parseJson(MegarepoConfig, { space: 2 }),
+    })
+    const parentConfigContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(parentConfig)
     yield* fs.writeFileString(
       EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
@@ -702,12 +703,12 @@ describe('--all sync mode', () => {
 
           // Read parent config and verify it points to child
           const parentConfigContent = yield* fs.readFileString(parentConfigPath)
-          const parentConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-            parentConfigContent,
-          )
+          const parentConfig = yield* Schema.decodeUnknownEffect(
+            Schema.fromJsonString(MegarepoConfig),
+          )(parentConfigContent)
           expect(parentConfig.members['child-megarepo']).toBe(childPath)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -725,9 +726,9 @@ describe('--all sync mode', () => {
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
           const childConfigContent = yield* fs.readFileString(childConfigPath)
-          const childConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-            childConfigContent,
-          )
+          const childConfig = yield* Schema.decodeUnknownEffect(
+            Schema.fromJsonString(MegarepoConfig),
+          )(childConfigContent)
           expect(childConfig.members['grandchild-lib']).toBe(grandchildPath)
 
           // Verify grandchild is a regular repo (no megarepo.json)
@@ -737,7 +738,7 @@ describe('--all sync mode', () => {
           )
           expect(yield* fs.exists(grandchildConfigPath)).toBe(false)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -763,11 +764,13 @@ describe('--all nested error reporting', () => {
         yield* initGitRepo(childPath)
         yield* fs.writeFileString(
           EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-            members: {
-              bad: 'not-a-valid-source',
-            },
-          })) + '\n',
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            new MegarepoConfig({
+              members: {
+                bad: 'not-a-valid-source',
+              },
+            }),
+          )) + '\n',
         )
         yield* addCommit({ repoPath: childPath, message: 'Initialize child megarepo' })
 
@@ -780,11 +783,13 @@ describe('--all nested error reporting', () => {
         yield* initGitRepo(parentPath)
         yield* fs.writeFileString(
           EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-            members: {
-              child: childPath,
-            },
-          })) + '\n',
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            new MegarepoConfig({
+              members: {
+                child: childPath,
+              },
+            }),
+          )) + '\n',
         )
         yield* addCommit({ repoPath: parentPath, message: 'Initialize parent megarepo' })
 
@@ -802,11 +807,13 @@ describe('--all nested error reporting', () => {
         expect(result.stdout.trim()).not.toBe('')
 
         const SyncOutput = Schema.TaggedStruct('Error', {
-          syncErrorCount: Schema.Number,
+          syncErrorCount: Schema.Finite,
           syncErrors: Schema.Array(SyncErrorItem),
           syncTree: MegarepoSyncTree,
         })
-        const out = yield* Schema.decodeUnknown(Schema.parseJson(SyncOutput))(result.stdout.trim())
+        const out = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(SyncOutput))(
+          result.stdout.trim(),
+        )
 
         // The command should surface nested errors in output (and set process.exitCode via SyncApp)
         expect(out.syncErrorCount).toBe(1)
@@ -830,7 +837,7 @@ describe('--all nested error reporting', () => {
           expect(nestedResults.some((r) => r.name === 'bad' && r.status === 'error')).toBe(true)
         }
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -873,11 +880,11 @@ const createDiamondDependencyFixture = () =>
     const childAPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-a/'))
     yield* fs.makeDirectory(childAPath, { recursive: true })
     yield* initGitRepo(childAPath)
-    const childAConfig: MegarepoConfig = {
+    const childAConfig: MegarepoConfig = new MegarepoConfig({
       members: { 'shared-lib': sharedLibPath },
-    }
-    const childAConfigContent = yield* Schema.encode(
-      Schema.parseJson(MegarepoConfig, { space: 2 }),
+    })
+    const childAConfigContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(childAConfig)
     yield* fs.writeFileString(
       EffectPath.ops.join(childAPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
@@ -892,11 +899,11 @@ const createDiamondDependencyFixture = () =>
     const childBPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child-b/'))
     yield* fs.makeDirectory(childBPath, { recursive: true })
     yield* initGitRepo(childBPath)
-    const childBConfig: MegarepoConfig = {
+    const childBConfig: MegarepoConfig = new MegarepoConfig({
       members: { 'shared-lib': sharedLibPath },
-    }
-    const childBConfigContent = yield* Schema.encode(
-      Schema.parseJson(MegarepoConfig, { space: 2 }),
+    })
+    const childBConfigContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
     )(childBConfig)
     yield* fs.writeFileString(
       EffectPath.ops.join(childBPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
@@ -911,15 +918,15 @@ const createDiamondDependencyFixture = () =>
     const rootPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('root/'))
     yield* fs.makeDirectory(rootPath, { recursive: true })
     yield* initGitRepo(rootPath)
-    const rootConfig: MegarepoConfig = {
+    const rootConfig: MegarepoConfig = new MegarepoConfig({
       members: {
         'child-a': childAPath,
         'child-b': childBPath,
       },
-    }
-    const rootConfigContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-      rootConfig,
-    )
+    })
+    const rootConfigContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(rootConfig)
     yield* fs.writeFileString(
       EffectPath.ops.join(rootPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
       rootConfigContent + '\n',
@@ -952,7 +959,7 @@ describe('--all sync deduplication', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const rootConfigContent = yield* fs.readFileString(rootConfigPath)
-        const rootConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+        const rootConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
           rootConfigContent,
         )
         expect(rootConfig.members['child-a']).toBe(childAPath)
@@ -964,9 +971,9 @@ describe('--all sync deduplication', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const childAConfigContent = yield* fs.readFileString(childAConfigPath)
-        const childAConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-          childAConfigContent,
-        )
+        const childAConfig = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(MegarepoConfig),
+        )(childAConfigContent)
         expect(childAConfig.members['shared-lib']).toBe(sharedLibPath)
 
         const childBConfigPath = EffectPath.ops.join(
@@ -974,15 +981,15 @@ describe('--all sync deduplication', () => {
           EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const childBConfigContent = yield* fs.readFileString(childBConfigPath)
-        const childBConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-          childBConfigContent,
-        )
+        const childBConfig = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(MegarepoConfig),
+        )(childBConfigContent)
         expect(childBConfig.members['shared-lib']).toBe(sharedLibPath)
 
         // Both children reference the SAME path
         expect(childAConfig.members['shared-lib']).toBe(childBConfig.members['shared-lib'])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -1000,7 +1007,7 @@ const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: 
     yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
     yield* initGitRepo(sourceRepoPath)
     yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
-      Effect.catchAll(() => Effect.void),
+      Effect.catch(() => Effect.void),
     )
     yield* fs.writeFileString(
       EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
@@ -1018,7 +1025,7 @@ const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: 
     yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main')
 
     yield* runGitCommand(sourceRepoPath, 'checkout', '--orphan', 'rewritten-main')
-    yield* runGitCommand(sourceRepoPath, 'rm', '-rf', '.').pipe(Effect.catchAll(() => Effect.void))
+    yield* runGitCommand(sourceRepoPath, 'rm', '-rf', '.').pipe(Effect.catch(() => Effect.void))
     yield* fs.writeFileString(
       EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
       '# Rewritten history\n',
@@ -1117,11 +1124,13 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
     yield* initGitRepo(childPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-        members: {
-          shared: 'https://example.com/acme/shared#main',
-        },
-      })) + '\n',
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        new MegarepoConfig({
+          members: {
+            shared: 'https://example.com/acme/shared#main',
+          },
+        }),
+      )) + '\n',
     )
     let childLock = createEmptyLockFile()
     childLock = updateLockedMember({
@@ -1144,12 +1153,14 @@ const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
     yield* initGitRepo(parentPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-        members: {
-          shared: 'https://example.com/acme/shared#main',
-          child: childPath,
-        },
-      })) + '\n',
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        new MegarepoConfig({
+          members: {
+            shared: 'https://example.com/acme/shared#main',
+            child: childPath,
+          },
+        }),
+      )) + '\n',
     )
     let parentLock = createEmptyLockFile()
     parentLock = updateLockedMember({
@@ -1202,19 +1213,21 @@ const createAliasWorkspaceFixture = () =>
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
     )
     const parentConfigContent = yield* fs.readFileString(parentConfigPath)
-    const parentConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+    const parentConfig = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(MegarepoConfig))(
       parentConfigContent,
     )
-    const updatedConfig = {
+    const updatedConfig = new MegarepoConfig({
       ...parentConfig,
       members: {
         ...parentConfig.members,
         'shared-alias': 'https://example.com/acme/shared#main' as const,
       },
-    }
+    })
     yield* fs.writeFileString(
       parentConfigPath,
-      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) + '\n',
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        updatedConfig,
+      )) + '\n',
     )
 
     const parentLockPath = EffectPath.ops.join(
@@ -1283,11 +1296,13 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     yield* initGitRepo(childPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-        members: {
-          'shared-dev': 'https://example.com/acme/shared#dev',
-        },
-      })) + '\n',
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        new MegarepoConfig({
+          members: {
+            'shared-dev': 'https://example.com/acme/shared#dev',
+          },
+        }),
+      )) + '\n',
     )
     let childLock = createEmptyLockFile()
     childLock = updateLockedMember({
@@ -1310,13 +1325,15 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     yield* initGitRepo(parentPath)
     yield* fs.writeFileString(
       EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
-      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-        members: {
-          'shared-main': 'https://example.com/acme/shared#main',
-          'shared-dev': 'https://example.com/acme/shared#dev',
-          child: childPath,
-        },
-      })) + '\n',
+      (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+        new MegarepoConfig({
+          members: {
+            'shared-main': 'https://example.com/acme/shared#main',
+            'shared-dev': 'https://example.com/acme/shared#dev',
+            child: childPath,
+          },
+        }),
+      )) + '\n',
     )
     let parentLock = createEmptyLockFile()
     parentLock = updateLockedMember({
@@ -1388,7 +1405,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1424,7 +1441,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1460,7 +1477,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1503,7 +1520,7 @@ describe('nested megarepo.lock sync scope', () => {
         expect(result.exitCode).toBe(0)
         expect(result.stderr).not.toContain('invalid reference')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1539,7 +1556,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1575,7 +1592,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1611,7 +1628,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared-dev']?.commit).toBe(devCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1647,7 +1664,7 @@ describe('nested megarepo.lock sync scope', () => {
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -1707,7 +1724,7 @@ describe('mr lock', () => {
           // For local paths, status is 'synced' since they create symlinks
           expect(['synced', 'recorded', 'already_synced']).toContain(memberResult?.status)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -1761,7 +1778,7 @@ describe('mr lock', () => {
           // After first sync, should be already_synced or synced
           expect(['synced', 'already_synced']).toContain(memberResult?.status)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -1784,14 +1801,14 @@ describe('mr lock', () => {
           yield* initGitRepo(workspacePath)
 
           // Create megarepo.json with a GitHub repo
-          const config: MegarepoConfig = {
+          const config: MegarepoConfig = new MegarepoConfig({
             members: {
               // Using a real but unlikely-to-change repo
               effect: 'effect-ts/effect',
             },
-          }
-          const configContent = yield* Schema.encode(
-            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          })
+          const configContent = yield* Schema.encodeEffect(
+            Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
             EffectPath.ops.join(
@@ -1815,7 +1832,7 @@ describe('mr lock', () => {
           // The command should complete (might error on clone attempt, but shouldn't hang on fetch)
           expect(result.exitCode).toBeDefined()
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -1861,19 +1878,20 @@ describe('mr lock', () => {
           yield* initGitRepo(workspacePath)
 
           // Create initial config pointing to the base repo path
-          const initialConfig: MegarepoConfig = {
+          const initialConfig: MegarepoConfig = new MegarepoConfig({
             members: {
               'my-lib': baseRepoPath,
             },
-          }
+          })
           const configPath = EffectPath.ops.join(
             workspacePath,
             EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(initialConfig)) +
-              '\n',
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+              initialConfig,
+            )) + '\n',
           )
           yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
@@ -1900,15 +1918,16 @@ describe('mr lock', () => {
           expect(featureFileInBase).toBe(false)
 
           // Update config to point to the feature repo path
-          const updatedConfig: MegarepoConfig = {
+          const updatedConfig: MegarepoConfig = new MegarepoConfig({
             members: {
               'my-lib': featureRepoPath,
             },
-          }
+          })
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) +
-              '\n',
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+              updatedConfig,
+            )) + '\n',
           )
 
           // Sync again - should update symlink
@@ -1937,7 +1956,7 @@ describe('mr lock', () => {
           expect(featureFileInFeature).toBe(true)
           expect(updatedLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -1985,9 +2004,11 @@ describe('mr lock', () => {
           )
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-              members: { 'my-lib': mainRepoPath },
-            })) + '\n',
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+              new MegarepoConfig({
+                members: { 'my-lib': mainRepoPath },
+              }),
+            )) + '\n',
           )
           yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
@@ -2003,9 +2024,11 @@ describe('mr lock', () => {
           // Update config to point to feature branch
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-              members: { 'my-lib': featureRepoPath },
-            })) + '\n',
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+              new MegarepoConfig({
+                members: { 'my-lib': featureRepoPath },
+              }),
+            )) + '\n',
           )
 
           // Sync again - should skip because old worktree is dirty
@@ -2028,7 +2051,7 @@ describe('mr lock', () => {
           const currentLink = yield* fs.readLink(symlinkPath)
           expect(currentLink.replace(/\/$/, '')).toBe(mainRepoPath.replace(/\/$/, ''))
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2114,7 +2137,7 @@ describe('mr lock', () => {
           // The uncommitted work is still protected — apply reports, it does not clobber.
           expect(yield* fs.readLink(symlinkPath)).toBe(pinnedLink)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       { timeout: 15_000 },
@@ -2169,7 +2192,7 @@ describe('mr lock', () => {
           expect(json.results[0]?.status).not.toBe('error')
           expect(result.exitCode).toBe(0)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       { timeout: 15_000 },
@@ -2215,9 +2238,11 @@ describe('mr lock', () => {
           )
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-              members: { 'my-lib': mainRepoPath },
-            })) + '\n',
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+              new MegarepoConfig({
+                members: { 'my-lib': mainRepoPath },
+              }),
+            )) + '\n',
           )
           yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
@@ -2233,9 +2258,11 @@ describe('mr lock', () => {
           // Update config
           yield* fs.writeFileString(
             configPath,
-            (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
-              members: { 'my-lib': featureRepoPath },
-            })) + '\n',
+            (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+              new MegarepoConfig({
+                members: { 'my-lib': featureRepoPath },
+              }),
+            )) + '\n',
           )
 
           // Sync with --force - should succeed
@@ -2257,7 +2284,7 @@ describe('mr lock', () => {
           const currentLink = yield* fs.readLink(symlinkPath)
           expect(currentLink.replace(/\/$/, '')).toBe(featureRepoPath.replace(/\/$/, ''))
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2323,7 +2350,7 @@ describe('mr fetch', () => {
           // Should complete without error
           expect(result.exitCode).toBeDefined()
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2385,7 +2412,7 @@ describe('mr fetch', () => {
           expect(json.results).toHaveLength(1)
           // Note: Local path sources behave differently, but this documents the behavior
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2423,7 +2450,7 @@ describe('mr fetch', () => {
           expect(lockFile.members['test-repo']?.commit).toBe(currentCommit)
           expect(lockFile.members['test-repo']?.pinned).toBe(true)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2450,7 +2477,7 @@ describe('mr fetch', () => {
           expect(memberResult.status).toBe('skipped')
           expect(memberResult.message).toContain('pinned')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2479,7 +2506,7 @@ describe('mr fetch', () => {
           expect(memberResult.message).toContain(`'${staleCommit.slice(0, 8)}'`)
           expect(memberResult.message).toContain('not available locally or on the remote')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -2504,7 +2531,7 @@ describe('mr fetch', () => {
           yield* initGitRepo(sourceRepoPath)
           // Force branch name to 'main' regardless of git config default
           yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
-            Effect.catchAll(() => Effect.void),
+            Effect.catch(() => Effect.void),
           )
           yield* fs.writeFileString(
             EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
@@ -2605,7 +2632,7 @@ describe('mr fetch', () => {
           const worktreeHeadAfter = yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')
           expect(worktreeHeadAfter).toBe(newCommit)
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       { timeout: 30_000 },
@@ -2642,14 +2669,14 @@ describe('sync status types', () => {
         yield* fs.makeDirectory(workspacePath, { recursive: true })
         yield* initGitRepo(workspacePath)
 
-        const config: MegarepoConfig = {
+        const config: MegarepoConfig = new MegarepoConfig({
           members: {
             'new-lib': localRepoPath,
           },
-        }
-        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-          config,
-        )
+        })
+        const configContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+        )(config)
         yield* fs.writeFileString(
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
           configContent + '\n',
@@ -2672,7 +2699,7 @@ describe('sync status types', () => {
         // For local paths, first sync creates a symlink - status is 'synced'
         expect(memberResult?.status).toBe('synced')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -2701,14 +2728,14 @@ describe('sync error handling', () => {
         // Create megarepo.json with a missing remote. Use file:// so the clone
         // failure is deterministic and does not spend the test timeout on
         // network/auth retries.
-        const config: MegarepoConfig = {
+        const config: MegarepoConfig = new MegarepoConfig({
           members: {
             'non-existent-repo': pathToFileURL(missingRemotePath).href,
           },
-        }
-        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-          config,
-        )
+        })
+        const configContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+        )(config)
         yield* fs.writeFileString(
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
           configContent + '\n',
@@ -2749,7 +2776,7 @@ describe('sync error handling', () => {
             memberResult?.message?.toLowerCase().includes('auth'),
         ).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -2792,14 +2819,14 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: MegarepoConfig = {
+          const config: MegarepoConfig = new MegarepoConfig({
             members: {
               repo1: repo1Path,
               repo2: repo2Path,
             },
-          }
-          const configContent = yield* Schema.encode(
-            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          })
+          const configContent = yield* Schema.encodeEffect(
+            Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
             EffectPath.ops.join(
@@ -2824,7 +2851,7 @@ describe('sync member filtering', () => {
           expect(json.results).toHaveLength(1)
           expect(json.results[0]?.name).toBe('repo1')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       20_000,
@@ -2863,14 +2890,14 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: MegarepoConfig = {
+          const config: MegarepoConfig = new MegarepoConfig({
             members: {
               repo1: repo1Path,
               repo2: repo2Path,
             },
-          }
-          const configContent = yield* Schema.encode(
-            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          })
+          const configContent = yield* Schema.encodeEffect(
+            Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
             EffectPath.ops.join(
@@ -2895,7 +2922,7 @@ describe('sync member filtering', () => {
           expect(json.results).toHaveLength(1)
           expect(json.results[0]?.name).toBe('repo1')
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
       20_000,
@@ -2918,13 +2945,13 @@ describe('sync member filtering', () => {
           yield* fs.makeDirectory(workspacePath, { recursive: true })
           yield* initGitRepo(workspacePath)
 
-          const config: MegarepoConfig = {
+          const config: MegarepoConfig = new MegarepoConfig({
             members: {
               repo1: 'owner/repo1',
             },
-          }
-          const configContent = yield* Schema.encode(
-            Schema.parseJson(MegarepoConfig, { space: 2 }),
+          })
+          const configContent = yield* Schema.encodeEffect(
+            Schema.fromJsonString(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
             EffectPath.ops.join(
@@ -2949,13 +2976,14 @@ describe('sync member filtering', () => {
           expect(Exit.isFailure(result.exit)).toBe(true)
           if (Exit.isFailure(result.exit) === true) {
             const cause = result.exit.cause
-            const failureMessages = Chunk.toReadonlyArray(Cause.failures(cause))
-              .map((error: unknown) => String(error))
+            const failureMessages = cause.reasons
+              .filter((reason) => reason._tag === 'Fail')
+              .map((reason) => String(reason.error))
               .join('\n')
             expect(failureMessages.toLowerCase()).toContain('mutually exclusive')
           }
         },
-        Effect.provide(NodeContext.layer),
+        Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
@@ -3016,15 +3044,15 @@ describe('sync worktree ref mismatch detection', () => {
         yield* initGitRepo(workspacePath)
 
         // Create megarepo.json with URL source (not local path)
-        const config: MegarepoConfig = {
+        const config: MegarepoConfig = new MegarepoConfig({
           members: {
             // Using https URL so it's treated as URL type, not path type
             'test-repo': 'https://example.com/org/test-repo#main',
           },
-        }
-        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-          config,
-        )
+        })
+        const configContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+        )(config)
         yield* fs.writeFileString(
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
           configContent + '\n',
@@ -3037,7 +3065,7 @@ describe('sync worktree ref mismatch detection', () => {
         )
         yield* writeLockFile({
           lockPath,
-          lockFile: {
+          lockFile: new LockFile({
             version: 1,
             members: {
               'test-repo': createLockedMember({
@@ -3046,7 +3074,7 @@ describe('sync worktree ref mismatch detection', () => {
                 commit: mainCommit,
               }),
             },
-          },
+          }),
         })
 
         yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
@@ -3087,7 +3115,7 @@ describe('sync worktree ref mismatch detection', () => {
         // It proceeds (possibly falling back to commit worktree) instead of returning 'skipped'.
         expect(memberResult?.status).not.toBe('skipped')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -3123,14 +3151,14 @@ describe('sync worktree ref mismatch detection', () => {
         yield* initGitRepo(workspacePath)
 
         // Create megarepo.json with URL source
-        const config: MegarepoConfig = {
+        const config: MegarepoConfig = new MegarepoConfig({
           members: {
             'test-repo': 'https://example.com/org/test-repo#main',
           },
-        }
-        const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-          config,
-        )
+        })
+        const configContent = yield* Schema.encodeEffect(
+          Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+        )(config)
         yield* fs.writeFileString(
           EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
           configContent + '\n',
@@ -3143,7 +3171,7 @@ describe('sync worktree ref mismatch detection', () => {
         )
         yield* writeLockFile({
           lockPath,
-          lockFile: {
+          lockFile: new LockFile({
             version: 1,
             members: {
               'test-repo': createLockedMember({
@@ -3152,7 +3180,7 @@ describe('sync worktree ref mismatch detection', () => {
                 commit: mainCommit,
               }),
             },
-          },
+          }),
         })
 
         yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
@@ -3192,7 +3220,7 @@ describe('sync worktree ref mismatch detection', () => {
         // It proceeds (possibly falling back to commit worktree) instead of returning 'skipped'.
         expect(memberResult?.status).not.toBe('skipped')
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
     { timeout: 15_000 },
@@ -3237,16 +3265,17 @@ describe('sync member removal detection', () => {
         )
 
         // Initial config with both members
-        const initialConfig: MegarepoConfig = {
+        const initialConfig: MegarepoConfig = new MegarepoConfig({
           members: {
             repo1: repo1Path,
             repo2: repo2Path,
           },
-        }
+        })
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(initialConfig)) +
-            '\n',
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            initialConfig,
+          )) + '\n',
         )
         yield* addCommit({
           repoPath: workspacePath,
@@ -3269,16 +3298,17 @@ describe('sync member removal detection', () => {
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
 
         // Update config to remove repo2
-        const updatedConfig: MegarepoConfig = {
+        const updatedConfig: MegarepoConfig = new MegarepoConfig({
           members: {
             repo1: repo1Path,
             // repo2 removed!
           },
-        }
+        })
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) +
-            '\n',
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            updatedConfig,
+          )) + '\n',
         )
 
         // Second sync - should detect and remove orphaned repo2 symlink
@@ -3303,7 +3333,7 @@ describe('sync member removal detection', () => {
         // Verify repo2 symlink was removed
         expect(yield* fs.exists(repo2Symlink)).toBe(false)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -3345,16 +3375,17 @@ describe('sync member removal detection', () => {
         )
 
         // Initial config with both members
-        const initialConfig: MegarepoConfig = {
+        const initialConfig: MegarepoConfig = new MegarepoConfig({
           members: {
             repo1: repo1Path,
             repo2: repo2Path,
           },
-        }
+        })
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(initialConfig)) +
-            '\n',
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            initialConfig,
+          )) + '\n',
         )
         yield* addCommit({
           repoPath: workspacePath,
@@ -3365,15 +3396,16 @@ describe('sync member removal detection', () => {
         yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
         // Update config to remove repo2
-        const updatedConfig: MegarepoConfig = {
+        const updatedConfig: MegarepoConfig = new MegarepoConfig({
           members: {
             repo1: repo1Path,
           },
-        }
+        })
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) +
-            '\n',
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            updatedConfig,
+          )) + '\n',
         )
 
         // Sync with --dry-run - should report removed but not actually remove
@@ -3397,7 +3429,7 @@ describe('sync member removal detection', () => {
         )
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -3439,15 +3471,17 @@ describe('sync member removal detection', () => {
         )
 
         // Config with both members
-        const config: MegarepoConfig = {
+        const config: MegarepoConfig = new MegarepoConfig({
           members: {
             repo1: repo1Path,
             repo2: repo2Path,
           },
-        }
+        })
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n',
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            config,
+          )) + '\n',
         )
         yield* addCommit({
           repoPath: workspacePath,
@@ -3475,7 +3509,7 @@ describe('sync member removal detection', () => {
         )
         expect(yield* fs.exists(repo2Symlink)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -3510,14 +3544,16 @@ describe('sync member removal detection', () => {
         )
 
         // Config with only repo1
-        const config: MegarepoConfig = {
+        const config: MegarepoConfig = new MegarepoConfig({
           members: {
             repo1: repo1Path,
           },
-        }
+        })
         yield* fs.writeFileString(
           configPath,
-          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n',
+          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
+            config,
+          )) + '\n',
         )
         yield* addCommit({
           repoPath: workspacePath,
@@ -3552,7 +3588,7 @@ describe('sync member removal detection', () => {
         // The directory should still exist
         expect(yield* fs.exists(orphanDirPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

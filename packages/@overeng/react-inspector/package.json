@@ -35,7 +35,7 @@
     "@types/is-dom": "1.1.2",
     "@types/react": "19.2.17",
     "@vitejs/plugin-react": "6.0.2",
-    "effect": "4.0.0-beta.99",
+    "effect": "4.0.0-rc.111",
     "happy-dom": "20.10.6",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -45,7 +45,7 @@
     "vitest": "4.1.9"
   },
   "peerDependencies": {
-    "effect": "^4.0.0-beta.99",
+    "effect": "^4.0.0-rc.111",
     "react": "^19.2.7"
   },
   "$genie": {

@@ -56,7 +56,7 @@ export const contractSerdeFactory = (redaction: RedactionCipher | undefined) => 
     schema,
     slot,
   }: {
-    schema: Schema.Schema<unknown, unknown>
+    schema: Schema.Codec<unknown, unknown>
     slot: SerdeSlot
   }): RestateSerde<unknown> =>
     effectSerde({ schema, slot, ...(redaction !== undefined ? { redaction } : {}) })
@@ -69,8 +69,8 @@ export const contractSerdeFactory = (redaction: RedactionCipher | undefined) => 
       slot,
     }: {
       spec: {
-        readonly input: Schema.Schema<unknown, unknown>
-        readonly success: Schema.Schema<unknown, unknown>
+        readonly input: Schema.Codec<unknown, unknown>
+        readonly success: Schema.Codec<unknown, unknown>
       }
       slot: SerdeSlot
     }): ContractSerdes => ({
@@ -98,7 +98,7 @@ export const invocationIdempotencyKey = ({
   inputSchema,
   input,
 }: {
-  inputSchema: Schema.Schema<unknown, unknown>
+  inputSchema: Schema.Codec<unknown, unknown>
   input: unknown
 }): string | undefined =>
   readIdempotencyKey({ ast: inputSchema.ast, input }).pipe(Option.getOrUndefined)
@@ -111,8 +111,8 @@ export const invocationIdempotencyKey = ({
  */
 export const ingressCallOpts = (params: {
   readonly serdes: ContractSerdeFactory
-  readonly inputSchema: Schema.Schema<unknown, unknown>
-  readonly outputSchema: Schema.Schema<unknown, unknown>
+  readonly inputSchema: Schema.Codec<unknown, unknown>
+  readonly outputSchema: Schema.Codec<unknown, unknown>
   readonly input: unknown
 }): clients.Opts<unknown, unknown> => {
   const idempotencyKey = invocationIdempotencyKey({
@@ -134,7 +134,7 @@ export const ingressCallOpts = (params: {
  */
 export const ingressSendOpts = (params: {
   readonly serdes: ContractSerdeFactory
-  readonly inputSchema: Schema.Schema<unknown, unknown>
+  readonly inputSchema: Schema.Codec<unknown, unknown>
   readonly input: unknown
   readonly delayMillis?: number
 }): clients.SendOpts<unknown> => {

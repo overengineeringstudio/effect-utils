@@ -16,6 +16,18 @@ describe('parseVersion', () => {
   it('handles two-part versions', () => {
     expect(parseVersion('3.19')).toEqual([3, 19, 0])
   })
+
+  it('ignores prerelease and build suffixes', () => {
+    expect(parseVersion('4.0.0-rc.111')).toEqual([4, 0, 0])
+    expect(parseVersion('1.2.3+build.7')).toEqual([1, 2, 3])
+  })
+})
+
+describe('satisfiesRange with prerelease versions', () => {
+  it('catalog prerelease satisfies a caret peer on the same release', () => {
+    expect(satisfiesRange('4.0.0-rc.111', '^4.0.0-rc.111')).toBe(true)
+    expect(satisfiesRange('4.0.0-rc.111', '^4.0.0')).toBe(true)
+  })
 })
 
 describe('satisfiesRange', () => {

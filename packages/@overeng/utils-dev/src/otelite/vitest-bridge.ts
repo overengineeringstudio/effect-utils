@@ -22,7 +22,6 @@
  * @module
  */
 
-import { NodeContext } from '@effect/platform-node'
 import { Context, Effect, Layer } from 'effect'
 
 import { makeOtelVitestLayer } from '../node-vitest/Vitest.ts'
@@ -40,10 +39,9 @@ import type { CaptureHandle, CaptureOptions } from './Otelite.ts'
  * const spans = yield* cap.inspect({ signal: 'traces', name: mySpanName })
  * ```
  */
-export class OteliteCapture extends Context.Tag('@overeng/utils-dev/otelite/OteliteCapture')<
-  OteliteCapture,
-  CaptureHandle
->() {}
+export class OteliteCapture extends Context.Service<OteliteCapture, CaptureHandle>()(
+  '@overeng/utils-dev/otelite/OteliteCapture',
+) {}
 
 /** Options for {@link makeOteliteCaptureLayer}. */
 export interface OteliteCaptureLayerOptions extends CaptureOptions {
@@ -79,23 +77,25 @@ export const makeOteliteCaptureLayer = (
   const { exportInterval = 250, ...captureOptions } = options
 
   // Boot the receiver once; the scoped capture's lifetime is this layer's scope.
+  // v4 `Layer.effect` scopes the build effect itself, so the capture finalizers
+  // (stop receiver, drain, resolve summary) release with the layer scope.
   const handleLayer: Layer.Layer<
     OteliteCapture,
     OteliteSpawnError | OteliteCliError | OteliteDecodeError
-  > = Layer.scoped(
+  > = Layer.effect(
     OteliteCapture,
     Effect.gen(function* () {
       const otelite = yield* Otelite
       return yield* otelite.capture(captureOptions)
     }),
-  ).pipe(Layer.provide(Otelite.Default), Layer.provide(NodeContext.layer))
+  ).pipe(Layer.provide(Otelite.layer))
 
   // Point the OTLP trace exporter at the captured receiver. Built from the
   // handle so the URL is the captured endpoint + the locked `/v1/traces` suffix.
   // Depends on `OteliteCapture`; `provideMerge(handleLayer)` below both
   // satisfies that dependency (booting the receiver ONCE — same layer reference,
   // so it is memoized within the build) and re-exports the tag to the test.
-  const exporterLayer: Layer.Layer<never, never, OteliteCapture> = Layer.unwrapEffect(
+  const exporterLayer: Layer.Layer<never, never, OteliteCapture> = Layer.unwrap(
     OteliteCapture.pipe(
       Effect.map((handle) =>
         makeOtelVitestLayer({

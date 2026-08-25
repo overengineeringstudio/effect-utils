@@ -42,7 +42,7 @@ export const PushRefsAlignedState = Schema.TaggedStruct('Aligned', {})
 /** Refs were propagated (or would be in dry-run) */
 export const PushRefsResultState = Schema.TaggedStruct('Result', {
   results: Schema.Array(NestedResultSchema),
-  totalUpdates: Schema.Number,
+  totalUpdates: Schema.Finite,
   dryRun: Schema.Boolean,
 })
 
@@ -53,13 +53,13 @@ export const PushRefsErrorState = Schema.TaggedStruct('Error', {
 })
 
 /** Union of all possible push-refs TUI states */
-export const PushRefsState = Schema.Union(
+export const PushRefsState = Schema.Union([
   PushRefsIdleState,
   PushRefsScanningState,
   PushRefsAlignedState,
   PushRefsResultState,
   PushRefsErrorState,
-)
+])
 
 export type PushRefsState = typeof PushRefsState.Type
 
@@ -68,19 +68,19 @@ export type PushRefsState = typeof PushRefsState.Type
 // =============================================================================
 
 /** Union of all actions dispatched to the push-refs reducer */
-export const PushRefsAction = Schema.Union(
+export const PushRefsAction = Schema.Union([
   Schema.TaggedStruct('SetScanning', {}),
   Schema.TaggedStruct('SetAligned', {}),
   Schema.TaggedStruct('SetResult', {
     results: Schema.Array(NestedResultSchema),
-    totalUpdates: Schema.Number,
+    totalUpdates: Schema.Finite,
     dryRun: Schema.Boolean,
   }),
   Schema.TaggedStruct('SetError', {
     error: Schema.String,
     message: Schema.String,
   }),
-)
+])
 
 export type PushRefsAction = typeof PushRefsAction.Type
 

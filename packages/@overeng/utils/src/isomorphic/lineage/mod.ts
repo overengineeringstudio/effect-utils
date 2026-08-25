@@ -21,25 +21,25 @@ import { Option, Schema, type SchemaAST } from 'effect'
  * -------------------------------------------------------------------------- */
 
 /** A reference to another field, schema, or external system. */
-export const LineageRef = Schema.Union(
+export const LineageRef = Schema.Union([
   /** Path relative to the root schema, e.g. `$.foo.bar` (same syntax as `SchemaContext`). */
   Schema.TaggedStruct('Field', { path: Schema.String }),
   /** Reference by schema identifier (the `identifier` annotation). */
   Schema.TaggedStruct('Schema', { identifier: Schema.String }),
   /** Foreign-system reference (e.g. `{ system: 'stripe', ref: 'cus_123' }`). */
   Schema.TaggedStruct('External', { system: Schema.String, ref: Schema.String }),
-)
+])
 export type LineageRef = typeof LineageRef.Type
 
 /** How a `Derived` field is computed from its inputs. */
-export const DerivationKind = Schema.Union(
+export const DerivationKind = Schema.Union([
   Schema.TaggedStruct('Pure', {}),
   Schema.TaggedStruct('Aggregation', {
-    op: Schema.Literal('sum', 'count', 'min', 'max', 'avg', 'custom'),
+    op: Schema.Literals(['sum', 'count', 'min', 'max', 'avg', 'custom']),
   }),
   Schema.TaggedStruct('Reduction', { description: Schema.String }),
   Schema.TaggedStruct('External', { service: Schema.String }),
-)
+])
 export type DerivationKind = typeof DerivationKind.Type
 
 /**
@@ -47,7 +47,7 @@ export type DerivationKind = typeof DerivationKind.Type
  *
  * @see https://github.com/overengineeringstudio/effect-utils/issues/687
  */
-export const Lineage = Schema.Union(
+export const Lineage = Schema.Union([
   Schema.TaggedStruct('SourceOfTruth', {
     owner: Schema.optional(Schema.String),
     system: Schema.optional(Schema.String),
@@ -59,11 +59,11 @@ export const Lineage = Schema.Union(
   }),
   Schema.TaggedStruct('Projection', {
     of: LineageRef,
-    stalenessMs: Schema.optional(Schema.Number),
+    stalenessMs: Schema.optional(Schema.Finite),
   }),
   Schema.TaggedStruct('Cache', {
     of: LineageRef,
-    ttlMs: Schema.optional(Schema.Number),
+    ttlMs: Schema.optional(Schema.Finite),
   }),
   Schema.TaggedStruct('Mirror', {
     of: LineageRef,
@@ -77,7 +77,7 @@ export const Lineage = Schema.Union(
     fn: Schema.optional(Schema.String),
     description: Schema.optional(Schema.String),
   }),
-)
+])
 export type Lineage = typeof Lineage.Type
 
 /** Who can read/write this field. Composable with any `Lineage`. */
@@ -89,8 +89,8 @@ export type Authority = typeof Authority.Type
 
 /** Temporal freshness of a captured value. */
 export const Freshness = Schema.Struct({
-  capturedAt: Schema.optional(Schema.Literal('now', 'event-time', 'snapshot')),
-  maxAgeMs: Schema.optional(Schema.Number),
+  capturedAt: Schema.optional(Schema.Literals(['now', 'event-time', 'snapshot'])),
+  maxAgeMs: Schema.optional(Schema.Finite),
 })
 export type Freshness = typeof Freshness.Type
 
@@ -120,24 +120,24 @@ export const ReferenceAnnotationId = Symbol.for('effect/annotation/Reference')
 
 /*
  * Mirror of `unwrapAstForDisplay` from `effectSchema.tsx`, kept local so this
- * module has no cross-file coupling. Walks Refinement/Transformation/Suspend
- * wrappers (and trivial single-member Unions) so annotations on either the
- * outer or inner layer are discoverable.
+ * module has no cross-file coupling. Walks encoding links (v4 transformations),
+ * suspended schemas, and trivial single-member Unions so annotations on either
+ * the outer or inner layer are discoverable.
  */
 const isNullishAst = (ast: SchemaAST.AST): boolean => {
-  if (ast._tag === 'UndefinedKeyword' || ast._tag === 'VoidKeyword') return true
+  if (ast._tag === 'Undefined' || ast._tag === 'Void') return true
   return ast._tag === 'Literal' && ast.literal === null
 }
 
 const unwrapAst = (ast: SchemaAST.AST): SchemaAST.AST => {
+  // v4: transformations are attached to nodes as encoding links; the linked
+  // node is the counterpart layer (the v3 `Transformation.to` / `Refinement.from` walk).
+  const firstLink = Array.isArray(ast.encoding) === true ? ast.encoding[0] : undefined
+  if (firstLink !== undefined) return unwrapAst(firstLink.to)
   switch (ast._tag) {
-    case 'Transformation':
-      return unwrapAst(ast.to)
-    case 'Refinement':
-      return unwrapAst(ast.from)
     case 'Suspend':
       try {
-        return unwrapAst(ast.f())
+        return unwrapAst(ast.thunk())
       } catch {
         return ast
       }
@@ -154,6 +154,13 @@ const unwrapAst = (ast: SchemaAST.AST): SchemaAST.AST => {
   }
 }
 
+/** v4 annotation records are string-keyed at the type level but hold symbol keys at runtime */
+const readSymbolAnnotation = ({ ast, id }: { ast: SchemaAST.AST; id: symbol }): unknown => {
+  const annotations = ast.annotations as Record<symbol, unknown> | undefined
+  if (annotations === undefined) return undefined
+  return annotations[id]
+}
+
 /*
  * Generic, fail-soft annotation reader. Tries the raw AST first (so wrapper
  * annotations win), then the unwrapped AST. Validates via the matching
@@ -161,20 +168,20 @@ const unwrapAst = (ast: SchemaAST.AST): SchemaAST.AST => {
  * than throwing — the inspector must never crash on bad annotations.
  */
 const readAnnotation = <A>(args: {
-  schema: Schema.Schema.AnyNoContext
+  schema: Schema.Top
   id: symbol
-  decoder: Schema.Schema<A>
+  decoder: Schema.ConstraintDecoder<A>
 }): A | undefined => {
   const { schema, id, decoder } = args
   const decode = Schema.decodeUnknownOption(decoder)
-  const raw = schema.ast.annotations[id]
+  const raw = readSymbolAnnotation({ ast: schema.ast, id })
   if (raw !== undefined) {
     const decoded = decode(raw)
     if (Option.isSome(decoded) === true) return decoded.value
   }
   const unwrapped = unwrapAst(schema.ast)
   if (unwrapped !== schema.ast) {
-    const innerRaw = unwrapped.annotations[id]
+    const innerRaw = readSymbolAnnotation({ ast: unwrapped, id })
     if (innerRaw !== undefined) {
       const decoded = decode(innerRaw)
       if (Option.isSome(decoded) === true) return decoded.value
@@ -184,19 +191,19 @@ const readAnnotation = <A>(args: {
 }
 
 /** Read the `Lineage` annotation from a schema, if present. */
-export const getLineage = (schema: Schema.Schema.AnyNoContext): Lineage | undefined =>
+export const getLineage = (schema: Schema.Top): Lineage | undefined =>
   readAnnotation({ schema, id: LineageAnnotationId, decoder: Lineage })
 
 /** Read the `Authority` annotation from a schema, if present. */
-export const getAuthority = (schema: Schema.Schema.AnyNoContext): Authority | undefined =>
+export const getAuthority = (schema: Schema.Top): Authority | undefined =>
   readAnnotation({ schema, id: AuthorityAnnotationId, decoder: Authority })
 
 /** Read the `Freshness` annotation from a schema, if present. */
-export const getFreshness = (schema: Schema.Schema.AnyNoContext): Freshness | undefined =>
+export const getFreshness = (schema: Schema.Top): Freshness | undefined =>
   readAnnotation({ schema, id: FreshnessAnnotationId, decoder: Freshness })
 
 /** Read the `Reference` annotation from a schema, if present. */
-export const getReference = (schema: Schema.Schema.AnyNoContext): Reference | undefined =>
+export const getReference = (schema: Schema.Top): Reference | undefined =>
   readAnnotation({ schema, id: ReferenceAnnotationId, decoder: Reference })
 
 /* --------------------------------------------------------------------------
@@ -234,12 +241,12 @@ const coerceDerivationKind = (
 
 const annotate =
   <V>(args: { id: symbol; value: V }) =>
-  <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
-    schema.annotations({ [args.id]: args.value }) as S
+  <S extends Schema.Top>(schema: S): S =>
+    schema.annotate({ [args.id as unknown as string]: args.value }) as unknown as S
 
 const lineageAnnotation =
   (value: Lineage) =>
-  <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
+  <S extends Schema.Top>(schema: S): S =>
     annotate({ id: LineageAnnotationId, value })(schema)
 
 /** Mark a field as the authoritative source of truth. */

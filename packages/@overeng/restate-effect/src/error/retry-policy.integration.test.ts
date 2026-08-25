@@ -26,7 +26,7 @@ import { liveSleep, RestateTestHarness, serverAvailable } from '../testing/testi
 /* A retryable domain error with a SHORT `retryAfter` floor projected from the error
  * instance (so the retries elapse quickly + the projection path is exercised). */
 class Throttled extends Schema.TaggedError<Throttled>('retry/Throttled')('Throttled', {
-  retryAfterMillis: Schema.Number,
+  retryAfterMillis: Schema.Finite,
 }) {}
 const ThrottledRetryable = Restate.retryable({
   self: Throttled,
@@ -104,7 +104,7 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
         /* Forked so the test never blocks on the killed invocation. */
         yield* harness.ingress
           .call({ contract: Flaky, method: 'defect', input: undefined })
-          .pipe(Effect.ignore, Effect.fork)
+          .pipe(Effect.ignore, Effect.forkChild)
         const total = yield* settled(() => attempts.defect)
         expect(total).toBe(1)
       }),
@@ -118,7 +118,7 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
         const harness = yield* RestateTestHarness
         yield* harness.ingress
           .call({ contract: Flaky, method: 'defect', input: undefined })
-          .pipe(Effect.ignore, Effect.fork)
+          .pipe(Effect.ignore, Effect.forkChild)
         expect(yield* climbsPastOne(() => attempts.defect)).toBe(true)
       }),
     )
@@ -129,7 +129,7 @@ describe.skipIf(!serverAvailable)('disableRetries + retryable surface (real serv
         const harness = yield* RestateTestHarness
         yield* harness.ingress
           .call({ contract: Flaky, method: 'retryable', input: undefined })
-          .pipe(Effect.ignore, Effect.fork)
+          .pipe(Effect.ignore, Effect.forkChild)
         expect(yield* climbsPastOne(() => attempts.retryable)).toBe(true)
       }),
     )

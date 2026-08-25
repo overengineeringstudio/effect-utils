@@ -14,10 +14,12 @@
  * contain `-`/`--`/`/`; only a trailing valid ISO8601 instant is a timestamp).
  */
 
-import { Command, FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import * as Command from 'effect/unstable/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -33,8 +35,9 @@ import { archiveWorktree, parseArchiveDirName, reapArchive, scanArchives } from 
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    return (yield* Command.string(command)).trim()
+    return (yield* ChildProcessSpawner.use((spawner) =>
+      spawner.string(Command.make('git', args, { cwd })),
+    )).trim()
   })
 
 /** `<store>/github.com/<owner>/<repo>/` repo root for a fixture repo key. */
@@ -121,7 +124,7 @@ describe('store-archive: archiveWorktree', () => {
         yield* git(bareRepoPath, 'worktree', 'add', reAddPath, 'feature/x')
         expect(yield* fs.exists(reAddPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -180,7 +183,7 @@ describe('store-archive: archiveWorktree', () => {
         yield* git(bareRepoPath, 'worktree', 'add', reAddPath, 'feature/prod')
         expect(yield* fs.exists(reAddPath)).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -230,7 +233,7 @@ describe('store-archive: archiveWorktree', () => {
         const status = yield* Git.getWorktreeStatus(dest)
         expect(status.isDirty).toBe(true)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -278,7 +281,7 @@ describe('store-archive: scanArchives + reapArchive', () => {
           expect(entry.path.includes('/.archive/')).toBe(true)
         }
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -311,7 +314,7 @@ describe('store-archive: scanArchives + reapArchive', () => {
         expect(yield* fs.exists(archivePath)).toBe(false)
         expect((yield* scanArchives({ repoRoot, bareRepoPath })).length).toBe(0)
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -350,7 +353,7 @@ describe('store-archive: scanArchives + reapArchive', () => {
           .map((entry) => entry.branch)
         expect(eligible).toEqual(['feature/stale'])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

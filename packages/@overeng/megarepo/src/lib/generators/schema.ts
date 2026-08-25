@@ -5,8 +5,8 @@
  * Output: schema/megarepo.schema.json in the specified location.
  */
 
-import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 
 import {
   type AbsoluteDirPath,

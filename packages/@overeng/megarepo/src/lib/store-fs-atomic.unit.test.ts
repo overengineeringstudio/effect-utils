@@ -7,10 +7,10 @@
  *   no `.tmp-*` sibling lingering as garbage (the `tapError` cleanup branch).
  */
 
-import { FileSystem } from '@effect/platform'
-import { NodeContext } from '@effect/platform-node'
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -33,7 +33,7 @@ describe('store-fs-atomic: writeFileAtomic', () => {
         const remaining = yield* fs.readDirectory(dir)
         expect(remaining.filter((name) => name.includes('.tmp-'))).toEqual([])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -58,14 +58,14 @@ describe('store-fs-atomic: writeFileAtomic', () => {
           'blocks the rename\n',
         )
 
-        const result = yield* writeFileAtomic({ path: target, content: 'x' }).pipe(Effect.either)
-        expect(result._tag).toBe('Left')
+        const result = yield* writeFileAtomic({ path: target, content: 'x' }).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
 
         // The `.tmp-*` sibling must not survive the failed write.
         const remaining = yield* fs.readDirectory(dir)
         expect(remaining.filter((name) => name.includes('.tmp-'))).toEqual([])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )
@@ -95,7 +95,7 @@ describe('store-fs-atomic: writeFileAtomic', () => {
         const remaining = yield* fs.readDirectory(dir)
         expect(remaining.filter((name) => name.includes('.tmp-'))).toEqual([])
       },
-      Effect.provide(NodeContext.layer),
+      Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
   )

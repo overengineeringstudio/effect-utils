@@ -23,8 +23,9 @@
  * conservatively re-arms all grace windows.
  */
 
-import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Schema, type ParseResult } from 'effect'
+import { Effect, Schema } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { type PlatformError } from 'effect/PlatformError'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
@@ -32,7 +33,7 @@ import * as Observability from './observability.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 
 /** Ledger schema: path -> epoch-ms it was first observed continuously cold. */
-const GcObservationLedger = Schema.Record({ key: Schema.String, value: Schema.Number })
+const GcObservationLedger = Schema.Record(Schema.String, Schema.Finite)
 
 /** In-memory ledger: `normalizePath(worktreePath) -> firstSeenColdAtMs`. */
 export type GcObservationLedger = Schema.Schema.Type<typeof GcObservationLedger>
@@ -80,13 +81,13 @@ export const readObservationLedger = ({
   storeBasePath,
 }: {
   storeBasePath: AbsoluteDirPath
-}): Effect.Effect<GcObservationLedger, PlatformError.PlatformError, FileSystem.FileSystem> =>
+}): Effect.Effect<GcObservationLedger, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = ledgerPath(storeBasePath)
     return yield* fs.readFileString(path).pipe(
       Effect.flatMap((content) =>
-        Schema.decodeUnknown(Schema.parseJson(GcObservationLedger))(content),
+        Schema.decodeUnknownEffect(Schema.fromJsonString(GcObservationLedger))(content),
       ),
       Effect.orElseSucceed(() => ({}) as GcObservationLedger),
     )
@@ -104,19 +105,15 @@ const writeObservationLedger = ({
 }: {
   storeBasePath: AbsoluteDirPath
   ledger: GcObservationLedger
-}): Effect.Effect<
-  void,
-  PlatformError.PlatformError | ParseResult.ParseError,
-  FileSystem.FileSystem
-> =>
+}): Effect.Effect<void, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = ledgerPath(storeBasePath)
     const stateDir = EffectPath.ops.join(storeBasePath, EffectPath.unsafe.relativeDir('.state/'))
     yield* fs.makeDirectory(stateDir, { recursive: true })
-    const content = yield* Schema.encode(Schema.parseJson(GcObservationLedger, { space: 2 }))(
-      ledger,
-    )
+    const content = yield* Schema.encodeEffect(
+      Schema.fromJsonString(GcObservationLedger, { space: 2 }),
+    )(ledger)
     yield* writeFileAtomic({ path, content: content + '\n' })
   }).pipe(
     Observability.withLabelSpan({
@@ -142,11 +139,7 @@ export const recordObservations = ({
   coldPaths: ReadonlyArray<string>
   uncleanReconcilePaths?: ReadonlyArray<string> | undefined
   now: number
-}): Effect.Effect<
-  GcObservationLedger,
-  PlatformError.PlatformError | ParseResult.ParseError,
-  FileSystem.FileSystem
-> =>
+}): Effect.Effect<GcObservationLedger, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const current = yield* readObservationLedger({ storeBasePath })
     const next = nextObservationLedger({ current, coldPaths, uncleanReconcilePaths, now })

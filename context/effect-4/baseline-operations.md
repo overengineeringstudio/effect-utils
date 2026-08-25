@@ -97,7 +97,11 @@ as "nonzero with no readable diagnostics".
 
 ## What gets a migration marker
 
-Baselines are **permanent gates**, so they carry no `LIVE-MIGRATION BRIDGE` block. A specific
-assertion that pins v3 behaviour we expect v4 to change gets an inline
-`TODO(live-migration:effect-3-4)` instead — resolved rather than deleted. Only genuinely temporary
-workarounds get bridge blocks. See the bridge register in #925.
+Baselines are **permanent gates**, so they carry no `LIVE-MIGRATION BRIDGE` block. Only genuinely
+temporary workarounds get bridge blocks. See the bridge register in #925.
+
+The `TODO(live-migration:effect-3-4)` convention was retired after the rc.111
+marker sweep: date-sentinel obligations are resolved by the shipped date
+handling, and the remaining cross-major risks (failure-cause shapes, decode
+error envelopes, stdout contracts) live as plain comments that name their
+tracking issue (#978, #979, #980).

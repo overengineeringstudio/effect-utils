@@ -19,7 +19,7 @@ import {
   type WorkspaceManifestV1 as WorkspaceManifestV1Type,
 } from './manifest.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
+const decode = <TSchema extends Schema.Codec<any, any, never>>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)
 
 const sampleManifest = (): WorkspaceManifestV1Type =>
