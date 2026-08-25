@@ -50,15 +50,21 @@ mid-sibling operations: every later positional key shifts, so the
 diff emits remove + re-insert for the tail instead of a single
 insert.
 
-The derived key is prefixed internally: `k:<blockKey>` for explicit
-keys, `p:<index>` for positional. The `blockKey(businessId)` helper
-returns `"b:<id>"`, useful if you share a cache across multiple
+The derived key is prefixed: `k:<blockKey>` for explicit keys,
+`p:<index>` for positional. The exported `NodeKey` encoder is the
+source of this scheme — the reconciler derives every candidate/cache
+key through it, and consumers that construct or index into a
+`CacheTree` from outside (e.g. to seed or inspect a cache) must do the
+same rather than hand-rolling the prefixes. The `blockKey(businessId)`
+helper returns `"b:<id>"`, useful if you share a cache across multiple
 renderers and want a collision-proof namespace.
 
 ```ts
-import { blockKey } from '@overeng/notion-react'
+import { blockKey, NodeKey } from '@overeng/notion-react'
 
 blockKey('task-42') // "b:task-42"
+NodeKey.keyed(blockKey('task-42')) // "k:b:task-42"
+NodeKey.positional(3) // "p:3"
 ```
 
 ## Invariants

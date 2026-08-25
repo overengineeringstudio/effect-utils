@@ -19,6 +19,7 @@ import {
   projectIcon,
   projectTitleSpans,
 } from './icons.ts'
+import { NodeKey } from './keys.ts'
 import type { PageOp } from './op-buffer.ts'
 import { OpBuffer } from './op-buffer.ts'
 
@@ -100,7 +101,7 @@ const hashProps = (props: Record<string, unknown>): string => {
 }
 
 const instanceKey = (inst: Instance, index: number): string =>
-  inst.blockKey !== undefined ? `k:${inst.blockKey}` : `p:${index}`
+  inst.blockKey !== undefined ? NodeKey.keyed(inst.blockKey) : NodeKey.positional(index)
 
 const hashAny = (value: unknown): string => {
   const s = stableStringify(value)

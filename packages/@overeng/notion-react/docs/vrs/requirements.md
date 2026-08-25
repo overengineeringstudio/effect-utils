@@ -130,7 +130,11 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   produces one `remove`. No collateral reorders when neighbors are stable.
 - **R07 Keyed identity:** Block identity across renders must be derivable
   from an explicit `blockKey`-style hint. In its absence, siblings fall
-  back to positional keys per T02.
+  back to positional keys per T02. The key encoding is public contract:
+  consumers that construct or index into a `CacheTree` out-of-band must
+  be able to derive the exact node keys through an exported encoder, and
+  the internal derivation must route through that same encoder so the two
+  cannot drift.
 
 ### Must be Effect-native
 

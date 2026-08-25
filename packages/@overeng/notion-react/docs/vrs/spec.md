@@ -280,10 +280,12 @@ stale cache entries into mutation planning without an explicit migration.
 
 ### Key derivation (R07)
 
-`instanceKey(inst, index) = inst.blockKey ?? "p:<index>"`, prefixed with
-`"k:"` for explicit keys. React's `key` prop is forwarded via the
-`blockKey` host prop (helper `blockKey(businessId)` returns `"b:<id>"`
-for namespacing).
+`instanceKey(inst, index) = NodeKey.keyed(inst.blockKey) | NodeKey.positional(index)`.
+The `NodeKey` encoder (`keys.ts`, exported) is the single source of the
+`k:<blockKey>` / `p:<index>` scheme; `instanceKey` routes through it so
+external cache constructors and the reconciler cannot disagree on the
+encoding. React's `key` prop is forwarded via the `blockKey` host prop
+(helper `blockKey(businessId)` returns `"b:<id>"` for namespacing).
 
 ### Hashing
 

@@ -109,6 +109,13 @@ All notable changes to this project will be documented in this file.
   option defaulting to `false`, so consumers state their policy instead of
   drifting between copies; five contract suites now consume it.
 
+- **@overeng/notion-react**: export `NodeKey`, the encoder for the
+  `k:<blockKey>` / `p:<index>` node keys the reconciler assigns to
+  candidate/cache tree entries (#1121). The internal key derivation now
+  routes through the same encoder, so consumers that construct or index
+  into a `CacheTree` out-of-band can no longer drift from the scheme
+  `buildCandidateTree` / `diff` actually produce.
+
 - **devenv pnpm / Genie**: add root-local, read-only source generations for
   composed workspaces. Aggregate roots declare cross-repository source inputs,
   Genie projects matching `file:` overrides, and the shared pnpm transaction
