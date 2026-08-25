@@ -1,5 +1,5 @@
-import type { HttpClient } from '@effect/platform'
-import { Chunk, Effect, Stream } from 'effect'
+import { Effect, Stream } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 
 import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 
@@ -30,7 +30,7 @@ export const observeBlockTree = (input: {
 }): Effect.Effect<
   readonly ObservedBlockTree[],
   NotionSyncError,
-  NotionConfig | HttpClient.HttpClient
+  NotionConfig | HttpClient
 > =>
   Effect.gen(function* () {
     const children = yield* Stream.runCollect(
@@ -39,7 +39,7 @@ export const observeBlockTree = (input: {
       Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
     )
     const out: ObservedBlockTree[] = []
-    for (const block of Chunk.toReadonlyArray(children)) {
+    for (const block of Array.from(children)) {
       if (block.in_trash === true) continue
       const nested =
         block.has_children === true && block.type !== 'child_page'
