@@ -46,5 +46,10 @@
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "types": ["node"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../utils-dev"
+    }
+  ]
 }

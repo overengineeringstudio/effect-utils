@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
 import { describe, expect, it } from 'vitest'
 
 const cliPath = fileURLToPath(new URL('../bin/genie.tsx', import.meta.url))
@@ -17,20 +18,6 @@ const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url))
  * version-string content, log timing, and machine-specific paths are not gated
  * by this baseline.
  */
-// LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
-const stripAnsi = (output: string) =>
-  output.replace(
-    // eslint-disable-next-line no-control-regex -- CLI contract snapshots intentionally normalize terminal control bytes.
-    /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/gu,
-    '',
-  )
-
-const normalizeOutput = (output: string) =>
-  stripAnsi(output)
-    .replace(/ — running from local source \([^)]+\)/gu, '')
-    .replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\]/gmu, '[time]')
-    .replaceAll(repoRoot, '<repo>')
-// LIVE-MIGRATION END effect-3-4
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {
@@ -41,10 +28,8 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
-    // LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
-    stdout: normalizeOutput(result.stdout),
-    stderr: normalizeOutput(result.stderr),
-    // LIVE-MIGRATION END effect-3-4
+    stdout: normalizeCliOutput(result.stdout, { ansi: true, time: true, repoRoot }),
+    stderr: normalizeCliOutput(result.stderr, { ansi: true, time: true, repoRoot }),
   }
 }
 

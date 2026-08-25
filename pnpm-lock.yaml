@@ -1170,6 +1170,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.1))
+      '@overeng/utils-dev':
+        specifier: workspace:^
+        version: link:../utils-dev
       '@types/node':
         specifier: 26.0.0
         version: 26.0.0
@@ -6667,7 +6670,7 @@ snapshots:
       buffer-image-size: 0.6.4
       entities: 7.0.1
       whatwg-mimetype: 3.0.0
-      ws: 8.21.0
+      ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
