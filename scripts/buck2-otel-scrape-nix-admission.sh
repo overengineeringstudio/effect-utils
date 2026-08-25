@@ -12,6 +12,9 @@ buck2_bin="${BUCK2_BIN:?BUCK2_BIN is required}"
 nix_bin="${NIX_BIN:?NIX_BIN is required}"
 jq_bin="${JQ_BIN:?JQ_BIN is required}"
 awk_bin="${AWK_BIN:?AWK_BIN is required}"
+# Pinned nixpkgs store path: importing the repository flake here would
+# snapshot the live worktree, racing sibling tasks that mutate it in place.
+nixpkgs_store="${BUCK2_OTEL_PRODUCT_NIXPKGS:?BUCK2_OTEL_PRODUCT_NIXPKGS must name the pinned nixpkgs store path}"
 isolation="otel-scrape-nix-admission-$$-$RANDOM"
 fixture_root="$(mktemp -d "${TMPDIR:-/tmp}/otel-scrape-nix-admission.XXXXXX")"
 case "$mode" in
@@ -64,7 +67,7 @@ export BUCK2_OTEL_EXPECTED_DESCRIPTOR_DIGEST="$expected_descriptor_digest"
 
 import_expr='let
   repo = builtins.toPath (builtins.getEnv "BUCK2_OTEL_PRODUCT_REPO");
-  pkgs = import (builtins.getFlake (toString repo)).inputs.nixpkgs { system = builtins.currentSystem; };
+  pkgs = import (builtins.storePath (builtins.getEnv "BUCK2_OTEL_PRODUCT_NIXPKGS")) { system = builtins.currentSystem; };
   importArtifact = import (repo + "/nix/workspace-tools/lib/buck2-artifact-import.nix") { inherit pkgs; };
   descriptor = builtins.fromJSON (builtins.readFile (builtins.getEnv "BUCK2_OTEL_PRODUCT_DESCRIPTOR"));
   artifact = builtins.path { path = builtins.getEnv "BUCK2_OTEL_PRODUCT_ARCHIVE"; name = "otel-scrape-buck-product.tar"; };

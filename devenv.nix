@@ -1346,6 +1346,7 @@ in
       export NIX_BIN=${pkgs.nix}/bin/nix
       export JQ_BIN=${pkgs.jq}/bin/jq
       export AWK_BIN=${pkgs.gawk}/bin/awk
+      export BUCK2_OTEL_PRODUCT_NIXPKGS=${repoFlake.inputs.nixpkgs}
       ${pkgs.bash}/bin/bash scripts/buck2-otel-scrape-nix-admission.sh \
         smoke "$toolchain_config"
     '';
@@ -1368,6 +1369,7 @@ in
       export NIX_BIN=${pkgs.nix}/bin/nix
       export JQ_BIN=${pkgs.jq}/bin/jq
       export AWK_BIN=${pkgs.gawk}/bin/awk
+      export BUCK2_OTEL_PRODUCT_NIXPKGS=${repoFlake.inputs.nixpkgs}
       ${pkgs.bash}/bin/bash scripts/buck2-otel-scrape-nix-admission.sh \
         admit "$toolchain_config"
     '';
