@@ -106,6 +106,18 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   Callers gating on a plan (pre-apply audit) must treat it as advisory
   for the observed instant, and use the post-apply empty-plan fixpoint
   check for proof.
+- **T12 Readback equality is scoped, not total:** The readback oracle
+  certifies managed content only. Deliberately outside its equality:
+  uploaded-asset bytes (signed URLs expire; masked to an `uploaded`
+  sentinel), built-in icon identity behind Notion's undocumented
+  `{type:'icon'}` rewrite (masked to `builtin-unverified`),
+  provider-owned defaults the JSX never claimed, and sub-page content
+  behind a `child_page` boundary (title-only identity; the sub-page gets
+  its own readback pass). A readback-equal page can therefore differ in
+  those masked dimensions — accepted, because the alternative is a
+  comparison that flaps on server-owned noise. Like T11, an observation
+  has no snapshot isolation: equality is advisory for the observed
+  window.
 
 ## Requirements
 
@@ -276,6 +288,27 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   is a pure function of cache + JSX. The blind spots of `'cache-only'`
   (out-of-band drift, cold-`'clean'` baseline removes, pending-marker
   resolution) must be documented, not silently approximated.
+
+### Must verify server state against intent
+
+- **R39 Readback oracle in a dedicated hash space:** The library must
+  offer a normalization oracle that folds server-observed block JSON and
+  rendered candidate trees into one canonical form and compares them by
+  hash, absorbing every response-shape delta the API introduces
+  (decorated/re-segmented rich text, explicit defaults, provider-injected
+  fields, A07 envelope rewrites). Readback hashes are a separate hash
+  space from `CacheNode.hash` (which hashes request-shape projected
+  props); the two must never be compared against each other, and the
+  cache hash function must not change to accommodate readback — doing so
+  would invalidate every deployed cache.
+- **R40 Masking is candidate-contextual:** Whether an observed field is
+  managed content or provider-owned noise depends on whether the JSX
+  claimed it (e.g. an unclaimed callout icon is server-injected; a claimed
+  one is exact content). The comparison must therefore take both sides —
+  a context-free "hash of observed blocks" cannot exist in the public
+  API. Fields that are unverifiable through block JSON in principle
+  (uploaded-asset signed URLs, built-in-icon name↔URL mapping) must be
+  masked explicitly and documented, never compared best-effort.
 
 ### Must project authored JSX to readable Markdown (experimental)
 

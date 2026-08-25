@@ -54,6 +54,7 @@ export {
 } from './sync-diff.ts'
 export {
   compareReadback,
+  compareReadbackPage,
   normalizeCandidate,
   normalizeObserved,
   readbackHash,
@@ -61,8 +62,11 @@ export {
   type ObservedBlockTree,
   type ReadbackAnnotations,
   type ReadbackComparison,
+  type ReadbackPageCandidate,
+  type ReadbackPageComparison,
   type ReadbackRun,
 } from './readback.ts'
+export { observeBlockTree } from './readback-observe.ts'
 export {
   UploadRegistryProvider,
   useNotionUpload,
