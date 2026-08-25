@@ -434,14 +434,9 @@ describe('adopt(): fail-closed adoption of an existing rendered page (#1093)', (
     // AdoptionTree carries <Page title=...> claims — the pre-flight must
     // surface the typed refusal, not NotionSyncError from a 404 on
     // blocks.children.list against an archived page.
-    const err = await runWith(
-      fake,
-      adopt(<AdoptionTree />, { pageId: ROOT }).pipe(Effect.flip),
-    )
+    const err = await runWith(fake, adopt(<AdoptionTree />, { pageId: ROOT }).pipe(Effect.flip))
     expect(err).toBeInstanceOf(AdoptionRefusedError)
-    expect((err as AdoptionRefusedError).refusals).toEqual([
-      { _tag: 'RootTrashed', pageId: ROOT },
-    ])
+    expect((err as AdoptionRefusedError).refusals).toEqual([{ _tag: 'RootTrashed', pageId: ROOT }])
     expect(mutatingRequestsSince(fake, marker)).toEqual([])
   })
 })
