@@ -542,7 +542,9 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
             "symbolVersionFloors":["GLIBC_2.10","GLIBC_2.12","GLIBC_2.14","GLIBC_2.16","GLIBC_2.17","GLIBC_2.2.5","GLIBC_2.3","GLIBC_2.3.2","GLIBC_2.3.4","GLIBC_2.4","GLIBC_2.6","GLIBC_2.7","GLIBC_2.8","GLIBC_2.9"]
         },
         "schema":"buck-build-product/v1",
-        "semanticProvenance":{"recipe":input_digest(&args)?,"target":args.target,"toolchain":format!("bun:{};patchelf:{}", args.bun.display(), args.patchelf.display())},
+        // Provenance must stay content-addressed: raw tool store paths would
+        // leak the build environment into the admitted, reference-free product.
+        "semanticProvenance":{"recipe":input_digest(&args)?,"target":args.target,"toolchain":format!("bun:sha256:{};patchelf:sha256:{}", sha256_file(&args.bun)?, sha256_file(&args.patchelf)?)},
     });
     if let Some(parent) = args.descriptor.parent() {
         fs::create_dir_all(parent).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
