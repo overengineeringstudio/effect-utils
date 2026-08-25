@@ -76,7 +76,8 @@
 
 ## cli-C-rendering-and-stdout-breakage
 
-- **Bucket:** C — REAL BREAKAGE WE MUST PRESERVE OR SHIM.
+- **Bucket:** C — REAL RENDERING/STDOUT BREAKAGE; RESOLVED BY THE LOCKED FULL-REBASELINE
+  DECISION (accept v4 rendering, no shims).
 - **Difference:** v4 changes root/nested help, version bytes, validation wording, ANSI, newline
   count, and stdout/stderr placement. Validation failures print full help to stdout where v3
   stdout was empty.
@@ -236,7 +237,8 @@
 
 ## filesystem-watch-recursive-option-removed
 
-- **Bucket:** C — REAL BREAKAGE WE MUST PRESERVE OR SHIM.
+- **Bucket:** C — REAL RECURSION-SCOPE BREAKAGE AT beta.102; RESOLVED UPSTREAM AT rc.111
+  (recursion opt-in again, no shim required).
 - **Difference:** v3 `FileSystem.watch(path, { recursive: false })` observes only direct children.
   In beta.102 the option is removed from both `FileSystem.watch` and `WatchBackend.register`, and
   the shared Node implementation calls `node:fs.watch` with `{ recursive: true }`
@@ -244,9 +246,11 @@
 - **Decision:** RESOLVED UPSTREAM at rc.111: recursive control is restored — `WatchOptions.recursive`
   is opt-in again and the Node backend defaults it to false. No compatibility shim is required;
   migration decides per call site whether to opt into recursion.
-- **Blast radius:** `megarepo` and `genie` watch modes. Unexpected nested events can trigger
-  spurious rebuilds or watch loops and present as timing flakiness rather than a clear migration
-  failure.
+- **Blast radius:** `genie` and `@overeng/notion-md` watch modes (`megarepo` has no
+  `FileSystem.watch` usage); `@overeng/utils`' node `file-system-backing` also holds one
+  default non-recursive watch call site, where the proposed shared `watchScoped` helper would
+  land. Unexpected nested events can trigger spurious rebuilds or watch loops and present as
+  timing flakiness rather than a clear migration failure.
 - **Status:** OPEN DESIGN WORK; the beta.102 "REQUIRED COMPATIBILITY WORK" framing is retired.
   At rc.111 the forced-recursion premise no longer holds: `WatchOptions.recursive` is opt-in
   again (`effect/src/FileSystem.ts:1171-1176`) and the Node backend defaults it to false
