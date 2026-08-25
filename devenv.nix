@@ -1003,7 +1003,9 @@ in
         -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
         -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
         -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
-        -c buck2_nix.opentui_musl=${opentuiCoreMusl}
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl} \
+        -c buck2_nix.install_name_tool=${pkgs.darwin.cctools}/bin/install_name_tool \
+        -c buck2_nix.codesign=${pkgs.darwin.sigtool}/bin/codesign
     '';
   };
 

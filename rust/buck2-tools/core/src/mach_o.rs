@@ -85,6 +85,45 @@ fn is_ad_hoc_signature(bytes: &[u8], offset: usize, size: usize) -> ToolResult<b
     Ok(ad_hoc_code_directory)
 }
 
+/// List the load-command dylib names that fall outside the system
+/// install-name policy (`/usr/lib` or `/System/Library`). Producers use this
+/// to realize a portable payload before the full contract observation runs.
+pub fn non_system_dylibs(bytes: &[u8]) -> ToolResult<Vec<String>> {
+    if bytes.get(..4) != Some(&[0xcf, 0xfa, 0xed, 0xfe]) {
+        return Err(fail(
+            "BUCK2_PRODUCT_MACHO",
+            "mach-o-dynamic/v1 requires a thin little-endian Mach-O 64 executable",
+        ));
+    }
+    let command_count = usize::try_from(read_le_u32(bytes, 16)?)
+        .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid load-command count"))?;
+    let command_bytes = usize::try_from(read_le_u32(bytes, 20)?)
+        .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid load-command size"))?;
+    let mut names = Vec::new();
+    let mut offset = 32usize;
+    for _ in 0..command_count {
+        let command = read_le_u32(bytes, offset)?;
+        let size = usize::try_from(read_le_u32(bytes, offset + 4)?)
+            .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid load-command size"))?;
+        if size < 8 || offset + size > 32 + command_bytes {
+            return Err(fail("BUCK2_PRODUCT_MACHO", "malformed Mach-O load command"));
+        }
+        match command {
+            0x0c | 0x20 | 0x8000_0018 | 0x8000_001f | 0x8000_0023 => {
+                let name_offset = usize::try_from(read_le_u32(bytes, offset + 8)?)
+                    .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid dylib name offset"))?;
+                let name = c_string(&bytes[offset..offset + size], name_offset, "Mach-O dylib")?;
+                if !(name.starts_with("/usr/lib/") || name.starts_with("/System/Library/")) {
+                    names.push(name);
+                }
+            }
+            _ => {}
+        }
+        offset += size;
+    }
+    Ok(names)
+}
+
 /// Observe the mach-o-dynamic/v1 runtime facts of a thin little-endian
 /// Mach-O 64 executable and reject anything outside the contract.
 pub fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {

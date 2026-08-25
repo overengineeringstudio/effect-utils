@@ -1,7 +1,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use buck2_tool_core::{
-    ToolError, ToolResult, canonical_json, mach_o::mach_o_runtime, normalized_relative, safe_text,
-    sha256_file, verify_execution_capability,
+    ToolError, ToolResult, canonical_json, mach_o::mach_o_runtime, mach_o::non_system_dylibs,
+    normalized_relative, safe_text, sha256_file, verify_execution_capability,
 };
 use clap::{Args, Parser, Subcommand};
 use serde_json::json;
@@ -68,6 +68,10 @@ struct BundleArgs {
     bun: PathBuf,
     #[arg(long)]
     patchelf: PathBuf,
+    #[arg(long = "install-name-tool")]
+    install_name_tool: Option<PathBuf>,
+    #[arg(long)]
+    codesign: Option<PathBuf>,
     #[arg(long)]
     entry: String,
     #[arg(long = "binary-name")]
@@ -455,6 +459,19 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
     };
     if !darwin {
         require_executable(&args.patchelf, "patchelf")?;
+    } else {
+        let install_name_tool = args.install_name_tool.as_ref().ok_or_else(|| {
+            fail(
+                "BUCK2_TS_TOOL",
+                "darwin bundles require --install-name-tool",
+            )
+        })?;
+        require_executable(install_name_tool, "install-name-tool")?;
+        let codesign = args
+            .codesign
+            .as_ref()
+            .ok_or_else(|| fail("BUCK2_TS_TOOL", "darwin bundles require --codesign"))?;
+        require_executable(codesign, "codesign")?;
     }
     safe_text(&args.target, "target")?;
     let entry = normalized_relative(&args.entry, "entry")?;
@@ -491,20 +508,15 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
         &workspace,
         &temp.path().join("home"),
     )?;
-    if let Some(parent) = args.output.parent() {
-        fs::create_dir_all(parent).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
-    }
-    fs::copy(&stable, &args.output).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
+    // Both rewriters run with the scratch directory as cwd, while Buck
+    // declares the output relative to the project root. Resolve it absolutely
+    // first.
+    let output_text = fs::canonicalize(&args.output)
+        .map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?
+        .to_str()
+        .ok_or_else(|| fail("BUCK2_TS_PATH", "output path is not UTF-8"))?
+        .to_owned();
     if !darwin {
-        // patchelf runs with the scratch directory as cwd, while Buck declares
-        // the output relative to the project root. Resolve it absolutely first.
-        // Mach-O products skip this entirely: rewriting an interpreter is an
-        // ELF concept, and touching the binary would break its ad-hoc signature.
-        let output_text = fs::canonicalize(&args.output)
-            .map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?
-            .to_str()
-            .ok_or_else(|| fail("BUCK2_TS_PATH", "output path is not UTF-8"))?
-            .to_owned();
         run_tool(
             &args.patchelf,
             &[
@@ -513,6 +525,42 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
                 "--remove-rpath",
                 output_text.as_str(),
             ],
+            temp.path(),
+            &temp.path().join("home"),
+        )?;
+    } else {
+        // Realize a portable payload: the only non-system load command nix's
+        // bun emits is its store-linked ICU. Point it at the macOS system ICU
+        // (the same library upstream bun links) and refresh the ad-hoc
+        // signature; anything else outside /usr/lib or /System/Library fails
+        // closed, and the full contract observation below still verifies the
+        // final bytes independently.
+        let staged =
+            fs::read(&args.output).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
+        let install_name_tool = args.install_name_tool.as_ref().unwrap();
+        for name in non_system_dylibs(&staged)? {
+            let basename = name.rsplit('/').next().unwrap_or_default();
+            if !basename.starts_with("libicucore.") {
+                return Err(fail(
+                    "BUCK2_TS_DYLIB",
+                    format!("Mach-O dylib has no portable system realization: {name}"),
+                ));
+            }
+            run_tool(
+                install_name_tool,
+                &[
+                    "-change",
+                    name.as_str(),
+                    &format!("/usr/lib/{basename}"),
+                    output_text.as_str(),
+                ],
+                temp.path(),
+                &temp.path().join("home"),
+            )?;
+        }
+        run_tool(
+            args.codesign.as_ref().unwrap(),
+            &["--force", "--sign", "-", output_text.as_str()],
             temp.path(),
             &temp.path().join("home"),
         )?;
@@ -631,6 +679,8 @@ mod tests {
             descriptor: root.join("descriptor.json"),
             target: "//pkg:tool".into(),
             platform: "x86_64-linux".into(),
+            install_name_tool: None,
+            codesign: None,
         }
     }
 
