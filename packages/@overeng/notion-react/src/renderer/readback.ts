@@ -2,11 +2,13 @@
  * Readback-normalization oracle.
  *
  * Answers one question: does the server-observed state of a page match what a
- * JSX element renders to, in the same hash space? Both sides are folded into a
- * canonical `NormalizedReadbackNode` tree and hashed with the package's shared
- * `hashStable` (djb2 over stable-stringify), so
- * `observed.hash === candidate.hash` iff the page content is semantically
- * identical to the render.
+ * JSX element renders to? Both sides are folded into a canonical
+ * `NormalizedReadbackNode` tree and compared by their full stable
+ * serializations, so the comparison is equal iff the page content is
+ * semantically identical to the render. The reported `candidateHash` /
+ * `observedHash` (package-shared `hashStable`, djb2 over stable-stringify)
+ * are fingerprints for reporting only — 32-bit collisions must never decide
+ * equality, so `equal` is always computed from the serializations.
  *
  * ## Readback hashes are a SEPARATE hash space from `CacheNode.hash`
  *
@@ -52,9 +54,18 @@
  * `synced_block`, `child_database`, `breadcrumb`, ...) are not supported:
  * their payloads are opaque request-shape passthroughs, so the response-shape
  * delta cannot be normalized generically. Normalization throws on them.
+ *
+ * Root-page metadata (title/icon/cover from `<Page>`) is out of scope here —
+ * pair with {@link compareReadbackPage} for the full page.
+ *
+ * `equal` is decided by full stable-serialization equality of the canonical
+ * trees — the 32-bit hashes are reported for diagnostics but never decide
+ * the verdict, so a hash collision cannot certify drifted content as
+ * matching.
  */
+
 import type { CandidateNode, CandidateTree } from './sync-diff.ts'
-import { hashStable } from './sync-diff.ts'
+import { hashStable, stableStringify } from './sync-diff.ts'
 
 type Json = Record<string, unknown>
 
@@ -433,9 +444,11 @@ export interface ReadbackComparison {
 
 /**
  * Compare a rendered candidate against a server observation of the same page.
- * `equal` (equivalently `candidateHash === observedHash`) certifies the page's
- * managed block content matches the render — the readback half of a
- * publication verification, complementing `plan()`'s cache-side fixpoint.
+ * `equal` certifies the page's managed block content matches the render —
+ * the readback half of a publication verification, complementing `plan()`'s
+ * cache-side fixpoint. It is decided by full stable-serialization equality;
+ * the reported hashes are diagnostics and never decide the verdict (a 32-bit
+ * collision must not certify drift as a match).
  *
  * Root-page metadata (title/icon/cover from `<Page>`) is out of scope here —
  * pair with {@link compareReadbackPage} for the full page.
@@ -449,12 +462,12 @@ export const compareReadback = ({
 }): ReadbackComparison => {
   const cand = normalizeCandidate(candidate.children)
   const obs = maskProviderOwned(cand, normalizeObserved(observed))
-  const candidateHash = readbackHash(cand)
-  const observedHash = readbackHash(obs)
+  const candJson = stableStringify(cand)
+  const obsJson = stableStringify(obs)
   return {
-    candidateHash,
-    observedHash,
-    equal: candidateHash === observedHash,
+    candidateHash: readbackHash(cand),
+    observedHash: readbackHash(obs),
+    equal: candJson === obsJson,
     candidate: cand,
     observed: obs,
   }
@@ -556,12 +569,12 @@ export const compareReadbackPage = ({
         : normalizeMediaSource(observed.cover as Json, 'page/cover(observed)')
   }
 
-  const candidateHash = hashStable(cand)
-  const observedHash = hashStable(obs)
+  const candJson = stableStringify(cand)
+  const obsJson = stableStringify(obs)
   return {
-    candidateHash,
-    observedHash,
-    equal: candidateHash === observedHash,
+    candidateHash: hashStable(cand),
+    observedHash: hashStable(obs),
+    equal: candJson === obsJson,
     candidate: cand,
     observed: obs,
   }

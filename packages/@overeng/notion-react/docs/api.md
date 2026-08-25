@@ -116,7 +116,8 @@ import {
 The readback oracle certifies **server × intent** equality — the
 complement of `plan()`'s cache × intent fixpoint. Both the observed
 block JSON and the rendered `CandidateTree` normalize into one
-canonical form and compare by hash:
+canonical form; `equal` is decided by full stable-serialization equality
+of that form, with the reported hashes as diagnostics only.
 
 ```ts
 const candidate = buildCandidateTree(element, pageId)
