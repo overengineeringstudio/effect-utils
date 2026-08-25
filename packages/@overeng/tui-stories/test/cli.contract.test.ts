@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -21,8 +23,23 @@ const stripAnsi = (output: string) =>
     '',
   )
 
+// Walk up to the checkout root — segment-counting from import.meta.url is
+// unreliable here because bun resolves the module through megarepo symlinks.
+const repoRoot = (() => {
+  let dir = dirname(cliPath)
+  for (;;) {
+    if (existsSync(join(dir, '.git')) === true) return dir
+    const parent = dirname(dir)
+    if (parent === dir) throw new Error('repo root not found')
+    dir = parent
+  }
+})()
+
 const normalizeOutput = (output: string) =>
   stripAnsi(output)
+    // v4 stderr embeds stack frames with absolute checkout paths; normalize so
+    // baselines stay stable across checkouts (same as genie's contract test).
+    .replaceAll(repoRoot, '<repo>')
     .replace(/ — running from local source \([^)]+\)/gu, '')
     .replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\]/gmu, '[time]')
 // LIVE-MIGRATION END effect-3-4

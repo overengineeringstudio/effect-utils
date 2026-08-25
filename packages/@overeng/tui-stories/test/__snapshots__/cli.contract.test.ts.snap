@@ -8,7 +8,7 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
 ERROR
   Invalid value for flag --width: "nope". Expected a string representing a finite number
 ~effect/cli/CliError/ShowHelp: Help requested (tui-stories 0.1.0)
-    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
+    at <anonymous> (<repo>/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
   "stdout": "DESCRIPTION
   Render a story to terminal output
@@ -71,7 +71,7 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
 ERROR
   Missing required flag: --path
 ~effect/cli/CliError/ShowHelp: Help requested (tui-stories 0.1.0)
-    at <anonymous> (/home/schickling/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/schickling/2026-08-23-effect-4/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
+    at <anonymous> (<repo>/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
   "stdout": "DESCRIPTION
   List all discovered stories
