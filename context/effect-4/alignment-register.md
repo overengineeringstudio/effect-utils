@@ -53,9 +53,8 @@
   (`effect/src/unstable/cli/internal/lexer.ts:24-40`), but parser recursion constructs the child
   input with `trailingOperands: []` (`internal/parser.ts:87`) and attaches the originals to the
   parent parse record (`internal/parser.ts:97`).
-- **Decision:** reported upstream; do not migrate affected commands until fixed upstream.
-  RESOLVED: fixed upstream in beta.103 via PR #6692 (issue #6690 closed); verified against the
-  pinned rc.111 — nested terminators deliver trailing operands byte-for-byte.
+- **Decision:** RESOLVED: fixed upstream in beta.103 via PR #6692 (issue #6690 closed); verified
+  against the pinned rc.111 — nested terminators deliver trailing operands byte-for-byte.
 - **Blast radius:** was dash-prefixed positional values in nested commands (`megarepo`
   add/exec/pin/store, Notion database/schema commands, TUI story render/inspect). No longer
   gated; any allowlist traces gating on this entry should be removed.
@@ -77,18 +76,23 @@
 
 ## cli-C-rendering-and-stdout-breakage
 
-- **Bucket:** C — REAL BREAKAGE WE MUST PRESERVE OR SHIM.
+- **Bucket:** C — REAL RENDERING/STDOUT BREAKAGE; RESOLVED BY THE LOCKED FULL-REBASELINE
+  DECISION (accept v4 rendering, no shims).
 - **Difference:** v4 changes root/nested help, version bytes, validation wording, ANSI, newline
   count, and stdout/stderr placement. Validation failures print full help to stdout where v3
   stdout was empty.
-- **Decision:** preserve with compatibility rendering or explicitly rebaseline per CLI owner.
-  Regardless of wording, keep validation help off stdout for JSON/NDJSON-producing commands.
+- **Decision:** RESOLVED by the locked full-rebaseline decision: accept the v4 help, version,
+  and validation rendering; no compatibility rendering or shims. Validation help on stdout is
+  accepted for all audited binaries as part of that rebaseline.
 - **Blast radius:** all audited binaries: `megarepo`, `notion-cli`, `genie`, `ci-tools`,
   `npm-release`, and `tui-stories`. `notion-cli` already preserves root version bytes via its own
   fast path; the other five delegate version rendering to Effect CLI.
-- **Status:** REQUIRED COMPATIBILITY WORK; 13 exact output paths are gated on beta.102. Two were
-  added for excess-positional rejection: both v3 and v4 exit `1`, but diagnostics and
-  help-on-stdout differ. No existing path changed bucket from beta.99.
+- **Status:** RESOLVED-REBASELINED at rc.111. The 13 exact output paths formerly gated on
+  beta.102 bytes are no longer open compatibility work: every audited binary's
+  `cli.contract.test.ts` snapshot suite was regenerated against v4 (ci-tools in commit
+  `01f823c8b`; megarepo `abd4fae2b`, genie `97280e2a5`, npm-release/tui-stories `45d7f1324`,
+  with tui-stories/notion-cli normalization in `c727ecc64`). No output path remains gated on
+  v3 bytes.
 
 ## platform-error-wrapper
 
@@ -192,13 +196,21 @@
   v4 encodes the flattened Cause reasons array. A tagged failure therefore
   changes bytes from `{"cause":{"_tag":"Fail",...}}` to
   `{"cause":[{"_tag":"Fail",...}]}`.
-- **Proposed decision:** Accept the v4 envelope only for atomically upgraded
-  internal peers. Require an explicit protocol version or compatibility adapter
-  anywhere peers can run different majors or envelopes are persisted.
+- **Decision:** (2026-08-25, issue #1115, human-approved; docs/CI-level record only — the
+  runtime gate is explicitly deferred) v3 encodes a Cause envelope object while v4 encodes the
+  flattened reasons array, and opposite-major decodes fail symmetrically, so neither a
+  server-first nor a client-first rollout preserves failure handling without adaptation.
+  `effect-rpc-tanstack` cannot be deployed atomically: cached browser JS outlives any
+  coordinated upgrade, and its SSR route-loader boundary adds a second server-to-browser Exit
+  encoding boundary. DECISION: mixed-major deployment of `effect-rpc-tanstack` is OUT OF
+  CONTRACT until a future runtime versioned gate lands; runtime negotiation/versioning is
+  deferred and tracked by issue #1115.
 - **Blast radius:** every RPC error response, including unary exits and streaming
   exits.
-- **Status:** allowlisted in `patterns/rpc-payload-codecs/scenario.json`;
-  payload bytes and decoded handler values are otherwise identical.
+- **Status:** DECIDED — contract-level gate recorded above; runtime versioned
+  negotiation/gate deferred (#1115). Allowlisted in
+  `patterns/rpc-payload-codecs/scenario.json`; payload bytes and decoded handler values are
+  otherwise identical.
 
 ## browser-testing-barrel
 
@@ -225,30 +237,33 @@
 
 ## filesystem-watch-recursive-option-removed
 
-- **Bucket:** C — REAL BREAKAGE WE MUST PRESERVE OR SHIM.
+- **Bucket:** C — REAL RECURSION-SCOPE BREAKAGE AT beta.102; RESOLVED UPSTREAM AT rc.111
+  (recursion opt-in again, no shim required).
 - **Difference:** v3 `FileSystem.watch(path, { recursive: false })` observes only direct children.
   In beta.102 the option is removed from both `FileSystem.watch` and `WatchBackend.register`, and
   the shared Node implementation calls `node:fs.watch` with `{ recursive: true }`
   unconditionally. The Bun FileSystem layer delegates to that implementation.
-- **Decision:** do not accept the widened watch scope. Restore recursive control upstream or
-  preserve non-recursive behavior with a compatibility FileSystem/watch shim before migrating
-  affected loops.
-- **Blast radius:** `megarepo` and `genie` watch modes. Unexpected nested events can trigger
-  spurious rebuilds or watch loops and present as timing flakiness rather than a clear migration
-  failure.
-- **Status:** REQUIRED COMPATIBILITY WORK; allowlisted at the one stable nested-path membership
-  trace path. Raw event ordering is deliberately not gated after five same-major runs produced
-  four unique v3 traces and three unique v4 traces. No matching upstream issue was found; a draft
-  report is in `recipes/filesystem-watch-ordering.md` pending orchestrator duplicate review.
-- **Amendment 1 (2026-08-24, rc.111):** the premise no longer holds at rc.111 —
-  `WatchOptions.recursive` is opt-in again (`effect/src/FileSystem.ts:1171-1176`), and the Node
-  backend defaults it to false (`@effect/platform-node-shared/src/NodeFileSystem.ts:557-558`).
-  Migration must pass `{ recursive: true }` explicitly per call site that wants recursion.
-  Design study landed in `watch-recursion-experiments.md`: megarepo has no watch usage; genie
-  should embrace recursion (fixes latent nested-genie-file blindness) with a 250ms coalescing
-  window; notion-md keeps an exact-path filter for single-file watch and collapses batch watch
-  to one recursive common-root watch; a shared `watchScoped` helper for @overeng/utils is
-  proposed only after both migrations land.
+- **Decision:** RESOLVED UPSTREAM at rc.111: recursive control is restored — `WatchOptions.recursive`
+  is opt-in again and the Node backend defaults it to false. No compatibility shim is required;
+  migration decides per call site whether to opt into recursion.
+- **Blast radius:** `genie` and `@overeng/notion-md` watch modes (`megarepo` has no
+  `FileSystem.watch` usage); `@overeng/utils`' node `file-system-backing` also holds one
+  default non-recursive watch call site, where the proposed shared `watchScoped` helper would
+  land. Unexpected nested events can trigger spurious rebuilds or watch loops and present as
+  timing flakiness rather than a clear migration failure.
+- **Status:** OPEN DESIGN WORK; the beta.102 "REQUIRED COMPATIBILITY WORK" framing is retired.
+  At rc.111 the forced-recursion premise no longer holds: `WatchOptions.recursive` is opt-in
+  again (`effect/src/FileSystem.ts:1171-1176`) and the Node backend defaults it to false
+  (`@effect/platform-node-shared/src/NodeFileSystem.ts:557-558`), so call sites pass
+  `{ recursive: true }` explicitly where recursion is wanted. What remains open is applying the
+  design study in `watch-recursion-experiments.md`: megarepo has no watch usage; genie should
+  embrace recursion (fixes latent nested-genie-file blindness) with a 250ms coalescing window;
+  notion-md keeps an exact-path filter for single-file watch and collapses batch watch to one
+  recursive common-root watch; a shared `watchScoped` helper for @overeng/utils is proposed only
+  after both migrations land. Historical characterization record: allowlisted at the one stable
+  nested-path membership trace path; raw event ordering was deliberately not gated (five
+  same-major runs produced four unique v3 and three unique v4 traces); draft upstream report in
+  `recipes/filesystem-watch-ordering.md`.
 
 ## prompt-pty-ansi-rendering
 

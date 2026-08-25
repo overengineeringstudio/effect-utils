@@ -17,6 +17,14 @@ All notable changes to this project will be documented in this file.
   http.client span-header patch are retired — see
   `context/effect-4/rc111-followups.md` for known behavior changes and
   follow-ups.
+- **context/effect-4**: record rc.111 contract decisions in the alignment
+  register and retire their stale statuses: cli-C rendering/stdout differences
+  are accepted under the locked full-rebaseline decision (v4 help, version,
+  and validation rendering on all audited binaries, no compatibility shims);
+  filesystem-watch recursion is resolved upstream at rc.111
+  (`WatchOptions.recursive` opt-in again, Node backend defaults to false); and
+  mixed-major deployment of `effect-rpc-tanstack` is out of contract until a
+  runtime versioned gate lands (#1115). Docs-only change.
 - **@overeng/tui-react, @overeng/tui-stories, @overeng/effect-react,
   @overeng/effect-schema-form, @overeng/effect-schema-form-aria**: migrate to
   effect@4.0.0-rc.111. Schema AST introspection updated to v4 node kinds
