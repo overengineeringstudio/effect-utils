@@ -2542,7 +2542,7 @@ export const plan = (
             id: retrieveOpId,
             kind: 'retrieve',
             durationMs: performance.now() - t0,
-            resultCount: Chunk.size(liveChildren),
+            resultCount: Array.from(liveChildren).length,
             at: Date.now(),
           }),
         )
