@@ -15,6 +15,13 @@ const allowedRawOtelFiles = new Set([
   'packages/@overeng/notion-datasource-sync/src/observability/observability.ts',
   'packages/@overeng/oxc-config/src/no-raw-otel-primitives.ts',
   'packages/@overeng/utils-dev/src/otelite/otel.ts',
+  // The buck2 evidence projection is the ONE measured raw-withSpan boundary
+  // (see its header comment and context/buck2/.decisions/0011): OtelSpan
+  // contracts cannot yet express span kind CLIENT, per-record span names, or
+  // W3C links to an ExternalSpan (nix.import -> buck.invocation). Registered
+  // here so the boundary gate stays total; migrate mechanically when
+  // otel-contract grows kind/link support.
+  'packages/@overeng/buck2-tools/src/evidence/projection.ts',
 ])
 
 const isProductionSource = (path: string) =>
