@@ -334,7 +334,7 @@ export class AliasAssignmentFailed extends Schema.TaggedError<AliasAssignmentFai
   '@overeng/ci-tools/deploy/AliasAssignmentFailed',
 )('AliasAssignmentFailed', {
   failure: DeployFailure,
-  attempts: Schema.Positive,
+  attempts: PositiveInt,
 }) {}
 
 export const deployFailureRetryability = (failure: DeployFailure): boolean => {
