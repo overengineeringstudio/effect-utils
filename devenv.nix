@@ -1269,6 +1269,10 @@ in
     ];
     exec = trace.exec "buck2:otel-scrape:product" ''
       set -euo pipefail
+      # Buck local actions must run the exact Nix-authored toolchain; an
+      # ambient RUSTC_WRAPPER (e.g. sccache from interactive profiles) both
+      # violates that contract and breaks on Buck scratch paths.
+      unset RUSTC_WRAPPER RUSTC_BUILD_WRAPPER
       root="''${DEVENV_ROOT:-$PWD}"
       source ${buck2RootedNixConfigScript}
       export BUCK2_ROOTED_NIX_BIN=${pkgs.nix}/bin/nix
