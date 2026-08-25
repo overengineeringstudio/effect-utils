@@ -60,6 +60,7 @@ buck2_bin="$("$readlink_bin" -f "$buck2_bin")"
 for foundation_file in \
   "$repo_root/buck2/package_targets.bzl" \
   "$repo_root/buck2/platforms/defs.bzl" \
+  "$repo_root/buck2/platforms/local_execution.bzl" \
   "$repo_root/buck2/platforms/BUCK" \
   "$repo_root/toolchains/configured.bzl"; do
   [ -f "$foundation_file" ] || {
@@ -98,6 +99,7 @@ trap 'exit 143' TERM
 "$cp_bin" -p "$repo_root/.buckconfig" "$probe_root/.buckconfig"
 "$cp_bin" -p "$repo_root/buck2/package_targets.bzl" "$probe_root/buck2/package_targets.bzl"
 "$cp_bin" -p "$repo_root/buck2/platforms/defs.bzl" "$probe_root/buck2/platforms/defs.bzl"
+"$cp_bin" -p "$repo_root/buck2/platforms/local_execution.bzl" "$probe_root/buck2/platforms/local_execution.bzl"
 "$cp_bin" -p "$repo_root/buck2/platforms/BUCK" "$probe_root/buck2/platforms/BUCK"
 "$cp_bin" -p "$repo_root/toolchains/configured.bzl" "$probe_root/toolchains/configured.bzl"
 
