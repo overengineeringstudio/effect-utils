@@ -524,7 +524,7 @@ propagates as a `NotionSyncError`. Callers receive the reason on the
 (shallow drift detection), `selectDiffBase` (cold/warm/drift base
 selection incl. the fallback decision table above), and
 `rootPageUpdateOpFor` (the root title/icon/cover `updatePage` that
-`sync()` applies *outside* its internal diff). `plan()` composes the
+`sync()` applies _outside_ its internal diff). `plan()` composes the
 same helpers with `diff()` and returns without applying:
 
 ```ts

@@ -81,13 +81,13 @@ successful `sync()`, a `plan()` over the same element returns zero ops.
 
 `staleness`:
 
-| Value                | Behaviour                                                                                                                                                                                                              |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `'live'` (default)   | Mirrors sync's shallow pre-flight: one top-level children GET + in-memory pending-marker adoption (never persisted). Detects out-of-band appends as `fallbackReason: 'cache-drift'`. GET-only — never a write.          |
-| `'cache-only'`       | Pure function of cache + JSX, zero API calls. Blind spots: out-of-band drift, the cold-`'clean'` baseline sweep's removes (they need the live child list), and pending-marker resolution. Use only against a fresh cache. |
+| Value              | Behaviour                                                                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `'live'` (default) | Mirrors sync's shallow pre-flight: one top-level children GET + in-memory pending-marker adoption (never persisted). Detects out-of-band appends as `fallbackReason: 'cache-drift'`. GET-only — never a write.            |
+| `'cache-only'`     | Pure function of cache + JSX, zero API calls. Blind spots: out-of-band drift, the cold-`'clean'` baseline sweep's removes (they need the live child list), and pending-marker resolution. Use only against a fresh cache. |
 
 TOCTOU stance: there is no lock between `plan()` and a later `sync()`,
-so the *plan* can go stale — the applied result cannot, because `sync()`
+so the _plan_ can go stale — the applied result cannot, because `sync()`
 recomputes from scratch. Treat a plan as advisory for the observed
 instant; use the post-apply empty-plan check for proof of convergence.
 
