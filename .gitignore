@@ -7,6 +7,10 @@ tmp
 .codex/
 .evergreen/
 
+# Per-job CI runtime helpers copied from genie/ci-scripts by the workflow
+# "Prepare CI helper scripts" step; job-local scratch, never tracked
+.genie-ci-runtime/
+
 # Node.js
 node_modules
 .pnpm-store
