@@ -69,6 +69,12 @@ export {
 } from './readback.ts'
 export { observeBlockTree } from './readback-observe.ts'
 export {
+  adopt,
+  AdoptionRefusedError,
+  type AdoptionRefusal,
+  type ContentDriftPolicy,
+} from './adopt.ts'
+export {
   UploadRegistryProvider,
   useNotionUpload,
   type UploadRecord,

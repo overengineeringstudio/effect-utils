@@ -116,6 +116,21 @@ All notable changes to this project will be documented in this file.
   into a `CacheTree` out-of-band can no longer drift from the scheme
   `buildCandidateTree` / `diff` actually produce.
 
+- **@overeng/notion-react**: add `adopt()`, fail-closed adoption of an
+  existing rendered page (#1093). A stateless consumer whose renderer cache
+  did not survive can rebuild the `CacheTree` a prior `sync()` would have
+  persisted from (candidate JSX, pageId, live observation) alone — zero
+  Notion mutations in every outcome, refusal paths included. Binding is
+  strictly positional (`blockKey` is never stored in Notion; keys flow
+  candidate-side only); every bound pair is verified — block content through
+  the readback oracle, `child_page`/root `<Page>` title/icon/cover claims
+  per field via `pages.retrieve` — and every divergence is collected into
+  one typed `AdoptionRefusedError` (`ChildCountMismatch`, `TypeMismatch`,
+  `ContentDrift`, `UnverifiableContent`, `PageMetaDrift`, `RootTrashed`).
+  `onContentDrift: 'adopt-live'` keeps structural checks fail-closed but
+  records a live marker at drifted nodes so the next ordinary `sync()`
+  emits exactly the minimal repairing updates, after which strict
+  re-adoption reaches the zero-op fixpoint.
 - **@overeng/notion-react**: add `pageLifecycle: 'managed' | 'append-only'` on
   `sync()`/`plan()` (#1124). `'append-only'` guarantees a sync never archives,
   moves, or reorders a page and never creates one out of tail position in its

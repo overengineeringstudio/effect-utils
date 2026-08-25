@@ -653,6 +653,68 @@ so crash recovery stays legal: a checkpointed page that _moved_ in the
 retry JSX is adopted first (harmless) and its implied `movePage` then
 rejected by the predicate.
 
+## Fail-closed adoption (R42–R44)
+
+`adopt(element, { pageId, onContentDrift? })` (`adopt.ts`) rebuilds the
+cache a stateless consumer lost, from live observation alone:
+
+```
+buildCandidateTree ──► keys + hashes (candidate side ONLY — blockKey is
+                       never stored in Notion, so there is no recovery
+                       problem to solve)
+observeBlockTree   ──► live children per parent, in-trash excluded
+positional walk    ──► candidate i ↔ live i, per parent, collecting
+                       refusals; recursion crosses child_page boundaries
+                       (fresh observation per page) and descends whenever
+                       EITHER side expects children
+candidateToCache   ──► the clean-path snapshot + root metadata hashes
+```
+
+Verification per bound pair, in order:
+
+1. **type** — live block type must equal the candidate's;
+2. **content** — through `compareReadback`, one node at a time with
+   children stripped on both sides, so a drifted descendant pins the
+   descendant, not its ancestors. Reusing the readback oracle (rather
+   than hashing a hand-projected live payload) is what makes adoption
+   correct against the real API's response decoration; any
+   adopt-specific tolerance belongs in readback's masking table, never
+   in a forked normalizer. Nodes readback cannot normalize (`<Raw>`
+   payloads) refuse as `UnverifiableContent` — fail closed, never
+   trust;
+3. **page claims** — for `child_page` nodes and the root `<Page>`,
+   title/icon/cover claims verify per field via `compareReadbackPage`
+   against `pages.retrieve` (field-level `PageMetaDrift`), so the A07
+   icon rewrite and uploaded-cover envelopes are absorbed by the
+   shipped page masking; a trashed root refuses (`RootTrashed`). Root
+   metadata is only checked when the JSX carried root claims —
+   mirroring `sync()`'s own contract.
+
+All refusals collect into one `AdoptionRefusedError` (never first-fail),
+and every outcome — success or refusal — performs zero mutations.
+
+Recovery (R44): `'adopt-live'` records, at content-drifted block nodes
+only, `adopt-live:<observedReadbackHash>` in `CacheNode.hash`. The
+marker is deliberately NOT a cache-space hash (R39 forbids cross-space
+comparison; the response→request projection needed to compute the true
+live cache hash does not exist) — its contract is deterministic
+inequality with the candidate's hash, which makes the next `sync()`
+emit exactly one `update` per drifted node. Drifted page-metadata
+fields record the live claim's cache-space hash (computable via the
+shared `normalizeTitle`/`normalizeIcon`/`normalizeCover`), or drop the
+field when the live side is unset — either way the next sync emits one
+repairing `updatePage`. After the repair, strict re-adoption succeeds
+and `plan()` is empty.
+
+Relation to #1100: `adoptInlineChildren` (crash recovery for inline
+creates) is the positional prior art — same binding rule, but it trusts
+the persisted create-time hashes because the same process wrote them
+moments earlier. `adopt()` is its strict strengthening for trees the
+adopter did not write: every hash is re-derived candidate-side and
+every binding content-verified. The walkers stay separate because their
+inputs differ (`PendingInlineNode` intent vs full candidate tree) and
+the recovery path must not destabilize.
+
 ## Upload coordination
 
 See `src/renderer/upload-registry.ts`.
