@@ -33,7 +33,7 @@ import { compareReadback, compareReadbackPage } from '../../../renderer/readback
 import { buildCandidateTree } from '../../../renderer/sync-diff.ts'
 import { sync } from '../../../renderer/sync.ts'
 import { SKIP_E2E, withScratchPage } from './helpers.ts'
-const encodeJson = Schema.encodeSync(Schema.parseJson())
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 /**
  * Live-API coverage for the readback oracle. The mock stores request-shape
