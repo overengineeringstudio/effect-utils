@@ -194,7 +194,6 @@ describe('notion-datasource-sync replica wire baselines (cross-major invariant)'
     }
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; preserve the replica ISO timestamp strings while keeping SQLite failure classification unchanged.
   it('captures pending replica change JSON bytes and SQLite failure partition', () => {
     const db = new DatabaseSync(replicaPath)
     try {

@@ -124,7 +124,8 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     expect(serde.deserialize(new Uint8Array())).toBeUndefined()
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) here; use #978's stable error envelope instead of refreshing the v3 HTTP 400 parser text.
+  // Pins the v3 HTTP 400 parser rendering; #978's stable decode-error envelope
+  // replaces this transport text when it lands.
   it('captures ingress decode failure transport bytes for invalid input', () => {
     const serde = ingressSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
     const cases = {
@@ -156,7 +157,8 @@ describe('effectSerde wire baselines (cross-major invariant)', () => {
     `)
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 renders SchemaError(...) here; re-baseline only after confirming this remains an internal structural failure outside #978's stable ingress envelope.
+  // Internal decode failure must stay outside #978's stable ingress 400
+  // envelope; re-baseline only after confirming that partition survives.
   it('keeps internal decode failures out of the ingress 400 transport partition', () => {
     const serde = internalSerde({ schema: Schema.Struct({ n: Schema.Finite }) })
 

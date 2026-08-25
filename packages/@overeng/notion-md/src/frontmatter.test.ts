@@ -195,7 +195,6 @@ describe('notion-md frontmatter wire baselines (cross-major invariant)', () => {
       body: '# Frontmatter 世界\r\n\r\nBody with unicode résumé.\r\n',
     })
 
-  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw impossible date strings (effect#6608); preserve the frontmatter bytes or explicitly adjudicate the contract.
   it('renders the persisted .nmd envelope to byte-identical JSON frontmatter', () => {
     expect(rendered()).toMatchInlineSnapshot(`
       "---
@@ -293,7 +292,6 @@ describe('notion-md frontmatter wire baselines (cross-major invariant)', () => {
     `)
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw impossible date strings (effect#6608); preserve the frontmatter bytes or explicitly adjudicate the contract.
   it('parses the persisted .nmd envelope and re-renders byte-identically', async () => {
     const parsed = await parse(rendered().replaceAll('\n', '\r\n'))
     expect(JSON.stringify(parsed.frontmatter)).toMatchInlineSnapshot(

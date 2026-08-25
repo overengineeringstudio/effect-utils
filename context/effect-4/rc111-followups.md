@@ -38,11 +38,10 @@ owner decision or upstream movement before/with test-suite convergence.
 
 ## In-repo cleanup
 
-10. **Marker sweep**: resolve remaining `TODO(live-migration:effect-3-4)`
-    markers once differential baselines run green under rc.111
-    (`context/effect-4/check-baseline-*.ts` gates).
-11. **Test-suite convergence**: per-slice suites pass individually; full
-    monorepo vitest pass + baseline gates to be wired into devenv tasks and CI.
+11. **Test-suite convergence**: per-slice suites already wired into the
+    aggregate `test:run` devenv task (with Effect 4 baseline gates) and CI
+    (`devenv tasks run test:run`); convergence = making that existing
+    aggregate green under rc.111.
 12. **Pre-existing genie lint noise** (out of flip scope):
     `genie/ci-scripts/pr-snapshot-artifact*.mjs` await-in-loop/named-args,
     `genie/tsconfig-projects.ts` exports-first trio, `support-files.ts`

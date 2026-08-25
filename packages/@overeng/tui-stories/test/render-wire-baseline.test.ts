@@ -345,7 +345,6 @@ describe('tui-stories baselines (cross-major invariant)', () => {
 
     const entries = Object.entries(failures) as ReadonlyArray<readonly [string, unknown]>
 
-    // TODO(live-migration:effect-3-4): rebaseline Effect 4 parse-tree prose if schema decode failures still preserve the same failure partitions.
     expect(
       Object.fromEntries(
         entries.map(([name, result]) => {

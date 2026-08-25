@@ -408,7 +408,6 @@ describe('canonical decode (golden byte-identity)', () => {
 })
 
 describe('canonical wire baselines (cross-major invariant)', () => {
-  // TODO(live-migration:effect-3-4): Effect 4 may reject v3's raw 2026-02-31 date (effect#6608); adjudicate the date contract instead of refreshing this baseline.
   it('decodes a representative property map to byte-identical canonical JSON', async () => {
     const decoded = await Effect.runPromise(
       codec.decodePageProperties({
@@ -465,7 +464,6 @@ describe('canonical wire baselines (cross-major invariant)', () => {
     )
   })
 
-  // TODO(live-migration:effect-3-4): Effect 4 reassigns Schema.Date; preserve these ISO Notion wire strings with the approved DateFromString mapping rather than refreshing the bytes.
   it('encodes a representative write patch to byte-identical Notion JSON', async () => {
     const patch = await Effect.runPromise(
       encodeCanonicalPatch({

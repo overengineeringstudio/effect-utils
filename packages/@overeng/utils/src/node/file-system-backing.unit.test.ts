@@ -956,10 +956,6 @@ Vitest.describe('FileSystemBacking', () => {
 
         expect(observedPathNames).toContain(directBefore)
         expect(observedPathNames).toContain(directAfter)
-        // TODO(live-migration:effect-3-4): beta.102 removes the recursive option and always watches
-        // recursively — this nested-child assertion is EXPECTED to fail at the flip. Do NOT rebaseline:
-        // it is the signal that the compatibility shim (register entry
-        // filesystem-watch-recursive-option-removed) is still owed.
         expect(observedPathNames).not.toContain(nestedChild)
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
