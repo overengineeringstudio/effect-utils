@@ -24,6 +24,7 @@ import {
   type CleanupResult,
   type DeployFailure,
   DeployProviderOperation,
+  AliasAssignmentFailed,
   DeployResultV1,
   DeployVerifyOperation,
   InvalidProviderOutput,
@@ -93,6 +94,19 @@ const VercelProjectFileJson = Schema.fromJsonString(
 )
 const JsonUnknown = Schema.fromJsonString(Schema.Unknown)
 
+const VercelDeploymentJson = Schema.Struct({
+  meta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+}).annotations({ identifier: 'CiTools.Vercel.DeploymentJson' })
+
+const VercelAliasJson = Schema.Struct({
+  projectId: Schema.optional(Schema.NonEmptyTrimmedString),
+  deploymentId: Schema.optional(Schema.NonEmptyTrimmedString),
+  deployment: Schema.optional(
+    Schema.Struct({
+      url: Schema.optional(Schema.String),
+    }),
+  ),
+}).annotations({ identifier: 'CiTools.Vercel.AliasJson' })
 const isoNow = () => new Date().toISOString()
 
 const optional = (value: string | undefined) =>
@@ -636,6 +650,201 @@ const classifyVercelFailure = (opts: {
   })
 }
 
+
+const fetchVercelDeploymentCommitSha = Effect.fn('ci-tools.deploy.vercel.deployment-commit-sha')(
+  function* (opts: {
+    readonly target: string
+    readonly apiBaseUrl: string
+    readonly authToken: string
+    readonly teamId: string | undefined
+    readonly deploymentRef: string
+  }) {
+    const response = yield* fetchVercelJson({
+      target: opts.target,
+      apiBaseUrl: opts.apiBaseUrl,
+      authToken: opts.authToken,
+      path: `/v13/deployments/${encodeURIComponent(opts.deploymentRef)}${
+        opts.teamId === undefined ? '' : `?teamId=${encodeURIComponent(opts.teamId)}`
+      }`,
+    })
+    if (response.status < 200 || response.status >= 300) {
+      return undefined
+    }
+    const decoded = Schema.decodeUnknownEither(Schema.parseJson(VercelDeploymentJson))(response.text)
+    if (Either.isLeft(decoded) === true) {
+      return undefined
+    }
+    const commitSha = decoded.right.meta?.githubCommitSha
+    return typeof commitSha === 'string' && commitSha.length > 0 ? commitSha : undefined
+  },
+)
+
+type VercelAliasRecord = {
+  readonly projectId: string | undefined
+  readonly deploymentRef: string | undefined
+}
+
+const fetchVercelAliasRecord = Effect.fn('ci-tools.deploy.vercel.alias-record')(function* (opts: {
+  readonly target: string
+  readonly apiBaseUrl: string
+  readonly authToken: string
+  readonly teamId: string | undefined
+  readonly aliasHost: string
+}) {
+  const response = yield* fetchVercelJson({
+    target: opts.target,
+    apiBaseUrl: opts.apiBaseUrl,
+    authToken: opts.authToken,
+    path: `/v4/aliases/${encodeURIComponent(opts.aliasHost)}${
+      opts.teamId === undefined ? '' : `?teamId=${encodeURIComponent(opts.teamId)}`
+    }`,
+  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+  if (response === undefined || response.status < 200 || response.status >= 300) {
+    return undefined
+  }
+  const decoded = Schema.decodeUnknownEither(Schema.parseJson(VercelAliasJson))(response.text)
+  if (Either.isLeft(decoded) === true) {
+    return undefined
+  }
+  return {
+    projectId: decoded.right.projectId,
+    deploymentRef: decoded.right.deploymentId ?? decoded.right.deployment?.url ?? undefined,
+  } satisfies VercelAliasRecord
+})
+
+const assignAliasResilient = (opts: {
+  readonly target: string
+  readonly aliasHost: string
+  readonly rawDeployUrl: string
+  readonly vercelBin: string
+  readonly workDir: string
+  readonly scope: string | undefined
+  readonly authToken: string
+  readonly projectId: string
+  readonly orgId: string
+  readonly teamId: string | undefined
+  readonly apiBaseUrl: string
+}) =>
+  Effect.gen(function* () {
+  const deployHost = new URL(opts.rawDeployUrl).host
+
+  const runAliasAttempt = (attempt: number) =>
+    DeployProviderOperation.with({
+      attributes: {
+        provider: 'vercel',
+        target: opts.target,
+        attempt: String(attempt),
+      },
+      effect: runVercelCommand({
+        vercelBin: opts.vercelBin,
+        cwd: opts.workDir,
+        args: [
+          'alias',
+          opts.rawDeployUrl,
+          opts.aliasHost,
+          ...vercelScopeArgs(opts.scope),
+          '--token',
+          opts.authToken,
+        ],
+        env: {
+          VERCEL_PROJECT_ID: opts.projectId,
+          VERCEL_ORG_ID: opts.orgId,
+          ...(opts.teamId === undefined ? {} : { VERCEL_TEAM_ID: opts.teamId }),
+        },
+      }),
+    })
+
+  const first = yield* runAliasAttempt(1)
+  if (first.status === 0) {
+    return
+  }
+  const classifyFirstFailure = () =>
+    classifyVercelFailure({
+      target: opts.target,
+      status: first.status,
+      stdout: first.stdout,
+      stderr: first.stderr,
+      authToken: opts.authToken,
+      operation: 'alias',
+    })
+  if (/already in use/iu.test(`${first.stderr}\n${first.stdout}`) === false) {
+    return yield* new AliasAssignmentFailed({ failure: classifyFirstFailure(), attempts: 1 })
+  }
+
+  const holder = yield* fetchVercelAliasRecord({
+    target: opts.target,
+    apiBaseUrl: opts.apiBaseUrl,
+    authToken: opts.authToken,
+    teamId: opts.teamId,
+    aliasHost: opts.aliasHost,
+  })
+  let holderCommitSha: string | undefined
+  if (holder?.deploymentRef !== undefined) {
+    holderCommitSha = yield* fetchVercelDeploymentCommitSha({
+      target: opts.target,
+      apiBaseUrl: opts.apiBaseUrl,
+      authToken: opts.authToken,
+      teamId: opts.teamId,
+      deploymentRef: holder.deploymentRef,
+    })
+  }
+
+  if (holder?.projectId !== opts.projectId) {
+    // The alias is held outside this project (or is invisible to this team's
+    // token, e.g. a globally claimed <project>.vercel.app owned by another
+    return yield* new AliasAssignmentFailed({
+      failure: new ProviderOperationFailed({
+        provider: 'vercel',
+        target: opts.target,
+        operation: 'alias',
+        transient: false,
+        message:
+          `Vercel alias ${opts.aliasHost} is already used by a deployment this project does not own` +
+          `${holder === undefined ? '' : ` (project ${holder.projectId ?? 'unknown'})`}; ` +
+          `pick a unique name via --alias-prefix or attach a custom domain via --production-domain ` +
+          `instead of relying on ${opts.aliasHost}`,
+        diagnostics: {
+          ...(holder?.deploymentRef === undefined ? {} : { holderDeployment: holder.deploymentRef }),
+          ...(holderCommitSha === undefined ? {} : { holderCommitSha }),
+        },
+      }),
+      attempts: 1,
+    })
+  }
+
+  if (holderCommitSha !== undefined) {
+    const ourCommitSha = yield* fetchVercelDeploymentCommitSha({
+      target: opts.target,
+      apiBaseUrl: opts.apiBaseUrl,
+      authToken: opts.authToken,
+      teamId: opts.teamId,
+      deploymentRef: deployHost,
+    })
+    if (ourCommitSha === holderCommitSha) {
+      return
+    }
+  }
+
+  // Same project, different commit: the earlier deployment may be mid-cutover;
+  // recheck once immediately before giving up.
+  const second = yield* runAliasAttempt(2)
+  if (second.status === 0) {
+    return
+  }
+  return yield* new AliasAssignmentFailed({
+    failure: classifyVercelFailure({
+      target: opts.target,
+      status: second.status,
+      stdout: second.stdout,
+      stderr: second.stderr,
+      authToken: opts.authToken,
+      operation: 'alias',
+    }),
+    attempts: 2,
+  })
+})
+
+
 const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(function* (opts: {
   readonly target: string
   readonly finalUrl: URL
@@ -853,13 +1062,13 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
   })
 
   const authTokenValue = envValue(options.authTokenEnv)
-  const failWithRecord = (failure: DeployFailure) =>
+  const failWithRecord = (failure: DeployFailure, attempts = 1) =>
     emitWorkflowReportRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
       record: deployFailureRecord({
         input,
         failure,
-        attempts: 1,
+        attempts,
         createdAtUtc,
         secretValues: authTokenValue === undefined ? [] : [authTokenValue],
       }),
@@ -1018,8 +1227,8 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
       if (deployResult.status !== 0) {
         return yield* failWithRecord(
           classifyVercelFailure({
-            target: options.target,
             status: deployResult.status,
+            target: options.target,
             stdout: deployResult.stdout,
             stderr: deployResult.stderr,
             authToken: authTokenValue,
@@ -1047,41 +1256,23 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
       let finalUrl = rawDeployUrl
       if (alias !== undefined) {
         const aliasHost = `${alias}.vercel.app`
-        const aliasResult = yield* DeployProviderOperation.with({
-          attributes: {
-            provider: 'vercel',
-            target: input.target,
-          },
-          effect: runVercelCommand({
-            vercelBin: options.vercelBin,
-            cwd: preparedOutput.workDir,
-            args: [
-              'alias',
-              rawDeployUrl,
-              aliasHost,
-              ...vercelScopeArgs(scope),
-              '--token',
-              authTokenValue,
-            ],
-            env: {
-              VERCEL_PROJECT_ID: projectId,
-              VERCEL_ORG_ID: orgId,
-              ...(teamId === undefined ? {} : { VERCEL_TEAM_ID: teamId }),
-            },
-          }),
-        })
-        if (aliasResult.status !== 0) {
-          return yield* failWithRecord(
-            classifyVercelFailure({
-              target: options.target,
-              status: aliasResult.status,
-              stdout: aliasResult.stdout,
-              stderr: aliasResult.stderr,
-              authToken: authTokenValue,
-              operation: 'alias',
-            }),
-          )
-        }
+        yield* assignAliasResilient({
+          target: options.target,
+          aliasHost,
+          rawDeployUrl,
+          vercelBin: options.vercelBin,
+          workDir: preparedOutput.workDir,
+          scope,
+          authToken: authTokenValue,
+          projectId,
+          orgId,
+          teamId,
+          apiBaseUrl: options.vercelApiBaseUrl,
+        }).pipe(
+          Effect.catchTag('AliasAssignmentFailed', (error) =>
+            failWithRecord(error.failure, error.attempts),
+          ),
+        )
         finalUrl = `https://${aliasHost}`
       }
 
