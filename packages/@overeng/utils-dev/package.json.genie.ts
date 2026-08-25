@@ -38,6 +38,7 @@ export default packageJson(
         environment: 'node',
       }),
       './otelite': exportEntry('./src/otelite/mod.ts', { environment: 'node' }),
+      './cli-contract': exportEntry('./src/cli-contract.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
@@ -45,6 +46,7 @@ export default packageJson(
         './node-vitest': './dist/node-vitest/mod.js',
         './node-vitest/setup-fast-check': './dist/node-vitest/setup-fast-check.js',
         './otelite': './dist/otelite/mod.js',
+        './cli-contract': './dist/cli-contract.js',
       },
     },
   },
