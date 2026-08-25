@@ -8,9 +8,12 @@ def _configured_path(section, key):
     return value
 
 def _local_nix_platform():
+    # Match the execution-platform vocabulary used by the capability
+    # projection and //buck2/platforms (e.g. aarch64-macos), not the Nix
+    # system tuple.
     host = host_info()
     architecture = "x86_64" if host.arch.is_x86_64 else "aarch64" if host.arch.is_aarch64 else fail("unsupported host architecture")
-    operating_system = "linux" if host.os.is_linux else "darwin" if host.os.is_macos else fail("unsupported host operating system")
+    operating_system = "linux" if host.os.is_linux else "macos" if host.os.is_macos else fail("unsupported host operating system")
     return architecture + "-" + operating_system
 
 def _add_sources(args, package_path, sources, workspace_sources, workspace_source_prefixes):
