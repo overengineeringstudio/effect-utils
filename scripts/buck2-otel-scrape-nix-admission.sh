@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Buck local actions must run the exact Nix-authored toolchain; an ambient
+# RUSTC_WRAPPER (e.g. sccache) breaks on Buck scratch paths and violates that
+# contract, so strip it before any buck2 invocation.
+unset RUSTC_WRAPPER RUSTC_BUILD_WRAPPER
 
 mode="${1:?usage: buck2-otel-scrape-nix-admission.sh smoke|admit TOOLCHAIN_CONFIG}"
 toolchain_config="${2:?Rust toolchain config is required}"
