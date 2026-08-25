@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./cli-contract": "./src/cli-contract.ts",
     "./node-vitest": "./src/node-vitest/mod.ts",
     "./node-vitest/setup-fast-check": "./src/node-vitest/setup-fast-check.ts",
     "./otelite": "./src/otelite/mod.ts"
@@ -13,7 +14,8 @@
     "exports": {
       "./node-vitest": "./dist/node-vitest/mod.js",
       "./node-vitest/setup-fast-check": "./dist/node-vitest/setup-fast-check.js",
-      "./otelite": "./dist/otelite/mod.js"
+      "./otelite": "./dist/otelite/mod.js",
+      "./cli-contract": "./dist/cli-contract.js"
     }
   },
   "devDependencies": {

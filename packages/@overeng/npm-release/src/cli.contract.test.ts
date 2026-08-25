@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
+
 const cliPath = fileURLToPath(new URL('./cli.ts', import.meta.url))
 
 /**
@@ -10,10 +12,6 @@ const cliPath = fileURLToPath(new URL('./cli.ts', import.meta.url))
  * usage, and error prose are captured for review but may be re-baselined by the npm-release owner
  * during Effect 4 repair with an alignment-register entry.
  */
-// LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
-const normalizeLogTime = (output: string) =>
-  output.replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\]/gm, '[time]')
-// LIVE-MIGRATION END effect-3-4
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {
@@ -24,10 +22,8 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
-    // LIVE-MIGRATION BRIDGE effect-3-4 B7 — DELETE at contraction — https://github.com/overengineeringstudio/effect-utils/issues/925
-    stdout: normalizeLogTime(result.stdout),
-    stderr: normalizeLogTime(result.stderr),
-    // LIVE-MIGRATION END effect-3-4
+    stdout: normalizeCliOutput({ input: result.stdout, time: true }),
+    stderr: normalizeCliOutput({ input: result.stderr, time: true }),
   }
 }
 
