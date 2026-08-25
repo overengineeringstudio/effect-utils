@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { NotionPages } from '@overeng/notion-effect-client'
@@ -33,6 +33,7 @@ import { compareReadback, compareReadbackPage } from '../../../renderer/readback
 import { buildCandidateTree } from '../../../renderer/sync-diff.ts'
 import { sync } from '../../../renderer/sync.ts'
 import { SKIP_E2E, withScratchPage } from './helpers.ts'
+const encodeJson = Schema.encodeSync(Schema.parseJson())
 
 /**
  * Live-API coverage for the readback oracle. The mock stores request-shape
@@ -105,8 +106,8 @@ describe.skipIf(SKIP_E2E)('readback oracle against the live API (e2e)', () => {
           const cmp = compareReadback({ candidate: buildCandidateTree(element, pageId), observed })
           if (!cmp.equal) {
             // Surface the normalized trees on failure — the diff IS the finding.
-            console.error('candidate', JSON.stringify(cmp.candidate, null, 2))
-            console.error('observed', JSON.stringify(cmp.observed, null, 2))
+            console.error('candidate', encodeJson(cmp.candidate))
+            console.error('observed', encodeJson(cmp.observed))
           }
           expect(cmp.equal).toBe(true)
 
