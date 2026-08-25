@@ -25,4 +25,12 @@ Vitest.describe('rewriteHelpSubcommand', () => {
   Vitest.it('preserves nested args: `help sub1 sub2` → `sub1 sub2 --help`', () => {
     expect(rewriteHelpSubcommand(['help', 'sub1', 'sub2'])).toEqual(['sub1', 'sub2', '--help'])
   })
+
+  Vitest.it('does not rewrite when `help` is not the first arg', () => {
+    expect(rewriteHelpSubcommand(['--flag', 'help', 'subcmd'])).toEqual(['--flag', 'help', 'subcmd'])
+  })
+
+  Vitest.it('passes through a leading `--` separator unchanged', () => {
+    expect(rewriteHelpSubcommand(['--', 'help', 'subcmd'])).toEqual(['--', 'help', 'subcmd'])
+  })
 })
