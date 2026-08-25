@@ -11,7 +11,7 @@ import {
 } from './deploy-domain.contract.ts'
 import type { WorkflowReportRecord } from './mod.ts'
 
-const NonEmptyTrimmedString = Schema.NonEmptyString.check(
+export const NonEmptyTrimmedString = Schema.NonEmptyString.check(
   Schema.makeFilter((s: string) => s.trim().length === s.length),
 )
 

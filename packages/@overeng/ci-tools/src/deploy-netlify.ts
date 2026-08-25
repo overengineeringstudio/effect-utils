@@ -16,6 +16,7 @@ import {
   DeployResultV1,
   InvalidProviderOutput,
   MissingAuth,
+  NonEmptyTrimmedString,
   ProviderOperationFailed,
   ProviderProjectLookupFailed,
   Unauthorized,
@@ -67,14 +68,14 @@ const HttpsUrlString = Schema.NonEmptyString.check(
 ).annotate({ identifier: 'CiTools.Netlify.HttpsUrlString' })
 
 const NetlifyDeployJson = Schema.Struct({
-  deploy_id: Schema.NonEmptyString,
-  site_name: Schema.NonEmptyString,
+  deploy_id: NonEmptyTrimmedString,
+  site_name: NonEmptyTrimmedString,
   deploy_url: HttpsUrlString,
 }).annotate({ identifier: 'CiTools.Netlify.DeployJson' })
 
 const NetlifySiteJson = Schema.Struct({
-  name: Schema.optional(Schema.NonEmptyString),
-  account_slug: Schema.optional(Schema.NonEmptyString),
+  name: Schema.optional(NonEmptyTrimmedString),
+  account_slug: Schema.optional(NonEmptyTrimmedString),
 }).annotate({ identifier: 'CiTools.Netlify.SiteJson' })
 
 const isoNow = () => new Date().toISOString()

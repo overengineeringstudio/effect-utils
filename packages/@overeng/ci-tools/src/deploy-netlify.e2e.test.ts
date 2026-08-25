@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-type ApiMode = 'ok' | 'unauthorized' | 'missing'
+type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-site'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
@@ -99,6 +99,12 @@ beforeAll(async () => {
     }
     if (apiMode === 'missing') {
       response.writeHead(404, { connection: 'close' }).end('missing')
+      return
+    }
+    if (apiMode === 'blank-site') {
+      response
+        .writeHead(200, { 'content-type': 'application/json', connection: 'close' })
+        .end(JSON.stringify({ name: 'fake-site', account_slug: '   ' }))
       return
     }
     response
@@ -312,6 +318,40 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
         retryable: false,
       })
     } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('fails when Netlify site lookup returns a whitespace-only account slug', async () => {
+    apiMode = 'blank-site'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeNetlifyBin: workspace.fakeNetlifyBin,
+        reportFile,
+        args: [
+          '--target',
+          'storybook',
+          '--artifact-dir',
+          workspace.artifactDir,
+          '--mode',
+          'prod',
+          '--site-name',
+          'fake-site',
+        ],
+      })
+      expect(result.status).not.toBe(0)
+
+      const record = readRecord(reportFile)
+      expect(record.status).toBe('failure')
+      expect(record.data).toMatchObject({
+        errorKind: 'ProviderProjectLookupFailed',
+        retryable: false,
+      })
+    } finally {
+      apiMode = 'ok'
       rmSync(workspace.root, { recursive: true, force: true })
     }
   })

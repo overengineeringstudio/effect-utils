@@ -14,7 +14,7 @@ import { join, resolve } from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-type ApiMode = 'ok' | 'unauthorized' | 'missing'
+type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-project'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
@@ -109,6 +109,12 @@ beforeAll(async () => {
     }
     if (apiMode === 'missing') {
       response.writeHead(404, { connection: 'close' }).end('missing')
+      return
+    }
+    if (apiMode === 'blank-project') {
+      response
+        .writeHead(200, { 'content-type': 'application/json', connection: 'close' })
+        .end(JSON.stringify({ id: '   ', name: '   ' }))
       return
     }
     response
@@ -542,6 +548,28 @@ exit 1
       })
       expect(result.status).not.toBe(0)
       expect(readRecord(reportFile).data).toMatchObject({ errorKind: 'Unauthorized' })
+      expect(existsSync(workspace.logPath)).toBe(false)
+    } finally {
+      apiMode = 'ok'
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('fails before upload when API-first project lookup returns whitespace-only identity', async () => {
+    apiMode = 'blank-project'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: ['--target', 'web', '--artifact-dir', workspace.artifactDir, '--mode', 'preview'],
+      })
+      expect(result.status).not.toBe(0)
+      expect(readRecord(reportFile).data).toMatchObject({
+        errorKind: 'ProviderProjectLookupFailed',
+      })
       expect(existsSync(workspace.logPath)).toBe(false)
     } finally {
       apiMode = 'ok'

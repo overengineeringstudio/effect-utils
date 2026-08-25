@@ -42,6 +42,10 @@ All notable changes to this project will be documented in this file.
   CLI help/validation prose renders on stdout with new formatting, schema
   decode failure prose follows the v4 formatter, and SubscriptionRef change
   streams emit the initial value at subscribe time.
+- **@overeng/ci-tools**: restored trim validation of provider outputs at the
+  deploy boundaries — Netlify CLI/site JSON (`deploy_id`, `site_name`, `name`,
+  `account_slug`) and Vercel project JSON (`id`, `name`) now reject
+  whitespace-only values as invalid provider output instead of accepting them.
 
 - **@overeng/content-address, @overeng/kdl-effect, @overeng/otel-contract**:
   migrate to effect@4.0.0-rc.111. `Schema.pattern`/`maxLength`/
