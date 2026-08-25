@@ -207,14 +207,14 @@ whenever either side expects children, so untracked nested live content
 surfaces instead of being ignored. All refusals in a pass are collected
 into one `AdoptionRefusedError`:
 
-| Refusal                | Meaning                                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `ChildCountMismatch`   | Extra untracked live blocks or missing candidate content under a parent (ids/keys pinned).                 |
-| `TypeMismatch`         | Live block type differs from the candidate's at a position.                                                |
-| `ContentDrift`         | Bound block's content drifted (pins key, blockId, and both readback-space hashes).                         |
-| `UnverifiableContent`  | The readback oracle cannot normalize the node (`<Raw>` escape-hatch payloads) — fail closed, never trust.  |
-| `PageMetaDrift`        | A claimed page title/icon/cover drifted (field-level, cache-space claim hashes).                           |
-| `RootTrashed`          | The root page is in the trash while the JSX carries root `<Page>` claims.                                  |
+| Refusal               | Meaning                                                                                                   |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| `ChildCountMismatch`  | Extra untracked live blocks or missing candidate content under a parent (ids/keys pinned).                |
+| `TypeMismatch`        | Live block type differs from the candidate's at a position.                                               |
+| `ContentDrift`        | Bound block's content drifted (pins key, blockId, and both readback-space hashes).                        |
+| `UnverifiableContent` | The readback oracle cannot normalize the node (`<Raw>` escape-hatch payloads) — fail closed, never trust. |
+| `PageMetaDrift`       | A claimed page title/icon/cover drifted (field-level, cache-space claim hashes).                          |
+| `RootTrashed`         | The root page is in the trash while the JSX carries root `<Page>` claims.                                 |
 
 `onContentDrift: 'adopt-live'` keeps all structural checks fail-closed
 but adopts drifted nodes with a recorded live marker (blocks:
