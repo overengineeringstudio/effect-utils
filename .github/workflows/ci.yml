@@ -3842,7 +3842,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
-      ARTIFACT_DIR: tmp/devenv-perf-ci
+      ARTIFACT_DIR: '${{ runner.temp }}/devenv-perf-ci'
       OTEL_SERVICE_NAME: devenv-perf-ci
       RUNNER_CLASS: 'namespace-profile-linux-x86-64,namespace-features:github.run-id=${{ github.run_id }}'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
@@ -4677,8 +4677,8 @@ jobs:
         with:
           name: devenv-perf
           path: |
-            tmp/devenv-perf-ci
-            !tmp/devenv-perf-ci/baseline/**
+            ${{ runner.temp }}/devenv-perf-ci
+            !${{ runner.temp }}/devenv-perf-ci/baseline/**
           if-no-files-found: error
           retention-days: 7
     timeout-minutes: 30

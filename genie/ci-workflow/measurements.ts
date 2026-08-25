@@ -1471,7 +1471,8 @@ echo "Downloaded $(wc -l <"$downloaded_runs_file" | tr -d ' ') baseline artifact
 export const devenvPerfArtifactStep = (
   opts?: Pick<DevenvPerfJobOptions, 'artifactDir' | 'artifactName' | 'retentionDays'>,
 ) => {
-  const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'
+  // Keep in sync with devenvPerfJob: see the workspace-import note there.
+  const artifactDir = opts?.artifactDir ?? '${{ runner.temp }}/devenv-perf-ci'
   return {
     name: 'Upload devenv perf artifacts',
     if: 'always()',
@@ -3641,7 +3642,11 @@ fi
   }) as const
 
 export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
-  const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'
+  // Must live outside the workspace: devenv's bootstrap-closure task imports the
+  // whole working tree via an unfiltered builtins.path, so per-sample capture
+  // writes inside the tree would re-hash it on every probe and grow /nix/store
+  // by a full source snapshot per sample (ENOSPC on namespace runners).
+  const artifactDir = opts?.artifactDir ?? '${{ runner.temp }}/devenv-perf-ci'
   const artifactName =
     opts?.artifactName ??
     'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
