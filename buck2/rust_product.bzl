@@ -20,7 +20,7 @@ def _impl(ctx):
             "product",
             "--binary", _single_output(ctx.attrs.binary),
             "--binary-name", ctx.attrs.binary_name,
-            "--target", str(ctx.label),
+            "--target", ctx.label.raw_target(),
             "--toolchain-identity", identity,
             "--archive", archive.as_output(),
             "--descriptor", descriptor.as_output(),
