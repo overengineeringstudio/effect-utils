@@ -102,7 +102,7 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
 - **T11 A plan can go stale (TOCTOU):** There is no lock between a
   `plan()` and a later `sync()`; a concurrent writer can invalidate the
   plan in between. This is accepted because `sync()` recomputes from
-  scratch — the *plan* is what goes stale, never the applied result.
+  scratch — the _plan_ is what goes stale, never the applied result.
   Callers gating on a plan (pre-apply audit) must treat it as advisory
   for the observed instant, and use the post-apply empty-plan fixpoint
   check for proof.
