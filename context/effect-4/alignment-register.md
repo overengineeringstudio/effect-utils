@@ -195,13 +195,21 @@
   v4 encodes the flattened Cause reasons array. A tagged failure therefore
   changes bytes from `{"cause":{"_tag":"Fail",...}}` to
   `{"cause":[{"_tag":"Fail",...}]}`.
-- **Proposed decision:** Accept the v4 envelope only for atomically upgraded
-  internal peers. Require an explicit protocol version or compatibility adapter
-  anywhere peers can run different majors or envelopes are persisted.
+- **Decision:** (2026-08-25, issue #1115, human-approved; docs/CI-level record only — the
+  runtime gate is explicitly deferred) v3 encodes a Cause envelope object while v4 encodes the
+  flattened reasons array, and opposite-major decodes fail symmetrically, so neither a
+  server-first nor a client-first rollout preserves failure handling without adaptation.
+  `effect-rpc-tanstack` cannot be deployed atomically: cached browser JS outlives any
+  coordinated upgrade, and its SSR route-loader boundary adds a second server-to-browser Exit
+  encoding boundary. DECISION: mixed-major deployment of `effect-rpc-tanstack` is OUT OF
+  CONTRACT until a future runtime versioned gate lands; runtime negotiation/versioning is
+  deferred and tracked by issue #1115.
 - **Blast radius:** every RPC error response, including unary exits and streaming
   exits.
-- **Status:** allowlisted in `patterns/rpc-payload-codecs/scenario.json`;
-  payload bytes and decoded handler values are otherwise identical.
+- **Status:** DECIDED — contract-level gate recorded above; runtime versioned
+  negotiation/gate deferred (#1115). Allowlisted in
+  `patterns/rpc-payload-codecs/scenario.json`; payload bytes and decoded handler values are
+  otherwise identical.
 
 ## browser-testing-barrel
 

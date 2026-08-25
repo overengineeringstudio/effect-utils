@@ -24,8 +24,11 @@ owner decision or upstream movement before/with test-suite convergence.
 ## Wire/format decisions recorded during migration
 
 6. **RPC string request IDs accepted** — v3 rejected non-BigInt ids; wire
-   baseline updated. Decide client-side id validation policy or versioning for
-   persisted envelopes (see rpc-failure-cause-wire-shape).
+   baseline updated. Client-side id validation policy remains open. Envelope
+   versioning is now governed by the recorded mixed-major contract decision on
+   `rpc-failure-cause-wire-shape` (alignment-register.md, issue #1115): the
+   runtime versioned gate is deferred and mixed-major `effect-rpc-tanstack`
+   deployment is out of contract until it lands.
 7. **`JSONSchema.make` → `Schema.toJsonSchemaDocument`** — generated JSON
    Schema is now draft-2020-12 Document shape (megarepo generator artifact).
 8. **`NonEmptyTrimmedString` trim semantics dropped** in ci-tools provider
