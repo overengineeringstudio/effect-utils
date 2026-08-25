@@ -111,6 +111,15 @@ const hashAny = (value: unknown): string => {
 }
 
 /**
+ * djb2 hash over the stable-stringified value — the single hash space shared
+ * by candidate block hashes, page-metadata hashes, and the readback oracle
+ * (`readback.ts`). Exported so consumers comparing server-observed state
+ * against candidates hash through the identical function instead of
+ * reimplementing it.
+ */
+export const hashStable = (value: unknown): string => hashAny(value)
+
+/**
  * Hash helper for icon/cover candidate values (phase 4b, #618).
  *
  * - `null` (author asked to clear via `icon={null}` / `cover={null}`) hashes
