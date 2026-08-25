@@ -517,6 +517,49 @@ is a v0.2 addition — under v0.1, a 404 on a cache-referenced block
 propagates as a `NotionSyncError`. Callers receive the reason on the
 `SyncResult`.
 
+## plan() — read-only companion (R37–R38)
+
+`sync()`'s pre-flight is factored into shared module-level helpers —
+`resolvePendingPages` (pending-marker adoption), `topLevelDrifted`
+(shallow drift detection), `selectDiffBase` (cold/warm/drift base
+selection incl. the fallback decision table above), and
+`rootPageUpdateOpFor` (the root title/icon/cover `updatePage` that
+`sync()` applies *outside* its internal diff). `plan()` composes the
+same helpers with `diff()` and returns without applying:
+
+```ts
+interface SyncPlan {
+  ops: readonly DiffOp[] // exact sequence sync() would apply, root updatePage included
+  blocks: { appends; updates; inserts; removes }
+  pages: { creates; updates; archives; moves; reorders }
+  fallbackReason: SyncFallbackReason | undefined
+  empty: boolean // the fixpoint oracle
+}
+```
+
+Including the root `updatePage` in `ops` is load-bearing: without it
+the empty-plan fixpoint oracle would miss root metadata drift (an icon
+change plans as exactly one `pages.update`, matching what `sync()`
+applies).
+
+Staleness (R38, T11):
+
+- **`'live'` (default):** mirrors sync's shallow pre-flight — one
+  top-level children GET plus in-memory pending-marker adoption (never
+  persisted; plan() writes nothing). Detects out-of-band appends as
+  `fallbackReason: 'cache-drift'`. The plan can still go stale before a
+  later `sync()` (T11) — sync recomputes, so the applied result cannot.
+- **`'cache-only'`:** a pure function of cache + JSX, zero requests.
+  Blind to anything only the server knows: out-of-band drift, the
+  cold-`'clean'` baseline sweep (needs the live child list to plan its
+  removes), and pending-marker resolution.
+
+`onEvent` reuses the `SyncEvent` union for the read-only prefix: the
+`'live'` GET emits `OpIssued`/`OpSucceeded`/`OpFailed` with kind
+`'retrieve'`, and the computed plan emits one `PlanComputed`. No
+`SyncStart`/`SyncEnd`/`CacheOutcome` — plan probes must not skew
+cache-efficiency or sync-duration metrics aggregated across real syncs.
+
 ## Upload coordination
 
 See `src/renderer/upload-registry.ts`.

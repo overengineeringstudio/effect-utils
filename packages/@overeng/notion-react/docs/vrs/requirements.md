@@ -99,6 +99,13 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   Drift between them is accepted until a second consumer justifies
   centralization (#1098); golden tests pin the projection dialect in the
   meantime.
+- **T11 A plan can go stale (TOCTOU):** There is no lock between a
+  `plan()` and a later `sync()`; a concurrent writer can invalidate the
+  plan in between. This is accepted because `sync()` recomputes from
+  scratch — the *plan* is what goes stale, never the applied result.
+  Callers gating on a plan (pre-apply audit) must treat it as advisory
+  for the observed instant, and use the post-apply empty-plan fixpoint
+  check for proof.
 
 ## Requirements
 
@@ -252,6 +259,23 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
 - **R23 Host-config encapsulation:** All react-reconciler host-config
   details live behind an internal module boundary; downstream callers
   must never need to touch it.
+
+### Must expose a read-only plan
+
+- **R37 Plan/sync parity:** `plan()` must compute the exact op sequence
+  `sync()` would apply for the same element and observed state — through
+  the same pre-flight and diff code path (shared helpers, not a
+  reimplementation), including the root-page metadata update `sync()`
+  applies outside its internal diff — while performing no write: no
+  Notion mutation and no cache save. An empty plan is the fixpoint
+  oracle: immediately after a successful `sync()` of the same element,
+  `plan()` must return zero ops.
+- **R38 Plan staleness is explicit:** The default `'live'` staleness
+  mirrors sync's shallow pre-flight with read-only calls and detects
+  out-of-band top-level drift; `'cache-only'` issues zero requests and
+  is a pure function of cache + JSX. The blind spots of `'cache-only'`
+  (out-of-band drift, cold-`'clean'` baseline removes, pending-marker
+  resolution) must be documented, not silently approximated.
 
 ### Must project authored JSX to readable Markdown (experimental)
 

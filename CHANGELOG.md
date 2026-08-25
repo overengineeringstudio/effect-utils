@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-react**: add `plan()`, a read-only companion to `sync()`
+  (#1122). It computes the exact op sequence a sync would apply — through the
+  same pre-flight and diff code path, root-page metadata update included —
+  with zero writes: no Notion mutation, no cache save. `SyncPlan.empty` is a
+  post-publication fixpoint oracle. `staleness: 'live' | 'cache-only'` picks
+  between sync's GET-only shallow pre-flight (detects out-of-band drift) and
+  a zero-request pure cache×JSX check. `onEvent` emits the retrieve op events
+  and one `PlanComputed` from the existing `SyncEvent` union.
 - **@overeng/notion-react**: export `NodeKey`, the encoder for the
   `k:<blockKey>` / `p:<index>` node keys the reconciler assigns to
   candidate/cache tree entries (#1121). The internal key derivation now
