@@ -17,10 +17,8 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-// effect 4 CLI expects pure arguments (no program/script prefix), while
-// rewriteHelpSubcommand still speaks the effect 3 full-argv convention.
 Cli.Command.runWith(tuiStoriesCommand, { version })(
-  rewriteHelpSubcommand(process.argv).slice(2),
+  rewriteHelpSubcommand(process.argv.slice(2)),
 ).pipe(
   Effect.scoped,
   CliVersion.enrichErrors,

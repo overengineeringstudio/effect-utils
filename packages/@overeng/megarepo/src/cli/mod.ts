@@ -74,5 +74,5 @@ export const mrCommand = Cli.Command.make('mr').pipe(
 /** Exported CLI for external use */
 export const cli = (args: ReadonlyArray<string>) =>
   Cli.Command.runWith(mrCommand, { version: MR_VERSION })(
-    rewriteHelpSubcommand(['mr', ...args]).slice(1),
+    rewriteHelpSubcommand(args),
   )

@@ -88,8 +88,8 @@ missing-required failure when the escaped positional is the required child argum
 | equals repeated flags | `ci-tools`, `tui-stories`                                         | v4 newly accepts equals form for `ci-tools` production-domain/build-env and `tui-stories --arg`; existing separate-form invocations are unchanged                                                                                                                                                                                              |
 | unknown flags         | every command                                                     | tracked commands have no variadic positional `Args`, so exit remains 1; the real change is v4 full help on stdout plus new stderr wording                                                                                                                                                                                                      |
 
-`megarepo`'s `rewriteHelpSubcommand(process.argv)` does not mitigate the terminator bug. It returns
-non-`help` argv unchanged (`utils/src/node/cli-help-rewrite.ts:2-8`), so
+`megarepo`'s `rewriteHelpSubcommand` does not mitigate the terminator bug. It returns
+non-`help` argv unchanged (`utils/src/node/cli-help-rewrite.ts:5-8`), so
 `mr add -- -dash-prefixed-repo` still reaches the broken v4 parser. For the custom
 `mr help add` form it appends `--help`; if the input itself contains `--`, the appended help flag
 lands after the terminator and is among the operands stranded on the parent. Normal

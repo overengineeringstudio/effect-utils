@@ -69,7 +69,7 @@ const program = Effect.gen(function* () {
   })
 
   yield* Cli.Command.runWith(mrCommand, { version })(
-    rewriteHelpSubcommand(process.argv).slice(2),
+    rewriteHelpSubcommand(process.argv.slice(2)),
   ).pipe(
     Effect.scoped,
     CliVersion.enrichErrors,
