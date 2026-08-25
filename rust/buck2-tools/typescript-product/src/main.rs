@@ -1,7 +1,7 @@
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use buck2_tool_core::{
-    canonical_json, normalized_relative, safe_text, sha256_file, verify_execution_capability,
-    ToolError, ToolResult,
+    ToolError, ToolResult, canonical_json, mach_o::mach_o_runtime, normalized_relative, safe_text,
+    sha256_file, verify_execution_capability,
 };
 use clap::{Args, Parser, Subcommand};
 use serde_json::json;
@@ -10,7 +10,7 @@ use std::{
     collections::HashSet,
     fs,
     io::Cursor,
-    os::unix::fs::{symlink, PermissionsExt},
+    os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -443,7 +443,19 @@ fn input_digest(args: &BundleArgs) -> ToolResult<String> {
 
 fn bundle(args: BundleArgs) -> ToolResult<()> {
     require_executable(&args.bun, "bun")?;
-    require_executable(&args.patchelf, "patchelf")?;
+    let darwin = match args.platform.as_str() {
+        "x86_64-linux" => false,
+        "aarch64-macos" => true,
+        other => {
+            return Err(fail(
+                "BUCK2_TS_PLATFORM",
+                format!("unsupported bundle platform: {other}"),
+            ));
+        }
+    };
+    if !darwin {
+        require_executable(&args.patchelf, "patchelf")?;
+    }
     safe_text(&args.target, "target")?;
     let entry = normalized_relative(&args.entry, "entry")?;
     let binary_name = normalized_relative(&args.binary_name, "binary name")?;
@@ -483,24 +495,28 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
         fs::create_dir_all(parent).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
     }
     fs::copy(&stable, &args.output).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
-    // patchelf runs with the scratch directory as cwd, while Buck declares the
-    // output relative to the project root. Resolve it absolutely first.
-    let output_text = fs::canonicalize(&args.output)
-        .map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?
-        .to_str()
-        .ok_or_else(|| fail("BUCK2_TS_PATH", "output path is not UTF-8"))?
-        .to_owned();
-    run_tool(
-        &args.patchelf,
-        &[
-            "--set-interpreter",
-            "/lib64/ld-linux-x86-64.so.2",
-            "--remove-rpath",
-            output_text.as_str(),
-        ],
-        temp.path(),
-        &temp.path().join("home"),
-    )?;
+    if !darwin {
+        // patchelf runs with the scratch directory as cwd, while Buck declares
+        // the output relative to the project root. Resolve it absolutely first.
+        // Mach-O products skip this entirely: rewriting an interpreter is an
+        // ELF concept, and touching the binary would break its ad-hoc signature.
+        let output_text = fs::canonicalize(&args.output)
+            .map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?
+            .to_str()
+            .ok_or_else(|| fail("BUCK2_TS_PATH", "output path is not UTF-8"))?
+            .to_owned();
+        run_tool(
+            &args.patchelf,
+            &[
+                "--set-interpreter",
+                "/lib64/ld-linux-x86-64.so.2",
+                "--remove-rpath",
+                output_text.as_str(),
+            ],
+            temp.path(),
+            &temp.path().join("home"),
+        )?;
+    }
     fs::set_permissions(&args.output, fs::Permissions::from_mode(0o555))
         .map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
     let binary =
@@ -530,19 +546,31 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
     let descriptor = json!({
         "entrypoints":[format!("bin/{binary_name}")], "name":binary_name,
         "payload":{"digest":{"algorithm":"sha256","sri":format!("sha256-{}", STANDARD.encode(payload_bytes))},"file":"artifact.tar","format":"tar","sizeBytes":fs::metadata(&args.archive).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?.len()},
-        "platform":{"abi":"glibc","architecture":"x86_64","os":"linux"},
-        "runtime":{
-            "elfClass":"ELF64",
-            "inspectionContract":"elf-dynamic/v1",
-            "interpreter":"/lib64/ld-linux-x86-64.so.2",
-            "kind":"elf-dynamic",
-            "machine":"x86_64",
-            "neededLibraries":["ld-linux-x86-64.so.2","libc.so.6","libdl.so.2","libm.so.6","libpthread.so.0"],
-            "rpathPolicy":"empty/v1",
-            "symbolVersionFloors":["GLIBC_2.10","GLIBC_2.12","GLIBC_2.14","GLIBC_2.16","GLIBC_2.17","GLIBC_2.2.5","GLIBC_2.3","GLIBC_2.3.2","GLIBC_2.3.4","GLIBC_2.4","GLIBC_2.6","GLIBC_2.7","GLIBC_2.8","GLIBC_2.9"]
+        "platform": if darwin {
+            json!({"abi":"darwin","architecture":"aarch64","os":"darwin"})
+        } else {
+            json!({"abi":"glibc","architecture":"x86_64","os":"linux"})
+        },
+        "runtime": if darwin {
+            mach_o_runtime(&binary, "aarch64")?
+        } else {
+            json!({
+                "elfClass":"ELF64",
+                "inspectionContract":"elf-dynamic/v1",
+                "interpreter":"/lib64/ld-linux-x86-64.so.2",
+                "kind":"elf-dynamic",
+                "machine":"x86_64",
+                "neededLibraries":["ld-linux-x86-64.so.2","libc.so.6","libdl.so.2","libm.so.6","libpthread.so.0"],
+                "rpathPolicy":"empty/v1",
+                "symbolVersionFloors":["GLIBC_2.10","GLIBC_2.12","GLIBC_2.14","GLIBC_2.16","GLIBC_2.17","GLIBC_2.2.5","GLIBC_2.3","GLIBC_2.3.2","GLIBC_2.3.4","GLIBC_2.4","GLIBC_2.6","GLIBC_2.7","GLIBC_2.8","GLIBC_2.9"]
+            })
         },
         "schema":"buck-build-product/v1",
-        "semanticProvenance":{"recipe":input_digest(&args)?,"target":args.target,"toolchain":format!("bun:{};patchelf:{}", args.bun.display(), args.patchelf.display())},
+        "semanticProvenance":{"recipe":input_digest(&args)?,"target":args.target,"toolchain":if darwin {
+            format!("bun:{}", args.bun.display())
+        } else {
+            format!("bun:{};patchelf:{}", args.bun.display(), args.patchelf.display())
+        }},
     });
     if let Some(parent) = args.descriptor.parent() {
         fs::create_dir_all(parent).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;

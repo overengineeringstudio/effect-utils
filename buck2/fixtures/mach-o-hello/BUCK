@@ -1,0 +1,17 @@
+# Hand-authored admission fixture (deliberately not genie-generated): the
+# smallest possible TypeScript product graph that compiles to a native Mach-O
+# executable so the darwin e2e can prove the full build-product admission path.
+load("//buck2:typescript.bzl", "typescript_cli")
+
+typescript_cli(
+    name = "macho_hello",
+    package_path = "buck2/fixtures/mach-o-hello",
+    entry = "buck2/fixtures/mach-o-hello/hello.ts",
+    binary_name = "macho-hello",
+    platform = "aarch64-macos",
+    srcs = [
+        "hello.ts",
+    ],
+    workspace_sources = [],
+    workspace_source_prefixes = {},
+)

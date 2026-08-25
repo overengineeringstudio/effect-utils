@@ -1,10 +1,10 @@
 use buck2_tool_core::{
-    canonical_json, normalized_relative, safe_text, sha256_bytes, sha256_sri,
-    verify_execution_capability, ToolError, ToolResult,
+    ToolError, ToolResult, canonical_json, mach_o::c_string, mach_o::mach_o_runtime,
+    normalized_relative, safe_text, sha256_bytes, sha256_sri, verify_execution_capability,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, os::unix::fs::PermissionsExt, path::PathBuf};
 use tar::{Builder, EntryType, Header};
 
@@ -103,20 +103,6 @@ fn usize_from(value: u64) -> ToolResult<usize> {
         )
     })
 }
-
-fn c_string(bytes: &[u8], offset: usize, field: &str) -> ToolResult<String> {
-    let tail = bytes
-        .get(offset..)
-        .ok_or_else(|| fail("BUCK2_PRODUCT_BINARY", format!("invalid {field} offset")))?;
-    let end = tail
-        .iter()
-        .position(|byte| *byte == 0)
-        .ok_or_else(|| fail("BUCK2_PRODUCT_BINARY", format!("unterminated {field}")))?;
-    let value = std::str::from_utf8(&tail[..end])
-        .map_err(|_| fail("BUCK2_PRODUCT_BINARY", format!("{field} is not UTF-8")))?;
-    safe_text(value, field)
-}
-
 #[derive(Clone, Copy)]
 enum Endian {
     Little,
@@ -150,7 +136,7 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             return Err(fail(
                 "BUCK2_PRODUCT_ELF",
                 format!("unsupported ELF machine: {value}"),
-            ))
+            ));
         }
     };
     if machine != architecture {
@@ -230,7 +216,7 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
                 return Err(fail(
                     "BUCK2_PRODUCT_ELF",
                     "elf-dynamic/v1 forbids DT_RPATH and DT_RUNPATH",
-                ))
+                ));
             }
             0x6fff_fffe => version_needs_address = Some(value),
             0x6fff_ffff => version_needs_count = Some(value),
@@ -310,7 +296,7 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             return Err(fail(
                 "BUCK2_PRODUCT_ELF",
                 "incomplete ELF version-needs metadata",
-            ))
+            ));
         }
     }
     Ok(json!({
@@ -322,185 +308,6 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
         "neededLibraries": needed,
         "rpathPolicy": "empty/v1",
         "symbolVersionFloors": versions,
-    }))
-}
-
-fn be_u32(bytes: &[u8], offset: usize) -> ToolResult<u32> {
-    read_u32(bytes, offset, Endian::Big)
-}
-
-fn is_ad_hoc_signature(bytes: &[u8], offset: usize, size: usize) -> ToolResult<bool> {
-    let signature = bytes
-        .get(offset..offset + size)
-        .ok_or_else(|| fail("BUCK2_PRODUCT_MACHO", "truncated Mach-O code signature"))?;
-    if be_u32(signature, 0)? != 0xfade_0cc0 {
-        return Ok(false);
-    }
-    let declared_size = usize::try_from(be_u32(signature, 4)?)
-        .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid code signature size"))?;
-    let count = usize::try_from(be_u32(signature, 8)?)
-        .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid code signature count"))?;
-    if declared_size > signature.len()
-        || 12usize.saturating_add(count.saturating_mul(8)) > declared_size
-    {
-        return Err(fail(
-            "BUCK2_PRODUCT_MACHO",
-            "malformed code signature superblob",
-        ));
-    }
-    let mut ad_hoc_code_directory = false;
-    for index in 0..count {
-        let entry = 12 + index * 8;
-        let slot = be_u32(signature, entry)?;
-        let blob_offset = usize::try_from(be_u32(signature, entry + 4)?)
-            .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid code signature offset"))?;
-        if slot == 0x1_0000 {
-            return Ok(false);
-        }
-        if slot == 0 || (0x1000..=0x1005).contains(&slot) {
-            let magic = be_u32(signature, blob_offset)?;
-            if !(0xfade_0c02..=0xfade_0c04).contains(&magic) {
-                return Err(fail("BUCK2_PRODUCT_MACHO", "invalid CodeDirectory blob"));
-            }
-            ad_hoc_code_directory |= be_u32(signature, blob_offset + 12)? & 0x2 != 0;
-        }
-    }
-    Ok(ad_hoc_code_directory)
-}
-
-fn packed_version(value: u32) -> String {
-    let major = value >> 16;
-    let minor = (value >> 8) & 0xff;
-    let patch = value & 0xff;
-    if patch == 0 {
-        format!("{major}.{minor}")
-    } else {
-        format!("{major}.{minor}.{patch}")
-    }
-}
-
-fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
-    if bytes.get(..4) != Some(&[0xcf, 0xfa, 0xed, 0xfe]) {
-        return Err(fail(
-            "BUCK2_PRODUCT_MACHO",
-            "mach-o-dynamic/v1 requires a thin little-endian Mach-O 64 executable",
-        ));
-    }
-    let observed_architecture = match read_u32(bytes, 4, Endian::Little)? {
-        0x0100_0007 => "x86_64",
-        0x0100_000c => "arm64",
-        value => {
-            return Err(fail(
-                "BUCK2_PRODUCT_MACHO",
-                format!("unsupported Mach-O CPU type: {value:#x}"),
-            ))
-        }
-    };
-    let expected_architecture = match architecture {
-        "x86_64" => "x86_64",
-        "aarch64" => "arm64",
-        value => {
-            return Err(fail(
-                "BUCK2_PRODUCT_PLATFORM",
-                format!("unsupported Darwin architecture: {value}"),
-            ))
-        }
-    };
-    if observed_architecture != expected_architecture {
-        return Err(fail(
-            "BUCK2_PRODUCT_PLATFORM",
-            "Mach-O architecture does not match platform architecture",
-        ));
-    }
-    let command_count = usize::try_from(read_u32(bytes, 16, Endian::Little)?)
-        .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid load-command count"))?;
-    let command_bytes = usize::try_from(read_u32(bytes, 20, Endian::Little)?)
-        .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid load-command size"))?;
-    bytes
-        .get(32..32 + command_bytes)
-        .ok_or_else(|| fail("BUCK2_PRODUCT_MACHO", "truncated Mach-O load commands"))?;
-    let mut offset = 32usize;
-    let mut dylibs = BTreeSet::new();
-    let mut minimum_os = None;
-    let mut signature = None;
-    for _ in 0..command_count {
-        let command = read_u32(bytes, offset, Endian::Little)?;
-        let size = usize::try_from(read_u32(bytes, offset + 4, Endian::Little)?)
-            .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid load-command size"))?;
-        if size < 8 || offset + size > 32 + command_bytes {
-            return Err(fail("BUCK2_PRODUCT_MACHO", "malformed Mach-O load command"));
-        }
-        match command {
-            0x0c | 0x20 | 0x8000_0018 | 0x8000_001f | 0x8000_0023 => {
-                let name_offset = usize::try_from(read_u32(bytes, offset + 8, Endian::Little)?)
-                    .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid dylib name offset"))?;
-                if name_offset >= size {
-                    return Err(fail("BUCK2_PRODUCT_MACHO", "invalid dylib name offset"));
-                }
-                let name = c_string(&bytes[offset..offset + size], name_offset, "Mach-O dylib")?;
-                if !(name.starts_with("/usr/lib/") || name.starts_with("/System/Library/")) {
-                    return Err(fail(
-                        "BUCK2_PRODUCT_MACHO",
-                        format!("Mach-O dylib is outside the system install-name policy: {name}"),
-                    ));
-                }
-                dylibs.insert(name);
-            }
-            0x8000_001c => {
-                return Err(fail(
-                    "BUCK2_PRODUCT_MACHO",
-                    "mach-o-dynamic/v1 forbids LC_RPATH",
-                ))
-            }
-            0x1d => {
-                if signature.is_some() {
-                    return Err(fail("BUCK2_PRODUCT_MACHO", "duplicate LC_CODE_SIGNATURE"));
-                }
-                signature = Some((
-                    usize::try_from(read_u32(bytes, offset + 8, Endian::Little)?)
-                        .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid signature offset"))?,
-                    usize::try_from(read_u32(bytes, offset + 12, Endian::Little)?)
-                        .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid signature size"))?,
-                ));
-            }
-            0x32 => {
-                if minimum_os.is_some() || read_u32(bytes, offset + 8, Endian::Little)? != 1 {
-                    return Err(fail(
-                        "BUCK2_PRODUCT_MACHO",
-                        "Mach-O must contain exactly one macOS LC_BUILD_VERSION",
-                    ));
-                }
-                minimum_os = Some(packed_version(read_u32(
-                    bytes,
-                    offset + 12,
-                    Endian::Little,
-                )?));
-            }
-            _ => {}
-        }
-        offset += size;
-    }
-    if offset != 32 + command_bytes {
-        return Err(fail("BUCK2_PRODUCT_MACHO", "load-command size mismatch"));
-    }
-    let (signature_offset, signature_size) = signature
-        .filter(|(_, size)| *size > 0)
-        .ok_or_else(|| fail("BUCK2_PRODUCT_MACHO", "Mach-O has no code signature"))?;
-    if !is_ad_hoc_signature(bytes, signature_offset, signature_size)? {
-        return Err(fail(
-            "BUCK2_PRODUCT_MACHO",
-            "Mach-O signature is not ad hoc",
-        ));
-    }
-    Ok(json!({
-        "architecture": observed_architecture,
-        "dylibs": dylibs,
-        "inspectionContract": "mach-o-dynamic/v1",
-        "installNamePolicy": "system-only/v1",
-        "kind": "mach-o-dynamic",
-        "minimumOs": minimum_os.ok_or_else(|| fail("BUCK2_PRODUCT_MACHO", "Mach-O has no LC_BUILD_VERSION"))?,
-        "rpathPolicy": "empty/v1",
-        "signingPolicy": "adhoc/v1",
     }))
 }
 
@@ -623,7 +430,7 @@ fn package(args: PackageArgs) -> ToolResult<()> {
             return Err(fail(
                 "BUCK2_PRODUCT_RUNTIME",
                 format!("unsupported runtime contract: {value}"),
-            ))
+            ));
         }
     };
     let provenance_bytes = fs::read(&args.provenance).map_err(|error| {

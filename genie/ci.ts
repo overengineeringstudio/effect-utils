@@ -27,6 +27,9 @@ export const CORE_CI_JOB_NAMES = [
   'bundle-smoke',
   // Local-only Buck graph, receipt, bridge, and benchmark-contract evidence.
   'buck2',
+  // Darwin-native Mach-O product admission e2e (build -> descriptor -> Nix
+  // import -> sterile exec) on the macos-arm64 runner.
+  'buck2-macho',
   // Rust lane: delegates build/test/clippy/fmt semantics to devenv task cargo:check.
   'cargo',
   // Additive Weaver semantic-conventions gate (separate lane; degrades if weaver unavailable).

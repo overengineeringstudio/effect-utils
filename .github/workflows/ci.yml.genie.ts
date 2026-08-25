@@ -350,6 +350,29 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
   ],
 })
 
+/**
+ * Single-platform job pinned to the macos-arm64 runner for lanes whose product
+ * contract is Darwin-native (e.g. the Mach-O admission e2e).
+ */
+const darwinArm64Job = (step: { name: string; run: string }) => ({
+  if: normalCiIf,
+  'runs-on': namespaceRunner({
+    profile: 'namespace-profile-macos-arm64' as RunnerProfile,
+    runId: '${{ github.run_id }}',
+  }),
+  'timeout-minutes': jobTimeoutMinutes,
+  defaults: bashShellDefaults,
+  env: standardCIEnv,
+  steps: [
+    ...baseSteps,
+    step,
+    savePnpmStateStep(),
+    nixDiagnosticsSummaryStep,
+    nixDiagnosticsArtifactStep(),
+    failureReminderStep,
+  ],
+})
+
 const strictNixJobBaseSteps = [
   checkoutStep(),
   installNixStep(),
@@ -481,6 +504,12 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     step: {
       name: 'Buck2 local evidence and Nix bridge',
       run: runDevenvTasksBefore('buck2:check'),
+    },
+  }),
+  'buck2-macho': darwinArm64Job({
+    step: {
+      name: 'Buck2 Mach-O product admission (darwin arm64)',
+      run: runDevenvTasksBefore('buck2:e2e:mach-o'),
     },
   }),
   cargo: job({

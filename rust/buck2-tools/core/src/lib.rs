@@ -1,4 +1,6 @@
-use base64::{engine::general_purpose::STANDARD, Engine};
+pub mod mach_o;
+
+use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{

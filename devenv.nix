@@ -976,6 +976,37 @@ in
     '';
   };
 
+  tasks."buck2:e2e:mach-o" = {
+    description = "Build the mach-o fixture product and prove its full darwin admission path";
+    after = [ "buck2:capabilities:project" ];
+    exec = trace.exec "buck2:e2e:mach-o" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      export BUCK2_PRODUCT_NIXPKGS=${repoFlake.inputs.nixpkgs}
+      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
+      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
+      export AWK_BIN=${pkgs.gawk}/bin/awk
+      export CP_BIN=${pkgs.coreutils}/bin/cp
+      export DD_BIN=${pkgs.coreutils}/bin/dd
+      export GREP_BIN=${pkgs.gnugrep}/bin/grep
+      export JQ_BIN=${pkgs.jq}/bin/jq
+      export MKTEMP_BIN=${pkgs.coreutils}/bin/mktemp
+      export NIX_BIN=${pkgs.nix}/bin/nix
+      export RM_BIN=${pkgs.coreutils}/bin/rm
+      export TAR_BIN=${pkgs.gnutar}/bin/tar
+      export WC_BIN=${pkgs.coreutils}/bin/wc
+      export CHMOD_BIN=${pkgs.coreutils}/bin/chmod
+      exec ${pkgs.bash}/bin/bash scripts/buck2-mach-o-product-e2e.sh \
+        "$root" ${pkgs.buck2}/bin/buck2 //buck2/fixtures/mach-o-hello:macho_hello \
+        -c buck2_nix.bun=${pkgs.bun}/bin/bun \
+        -c buck2_nix.tsgo=${effectTsgo}/bin/tsgo \
+        -c buck2_nix.patchelf=${pkgs.patchelf}/bin/patchelf \
+        -c buck2_nix.megarepo_deps=${megarepoPnpmDeps} \
+        -c buck2_nix.opentui_glibc=${opentuiCorePrimary} \
+        -c buck2_nix.opentui_musl=${opentuiCoreMusl}
+    '';
+  };
+
   tasks."buck2:benchmark:megarepo" = {
     description = "Measure warm, role-excluded, relevant, and coarse mr Buck invalidation boundaries";
     after = [ "genie:run" ];
@@ -1398,6 +1429,9 @@ in
       "buck2:otel-scrape:product"
       "buck2:otel-scrape:nix-import-smoke"
       "buck2:otel-scrape:benchmark"
+    ]
+    ++ lib.optionals (currentSystem == "aarch64-darwin") [
+      "buck2:e2e:mach-o"
     ];
   };
 
