@@ -16,7 +16,7 @@ export {
   type InlineComponent,
   type RichTextItem,
 } from './flatten-rich-text.ts'
-export { blockKey } from './keys.ts'
+export { blockKey, NodeKey } from './keys.ts'
 export { NotionSyncError, CacheError } from './errors.ts'
 export {
   renderToNotion,
