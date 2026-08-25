@@ -44,12 +44,25 @@ export {
   buildCandidateTree,
   candidateToCache,
   diff,
+  hashStable,
   stableStringify,
   tallyDiff,
+  tallyPageOps,
   type CandidateNode,
   type CandidateTree,
   type DiffOp,
 } from './sync-diff.ts'
+export {
+  compareReadback,
+  normalizeCandidate,
+  normalizeObserved,
+  readbackHash,
+  type NormalizedReadbackNode,
+  type ObservedBlockTree,
+  type ReadbackAnnotations,
+  type ReadbackComparison,
+  type ReadbackRun,
+} from './readback.ts'
 export {
   UploadRegistryProvider,
   useNotionUpload,
