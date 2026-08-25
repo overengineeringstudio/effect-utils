@@ -33,11 +33,7 @@ const program = Effect.gen(function* () {
 
   yield* Cli.Command.runWith(command, {
     version,
-  })(
-    // rewriteHelpSubcommand still speaks the effect 3 full-argv convention;
-    // v4 runWith wants pure args.
-    rewriteHelpSubcommand(process.argv).slice(2),
-  ).pipe(
+  })(rewriteHelpSubcommand(process.argv.slice(2))).pipe(
     Effect.scoped,
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'genie', version }),

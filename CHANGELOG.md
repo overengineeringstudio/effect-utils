@@ -76,6 +76,13 @@ All notable changes to this project will be documented in this file.
   `andThen`/`catch`, string-union `LogLevel`, and `Metric.update`/
   `withAttributes` replace their removed v3 counterparts.
 
+- **@overeng/utils**: `rewriteHelpSubcommand` now takes and returns pure user
+  args instead of full `process.argv`. Callers must slice off the node/script
+  positions themselves (e.g. `rewriteHelpSubcommand(process.argv.slice(2))`);
+  passing full argv would silently misparse a leading `help` argument. The
+  behavior mapping `help <subcmd> [args...]` -> `<subcmd> --help [args...]` is
+  unchanged.
+
 ### Added
 
 - **devenv pnpm / Genie**: add root-local, read-only source generations for

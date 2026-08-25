@@ -29,7 +29,7 @@ const program = Effect.gen(function* () {
 
   yield* Cli.Command.runWith(ciToolsCommand, {
     version,
-  })(rewriteHelpSubcommand(process.argv).slice(2)).pipe(
+  })(rewriteHelpSubcommand(process.argv.slice(2))).pipe(
     Effect.scoped,
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'ci-tools', version }),

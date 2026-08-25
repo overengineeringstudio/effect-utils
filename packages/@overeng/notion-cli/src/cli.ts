@@ -157,9 +157,10 @@ const runNotionCliMain = async ({
     return
   }
 
-  // Effect v4 `Command.runWith` consumes user args only (no node/script prefix).
-  const rewrittenArgv = rewriteHelpSubcommand(argv).slice(2)
-  await runRootCli(rewrittenArgv)
+  // runNotionCliMain receives full argv; slice off the node/script positions at this
+  // boundary so the root-version check above keeps full-argv semantics while the helper
+  // and `runRootCli` see pure user args.
+  await runRootCli(rewriteHelpSubcommand(argv.slice(2)))
 }
 
 if (import.meta.main) {
