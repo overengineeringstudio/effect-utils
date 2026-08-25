@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
 import { describe, expect, it } from 'vitest'
+
+import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
 
 const cliPath = fileURLToPath(new URL('../bin/ci-tools.ts', import.meta.url))
 
@@ -22,8 +23,8 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
-    stdout: normalizeCliOutput(result.stdout, { ansi: true }),
-    stderr: normalizeCliOutput(result.stderr, { ansi: true }),
+    stdout: normalizeCliOutput({ input: result.stdout, ansi: true }),
+    stderr: normalizeCliOutput({ input: result.stderr, ansi: true }),
   }
 }
 

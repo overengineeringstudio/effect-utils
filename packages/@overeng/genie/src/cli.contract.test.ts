@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
 import { describe, expect, it } from 'vitest'
+
+import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
 
 const cliPath = fileURLToPath(new URL('../bin/genie.tsx', import.meta.url))
 /* Absolute checkout root of this worktree — v4 CLI error rendering embeds
@@ -28,8 +29,8 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
-    stdout: normalizeCliOutput(result.stdout, { ansi: true, time: true, repoRoot }),
-    stderr: normalizeCliOutput(result.stderr, { ansi: true, time: true, repoRoot }),
+    stdout: normalizeCliOutput({ input: result.stdout, ansi: true, time: true, repoRoot }),
+    stderr: normalizeCliOutput({ input: result.stderr, ansi: true, time: true, repoRoot }),
   }
 }
 

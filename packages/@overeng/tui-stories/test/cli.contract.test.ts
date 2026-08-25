@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
 import { describe, expect, it } from 'vitest'
+
+import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
 
 const cliPath = fileURLToPath(new URL('../bin/tui-stories.tsx', import.meta.url))
 
@@ -38,8 +39,8 @@ const runCli = (...args: ReadonlyArray<string>) => {
   return {
     status: result.status,
     signal: result.signal,
-    stdout: normalizeCliOutput(result.stdout, { ansi: true, time: true, repoRoot }),
-    stderr: normalizeCliOutput(result.stderr, { ansi: true, time: true, repoRoot }),
+    stdout: normalizeCliOutput({ input: result.stdout, ansi: true, time: true, repoRoot }),
+    stderr: normalizeCliOutput({ input: result.stderr, ansi: true, time: true, repoRoot }),
   }
 }
 

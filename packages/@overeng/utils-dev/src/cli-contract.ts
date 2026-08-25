@@ -23,7 +23,10 @@ export const TIME_TOKEN = '[time]'
 /** Replacement token written into the baseline in place of the checkout root. */
 export const REPO_TOKEN = '<repo>'
 
+/** Raw CLI output plus the explicit masking policy applied before baseline comparison. */
 export interface NormalizeCliOutputPolicy {
+  /** Raw CLI stdout/stderr captured from the spawned contract run. */
+  readonly input: string
   /**
    * Strip ANSI control sequences so colour/styling changes do not gate the
    * baseline. Default: `false`.
@@ -47,14 +50,22 @@ export interface NormalizeCliOutputPolicy {
  * baseline. See {@link NormalizeCliOutputPolicy} for the per-option masking
  * policy; the ` — running from local source (...)` version suffix is always
  * masked.
+ *
+ * @example
+ * normalizeCliOutput({ input: result.stdout, ansi: true, time: true, repoRoot })
  */
-export const normalizeCliOutput = (input: string, policy: NormalizeCliOutputPolicy = {}): string => {
+export const normalizeCliOutput = ({
+  input,
+  ansi = false,
+  time = false,
+  repoRoot,
+}: NormalizeCliOutputPolicy): string => {
   let output = input
-  if (policy.ansi === true) output = output.replace(ANSI_PATTERN, '')
-  if (policy.time === true) output = output.replace(LOG_TIME_PATTERN, '[time]')
-  if (policy.repoRoot !== undefined) {
-    if (policy.repoRoot === '') throw new Error('normalizeCliOutput: repoRoot must be non-empty')
-    output = output.replaceAll(policy.repoRoot, '<repo>')
+  if (ansi === true) output = output.replace(ANSI_PATTERN, '')
+  if (time === true) output = output.replace(LOG_TIME_PATTERN, TIME_TOKEN)
+  if (repoRoot !== undefined) {
+    if (repoRoot === '') throw new Error('normalizeCliOutput: repoRoot must be non-empty')
+    output = output.replaceAll(repoRoot, REPO_TOKEN)
   }
   return output.replace(LOCAL_SOURCE_SUFFIX_PATTERN, '')
 }
