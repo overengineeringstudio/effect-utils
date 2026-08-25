@@ -13,6 +13,7 @@ import type { CacheNode, CacheTree, NotionCache, PendingInlineNode } from '../ca
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import { NotionSyncError } from './errors.ts'
 import type { PageOp } from './op-buffer.ts'
+import { pageLifecycleViolations, type PageLifecycle } from './page-lifecycle.ts'
 import {
   ATOMIC_CONTAINERS,
   emptyPageCounts,
@@ -1371,6 +1372,18 @@ export const sync = (
      *   id. The library never archives caller-supplied holding parents.
      */
     readonly reorderSiblings?: boolean | { readonly holdingParentId: string }
+    /**
+     * Page-lifecycle mode (#1124). `'managed'` (default) keeps the full
+     * existing contract. `'append-only'` guarantees the sync never
+     * archives, moves, or reorders a page and never creates one out of
+     * tail position: a single post-diff predicate
+     * ({@link pageLifecycleViolations}) rejects the WHOLE sync — no op
+     * applied — with `NotionSyncError { reason:
+     * 'page-lifecycle-violation', violations }`. Block ops and page
+     * content (`updatePage`) stay fully managed. #1100 pending-adoption
+     * (read + cache-save) still runs — crash recovery stays legal.
+     */
+    readonly pageLifecycle?: PageLifecycle
   },
 ): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> => {
   /* Compose the user `onEvent` with an internal metrics aggregator iff
@@ -1597,6 +1610,17 @@ export const sync = (
           at: Date.now(),
         }),
       )
+    }
+    // #1124: the single append-only enforcement point — a pure predicate over
+    // the computed plan, evaluated before ANY op applies. Everything below
+    // this line mutates (root updatePage, interleaved block/page apply), so
+    // the check must sit exactly here. Fail, not skip: dropping the
+    // offending ops would silently diverge server from cache.
+    if (opts.pageLifecycle === 'append-only') {
+      const violations = pageLifecycleViolations({ ops: plan, candidate })
+      if (violations.length > 0) {
+        return yield* new NotionSyncError({ reason: 'page-lifecycle-violation', violations })
+      }
     }
     // Prior hashes indexed by server block id — for UpdateNoop detection
     // when diff emits an update whose hash already matches the cached one
@@ -2436,6 +2460,14 @@ export interface SyncPlan {
   readonly fallbackReason: SyncFallbackReason | undefined
   /** `true` iff the page is already at the fixpoint: a sync now would write nothing. */
   readonly empty: boolean
+  /**
+   * Present iff `pageLifecycle: 'append-only'` was passed (#1124): the ops
+   * a sync under that mode would reject — same predicate, so `plan()` is a
+   * free preview: an empty array proves the sync would not trip the
+   * lifecycle guard for this observed state. `plan()` itself never fails on
+   * violations.
+   */
+  readonly lifecycleViolations?: readonly DiffOp[]
 }
 
 /**
@@ -2472,6 +2504,12 @@ export const plan = (
     readonly reorderSiblings?: boolean | { readonly holdingParentId: string }
     readonly staleness?: PlanStaleness
     readonly onEvent?: SyncEventHandler
+    /**
+     * See {@link sync}'s `pageLifecycle`. Under `'append-only'`, `plan()`
+     * reports the offending ops in `SyncPlan.lifecycleViolations` WITHOUT
+     * failing — a free preview of what the sync-side guard would reject.
+     */
+    readonly pageLifecycle?: PageLifecycle
   },
 ): Effect.Effect<SyncPlan, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
@@ -2591,5 +2629,10 @@ export const plan = (
       pages: tallyPageOps(ops),
       fallbackReason,
       empty: ops.length === 0,
+      // Same predicate as sync()'s enforcement point, so the preview and the
+      // guard cannot disagree for a given observed state (#1124).
+      ...(opts.pageLifecycle === 'append-only'
+        ? { lifecycleViolations: pageLifecycleViolations({ ops, candidate }) }
+        : {}),
     }
   })
