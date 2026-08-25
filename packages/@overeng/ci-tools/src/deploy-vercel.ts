@@ -29,6 +29,7 @@ import {
   InvalidProviderOutput,
   MissingAuth,
   MissingBuildOutput,
+  NonEmptyTrimmedString,
   ProviderOperationFailed,
   ProviderProjectLookupFailed,
   Unauthorized,
@@ -80,8 +81,8 @@ export type VercelDeployCommandOptions = {
 }
 
 const VercelProjectJson = Schema.Struct({
-  id: Schema.optional(Schema.NonEmptyString),
-  name: Schema.optional(Schema.NonEmptyString),
+  id: Schema.optional(NonEmptyTrimmedString),
+  name: Schema.optional(NonEmptyTrimmedString),
 }).annotate({ identifier: 'CiTools.Vercel.ProjectJson' })
 
 const VercelProjectFileJson = Schema.fromJsonString(
