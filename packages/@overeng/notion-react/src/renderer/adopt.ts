@@ -59,8 +59,8 @@
  *
  * After that repair sync, strict re-adoption succeeds and `plan()` is empty.
  */
-import type { HttpClient } from '@effect/platform'
-import { Data, Effect, Either } from 'effect'
+import { Data, Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { ReactNode } from 'react'
 
 import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
@@ -225,7 +225,7 @@ export const adopt = (
 ): Effect.Effect<
   CacheTree,
   AdoptionRefusedError | NotionSyncError,
-  NotionConfig | HttpClient.HttpClient
+  NotionConfig | HttpClient
 > =>
   Effect.gen(function* () {
     const policy: ContentDriftPolicy = opts.onContentDrift ?? 'refuse'
@@ -300,7 +300,7 @@ export const adopt = (
       parentId: string,
       cands: readonly CandidateNode[],
       observed: readonly ObservedBlockTree[],
-    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
       Effect.gen(function* () {
         if (observed.length !== cands.length) {
           refusals.push({
@@ -344,7 +344,7 @@ export const adopt = (
           // Content gate: one node at a time with children stripped on both
           // sides, so a drifted descendant pins the descendant (below), not
           // this node. compareReadback carries the masking context (R40).
-          const verified = yield* Effect.either(
+          const verified = yield* Effect.result(
             Effect.try({
               try: () =>
                 compareReadback({
@@ -354,8 +354,8 @@ export const adopt = (
               catch: (cause) => new ReadbackUnverifiableError({ cause }),
             }),
           )
-          if (Either.isLeft(verified)) {
-            const { cause } = verified.left
+          if (verified._tag === 'Failure') {
+            const cause: unknown = verified.failure
             refusals.push({
               _tag: 'UnverifiableContent',
               parentId,
@@ -364,8 +364,8 @@ export const adopt = (
               blockId,
               reason: cause instanceof Error ? cause.message : String(cause),
             })
-          } else if (!verified.right.equal) {
-            const cmp = verified.right
+          } else if (!verified.success.equal) {
+            const cmp = verified.success
             if (policy === 'adopt-live') {
               hashOverrides.set(cand, `adopt-live:${cmp.observedHash}`)
             } else {
