@@ -27,7 +27,11 @@ Vitest.describe('rewriteHelpSubcommand', () => {
   })
 
   Vitest.it('does not rewrite when `help` is not the first arg', () => {
-    expect(rewriteHelpSubcommand(['--flag', 'help', 'subcmd'])).toEqual(['--flag', 'help', 'subcmd'])
+    expect(rewriteHelpSubcommand(['--flag', 'help', 'subcmd'])).toEqual([
+      '--flag',
+      'help',
+      'subcmd',
+    ])
   })
 
   Vitest.it('passes through a leading `--` separator unchanged', () => {
