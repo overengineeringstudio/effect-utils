@@ -1,4 +1,4 @@
-import { Context, Effect, Option, Schema } from 'effect'
+import { Context, Effect, Schema } from 'effect'
 
 /** Coarse operation phases emitted by sync code for CLI/TUI progress. */
 export const SyncProgressPhase = Schema.Literals([
@@ -56,18 +56,14 @@ export type SyncProgressReporter = {
   readonly report: (event: SyncProgressEvent) => Effect.Effect<void>
 }
 
-/** Optional Effect service used by CLI/TUI surfaces to observe sync progress. */
-export class SyncProgress extends Context.Service<SyncProgress, SyncProgressReporter>()(
-  '@overeng/notion-datasource-sync/SyncProgress',
-) {}
+/** Optional Effect service used by CLI/TUI surfaces to observe sync progress.
+ * Defaults lazily to a no-op reporter when not explicitly provided; an explicit
+ * `Effect.provideService` always wins. */
+export const SyncProgress: Context.Reference<SyncProgressReporter> =
+  Context.Reference<SyncProgressReporter>('@overeng/notion-datasource-sync/SyncProgress', {
+    defaultValue: () => ({ report: () => Effect.void }),
+  })
 
-/** Emits a sync progress event when the optional progress service is available. */
+/** Emits a sync progress event to the progress reporter (no-op by default). */
 export const reportSyncProgress = (event: SyncProgressEvent): Effect.Effect<void> =>
-  Effect.serviceOption(SyncProgress).pipe(
-    Effect.flatMap((service) =>
-      Option.match(service, {
-        onNone: () => Effect.void,
-        onSome: (progress) => progress.report(event),
-      }),
-    ),
-  )
+  Effect.flatMap(SyncProgress, (progress) => progress.report(event))

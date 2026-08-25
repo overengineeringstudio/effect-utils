@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option } from 'effect'
+import { Context, Effect, Layer } from 'effect'
 
 /**
  * Stable, CLI-facing stage vocabulary for a write-path sync (R43). These ids are
@@ -30,23 +30,29 @@ export interface ProgressReporterShape {
   readonly note: (message: string) => Effect.Effect<void>
 }
 
-/** Render seam for staged write-path sync progress (decision 0018, R43–R45). */
-export class ProgressReporter extends Context.Service<ProgressReporter, ProgressReporterShape>()(
-  'ProgressReporter',
-) {}
+/** Render seam for staged write-path sync progress (decision 0018, R43–R45).
+ * Defaults lazily to a no-op reporter when not explicitly provided; an explicit
+ * `Layer.succeed`/`Effect.provideService` always wins. */
+export const ProgressReporter: Context.Reference<ProgressReporterShape> =
+  Context.Reference<ProgressReporterShape>('ProgressReporter', {
+    defaultValue: () => ({
+      stageActive: () => Effect.void,
+      stageSucceed: () => Effect.void,
+      stageSkip: () => Effect.void,
+      stageFail: () => Effect.void,
+      note: () => Effect.void,
+    }),
+  })
 
 /**
  * Emit a reporter call without adding to the engine's `R`, and swallowing ALL
  * failures and defects (R45): a render glitch can never change a result or exit
- * code. `Effect.serviceOption` requires nothing in `R` (returns
- * `Option<Service>`), so the engine stays render-agnostic; when no Layer is
- * provided the emit is a silent no-op.
+ * code. Reading the Reference contributes nothing to `R`, so the engine stays
+ * render-agnostic; without an explicit provision the lazy default is a silent
+ * no-op.
  */
 const emit = (f: (r: ProgressReporterShape) => Effect.Effect<void>): Effect.Effect<void> =>
-  Effect.serviceOption(ProgressReporter).pipe(
-    Effect.flatMap(Option.match({ onNone: () => Effect.void, onSome: f })),
-    Effect.catchCause(() => Effect.void),
-  )
+  Effect.flatMap(ProgressReporter, f).pipe(Effect.catchCause(() => Effect.void))
 
 /** Emit an `active` transition for a stage. */
 export const reportStageActive = (stage: ProgressStage): Effect.Effect<void> =>
@@ -101,25 +107,22 @@ const writeLine = (line: string): Effect.Effect<void> =>
  * `ProgressReporter` Tag seam lets the animated `TaskList` Layer drop in later
  * with no engine re-touch.
  */
-export const ProgressReporterStderrLines: Layer.Layer<ProgressReporter> = Layer.succeed(
-  ProgressReporter,
-  {
-    stageActive: (stage) => writeLine(`  · ${stage.label} …`),
-    stageSucceed: (stage) =>
-      writeLine(
-        stage.message === undefined ? `  ✓ ${stage.label}` : `  ✓ ${stage.label}  ${stage.message}`,
-      ),
-    stageSkip: (stage) => writeLine(`  · ${stage.label} (skipped)`),
-    stageFail: (stage) => writeLine(`  ✗ ${stage.label}`),
-    note: (message) => writeLine(`note: ${message}`),
-  } satisfies ProgressReporterShape,
-)
+export const ProgressReporterStderrLines: Layer.Layer<never> = Layer.succeed(ProgressReporter, {
+  stageActive: (stage) => writeLine(`  · ${stage.label} …`),
+  stageSucceed: (stage) =>
+    writeLine(
+      stage.message === undefined ? `  ✓ ${stage.label}` : `  ✓ ${stage.label}  ${stage.message}`,
+    ),
+  stageSkip: (stage) => writeLine(`  · ${stage.label} (skipped)`),
+  stageFail: (stage) => writeLine(`  ✗ ${stage.label}`),
+  note: (message) => writeLine(`note: ${message}`),
+} satisfies ProgressReporterShape)
 
 /**
- * Explicit no-op Layer for tests/clarity. (Absence of a Layer already no-ops via
- * `serviceOption`; this just makes the intent provable.)
+ * Explicit no-op Layer for tests/clarity. (The Reference default already no-ops;
+ * this just makes the intent provable.)
  */
-export const ProgressReporterNoop: Layer.Layer<ProgressReporter> = Layer.succeed(ProgressReporter, {
+export const ProgressReporterNoop: Layer.Layer<never> = Layer.succeed(ProgressReporter, {
   stageActive: () => Effect.void,
   stageSucceed: () => Effect.void,
   stageSkip: () => Effect.void,

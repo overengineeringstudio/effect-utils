@@ -280,12 +280,15 @@ export class OutputModeTag extends Context.Service<OutputModeTag, OutputMode>()(
  * view never pollutes the result stream; other entry points default to stdout.
  *
  * Implementations are a Node `WriteStream`-shaped value (both `process.stdout`
- * and `process.stderr` qualify). Default and stderr layers are in the Node
- * entry point (`OutputMode.node.ts`) to keep this module browser-safe.
+ * and `process.stderr` qualify). The Reference default is `process.stdout`;
+ * explicit layers in the Node entry point (`OutputMode.node.ts`) still bind
+ * stdout/stderr and always win over the default. Resolving the default touches
+ * `process.stdout`, so browser behavior is unchanged (it errors there).
  */
-export class ViewOutputStreamTag extends Context.Service<ViewOutputStreamTag, NodeJS.WriteStream>()(
-  '@overeng/tui-react/ViewOutputStream',
-) {}
+export const ViewOutputStreamTag: Context.Reference<NodeJS.WriteStream> =
+  Context.Reference<NodeJS.WriteStream>('@overeng/tui-react/ViewOutputStream', {
+    defaultValue: () => process.stdout,
+  })
 
 // =============================================================================
 // Environment Helpers (browser-safe — use typeof process guards)

@@ -163,7 +163,7 @@ export const detectLayer: Layer.Layer<OutputModeTag> = Layer.sync(OutputModeTag,
  * Most entry points (`run`, interactive TUIs) want the view on stdout. Provide
  * this alongside your `OutputModeTag` layer so setup functions have a default.
  */
-export const viewOutputStreamStdoutLayer: Layer.Layer<ViewOutputStreamTag> = Layer.succeed(
+export const viewOutputStreamStdoutLayer: Layer.Layer<never> = Layer.succeed(
   ViewOutputStreamTag,
   process.stdout,
 )
@@ -175,7 +175,7 @@ export const viewOutputStreamStdoutLayer: Layer.Layer<ViewOutputStreamTag> = Lay
  * is reserved for the result payload. Callers generally should not provide it
  * explicitly.
  */
-export const viewOutputStreamStderrLayer: Layer.Layer<ViewOutputStreamTag> = Layer.succeed(
+export const viewOutputStreamStderrLayer: Layer.Layer<never> = Layer.succeed(
   ViewOutputStreamTag,
   process.stderr,
 )
