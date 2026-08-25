@@ -1,4 +1,4 @@
-load(":local_store.bzl", "rust_local_store_toolchain", "rust_static_binary", "rust_toolchain_config_integrity")
+load("@root//buck2/rust:local_store.bzl", "rust_local_store_toolchain", "rust_static_binary", "rust_toolchain_config_integrity")
 
 # Nix owns these values. The invoking Nix/devenv launcher supplies exact store
 # paths with --config; they are command-line inputs to the local-only action.

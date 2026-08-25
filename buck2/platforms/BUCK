@@ -1,5 +1,5 @@
 load("@root//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "product_platform")
-load(":local_execution.bzl", "local_execution_platform")
+load("@root//buck2/platforms:local_execution.bzl", "local_execution_platform")
 
 native_execution_platform(
     name = "exec_linux_x86_64",
