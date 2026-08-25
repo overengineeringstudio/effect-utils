@@ -700,7 +700,7 @@ const fetchVercelAliasRecord = Effect.fn('ci-tools.deploy.vercel.alias-record')(
     path: `/v4/aliases/${encodeURIComponent(opts.aliasHost)}${
       opts.teamId === undefined ? '' : `?teamId=${encodeURIComponent(opts.teamId)}`
     }`,
-  }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+  }).pipe(Effect.orElseSucceed(() => undefined))
   if (response === undefined || response.status < 200 || response.status >= 300) {
     return undefined
   }
