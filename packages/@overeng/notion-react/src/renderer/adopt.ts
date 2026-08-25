@@ -180,6 +180,21 @@ type PageMetaCandidate = Pick<
   'title' | 'icon' | 'cover' | 'titleHash' | 'iconHash' | 'coverHash'
 >
 
+/**
+ * Resolve one root-metadata hash from the candidate claim plus its
+ * `'adopt-live'` override: `null` = live side unset (record no hash),
+ * `string` = record the live hash, `undefined` = claim verified (keep the
+ * candidate's).
+ */
+const pickRootHash = (
+  candHash: string | undefined,
+  override: string | null | undefined,
+): string | undefined => {
+  if (override === null) return undefined
+  if (override !== undefined) return override
+  return candHash
+}
+
 const retrievePage = (pageId: string) =>
   NotionPages.retrieve({ pageId }).pipe(
     Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
@@ -382,17 +397,9 @@ export const adopt = (
         refusals.push({ _tag: 'RootTrashed', pageId: opts.pageId })
       } else {
         const override = verifyPageMeta(rootPage, livePage, opts.pageId, '<root>')
-        const pick = (
-          candHash: string | undefined,
-          o: string | null | undefined,
-        ): string | undefined => {
-          if (o === null) return undefined
-          if (o !== undefined) return o
-          return candHash
-        }
-        const rootTitleHash = pick(rootPage.titleHash, override.titleHash)
-        const rootIconHash = pick(rootPage.iconHash, override.iconHash)
-        const rootCoverHash = pick(rootPage.coverHash, override.coverHash)
+        const rootTitleHash = pickRootHash(rootPage.titleHash, override.titleHash)
+        const rootIconHash = pickRootHash(rootPage.iconHash, override.iconHash)
+        const rootCoverHash = pickRootHash(rootPage.coverHash, override.coverHash)
         rootMeta = {
           ...(rootTitleHash !== undefined ? { rootTitleHash } : {}),
           ...(rootIconHash !== undefined ? { rootIconHash } : {}),
