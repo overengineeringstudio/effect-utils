@@ -72,12 +72,22 @@ plan(element, {
 // → Effect<SyncPlan, NotionSyncError, NotionConfig | HttpClient>
 ```
 
-Computes the exact op sequence `sync()` would apply — through the same
-pre-flight and diff code path, including the root-page metadata
-`updatePage` that `sync()` applies outside its internal diff — without
-performing any write: no Notion mutation, no cache save. `SyncPlan.empty`
-doubles as a post-publication fixpoint oracle: immediately after a
-successful `sync()`, a `plan()` over the same element returns zero ops.
+Computes the ops `sync()` would apply — through the same pre-flight and
+diff code path, including the root-page metadata `updatePage` that
+`sync()` applies outside its internal diff — without performing any
+write: no Notion mutation, no cache save. `ops` is in diff-emission
+order, which is NOT `sync()`'s phased application schedule (the driver
+applies retained-sub-page-scoped block ops before retained-page
+`updatePage`s) — treat it as an operation set with per-scope order.
+
+`SyncPlan.empty` doubles as a post-publication fixpoint oracle:
+immediately after a successful, convergent `sync()`, a `plan()` over the
+same element returns zero ops. One exception: under the default
+`reorderSiblings: false`, a JSX reshuffle of retained `<ChildPage>`
+siblings emits a same-parent `movePage` that Notion rejects and `sync()`
+deliberately swallows (a documented no-op), so server sibling order
+never converges and subsequent live plans keep reporting that move — opt
+into `reorderSiblings: true` for a true fixpoint.
 
 `staleness`:
 

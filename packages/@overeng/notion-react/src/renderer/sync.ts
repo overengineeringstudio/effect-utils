@@ -2415,10 +2415,13 @@ export const sync = (
 export type PlanStaleness = 'live' | 'cache-only'
 
 /**
- * Read-only sync plan. `ops` is the exact op sequence `sync()` would apply
- * (including the root-page `updatePage` when root metadata drifted, which
- * `sync()` applies outside its internal diff); the tallies mirror
- * `SyncResult`'s counters for the same element/cache state.
+ * Read-only sync plan. `ops` mirrors `sync()`'s pre-flight diff one-to-one
+ * (including the root-page `updatePage` when root metadata drifted) but is
+ * in DIFF-EMISSION order, not `sync()`'s phased application schedule — the
+ * driver applies retained-sub-page-scoped block ops before retained-page
+ * `updatePage`s. Treat `ops` as an operation set with per-scope order, not
+ * an execution trace; the tallies mirror `SyncResult`'s counters for the
+ * same element/cache state.
  */
 export interface SyncPlan {
   readonly ops: readonly DiffOp[]
@@ -2449,7 +2452,14 @@ export interface SyncPlan {
  * disagree about what a sync would do for a given observed state.
  *
  * The `empty` flag doubles as a post-publication fixpoint oracle: after a
- * successful `sync()`, `plan()` over the same element must return zero ops.
+ * successful, CONVERGENT `sync()`, `plan()` over the same element returns
+ * zero ops. One documented exception: under the default
+ * `reorderSiblings: false`, a JSX reshuffle of retained `<ChildPage>`
+ * siblings emits a same-parent `movePage` that Notion rejects and `sync()`
+ * deliberately swallows (a documented no-op — see `reorderSiblings`), so
+ * server sibling order never converges and every subsequent live `plan()`
+ * keeps reporting that move. Opt into `reorderSiblings: true` (or accept
+ * the drift) for a true fixpoint.
  *
  * `onEvent` mirrors `sync()`'s hook for the read-only prefix: the `'live'`
  * children GET emits `OpIssued`/`OpSucceeded`/`OpFailed` with kind
