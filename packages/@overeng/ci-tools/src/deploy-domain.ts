@@ -329,6 +329,14 @@ export const DeployFailure = Schema.Union([
 ]).annotate({ identifier: 'CiTools.Deploy.Failure' })
 export type DeployFailure = typeof DeployFailure.Type
 
+/** Raised when a Vercel alias could not be assigned after collision handling. */
+export class AliasAssignmentFailed extends Schema.TaggedError<AliasAssignmentFailed>(
+  '@overeng/ci-tools/deploy/AliasAssignmentFailed',
+)('AliasAssignmentFailed', {
+  failure: DeployFailure,
+  attempts: Schema.Positive,
+}) {}
+
 export const deployFailureRetryability = (failure: DeployFailure): boolean => {
   switch (failure._tag) {
     case 'ProviderProjectLookupFailed':
