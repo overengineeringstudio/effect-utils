@@ -107,6 +107,12 @@ else
       mkdir -p "$out"
       ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
         --no-same-owner --no-same-permissions
+      # Publish the verified canonical descriptor next to the extracted
+      # payload so consumers can re-check the admitted identity.
+      mkdir -p "$out/share/buck-build-product"
+      ${pkgs.coreutils}/bin/install -m 0444 \
+        ${lib.escapeShellArg (toString descriptorFile)} \
+        "$out/share/buck-build-product/descriptor.json"
       ${scan} tree "$out"
       ${runtimeInspector} ${descriptorFile} "$out"
 
