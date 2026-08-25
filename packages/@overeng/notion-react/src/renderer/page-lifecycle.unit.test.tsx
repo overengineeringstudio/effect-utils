@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Effect } from 'effect'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -23,7 +23,7 @@ const ROOT = '00000000-0000-4000-8000-000000000001'
 
 const runWith = <A, E>(
   fake: FakeNotion,
-  eff: Effect.Effect<A, E, HttpClient.HttpClient | NotionConfig>,
+  eff: Effect.Effect<A, E, HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
 /** Mutating request count — GETs (pre-flight, adoption reads) are allowed. */
