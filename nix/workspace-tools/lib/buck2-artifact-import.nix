@@ -107,13 +107,14 @@ else
       mkdir -p "$out"
       ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
         --no-same-owner --no-same-permissions
-      # Publish the verified canonical descriptor next to the extracted
-      # payload so consumers can re-check the admitted identity.
+      # The leak scan owns the extracted payload: the canonical runtime claim
+      # records the exact interpreter store path by design, so publish the
+      # verified descriptor only after the payload itself is proven clean.
+      ${scan} tree "$out"
       mkdir -p "$out/share/buck-build-product"
       ${pkgs.coreutils}/bin/install -m 0444 \
         ${lib.escapeShellArg (toString descriptorFile)} \
         "$out/share/buck-build-product/descriptor.json"
-      ${scan} tree "$out"
       ${runtimeInspector} ${descriptorFile} "$out"
 
       ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
