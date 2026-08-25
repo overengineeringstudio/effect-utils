@@ -59,15 +59,15 @@ def _cli_impl(ctx):
     local_platform = _local_nix_platform()
     if ctx.attrs.platform != local_platform:
         fail("typescript_cli platform mismatch: target requires {}, local-only execution host is {}".format(ctx.attrs.platform, local_platform))
+    binary = ctx.actions.declare_output(ctx.attrs.binary_name)
+    archive = ctx.actions.declare_output("artifact.tar")
+    descriptor = ctx.actions.declare_output("descriptor.json")
     args = cmd_args([ctx.attrs._tool[RunInfo], "bundle", "--bun", ctx.attrs._bun, "--patchelf", ctx.attrs._patchelf, "--dependency-root", ctx.attrs._dependency_root, "--entry", ctx.attrs.entry, "--binary-name", ctx.attrs.binary_name, "--output", binary.as_output(), "--archive", archive.as_output(), "--descriptor", descriptor.as_output(), "--target", str(ctx.label.raw_target()), "--platform", ctx.attrs.platform])
     if ctx.attrs.platform.endswith("-macos"):
         if not ctx.attrs._install_name_tool or not ctx.attrs._codesign:
             fail("typescript_cli on macos requires buck2_nix.install_name_tool and buck2_nix.codesign")
         args.add("--install-name-tool", ctx.attrs._install_name_tool)
         args.add("--codesign", ctx.attrs._codesign)
-    archive = ctx.actions.declare_output("artifact.tar")
-    descriptor = ctx.actions.declare_output("descriptor.json")
-    args = cmd_args([ctx.attrs._tool[RunInfo], "bundle", "--bun", ctx.attrs._bun, "--patchelf", ctx.attrs._patchelf, "--dependency-root", ctx.attrs._dependency_root, "--entry", ctx.attrs.entry, "--binary-name", ctx.attrs.binary_name, "--output", binary.as_output(), "--archive", archive.as_output(), "--descriptor", descriptor.as_output(), "--target", str(ctx.label.raw_target()), "--platform", ctx.attrs.platform])
     for native in ctx.attrs._native_packages:
         args.add("--native-package", native)
     _add_sources(args, ctx.attrs.package_path, ctx.attrs.srcs, ctx.attrs.workspace_sources, ctx.attrs.workspace_source_prefixes)
