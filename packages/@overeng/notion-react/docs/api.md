@@ -120,11 +120,11 @@ canonical form and compare by hash:
 
 ```ts
 const candidate = buildCandidateTree(element, pageId)
-const observed = yield* observeBlockTree({ blockId: pageId }) // GET-only walk
+const observed = yield * observeBlockTree({ blockId: pageId }) // GET-only walk
 const { equal, candidateHash, observedHash } = compareReadback({ candidate, observed })
 
 // Page envelope (title/icon/cover) — root or any sub-page:
-const page = yield* NotionPages.retrieve({ pageId })
+const page = yield * NotionPages.retrieve({ pageId })
 compareReadbackPage({ candidate: candidate.rootPage ?? {}, observed: page })
 ```
 

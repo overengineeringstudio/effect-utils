@@ -571,8 +571,8 @@ shared `hashStable`:
 ```ts
 compareReadback({ candidate, observed })
 // → { candidateHash, observedHash, equal, candidate, observed }
-compareReadbackPage({ candidate, observed })  // page title/icon/cover envelope
-observeBlockTree({ blockId })                  // effectful ObservedBlockTree walk
+compareReadbackPage({ candidate, observed }) // page title/icon/cover envelope
+observeBlockTree({ blockId }) // effectful ObservedBlockTree walk
 ```
 
 **Separate hash space (R39).** `CacheNode.hash` hashes request-shape

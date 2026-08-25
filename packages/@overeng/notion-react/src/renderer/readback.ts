@@ -410,12 +410,12 @@ const maskProviderOwned = (
     const children = maskProviderOwned(authored?.children ?? [], node.children)
     const maskable = PROVIDER_OWNED_WHEN_UNCLAIMED[node.type]
     if (maskable === undefined || authored?.type !== node.type) return { ...node, children }
-    let props = node.props
-    for (const field of maskable) {
-      if (authored.props[field] === null && props[field] !== null) {
-        props = { ...props, [field]: null }
-      }
-    }
+    const masked = maskable.filter(
+      (field) => authored.props[field] === null && node.props[field] !== null,
+    )
+    if (masked.length === 0) return { ...node, children }
+    const props: Json = { ...node.props }
+    for (const field of masked) props[field] = null
     return { ...node, props, children }
   })
 
