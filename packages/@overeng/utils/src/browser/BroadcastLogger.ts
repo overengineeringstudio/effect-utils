@@ -180,8 +180,10 @@ const makeBroadcastLoggerFromChannel = ({
     const entry = new BroadcastLogEntry({
       _tag: 'BroadcastLogEntry',
       timestamp: date.getTime(),
-      // v4 `LogLevel` is a plain string union (e.g. `'Info'`), no `.label`.
-      level: logLevel,
+      // v4 `LogLevel` is a plain string union (e.g. `'Error'`, no `.label`); normalize
+      // to the established uppercase wire labels (`ERROR`, `WARN`, …) so existing
+      // consumers filtering on them keep working across versions.
+      level: logLevel.toUpperCase(),
       message: (Array.isArray(message) === true ? message : [message]).map(sanitizeForBroadcast),
       fiberId: String(fiber.id),
       spans: fiber
@@ -328,8 +330,10 @@ export const makeLogBridgeLive = (options?: LogBridgeOptions): Layer.Layer<never
       Stream.runForEach((entry) => {
         const msg = entry.message.join(' ')
 
-        // v4 `LogLevel` is a plain string union; narrow to a `Severity` for `logWithLevel`.
-        const severity = LogLevelSeverity[entry.level as keyof typeof LogLevelSeverity] ?? 'Info'
+        // Wire levels are uppercase labels (see `BroadcastLogEntry`); narrow them to
+        // a `Severity` for `logWithLevel`.
+        const severity =
+          LogLevelSeverity[entry.level.toUpperCase() as keyof typeof LogLevelSeverity] ?? 'Info'
 
         return Effect.logWithLevel(severity)(msg).pipe(
           Effect.annotateLogs({
@@ -345,16 +349,17 @@ export const makeLogBridgeLive = (options?: LogBridgeOptions): Layer.Layer<never
     ),
   )
 
-/** Broadcast levels are v4 `LogLevel` strings; map them onto the `Severity` subset accepted by `logWithLevel`. */
+/**
+ * Broadcast levels are uppercase wire labels (see `BroadcastLogEntry`); map them onto
+ * the `Severity` subset accepted by `logWithLevel`.
+ */
 const LogLevelSeverity = {
-  All: 'Info',
-  Fatal: 'Fatal',
-  Error: 'Error',
-  Warn: 'Warn',
-  Info: 'Info',
-  Debug: 'Debug',
-  Trace: 'Trace',
-  None: 'Info',
+  FATAL: 'Fatal',
+  ERROR: 'Error',
+  WARN: 'Warn',
+  INFO: 'Info',
+  DEBUG: 'Debug',
+  TRACE: 'Trace',
 } as const satisfies Record<string, LogLevel.Severity>
 
 /**

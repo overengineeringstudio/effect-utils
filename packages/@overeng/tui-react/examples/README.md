@@ -149,7 +149,7 @@ const command = Command.make('my-app', { output: outputOption }, ({ output }) =>
   runApp.pipe(Effect.provide(outputModeLayer(output))),
 )
 
-Command.run(command, { name: 'my-app', version: '1.0.0' })(process.argv).pipe(
+Command.runWith(command, { version: '1.0.0' })(process.argv.slice(2)).pipe(
   Effect.provide(NodeContext.layer),
   NodeRuntime.runMain,
 )

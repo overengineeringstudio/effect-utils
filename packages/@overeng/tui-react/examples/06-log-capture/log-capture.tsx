@@ -74,4 +74,4 @@ const cli = Command.runWith(logCaptureCmd, {
   version: '1.0.0',
 })
 
-cli(process.argv).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

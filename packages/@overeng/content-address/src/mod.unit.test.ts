@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Effect, Schema } from 'effect'
+import { DateTime, Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -246,6 +246,34 @@ describe('@overeng/content-address', () => {
       await expect(
         Effect.runPromise(getPinnedManifestDescriptor({ store, name: 'runs/run-1' })),
       ).resolves.toMatchObject({ digest: manifestDescriptor.digest })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('round-trips manifests containing createdAt through the ISO-string wire codec', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'content-address-'))
+    const store = makeFileSystemContentStore({ root })
+    try {
+      const artifact = await Effect.runPromise(
+        putBytes({ store, bytes: utf8Bytes('profile'), mediaType: 'application/octet-stream' }),
+      )
+      const manifest = ContentManifest.make({
+        schemaVersion: 1,
+        role: 'otel-scrape-run',
+        createdAt: DateTime.makeUnsafe('2026-08-24T00:00:00.000Z'),
+        entries: [{ descriptor: artifact, logicalPath: 'profiles/profile.cpuprofile' }],
+      })
+      const manifestDescriptor = await Effect.runPromise(putManifest({ store, manifest }))
+
+      const storedJson = new TextDecoder().decode(
+        await Effect.runPromise(getBytes({ store, descriptor: manifestDescriptor })),
+      )
+      const decoded = Schema.decodeUnknownSync(Schema.fromJsonString(ContentManifest))(storedJson)
+      expect(decoded.createdAt).toBeDefined()
+      expect(DateTime.toEpochMillis(decoded.createdAt!)).toBe(
+        DateTime.toEpochMillis(manifest.createdAt!),
+      )
     } finally {
       await rm(root, { recursive: true, force: true })
     }

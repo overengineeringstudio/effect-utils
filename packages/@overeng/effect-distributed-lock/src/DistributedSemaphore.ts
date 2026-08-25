@@ -212,16 +212,18 @@ export const make = (
             )
           }
           return yield* backing.onPermitsReleased(key).pipe(
-            Stream.runFoldEffect(
-              () => Option.none<Fiber.Fiber<never, LockLostError | SemaphoreBackingError>>(),
-              (acc) =>
-                Option.isNone(acc) === true
-                  ? tryTake(permits, resolvedOptions).pipe(
-                      acquireSemaphore.withPermitsIfAvailable(1),
-                      Effect.map(Option.flatten),
-                    )
-                  : Effect.succeed(acc),
+            Stream.mapEffect(() =>
+              tryTake(permits, resolvedOptions).pipe(
+                acquireSemaphore.withPermitsIfAvailable(1),
+                Effect.map(Option.flatten),
+              ),
             ),
+            // Stop consuming release events as soon as a permit is acquired; the
+            // backing stream can be long-lived (e.g. a filesystem watch) and the
+            // acquired permit must not stay pinned inside an unfinished fold.
+            Stream.takeUntil(Option.isSome),
+            Stream.runLast,
+            Effect.map(Option.flatten),
             Effect.flatMap(
               Option.match({
                 onSome: Effect.succeed,

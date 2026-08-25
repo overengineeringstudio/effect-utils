@@ -64,7 +64,7 @@ export type ContentManifestEntry = typeof ContentManifestEntry.Type
 export const ContentManifest = Schema.TaggedStruct('ContentManifest', {
   schemaVersion: Schema.Literal(1),
   role: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
-  createdAt: Schema.optional(Schema.DateTimeUtc),
+  createdAt: Schema.optional(Schema.DateTimeUtcFromString),
   entries: Schema.Array(ContentManifestEntry),
 }).annotate({ identifier: 'ContentAddress.ContentManifest' })
 export type ContentManifest = typeof ContentManifest.Type

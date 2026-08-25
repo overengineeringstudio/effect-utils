@@ -107,4 +107,4 @@ const cli = Command.runWith(stressTestCommand, {
 })
 
 // Run with Effect CLI (handles SIGINT/SIGTERM properly)
-cli(process.argv).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+cli(process.argv.slice(2)).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
