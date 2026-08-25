@@ -60,7 +60,7 @@
  * After that repair sync, strict re-adoption succeeds and `plan()` is empty.
  */
 import type { HttpClient } from '@effect/platform'
-import { Data, Effect } from 'effect'
+import { Data, Effect, Either } from 'effect'
 import type { ReactNode } from 'react'
 
 import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
@@ -155,6 +155,11 @@ export type AdoptionRefusal =
 /** Typed failure carrying every refusal found in one adoption pass. */
 export class AdoptionRefusedError extends Data.TaggedError('AdoptionRefusedError')<{
   readonly refusals: readonly AdoptionRefusal[]
+}> {}
+
+/** Thrown by `compareReadback` when the oracle cannot verify a node. */
+class ReadbackUnverifiableError extends Data.TaggedError('ReadbackUnverifiableError')<{
+  readonly cause: unknown
 }> {}
 
 /**
@@ -339,27 +344,18 @@ export const adopt = (
           // Content gate: one node at a time with children stripped on both
           // sides, so a drifted descendant pins the descendant (below), not
           // this node. compareReadback carries the masking context (R40).
-          try {
-            const cmp = compareReadback({
-              candidate: { rootId: parentId, children: [{ ...cand, children: [] }] },
-              observed: [{ block: obs.block, children: [] }],
-            })
-            if (!cmp.equal) {
-              if (policy === 'adopt-live') {
-                hashOverrides.set(cand, `adopt-live:${cmp.observedHash}`)
-              } else {
-                refusals.push({
-                  _tag: 'ContentDrift',
-                  parentId,
-                  position: i,
-                  key: cand.key,
-                  blockId,
-                  candidateHash: cmp.candidateHash,
-                  observedHash: cmp.observedHash,
-                })
-              }
-            }
-          } catch (cause) {
+          const verified = yield* Effect.either(
+            Effect.try({
+              try: () =>
+                compareReadback({
+                  candidate: { rootId: parentId, children: [{ ...cand, children: [] }] },
+                  observed: [{ block: obs.block, children: [] }],
+                }),
+              catch: (cause) => new ReadbackUnverifiableError({ cause }),
+            }),
+          )
+          if (Either.isLeft(verified)) {
+            const { cause } = verified.left
             refusals.push({
               _tag: 'UnverifiableContent',
               parentId,
@@ -368,6 +364,21 @@ export const adopt = (
               blockId,
               reason: cause instanceof Error ? cause.message : String(cause),
             })
+          } else if (!verified.right.equal) {
+            const cmp = verified.right
+            if (policy === 'adopt-live') {
+              hashOverrides.set(cand, `adopt-live:${cmp.observedHash}`)
+            } else {
+              refusals.push({
+                _tag: 'ContentDrift',
+                parentId,
+                position: i,
+                key: cand.key,
+                blockId,
+                candidateHash: cmp.candidateHash,
+                observedHash: cmp.observedHash,
+              })
+            }
           }
           // Recurse when EITHER side expects nested blocks — an expected-empty
           // candidate against a live parent with children must surface the
