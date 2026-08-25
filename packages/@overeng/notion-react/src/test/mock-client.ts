@@ -451,9 +451,24 @@ export const createFakeNotion = (): FakeNotion => {
     // 404 on list.
     if (pageOpMatch !== null && req.method === 'GET') {
       const id = pageOpMatch[1]!
-      const p = pages.get(id)
-      if (p === undefined) respErr(404, 'object_not_found', `Could not find page with ID: ${id}.`)
-      return toPageResponse(p!)
+      let p = pages.get(id)
+      if (p === undefined) {
+        // Same backward-compat path as PATCH below: tests address the ROOT
+        // page id without ever POSTing it (fragment roots carry no <Page>
+        // claims, so no PATCH ever synthesized it). Synthesize on first
+        // touch — adopt()'s pre-flight root retrieve now GETs the root.
+        p = {
+          id,
+          parent: { type: 'workspace', workspace: true },
+          properties: { title: { title: [] } },
+          icon: null,
+          cover: null,
+          archived: false,
+          in_trash: false,
+        }
+        pages.set(id, p)
+      }
+      return toPageResponse(p)
     }
 
     // PATCH /v1/pages/{id} — merge title / icon / cover and toggle

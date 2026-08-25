@@ -426,6 +426,24 @@ describe('adopt(): fail-closed adoption of an existing rendered page (#1093)', (
     expect(cold.removes).toBeGreaterThan(0)
     expect(cold.appends).toBeGreaterThan(0)
   })
+
+  it('refuses: archived root → typed RootTrashed, checked BEFORE the block walk (A09)', async () => {
+    const fake = await renderAndDiscardCache(<AdoptionTree />)
+    await runWith(fake, NotionPages.archive({ pageId: ROOT }))
+    const marker = fake.requests.length
+    // AdoptionTree carries <Page title=...> claims — the pre-flight must
+    // surface the typed refusal, not NotionSyncError from a 404 on
+    // blocks.children.list against an archived page.
+    const err = await runWith(
+      fake,
+      adopt(<AdoptionTree />, { pageId: ROOT }).pipe(Effect.flip),
+    )
+    expect(err).toBeInstanceOf(AdoptionRefusedError)
+    expect((err as AdoptionRefusedError).refusals).toEqual([
+      { _tag: 'RootTrashed', pageId: ROOT },
+    ])
+    expect(mutatingRequestsSince(fake, marker)).toEqual([])
+  })
 })
 
 /** Adopted-cache shape sanity: nested pages carry nodeKind 'page' and verified meta hashes. */

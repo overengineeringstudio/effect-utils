@@ -389,6 +389,17 @@ export const adopt = (
         }
       })
 
+    // Retrieve the root page BEFORE walking its blocks: per A09,
+    // `blocks.children.list` 404s for archived pages, so observing first
+    // would exit with NotionSyncError('notion-retrieve-failed') and the
+    // typed RootTrashed refusal below could never fire. A trashed root
+    // fails closed immediately.
+    const liveRootPage = (yield* retrievePage(opts.pageId)) as unknown as Json
+    if (liveRootPage.in_trash === true) {
+      return yield* new AdoptionRefusedError({
+        refusals: [{ _tag: 'RootTrashed', pageId: opts.pageId }],
+      })
+    }
     const rootObserved = yield* observeBlockTree({ blockId: opts.pageId })
     yield* walkChildren(opts.pageId, candidate.children, rootObserved)
 
@@ -403,19 +414,14 @@ export const adopt = (
         rootPage.iconHash !== undefined ||
         rootPage.coverHash !== undefined)
     ) {
-      const livePage = (yield* retrievePage(opts.pageId)) as unknown as Json
-      if (livePage.in_trash === true) {
-        refusals.push({ _tag: 'RootTrashed', pageId: opts.pageId })
-      } else {
-        const override = verifyPageMeta(rootPage, livePage, opts.pageId, '<root>')
-        const rootTitleHash = pickRootHash(rootPage.titleHash, override.titleHash)
-        const rootIconHash = pickRootHash(rootPage.iconHash, override.iconHash)
-        const rootCoverHash = pickRootHash(rootPage.coverHash, override.coverHash)
-        rootMeta = {
-          ...(rootTitleHash !== undefined ? { rootTitleHash } : {}),
-          ...(rootIconHash !== undefined ? { rootIconHash } : {}),
-          ...(rootCoverHash !== undefined ? { rootCoverHash } : {}),
-        }
+      const override = verifyPageMeta(rootPage, liveRootPage, opts.pageId, '<root>')
+      const rootTitleHash = pickRootHash(rootPage.titleHash, override.titleHash)
+      const rootIconHash = pickRootHash(rootPage.iconHash, override.iconHash)
+      const rootCoverHash = pickRootHash(rootPage.coverHash, override.coverHash)
+      rootMeta = {
+        ...(rootTitleHash !== undefined ? { rootTitleHash } : {}),
+        ...(rootIconHash !== undefined ? { rootIconHash } : {}),
+        ...(rootCoverHash !== undefined ? { rootCoverHash } : {}),
       }
     }
 
