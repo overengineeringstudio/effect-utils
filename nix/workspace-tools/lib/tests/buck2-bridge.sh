@@ -127,7 +127,8 @@ jq -e '
 # inspector, including through a hostile readelf that hides program headers.
 needed_only_expr="let
   $common_let
-  dynamic = builtins.fromJSON (builtins.readFile \"\${BUCK2_BRIDGE_DYNAMIC_EXPORT}/descriptor.json\");
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_DYNAMIC_EXPORT\");
+  dynamic = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
   descriptor = dynamic // {
     platform = { os = \"linux\"; architecture = \"x86_64\"; abi = \"musl\"; };
     runtime = { kind = \"self-contained\"; inspectionContract = \"elf-static/v1\"; };
