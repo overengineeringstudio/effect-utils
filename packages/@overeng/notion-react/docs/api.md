@@ -159,12 +159,20 @@ Empirical constraints (from `tmp/notion-618/experiments/findings.md`):
 ## Keys
 
 ```ts
-import { blockKey } from '@overeng/notion-react'
+import { blockKey, NodeKey } from '@overeng/notion-react'
 blockKey('task-42') // "b:task-42"
+NodeKey.keyed(blockKey('task-42')) // "k:b:task-42"
+NodeKey.positional(0) // "p:0"
 ```
 
-Namespaces a business id so multiple renderers can share a cache
-without collisions. See
+`blockKey` namespaces a business id so multiple renderers can share a
+cache without collisions. `NodeKey` is the encoder for the node keys
+the reconciler assigns to candidate/cache tree entries: `keyed` for
+elements with an explicit `blockKey` prop, `positional` for the
+sibling-index fallback. The internal key derivation routes through the
+same encoder, so consumers that construct or index into a `CacheTree`
+out-of-band must use it instead of hand-rolling the `k:`/`p:`
+prefixes. See
 [Concepts → Keys and identity](./concepts/keys-and-identity.md).
 
 ## Cache
