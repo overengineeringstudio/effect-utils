@@ -1187,10 +1187,7 @@ const resolvePendingPages = ({
  * block-id set intact but scramble order, and we must rebuild to converge —
  * so this is sequence equality, not set equality.
  */
-const topLevelDrifted = (
-  expectedIds: readonly string[],
-  liveIds: readonly string[],
-): boolean => {
+const topLevelDrifted = (expectedIds: readonly string[], liveIds: readonly string[]): boolean => {
   if (liveIds.length !== expectedIds.length) return true
   for (let k = 0; k < expectedIds.length; k++) {
     if (liveIds[k] !== expectedIds[k]) return true
@@ -2453,6 +2450,13 @@ export interface SyncPlan {
  *
  * The `empty` flag doubles as a post-publication fixpoint oracle: after a
  * successful `sync()`, `plan()` over the same element must return zero ops.
+ *
+ * `onEvent` mirrors `sync()`'s hook for the read-only prefix: the `'live'`
+ * children GET emits `OpIssued`/`OpSucceeded`/`OpFailed` with kind
+ * `'retrieve'` (it is real HTTP volume), and the computed plan emits one
+ * `PlanComputed`. No other events — in particular no `SyncStart`/`SyncEnd`
+ * (nothing is synced) and no `CacheOutcome` (so plan probes don't skew
+ * cache-efficiency metrics aggregated across real syncs).
  */
 export const plan = (
   element: ReactNode,
@@ -2462,10 +2466,12 @@ export const plan = (
     readonly coldBaseline?: ColdBaseline
     readonly reorderSiblings?: boolean | { readonly holdingParentId: string }
     readonly staleness?: PlanStaleness
+    readonly onEvent?: SyncEventHandler
   },
 ): Effect.Effect<SyncPlan, NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     const staleness: PlanStaleness = opts.staleness ?? 'live'
+    const onEvent = opts.onEvent
     const coldBaseline: ColdBaseline = opts.coldBaseline ?? 'clean'
     let prior = yield* opts.cache.load.pipe(
       Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-load-failed', cause })),
@@ -2493,11 +2499,44 @@ export const plan = (
       ((prior !== undefined && !schemaMismatch && !pageIdDrift) ||
         (useColdPath && coldBaseline === 'clean'))
     if (wantsLiveRetrieve) {
+      const retrieveOpId = 1
+      const t0 = onEvent !== undefined ? performance.now() : 0
+      if (onEvent !== undefined) {
+        onEvent(SyncEvent.OpIssued({ id: retrieveOpId, kind: 'retrieve', at: Date.now() }))
+      }
       const liveChildren = yield* Stream.runCollect(
         NotionBlocks.retrieveChildrenStream({ blockId: opts.pageId }),
       ).pipe(
-        Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
+        Effect.tapError((cause) =>
+          Effect.sync(() => {
+            if (onEvent !== undefined) {
+              onEvent(
+                SyncEvent.OpFailed({
+                  id: retrieveOpId,
+                  kind: 'retrieve',
+                  durationMs: performance.now() - t0,
+                  error: String(cause),
+                  at: Date.now(),
+                }),
+              )
+            }
+          }),
+        ),
+        Effect.mapError(
+          (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
+        ),
       )
+      if (onEvent !== undefined) {
+        onEvent(
+          SyncEvent.OpSucceeded({
+            id: retrieveOpId,
+            kind: 'retrieve',
+            durationMs: performance.now() - t0,
+            resultCount: Chunk.size(liveChildren),
+            at: Date.now(),
+          }),
+        )
+      }
       const liveIds: string[] = []
       for (const b of Array.from(liveChildren)) {
         if (b.in_trash !== true) liveIds.push(b.id)
@@ -2528,9 +2567,22 @@ export const plan = (
         reorderSiblings: opts.reorderSiblings !== undefined && opts.reorderSiblings !== false,
       }),
     ]
+    const blocks = tallyDiff(ops)
+    if (onEvent !== undefined) {
+      onEvent(
+        SyncEvent.PlanComputed({
+          pageId: opts.pageId,
+          appends: blocks.appends,
+          inserts: blocks.inserts,
+          updates: blocks.updates,
+          removes: blocks.removes,
+          at: Date.now(),
+        }),
+      )
+    }
     return {
       ops,
-      blocks: tallyDiff(ops),
+      blocks,
       pages: tallyPageOps(ops),
       fallbackReason,
       empty: ops.length === 0,

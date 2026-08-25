@@ -8,6 +8,7 @@ import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { ChildPage, Heading2, Page, Paragraph, Toggle } from '../components/blocks.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import type { SyncEvent } from './sync-events.ts'
 import { plan, sync } from './sync.ts'
 
 const ROOT = '00000000-0000-4000-8000-000000000001'
@@ -132,11 +133,40 @@ describe('plan() — read-only companion to sync()', () => {
     const live = await runWith(fake, plan(doc(1), { pageId: ROOT, cache }))
     expect(live.fallbackReason).toBe('cache-drift')
     expect(live.blocks.removes).toBeGreaterThan(0) // the foreign block gets cleaned up
-    const blind = await runWith(fake, plan(doc(1), { pageId: ROOT, cache, staleness: 'cache-only' }))
+    const blind = await runWith(
+      fake,
+      plan(doc(1), { pageId: ROOT, cache, staleness: 'cache-only' }),
+    )
     expect(blind.empty).toBe(true) // trusts the cache, so it cannot see the drift
     // sync converges the drift; plan agrees the fixpoint is restored.
     await runWith(fake, sync(doc(1), { pageId: ROOT, cache }))
     const after = await runWith(fake, plan(doc(1), { pageId: ROOT, cache }))
     expect(after.empty).toBe(true)
+  })
+
+  it('onEvent: live plan emits retrieve op events + one PlanComputed; cache-only emits PlanComputed only', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runWith(fake, sync(doc(1), { pageId: ROOT, cache }))
+
+    const live: SyncEvent[] = []
+    await runWith(fake, plan(doc(2), { pageId: ROOT, cache, onEvent: (e) => live.push(e) }))
+    expect(live.map((e) => e._tag)).toEqual(['OpIssued', 'OpSucceeded', 'PlanComputed'])
+    expect(live[0]).toMatchObject({ kind: 'retrieve' })
+    expect(live[1]).toMatchObject({ kind: 'retrieve' })
+    // PlanComputed carries the block tallies of the computed plan.
+    expect(live[2]).toMatchObject({ pageId: ROOT, appends: 0, updates: 2, inserts: 1, removes: 0 })
+
+    const offline: SyncEvent[] = []
+    await runWith(
+      fake,
+      plan(doc(2), {
+        pageId: ROOT,
+        cache,
+        staleness: 'cache-only',
+        onEvent: (e) => offline.push(e),
+      }),
+    )
+    expect(offline.map((e) => e._tag)).toEqual(['PlanComputed'])
   })
 })
