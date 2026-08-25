@@ -68,11 +68,6 @@ struct BundleArgs {
     bun: PathBuf,
     #[arg(long)]
     patchelf: PathBuf,
-    #[arg(long = "install-name-tool")]
-    install_name_tool: Option<PathBuf>,
-    #[arg(long)]
-    codesign: Option<PathBuf>,
-    #[arg(long)]
     entry: String,
     #[arg(long = "binary-name")]
     binary_name: String,
@@ -459,19 +454,6 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
     };
     if !darwin {
         require_executable(&args.patchelf, "patchelf")?;
-    } else {
-        let install_name_tool = args.install_name_tool.as_ref().ok_or_else(|| {
-            fail(
-                "BUCK2_TS_TOOL",
-                "darwin bundles require --install-name-tool",
-            )
-        })?;
-        require_executable(install_name_tool, "install-name-tool")?;
-        let codesign = args
-            .codesign
-            .as_ref()
-            .ok_or_else(|| fail("BUCK2_TS_TOOL", "darwin bundles require --codesign"))?;
-        require_executable(codesign, "codesign")?;
     }
     safe_text(&args.target, "target")?;
     let entry = normalized_relative(&args.entry, "entry")?;
@@ -508,9 +490,13 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
         &workspace,
         &temp.path().join("home"),
     )?;
-    // Both rewriters run with the scratch directory as cwd, while Buck
-    // declares the output relative to the project root. Resolve it absolutely
-    // first.
+    // Darwin gap (Q pending): nix's bun links store ICU into every compiled
+    // product, so mach-o-dynamic/v1's system-only install-name policy cannot
+    // be satisfied today. Bun's standalone layout also resists all available
+    // rewriters (cctools-port AND Apple install_name_tool both reject its
+    // __LINKEDIT/trailing-signature layout), so no portable realization
+    // exists. Fail closed with the offending names instead of emitting an
+    // unadmittable product.
     let output_text = fs::canonicalize(&args.output)
         .map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?
         .to_str()
@@ -529,41 +515,19 @@ fn bundle(args: BundleArgs) -> ToolResult<()> {
             &temp.path().join("home"),
         )?;
     } else {
-        // Realize a portable payload: the only non-system load command nix's
-        // bun emits is its store-linked ICU. Point it at the macOS system ICU
-        // (the same library upstream bun links) and refresh the ad-hoc
-        // signature; anything else outside /usr/lib or /System/Library fails
-        // closed, and the full contract observation below still verifies the
-        // final bytes independently.
         let staged =
             fs::read(&args.output).map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
-        let install_name_tool = args.install_name_tool.as_ref().unwrap();
-        for name in non_system_dylibs(&staged)? {
-            let basename = name.rsplit('/').next().unwrap_or_default();
-            if !basename.starts_with("libicucore.") {
-                return Err(fail(
-                    "BUCK2_TS_DYLIB",
-                    format!("Mach-O dylib has no portable system realization: {name}"),
-                ));
-            }
-            run_tool(
-                install_name_tool,
-                &[
-                    "-change",
-                    name.as_str(),
-                    &format!("/usr/lib/{basename}"),
-                    output_text.as_str(),
-                ],
-                temp.path(),
-                &temp.path().join("home"),
-            )?;
+        let offenders = non_system_dylibs(&staged)?;
+        if !offenders.is_empty() {
+            return Err(fail(
+                "BUCK2_TS_DYLIB",
+                format!(
+                    "compiled Mach-O has no portable realization under the \
+                     system-only install-name policy: {}",
+                    offenders.join(", ")
+                ),
+            ));
         }
-        run_tool(
-            args.codesign.as_ref().unwrap(),
-            &["--force", "--sign", "-", output_text.as_str()],
-            temp.path(),
-            &temp.path().join("home"),
-        )?;
     }
     fs::set_permissions(&args.output, fs::Permissions::from_mode(0o555))
         .map_err(|error| fail("BUCK2_TS_OUTPUT", error.to_string()))?;
@@ -679,8 +643,6 @@ mod tests {
             descriptor: root.join("descriptor.json"),
             target: "//pkg:tool".into(),
             platform: "x86_64-linux".into(),
-            install_name_tool: None,
-            codesign: None,
         }
     }
 

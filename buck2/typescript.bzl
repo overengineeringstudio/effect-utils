@@ -63,11 +63,6 @@ def _cli_impl(ctx):
     archive = ctx.actions.declare_output("artifact.tar")
     descriptor = ctx.actions.declare_output("descriptor.json")
     args = cmd_args([ctx.attrs._tool[RunInfo], "bundle", "--bun", ctx.attrs._bun, "--patchelf", ctx.attrs._patchelf, "--dependency-root", ctx.attrs._dependency_root, "--entry", ctx.attrs.entry, "--binary-name", ctx.attrs.binary_name, "--output", binary.as_output(), "--archive", archive.as_output(), "--descriptor", descriptor.as_output(), "--target", str(ctx.label.raw_target()), "--platform", ctx.attrs.platform])
-    if ctx.attrs.platform.endswith("-macos"):
-        if not ctx.attrs._install_name_tool or not ctx.attrs._codesign:
-            fail("typescript_cli on macos requires buck2_nix.install_name_tool and buck2_nix.codesign")
-        args.add("--install-name-tool", ctx.attrs._install_name_tool)
-        args.add("--codesign", ctx.attrs._codesign)
     for native in ctx.attrs._native_packages:
         args.add("--native-package", native)
     _add_sources(args, ctx.attrs.package_path, ctx.attrs.srcs, ctx.attrs.workspace_sources, ctx.attrs.workspace_source_prefixes)
@@ -81,7 +76,6 @@ _typescript_cli = rule(
         "workspace_sources": attrs.list(attrs.dep()), "workspace_source_prefixes": attrs.dict(attrs.string(), attrs.string()),
         "_bun": attrs.default_only(attrs.string(default = _configured_path("buck2_nix", "bun"))), "_patchelf": attrs.default_only(attrs.string(default = _configured_path("buck2_nix", "patchelf"))), "_dependency_root": attrs.default_only(attrs.string(default = _configured_path("buck2_nix", "megarepo_deps"))),
         "_native_packages": attrs.default_only(attrs.list(attrs.string(), default = ["@opentui/core-linux-x64=" + _configured_path("buck2_nix", "opentui_glibc"), "@opentui/core-linux-x64-musl=" + _configured_path("buck2_nix", "opentui_musl") ])),
-        "_install_name_tool": attrs.default_only(attrs.string(default = read_config("buck2_nix", "install_name_tool", ""))), "_codesign": attrs.default_only(attrs.string(default = read_config("buck2_nix", "codesign", ""))),
         "_tool": attrs.default_only(attrs.exec_dep(default = "toolchains//:typescript_product_tool", providers = [RunInfo])),
     },
 )
