@@ -1321,7 +1321,6 @@ in
         --assert-buck-invalidation \
         --expected-relevant-actions 2 \
         --buck-bin ${buck2Machine}/bin/buck2 \
-        --buck-config-file "$buck2_stage0_config" \
         --buck-config-file "$toolchain_config" \
         --buck-target //packages/@overeng/otel-scrape:product \
         --buck-target-platform //buck2/platforms:target_x86_64_linux_musl_static \
