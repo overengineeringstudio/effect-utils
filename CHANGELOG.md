@@ -92,6 +92,11 @@ All notable changes to this project will be documented in this file.
   unchanged.
 
 ### Added
+- **@overeng/utils-dev**: add a shared `normalizeCliOutput` helper at the
+  `./cli-contract` export for CLI contract baselines. Each masking policy
+  (ANSI, log timestamps, checkout root, local-source suffix) is an explicit
+  option defaulting to `false`, so consumers state their policy instead of
+  drifting between copies; five contract suites now consume it.
 
 - **devenv pnpm / Genie**: add root-local, read-only source generations for
   composed workspaces. Aggregate roots declare cross-repository source inputs,
