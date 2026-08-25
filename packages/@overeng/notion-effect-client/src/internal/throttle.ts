@@ -22,16 +22,22 @@ export interface NotionThrottleOptions {
 
 /**
  * Optional global request throttle, shared across all Notion API calls made
- * through the client for the lifetime of the layer. Absent ⇒ no throttling
- * (per-request retries still apply).
+ * through the client for the lifetime of the layer. Defaults lazily to a
+ * pass-through throttle (no throttling; per-request retries still apply);
+ * an explicit `Layer.succeed`/`Effect.provideService` always wins.
  *
  * `apply` wraps one logical request (the whole retry loop) so a single token is
  * consumed per request, not per retry attempt.
  */
-export class NotionThrottle extends Context.Service<
-  NotionThrottle,
-  { readonly apply: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R> }
->()('@overeng/notion-effect-client/NotionThrottle') {}
+export interface NotionThrottleShape {
+  readonly apply: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
+}
+
+/** Optional global request throttle reference; see {@link NotionThrottleShape}. */
+export const NotionThrottle: Context.Reference<NotionThrottleShape> =
+  Context.Reference<NotionThrottleShape>('@overeng/notion-effect-client/NotionThrottle', {
+    defaultValue: () => ({ apply: (effect) => effect }),
+  })
 
 /**
  * Build a {@link NotionThrottle} layer backed by an Effect-native `RateLimiter`
@@ -39,7 +45,7 @@ export class NotionThrottle extends Context.Service<
  * 1-second window (refill one token every `window / limit` ms), with an
  * optional `burst` of buffered tokens as the bucket capacity.
  */
-export const NotionThrottleLive = (options: NotionThrottleOptions): Layer.Layer<NotionThrottle> =>
+export const NotionThrottleLive = (options: NotionThrottleOptions): Layer.Layer<never> =>
   Layer.effect(
     NotionThrottle,
     Effect.gen(function* () {

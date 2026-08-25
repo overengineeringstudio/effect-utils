@@ -50,7 +50,6 @@ import {
   Function as Fn,
   Layer,
   Logger,
-  Option,
   PubSub,
   Schema,
   Stream,
@@ -479,10 +478,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       }
 
       // Check if mode output should be skipped (set by standalone run() with output schema)
-      const skipModeOutput = Option.getOrElse(
-        yield* Effect.serviceOption(SkipModeOutputTag),
-        () => false,
-      )
+      const skipModeOutput = yield* SkipModeOutputTag
 
       // Setup mode-specific behavior (only when not using explicit output schema on run())
       if (skipModeOutput === false) {
@@ -616,10 +612,7 @@ const setupProgressiveVisualWithView = ({
     // Default to stdout when no explicit view stream is provided (e.g. interactive
     // `run`). `runResult` overrides this to stderr to keep stdout clean for the
     // result payload.
-    const viewStream = Option.getOrElse(
-      yield* Effect.serviceOption(ViewOutputStreamTag),
-      () => process.stdout,
-    )
+    const viewStream = yield* ViewOutputStreamTag
     const root = createRoot({ terminalOrStream: viewStream })
 
     // Wrapper that provides Registry via our own context (avoids multiple React instance issues)
@@ -666,10 +659,7 @@ const setupFinalVisualWithAtom = ({
     // Resolve the view output stream up-front so the finalizer writes to the
     // correct channel. `runResult` binds this to stderr; other callers default
     // to stdout.
-    const viewStream = Option.getOrElse(
-      yield* Effect.serviceOption(ViewOutputStreamTag),
-      () => process.stdout,
-    )
+    const viewStream = yield* ViewOutputStreamTag
 
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {

@@ -28,7 +28,7 @@ import { Flag } from 'effect/unstable/cli'
 
 import { createLogCapture } from './LogCapture.ts'
 import { detectOutputMode, viewOutputStreamStdoutLayer } from './OutputMode.node.ts'
-import type { OutputModeTag, ViewOutputStreamTag } from './OutputMode.tsx'
+import type { OutputModeTag } from './OutputMode.tsx'
 import {
   type OutputMode,
   tty,
@@ -181,9 +181,7 @@ export const outputModeLayer = (value: OutputModeValue): Layer.Layer<OutputModeT
  * Prefer this over `outputModeLayer` when wiring a CLI main — it gives you
  * both dependencies in one call. `runTuiMain` uses it internally.
  */
-export const tuiRuntimeLayer = (
-  value: OutputModeValue,
-): Layer.Layer<OutputModeTag | ViewOutputStreamTag> =>
+export const tuiRuntimeLayer = (value: OutputModeValue): Layer.Layer<OutputModeTag> =>
   Layer.merge(outputModeLayer(value), viewOutputStreamStdoutLayer)
 
 /**

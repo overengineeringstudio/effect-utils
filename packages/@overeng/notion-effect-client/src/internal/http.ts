@@ -54,11 +54,14 @@ export type NotionHttpTelemetryReporter = {
   readonly report: (event: NotionHttpTelemetryEvent) => Effect.Effect<void>
 }
 
-/** Optional Effect service used by callers that want realtime HTTP/rate-limit visibility. */
-export class NotionHttpTelemetry extends Context.Service<
-  NotionHttpTelemetry,
-  NotionHttpTelemetryReporter
->()('@overeng/notion-effect-client/NotionHttpTelemetry') {}
+/** Optional Effect service used by callers that want realtime HTTP/rate-limit visibility.
+ * Defaults lazily to a no-op reporter when not explicitly provided; an explicit
+ * `Effect.provideService` always wins. */
+export const NotionHttpTelemetry: Context.Reference<NotionHttpTelemetryReporter> =
+  Context.Reference<NotionHttpTelemetryReporter>(
+    '@overeng/notion-effect-client/NotionHttpTelemetry',
+    { defaultValue: () => ({ report: () => Effect.void }) },
+  )
 
 /** Options for building a Notion API request */
 export interface BuildRequestOptions {
@@ -263,14 +266,7 @@ const annotateRateLimitSpan = (input: {
 }): Effect.Effect<void> => annotateNotionHttpRateLimitSpan(input)
 
 const reportHttpTelemetry = (event: NotionHttpTelemetryEvent): Effect.Effect<void> =>
-  Effect.serviceOption(NotionHttpTelemetry).pipe(
-    Effect.flatMap((service) =>
-      Option.match(service, {
-        onNone: () => Effect.void,
-        onSome: (telemetry) => telemetry.report(event),
-      }),
-    ),
-  )
+  Effect.flatMap(NotionHttpTelemetry, (telemetry) => telemetry.report(event))
 
 /**
  * Build a Notion API request with proper headers.
@@ -590,11 +586,8 @@ export const executeRequest = <A, I, R>({
     const runOnce =
       retryEnabled === false ? makeRequest() : Effect.retry(makeRequest(), retrySchedule)
 
-    const throttle = yield* Effect.serviceOption(NotionThrottle)
-    return yield* Option.match(throttle, {
-      onNone: () => runOnce,
-      onSome: (service) => service.apply(runOnce),
-    })
+    const throttle = yield* NotionThrottle
+    return yield* throttle.apply(runOnce)
   }).pipe(withNotionHttpSpan({ method, route: notionHttpRouteInfo({ method, path }) }))
 
 /** Options for GET request */

@@ -21,7 +21,7 @@ type ProgressEvent =
   | { readonly kind: 'note'; readonly message: string }
 
 /** A `ProgressReporter` Layer that records every emitted transition for assertions. */
-const capturingLayer = (sink: ProgressEvent[]): Layer.Layer<ProgressReporter> =>
+const capturingLayer = (sink: ProgressEvent[]): Layer.Layer<never> =>
   Layer.succeed(ProgressReporter, {
     stageActive: (stage) => Effect.sync(() => void sink.push({ kind: 'active', stage })),
     stageSucceed: (stage) => Effect.sync(() => void sink.push({ kind: 'succeed', stage })),
@@ -31,7 +31,7 @@ const capturingLayer = (sink: ProgressEvent[]): Layer.Layer<ProgressReporter> =>
   } satisfies ProgressReporterShape)
 
 /** A `ProgressReporter` Layer whose every method defects/fails — proves emit swallows it. */
-const hostileLayer: Layer.Layer<ProgressReporter> = Layer.succeed(ProgressReporter, {
+const hostileLayer: Layer.Layer<never> = Layer.succeed(ProgressReporter, {
   stageActive: () => Effect.die(new Error('hostile stageActive')),
   stageSucceed: () => Effect.fail(new Error('hostile stageSucceed') as never),
   stageSkip: () => Effect.die(new Error('hostile stageSkip')),
@@ -42,7 +42,7 @@ const hostileLayer: Layer.Layer<ProgressReporter> = Layer.succeed(ProgressReport
 const runEdit = <A, E>(
   effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore | NodeServicesEnv>,
   gateway: FakeGateway,
-  progressLayer?: Layer.Layer<ProgressReporter>,
+  progressLayer?: Layer.Layer<never>,
 ) => {
   const base = Layer.mergeAll(gateway.layer, stateStoreLayer, NodeServices.layer)
   const layer = progressLayer === undefined ? base : Layer.merge(base, progressLayer)
@@ -57,7 +57,7 @@ const ids = (events: ProgressEvent[]): string[] =>
 
 describe('progress (staged write-path sync indicator)', () => {
   it('R45: the edit push result is identical with no / capturing / hostile reporter', async () => {
-    const run = (progressLayer?: Layer.Layer<ProgressReporter>) => {
+    const run = (progressLayer?: Layer.Layer<never>) => {
       const gateway = new FakeGateway({ title: 'Doc', body: 'original line' })
       return runEdit(
         editEditorPage({

@@ -1027,8 +1027,8 @@ const makeEditCommand = (name: string) =>
                    * Staged write-path progress (R43–R45, decision 0018): wire the
                    * live stderr-line reporter ONLY on the `edit` push path, and
                    * only when stderr is a TTY — a piped/redirected write provides
-                   * nothing (Layer.empty → serviceOption None → silent), keeping
-                   * the path byte-identical and pipe-safe (R44/R45). Constructed
+                   * nothing (Layer.empty → lazy no-op Reference default → silent),
+                   * keeping the path byte-identical and pipe-safe (R44/R45). Constructed
                    * lazily inside the handler (no TUI graph, no #787 TDZ risk).
                    */
                   Effect.provide(

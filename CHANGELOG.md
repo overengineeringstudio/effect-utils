@@ -90,6 +90,17 @@ All notable changes to this project will be documented in this file.
   passing full argv would silently misparse a leading `help` argument. The
   behavior mapping `help <subcmd> [args...]` -> `<subcmd> --help [args...]` is
   unchanged.
+- **@overeng/notion-datasource-sync, @overeng/notion-md,
+  @overeng/notion-effect-client, @overeng/tui-react**: migrate optional
+  service tags to effect@4 `Context.Reference` with lazy defaults
+  (`SyncProgress`, `ProgressReporter`, `NotionHttpTelemetry`,
+  `NotionThrottle`, `ViewOutputStreamTag`; plus tui-react's internal
+  skip-mode flag). Absent provisions now resolve lazily to the same no-op /
+  pass-through / stdout defaults the old `Effect.serviceOption` branches
+  produced; explicit layers and `provideService` still win. The tags are
+  plain `Context.Reference` values now, not classes — type-level references
+  must use the exported shape types (e.g. `ProgressReporterShape`,
+  `NotionThrottleShape`) instead of the tag name.
 
 ### Added
 - **@overeng/utils-dev**: add a shared `normalizeCliOutput` helper at the
