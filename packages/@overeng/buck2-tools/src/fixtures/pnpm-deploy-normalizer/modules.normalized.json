@@ -1,0 +1,290 @@
+{
+  "hoistedDependencies": {
+    "undici-types@8.3.0": {
+      "undici-types": "private"
+    },
+    "@vitest/expect@4.1.9": {
+      "@vitest/expect": "private"
+    },
+    "@vitest/mocker@4.1.9(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))": {
+      "@vitest/mocker": "private"
+    },
+    "@vitest/pretty-format@4.1.9": {
+      "@vitest/pretty-format": "private"
+    },
+    "@vitest/runner@4.1.9": {
+      "@vitest/runner": "private"
+    },
+    "@vitest/snapshot@4.1.9": {
+      "@vitest/snapshot": "private"
+    },
+    "@vitest/spy@4.1.9": {
+      "@vitest/spy": "private"
+    },
+    "@vitest/utils@4.1.9": {
+      "@vitest/utils": "private"
+    },
+    "es-module-lexer@2.1.0": {
+      "es-module-lexer": "private"
+    },
+    "expect-type@1.3.0": {
+      "expect-type": "private"
+    },
+    "magic-string@0.30.21": {
+      "magic-string": "private"
+    },
+    "obug@2.1.3": {
+      "obug": "private"
+    },
+    "pathe@2.0.3": {
+      "pathe": "private"
+    },
+    "picomatch@4.0.4": {
+      "picomatch": "private"
+    },
+    "std-env@4.1.0": {
+      "std-env": "private"
+    },
+    "tinybench@2.9.0": {
+      "tinybench": "private"
+    },
+    "tinyexec@1.2.4": {
+      "tinyexec": "private"
+    },
+    "tinyglobby@0.2.17": {
+      "tinyglobby": "private"
+    },
+    "tinyrainbow@3.1.0": {
+      "tinyrainbow": "private"
+    },
+    "vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0)": {
+      "vite": "private"
+    },
+    "why-is-node-running@2.3.0": {
+      "why-is-node-running": "private"
+    },
+    "@opentelemetry/api@1.9.1": {
+      "@opentelemetry/api": "private"
+    },
+    "happy-dom@20.10.6": {
+      "happy-dom": "private"
+    },
+    "@standard-schema/spec@1.1.0": {
+      "@standard-schema/spec": "private"
+    },
+    "@types/chai@5.2.3": {
+      "@types/chai": "private"
+    },
+    "chai@6.2.2": {
+      "chai": "private"
+    },
+    "estree-walker@3.0.3": {
+      "estree-walker": "private"
+    },
+    "convert-source-map@2.0.0": {
+      "convert-source-map": "private"
+    },
+    "@types/whatwg-mimetype@3.0.2": {
+      "@types/whatwg-mimetype": "private"
+    },
+    "@types/ws@8.18.1": {
+      "@types/ws": "private"
+    },
+    "buffer-image-size@0.6.4": {
+      "buffer-image-size": "private"
+    },
+    "entities@7.0.1": {
+      "entities": "private"
+    },
+    "whatwg-mimetype@3.0.0": {
+      "whatwg-mimetype": "private"
+    },
+    "ws@8.21.3": {
+      "ws": "private"
+    },
+    "@jridgewell/sourcemap-codec@1.5.5": {
+      "@jridgewell/sourcemap-codec": "private"
+    },
+    "fdir@6.5.0(picomatch@4.0.4)": {
+      "fdir": "private"
+    },
+    "lightningcss@1.32.0": {
+      "lightningcss": "private"
+    },
+    "postcss@8.5.15": {
+      "postcss": "private"
+    },
+    "rolldown@1.0.3": {
+      "rolldown": "private"
+    },
+    "esbuild@0.27.7": {
+      "esbuild": "private"
+    },
+    "fsevents@2.3.3": {
+      "fsevents": "private"
+    },
+    "jiti@2.7.0": {
+      "jiti": "private"
+    },
+    "yaml@2.9.0": {
+      "yaml": "private"
+    },
+    "siginfo@2.0.0": {
+      "siginfo": "private"
+    },
+    "stackback@0.0.2": {
+      "stackback": "private"
+    },
+    "@types/deep-eql@4.0.2": {
+      "@types/deep-eql": "private"
+    },
+    "assertion-error@2.0.1": {
+      "assertion-error": "private"
+    },
+    "@esbuild/darwin-arm64@0.27.7": {
+      "@esbuild/darwin-arm64": "private"
+    },
+    "@esbuild/darwin-x64@0.27.7": {
+      "@esbuild/darwin-x64": "private"
+    },
+    "@esbuild/linux-arm64@0.27.7": {
+      "@esbuild/linux-arm64": "private"
+    },
+    "@esbuild/linux-x64@0.27.7": {
+      "@esbuild/linux-x64": "private"
+    },
+    "@types/estree@1.0.8": {
+      "@types/estree": "private"
+    },
+    "detect-libc@2.1.2": {
+      "detect-libc": "private"
+    },
+    "lightningcss-darwin-arm64@1.32.0": {
+      "lightningcss-darwin-arm64": "private"
+    },
+    "lightningcss-darwin-x64@1.32.0": {
+      "lightningcss-darwin-x64": "private"
+    },
+    "lightningcss-linux-arm64-gnu@1.32.0": {
+      "lightningcss-linux-arm64-gnu": "private"
+    },
+    "lightningcss-linux-arm64-musl@1.32.0": {
+      "lightningcss-linux-arm64-musl": "private"
+    },
+    "lightningcss-linux-x64-gnu@1.32.0": {
+      "lightningcss-linux-x64-gnu": "private"
+    },
+    "lightningcss-linux-x64-musl@1.32.0": {
+      "lightningcss-linux-x64-musl": "private"
+    },
+    "nanoid@3.3.13": {
+      "nanoid": "private"
+    },
+    "picocolors@1.1.1": {
+      "picocolors": "private"
+    },
+    "source-map-js@1.2.1": {
+      "source-map-js": "private"
+    },
+    "@oxc-project/types@0.133.0": {
+      "@oxc-project/types": "private"
+    },
+    "@rolldown/pluginutils@1.0.1": {
+      "@rolldown/pluginutils": "private"
+    },
+    "@rolldown/binding-darwin-arm64@1.0.3": {
+      "@rolldown/binding-darwin-arm64": "private"
+    },
+    "@rolldown/binding-darwin-x64@1.0.3": {
+      "@rolldown/binding-darwin-x64": "private"
+    },
+    "@rolldown/binding-linux-arm64-gnu@1.0.3": {
+      "@rolldown/binding-linux-arm64-gnu": "private"
+    },
+    "@rolldown/binding-linux-arm64-musl@1.0.3": {
+      "@rolldown/binding-linux-arm64-musl": "private"
+    },
+    "@rolldown/binding-linux-x64-gnu@1.0.3": {
+      "@rolldown/binding-linux-x64-gnu": "private"
+    },
+    "@rolldown/binding-linux-x64-musl@1.0.3": {
+      "@rolldown/binding-linux-x64-musl": "private"
+    }
+  },
+  "hoistPattern": [
+    "*"
+  ],
+  "included": {
+    "dependencies": true,
+    "devDependencies": true,
+    "optionalDependencies": true
+  },
+  "injectedDeps": {},
+  "ignoredBuilds": [],
+  "layoutVersion": 5,
+  "nodeLinker": "isolated",
+  "packageManager": "pnpm@11.8.0",
+  "pendingBuilds": [
+    "esbuild@0.27.7"
+  ],
+  "publicHoistPattern": [],
+  "registries": {
+    "default": "https://registry.npmjs.org/",
+    "@jsr": "https://npm.jsr.io/"
+  },
+  "skipped": [
+    "@emnapi/core@1.10.0",
+    "@emnapi/runtime@1.10.0",
+    "@emnapi/wasi-threads@1.2.1",
+    "@esbuild/aix-ppc64@0.27.7",
+    "@esbuild/android-arm64@0.27.7",
+    "@esbuild/android-arm@0.27.7",
+    "@esbuild/android-x64@0.27.7",
+    "@esbuild/freebsd-arm64@0.27.7",
+    "@esbuild/freebsd-x64@0.27.7",
+    "@esbuild/linux-arm@0.27.7",
+    "@esbuild/linux-ia32@0.27.7",
+    "@esbuild/linux-loong64@0.27.7",
+    "@esbuild/linux-mips64el@0.27.7",
+    "@esbuild/linux-ppc64@0.27.7",
+    "@esbuild/linux-riscv64@0.27.7",
+    "@esbuild/linux-s390x@0.27.7",
+    "@esbuild/netbsd-arm64@0.27.7",
+    "@esbuild/netbsd-x64@0.27.7",
+    "@esbuild/openbsd-arm64@0.27.7",
+    "@esbuild/openbsd-x64@0.27.7",
+    "@esbuild/openharmony-arm64@0.27.7",
+    "@esbuild/sunos-x64@0.27.7",
+    "@esbuild/win32-arm64@0.27.7",
+    "@esbuild/win32-ia32@0.27.7",
+    "@esbuild/win32-x64@0.27.7",
+    "@napi-rs/wasm-runtime@1.1.5(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)",
+    "@rolldown/binding-android-arm64@1.0.3",
+    "@rolldown/binding-freebsd-x64@1.0.3",
+    "@rolldown/binding-linux-arm-gnueabihf@1.0.3",
+    "@rolldown/binding-linux-ppc64-gnu@1.0.3",
+    "@rolldown/binding-linux-s390x-gnu@1.0.3",
+    "@rolldown/binding-openharmony-arm64@1.0.3",
+    "@rolldown/binding-wasm32-wasi@1.0.3",
+    "@rolldown/binding-win32-arm64-msvc@1.0.3",
+    "@rolldown/binding-win32-x64-msvc@1.0.3",
+    "@tybys/wasm-util@0.10.2",
+    "lightningcss-android-arm64@1.32.0",
+    "lightningcss-freebsd-x64@1.32.0",
+    "lightningcss-linux-arm-gnueabihf@1.32.0",
+    "lightningcss-win32-arm64-msvc@1.32.0",
+    "lightningcss-win32-x64-msvc@1.32.0"
+  ],
+  "storeDir": "/pnpm-store/v11",
+  "virtualStoreDir": ".pnpm",
+  "virtualStoreDirMaxLength": 120,
+  "allowBuilds": {
+    "@myobie/pty": false,
+    "esbuild": false,
+    "fsevents": false,
+    "msgpackr-extract": false,
+    "node-pty": false,
+    "sharp": false,
+    "unix-dgram": false
+  }
+}
