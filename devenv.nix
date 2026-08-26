@@ -886,7 +886,14 @@ in
       dist="$package_dir/dist"
       staging_root="$(${pkgs.coreutils}/bin/mktemp -d "$package_dir/.dist-buck2.XXXXXX")"
       staging="$staging_root/dist"
-      trap '${pkgs.coreutils}/bin/rm -rf -- "$staging_root"' EXIT
+      cleanup_staging() {
+        status=$?
+        ${pkgs.coreutils}/bin/chmod -R u+w "$staging_root" || status=$?
+        ${pkgs.coreutils}/bin/rm -rf -- "$staging_root" || status=$?
+        trap - EXIT
+        exit "$status"
+      }
+      trap cleanup_staging EXIT
 
       (
         cd "$root"
