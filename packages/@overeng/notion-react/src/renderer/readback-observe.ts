@@ -27,11 +27,7 @@ import type { ObservedBlockTree } from './readback.ts'
  */
 export const observeBlockTree = (input: {
   readonly blockId: string
-}): Effect.Effect<
-  readonly ObservedBlockTree[],
-  NotionSyncError,
-  NotionConfig | HttpClient
-> =>
+}): Effect.Effect<readonly ObservedBlockTree[], NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     const children = yield* Stream.runCollect(
       NotionBlocks.retrieveChildrenStream({ blockId: input.blockId }),

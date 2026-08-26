@@ -1,5 +1,5 @@
-import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import { Effect } from 'effect'
+import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
