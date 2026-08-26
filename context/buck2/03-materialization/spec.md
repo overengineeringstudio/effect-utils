@@ -25,9 +25,12 @@ inputs: all workspace package.json + pnpm-lock.yaml + pnpm-workspace.yaml
   -> chmod manifests writable (generated manifests are checked in read-only)
   -> pnpm deploy --offline --frozen-lockfile --store-dir <shared store>
   -> normalize: strip the prunedAt timestamp from .modules.yaml (a JSON file
-     despite the name), DELETE node_modules/.pnpm/lock.yaml from inside the
-     tree (it describes the tree it lives in — self-referentially unstable),
-     rewrite .bin shims, prune dangling optional-dep symlinks
+     despite the name); DELETE the deploy-root pnpm-lock.yaml,
+     node_modules/.pnpm/lock.yaml (it describes the tree it lives in —
+     self-referentially unstable), and .pnpm-workspace-state-v1.json;
+     rewrite every recursive .bin shim relative to its own $basedir; prune
+     dangling node_modules symlinks; fail if the fixed stage prefix or any
+     dangling symlink remains
   -> replace injected workspace-dep copies with relative symlinks
      to live member sources (symlink-back)
 output: relocatable node_modules tree (relative symlinks, store hardlinks)
