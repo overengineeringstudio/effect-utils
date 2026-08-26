@@ -402,11 +402,16 @@ let
     "pnpm-lock.yaml"
     "pnpm-workspace.yaml"
   ];
-  # Shared-cache client contract (decision 0013; endpoint facts from the
-  # fleet build-cache trait). Generated at activation into a gitignored
-  # `.buckconfig.local` so tracked config stays machine-neutral: an
-  # unreachable cache hard-fails buck2 builds, so off-tailnet checkouts
-  # export BUCK2_NO_REMOTE_CACHE=1 to skip generation entirely.
+  # Shared-cache client contract (decision 0013, REUSE-R01..R05). The fleet
+  # default endpoint lives HERE on purpose — it must match the dotfiles
+  # build-cache trait (dotfiles#2048); changing the service means changing
+  # both. It is materialized into a gitignored `.buckconfig.local` at shell
+  # entry so machine-local hand edits stay untracked and win until removed:
+  # an existing file with different content is preserved. An unreachable
+  # cache hard-fails buck2 builds, so off-tailnet checkouts export
+  # BUCK2_NO_REMOTE_CACHE=1 before shell entry (checked at entry only).
+  # digest_algorithms pins what this Buck2 already produces by default —
+  # explicitness only, no key migration.
   buck2CacheEndpoint = "grpc://dev3:41045";
   buck2LocalConfig = pkgs.writeText "buck2-buckconfig-local" ''
     [buck2]
@@ -423,11 +428,13 @@ let
   buck2LocalConfigHook =
     let
       script = pkgs.writeShellScript "buck2-local-config-hook" ''
+        set -euo pipefail
         root="''${DEVENV_ROOT:-$PWD}"
+        target="$root/.buckconfig.local"
         if [ "''${BUCK2_NO_REMOTE_CACHE:-}" = "1" ]; then
-          rm -f "$root/.buckconfig.local"
-        else
-          install -m 644 ${buck2LocalConfig} "$root/.buckconfig.local"
+          ${pkgs.coreutils}/bin/rm -f "$target"
+        elif ! ${pkgs.diffutils}/bin/cmp -s "$target" ${buck2LocalConfig}; then
+          ${pkgs.coreutils}/bin/install -m 644 ${buck2LocalConfig} "$target"
         fi
       '';
     in
