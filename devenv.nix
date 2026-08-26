@@ -402,6 +402,36 @@ let
     "pnpm-lock.yaml"
     "pnpm-workspace.yaml"
   ];
+  # Shared-cache client contract (decision 0013; endpoint facts from the
+  # fleet build-cache trait). Generated at activation into a gitignored
+  # `.buckconfig.local` so tracked config stays machine-neutral: an
+  # unreachable cache hard-fails buck2 builds, so off-tailnet checkouts
+  # export BUCK2_NO_REMOTE_CACHE=1 to skip generation entirely.
+  buck2CacheEndpoint = "grpc://dev3:41045";
+  buck2LocalConfig = pkgs.writeText "buck2-buckconfig-local" ''
+    [buck2]
+    digest_algorithms = SHA256
+    default_allow_cache_upload = true
+
+    [buck2_re_client]
+    engine_address = ${buck2CacheEndpoint}
+    action_cache_address = ${buck2CacheEndpoint}
+    cas_address = ${buck2CacheEndpoint}
+    instance_name = effect-utils
+    tls = false
+  '';
+  buck2LocalConfigHook =
+    let
+      script = pkgs.writeShellScript "buck2-local-config-hook" ''
+        root="''${DEVENV_ROOT:-$PWD}"
+        if [ "''${BUCK2_NO_REMOTE_CACHE:-}" = "1" ]; then
+          rm -f "$root/.buckconfig.local"
+        else
+          install -m 644 ${buck2LocalConfig} "$root/.buckconfig.local"
+        fi
+      '';
+    in
+    "${script}";
 in
 {
   imports = [
@@ -994,6 +1024,7 @@ in
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
     ${buck2CapabilityProjection}
+    ${buck2LocalConfigHook}
     ${cliBuildStamp.shellHook}
   '';
 

@@ -49,6 +49,8 @@ def _native_execution_platform_impl(ctx):
         executor_config = CommandExecutorConfig(
             local_enabled = True,
             remote_enabled = False,
+            remote_cache_enabled = True,
+            allow_cache_uploads = True,
             use_windows_path_separators = False,
         ),
     )
