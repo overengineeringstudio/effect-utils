@@ -2,21 +2,22 @@
 
 ## Context
 
-These requirements define a portable public kernel for Buck-owned
-repository-local work and its independent Nix import boundary.
+These requirements are the cross-cutting invariants of the Buck2 repository
+build system. Each subsystem owns its detailed requirements and refines the
+invariants named in its own document:
 
-- [01-semantic-graph](./01-semantic-graph/requirements.md) owns portable graph
-  contracts and repository adapters.
-- [02-execution-platforms](./02-execution-platforms/requirements.md) owns
-  declared tools and configured platforms.
-- [03-target-execution](./03-target-execution/requirements.md) owns admitted
-  action semantics.
-- [04-artifact-system-bridge](./04-artifact-system-bridge/requirements.md) owns
-  `BuildProduct` and independent Nix import.
-- [05-evidence-verification](./05-evidence-verification/requirements.md) owns
-  Buck evidence and OpenTelemetry correlation.
-- [06-admission-reuse](./06-admission-reuse/requirements.md) owns authority
-  transfer and conformance.
+- [01-semantic-graph](./01-semantic-graph/requirements.md) owns authored intent
+  and its projection into the Buck graph.
+- [02-execution](./02-execution/requirements.md) owns platforms, toolchains,
+  and admitted action semantics per language.
+- [03-materialization](./03-materialization/requirements.md) owns dependency
+  materialization for actions and for the editor surface.
+- [04-reuse](./04-reuse/requirements.md) owns the shared cache and reuse
+  criteria.
+- [05-composition](./05-composition/requirements.md) owns megarepo cell
+  composition and action-identity stability.
+- [06-nix-bridge](./06-nix-bridge/requirements.md) owns `BuildProduct` and
+  independent Nix import.
 
 ## Assumptions
 
@@ -26,81 +27,93 @@ repository-local work and its independent Nix import boundary.
   store import, and system realization.
 - **BUCK-A03 Consumer authority:** The system consuming an imported product owns
   deployment, activation, rollback, health, secrets, and fleet policy.
-- **BUCK-A04 Ecosystem authority:** Package manifests and lockfiles remain valid
-  resolver inputs even after ecosystem build commands cease to be producers.
+- **BUCK-A04 Ecosystem authority:** Package manifests and lockfiles remain the
+  semantic dependency request authority even after ecosystem build and install
+  commands cease to be producers.
+- **BUCK-A05 Single-operator trust:** The fleet is operated by one principal;
+  every machine and CI runner inside the Tailscale boundary is trusted with
+  repository write access, and cache trust follows that boundary
+  ([decision 0013](./.decisions/0013-shared-cache-foundation.md)).
 
 ## Acceptable Tradeoffs
 
 - **BUCK-T01 Conservative input closure:** An operation may initially declare a
   measured, visible superset of inputs when it never omits a result-affecting
-  input and has an explicit refinement test.
+  input and has an explicit refinement path.
 - **BUCK-T02 Version-bound evidence adapter:** Rich Buck event-log decoding may
   be pinned to the admitted Buck version while stable build-report fields remain
   tolerant of additive change.
+- **BUCK-T03 Transitional producers:** A superseded producer may run in parallel
+  with its Buck candidate before authority transfer. The transfer change deletes
+  it; the parallel period is bounded by the roadmap, never steady state.
 
 ## Requirements
 
 ### Must preserve narrow authority
 
-- **BUCK-R01 Sole producer:** Buck must be the only producer and gate for every
-  admitted bounded deterministic repository-local operation. Other systems may
-  declare inputs, invoke Buck, or consume results but must not independently
-  perform equivalent work.
-- **BUCK-R02 Bounded operation:** Admission must name an operation whose inputs,
+- **BUCK-R01 Sole producer endgame:** Buck is the terminal authority for every
+  bounded deterministic repository-local operation. Admission proceeds slice by
+  slice in value order ([roadmap](./roadmap.md)); each admitted slice has Buck
+  as its only producer and gate, and no slice retains a permanent fallback
+  ([decision 0001](./.decisions/0001-exclusive-buck-authority.md)).
+- **BUCK-R02 Bounded operation:** Admission names an operation whose inputs,
   outputs, failure semantics, target platform, and execution platform are
   finite and deterministic. Live effects are outside Buck success.
 - **BUCK-R03 Directional boundary:** Nix may provide inputs and verify, import,
   wrap, and compose a `BuildProduct`; Buck actions must not evaluate Nix or
   mutate live dependency or system state.
-- **BUCK-R04 Consumer-owned effects:** Publication, deployment, activation,
-  rollback, and health must not be required evidence for shared Buck build
-  success.
-
-### Must be portable and exact
-
-- **BUCK-R05 Exact identity:** An action identity must contain every
-  result-affecting source, dependency closure, configuration, toolchain,
-  platform, and policy input, and exclude irrelevant host state.
-- **BUCK-R06 Public kernel:** Shared schemas, rules, executors, evidence
-  adapters, and conformance fixtures must contain no private repository or
-  fleet facts.
-- **BUCK-R07 Repository adapters:** Each repository must own its semantic graph,
-  aliases, dependency projections, admission policy, and private integration.
-- **BUCK-R08 Hermetic execution:** Admitted actions must use declared providers
-  and inputs, avoid ambient `PATH` and package-manager state, and fail closed on
+- **BUCK-R04 Hermetic execution:** Admitted actions use declared providers and
+  inputs, avoid ambient `PATH` and package-manager state, and fail closed on
   undeclared access or incompatible identity.
 
-### Must cross into Nix safely
+### Must deliver reuse and speed
 
-- **BUCK-R09 Portable product:** A portable `BuildProduct` descriptor must bind
-  normalized payload bytes, entrypoints, target-platform/runtime constraints,
-  and semantic provenance.
-- **BUCK-R10 Independent import:** Nix import must validate the descriptor and
-  payload independently, reject unknown or extra contract fields, and never
-  rebuild repository sources as fallback.
+- **BUCK-R05 Exact portable identity:** An action identity contains every
+  result-affecting source, dependency closure, configuration, toolchain,
+  platform, and policy input, excludes irrelevant host state, and is stable
+  across worktrees, machines, and composition shapes
+  ([05-composition](./05-composition/requirements.md)).
+- **BUCK-R06 Shared reuse:** Admitted actions read and write the shared remote
+  action cache. A second same-platform context at an identical revision
+  re-executes zero actions for unchanged admitted targets; a violation is a
+  key-stability regression ([04-reuse](./04-reuse/requirements.md)).
+- **BUCK-R07 Wall-clock budgets:** The admitted surface holds a warm no-op
+  check at ≤ 5 s and a fresh-context green with warm shared cache at ≤ 3 min.
+  Admission widening that breaks a budget is a regression to fix before
+  widening further.
+- **BUCK-R08 Disk anti-duplication:** Dependency and output materialization
+  must not duplicate bytes per worktree where a shared content-addressed store
+  or hardlink mechanism exists. Buck-owned state (`buck-out`, isolation dirs)
+  carries the same anti-duplication obligation as the pnpm store contract.
 
-### Must be observable and verifiable
+### Must dissolve superseded systems
 
-- **BUCK-R11 First-class telemetry:** The calling control plane must represent
-  every authoritative invocation in its OpenTelemetry trace and correlate
-  native Buck evidence, invocation identity, result, and `BuildProduct` identity.
-- **BUCK-R12 Native evidence:** Telemetry and normalized summaries must retain
-  links to Buck-native evidence and must not invent an invalidation cause that
-  the graph and native evidence cannot establish.
-- **BUCK-R13 Signal safety:** Metrics must use bounded attributes; invocation
-  IDs, labels, digests, paths, and evidence locations belong on spans, events,
-  or links after sanitization.
-- **BUCK-R14 Failure independence:** Telemetry export failure must not change
-  Buck's result. Missing evidence required by admission must yield no verdict
-  and may fail the surrounding policy gate.
-- **BUCK-R15 Causal proof:** Authority, invalidation, hermeticity, product
-  import, and telemetry claims require failure-capable RED/GREEN evidence at
-  the actual seam.
+- **BUCK-R09 Deletion ledger:** Every admission names the devenv task, script,
+  CI job, Nix builder, or install step it supersedes, and the transfer change
+  deletes it. A subsystem with no dissolution condition is a design defect, not
+  an exemption.
+- **BUCK-R10 FOD dissolution:** Admitted repository-local tools reach Nix
+  consumers only through product import; their dependency closures cause zero
+  fixed-output hash maintenance.
+- **BUCK-R11 Dependency authority:** Buck owns dependency materialization end
+  to end, including the editor surface. Manifest and lockfile state is the only
+  hand-authored dependency input; a stale materialized surface fails loudly
+  before it can produce a wrong result
+  ([decision 0015](./.decisions/0015-buck-owned-dependency-surface.md)).
 
-### Must contract and compound
+### Must be observable and provable at the right moments
 
-- **BUCK-R16 Immediate contraction:** Once an operation passes its authority
-  gate, the superseded producer and migration-only surface must be removed in
-  the immediately dependent change.
-- **BUCK-R17 Cross-repository conformance:** The public kernel must be tested by
-  independently owned repository adapters without centralizing their graphs.
+- **BUCK-R12 Evidence at transfer:** Authority transfer — the change that
+  deletes a superseded producer — requires fail-closed proof of hermeticity,
+  invalidation causality, and (where products cross the bridge) independent
+  import for the exact tuple. Outside transfer moments, gates are ordinary CI
+  green plus the budget criteria; richer evidence (OTel correlation, admission
+  envelopes, conformance fixtures) is advisory
+  ([decision 0016](./.decisions/0016-evidence-rigor-at-transfer.md)).
+- **BUCK-R13 Native evidence and telemetry independence:** Buck-native evidence
+  remains execution truth. Telemetry links to it without replacing it; export
+  failure never changes Buck's result; metrics carry only bounded attributes.
+- **BUCK-R14 Portability hygiene:** Shared rules, schemas, and fixtures contain
+  no repository-private paths, labels, fleet names, endpoints, or secrets, so a
+  second consumer can extract them without rework. Extraction mechanics are
+  decided when that consumer adopts, not before.
