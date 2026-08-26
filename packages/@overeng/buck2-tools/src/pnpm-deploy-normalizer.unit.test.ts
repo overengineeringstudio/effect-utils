@@ -105,13 +105,16 @@ describe('pnpm deploy normalizer', () => {
 
     expect(first).toEqual({
       removedPrunedAt: true,
+      removedStoreDir: true,
       deletedMetadataFiles: 3,
       rewrittenShims: 1,
       prunedDanglingSymlinks: 1,
     })
-    expect(readFileSync(join(fixture.nodeModules, '.modules.yaml'), 'utf8')).toBe(
+    const normalizedModulesMetadata = readFileSync(join(fixture.nodeModules, '.modules.yaml'), 'utf8')
+    expect(normalizedModulesMetadata).toBe(
       readFileSync(join(fixtureDirectory, 'modules.normalized.json'), 'utf8'),
     )
+    expect(normalizedModulesMetadata).not.toContain('storeDir')
     expect(readFileSync(join(fixture.nodeModules, '.bin', 'tsc'), 'utf8')).toContain(
       'export NODE_PATH="$basedir/../.pnpm/typescript@6.0.3',
     )
@@ -127,6 +130,7 @@ describe('pnpm deploy normalizer', () => {
     const digestAfterFirstRun = treeDigest(fixture.tree)
     expect(normalizePnpmDeploy({ tree: fixture.tree, stagePrefix: fixture.root })).toEqual({
       removedPrunedAt: false,
+      removedStoreDir: false,
       deletedMetadataFiles: 0,
       rewrittenShims: 0,
       prunedDanglingSymlinks: 0,
@@ -157,7 +161,7 @@ describe('pnpm deploy normalizer', () => {
       normalizationErrorCode(() =>
         normalizePnpmDeploy({ tree: fixture.tree, stagePrefix: fixture.root }),
       ),
-    ).toBe('residual-stage-prefix')
+    ).toBe('residual-absolute-prefix')
   })
 
   it('fails closed when a dangling symlink remains outside node_modules', () => {
@@ -168,6 +172,60 @@ describe('pnpm deploy normalizer', () => {
       normalizationErrorCode(() =>
         normalizePnpmDeploy({ tree: fixture.tree, stagePrefix: fixture.root }),
       ),
-    ).toBe('residual-dangling-symlink')
+    ).toBe('unsafe-symlink')
+  })
+
+
+  it('rejects an existing absolute symlink target even when it points inside the tree', () => {
+    const fixture = createDeployFixture()
+    const target = join(fixture.nodeModules, '.pnpm', 'present', 'node_modules', 'present')
+    symlinkSync(target, join(fixture.nodeModules, 'absolute-target'))
+
+    expect(
+      normalizationErrorCode(() =>
+        normalizePnpmDeploy({ tree: fixture.tree, stagePrefix: fixture.root }),
+      ),
+    ).toBe('unsafe-symlink')
+  })
+
+  it('rejects a relative symlink target that escapes the output tree', () => {
+    const fixture = createDeployFixture()
+    writeFileSync(join(fixture.root, 'outside.txt'), 'outside\n')
+    symlinkSync('../../outside.txt', join(fixture.nodeModules, 'relative-escape'))
+
+    expect(
+      normalizationErrorCode(() =>
+        normalizePnpmDeploy({ tree: fixture.tree, stagePrefix: fixture.root }),
+      ),
+    ).toBe('unsafe-symlink')
+  })
+
+  it('rejects a chained relative symlink that resolves outside the output tree', () => {
+    const fixture = createDeployFixture()
+    writeFileSync(join(fixture.root, 'outside.txt'), 'outside\n')
+    symlinkSync('../../outside.txt', join(fixture.nodeModules, 'redirect'))
+    symlinkSync('redirect', join(fixture.nodeModules, 'chained-escape'))
+
+    expect(
+      normalizationErrorCode(() =>
+        normalizePnpmDeploy({ tree: fixture.tree, stagePrefix: fixture.root }),
+      ),
+    ).toBe('unsafe-symlink')
+  })
+
+  it('rejects any configured store or worktree prefix that survives normalization', () => {
+    const fixture = createDeployFixture()
+    const storePrefix = join(fixture.root, 'pnpm-store')
+    writeFileSync(join(fixture.tree, 'unexpected-store-path.txt'), `store=${storePrefix}/v11\n`)
+
+    expect(
+      normalizationErrorCode(() =>
+        normalizePnpmDeploy({
+          tree: fixture.tree,
+          stagePrefix: fixture.root,
+          forbiddenPrefixes: [storePrefix],
+        }),
+      ),
+    ).toBe('residual-absolute-prefix')
   })
 })
