@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readdirSync,
   readlinkSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -171,6 +172,60 @@ const copyFileTo = (source: string, destination: string, writable: boolean): voi
   if (writable) chmodSync(destination, 0o644)
 }
 
+const pathIsInside = (root: string, candidate: string): boolean => {
+  const fromRoot = relative(root, candidate)
+  return (
+    fromRoot === '' ||
+    (isAbsolute(fromRoot) === false && fromRoot !== '..' && fromRoot.startsWith(`..${sep}`) === false)
+  )
+}
+
+const assertContainedSymlinks = (root: string): void => {
+  const visit = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).toSorted((left, right) =>
+      left.name.localeCompare(right.name, 'en'),
+    )) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory()) {
+        visit(path)
+        continue
+      }
+      if (entry.isSymbolicLink() === false) continue
+
+      const target = readlinkSync(path)
+      const displayPath = relative(root, path).split(sep).join('/')
+      if (isAbsolute(target)) {
+        throw new Error(`buck2 materializer: unsafe symlink ${displayPath}: absolute target ${target}`)
+      }
+      const lexicalDestination = resolve(dirname(path), target)
+      if (pathIsInside(root, lexicalDestination) === false) {
+        throw new Error(`buck2 materializer: unsafe symlink ${displayPath}: target escapes tree`)
+      }
+
+      let resolvedDestination: string
+      try {
+        resolvedDestination = realpathSync(path)
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          'code' in error &&
+          (error.code === 'ENOENT' || error.code === 'ENOTDIR' || error.code === 'ELOOP')
+        ) {
+          throw new Error(`buck2 materializer: unsafe symlink ${displayPath}: target is dangling`)
+        }
+        throw error
+      }
+      if (pathIsInside(root, resolvedDestination) === false) {
+        throw new Error(
+          `buck2 materializer: unsafe symlink ${displayPath}: chained target resolves outside tree`,
+        )
+      }
+    }
+  }
+
+  visit(root)
+}
+
 const hardlinkTree = (source: string, destination: string): void => {
   const metadata = lstatSync(source)
   if (metadata.isDirectory()) {
@@ -259,8 +314,22 @@ const materializeNodeModules = async (options: MaterializeOptions): Promise<void
     if (typeof normalizePnpmDeploy !== 'function') {
       throw new Error('buck2 materializer: normalizer module must export normalizePnpmDeploy')
     }
-    normalizePnpmDeploy({ tree: deploy, stagePrefix: stage })
+    normalizePnpmDeploy({
+      tree: deploy,
+      stagePrefix: stage,
+      forbiddenPrefixes: [
+        storeDir,
+        realpathSync(storeDir),
+        output,
+        resolve(process.cwd()),
+        realpathSync(process.cwd()),
+      ],
+    })
     renameSync(join(deploy, 'node_modules'), output)
+    assertContainedSymlinks(output)
+  } catch (error) {
+    rmSync(output, { recursive: true, force: true })
+    throw error
   } finally {
     rmSync(stage, { recursive: true, force: true })
   }
@@ -289,9 +358,16 @@ const assemblePackageTree = (options: AssembleOptions): void => {
       const target = destinationInside(output, targetPath)
       rmSync(link, { recursive: true, force: true })
       mkdirSync(dirname(link), { recursive: true })
-      symlinkSync(relative(dirname(link), target), link)
+      const relativeTarget = relative(dirname(link), target)
+      if (isAbsolute(relativeTarget)) {
+        invalidArguments(
+          `workspace link target cannot be represented as a relative path: ${targetPath}`,
+        )
+      }
+      symlinkSync(relativeTarget, link)
       statSync(link)
     }
+    assertContainedSymlinks(output)
   } catch (error) {
     rmSync(output, { recursive: true, force: true })
     throw error

@@ -7,20 +7,23 @@ import {
   readdirSync,
   readlinkSync,
   readSync,
+  realpathSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export type PnpmDeployNormalizationOptions = {
   readonly tree: string
   readonly stagePrefix: string
+  readonly forbiddenPrefixes?: readonly string[]
 }
 
 export type PnpmDeployNormalizationReport = {
   readonly removedPrunedAt: boolean
+  readonly removedStoreDir: boolean
   readonly deletedMetadataFiles: number
   readonly rewrittenShims: number
   readonly prunedDanglingSymlinks: number
@@ -35,8 +38,8 @@ export class PnpmDeployNormalizationError extends Error {
   readonly code:
     | 'invalid-arguments'
     | 'invalid-modules-metadata'
-    | 'residual-stage-prefix'
-    | 'residual-dangling-symlink'
+    | 'residual-absolute-prefix'
+    | 'unsafe-symlink'
 
   constructor(
     code: PnpmDeployNormalizationError['code'],
@@ -91,6 +94,57 @@ const isDanglingSymlink = (path: string) => {
   }
 }
 
+const pathIsInside = (root: string, candidate: string) => {
+  const fromRoot = relative(root, candidate)
+  return (
+    fromRoot === '' ||
+    (isAbsolute(fromRoot) === false &&
+      fromRoot !== '..' &&
+      fromRoot.startsWith(`..${sep}`) === false)
+  )
+}
+
+const symlinkViolation = (root: string, path: string): string | undefined => {
+  const target = readlinkSync(path)
+  if (isAbsolute(target)) return `target is absolute: ${target}`
+
+  const lexicalDestination = resolve(dirname(path), target)
+  if (pathIsInside(root, lexicalDestination) === false) {
+    return `target escapes the output tree: ${target}`
+  }
+
+  let resolvedDestination: string
+  try {
+    resolvedDestination = realpathSync(path)
+  } catch (error) {
+    if (
+      isErrnoException(error) &&
+      (error.code === 'ENOENT' || error.code === 'ENOTDIR' || error.code === 'ELOOP')
+    ) {
+      return `target does not resolve inside the output tree: ${target}`
+    }
+    throw error
+  }
+  if (pathIsInside(root, resolvedDestination) === false) {
+    return `target resolves outside the output tree: ${target}`
+  }
+  return undefined
+}
+
+const assertContainedSymlinks = (root: string, entries: readonly TreeEntry[]) => {
+  const violations = entries.flatMap((entry) => {
+    if (entry.kind !== 'symlink') return []
+    const violation = symlinkViolation(root, entry.path)
+    return violation === undefined ? [] : [`${relativePath(root, entry.path)} (${violation})`]
+  })
+  if (violations.length > 0) {
+    throw new PnpmDeployNormalizationError(
+      'unsafe-symlink',
+      `unsafe symlink remains in: ${violations.join(', ')}`,
+    )
+  }
+}
+
 const unlinkIfPresent = (path: string) => {
   try {
     lstatSync(path)
@@ -118,9 +172,9 @@ const rewriteShim = (path: string, tree: string, nodeModules: string) => {
   return true
 }
 
-const fileContains = (path: string, needle: Buffer) => {
+const fileContainsAny = (path: string, needles: readonly Buffer[]) => {
   const chunkSize = 64 * 1024
-  const overlapSize = Math.max(needle.length - 1, 0)
+  const overlapSize = Math.max(...needles.map((needle) => needle.length - 1), 0)
   const buffer = Buffer.allocUnsafe(chunkSize + overlapSize)
   const descriptor = openSync(path, 'r')
   let overlap = 0
@@ -129,7 +183,8 @@ const fileContains = (path: string, needle: Buffer) => {
       const bytesRead = readSync(descriptor, buffer, overlap, chunkSize, null)
       if (bytesRead === 0) return false
       const populated = overlap + bytesRead
-      if (buffer.subarray(0, populated).includes(needle)) return true
+      const chunk = buffer.subarray(0, populated)
+      if (needles.some((needle) => chunk.includes(needle))) return true
       overlap = Math.min(overlapSize, populated)
       buffer.copyWithin(0, populated - overlap, populated)
     }
@@ -155,10 +210,14 @@ const normalizeModulesMetadata = (path: string) => {
       `${path} must contain a JSON object`,
     )
   }
-  if (Object.hasOwn(parsed, 'prunedAt') === false) return false
-  delete parsed.prunedAt
-  writeFileSync(path, `${JSON.stringify(parsed, undefined, 2)}\n`)
-  return true
+  const removedPrunedAt = Object.hasOwn(parsed, 'prunedAt')
+  const removedStoreDir = Object.hasOwn(parsed, 'storeDir')
+  if (removedPrunedAt) delete parsed.prunedAt
+  if (removedStoreDir) delete parsed.storeDir
+  if (removedPrunedAt || removedStoreDir) {
+    writeFileSync(path, `${JSON.stringify(parsed, undefined, 2)}\n`)
+  }
+  return { removedPrunedAt, removedStoreDir }
 }
 
 export const normalizePnpmDeploy = (
@@ -172,6 +231,17 @@ export const normalizePnpmDeploy = (
     )
   }
   const stagePrefix = resolve(options.stagePrefix)
+  const forbiddenPrefixes = [...new Set([stagePrefix, ...(options.forbiddenPrefixes ?? [])])].map(
+    (prefix) => {
+      if (isAbsolute(prefix) === false || resolve(prefix) === '/') {
+        throw new PnpmDeployNormalizationError(
+          'invalid-arguments',
+          'forbidden prefixes must be absolute paths other than the filesystem root',
+        )
+      }
+      return resolve(prefix)
+    },
+  )
   const nodeModules = join(tree, 'node_modules')
   const modulesMetadata = join(nodeModules, '.modules.yaml')
 
@@ -185,7 +255,7 @@ export const normalizePnpmDeploy = (
     )
   }
 
-  const removedPrunedAt = normalizeModulesMetadata(modulesMetadata)
+  const { removedPrunedAt, removedStoreDir } = normalizeModulesMetadata(modulesMetadata)
   let deletedMetadataFiles = 0
   for (const path of [
     join(nodeModules, '.pnpm', 'lock.yaml'),
@@ -211,34 +281,30 @@ export const normalizePnpmDeploy = (
     }
   }
 
-  const stagePrefixBytes = Buffer.from(stagePrefix)
-  const residualStagePaths: string[] = []
-  const danglingSymlinks: string[] = []
-  for (const entry of walkTree(tree)) {
+  const finalEntries = walkTree(tree)
+  assertContainedSymlinks(tree, finalEntries)
+
+  const forbiddenPrefixBytes = forbiddenPrefixes.map((prefix) => Buffer.from(prefix))
+  const residualAbsolutePaths: string[] = []
+  for (const entry of finalEntries) {
     const relativeEntry = relativePath(tree, entry.path)
     if (entry.kind === 'file') {
-      if (fileContains(entry.path, stagePrefixBytes)) residualStagePaths.push(relativeEntry)
-    } else {
-      if (readlinkSync(entry.path).includes(stagePrefix)) residualStagePaths.push(relativeEntry)
-      if (isDanglingSymlink(entry.path)) danglingSymlinks.push(relativeEntry)
+      if (fileContainsAny(entry.path, forbiddenPrefixBytes)) residualAbsolutePaths.push(relativeEntry)
+    } else if (forbiddenPrefixes.some((prefix) => readlinkSync(entry.path).includes(prefix))) {
+      residualAbsolutePaths.push(relativeEntry)
     }
   }
 
-  if (residualStagePaths.length > 0) {
+  if (residualAbsolutePaths.length > 0) {
     throw new PnpmDeployNormalizationError(
-      'residual-stage-prefix',
-      `stage prefix remains in: ${residualStagePaths.join(', ')}`,
-    )
-  }
-  if (danglingSymlinks.length > 0) {
-    throw new PnpmDeployNormalizationError(
-      'residual-dangling-symlink',
-      `dangling symlink remains in: ${danglingSymlinks.join(', ')}`,
+      'residual-absolute-prefix',
+      `forbidden absolute prefix remains in: ${residualAbsolutePaths.join(', ')}`,
     )
   }
 
   return {
     removedPrunedAt,
+    removedStoreDir,
     deletedMetadataFiles,
     rewrittenShims,
     prunedDanglingSymlinks,
@@ -248,6 +314,7 @@ export const normalizePnpmDeploy = (
 const parseCliArguments = (args: readonly string[]): PnpmDeployNormalizationOptions => {
   let tree: string | undefined
   let stagePrefix: string | undefined
+  const forbiddenPrefixes: string[] = []
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index]
     const value = args[index + 1]
@@ -256,15 +323,16 @@ const parseCliArguments = (args: readonly string[]): PnpmDeployNormalizationOpti
     }
     if (flag === '--tree' && tree === undefined) tree = value
     else if (flag === '--stage-prefix' && stagePrefix === undefined) stagePrefix = value
+    else if (flag === '--forbidden-prefix') forbiddenPrefixes.push(value)
     else throw new PnpmDeployNormalizationError('invalid-arguments', `unexpected argument: ${flag}`)
   }
   if (tree === undefined || stagePrefix === undefined) {
     throw new PnpmDeployNormalizationError(
       'invalid-arguments',
-      'usage: pnpm-deploy-normalizer.ts --tree <deploy-root> --stage-prefix <absolute-prefix>',
+      'usage: pnpm-deploy-normalizer.ts --tree <deploy-root> --stage-prefix <absolute-prefix> [--forbidden-prefix <absolute-prefix>]...',
     )
   }
-  return { tree, stagePrefix }
+  return { tree, stagePrefix, forbiddenPrefixes }
 }
 
 export const runPnpmDeployNormalizerCli = (args: readonly string[]): void => {
