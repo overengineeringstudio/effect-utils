@@ -118,6 +118,16 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   comparison that flaps on server-owned noise. Like T11, an observation
   has no snapshot isolation: equality is advisory for the observed
   window.
+- **T13 Adoption trusts the candidate where readback masks:** Fail-closed
+  adoption verifies content through the readback oracle, so readback's
+  masked dimensions (T12) are presence-verified, not content-verified,
+  during adoption: uploaded bytes, built-in icon identity, and unclaimed
+  provider-owned defaults are recorded from the candidate's claims. Raw
+  escape-hatch content is not verifiable at all and refuses. Accepted
+  because the alternative is either a best-effort comparison that flaps
+  (rejected by R40) or refusing every tree containing an upload. Like
+  T11/T12, an adoption has no snapshot isolation — it is advisory for
+  the observed window, and the next `sync()` recomputes from scratch.
 
 ## Requirements
 
@@ -324,6 +334,41 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   title/icon/cover) remain fully managed; `plan()` reports the same
   violations without failing; #1100 pending-adoption (read + cache-save)
   remains legal under the mode.
+
+### Must adopt existing rendered pages fail-closed
+
+- **R42 Zero-mutation adoption or typed refusal:** A public API must
+  accept a JSX candidate plus a live page id and either return the exact
+  `CacheTree` a prior `sync()` of the same element would have persisted
+  (so the next sync diffs incrementally and `plan()` is immediately
+  empty, root-metadata hashes included) or fail with a typed error
+  collecting EVERY divergence found in the pass — count, type, content,
+  page-metadata (field-level), unverifiable content, trashed root — not
+  just the first. Adoption must perform zero Notion mutations in every
+  outcome, refusal paths included, and must handle nested blocks and
+  `child_page` page boundaries, not only flat top-level blocks. The
+  documented cold-cache default stays unchanged when no adoption is
+  requested.
+- **R43 Positional binding is canonical, never inferred:** `blockKey` is
+  not stored in Notion, so keys and hashes must flow exclusively from
+  the candidate side; candidate child _i_ binds to live child _i_ under
+  every parent (in-trash blocks excluded). Identical siblings bind
+  deterministically — index order is the unique binding up to
+  observational equivalence, not a guess. Reordered DISTINCT siblings
+  must refuse at both positions; adoption must never re-match by content
+  search. Content verification goes through the readback oracle
+  (R39/R40) — never a forked normalizer — and descends whenever either
+  side expects children, so untracked nested live content surfaces as a
+  refusal.
+- **R44 Drift recovery composes with ordinary sync:** An explicit
+  opt-in (`onContentDrift: 'adopt-live'`) must keep every structural
+  check fail-closed while adopting content-drifted nodes with a recorded
+  live marker at exactly those nodes, such that the next ordinary
+  `sync()` emits exactly the minimal repairing updates and strict
+  re-adoption then reaches the zero-op fixpoint. A recorded block marker
+  must never be confusable with a cache-space hash (R39): it must be
+  deterministic and guaranteed unequal to the candidate's request-shape
+  hash, without pretending to be one.
 
 ### Must project authored JSX to readable Markdown (experimental)
 

@@ -16,6 +16,7 @@ import { renderToNotionMarkdown } from '@overeng/notion-react/markdown'
 | `renderToNotion`         | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | Cold-start append; no cache. Returns `Effect<SyncResult, NotionSyncError, NotionConfig \| HttpClient>`.                                      |
 | `sync`                   | [`renderer/sync.ts`](../src/renderer/sync.ts)                                           | Incremental cache-backed sync. Same return type. See [sync options](#sync-options).                                                          |
 | `plan`                   | [`renderer/sync.ts`](../src/renderer/sync.ts)                                           | Read-only companion to `sync`: the ops a sync would apply, zero writes. Returns `Effect<SyncPlan, …>`. See [plan options](#plan-options).    |
+| `adopt`                  | [`renderer/adopt.ts`](../src/renderer/adopt.ts)                                         | Fail-closed adoption of an existing rendered page: rebuild the cache from live state, zero mutations. See [Adoption](#adoption-fail-closed). |
 | `collectOps`             | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | Collect an `OpBuffer` from a one-shot render. Exposed for tests.                                                                             |
 | `SyncResult`             | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | `{ appends, updates, removes, inserts, fallbackReason? }`                                                                                    |
 | `SyncPlan`               | [`renderer/sync.ts`](../src/renderer/sync.ts)                                           | `{ ops, blocks, pages, fallbackReason, empty }` — `empty` is the fixpoint oracle.                                                            |
@@ -168,6 +169,67 @@ own content with its own `compareReadback`/`compareReadbackPage` pass
 (same per-page boundary as sync itself). Raw escape-hatch blocks
 (`<Raw>`, `SyncedBlock`, …) are unsupported and throw.
 
+## Adoption (fail-closed)
+
+```ts
+import { adopt, AdoptionRefusedError } from '@overeng/notion-react'
+
+const cacheTree = yield * adopt(element, {
+  pageId,
+  onContentDrift?, // 'refuse' (default) | 'adopt-live'
+})
+// → Effect<CacheTree, AdoptionRefusedError | NotionSyncError, NotionConfig | HttpClient>
+```
+
+For stateless consumers whose renderer cache did not survive a redeploy:
+`adopt()` rebuilds the exact `CacheTree` a prior `sync()` of the same
+element would have persisted, from live observation alone — with **zero
+Notion mutations** in every outcome, refusal paths included (GET-only).
+The default cold-cache path (`coldBaseline: 'clean'`) archives and
+re-appends everything; a successful adoption feeds the normal
+incremental diff and `plan()` over the adopted tree is immediately
+empty. The returned tree is not persisted — save it through your
+`NotionCache`.
+
+Binding is strictly **positional**: `blockKey` is never stored in
+Notion, so keys and hashes flow exclusively from the candidate side and
+candidate child _i_ binds to live child _i_ (in-trash blocks excluded).
+Identical siblings bind deterministically (index order is the unique
+binding up to observational equivalence); reordered _distinct_ siblings
+refuse at both positions — adoption never re-matches by content search.
+
+Every bound pair is verified before the mapping is trusted: block
+content through the [readback oracle](#readback-verification) (one node
+at a time, so a drifted child pins the child, not its ancestors);
+`child_page` and root `<Page>` title/icon/cover claims per field against
+`pages.retrieve`; recursion crosses page boundaries and descends
+whenever either side expects children, so untracked nested live content
+surfaces instead of being ignored. All refusals in a pass are collected
+into one `AdoptionRefusedError`:
+
+| Refusal               | Meaning                                                                                                   |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| `ChildCountMismatch`  | Extra untracked live blocks or missing candidate content under a parent (ids/keys pinned).                |
+| `TypeMismatch`        | Live block type differs from the candidate's at a position.                                               |
+| `ContentDrift`        | Bound block's content drifted (pins key, blockId, and both readback-space hashes).                        |
+| `UnverifiableContent` | The readback oracle cannot normalize the node (`<Raw>` escape-hatch payloads) — fail closed, never trust. |
+| `PageMetaDrift`       | A claimed page title/icon/cover drifted (field-level, cache-space claim hashes).                          |
+| `RootTrashed`         | The root page is in the trash while the JSX carries root `<Page>` claims.                                 |
+
+`onContentDrift: 'adopt-live'` keeps all structural checks fail-closed
+but adopts drifted nodes with a recorded live marker (blocks:
+`adopt-live:<observedReadbackHash>` in `CacheNode.hash`; page fields:
+the live claim's cache-space hash). The next ordinary `sync()` then
+emits exactly the minimal repairing updates, after which strict
+re-adoption succeeds and reaches the zero-op fixpoint.
+
+Adoption inherits the readback oracle's masked dimensions (T12):
+uploaded media bytes and unclaimed provider-owned fields are
+presence-verified, not content-verified. Like a plan, an adoption is
+advisory for the observed window — there is no snapshot isolation
+against a concurrent writer (T11); the post-adoption empty-`plan()`
+check is the proof of convergence.
+
 ## Block components
 
 From `@overeng/notion-react` (Notion host) and
@@ -309,7 +371,7 @@ import {
 ## Errors
 
 ```ts
-import { NotionSyncError, CacheError } from '@overeng/notion-react'
+import { NotionSyncError, CacheError, AdoptionRefusedError } from '@overeng/notion-react'
 ```
 
 | Error             | Reasons (so far)                                                                                                                                                                                               |
@@ -321,6 +383,10 @@ Both are `Data.TaggedError` classes with `reason: string` and optional
 `cause: unknown`. For `"page-lifecycle-violation"` (#1124),
 `NotionSyncError.violations` carries the offending `DiffOp[]` the
 `'append-only'` predicate rejected — before any op was applied.
+
+`AdoptionRefusedError` (#1093) is the typed failure of
+[`adopt()`](#adoption-fail-closed): `refusals` carries every
+`AdoptionRefusal` found in the pass, not just the first.
 
 ## Uploads
 

@@ -207,6 +207,32 @@ writer can produce an observation no single instant exhibited. Treat
 readback equality as advisory for the observed window, exactly like a
 `plan()` (T11).
 
+## Adoption scope (R42–R44)
+
+### Verification inherits readback's masked dimensions
+
+`adopt()` uses the readback oracle as its content gate, so everything
+masked there (T12, above) is presence-verified, not content-verified,
+during adoption too: uploaded media bytes, built-in icon identity, and
+unclaimed provider-owned defaults are trusted from the candidate side.
+`<Raw>` escape-hatch content cannot be verified at all and refuses with
+`UnverifiableContent` — a tree containing raw blocks is not adoptable.
+
+### Positional binding is the only binding
+
+Adoption never re-matches by content search: a live page whose sibling
+order differs from the candidate refuses rather than guessing a
+permutation, even when a unique content-based matching "obviously"
+exists. Fix the JSX order (or the live page) and re-adopt.
+
+### No snapshot isolation
+
+Like `plan()` and readback (T11), adoption observes without a lock. A
+writer racing the walk can invalidate the binding; the adopted tree is
+advisory for the observed window. The post-adoption empty-`plan()`
+check — and ultimately the next `sync()`, which recomputes from
+scratch — is the proof that matters.
+
 ## Web renderer (Storybook preview)
 
 ### Not API-stable (T05)
