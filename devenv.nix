@@ -390,7 +390,6 @@ let
     "context/otel-scrape/telemetry-registry.json"
     "genie/buck2/*.ts"
     "packages/@overeng/buck2-tools/src/**/*.ts"
-    "packages/@overeng/tui-core/buck2/target.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.tsx"
     "packages/@overeng/tui-core/src/**/*.cts"
