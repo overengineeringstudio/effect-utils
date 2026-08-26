@@ -1,10 +1,10 @@
+import { Effect } from 'effect'
 /**
  * Fail-closed adoption (#1093). Every test — including every refusal path —
  * asserts zero mutating requests on the mock's request log: adoption is
  * GET-only by contract, in all outcomes.
  */
 import type { HttpClient } from 'effect/unstable/http/HttpClient'
-import { Effect } from 'effect'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 

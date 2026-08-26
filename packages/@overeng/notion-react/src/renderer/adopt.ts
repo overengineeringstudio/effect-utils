@@ -222,11 +222,7 @@ export const adopt = (
     /** See {@link ContentDriftPolicy}. Defaults to `'refuse'`. */
     readonly onContentDrift?: ContentDriftPolicy
   },
-): Effect.Effect<
-  CacheTree,
-  AdoptionRefusedError | NotionSyncError,
-  NotionConfig | HttpClient
-> =>
+): Effect.Effect<CacheTree, AdoptionRefusedError | NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
     const policy: ContentDriftPolicy = opts.onContentDrift ?? 'refuse'
     const candidate = buildCandidateTree(element, opts.pageId)
