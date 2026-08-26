@@ -117,10 +117,7 @@ const runPromptCase = (testCase: PromptCase): Promise<PtyResult> =>
       // shell's echo of the launched command (contains absolute paths). Byte-exact so the
       // baseline below pins the rc.111 rendering deliberately.
       const transcriptStart = output.indexOf(0x1b)
-      const transcript = output.subarray(
-        transcriptStart === -1 ? 0 : transcriptStart,
-        markerIndex,
-      )
+      const transcript = output.subarray(transcriptStart === -1 ? 0 : transcriptStart, markerIndex)
 
       settled = true
       resolve({ readinessObserved, trace, transcript })
