@@ -7,7 +7,7 @@ map, not the reference.
 ## Entry points
 
 ```ts
-import { renderToNotion, sync } from '@overeng/notion-react'
+import { renderToNotion, sync, plan } from '@overeng/notion-react'
 import { renderToNotionMarkdown } from '@overeng/notion-react/markdown'
 ```
 
@@ -15,8 +15,10 @@ import { renderToNotionMarkdown } from '@overeng/notion-react/markdown'
 | ------------------------ | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `renderToNotion`         | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | Cold-start append; no cache. Returns `Effect<SyncResult, NotionSyncError, NotionConfig \| HttpClient>`.                                      |
 | `sync`                   | [`renderer/sync.ts`](../src/renderer/sync.ts)                                           | Incremental cache-backed sync. Same return type. See [sync options](#sync-options).                                                          |
+| `plan`                   | [`renderer/sync.ts`](../src/renderer/sync.ts)                                           | Read-only companion to `sync`: the ops a sync would apply, zero writes. Returns `Effect<SyncPlan, …>`. See [plan options](#plan-options).    |
 | `collectOps`             | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | Collect an `OpBuffer` from a one-shot render. Exposed for tests.                                                                             |
 | `SyncResult`             | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts)                   | `{ appends, updates, removes, inserts, fallbackReason? }`                                                                                    |
+| `SyncPlan`               | [`renderer/sync.ts`](../src/renderer/sync.ts)                                           | `{ ops, blocks, pages, fallbackReason, empty }` — `empty` is the fixpoint oracle.                                                            |
 | `renderToNotionMarkdown` | [`markdown/render-to-notion-markdown.ts`](../src/markdown/render-to-notion-markdown.ts) | **Experimental.** Read-only JSX → Notion-enhanced-Markdown body + diagnostics. See [Markdown projection](./concepts/markdown-projection.md). |
 
 ## Markdown projection options
@@ -55,6 +57,49 @@ sync(element, {
 
 See [Cookbook → Sub-page creation → Reordering](./cookbook/sub-page-creation.md#reordering-sibling-sub-pages-phase-4d)
 and [Limitations → Intra-parent sibling-page reorder](./limitations.md#intra-parent-sibling-page-reorder-dq7--opt-in).
+
+## Plan options
+
+```ts
+plan(element, {
+  pageId,
+  cache,
+  coldBaseline?,    // same semantics as sync()
+  reorderSiblings?, // same semantics as sync()
+  staleness?,       // 'live' (default) | 'cache-only'
+  onEvent?,         // retrieve op events + one PlanComputed; nothing else
+})
+// → Effect<SyncPlan, NotionSyncError, NotionConfig | HttpClient>
+```
+
+Computes the ops `sync()` would apply — through the same pre-flight and
+diff code path, including the root-page metadata `updatePage` that
+`sync()` applies outside its internal diff — without performing any
+write: no Notion mutation, no cache save. `ops` is in diff-emission
+order, which is NOT `sync()`'s phased application schedule (the driver
+applies retained-sub-page-scoped block ops before retained-page
+`updatePage`s) — treat it as an operation set with per-scope order.
+
+`SyncPlan.empty` doubles as a post-publication fixpoint oracle:
+immediately after a successful, convergent `sync()`, a `plan()` over the
+same element returns zero ops. One exception: under the default
+`reorderSiblings: false`, a JSX reshuffle of retained `<ChildPage>`
+siblings emits a same-parent `movePage` that Notion rejects and `sync()`
+deliberately swallows (a documented no-op), so server sibling order
+never converges and subsequent live plans keep reporting that move — opt
+into `reorderSiblings: true` for a true fixpoint.
+
+`staleness`:
+
+| Value              | Behaviour                                                                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `'live'` (default) | Mirrors sync's shallow pre-flight: one top-level children GET + in-memory pending-marker adoption (never persisted). Detects out-of-band appends as `fallbackReason: 'cache-drift'`. GET-only — never a write.            |
+| `'cache-only'`     | Pure function of cache + JSX, zero API calls. Blind spots: out-of-band drift, the cold-`'clean'` baseline sweep's removes (they need the live child list), and pending-marker resolution. Use only against a fresh cache. |
+
+TOCTOU stance: there is no lock between `plan()` and a later `sync()`,
+so the _plan_ can go stale — the applied result cannot, because `sync()`
+recomputes from scratch. Treat a plan as advisory for the observed
+instant; use the post-apply empty-plan check for proof of convergence.
 
 ## Block components
 

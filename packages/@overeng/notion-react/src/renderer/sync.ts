@@ -28,6 +28,7 @@ import {
   diff,
   iconOrCoverDrift,
   tallyDiff,
+  tallyPageOps,
   type CandidateNode,
   type CandidateTree,
   type DiffOp,
@@ -1044,6 +1045,239 @@ const driftedBase = (
 }
 
 /**
+ * Adopt the inline descendants of a page that was created with inline
+ * `children` but whose block ids were never observed (mid-sync crash between
+ * `pages.create` and the id-resolution retrieve). Retrieves the live children
+ * under `parentId` and pairs them positionally against the persisted
+ * create-time intent. Shared verbatim between `sync()` (which persists the
+ * adopted tree) and `plan()` (which adopts in memory only).
+ */
+const adoptInlineChildren = (
+  parentId: string,
+  nodes: readonly PendingInlineNode[],
+): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionConfig | HttpClient> =>
+  Effect.gen(function* () {
+    const live = yield* Stream.runCollect(
+      NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
+    ).pipe(
+      Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
+    )
+    const liveBlocks = Array.from(live)
+    const adopted: CacheNode[] = []
+    let liveIdx = 0
+    for (const node of nodes) {
+      const server = liveBlocks[liveIdx]
+      if (server === undefined) break
+      liveIdx += 1
+      if (server.type !== node.type) {
+        return yield* new NotionSyncError({
+          reason: 'notion-retrieve-failed',
+          cause: `pending inline type mismatch: expected ${node.type}, got ${server.type}`,
+        })
+      }
+      const children =
+        node.children.length === 0 ? [] : yield* adoptInlineChildren(server.id, node.children)
+      adopted.push({
+        key: node.key,
+        blockId: server.id,
+        type: node.type,
+        hash: node.hash,
+        children,
+        nodeKind: 'block',
+      })
+    }
+    // Live children beyond the persisted create-time intent mean another
+    // client wrote under the half-created page between the crashed sync
+    // and this retry. Adopting only the prefix would strand those blocks
+    // forever (drift detection is root-shallow), so fail loudly instead —
+    // failing before the cache save keeps the pending marker intact for a
+    // clean retry once the untracked content is removed.
+    if (liveIdx < liveBlocks.length) {
+      return yield* new NotionSyncError({
+        reason: 'notion-retrieve-failed',
+        cause:
+          `pending inline adoption found ${liveBlocks.length - liveIdx} untracked block(s) ` +
+          `under ${parentId} beyond the persisted create-time intent (${nodes.length} expected); ` +
+          `remove them or reset the cache to recover`,
+      })
+    }
+    return adopted
+  })
+
+/** Index every page-kind candidate (at any depth) by blockKey. */
+const indexCandidatePagesByKey = (
+  children: readonly CandidateNode[],
+): Map<string, CandidateNode> => {
+  const out = new Map<string, CandidateNode>()
+  const walk = (nodes: readonly CandidateNode[]): void => {
+    for (const node of nodes) {
+      if (node.nodeKind === 'page') out.set(node.key, node)
+      walk(node.children)
+    }
+  }
+  walk(children)
+  return out
+}
+
+/**
+ * Resolve `pendingInlineResolution` markers left by a crashed createPage,
+ * adopting the live inline descendants into the cache tree and binding the
+ * page identity onto the matching candidate. A checkpointed page may have
+ * moved to another parent in the retry JSX, so a sibling-local lookup would
+ * miss it — `candidatePageByKey` provides the cross-parent fallback so
+ * recovery can adopt the identity before the relocation is diffed.
+ */
+const resolvePendingPages = ({
+  cached,
+  candidates,
+  candidatePageByKey,
+}: {
+  readonly cached: readonly CacheNode[]
+  readonly candidates: readonly CandidateNode[]
+  readonly candidatePageByKey: ReadonlyMap<string, CandidateNode>
+}): Effect.Effect<
+  { readonly nodes: readonly CacheNode[]; readonly changed: boolean },
+  NotionSyncError,
+  NotionConfig | HttpClient
+> =>
+  Effect.gen(function* () {
+    let changed = false
+    const nodes: CacheNode[] = []
+    for (const cachedNode of cached) {
+      let candidateNode = candidates.find(
+        (node) => node.key === cachedNode.key && node.nodeKind === cachedNode.nodeKind,
+      )
+      if (
+        candidateNode === undefined &&
+        cachedNode.nodeKind === 'page' &&
+        cachedNode.pendingInlineResolution !== undefined
+      ) {
+        // Cross-parent fallback: resolve the pending inline descendants
+        // against the old location so the move diff sees adopted children
+        // instead of duplicating the server-side subtree.
+        candidateNode = candidatePageByKey.get(cachedNode.key)
+      }
+      if (candidateNode === undefined || cachedNode.nodeKind !== 'page') {
+        nodes.push(cachedNode)
+        continue
+      }
+      candidateNode.blockId = cachedNode.blockId
+      if (cachedNode.pendingInlineResolution !== undefined) {
+        const children = yield* adoptInlineChildren(
+          cachedNode.blockId,
+          cachedNode.pendingInlineResolution,
+        )
+        nodes.push({ ...cachedNode, children, pendingInlineResolution: undefined })
+        changed = true
+        continue
+      }
+      const nested = yield* resolvePendingPages({
+        cached: cachedNode.children,
+        candidates: candidateNode.children,
+        candidatePageByKey,
+      })
+      nodes.push(nested.changed ? { ...cachedNode, children: nested.nodes } : cachedNode)
+      changed = changed || nested.changed
+    }
+    return { nodes, changed }
+  })
+
+/**
+ * Ordered top-level drift predicate (#105). Out-of-band reorders leave the
+ * block-id set intact but scramble order, and we must rebuild to converge —
+ * so this is sequence equality, not set equality.
+ */
+const topLevelDrifted = (expectedIds: readonly string[], liveIds: readonly string[]): boolean => {
+  if (liveIds.length !== expectedIds.length) return true
+  for (let k = 0; k < expectedIds.length; k++) {
+    if (liveIds[k] !== expectedIds[k]) return true
+  }
+  return false
+}
+
+/**
+ * Select the tree the diff runs against plus the fallback classification.
+ * Pure function of the cache/drift inputs so `sync()` and `plan()` cannot
+ * disagree about which base a given state diffs against.
+ */
+const selectDiffBase = ({
+  pageId,
+  prior,
+  schemaMismatch,
+  pageIdDrift,
+  coldBaseline,
+  drifted,
+  liveTopLevelIds,
+}: {
+  readonly pageId: string
+  readonly prior: CacheTree | undefined
+  readonly schemaMismatch: boolean
+  readonly pageIdDrift: boolean
+  readonly coldBaseline: ColdBaseline
+  readonly drifted: boolean
+  readonly liveTopLevelIds: readonly string[]
+}): {
+  readonly useCold: boolean
+  readonly coldClean: boolean
+  readonly diffBase: CacheTree
+  readonly fallbackReason: SyncFallbackReason | undefined
+} => {
+  const useCold = prior === undefined || pageIdDrift
+  const coldClean = useCold && coldBaseline === 'clean' && liveTopLevelIds.length > 0
+  const diffBase: CacheTree = useCold
+    ? coldClean
+      ? driftedBase(pageId, liveTopLevelIds, undefined)
+      : emptyCache(pageId)
+    : drifted
+      ? driftedBase(pageId, liveTopLevelIds, prior)
+      : (prior ?? emptyCache(pageId))
+  const fallbackReason: SyncFallbackReason | undefined = pageIdDrift
+    ? 'page-id-drift'
+    : drifted
+      ? 'cache-drift'
+      : prior === undefined
+        ? 'cold-cache'
+        : schemaMismatch
+          ? 'schema-mismatch'
+          : undefined
+  return { useCold, coldClean, diffBase, fallbackReason }
+}
+
+/**
+ * Root-page metadata drift (issue #618 phase 3b/4b) expressed as the
+ * `updatePage` op `sync()` would apply against the sync root, or `undefined`
+ * when nothing drifted. Shared between `sync()` (which applies it) and
+ * `plan()` (which reports it) so the two cannot disagree about root-metadata
+ * convergence.
+ */
+const rootPageUpdateOpFor = ({
+  candidate,
+  prior,
+  pageId,
+}: {
+  readonly candidate: CandidateTree
+  readonly prior: CacheTree | undefined
+  readonly pageId: string
+}): Extract<PageOp, { kind: 'updatePage' }> | undefined => {
+  const rootPage = candidate.rootPage
+  if (rootPage === undefined) return undefined
+  const titleDrift = rootPage.titleHash !== undefined && rootPage.titleHash !== prior?.rootTitleHash
+  // Phase 4b (#618): `null` sentinel on fresh root (no prior icon) is a
+  // no-op; the candidate null hash matches "unset" server state. Once a
+  // prior hash exists, candidate `null` drifts and emits `icon: null`.
+  const iconDrift = iconOrCoverDrift(rootPage.iconHash, prior?.rootIconHash)
+  const coverDrift = iconOrCoverDrift(rootPage.coverHash, prior?.rootCoverHash)
+  if (!titleDrift && !iconDrift && !coverDrift) return undefined
+  return {
+    kind: 'updatePage',
+    pageId,
+    ...(titleDrift ? { title: rootPage.title } : {}),
+    ...(iconDrift ? { icon: rootPage.icon } : {}),
+    ...(coverDrift ? { cover: rootPage.cover } : {}),
+  }
+}
+
+/**
  * Cache-backed incremental sync.
  *
  * Renders the JSX into an in-memory candidate tree, diffs it against the
@@ -1183,120 +1417,7 @@ export const sync = (
       )
     }
 
-    const adoptInlineChildren = (
-      parentId: string,
-      nodes: readonly PendingInlineNode[],
-    ): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionConfig | HttpClient> =>
-      Effect.gen(function* () {
-        const live = yield* Stream.runCollect(
-          NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
-        ).pipe(
-          Effect.mapError(
-            (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
-          ),
-        )
-        const liveBlocks = Array.from(live)
-        const adopted: CacheNode[] = []
-        let liveIdx = 0
-        for (const node of nodes) {
-          const server = liveBlocks[liveIdx]
-          if (server === undefined) break
-          liveIdx += 1
-          if (server.type !== node.type) {
-            return yield* new NotionSyncError({
-              reason: 'notion-retrieve-failed',
-              cause: `pending inline type mismatch: expected ${node.type}, got ${server.type}`,
-            })
-          }
-          const children =
-            node.children.length === 0 ? [] : yield* adoptInlineChildren(server.id, node.children)
-          adopted.push({
-            key: node.key,
-            blockId: server.id,
-            type: node.type,
-            hash: node.hash,
-            children,
-            nodeKind: 'block',
-          })
-        }
-        // Live children beyond the persisted create-time intent mean another
-        // client wrote under the half-created page between the crashed sync
-        // and this retry. Adopting only the prefix would strand those blocks
-        // forever (drift detection is root-shallow), so fail loudly instead —
-        // failing before the cache save keeps the pending marker intact for a
-        // clean retry once the untracked content is removed.
-        if (liveIdx < liveBlocks.length) {
-          return yield* new NotionSyncError({
-            reason: 'notion-retrieve-failed',
-            cause:
-              `pending inline adoption found ${liveBlocks.length - liveIdx} untracked block(s) ` +
-              `under ${parentId} beyond the persisted create-time intent (${nodes.length} expected); ` +
-              `remove them or reset the cache to recover`,
-          })
-        }
-        return adopted
-      })
-
-    // A checkpointed page may have moved to another parent in the retry JSX,
-    // so resolvePendingPages' sibling-local lookup would miss it and leave the
-    // marker unresolved — the subsequent movePage diff then re-appends the
-    // already-created inline descendants from an empty cache subtree. Index
-    // all page-kind candidates once so recovery can adopt the identity before
-    // the relocation is diffed.
-    const candidatePageByKey = new Map<string, CandidateNode>()
-    const indexCandidatePages = (nodes: readonly CandidateNode[]): void => {
-      for (const node of nodes) {
-        if (node.nodeKind === 'page') candidatePageByKey.set(node.key, node)
-        indexCandidatePages(node.children)
-      }
-    }
-    indexCandidatePages(candidate.children)
-
-    const resolvePendingPages = (
-      cached: readonly CacheNode[],
-      candidates: readonly CandidateNode[],
-    ): Effect.Effect<
-      { readonly nodes: readonly CacheNode[]; readonly changed: boolean },
-      NotionSyncError,
-      NotionConfig | HttpClient
-    > =>
-      Effect.gen(function* () {
-        let changed = false
-        const nodes: CacheNode[] = []
-        for (const cachedNode of cached) {
-          let candidateNode = candidates.find(
-            (node) => node.key === cachedNode.key && node.nodeKind === cachedNode.nodeKind,
-          )
-          if (
-            candidateNode === undefined &&
-            cachedNode.nodeKind === 'page' &&
-            cachedNode.pendingInlineResolution !== undefined
-          ) {
-            // Cross-parent fallback: resolve the pending inline descendants
-            // against the old location so the move diff sees adopted children
-            // instead of duplicating the server-side subtree.
-            candidateNode = candidatePageByKey.get(cachedNode.key)
-          }
-          if (candidateNode === undefined || cachedNode.nodeKind !== 'page') {
-            nodes.push(cachedNode)
-            continue
-          }
-          candidateNode.blockId = cachedNode.blockId
-          if (cachedNode.pendingInlineResolution !== undefined) {
-            const children = yield* adoptInlineChildren(
-              cachedNode.blockId,
-              cachedNode.pendingInlineResolution,
-            )
-            nodes.push({ ...cachedNode, children, pendingInlineResolution: undefined })
-            changed = true
-            continue
-          }
-          const nested = yield* resolvePendingPages(cachedNode.children, candidateNode.children)
-          nodes.push(nested.changed ? { ...cachedNode, children: nested.nodes } : cachedNode)
-          changed = changed || nested.changed
-        }
-        return { nodes, changed }
-      })
+    const candidatePageByKey = indexCandidatePagesByKey(candidate.children)
 
     // Pending recovery retrieves against page ids recorded under prior.rootId.
     // When the cache was written for a different page (page-id drift) those
@@ -1304,7 +1425,11 @@ export const sync = (
     // skip recovery and let the documented cold-start path handle the
     // mismatch.
     if (prior !== undefined && prior.rootId === opts.pageId) {
-      const resolvedPending = yield* resolvePendingPages(prior.children, candidate.children)
+      const resolvedPending = yield* resolvePendingPages({
+        cached: prior.children,
+        candidates: candidate.children,
+        candidatePageByKey,
+      })
       if (resolvedPending.changed) {
         prior = { ...prior, children: resolvedPending.nodes }
         yield* opts.cache
@@ -1402,19 +1527,10 @@ export const sync = (
       // Drift detection only applies to the warm-cache path; the cold path
       // always cleans pre-existing children when `coldBaseline === 'clean'`.
       if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
-        const expectedIds = prior.children.map((c) => c.blockId)
-        // Ordered sequence equality — out-of-band reorders leave the block-id
-        // set intact but scramble order, and we must rebuild to converge.
-        if (liveIds.length !== expectedIds.length) {
-          drifted = true
-        } else {
-          for (let k = 0; k < expectedIds.length; k++) {
-            if (liveIds[k] !== expectedIds[k]) {
-              drifted = true
-              break
-            }
-          }
-        }
+        drifted = topLevelDrifted(
+          prior.children.map((c) => c.blockId),
+          liveIds,
+        )
       }
     }
 
@@ -1424,7 +1540,6 @@ export const sync = (
     // removes for the orphaned blocks and appends for the candidate tree —
     // otherwise a drifted page would get duplicated content (old blocks
     // remain, new copies append) and never converge.
-    const useCold = useColdPath
     // `diffBase` feeds the diff algorithm; on drift (or cold-clean with
     // pre-existing live blocks) it carries synthetic `drift:*` ghost entries
     // so every live top-level block becomes a remove op. `workingBase` seeds
@@ -1436,14 +1551,15 @@ export const sync = (
     // against Notion populate it via `workingAppend`; pending removes
     // target ghost blockIds that are absent from `working.byId`, which is
     // a safe no-op.
-    const coldClean = useCold && coldBaseline === 'clean' && liveTopLevelIds.length > 0
-    const diffBase: CacheTree = useCold
-      ? coldClean
-        ? driftedBase(opts.pageId, liveTopLevelIds, undefined)
-        : emptyCache(opts.pageId)
-      : drifted
-        ? driftedBase(opts.pageId, liveTopLevelIds, prior)
-        : (prior ?? emptyCache(opts.pageId))
+    const { useCold, diffBase, fallbackReason } = selectDiffBase({
+      pageId: opts.pageId,
+      prior,
+      schemaMismatch,
+      pageIdDrift,
+      coldBaseline,
+      drifted,
+      liveTopLevelIds,
+    })
     /* Working base mirrors diffBase for warm drift (no ghost leakage risk —
        we only copy prior entries whose blockIds are still live server-side,
        so they're real confirmed entries). For cold paths we stay empty. */
@@ -1456,15 +1572,6 @@ export const sync = (
             children: diffBase.children.filter((c) => !c.key.startsWith('drift:')),
           }
         : (prior ?? emptyCache(opts.pageId))
-    const fallbackReason: SyncFallbackReason | undefined = pageIdDrift
-      ? 'page-id-drift'
-      : drifted
-        ? 'cache-drift'
-        : prior === undefined
-          ? 'cold-cache'
-          : schemaMismatch
-            ? 'schema-mismatch'
-            : undefined
 
     if (onEvent !== undefined) {
       const cacheKind: 'hit' | 'miss' | 'drift' | 'page-id-drift' = pageIdDrift
@@ -1653,53 +1760,45 @@ export const sync = (
     let pageCounts: PageOpCounts = emptyPageCounts()
     let partialCreateFallback = false
     const rootPage = candidate.rootPage
-    if (rootPage !== undefined) {
-      const priorT = prior?.rootTitleHash
-      const priorI = prior?.rootIconHash
-      const priorC = prior?.rootCoverHash
-      const titleDrift = rootPage.titleHash !== undefined && rootPage.titleHash !== priorT
-      // Phase 4b (#618): `null` sentinel on fresh root (no prior icon) is a
-      // no-op; the candidate null hash matches "unset" server state. Once a
-      // prior hash exists, candidate `null` drifts and emits `icon: null`.
-      const iconDrift = iconOrCoverDrift(rootPage.iconHash, priorI)
-      const coverDrift = iconOrCoverDrift(rootPage.coverHash, priorC)
-      if (titleDrift || iconDrift || coverDrift) {
-        const opId = o11y.nextOpId()
-        const t0 = performance.now()
-        if (onEvent !== undefined) {
-          onEvent(
-            SyncEvent.PageOpIssued({
-              id: opId,
-              kind: 'updatePage',
-              pageId: opts.pageId,
-              at: Date.now(),
-            }),
-          )
-        }
-        yield* NotionPages.update({
-          pageId: opts.pageId,
-          ...(titleDrift ? { properties: { title: { title: rootPage.title as never } } } : {}),
-          ...(iconDrift ? { icon: rootPage.icon as never } : {}),
-          ...(coverDrift ? { cover: rootPage.cover as never } : {}),
-        }).pipe(
-          Effect.mapError(
-            (cause) => new NotionSyncError({ reason: 'notion-page-update-failed', cause }),
-          ),
+    const rootUpdateOp = rootPageUpdateOpFor({ candidate, prior, pageId: opts.pageId })
+    if (rootUpdateOp !== undefined) {
+      const opId = o11y.nextOpId()
+      const t0 = performance.now()
+      if (onEvent !== undefined) {
+        onEvent(
+          SyncEvent.PageOpIssued({
+            id: opId,
+            kind: 'updatePage',
+            pageId: opts.pageId,
+            at: Date.now(),
+          }),
         )
-        if (onEvent !== undefined) {
-          onEvent(
-            SyncEvent.PageOpApplied({
-              id: opId,
-              kind: 'updatePage',
-              pageId: opts.pageId,
-              durationMs: performance.now() - t0,
-              at: Date.now(),
-            }),
-          )
-        }
-        o11y.opCount.n += 1
-        pageCounts = { ...pageCounts, updates: pageCounts.updates + 1 }
       }
+      yield* NotionPages.update({
+        pageId: opts.pageId,
+        ...(rootUpdateOp.title !== undefined
+          ? { properties: { title: { title: rootUpdateOp.title as never } } }
+          : {}),
+        ...(rootUpdateOp.icon !== undefined ? { icon: rootUpdateOp.icon as never } : {}),
+        ...(rootUpdateOp.cover !== undefined ? { cover: rootUpdateOp.cover as never } : {}),
+      }).pipe(
+        Effect.mapError(
+          (cause) => new NotionSyncError({ reason: 'notion-page-update-failed', cause }),
+        ),
+      )
+      if (onEvent !== undefined) {
+        onEvent(
+          SyncEvent.PageOpApplied({
+            id: opId,
+            kind: 'updatePage',
+            pageId: opts.pageId,
+            durationMs: performance.now() - t0,
+            at: Date.now(),
+          }),
+        )
+      }
+      o11y.opCount.n += 1
+      pageCounts = { ...pageCounts, updates: pageCounts.updates + 1 }
     }
 
     // Issue #618 follow-up: at the root scope, `pages.create` and block
@@ -2294,3 +2393,208 @@ export const sync = (
     ),
   )
 }
+
+/**
+ * How `plan()` treats potential cache staleness.
+ *
+ * `'live'` (default): mirror `sync()`'s pre-flight exactly — resolve pending
+ * inline markers (in memory; nothing is persisted) and fetch the page's live
+ * top-level children for shallow drift detection. The returned plan is what
+ * `sync()` would compute if invoked now, at the cost of read-only API calls.
+ * There is still no lock: a writer racing between `plan()` and a later
+ * `sync()` can invalidate the plan (sync re-computes, so it stays correct —
+ * the *plan* is what goes stale, never the applied result).
+ *
+ * `'cache-only'`: a pure function of cache + JSX — zero API calls. Cannot see
+ * out-of-band drift or resolve pending markers, so it diverges from `sync()`
+ * whenever the server moved out from under the cache (including the
+ * cold-`'clean'` baseline sweep, which needs the live child list to plan its
+ * removes). Use for offline "would anything change?" checks against a cache
+ * that is trusted to be fresh.
+ */
+export type PlanStaleness = 'live' | 'cache-only'
+
+/**
+ * Read-only sync plan. `ops` mirrors `sync()`'s pre-flight diff one-to-one
+ * (including the root-page `updatePage` when root metadata drifted) but is
+ * in DIFF-EMISSION order, not `sync()`'s phased application schedule — the
+ * driver applies retained-sub-page-scoped block ops before retained-page
+ * `updatePage`s. Treat `ops` as an operation set with per-scope order, not
+ * an execution trace; the tallies mirror `SyncResult`'s counters for the
+ * same element/cache state.
+ */
+export interface SyncPlan {
+  readonly ops: readonly DiffOp[]
+  readonly blocks: {
+    readonly appends: number
+    readonly updates: number
+    readonly inserts: number
+    readonly removes: number
+  }
+  readonly pages: {
+    readonly creates: number
+    readonly updates: number
+    readonly archives: number
+    readonly moves: number
+    readonly reorders: number
+  }
+  readonly fallbackReason: SyncFallbackReason | undefined
+  /** `true` iff the page is already at the fixpoint: a sync now would write nothing. */
+  readonly empty: boolean
+}
+
+/**
+ * Read-only companion to {@link sync}: compute the plan `sync()` would apply
+ * for `element` against the current cache WITHOUT performing any write — no
+ * Notion mutation, no cache save. Composed from the same building blocks as
+ * `sync()`'s own pre-flight (`resolvePendingPages`, `topLevelDrifted`,
+ * `selectDiffBase`, `diff`, `rootPageUpdateOpFor`), so the two cannot
+ * disagree about what a sync would do for a given observed state.
+ *
+ * The `empty` flag doubles as a post-publication fixpoint oracle: after a
+ * successful, CONVERGENT `sync()`, `plan()` over the same element returns
+ * zero ops. One documented exception: under the default
+ * `reorderSiblings: false`, a JSX reshuffle of retained `<ChildPage>`
+ * siblings emits a same-parent `movePage` that Notion rejects and `sync()`
+ * deliberately swallows (a documented no-op — see `reorderSiblings`), so
+ * server sibling order never converges and every subsequent live `plan()`
+ * keeps reporting that move. Opt into `reorderSiblings: true` (or accept
+ * the drift) for a true fixpoint.
+ *
+ * `onEvent` mirrors `sync()`'s hook for the read-only prefix: the `'live'`
+ * children GET emits `OpIssued`/`OpSucceeded`/`OpFailed` with kind
+ * `'retrieve'` (it is real HTTP volume), and the computed plan emits one
+ * `PlanComputed`. No other events — in particular no `SyncStart`/`SyncEnd`
+ * (nothing is synced) and no `CacheOutcome` (so plan probes don't skew
+ * cache-efficiency metrics aggregated across real syncs).
+ */
+export const plan = (
+  element: ReactNode,
+  opts: {
+    readonly pageId: string
+    readonly cache: NotionCache
+    readonly coldBaseline?: ColdBaseline
+    readonly reorderSiblings?: boolean | { readonly holdingParentId: string }
+    readonly staleness?: PlanStaleness
+    readonly onEvent?: SyncEventHandler
+  },
+): Effect.Effect<SyncPlan, NotionSyncError, NotionConfig | HttpClient> =>
+  Effect.gen(function* () {
+    const staleness: PlanStaleness = opts.staleness ?? 'live'
+    const onEvent = opts.onEvent
+    const coldBaseline: ColdBaseline = opts.coldBaseline ?? 'clean'
+    let prior = yield* opts.cache.load.pipe(
+      Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-load-failed', cause })),
+    )
+    const candidate = buildCandidateTree(element, opts.pageId)
+    if (staleness === 'live' && prior !== undefined && prior.rootId === opts.pageId) {
+      const candidatePageByKey = indexCandidatePagesByKey(candidate.children)
+      const resolvedPending = yield* resolvePendingPages({
+        cached: prior.children,
+        candidates: candidate.children,
+        candidatePageByKey,
+      })
+      // Unlike sync(), the adopted tree is NOT saved — plan() never writes.
+      if (resolvedPending.changed) prior = { ...prior, children: resolvedPending.nodes }
+    }
+
+    const schemaMismatch = prior !== undefined && prior.schemaVersion !== CACHE_SCHEMA_VERSION
+    const pageIdDrift = prior !== undefined && prior.rootId !== opts.pageId
+    const useColdPath = prior === undefined || pageIdDrift
+
+    let drifted = false
+    let liveTopLevelIds: readonly string[] = []
+    const wantsLiveRetrieve =
+      staleness === 'live' &&
+      ((prior !== undefined && !schemaMismatch && !pageIdDrift) ||
+        (useColdPath && coldBaseline === 'clean'))
+    if (wantsLiveRetrieve) {
+      const retrieveOpId = 1
+      const t0 = onEvent !== undefined ? performance.now() : 0
+      if (onEvent !== undefined) {
+        onEvent(SyncEvent.OpIssued({ id: retrieveOpId, kind: 'retrieve', at: Date.now() }))
+      }
+      const liveChildren = yield* Stream.runCollect(
+        NotionBlocks.retrieveChildrenStream({ blockId: opts.pageId }),
+      ).pipe(
+        Effect.tapError((cause) =>
+          Effect.sync(() => {
+            if (onEvent !== undefined) {
+              onEvent(
+                SyncEvent.OpFailed({
+                  id: retrieveOpId,
+                  kind: 'retrieve',
+                  durationMs: performance.now() - t0,
+                  error: String(cause),
+                  at: Date.now(),
+                }),
+              )
+            }
+          }),
+        ),
+        Effect.mapError(
+          (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
+        ),
+      )
+      if (onEvent !== undefined) {
+        onEvent(
+          SyncEvent.OpSucceeded({
+            id: retrieveOpId,
+            kind: 'retrieve',
+            durationMs: performance.now() - t0,
+            resultCount: Array.from(liveChildren).length,
+            at: Date.now(),
+          }),
+        )
+      }
+      const liveIds: string[] = []
+      for (const b of Array.from(liveChildren)) {
+        if (b.in_trash !== true) liveIds.push(b.id)
+      }
+      liveTopLevelIds = liveIds
+      if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
+        drifted = topLevelDrifted(
+          prior.children.map((c) => c.blockId),
+          liveIds,
+        )
+      }
+    }
+
+    const { diffBase, fallbackReason } = selectDiffBase({
+      pageId: opts.pageId,
+      prior,
+      schemaMismatch,
+      pageIdDrift,
+      coldBaseline,
+      drifted,
+      liveTopLevelIds,
+    })
+
+    const rootUpdateOp = rootPageUpdateOpFor({ candidate, prior, pageId: opts.pageId })
+    const ops: DiffOp[] = [
+      ...(rootUpdateOp !== undefined ? [rootUpdateOp] : []),
+      ...diff(diffBase, candidate, {
+        reorderSiblings: opts.reorderSiblings !== undefined && opts.reorderSiblings !== false,
+      }),
+    ]
+    const blocks = tallyDiff(ops)
+    if (onEvent !== undefined) {
+      onEvent(
+        SyncEvent.PlanComputed({
+          pageId: opts.pageId,
+          appends: blocks.appends,
+          inserts: blocks.inserts,
+          updates: blocks.updates,
+          removes: blocks.removes,
+          at: Date.now(),
+        }),
+      )
+    }
+    return {
+      ops,
+      blocks,
+      pages: tallyPageOps(ops),
+      fallbackReason,
+      empty: ops.length === 0,
+    }
+  })

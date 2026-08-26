@@ -116,6 +116,14 @@ All notable changes to this project will be documented in this file.
   into a `CacheTree` out-of-band can no longer drift from the scheme
   `buildCandidateTree` / `diff` actually produce.
 
+- **@overeng/notion-react**: add `plan()`, a read-only companion to `sync()`
+  (#1122). It computes the exact op sequence a sync would apply — through the
+  same pre-flight and diff code path, root-page metadata update included —
+  with zero writes: no Notion mutation, no cache save. `SyncPlan.empty` is a
+  post-publication fixpoint oracle. `staleness: 'live' | 'cache-only'` picks
+  between sync's GET-only shallow pre-flight (detects out-of-band drift) and
+  a zero-request pure cache×JSX check. `onEvent` emits the retrieve op events
+  and one `PlanComputed` from the existing `SyncEvent` union.
 - **devenv pnpm / Genie**: add root-local, read-only source generations for
   composed workspaces. Aggregate roots declare cross-repository source inputs,
   Genie projects matching `file:` overrides, and the shared pnpm transaction
