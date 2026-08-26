@@ -158,7 +158,7 @@ export const watchScoped = (
             Effect.map((batch) => [batch, undefined] as const),
             Effect.catch((error) =>
               error._tag === 'WatchSourceEnded'
-                ? Effect.succeed(undefined)
+                ? Effect.void.pipe(Effect.as(undefined))
                 : Effect.fail(error),
             ),
           ),
