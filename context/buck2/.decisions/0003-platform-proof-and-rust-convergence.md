@@ -1,6 +1,6 @@
 # 0003 Per-Platform Proof and Measured Rust Convergence
 
-Status: accepted; the conditional repository-helper conclusion is superseded
+Status: accepted
 by [decision 0010](./0010-admit-rust-stage-zero-support-tools.md)
 
 ## Context

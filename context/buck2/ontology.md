@@ -2,12 +2,6 @@
 
 ## Language
 
-**Public Kernel** is the portable schemas, rules, executors, evidence adapters,
-and conformance fixtures shared by independently owned repositories.
-
-**Repository Adapter** binds repository-owned semantic intent, dependency
-selection, labels, aliases, and policy to the Public Kernel.
-
 **Semantic Operation** is a bounded deterministic repository-local unit such as
 a check, test suite, compilation, or package build.
 
@@ -15,10 +9,30 @@ a check, test suite, compilation, or package build.
 closure, target platform, execution platform, toolchain, and policy.
 
 **Execution Platform** is where an action runs. **Target Platform** is what its
-result is for.
+result is for. Both are named labels; label identity, not content, enters the
+configuration hash.
 
-**Authority Slice** is the smallest Configured Operation whose sole producer
-can transfer independently to Buck.
+**Admission** is the evidence-backed grant by which a Configured Operation and
+platform tuple makes Buck its sole producer. **Authority Transfer** is the
+change that consumes an admission and deletes the superseded producer.
+
+**Composition Root** is the synthesized project root whose `.buckconfig`
+declares members as cells at canonical mount paths. Every build runs from one.
+
+**Member Cell** is a megarepo member mounted at its canonical path
+(`repos/<name>`) under its canonical cell name inside a Composition Root.
+
+**Materialization** is a Buck action that produces a dependency surface
+(a package's `node_modules` tree) from manifests, the lockfile, and patches
+only. The pnpm store supplies bytes; manifests supply identity.
+
+**Editor Surface** is the stable, atomically-flipped view of materializations
+that editors and test runners resolve through. It is Buck-produced state, never
+hand-installed.
+
+**Shared Cache** is the fleet REAPI action cache and CAS (bazel-remote on
+dev3). **Cache Namespace** is the key space determined by composition shape,
+cell names, platform labels, and isolation dir; discipline keeps it singular.
 
 **BuildProduct** is normalized Buck-produced payload bytes plus a portable
 descriptor of entrypoints, target-platform/runtime constraints, and semantic
@@ -30,31 +44,18 @@ of a Nix store result without rebuilding repository sources.
 **Native Evidence** is Buck's event log, build report, invocation identity, and
 supported derived queries.
 
-**Observer** is an optional execution-transparent adapter that converts Native
-Evidence into telemetry under caller-provided trace context.
-
-**Control Plane** is the consumer-owned task or CI system that owns trace roots,
-evidence retention, admission policy, and live effects.
-
-**Admission** is an evidence-backed grant for an exact operation, platform,
-toolchain, policy, and trust tuple.
-
-**No Verdict** means required evidence was not observed. It is neither success
-nor failure, although consumer policy may fail closed.
+**Deletion Ledger** is the roadmap record binding each admission to the
+producers, tasks, and install steps it deletes.
 
 ## Structure
 
 ```text
-Public Kernel + Repository Adapter
-  -> Configured Operation
-     -> Buck action and Native Evidence
-        -> BuildProduct
-           -> Nix Import
-
-Control Plane
-  -> trace context -> Observer -> Native Evidence telemetry
-  -> evidence + independent checks -> Admission
-  -> consumer-owned live effects
+authored intent -> Semantic Operation -> Configured Operation
+Composition Root + Member Cells -> configured Buck graph
+Materialization -> action inputs + Editor Surface
+action + Shared Cache -> result + Native Evidence
+result -> BuildProduct -> Nix Import
+Admission -> Authority Transfer -> Deletion Ledger entry
 ```
 
 ## Flagged Ambiguities
@@ -63,6 +64,11 @@ Control Plane
 - Use operation for semantic intent and action for a Buck execution node.
 - Use import only for the independent Nix boundary, not publication or
   activation.
+- "Materialization" here means the dependency-surface action;
+  `context/dependency-materialization` uses the same word for the transitional
+  pnpm/Nix contract that this system progressively supersedes. Buck's internal
+  artifact materializer (`buck-out` writing) is a third meaning; qualify it as
+  "output materialization" when it matters.
 - Name the exact admitted operation and tuple instead of saying supported.
 - Distinguish Buck result, telemetry export result, evidence completeness,
   import result, and consumer live state.
