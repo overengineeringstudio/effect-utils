@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/tui-core/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-materialization
-# Semantic fingerprint: sha256:0d5cb1ed051c56a72e73cd6355b918263cc669f2fda500dbeaadde84da1df9d9
-# Semantic inputs: genie/buck2/mod.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/canonical.ts, packages/@overeng/buck2-tools/src/model.ts, packages/@overeng/buck2-tools/src/pnpm-closure.ts, packages/@overeng/tui-core/buck2/target.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts, packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch, pnpm-lock.yaml, pnpm-workspace.yaml
+# Semantic fingerprint: sha256:20fe2bc659097e40d4c2d956a20e944b2ea0bb8779522e722e21473a061bf3a0
+# Semantic inputs: genie/buck2/mod.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/canonical.ts, packages/@overeng/buck2-tools/src/model.ts, packages/@overeng/buck2-tools/src/pnpm-closure.ts, packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts, packages/@overeng/tui-core/buck2/target.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts, packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch, pnpm-lock.yaml, pnpm-workspace.yaml
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "package_tree", "pnpm_node_modules")
@@ -60,6 +60,7 @@ pnpm_node_modules(
         "packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch": "//:packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch",
     },
     runtime = "//:packages/@overeng/buck2-tools/src/buck2-materializer.ts",
+    descriptor_module = "//:packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts",
     normalizer = "//:packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts",
 )
 

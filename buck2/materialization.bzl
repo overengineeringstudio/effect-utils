@@ -30,19 +30,19 @@ def _add_mapped_sources(args, flag, sources):
 
 def _pnpm_node_modules_impl(ctx):
     toolchain = ctx.attrs._materializer[PnpmMaterializerToolchainInfo]
-    out = ctx.actions.declare_output("node_modules", dir = True)
-    args = cmd_args([
+    descriptor = ctx.actions.declare_output("pnpm_install_descriptor", dir = True)
+    prune_args = cmd_args([
         toolchain.bun,
         ctx.attrs.runtime,
-        "materialize-node-modules",
+        "prune-node-modules",
         "--output",
-        out.as_output(),
+        descriptor.as_output(),
         "--package-name",
         ctx.attrs.package_name,
         "--pnpm",
         toolchain.pnpm,
-        "--normalizer",
-        ctx.attrs.normalizer,
+        "--descriptor-module",
+        ctx.attrs.descriptor_module,
         "--store-dir",
         toolchain.store_dir,
         "--root-package-json",
@@ -52,10 +52,36 @@ def _pnpm_node_modules_impl(ctx):
         "--workspace-manifest",
         ctx.attrs.workspace_manifest,
     ])
-    _add_mapped_sources(args, "--package-manifest", ctx.attrs.workspace_package_manifests)
-    _add_mapped_sources(args, "--patch", ctx.attrs.patches)
+    _add_mapped_sources(prune_args, "--package-manifest", ctx.attrs.workspace_package_manifests)
+    _add_mapped_sources(prune_args, "--patch", ctx.attrs.patches)
     ctx.actions.run(
-        args,
+        prune_args,
+        category = "pnpm_pruned_lock",
+        identifier = ctx.attrs.name,
+        local_only = True,
+        allow_cache_upload = False,
+    )
+
+    out = ctx.actions.declare_output("node_modules", dir = True)
+    install_args = cmd_args([
+        toolchain.bun,
+        ctx.attrs.runtime,
+        "materialize-node-modules",
+        "--output",
+        out.as_output(),
+        "--descriptor",
+        descriptor,
+        "--pnpm",
+        toolchain.pnpm,
+        "--descriptor-module",
+        ctx.attrs.descriptor_module,
+        "--normalizer",
+        ctx.attrs.normalizer,
+        "--store-dir",
+        toolchain.store_dir,
+    ])
+    ctx.actions.run(
+        install_args,
         category = "pnpm_node_modules",
         identifier = ctx.attrs.name,
         local_only = True,
@@ -87,6 +113,7 @@ pnpm_node_modules = rule(
             default = {},
         ),
         "runtime": attrs.source(),
+        "descriptor_module": attrs.source(),
         "normalizer": attrs.source(),
         "_materializer": attrs.default_only(attrs.exec_dep(
             default = "toolchains//:pnpm_materializer",
