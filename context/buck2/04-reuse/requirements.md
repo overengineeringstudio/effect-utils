@@ -38,8 +38,10 @@ BUCK-R06 and BUCK-R07. Service deployment authority is dotfiles-owned
   operations event, not a silent slowdown.
 - **REUSE-R05 Digest and transport discipline:** SHA256 digests are pinned
   explicitly; the client configuration lives in a buckconfig file (CLI
-  overrides do not reach the RE client); advertised gRPC batch size stays
-  below Buck2's 4 MiB client limit.
+  overrides do not reach the RE client); batched transfers stay below Buck2's
+  4 MiB gRPC client limit, enforced on the client side — bazel-remote
+  advertises no batch cap in its Capabilities response, so the server cannot
+  enforce this (facebook/buck2#583).
 - **REUSE-R06 Shared action cache:** The action cache is shared across
   repositories; `instance_name` is per-repo attribution, not isolation.
   Cross-repo hits are correct by construction and expected under
