@@ -101,6 +101,72 @@ def configured_rust_toolchain(
     )
 
 
+PnpmMaterializerToolchainInfo = provider(fields = {
+    "bun": str,
+    "identity": str,
+    "pnpm": str,
+    "store_dir": str,
+})
+
+
+def _require_nix_store_binary(executable, binary, tool):
+    if not executable.startswith("/nix/store/"):
+        fail("{} must resolve to an immutable /nix/store executable: {}".format(tool, executable))
+    components = executable.split("/")
+    if len(components) < 6 or components[-2:] != ["bin", binary]:
+        fail("{} executable must have the shape /nix/store/<realization>/bin/{}: {}".format(tool, binary, executable))
+    for component in components[3:]:
+        if component == "" or component == "." or component == "..":
+            fail("{} executable path is not normalized: {}".format(tool, executable))
+
+
+def _pnpm_materializer_toolchain_impl(ctx):
+    _require_nix_store_binary(ctx.attrs.bun, "bun", "Bun")
+    _require_nix_store_binary(ctx.attrs.pnpm, "pnpm", "pnpm")
+    if not ctx.attrs.store_dir or ctx.attrs.store_dir.startswith("/"):
+        fail("pnpm materializer store_dir must be a non-empty project-relative path")
+    return [
+        DefaultInfo(),
+        PnpmMaterializerToolchainInfo(
+            bun = ctx.attrs.bun,
+            identity = "bun={};pnpm={};store={}".format(ctx.attrs.bun, ctx.attrs.pnpm, ctx.attrs.store_dir),
+            pnpm = ctx.attrs.pnpm,
+            store_dir = ctx.attrs.store_dir,
+        ),
+    ]
+
+
+_pnpm_materializer_toolchain = rule(
+    impl = _pnpm_materializer_toolchain_impl,
+    attrs = {
+        "bun": attrs.string(),
+        "pnpm": attrs.string(),
+        "store_dir": attrs.string(),
+    },
+)
+
+
+def pnpm_materializer_toolchain(name, bun_by_platform, pnpm_by_platform, store_dir, **kwargs):
+    """Declares the exact Nix Bun/pnpm pair used by local pnpm deploy actions."""
+    if "exec_compatible_with" in kwargs:
+        fail("pnpm_materializer_toolchain owns execution compatibility")
+    platform = _host_nix_platform()
+    bun = bun_by_platform.get(platform)
+    pnpm = pnpm_by_platform.get(platform)
+    if bun == None or pnpm == None:
+        fail("pnpm materializer has no tool realization for {}".format(platform))
+    _require_nix_store_binary(bun, "bun", "Bun")
+    _require_nix_store_binary(pnpm, "pnpm", "pnpm")
+    _pnpm_materializer_toolchain(
+        name = name,
+        bun = bun,
+        pnpm = pnpm,
+        store_dir = store_dir,
+        exec_compatible_with = host_execution_constraints(),
+        **kwargs
+    )
+
+
 EffectTsgoToolchainInfo = provider(fields = {
     "executable": str,
     "identity": str,
@@ -146,7 +212,7 @@ def _host_nix_platform():
         return "aarch64-linux"
     if host.os.is_macos and host.arch.is_aarch64:
         return "aarch64-darwin"
-    fail("effect-tsgo supports only x86_64-linux, aarch64-linux, and aarch64-darwin")
+    fail("configured Nix toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
 
 
 def effect_tsgo_toolchain(name, executable_by_platform, **kwargs):
