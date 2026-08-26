@@ -31,7 +31,6 @@
     "@overeng/tui-core": "workspace:^",
     "@overeng/utils": "workspace:^",
     "@playwright/test": "1.61.0",
-    "@types/node": "26.0.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-webgl": "0.19.0",
     "@xterm/headless": "6.0.0",
