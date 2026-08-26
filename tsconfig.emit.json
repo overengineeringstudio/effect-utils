@@ -91,9 +91,6 @@
       "path": "./packages/@overeng/restate-effect"
     },
     {
-      "path": "./packages/@overeng/tui-core"
-    },
-    {
       "path": "./packages/@overeng/tui-react"
     },
     {

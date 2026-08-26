@@ -877,6 +877,37 @@ in
     '';
   };
 
+  tasks."buck2:tui-core:materialize-dist" = {
+    description = "Atomically materialize Buck-owned tui-core declarations for strict TypeScript checks";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:tui-core:materialize-dist" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      package_dir="$root/packages/@overeng/tui-core"
+      dist="$package_dir/dist"
+      staging_root="$(${pkgs.coreutils}/bin/mktemp -d "$package_dir/.dist-buck2.XXXXXX")"
+      staging="$staging_root/dist"
+      trap '${pkgs.coreutils}/bin/rm -rf -- "$staging_root"' EXIT
+
+      (
+        cd "$root"
+        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:dist --out "$staging"
+      )
+      if [ ! -d "$staging" ]; then
+        echo "Buck target //packages/@overeng/tui-core:dist did not materialize a directory" >&2
+        exit 1
+      fi
+
+      if [ -e "$dist" ] || [ -L "$dist" ]; then
+        ${pkgs.coreutils}/bin/mv --exchange --no-copy -T "$staging" "$dist"
+      else
+        ${pkgs.coreutils}/bin/mv --no-copy -T "$staging" "$dist"
+      fi
+    '';
+  };
+
+  tasks."ts:check:strict".after = [ "buck2:tui-core:materialize-dist" ];
+
   tasks."buck2:check" = {
     description = "Build the surviving Buck2 toolchain surface and audit its cross-cell provider identity";
     after = [
