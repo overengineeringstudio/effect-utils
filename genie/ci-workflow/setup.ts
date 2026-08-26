@@ -580,7 +580,7 @@ export const saveNixCacheStep = (opts?: { restoreStepId?: string; path?: string 
  * forces a one-time cold rebuild for every consumer, so treat a change as a
  * coordinated stack-wide event.
  */
-export const pnpmStateCacheVersion = 'v2'
+export const pnpmStateCacheVersion = 'v3'
 
 /** Default pnpm-state key namespace when a repo does not set its own. */
 export const defaultPnpmStateKeyPrefix = 'pnpm-state'
@@ -598,7 +598,7 @@ const pnpmStateCachePrimaryKey = (args: { keyPrefix: string; hashFilesExpression
  * blur the authority boundary between the current lockfile graph and older
  * warmed state.
  *
- * Order this AFTER checkout: the workspace-relative store (`.pnpm-store` /
+ * Order this AFTER checkout: the workspace-relative store (`.devenv/pnpm-store-pure-v1` /
  * `.pnpm-home`) is gitignored, so a restore placed before checkout would be
  * wiped by checkout's clean.
  */
