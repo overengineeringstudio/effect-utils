@@ -14,6 +14,7 @@ _TUI_CORE_MATERIALIZATION_INPUTS = [
     "packages/@overeng/agent-session-ingest/package.json",
     "packages/@overeng/buck2-tools/package.json",
     "packages/@overeng/buck2-tools/src/buck2-materializer.ts",
+    "packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts",
     "packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts",
     "packages/@overeng/ci-tools/package.json",
     "packages/@overeng/content-address/package.json",

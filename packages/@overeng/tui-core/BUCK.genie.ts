@@ -32,6 +32,7 @@ const patches = [
   'packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch',
 ] as const
 const runtime = '//:packages/@overeng/buck2-tools/src/buck2-materializer.ts'
+const descriptorModule = '//:packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts'
 const normalizer = '//:packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts'
 
 const sourceLabel = (repoRelativePath: string): string =>
@@ -73,6 +74,7 @@ const patchEntries = patches.map(
 const data = {
   packagePath,
   packageSources,
+  descriptorModule,
   patches,
   workspacePaths,
 }
@@ -88,7 +90,7 @@ const stringify = (): string => {
     '# Projection schema version: 1',
     '# Projection generator: effect-utils/genie/buck2-materialization',
     `# Semantic fingerprint: ${fingerprint}`,
-    `# Semantic inputs: ${[...semanticInputs, 'package.json.genie.ts', ...patches].toSorted().join(', ')}`,
+    `# Semantic inputs: ${[...semanticInputs, 'package.json.genie.ts', 'packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts', ...patches].toSorted().join(', ')}`,
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("//buck2:materialization.bzl", "package_tree", "pnpm_node_modules")',
@@ -103,6 +105,7 @@ const stringify = (): string => {
     ...renderMap('workspace_package_manifests', workspaceManifestEntries),
     ...renderMap('patches', patchEntries),
     `    runtime = ${starlarkString(runtime)},`,
+    `    descriptor_module = ${starlarkString(descriptorModule)},`,
     `    normalizer = ${starlarkString(normalizer)},`,
     ')',
     '',

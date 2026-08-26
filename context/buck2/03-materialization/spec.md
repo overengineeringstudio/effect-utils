@@ -19,59 +19,108 @@ view, and the staleness gate.
 ## Materialization Action
 
 ```text
-inputs: all workspace package.json + pnpm-lock.yaml + pnpm-workspace.yaml
-        + declared patches            (manifest skeleton; no sources)
-  -> stage skeleton at a fixed path derived from the output
-  -> chmod manifests writable (generated manifests are checked in read-only)
-  -> pnpm deploy --offline --frozen-lockfile --store-dir <shared store>
-  -> normalize: strip the prunedAt timestamp and non-runtime storeDir from
-     .modules.yaml (a JSON file despite the name); DELETE the deploy-root
-     pnpm-lock.yaml, node_modules/.pnpm/lock.yaml (it describes the tree it
-     lives in — self-referentially unstable), and
-     .pnpm-workspace-state-v1.json; rewrite every recursive .bin shim relative
-     to its own $basedir; prune known dangling node_modules symlinks; fail if
-     any worktree, store, stage, or output absolute prefix remains
-  -> validate every retained symlink after normalization and again after the
-     final node_modules relocation: its target text is relative and both its
-     lexical and fully resolved destinations stay inside the output tree
-  -> assemble the package tree, copy declared workspace inputs under
-     .workspace-siblings, create only explicit relative links to those
-     contained copies, then repeat the full symlink-containment validation
-output: relocatable node_modules tree (relative contained symlinks, store hardlinks)
+Stage 1: prune descriptor
+  broad manifest skeleton
+    root package.json + full pnpm-lock.yaml + pnpm-workspace.yaml
+    + all workspace package.json files + declared patches
+  -> fixed output-derived stage
+  -> pinned pnpm 11.8.0 deploy --offline --frozen-lockfile
+  -> read <deploy>/node_modules/.pnpm/lock.yaml; discard deployed tree
+  -> canonical lock + replay files + install-descriptor.json
+
+Stage 2: frozen install
+  Stage-1 descriptor TREE + pinned Bun/pnpm + materializer/normalizer
+  -> copy descriptor TREE to a distinct fixed output-derived stage
+  -> rehydrate file://<WS> to that install stage
+  -> pinned pnpm 11.8.0 install --offline --frozen-lockfile
+  -> existing deploy-tree normalization and symlink containment
+  -> public PnpmNodeModulesInfo / node_modules output
 ```
 
-The normalization set is load-bearing for invalidation, not cosmetic: an
-unnormalized timestamp alone makes every rebuild a new output digest and
-cascades into every consumer
-([.experiments/2026-08-26-pruned-lockfile-keying.md](./.experiments/2026-08-26-pruned-lockfile-keying.md)).
+Both actions remain internal to the public `pnpm_node_modules` rule. The label,
+default output, and `PnpmNodeModulesInfo` provider are unchanged. Stage 2 does
+not receive the full lockfile, workspace manifest, root manifest, all workspace
+package manifests, or the full patch map directly. Its only dependency-data
+bridge is the content digest of Stage 1's descriptor TREE; tool/runtime inputs
+and the pinned toolchain remain explicit. Therefore broad irrelevant manifest
+churn can rerun only `pnpm_pruned_lock` when the descriptor bytes are unchanged
+(DEPS-R07).
+
+Stage 1 uses the pinned Bun runtime's built-in YAML parser and stringifier. The
+canonicalizer recursively sorts mapping keys and fixes indentation at two
+spaces. It replaces every fixed staging-root occurrence in mapping keys and
+scalar values with the literal `file://<WS>`, removes only
+`packages.<package-key>.peerDependencies`, and retains `snapshots`, resolved
+peer suffixes, and `peerDependenciesMeta`. Malformed top-level `importers`,
+`packages`, or `snapshots`, replacement key collisions, and residual stage
+prefixes fail closed.
+
+The descriptor TREE has this exact repository-owned schema:
+
+```text
+pnpm_install_descriptor/
+  install-descriptor.json
+  pnpm-lock.yaml
+  package.json
+  pnpm-workspace.yaml
+  <repo-relative workspace package>/package.json  # only reachable file: records
+  <repo-relative patch path>                      # only lock-required mappings
+```
+
+```json
+{
+  "schema": "effect-utils/pnpm-install-descriptor/v1",
+  "packageName": "<target package name>",
+  "files": {
+    "lockfile": "pnpm-lock.yaml",
+    "packageManifest": "package.json",
+    "workspaceManifest": "pnpm-workspace.yaml",
+    "workspacePackageManifests": ["<sorted repo-relative paths>"],
+    "patches": ["<sorted repo-relative paths>"]
+  },
+  "installArgv": [
+    "--dir", "<INSTALL_ROOT>",
+    "--store-dir", "<STORE_DIR>",
+    "install", "--prod=false", "--ignore-scripts", "--offline", "--frozen-lockfile"
+  ]
+}
+```
+
+The replay `package.json` preserves target metadata but derives dependency
+sections from canonical `importers['.']` specifiers; this is necessary because
+pnpm deploy can contextualize a specifier. The replay workspace contains only
+`packages: []`, the lock's `autoInstallPeers` and
+`excludeLinksFromLockfile` settings when present, `ignoreScripts: true`, and
+patch mappings required by the pruned lock. Every `file:` reference must map to
+a staged workspace manifest and every pruned patch hash must map through the
+workspace policy to a declared patch path; otherwise Stage 1 fails. Source
+files are never descriptor inputs.
+
+Stage 2 invokes exactly the descriptor argv after replacing the two
+placeholders. Its warm store supplies only lock-integrity-addressed bytes. An
+empty store fails with `ERR_PNPM_NO_OFFLINE_TARBALL`; no network fallback is
+permitted (DEPS-R08). It then removes JSON `.modules.yaml` fields `prunedAt`
+and `storeDir`; deletes `node_modules/.pnpm/lock.yaml`, the root lockfile, and
+`.pnpm-workspace-state-v1.json`; rewrites every recursive `.bin` shim relative
+to its own `$basedir`; prunes dangling links; and rejects retained stage,
+store, worktree, output, or escaping symlink references (DEPS-R02).
+
+`pnpm deploy` remains required only in Stage 1 because it is the sole mode that
+emits pnpm's authoritative pruned install lock. The deploy-root lockfile is not
+pruned, and mini-workspace `--lockfile-only` re-resolution resolves different
+versions. The two-stage replay is byte-keyed by the canonical pruned result,
+not by that broad derivation. On the current Linux platform, frozen replay
+omits 131 foreign-platform optional tree entries that deploy over-materializes;
+this is the only permitted one-way output difference (DEPS-T01). See
+[the retained experiment](./.experiments/2026-08-26-two-stage-prune-install.md).
 
 The containment rule deliberately does not permit a workspace link whose
 resolved destination is the live worktree. Such a link necessarily escapes the
-relocatable action output. The current package-tree API can project declared
-workspace files into the output and link to that contained projection, but that
-is not DEPS-R03 live-source behavior; the editor-surface realization therefore
-still needs a boundary outside the cacheable package tree that satisfies
-DEPS-R03 without weakening DEPS-R02.
-
-`pnpm deploy` is the only pnpm mode emitting internal-relative symlinks; a
-normal workspace install emits upward-escaping links and is not relocatable.
-Fixed-path staging is load-bearing: pnpm encodes the staging path into
-virtual-store keys, so a random staging dir breaks determinism. Measured cost:
-~1 s for a 74-package closure, ~3 s for a 328-package closure, from a warm
-store.
-
-Keying upgrade (DEPS-R07): the per-package pruned lockfile is the deploy's
-INSTALL BYPRODUCT (`<deploy>/node_modules/.pnpm/lock.yaml`; the deploy-root
-lockfile is NOT pruned — its package set grows under single-importer peer
-re-resolution), so a keying stage runs a real deploy and discards the tree.
-Raw pruned bytes are unusable as a key — pnpm re-serializes declared peer
-ranges inconsistently under unrelated workspace churn — so the key is the
-CANONICALIZED pruned lockfile: staging path replaced by a placeholder,
-declared peer ranges dropped (resolved peer suffixes in snapshot keys are
-kept). Validated exactly precise and sound over 81 cell-observations. The
-cheap alternative (mini-workspace `--lockfile-only` re-resolution) is
-rejected on correctness: it resolves different versions than the real
-deploy.
+relocatable action output. The package-tree API can project declared workspace
+files into the output and link to that contained projection, but that is not
+DEPS-R03 live-source behavior; the editor-surface realization therefore still
+needs a boundary outside the cacheable package tree that satisfies DEPS-R03
+without weakening DEPS-R02.
 
 ## Editor Surface
 
