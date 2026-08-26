@@ -45,6 +45,16 @@ provably pays. Every step lands its deletion-ledger entry in the same change.
 - Product path retained: strict v1 product -> independent Nix import (existing
   bridge tests).
 
+**Milestone completed 2026-08-26.** The integrated gate is recorded in
+[2026-08-26-tui-core-authority-transfer.md](./02-execution/.experiments/2026-08-26-tui-core-authority-transfer.md):
+representative failure, relevant/irrelevant causality, hostile environment,
+strict task ordering, and fresh-context cache reuse all pass. Deletion-ledger
+entry 1 removes tui-core from both root TypeScript solutions and deletes the
+synthetic `buck2_foundation` / `typescript_input_plan` evidence producers; the
+remaining `buck2:check` lane builds the retained toolchain surface and is
+non-vacuous. Warm unchanged execution is zero actions; a wiped second worktree
+reported five cached actions and zero local actions, within BUCK-R07 budgets.
+
 ## Phase 2 — composition root
 
 - mr gains real-directory member materialization (COMP-R10) — the
@@ -69,10 +79,12 @@ provably pays. Every step lands its deletion-ledger entry in the same change.
 
 - End-state per [decision 0015](./.decisions/0015-buck-owned-dependency-surface.md):
   Buck owns the editor surface; no hand-run `pnpm install`.
-- Gate (BUCK-R12): per-cell pruned-lockfile keying built and measured (kills
-  manifest-change fan-out), plus a real-editor soak on one package. Until the
-  gate passes, the root install is transitional and listed in the deletion
-  ledger.
+- The two-stage canonical prune/install key and normalization gate landed and
+  was measured with the Phase-1 tui-core transfer; unrelated manifest churn
+  executes only the small prune action.
+- Remaining gate: a real-editor soak on one package and the editor publication
+  mechanism. Until that passes, the root install is transitional and listed in
+  the deletion ledger.
 
 ## Phase 5 — Rust and products
 

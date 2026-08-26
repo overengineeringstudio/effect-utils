@@ -152,10 +152,7 @@ const stringify = (): string => {
     '# Projection schema version: 1',
     '# Projection generator: effect-utils/genie/buck2-materialization',
     `# Semantic fingerprint: ${fingerprint}`,
-    `# Semantic inputs: ${[
-      ...semanticInputs,
-      ...patches,
-    ]
+    `# Semantic inputs: ${[...semanticInputs, ...patches]
       .toSorted((left, right) => compareStrings({ left, right }))
       .join(', ')}`,
     `# Regenerate: ${regenerationCommand}`,
