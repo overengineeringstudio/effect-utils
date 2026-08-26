@@ -90,10 +90,6 @@ importers:
         version: 6.0.3
 
   packages/@overeng/buck2-tools:
-    dependencies:
-      effect:
-        specifier: 3.21.4
-        version: 3.21.4
     devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^

@@ -12,9 +12,6 @@
       ".": "./dist/mod.js"
     }
   },
-  "dependencies": {
-    "effect": "3.21.4"
-  },
   "devDependencies": {
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.0.0",

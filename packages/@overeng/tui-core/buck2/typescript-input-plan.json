@@ -724,12 +724,12 @@
           }
         },
         {
-          "baseKey": "ws@8.21.0",
-          "depPath": "ws@8.21.0",
+          "baseKey": "ws@8.21.3",
+          "depPath": "ws@8.21.3",
           "packageName": "ws",
-          "packageVersion": "8.21.0",
+          "packageVersion": "8.21.3",
           "sourceResolution": {
-            "integrity": "sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g=="
+            "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw=="
           }
         },
         {
@@ -851,7 +851,7 @@
   "provenance": {
     "generator": "effect-utils/genie/buck2",
     "regenerationCommand": "devenv tasks run genie:run",
-    "semanticFingerprint": "sha256:2c8016d2afb88140cd02ef40e6dcf8c32b9176290108b8ddd26c70d173ba9420",
+    "semanticFingerprint": "sha256:338a98fef270ff41d1de01844d8e0ca7ebdf0c9e605fd7be8c72bf936e32ef90",
     "semanticInputs": [
       "genie/buck2/mod.ts",
       "packages/@overeng/buck2-tools/src/canonical.ts",
