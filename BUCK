@@ -53,3 +53,10 @@ _TUI_CORE_MATERIALIZATION_INPUTS = [
 ]
 
 export_materialization_inputs(_TUI_CORE_MATERIALIZATION_INPUTS)
+
+# Hermetic TypeScript actions execute this source with their pinned Bun runtime.
+export_file(
+    name = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+    src = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+    visibility = ["PUBLIC"],
+)
