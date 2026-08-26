@@ -251,18 +251,19 @@
   default non-recursive watch call site, where the proposed shared `watchScoped` helper would
   land. Unexpected nested events can trigger spurious rebuilds or watch loops and present as
   timing flakiness rather than a clear migration failure.
-- **Status:** OPEN DESIGN WORK; the beta.102 "REQUIRED COMPATIBILITY WORK" framing is retired.
-  At rc.111 the forced-recursion premise no longer holds: `WatchOptions.recursive` is opt-in
-  again (`effect/src/FileSystem.ts:1171-1176`) and the Node backend defaults it to false
-  (`@effect/platform-node-shared/src/NodeFileSystem.ts:557-558`), so call sites pass
-  `{ recursive: true }` explicitly where recursion is wanted. What remains open is applying the
-  design study in `watch-recursion-experiments.md`: megarepo has no watch usage; genie should
-  embrace recursion (fixes latent nested-genie-file blindness) with a 250ms coalescing window;
-  notion-md keeps an exact-path filter for single-file watch and collapses batch watch to one
-  recursive common-root watch; a shared `watchScoped` helper for @overeng/utils is proposed only
-  after both migrations land. Historical characterization record: allowlisted at the one stable
-  nested-path membership trace path; raw event ordering was deliberately not gated (five
-  same-major runs produced four unique v3 and three unique v4 traces); draft upstream report in
+- **Status:** APPLIED/RESOLVED — the design study in `watch-recursion-experiments.md` has been
+  implemented (branch `schickling-assistant/2026-08-26-effect4-watch-recursion`):
+  `@overeng/utils/node` gained the shared `watchScoped` helper (recursive roots, resolve +
+  scope filter, 250 ms coalescing batches, scoped cleanup, error propagation) and the
+  file-system-backing semaphore watcher now uses it with an explicit `{ recursive: true }`;
+  genie watch embraces recursion with a 250 ms coalescing window via `watchScoped`, closing
+  the latent nested-`.genie.ts` blindness, and surfaces watch-stream errors to the TUI;
+  notion-md single-file watch keeps its exact-path filter and pins `{ recursive: false }`
+  explicitly; notion-md batch watch collapsed its per-parent-dir fan-out into one recursive
+  watch rooted at the deepest common ancestor (`batch.ts commonAncestor`). Historical
+  characterization record: allowlisted at the one stable nested-path membership trace path;
+  raw event ordering was deliberately not gated (five same-major runs produced four unique v3
+  and three unique v4 traces); draft upstream report in
   `recipes/filesystem-watch-ordering.md`.
 
 ## prompt-pty-ansi-rendering

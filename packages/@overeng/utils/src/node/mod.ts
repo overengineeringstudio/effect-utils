@@ -8,6 +8,9 @@ export * from './net.ts'
 /** File-system based backing for distributed semaphore */
 export * as FileSystemBacking from './file-system-backing.ts'
 
+/** Scoped recursive file-system watching with coalesced batches */
+export * from './watch.ts'
+
 /** Workspace helpers and command runner utilities */
 export * from './workspace.ts'
 
