@@ -17,13 +17,12 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 type PruneOptions = {
   readonly output: string
   readonly packageName: string
   readonly pnpm: string
-  readonly descriptorModule: string
   readonly storeDir: string
   readonly rootPackageJson: string
   readonly lockfile: string
@@ -36,8 +35,6 @@ type MaterializeOptions = {
   readonly output: string
   readonly descriptor: string
   readonly pnpm: string
-  readonly descriptorModule: string
-  readonly normalizer: string
   readonly storeDir: string
 }
 
@@ -53,26 +50,56 @@ const invalidArguments = (message: string): never => {
   throw new Error(`buck2 materializer: ${message}`)
 }
 
-const requireValue = (args: readonly string[], index: number, flag: string): string =>
-  args[index] ?? invalidArguments(`missing value for ${flag}`)
+const requireValue = ({
+  args,
+  index,
+  flag,
+}: {
+  readonly args: readonly string[]
+  readonly index: number
+  readonly flag: string
+}): string => args[index] ?? invalidArguments(`missing value for ${flag}`)
 
-const requireOption = (value: string | undefined, option: string): string =>
-  value ?? invalidArguments(`missing required option ${option}`)
+const requireOption = ({
+  value,
+  option,
+}: {
+  readonly value: string | undefined
+  readonly option: string
+}): string => value ?? invalidArguments(`missing required option ${option}`)
 
-const requireRelativePath = (value: string, field: string): string => {
+const requireRelativePath = ({
+  value,
+  field,
+}: {
+  readonly value: string
+  readonly field: string
+}): string => {
   if (
     value.length === 0 ||
-    isAbsolute(value) ||
-    value.includes('\\') ||
-    value.split('/').some((component) => component === '' || component === '.' || component === '..')
+    isAbsolute(value) === true ||
+    value.includes('\\') === true ||
+    value
+      .split('/')
+      .some((component) => component === '' || component === '.' || component === '..') === true
   ) {
     invalidArguments(`${field} must be a normalized portable relative path: ${value}`)
   }
   return value
 }
 
-const setUnique = (values: Map<string, string>, key: string, value: string, field: string): void => {
-  if (values.has(key)) invalidArguments(`duplicate ${field}: ${key}`)
+const setUnique = ({
+  values,
+  key,
+  value,
+  field,
+}: {
+  readonly values: Map<string, string>
+  readonly key: string
+  readonly value: string
+  readonly field: string
+}): void => {
+  if (values.has(key) === true) invalidArguments(`duplicate ${field}: ${key}`)
   values.set(key, value)
 }
 
@@ -80,7 +107,6 @@ const parsePruneOptions = (args: readonly string[]): PruneOptions => {
   let output: string | undefined
   let packageName: string | undefined
   let pnpm: string | undefined
-  let descriptorModule: string | undefined
   let storeDir: string | undefined
   let rootPackageJson: string | undefined
   let lockfile: string | undefined
@@ -89,23 +115,32 @@ const parsePruneOptions = (args: readonly string[]): PruneOptions => {
   const patches = new Map<string, string>()
 
   for (let index = 0; index < args.length; ) {
-    const flag = requireValue(args, index, 'argument')
+    const flag = requireValue({ args, index, flag: 'argument' })
     if (flag === '--package-manifest' || flag === '--patch') {
-      const destination = requireRelativePath(requireValue(args, index + 1, flag), `${flag} destination`)
-      const source = requireValue(args, index + 2, flag)
-      setUnique(flag === '--package-manifest' ? packageManifests : patches, destination, source, flag)
+      const destination = requireRelativePath({
+        value: requireValue({ args, index: index + 1, flag }),
+        field: `${flag} destination`,
+      })
+      const source = requireValue({ args, index: index + 2, flag })
+      setUnique({
+        values: flag === '--package-manifest' ? packageManifests : patches,
+        key: destination,
+        value: source,
+        field: flag,
+      })
       index += 3
       continue
     }
-    const value = requireValue(args, index + 1, flag)
+    const value = requireValue({ args, index: index + 1, flag })
     if (flag === '--output' && output === undefined) output = value
     else if (flag === '--package-name' && packageName === undefined) packageName = value
     else if (flag === '--pnpm' && pnpm === undefined) pnpm = value
-    else if (flag === '--descriptor-module' && descriptorModule === undefined) descriptorModule = value
     else if (flag === '--store-dir' && storeDir === undefined) storeDir = value
-    else if (flag === '--root-package-json' && rootPackageJson === undefined) rootPackageJson = value
+    else if (flag === '--root-package-json' && rootPackageJson === undefined)
+      rootPackageJson = value
     else if (flag === '--lockfile' && lockfile === undefined) lockfile = value
-    else if (flag === '--workspace-manifest' && workspaceManifest === undefined) workspaceManifest = value
+    else if (flag === '--workspace-manifest' && workspaceManifest === undefined)
+      workspaceManifest = value
     else invalidArguments(`unexpected argument: ${flag}`)
     index += 2
   }
@@ -114,22 +149,21 @@ const parsePruneOptions = (args: readonly string[]): PruneOptions => {
     output === undefined ||
     packageName === undefined ||
     pnpm === undefined ||
-    descriptorModule === undefined ||
     storeDir === undefined ||
     rootPackageJson === undefined ||
     lockfile === undefined ||
     workspaceManifest === undefined
-  ) invalidArguments('prune-node-modules is missing a required option')
+  )
+    invalidArguments('prune-node-modules is missing a required option')
   if (packageManifests.size === 0) invalidArguments('no workspace package manifests were declared')
   return {
-    output: requireOption(output, '--output'),
-    packageName: requireOption(packageName, '--package-name'),
-    pnpm: requireOption(pnpm, '--pnpm'),
-    descriptorModule: requireOption(descriptorModule, '--descriptor-module'),
-    storeDir: requireOption(storeDir, '--store-dir'),
-    rootPackageJson: requireOption(rootPackageJson, '--root-package-json'),
-    lockfile: requireOption(lockfile, '--lockfile'),
-    workspaceManifest: requireOption(workspaceManifest, '--workspace-manifest'),
+    output: requireOption({ value: output, option: '--output' }),
+    packageName: requireOption({ value: packageName, option: '--package-name' }),
+    pnpm: requireOption({ value: pnpm, option: '--pnpm' }),
+    storeDir: requireOption({ value: storeDir, option: '--store-dir' }),
+    rootPackageJson: requireOption({ value: rootPackageJson, option: '--root-package-json' }),
+    lockfile: requireOption({ value: lockfile, option: '--lockfile' }),
+    workspaceManifest: requireOption({ value: workspaceManifest, option: '--workspace-manifest' }),
     packageManifests,
     patches,
   }
@@ -139,30 +173,29 @@ const parseMaterializeOptions = (args: readonly string[]): MaterializeOptions =>
   let output: string | undefined
   let descriptor: string | undefined
   let pnpm: string | undefined
-  let descriptorModule: string | undefined
-  let normalizer: string | undefined
   let storeDir: string | undefined
   for (let index = 0; index < args.length; index += 2) {
-    const flag = requireValue(args, index, 'argument')
-    const value = requireValue(args, index + 1, flag)
+    const flag = requireValue({ args, index, flag: 'argument' })
+    const value = requireValue({ args, index: index + 1, flag })
     if (flag === '--output' && output === undefined) output = value
     else if (flag === '--descriptor' && descriptor === undefined) descriptor = value
     else if (flag === '--pnpm' && pnpm === undefined) pnpm = value
-    else if (flag === '--descriptor-module' && descriptorModule === undefined) descriptorModule = value
-    else if (flag === '--normalizer' && normalizer === undefined) normalizer = value
     else if (flag === '--store-dir' && storeDir === undefined) storeDir = value
     else invalidArguments(`unexpected argument: ${flag}`)
   }
-  if (output === undefined || descriptor === undefined || pnpm === undefined || descriptorModule === undefined || normalizer === undefined || storeDir === undefined) {
+  if (
+    output === undefined ||
+    descriptor === undefined ||
+    pnpm === undefined ||
+    storeDir === undefined
+  ) {
     invalidArguments('materialize-node-modules is missing a required option')
   }
   return {
-    output: requireOption(output, '--output'),
-    descriptor: requireOption(descriptor, '--descriptor'),
-    pnpm: requireOption(pnpm, '--pnpm'),
-    descriptorModule: requireOption(descriptorModule, '--descriptor-module'),
-    normalizer: requireOption(normalizer, '--normalizer'),
-    storeDir: requireOption(storeDir, '--store-dir'),
+    output: requireOption({ value: output, option: '--output' }),
+    descriptor: requireOption({ value: descriptor, option: '--descriptor' }),
+    pnpm: requireOption({ value: pnpm, option: '--pnpm' }),
+    storeDir: requireOption({ value: storeDir, option: '--store-dir' }),
   }
 }
 
@@ -174,21 +207,21 @@ const parseAssembleOptions = (args: readonly string[]): AssembleOptions => {
   const workspaceLinks = new Map<string, string>()
 
   for (let index = 0; index < args.length; ) {
-    const flag = requireValue(args, index, 'argument')
+    const flag = requireValue({ args, index, flag: 'argument' })
     if (flag === '--file' || flag === '--workspace-file' || flag === '--workspace-link') {
-      const destination = requireRelativePath(
-        requireValue(args, index + 1, flag),
-        `${flag} destination`,
-      )
-      const value = requireValue(args, index + 2, flag)
-      if (flag === '--workspace-link') requireRelativePath(value, `${flag} target`)
+      const destination = requireRelativePath({
+        value: requireValue({ args, index: index + 1, flag }),
+        field: `${flag} destination`,
+      })
+      const value = requireValue({ args, index: index + 2, flag })
+      if (flag === '--workspace-link') requireRelativePath({ value, field: `${flag} target` })
       const values =
         flag === '--file' ? files : flag === '--workspace-file' ? workspaceFiles : workspaceLinks
-      setUnique(values, destination, value, flag)
+      setUnique({ values, key: destination, value, field: flag })
       index += 3
       continue
     }
-    const value = requireValue(args, index + 1, flag)
+    const value = requireValue({ args, index: index + 1, flag })
     if (flag === '--output' && output === undefined) output = value
     else if (flag === '--node-modules' && nodeModules === undefined) nodeModules = value
     else invalidArguments(`unexpected argument: ${flag}`)
@@ -198,25 +231,41 @@ const parseAssembleOptions = (args: readonly string[]): AssembleOptions => {
     invalidArguments('assemble-package-tree is missing a required option')
   }
   return {
-    output: requireOption(output, '--output'),
-    nodeModules: requireOption(nodeModules, '--node-modules'),
+    output: requireOption({ value: output, option: '--output' }),
+    nodeModules: requireOption({ value: nodeModules, option: '--node-modules' }),
     files,
     workspaceFiles,
     workspaceLinks,
   }
 }
 
-const copyFileTo = (source: string, destination: string, writable: boolean): void => {
+const copyFileTo = ({
+  source,
+  destination,
+  writable,
+}: {
+  readonly source: string
+  readonly destination: string
+  readonly writable: boolean
+}): void => {
   mkdirSync(dirname(destination), { recursive: true })
   copyFileSync(source, destination)
-  if (writable) chmodSync(destination, 0o644)
+  if (writable === true) chmodSync(destination, 0o644)
 }
 
-const pathIsInside = (root: string, candidate: string): boolean => {
+const pathIsInside = ({
+  root,
+  candidate,
+}: {
+  readonly root: string
+  readonly candidate: string
+}): boolean => {
   const fromRoot = relative(root, candidate)
   return (
     fromRoot === '' ||
-    (isAbsolute(fromRoot) === false && fromRoot !== '..' && fromRoot.startsWith(`..${sep}`) === false)
+    (isAbsolute(fromRoot) === false &&
+      fromRoot !== '..' &&
+      fromRoot.startsWith(`..${sep}`) === false)
   )
 }
 
@@ -226,7 +275,7 @@ const assertContainedSymlinks = (root: string): void => {
       left.name.localeCompare(right.name, 'en'),
     )) {
       const path = join(directory, entry.name)
-      if (entry.isDirectory()) {
+      if (entry.isDirectory() === true) {
         visit(path)
         continue
       }
@@ -234,11 +283,13 @@ const assertContainedSymlinks = (root: string): void => {
 
       const target = readlinkSync(path)
       const displayPath = relative(root, path).split(sep).join('/')
-      if (isAbsolute(target)) {
-        throw new Error(`buck2 materializer: unsafe symlink ${displayPath}: absolute target ${target}`)
+      if (isAbsolute(target) === true) {
+        throw new Error(
+          `buck2 materializer: unsafe symlink ${displayPath}: absolute target ${target}`,
+        )
       }
       const lexicalDestination = resolve(dirname(path), target)
-      if (pathIsInside(root, lexicalDestination) === false) {
+      if (pathIsInside({ root, candidate: lexicalDestination }) === false) {
         throw new Error(`buck2 materializer: unsafe symlink ${displayPath}: target escapes tree`)
       }
 
@@ -251,11 +302,13 @@ const assertContainedSymlinks = (root: string): void => {
           'code' in error &&
           (error.code === 'ENOENT' || error.code === 'ENOTDIR' || error.code === 'ELOOP')
         ) {
-          throw new Error(`buck2 materializer: unsafe symlink ${displayPath}: target is dangling`)
+          throw new Error(`buck2 materializer: unsafe symlink ${displayPath}: target is dangling`, {
+            cause: error,
+          })
         }
         throw error
       }
-      if (pathIsInside(root, resolvedDestination) === false) {
+      if (pathIsInside({ root, candidate: resolvedDestination }) === false) {
         throw new Error(
           `buck2 materializer: unsafe symlink ${displayPath}: chained target resolves outside tree`,
         )
@@ -266,26 +319,38 @@ const assertContainedSymlinks = (root: string): void => {
   visit(root)
 }
 
-const hardlinkTree = (source: string, destination: string): void => {
+const hardlinkTree = ({
+  source,
+  destination,
+}: {
+  readonly source: string
+  readonly destination: string
+}): void => {
   const metadata = lstatSync(source)
-  if (metadata.isDirectory()) {
+  if (metadata.isDirectory() === true) {
     mkdirSync(destination, { recursive: true })
     for (const entry of readdirSync(source).toSorted()) {
-      hardlinkTree(join(source, entry), join(destination, entry))
+      hardlinkTree({ source: join(source, entry), destination: join(destination, entry) })
     }
     return
   }
   mkdirSync(dirname(destination), { recursive: true })
-  if (metadata.isSymbolicLink()) {
+  if (metadata.isSymbolicLink() === true) {
     symlinkSync(readlinkSync(source), destination)
-  } else if (metadata.isFile()) {
+  } else if (metadata.isFile() === true) {
     linkSync(source, destination)
   } else {
     throw new Error(`buck2 materializer: unsupported filesystem entry: ${source}`)
   }
 }
 
-const runPnpm = (pnpm: string, args: readonly string[]): void => {
+const runPnpm = ({
+  pnpm,
+  args,
+}: {
+  readonly pnpm: string
+  readonly args: readonly string[]
+}): void => {
   const result = Bun.spawnSync([pnpm, ...args], {
     cwd: process.cwd(),
     env: process.env,
@@ -298,7 +363,13 @@ const runPnpm = (pnpm: string, args: readonly string[]): void => {
   }
 }
 
-const requireWarmStore = (storeDir: string, outputParent: string): void => {
+const requireWarmStore = ({
+  storeDir,
+  outputParent,
+}: {
+  readonly storeDir: string
+  readonly outputParent: string
+}): void => {
   if (existsSync(storeDir) === false) {
     throw new Error(`buck2 materializer: pnpm store is not warm: ${storeDir}`)
   }
@@ -315,19 +386,13 @@ const requirePinnedPnpm = (pnpm: string): void => {
   }
 }
 
-const importFunction = async (modulePath: string, exportName: string) => {
-  const imported: unknown = await import(pathToFileURL(resolve(modulePath)).href)
-  if (imported === null || typeof imported !== 'object') {
-    throw new Error(`buck2 materializer: module must export ${exportName}`)
-  }
-  const value = Reflect.get(imported, exportName)
-  if (typeof value !== 'function') {
-    throw new Error(`buck2 materializer: module must export ${exportName}`)
-  }
-  return value
-}
-
-const writePreparedDescriptor = (output: string, prepared: unknown): void => {
+const writePreparedDescriptor = ({
+  output,
+  prepared,
+}: {
+  readonly output: string
+  readonly prepared: unknown
+}): void => {
   if (prepared === null || typeof prepared !== 'object') {
     throw new Error('buck2 materializer: descriptor preparer returned a non-object')
   }
@@ -338,7 +403,8 @@ const writePreparedDescriptor = (output: string, prepared: unknown): void => {
   const workspacePackageManifests = Reflect.get(prepared, 'workspacePackageManifests')
   const patches = Reflect.get(prepared, 'patches')
   if (
-    descriptor === null || typeof descriptor !== 'object' ||
+    descriptor === null ||
+    typeof descriptor !== 'object' ||
     typeof lockfile !== 'string' ||
     typeof packageManifest !== 'string' ||
     typeof workspaceManifest !== 'string' ||
@@ -354,9 +420,11 @@ const writePreparedDescriptor = (output: string, prepared: unknown): void => {
   writeFileSync(join(output, 'pnpm-workspace.yaml'), workspaceManifest)
   for (const [destination, content] of workspacePackageManifests) {
     if (typeof destination !== 'string' || typeof content !== 'string') {
-      throw new Error('buck2 materializer: relevant workspace manifests must map strings to strings')
+      throw new Error(
+        'buck2 materializer: relevant workspace manifests must map strings to strings',
+      )
     }
-    const path = destinationInside(output, destination)
+    const path = destinationInside({ root: output, relativePath: destination })
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, content)
   }
@@ -364,7 +432,7 @@ const writePreparedDescriptor = (output: string, prepared: unknown): void => {
     if (typeof destination !== 'string' || typeof content !== 'string') {
       throw new Error('buck2 materializer: relevant patches must map strings to strings')
     }
-    const path = destinationInside(output, destination)
+    const path = destinationInside({ root: output, relativePath: destination })
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, content)
   }
@@ -378,55 +446,73 @@ const pruneNodeModules = async (options: PruneOptions): Promise<void> => {
   const deploy = join(stage, '.deploy')
   const pendingOutput = `${output}.pending`
   const storeDir = resolve(options.storeDir)
-  requireWarmStore(storeDir, dirname(output))
+  requireWarmStore({ storeDir, outputParent: dirname(output) })
 
   rmSync(stage, { recursive: true, force: true })
   rmSync(pendingOutput, { recursive: true, force: true })
   rmSync(output, { recursive: true, force: true })
   mkdirSync(stage, { recursive: true })
   try {
-    copyFileTo(options.rootPackageJson, join(stage, 'package.json'), true)
-    copyFileTo(options.lockfile, join(stage, 'pnpm-lock.yaml'), false)
-    copyFileTo(options.workspaceManifest, join(stage, 'pnpm-workspace.yaml'), false)
+    copyFileTo({
+      source: options.rootPackageJson,
+      destination: join(stage, 'package.json'),
+      writable: true,
+    })
+    copyFileTo({
+      source: options.lockfile,
+      destination: join(stage, 'pnpm-lock.yaml'),
+      writable: false,
+    })
+    copyFileTo({
+      source: options.workspaceManifest,
+      destination: join(stage, 'pnpm-workspace.yaml'),
+      writable: false,
+    })
     for (const [destination, source] of options.packageManifests) {
-      copyFileTo(source, join(stage, destination), true)
+      copyFileTo({ source, destination: join(stage, destination), writable: true })
     }
     for (const [destination, source] of options.patches) {
-      copyFileTo(source, join(stage, destination), false)
+      copyFileTo({ source, destination: join(stage, destination), writable: false })
     }
 
-    runPnpm(options.pnpm, [
-      '--dir',
-      stage,
-      '--store-dir',
-      storeDir,
-      'deploy',
-      '--filter',
-      options.packageName,
-      '--prod=false',
-      '--ignore-scripts',
-      '--offline',
-      '--frozen-lockfile',
-      deploy,
-    ])
+    runPnpm({
+      pnpm: options.pnpm,
+      args: [
+        '--dir',
+        stage,
+        '--store-dir',
+        storeDir,
+        'deploy',
+        '--filter',
+        options.packageName,
+        '--prod=false',
+        '--ignore-scripts',
+        '--offline',
+        '--frozen-lockfile',
+        deploy,
+      ],
+    })
     const rawLockfile = readFileSync(join(deploy, 'node_modules', '.pnpm', 'lock.yaml'), 'utf8')
-    const preparePnpmInstallDescriptor = await importFunction(
-      options.descriptorModule,
-      'preparePnpmInstallDescriptor',
-    )
+    const { preparePnpmInstallDescriptor } = await import('./pnpm-install-descriptor.ts')
     const prepared: unknown = preparePnpmInstallDescriptor({
       rawLockfile,
       stagePrefix: stage,
       packageName: options.packageName,
       workspaceManifest: readFileSync(options.workspaceManifest, 'utf8'),
       packageManifests: new Map(
-        [...options.packageManifests].map(([destination, source]) => [destination, readFileSync(source, 'utf8')]),
+        [...options.packageManifests].map(([destination, source]) => [
+          destination,
+          readFileSync(source, 'utf8'),
+        ]),
       ),
       patches: new Map(
-        [...options.patches].map(([destination, source]) => [destination, readFileSync(source, 'utf8')]),
+        [...options.patches].map(([destination, source]) => [
+          destination,
+          readFileSync(source, 'utf8'),
+        ]),
       ),
     })
-    writePreparedDescriptor(pendingOutput, prepared)
+    writePreparedDescriptor({ output: pendingOutput, prepared })
     renameSync(pendingOutput, output)
   } catch (error) {
     rmSync(output, { recursive: true, force: true })
@@ -437,17 +523,26 @@ const pruneNodeModules = async (options: PruneOptions): Promise<void> => {
   }
 }
 
-const copyTree = (source: string, destination: string): void => {
+const copyTree = ({
+  source,
+  destination,
+}: {
+  readonly source: string
+  readonly destination: string
+}): void => {
   const metadata = lstatSync(source)
-  if (metadata.isDirectory()) {
+  if (metadata.isDirectory() === true) {
     mkdirSync(destination, { recursive: true })
-    for (const entry of readdirSync(source).toSorted()) copyTree(join(source, entry), join(destination, entry))
+    for (const entry of readdirSync(source).toSorted())
+      copyTree({ source: join(source, entry), destination: join(destination, entry) })
     return
   }
   if (metadata.isFile() === false) {
-    throw new Error(`buck2 materializer: descriptor contains unsupported filesystem entry: ${source}`)
+    throw new Error(
+      `buck2 materializer: descriptor contains unsupported filesystem entry: ${source}`,
+    )
   }
-  copyFileTo(source, destination, true)
+  copyFileTo({ source, destination, writable: true })
 }
 
 const materializeNodeModules = async (options: MaterializeOptions): Promise<void> => {
@@ -455,37 +550,41 @@ const materializeNodeModules = async (options: MaterializeOptions): Promise<void
   const output = resolve(options.output)
   const stage = `${output}.stage`
   const storeDir = resolve(options.storeDir)
-  requireWarmStore(storeDir, dirname(output))
+  requireWarmStore({ storeDir, outputParent: dirname(output) })
 
   rmSync(stage, { recursive: true, force: true })
   rmSync(output, { recursive: true, force: true })
   mkdirSync(stage, { recursive: true })
   try {
-    copyTree(resolve(options.descriptor), stage)
-    const readPnpmInstallDescriptor = await importFunction(options.descriptorModule, 'readPnpmInstallDescriptor')
-    const resolvePnpmInstallArgv = await importFunction(options.descriptorModule, 'resolvePnpmInstallArgv')
-    const rehydratePnpmWorkspacePlaceholder = await importFunction(
-      options.descriptorModule,
-      'rehydratePnpmWorkspacePlaceholder',
-    )
-    const descriptor: unknown = readPnpmInstallDescriptor(stage)
+    copyTree({ source: resolve(options.descriptor), destination: stage })
+    const [descriptorModule, normalizerModule] = await Promise.all([
+      import('./pnpm-install-descriptor.ts'),
+      import('./pnpm-deploy-normalizer.ts'),
+    ])
+    const descriptor = descriptorModule.readPnpmInstallDescriptor(stage)
     const lockfilePath = join(stage, 'pnpm-lock.yaml')
-    const rehydratedLockfile: unknown = rehydratePnpmWorkspacePlaceholder(
-      readFileSync(lockfilePath, 'utf8'),
-      stage,
-    )
+    const rehydratedLockfile: unknown = descriptorModule.rehydratePnpmWorkspacePlaceholder({
+      lockfile: readFileSync(lockfilePath, 'utf8'),
+      installRoot: stage,
+    })
     if (typeof rehydratedLockfile !== 'string') {
       throw new Error('buck2 materializer: lockfile rehydrator returned a non-string')
     }
     writeFileSync(lockfilePath, rehydratedLockfile)
-    const installArgv: unknown = resolvePnpmInstallArgv({ descriptor, installRoot: stage, storeDir })
-    if (Array.isArray(installArgv) === false || installArgv.some((entry) => typeof entry !== 'string')) {
+    const installArgv: unknown = descriptorModule.resolvePnpmInstallArgv({
+      descriptor,
+      installRoot: stage,
+      storeDir,
+    })
+    if (
+      Array.isArray(installArgv) === false ||
+      installArgv.some((entry) => typeof entry !== 'string') === true
+    ) {
       throw new Error('buck2 materializer: descriptor resolved a non-string pnpm argv')
     }
-    runPnpm(options.pnpm, installArgv)
+    runPnpm({ pnpm: options.pnpm, args: installArgv })
 
-    const normalizePnpmDeploy = await importFunction(options.normalizer, 'normalizePnpmDeploy')
-    normalizePnpmDeploy({
+    normalizerModule.normalizePnpmDeploy({
       tree: stage,
       stagePrefix: stage,
       forbiddenPrefixes: [
@@ -506,10 +605,19 @@ const materializeNodeModules = async (options: MaterializeOptions): Promise<void
   }
 }
 
-const destinationInside = (root: string, relativePath: string): string => {
-  const destination = resolve(root, requireRelativePath(relativePath, 'destination'))
+const destinationInside = ({
+  root,
+  relativePath,
+}: {
+  readonly root: string
+  readonly relativePath: string
+}): string => {
+  const destination = resolve(
+    root,
+    requireRelativePath({ value: relativePath, field: 'destination' }),
+  )
   const fromRoot = relative(root, destination)
-  if (fromRoot === '' || fromRoot.startsWith(`..${sep}`) || fromRoot === '..') {
+  if (fromRoot === '' || fromRoot.startsWith(`..${sep}`) === true || fromRoot === '..') {
     invalidArguments(`destination escapes package tree: ${relativePath}`)
   }
   return destination
@@ -520,17 +628,20 @@ const assemblePackageTree = (options: AssembleOptions): void => {
   rmSync(output, { recursive: true, force: true })
   mkdirSync(output, { recursive: true })
   try {
-    hardlinkTree(options.nodeModules, join(output, 'node_modules'))
+    hardlinkTree({ source: options.nodeModules, destination: join(output, 'node_modules') })
     for (const [destination, source] of [...options.files, ...options.workspaceFiles]) {
-      hardlinkTree(source, destinationInside(output, destination))
+      hardlinkTree({
+        source,
+        destination: destinationInside({ root: output, relativePath: destination }),
+      })
     }
     for (const [linkPath, targetPath] of options.workspaceLinks) {
-      const link = destinationInside(output, linkPath)
-      const target = destinationInside(output, targetPath)
+      const link = destinationInside({ root: output, relativePath: linkPath })
+      const target = destinationInside({ root: output, relativePath: targetPath })
       rmSync(link, { recursive: true, force: true })
       mkdirSync(dirname(link), { recursive: true })
       const relativeTarget = relative(dirname(link), target)
-      if (isAbsolute(relativeTarget)) {
+      if (isAbsolute(relativeTarget) === true) {
         invalidArguments(
           `workspace link target cannot be represented as a relative path: ${targetPath}`,
         )
@@ -545,6 +656,7 @@ const assemblePackageTree = (options: AssembleOptions): void => {
   }
 }
 
+/** Runs the Buck2 pnpm materialization command-line interface. */
 export const runBuck2MaterializerCli = async (args: readonly string[]): Promise<void> => {
   const [command, ...commandArgs] = args
   if (command === 'prune-node-modules') {
@@ -554,7 +666,9 @@ export const runBuck2MaterializerCli = async (args: readonly string[]): Promise<
   } else if (command === 'assemble-package-tree') {
     assemblePackageTree(parseAssembleOptions(commandArgs))
   } else {
-    invalidArguments(`expected materialize-node-modules or assemble-package-tree, got ${String(command)}`)
+    invalidArguments(
+      `expected materialize-node-modules or assemble-package-tree, got ${String(command)}`,
+    )
   }
 }
 

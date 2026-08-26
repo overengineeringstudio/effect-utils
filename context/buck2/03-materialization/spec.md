@@ -79,9 +79,15 @@ pnpm_install_descriptor/
     "patches": ["<sorted repo-relative paths>"]
   },
   "installArgv": [
-    "--dir", "<INSTALL_ROOT>",
-    "--store-dir", "<STORE_DIR>",
-    "install", "--prod=false", "--ignore-scripts", "--offline", "--frozen-lockfile"
+    "--dir",
+    "<INSTALL_ROOT>",
+    "--store-dir",
+    "<STORE_DIR>",
+    "install",
+    "--prod=false",
+    "--ignore-scripts",
+    "--offline",
+    "--frozen-lockfile"
   ]
 }
 ```

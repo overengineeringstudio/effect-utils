@@ -91,3 +91,27 @@ fixes land first and independently; (2) the two-stage prune->install split
 keyed on the canonicalized pruned lockfile is the end-state mechanism
 (DEPS-R07 keeps the literal reading: bounded action count and no per-touch
 rewrite of every tree); (3) the real-editor soak stands unchanged.
+
+## Amendment 2
+
+The two-path portability proof
+([../03-materialization/.experiments/2026-08-26-two-path-materializer-portability.md](../03-materialization/.experiments/2026-08-26-two-path-materializer-portability.md))
+falsified the decision's categorical premise that pnpm virtual-store paths make
+the admitted tree non-portable. After removing non-runtime `storeDir` metadata,
+normalizing stage paths, and rejecting non-contained links, forced
+materializations in two checkout paths of different lengths produced
+byte-identical trees (digest `88625db383ba0277b805cd4332bd9b4a478a838bfb7e0f57ce47f10143494759`)
+with zero differing entries or absolute worktree/store residues.
+
+The corrected cache policy (q5, 2026-08-26) keeps pnpm execution
+`local_only`, but permits upload and reuse of both the path-canonical prune
+descriptor and the normalized tree action results.
+Execution-platform configuration separates incompatible platforms; the
+evidence currently admits same-platform Linux x86-64 reuse for the tui-core
+tuple, not cross-platform equivalence. Other platform tuples require their own
+portability proof before making the same claim. This correction lets BUCK-R06
+apply literally to the admitted tuple instead of exempting materialization.
+
+Workspace live-source links remain an editor-realization concern outside the
+cacheable contained tree. This amendment does not weaken DEPS-R02 link
+containment or accelerate the Phase-4 editor-surface cutover.

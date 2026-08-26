@@ -21,9 +21,7 @@
     "dedupePeers": false,
     "dev": true,
     "excludeLinksFromLockfile": false,
-    "hoistPattern": [
-      "*"
-    ],
+    "hoistPattern": ["*"],
     "hoistWorkspacePackages": true,
     "linkWorkspacePackages": false,
     "minimumReleaseAge": 1440,

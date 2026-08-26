@@ -13,7 +13,7 @@ const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/buck2-tools' }),
   devDependencies: {
     workspace: [utilsDevPkg],
-    external: catalog.pick('@types/node', 'typescript', 'vitest'),
+    external: catalog.pick('@types/bun', '@types/node', 'typescript', 'vitest'),
   },
 })
 

@@ -91,7 +91,6 @@ maintenance must not treat that bookkeeping namespace as immutable content.
   behavior. The editor realization needs a boundary outside the cacheable tree
   to satisfy DEPS-R03 without weakening DEPS-R02.
 
-
 ## Intent Impact
 
 [VRS Impact](#vrs-impact) records the normative consequences; VRS is this
