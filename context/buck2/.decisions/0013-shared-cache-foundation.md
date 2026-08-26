@@ -43,7 +43,8 @@ at one endpoint in a buckconfig file (CLI `-c` overrides do not reach the RE
 client), per-repo `instance_name`, `tls = false` inside the tailnet,
 `[buck2] digest_algorithms = SHA256` and `default_allow_cache_upload = true`,
 executor `remote_cache_enabled = True` with `allow_cache_uploads = True`, and
-advertised gRPC batch size below Buck2's 4 MiB tonic limit (facebook/buck2#583).
+batched transfers below Buck2's 4 MiB tonic limit (facebook/buck2#583; see
+Amendment 1).
 The action cache is deliberately shared across repositories: action keys are
 content-addressed, so cross-repo hits are correct by construction and valuable
 under megarepo-shared sources; `instance_name` is attribution, not isolation.
@@ -66,3 +67,14 @@ the roadmap.
   designated candidate then.
 - Cache outage posture and reuse criteria live in
   [04-reuse](../04-reuse/requirements.md).
+
+## Amendment 1
+
+The original text required the server to advertise a gRPC batch size below
+Buck2's 4 MiB tonic limit. bazel-remote hardcodes an unlimited
+`MaxBatchTotalSizeBytes` in its Capabilities response and exposes no flag to
+change it, so no bazel-remote deployment can satisfy that wording. The 4 MiB
+ceiling is enforceable only on the client side; REUSE-R05 carries the
+corrected clause, and the dotfiles build-cache trait records the same fact as
+a trait tradeoff. (Found while authoring the fleet trait VRS for
+dotfiles#2048, 2026-08-26.)
