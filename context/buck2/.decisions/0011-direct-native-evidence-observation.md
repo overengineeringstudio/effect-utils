@@ -5,7 +5,11 @@ Status: accepted
 ## Context
 
 The TypeScript launcher interposed on Buck to add evidence flags and emitted a
-custom receipt. The native-evidence design assigns trace roots, retention,
+custom receipt.
+
+## Evidence and Argument
+
+The native-evidence design assigns trace roots, retention,
 sampling, sanitization, and admission to the calling control plane, while Buck
 build reports and event logs remain execution truth. The launcher therefore
 duplicated an evidence schema and process boundary without owning a capability

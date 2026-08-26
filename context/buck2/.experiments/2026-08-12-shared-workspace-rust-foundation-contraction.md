@@ -22,7 +22,9 @@ creating another one.
 Removing one blocker is not a verdict. This experiment preserves the earlier
 record and evaluates the new architecture as a separate delta.
 
-## Candidate Boundary
+## Method
+
+### Candidate Boundary
 
 ```text
 TypeScript + Genie     semantic authoring and deterministic projection
@@ -38,7 +40,7 @@ remain separate binaries and exec dependencies so changing one does not
 invalidate unrelated actions. A shared multi-command binary is admitted only
 if measured closure/transfer savings exceed that coarser invalidation cost.
 
-## Required Evidence
+### Required Evidence
 
 | Gate             | Required control                                                                                  | Current result                                                                                                                                                           |
 | ---------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -56,7 +58,7 @@ The invalidation harness must mutate a disposable repository/cell rather than a
 shared tracked source. RED and GREEN controls use the same target and
 observation queries.
 
-## Admission Result
+## Result
 
 The measured gates and net contraction admit the four repository-owned Rust
 stage-zero tools through
@@ -65,7 +67,7 @@ This admission does not generalize to Prelude Python actions: decision 0009
 continues to require an immutable, digest-pinned CPython closure for any such
 action until its consumer is removed.
 
-## Measurements
+### Measurements
 
 The disposable prototype measured invalid-input validation at 52.6 ms for
 Python and 1.29 ms for Rust, valid staging at 59.2 ms and 1.55 ms, and fixture
@@ -88,3 +90,19 @@ minimal foundation app or task closure is therefore a measured follow-up. The
 remaining product admission gate is native execution of real TypeScript and
 Rust products across explicitly generated platform tuples, not stage-0
 feasibility.
+
+## Conclusion
+
+All nine gates passed: the four repository-owned Rust stage-zero tools are
+admitted, the Python foundation (sources, tests, targets, CPython archive) is
+deleted, and behavior, security, invalidation, bootstrap, and platform parity
+are preserved with 38-41x faster actions and a ~180x smaller runtime
+footprint. Measured follow-ups: a derived stage-0 closure projection to shrink
+cold vendor realization, and a minimal foundation task closure.
+
+## VRS Impact
+
+Grounds [decision 0010](../.decisions/0010-admit-rust-stage-zero-support-tools.md)
+and the stage-zero contract in [02-execution](../02-execution/requirements.md)
+(EXEC-T01): bootstrap providers are exact, finite, and retired when the graph
+reproduces them.

@@ -1,7 +1,7 @@
 # Buck2 Repository Build Spec
 
-This document specifies the portable Buck kernel and its repository and Nix
-boundaries. It builds on [requirements.md](./requirements.md).
+This document specifies the system architecture and its boundaries. It builds
+on [requirements.md](./requirements.md). Subsystem specs own their mechanisms.
 
 ## Status
 
@@ -9,114 +9,104 @@ Draft.
 
 ## Scope
 
-**Defines:** authority, component ownership, dependency direction, the public
-kernel boundary, and subsystem composition.
+**Defines:** authority, component ownership, dependency direction, composition
+shape, and subsystem responsibilities.
 
-**Does not define:** a consumer's dependency resolver, CI topology, artifact
-transport, deployment, activation, rollback, health, or rollout plan.
+**Does not define:** deployment, activation, rollback, health, CI topology, or
+rollout sequencing ([roadmap.md](./roadmap.md)).
 
 ## Architecture
 
 ```text
-public kernel                         repository adapter
-  schemas + rules <------------------ semantic intent + policy
-  executors + evidence adapters <---- dependency projections
-          |                                  |
-          +--------------+-------------------+
-                         v
-                  configured Buck graph
-                         |
-               declared deterministic work
-                         v
-            native evidence + BuildProduct
-                    |              |
-                    |              v
-                    |       independent Nix import
-                    |              |
-                    v              v
-              caller-owned task trace and system realization
+authored intent (genie models, manifests, lockfiles)
+        |
+        v
+01 semantic graph ──projects──> BUCK files + closure descriptors
+        |
+        v
+05 composition root (.buckconfig cells: members at repos/<name>)
+        |
+        v
+configured Buck graph
+   |         |          |
+   v         v          v
+02 execution  03 materialization  ──> actions (typecheck, build, test, package)
+(toolchains,  (deps for actions          |
+ platforms,    and editor surface)       |
+ TS + Rust rules)                        v
+                              04 reuse (shared AC/CAS on dev3)
+                                         |
+                                         v
+                              native evidence + BuildProduct
+                                         |
+                                         v
+                              06 nix-bridge (independent import)
+                                         |
+                                         v
+                              Nix store / system closures (consumer-owned)
 ```
-
-The kernel is portable source code and versioned contracts. A repository
-adapter binds those contracts to repository-local labels, sources, dependency
-projections, aliases, and policy. A consumer invokes Buck directly or through
-an observational adapter and owns the trace root and every live effect.
 
 ## Authority Matrix
 
-| Concern                                       | Authority                                         | Boundary                                       |
-| --------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- |
-| Repository semantic intent and private policy | Repository adapter                                | Versioned kernel input                         |
-| Dependency selection                          | Ecosystem resolver or declared repository adapter | Immutable closure projection                   |
-| Repository-local deterministic work           | Buck                                              | Providers, configured platforms, action keys   |
-| Tools and system inputs                       | Nix                                               | Immutable executable and data providers        |
-| Portable artifact                             | Buck                                              | `buck-build-product/v1` descriptor and payload |
-| Product validation and store import           | Nix                                               | Exact descriptor and payload checks            |
-| Task trace, retention, and admission decision | Calling control plane                             | W3C context, native evidence links, verdict    |
-| Deployment and all live effects               | Consumer                                          | Outside the public Buck contract               |
+| Concern                                    | Authority             | Boundary                                        |
+| ------------------------------------------ | --------------------- | ----------------------------------------------- |
+| Semantic intent, package and target facts  | Genie-composed models | Projected BUCK files, freshness-gated           |
+| Dependency requests                        | Manifests + lockfile  | Only hand-authored dependency input             |
+| Dependency materialization (build, editor) | Buck actions          | `pnpm deploy` from manifests, atomic view flips |
+| Repository-local deterministic work        | Buck                  | Providers, configured platforms, action keys    |
+| Tools and system inputs                    | Nix                   | Immutable `/nix/store` providers                |
+| Cross-member source dependencies           | Buck cells            | Canonical composition root (megarepo/genie)     |
+| Shared reuse                               | Remote AC/CAS (dev3)  | REAPI cache-only, tailnet trust                 |
+| Portable artifact                          | Buck                  | `buck-build-product/v1` descriptor and payload  |
+| Product validation and store import        | Nix                   | Exact descriptor and payload checks             |
+| Deployment and all live effects            | Consumer              | Outside the Buck contract                       |
+
+## Composition Shape
+
+Every build — single-repo and composed alike — runs from a synthesized
+composition root: a project root whose `.buckconfig` declares each member as a
+cell at its canonical mount path. Megarepo materializes member sources; genie
+projects the root configuration. There is no bare-checkout build shape in the
+shared cache namespace; an external consumer building a public repository
+standalone uses the same synthesized single-member root and simply inhabits its
+own cache namespace. Mechanism and the key-stability discipline:
+[05-composition](./05-composition/spec.md).
 
 ## Invocation Flow
 
 ```text
-1. control plane starts task span and passes W3C context
-2. repository adapter selects an admitted Buck label and platform tuple
-3. Buck analyzes and executes using declared providers
-4. control plane, optionally aided by an adapter, records native evidence
-5. Buck returns its native result and, when requested, a BuildProduct
-6. Nix independently validates and imports the BuildProduct
-7. control plane records evidence, product, import, and admission outcome
+1. genie freshness gate: projections match authored intent
+2. composition root selects admitted targets and platforms
+3. Buck analyzes and executes; unchanged work resolves from the shared cache
+4. dependency views flip atomically for the editor surface when manifests changed
+5. products cross to Nix through independent import when requested
+6. the caller records native evidence; telemetry links to it without replacing it
 ```
 
-Buck's result is determined at step 5. Export, retention, or import failures are
-separate outcomes and never rewrite it. Product publication or live operation,
-when needed, begins after this flow under consumer-owned requirements.
-
-## Public Kernel
-
-The portable kernel may contain:
-
-- semantic graph, operation, and native-evidence schemas;
-- Starlark rules and providers;
-- platform and executable-provider contracts;
-- deterministic support executors;
-- `BuildProduct` validation fixtures;
-- Buck evidence decoders and OpenTelemetry semantic bindings;
-- cross-repository conformance fixtures.
-
-It must not contain repository paths, private labels, fleet names, endpoints,
-secrets, activation policy, or a central list of consumer targets.
-
-## Observation Boundary
-
-Direct invocation of the pinned Buck binary plus native build evidence is the
-baseline. The calling control plane owns the task and invocation spans,
-retention, sampling, routing, sanitization, and admission verdict. Evidence may
-be decoded after execution without interposing on Buck.
-
-The repository does not interpose a launcher between the caller and Buck.
-Observation which cannot be implemented at the caller or native-evidence
-boundary belongs in a separately justified Rust observer. Its conformance must
-prove passthrough, cancellation, evidence, sanitization, and telemetry parity;
-its output is never independent build authority.
+Buck's result is determined at step 3. Export, retention, or import failures
+are separate outcomes and never rewrite it.
 
 ## Forbidden Edges
 
-- Kernel code must not depend on a consumer repository.
-- Buck actions must not evaluate Nix, run a package-manager install, or mutate
-  consumer live state.
+- Buck actions must not evaluate Nix, run a package-manager install against
+  live state, or mutate consumer live state.
 - Nix import must not invoke Buck or fall back to a repository source build.
-- An observer must not select targets, platforms, aliases, or policy.
 - Telemetry must not supersede native Buck evidence or change Buck's result.
 - A `BuildProduct` must not encode transport, activation, rollback, or health
   state.
+- Shared rules and fixtures must not depend on a consumer repository or carry
+  private facts (BUCK-R14).
+- No component interposes a launcher between the caller and Buck
+  ([decision 0011](./.decisions/0011-direct-native-evidence-observation.md)).
 
 ## Requirement Trace
 
-| Requirements                           | Refinement                |
-| -------------------------------------- | ------------------------- |
-| BUCK-R05 through BUCK-R07              | 01 Semantic Graph         |
-| BUCK-R03, BUCK-R05, BUCK-R08           | 02 Execution Platforms    |
-| BUCK-R01, BUCK-R02, BUCK-R08           | 03 Target Execution       |
-| BUCK-R03, BUCK-R04, BUCK-R09, BUCK-R10 | 04 Artifact/System Bridge |
-| BUCK-R11 through BUCK-R15              | 05 Evidence/Verification  |
-| BUCK-R16, BUCK-R17                     | 06 Admission/Reuse        |
+| Requirements                 | Refinement            |
+| ---------------------------- | --------------------- |
+| BUCK-R01, BUCK-R05           | 01 Semantic Graph     |
+| BUCK-R02, BUCK-R04           | 02 Execution          |
+| BUCK-R08, BUCK-R11           | 03 Materialization    |
+| BUCK-R06, BUCK-R07           | 04 Reuse              |
+| BUCK-R05, BUCK-R14           | 05 Composition        |
+| BUCK-R03, BUCK-R10           | 06 Nix Bridge         |
+| BUCK-R09, BUCK-R12, BUCK-R13 | Root + all subsystems |
