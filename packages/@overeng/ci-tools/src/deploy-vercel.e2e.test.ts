@@ -103,10 +103,17 @@ const runCiTools = async (opts: {
 beforeAll(async () => {
   server = createServer((request, response) => {
     if (request.url?.startsWith('/v13/deployments/') === true) {
-      const ref = decodeURIComponent(
-        request.url.slice('/v13/deployments/'.length).split('?')[0] ?? '',
-      )
+      const url = new URL(request.url, 'http://localhost')
+      if (url.searchParams.get('teamId') !== 'fake-org') {
+        response.writeHead(400, { connection: 'close' }).end('missing team scope')
+        return
+      }
+      const ref = decodeURIComponent(url.pathname.slice('/v13/deployments/'.length))
       const commitSha = deploymentCommitShas[ref]
+      if (commitSha === 'transport-error') {
+        request.socket.destroy()
+        return
+      }
       if (commitSha === undefined) {
         response.writeHead(404, { connection: 'close' }).end('not found')
         return
@@ -117,6 +124,11 @@ beforeAll(async () => {
       return
     }
     if (request.url?.startsWith('/v4/aliases/') === true) {
+      const url = new URL(request.url, 'http://localhost')
+      if (url.searchParams.get('teamId') !== 'fake-org') {
+        response.writeHead(400, { connection: 'close' }).end('missing team scope')
+        return
+      }
       if (aliasHolder === undefined) {
         response.writeHead(404, { connection: 'close' }).end('not found')
         return
@@ -814,6 +826,34 @@ exit 1
       })
       expect(record.summary).toMatch(/alias/iu)
       expect(JSON.stringify(record)).toContain('already in use')
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('records the collision failure when deployment metadata is unavailable', async () => {
+    apiMode = 'ok'
+    deploymentCommitShas = { 'dpl-holder': 'transport-error' }
+    aliasHolder = { deploymentId: 'dpl-holder', projectId: 'fake-project' }
+    const workspace = makeCollisionWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: prodDeployArgs(workspace),
+        env: { FAKE_VERCEL_ALIAS_MODE: 'permanent' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(countAliasAttempts(workspace.logPath)).toBe(2)
+      const record = readRecord(reportFile)
+      expect(record.data).toMatchObject({
+        errorKind: 'ProviderOperationFailed',
+        retryable: false,
+        attempts: 2,
+      })
+      expect(record.summary).toMatch(/alias/iu)
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }

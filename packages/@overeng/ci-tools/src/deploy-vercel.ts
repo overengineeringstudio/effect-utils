@@ -674,8 +674,8 @@ const fetchVercelDeploymentCommitSha = Effect.fn('ci-tools.deploy.vercel.deploym
       path: `/v13/deployments/${encodeURIComponent(opts.deploymentRef)}${
         opts.teamId === undefined ? '' : `?teamId=${encodeURIComponent(opts.teamId)}`
       }`,
-    })
-    if (response.status < 200 || response.status >= 300) {
+    }).pipe(Effect.orElseSucceed(() => undefined))
+    if (response === undefined || response.status < 200 || response.status >= 300) {
       return undefined
     }
     const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(VercelDeploymentJson))(
@@ -737,6 +737,7 @@ const assignAliasResilient = (opts: {
 }) =>
   Effect.gen(function* () {
     const deployHost = new URL(opts.rawDeployUrl).host
+    const apiTeamId = opts.teamId ?? opts.orgId
 
     const runAliasAttempt = (attempt: number) =>
       DeployProviderOperation.with({
@@ -781,7 +782,7 @@ const assignAliasResilient = (opts: {
       target: opts.target,
       apiBaseUrl: opts.apiBaseUrl,
       authToken: opts.authToken,
-      teamId: opts.teamId,
+      teamId: apiTeamId,
       aliasHost: opts.aliasHost,
     })
     let holderCommitSha: string | undefined
@@ -790,7 +791,7 @@ const assignAliasResilient = (opts: {
         target: opts.target,
         apiBaseUrl: opts.apiBaseUrl,
         authToken: opts.authToken,
-        teamId: opts.teamId,
+        teamId: apiTeamId,
         deploymentRef: holder.deploymentRef,
       })
     }
@@ -825,7 +826,7 @@ const assignAliasResilient = (opts: {
         target: opts.target,
         apiBaseUrl: opts.apiBaseUrl,
         authToken: opts.authToken,
-        teamId: opts.teamId,
+        teamId: apiTeamId,
         deploymentRef: deployHost,
       })
       if (ourCommitSha === holderCommitSha) {
