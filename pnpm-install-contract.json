@@ -107,7 +107,6 @@
   },
   "workspaceManifestContract": {
     "allowUnusedPatches": true,
-    "dedupeInjectedDeps": false,
     "injectWorkspacePackages": true,
     "packages": [
       "context/effect/socket",

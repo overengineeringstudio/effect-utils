@@ -12,6 +12,7 @@ const peerDepNames = [
   '@effect/opentelemetry',
   '@effect/platform-node',
   '@effect/vitest',
+  '@types/node',
   'effect',
   'vitest',
 ] as const
@@ -20,7 +21,7 @@ const deps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils-dev' }),
   devDependencies: {
     external: {
-      ...catalog.pick(...peerDepNames, '@types/node', 'typescript'),
+      ...catalog.pick(...peerDepNames, 'typescript'),
     },
   },
   peerDependencies: {
