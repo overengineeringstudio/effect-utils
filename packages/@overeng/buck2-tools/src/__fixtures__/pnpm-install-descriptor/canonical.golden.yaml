@@ -1,0 +1,31 @@
+importers: 
+  ".": 
+    dependencies: 
+      "@acme/lib": 
+        specifier: workspace:*
+        version: file://<WS>/packages/acme/lib(hash)(react@19.0.0)
+lockfileVersion: "9.0"
+packages: 
+  "@acme/lib@file://<WS>/packages/acme/lib": 
+    peerDependenciesMeta: 
+      react: 
+        optional: true
+    resolution: 
+      directory: file://<WS>/packages/acme/lib
+      type: directory
+  react@19.0.0: 
+    resolution: 
+      integrity: sha512-example
+patchedDependencies: 
+  patched@1.0.0: abc123
+settings: 
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+snapshots: 
+  "@acme/lib@file://<WS>/packages/acme/lib(hash)(react@19.0.0)": 
+    dependencies: 
+      react: 19.0.0
+    peerDependencies: 
+      react: 19.0.0
+  react@19.0.0: 
+    {}
