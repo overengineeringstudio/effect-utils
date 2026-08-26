@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+
 - **Repository-wide**: atomic Effect 4 cohort flip to `effect@4.0.0-rc.111`
   (with `@effect/platform-node`, `@effect/vitest`, `@effect/opentelemetry`,
   `@effect/atom-react`, all rc.111). Platform, CLI, RPC, Schema, AI, Cluster,
@@ -71,6 +72,16 @@ All notable changes to this project will be documented in this file.
   `Duration.Input`, `Cause.TimeoutError`, `Effect.callback`/`forkChild`/
   `andThen`/`catch`, string-union `LogLevel`, and `Metric.update`/
   `withAttributes` replace their removed v3 counterparts.
+
+### Fixed
+
+- **@overeng/ci-tools**: handle Vercel `already in use` alias collisions
+  deterministically: resolve the current holder on collision, succeed when it
+  is a deployment of the same commit, recheck once for a same-project holder,
+  and fail fast with an actionable error naming the remedy when the host is
+  held outside the project (`AliasAssignmentFailed` carries the classified
+  inner failure and attempt count; workflow-report records report true
+  attempts).
 
 ### Added
 
