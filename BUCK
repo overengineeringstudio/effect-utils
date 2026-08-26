@@ -1,11 +1,5 @@
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 
-# Stable root entrypoint for the initial Buck2 foundation smoke target.
-alias(
-    name = "buck2_foundation",
-    actual = "//buck2/evidence:synthetic_evidence",
-)
-
 # Exact root-package inputs for tui-core dependency materialization.
 _TUI_CORE_MATERIALIZATION_INPUTS = [
     "context/effect/socket/package.json",
