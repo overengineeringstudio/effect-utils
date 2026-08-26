@@ -54,6 +54,7 @@ export default packageJson(
       },
     },
     scripts: {
+      build: 'tsc --build tsconfig.json && vite build',
       storybook: 'storybook dev -p 6010',
       'storybook:build': 'storybook build',
     },

@@ -69,7 +69,8 @@ All notable changes to this project will be documented in this file.
   raw scales (spacing, radii, font sizes) come from `tailwind-stylex`.
   State-dependent styling (selection) moves to React Aria render-prop
   `className` instead of Tailwind group/data variants. Consumers import the
-  required reset from `@overeng/effect-schema-form-aria/styles.css`.
+  required reset from `@overeng/effect-schema-form-aria/styles.css`; the
+  publication build emits that reset and compiled component rules together.
   Byte-identical markup baselines were regenerated with hashed StyleX class names.
 
 - **@overeng/effect-rpc-tanstack**: client request-id policy — `layerClient`

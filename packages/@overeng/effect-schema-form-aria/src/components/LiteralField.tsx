@@ -74,11 +74,13 @@ const styles = stylex.create({
     borderRightColor: tokens.border,
     transitionProperty: 'background-color, color',
     transitionDuration: '150ms',
-    ':hover': {
-      backgroundColor: tokens['surface-raised'],
-    },
     ':last-child': {
       borderRightWidth: 0,
+    },
+  },
+  segmentUnselected: {
+    ':hover': {
+      backgroundColor: tokens['surface-raised'],
     },
   },
   segmentSelected: {
@@ -144,6 +146,8 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     cursor: 'pointer',
     borderRadius: radii.default,
+  },
+  optionUnselected: {
     ':hover': {
       backgroundColor: tokens['surface-raised'],
     },
@@ -207,8 +211,10 @@ export const LiteralField = ({
                 key={opt.value}
                 id={opt.value}
                 className={({ isSelected }) =>
-                  stylex.props(styles.segment, isSelected === true && styles.segmentSelected)
-                    .className ?? ''
+                  stylex.props(
+                    styles.segment,
+                    isSelected === true ? styles.segmentSelected : styles.segmentUnselected,
+                  ).className ?? ''
                 }
               >
                 {opt.label}
@@ -248,7 +254,7 @@ export const LiteralField = ({
                 stylex.props(
                   styles.option,
                   styles.optionMuted,
-                  isSelected === true && styles.optionSelected,
+                  isSelected === true ? styles.optionSelected : styles.optionUnselected,
                 ).className ?? ''
               }
             >
@@ -264,7 +270,7 @@ export const LiteralField = ({
                 stylex.props(
                   styles.option,
                   styles.optionInk,
-                  isSelected === true && styles.optionSelected,
+                  isSelected === true ? styles.optionSelected : styles.optionUnselected,
                 ).className ?? ''
               }
             >
