@@ -9,4 +9,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [stylex.vite({ externalPackages: ['tailwind-stylex'] }), react()],
   ssr: { noExternal: ['tailwind-stylex'] },
+  test: {
+    exclude: ['**/dist/**', '**/node_modules/**'],
+    server: { deps: { inline: ['@effect/vitest'] } },
+  },
 })
