@@ -1,6 +1,7 @@
+import { resolve } from 'node:path'
+
 import { Cause, Data, Deferred, Duration, Effect, FileSystem, Option, Queue, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
-import { resolve } from 'node:path'
 
 /**
  * One watched path grouped with every event observed for it inside the same
@@ -17,6 +18,10 @@ export interface WatchGroup {
   readonly events: ReadonlyArray<FileSystem.WatchEvent>
 }
 
+/**
+ * Policy for a scoped recursive watch: which roots, which paths count, and
+ * how events are coalesced into batches.
+ */
 export interface WatchScopedOptions {
   /**
    * Directories to watch. Every root is watched with an explicit
@@ -57,17 +62,20 @@ interface PendingEntry {
  * with `Queue.poll` — `Queue.takeAll` would block until a further event
  * arrives and stall single-change flushes.
  */
-const takeWindow = (
-  pending: Queue.Queue<PendingEntry>,
-  debounce: Duration.Duration,
-): Effect.Effect<ReadonlyArray<WatchGroup>> =>
+const takeWindow = ({
+  pending,
+  debounce,
+}: {
+  readonly pending: Queue.Queue<PendingEntry>
+  readonly debounce: Duration.Duration
+}): Effect.Effect<ReadonlyArray<WatchGroup>> =>
   Effect.gen(function* () {
     const first = yield* Queue.take(pending)
     yield* Effect.sleep(debounce)
 
     const entries: Array<PendingEntry> = [first]
     let next = yield* Queue.poll(pending)
-    while (Option.isSome(next)) {
+    while (Option.isSome(next) === true) {
       entries.push(next.value)
       next = yield* Queue.poll(pending)
     }
@@ -102,68 +110,68 @@ export const watchScoped = (
   Stream.scoped(
     Stream.unwrap(
       Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
+        const fs = yield* FileSystem.FileSystem
 
-      if (options.roots.length === 0) return Stream.empty
+        if (options.roots.length === 0) return Stream.empty
 
-      const debounce =
-        options.debounce === undefined
-          ? DEFAULT_WATCH_DEBOUNCE
-          : Duration.fromInputUnsafe(options.debounce)
-      const scope = options.scope
-      const inScope: (absolutePath: string) => boolean =
-        typeof scope === 'function' ? scope : (absolutePath) => scope.has(absolutePath)
+        const debounce =
+          options.debounce === undefined
+            ? DEFAULT_WATCH_DEBOUNCE
+            : Duration.fromInputUnsafe(options.debounce)
+        const scope = options.scope
+        const inScope: (absolutePath: string) => boolean =
+          typeof scope === 'function' ? scope : (absolutePath) => scope.has(absolutePath)
 
-      const pending = yield* Queue.sliding<PendingEntry>(WATCH_QUEUE_CAPACITY)
-      // Completed by the watcher fiber: failed with the sentinel when the
-      // watchers ended cleanly, with their PlatformError when they errored,
-      // died with the original cause on unexpected defects.
-      const halted = yield* Deferred.make<never, PlatformError | WatchSourceEnded>()
+        const pending = yield* Queue.sliding<PendingEntry>(WATCH_QUEUE_CAPACITY)
+        // Completed by the watcher fiber: failed with the sentinel when the
+        // watchers ended cleanly, with their PlatformError when they errored,
+        // died with the original cause on unexpected defects.
+        const halted = yield* Deferred.make<never, PlatformError | WatchSourceEnded>()
 
-      // One filler fiber per root; the supervisor waits for all of them and
-      // signals `halted` with the first watcher error, or with the sentinel
-      // once every watcher ended cleanly (e.g. a watched directory vanished).
-      yield* Effect.gen(function* () {
-        const results = yield* Effect.forEach(
-          options.roots,
-          (root) =>
-            fs.watch(root, { recursive: true }).pipe(
-              Stream.map((event) => ({ absolutePath: resolve(root, event.path), event })),
-              Stream.filter((entry) => inScope(entry.absolutePath)),
-              Stream.runForEach((entry) => Queue.offer(pending, entry)),
-              Effect.result,
+        // One filler fiber per root; the supervisor waits for all of them and
+        // signals `halted` with the first watcher error, or with the sentinel
+        // once every watcher ended cleanly (e.g. a watched directory vanished).
+        yield* Effect.gen(function* () {
+          const results = yield* Effect.forEach(
+            options.roots,
+            (root) =>
+              fs.watch(root, { recursive: true }).pipe(
+                Stream.map((event) => ({ absolutePath: resolve(root, event.path), event })),
+                Stream.filter((entry) => inScope(entry.absolutePath)),
+                Stream.runForEach((entry) => Queue.offer(pending, entry)),
+                Effect.result,
+              ),
+            { concurrency: 'unbounded' },
+          )
+
+          const failure = results.find((result) => result._tag === 'Failure')
+          if (failure !== undefined && failure._tag === 'Failure') {
+            yield* Deferred.fail(halted, failure.failure)
+          } else {
+            yield* Deferred.fail(halted, new WatchSourceEnded())
+          }
+        }).pipe(Effect.forkScoped)
+
+        // Windowed batch loop: each iteration blocks until a first scoped event
+        // opens a window, sleeps out the debounce, drains the queue, and emits
+        // one deduped batch. Ends cleanly on the sentinel, fails with the
+        // watchers' PlatformError otherwise.
+        return Stream.unfold(
+          undefined,
+          (): Effect.Effect<
+            readonly [ReadonlyArray<WatchGroup>, undefined] | undefined,
+            PlatformError
+          > =>
+            Effect.raceFirst(takeWindow({ pending, debounce }), Deferred.await(halted)).pipe(
+              Effect.map((batch) => [batch, undefined] as const),
+              Effect.catch((error) =>
+                error._tag === 'WatchSourceEnded'
+                  ? Effect.void.pipe(Effect.as(undefined))
+                  : Effect.fail(error),
+              ),
             ),
-          { concurrency: 'unbounded' },
         )
-
-        const failure = results.find((result) => result._tag === 'Failure')
-        if (failure !== undefined && failure._tag === 'Failure') {
-          yield* Deferred.fail(halted, failure.failure)
-        } else {
-          yield* Deferred.fail(halted, new WatchSourceEnded())
-        }
-      }).pipe(Effect.forkScoped)
-
-      // Windowed batch loop: each iteration blocks until a first scoped event
-      // opens a window, sleeps out the debounce, drains the queue, and emits
-      // one deduped batch. Ends cleanly on the sentinel, fails with the
-      // watchers' PlatformError otherwise.
-      return Stream.unfold(
-        undefined,
-        (): Effect.Effect<
-          readonly [ReadonlyArray<WatchGroup>, undefined] | undefined,
-          PlatformError
-        > =>
-          Effect.raceFirst(takeWindow(pending, debounce), Deferred.await(halted)).pipe(
-            Effect.map((batch) => [batch, undefined] as const),
-            Effect.catch((error) =>
-              error._tag === 'WatchSourceEnded'
-                ? Effect.void.pipe(Effect.as(undefined))
-                : Effect.fail(error),
-            ),
-          ),
-      )
-    }),
+      }),
     ),
   )
 

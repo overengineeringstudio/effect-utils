@@ -1,10 +1,12 @@
 import * as path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
-import { Cause, Deferred, Duration, Effect, Exit, FileSystem, Fiber, Option, Queue, Stream } from 'effect'
+import type { Cause } from 'effect'
+import { Duration, Effect, FileSystem, Fiber, Option, Queue, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import { systemError } from 'effect/PlatformError'
 import { expect } from 'vitest'
+
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { watchCauseMessage, watchScoped, type WatchGroup } from './watch.ts'
@@ -16,7 +18,7 @@ const drainBatches = (batches: Queue.Queue<ReadonlyArray<WatchGroup>>) =>
     yield* Effect.sleep(Duration.millis(200))
     const rest: Array<ReadonlyArray<WatchGroup>> = []
     let next = yield* Queue.poll(batches)
-    while (Option.isSome(next)) {
+    while (Option.isSome(next) === true) {
       rest.push(next.value)
       next = yield* Queue.poll(batches)
     }
@@ -38,7 +40,10 @@ Vitest.describe('watchScoped', () => {
           roots: [root],
           scope: (absolutePath) => absolutePath.endsWith('.txt'),
           debounce: Duration.millis(100),
-        }).pipe(Stream.runForEach((batch) => Queue.offer(batches, batch)), Effect.forkChild)
+        }).pipe(
+          Stream.runForEach((batch) => Queue.offer(batches, batch)),
+          Effect.forkChild,
+        )
 
         // Let the watcher settle before writing (fs.watch registration is
         // asynchronous; events fired before it lands are not delivered).
@@ -82,7 +87,10 @@ Vitest.describe('watchScoped', () => {
           roots: [rootA, rootB],
           scope: new Set([watchedFile]),
           debounce: Duration.millis(100),
-        }).pipe(Stream.runForEach((batch) => Queue.offer(batches, batch)), Effect.forkChild)
+        }).pipe(
+          Stream.runForEach((batch) => Queue.offer(batches, batch)),
+          Effect.forkChild,
+        )
 
         yield* Effect.sleep(Duration.millis(200))
 

@@ -471,7 +471,7 @@ export const commonAncestor = (dirs: ReadonlyArray<string>): string => {
   const prefix: Array<string> = []
   for (let index = 0; index < first.length; index++) {
     const segment = first[index] ?? ''
-    if (!segmentLists.every((segments) => segments[index] === segment)) break
+    if (segmentLists.every((segments) => segments[index] === segment) === false) break
     prefix.push(segment)
   }
   const joined = prefix.join(sep)

@@ -2,9 +2,9 @@ import path from 'node:path'
 
 import { Effect, FileSystem, Fiber, Option, pipe, PubSub, Result, Stream } from 'effect'
 import type { Path } from 'effect'
+import type { PlatformError } from 'effect/PlatformError'
 import * as Cli from 'effect/unstable/cli'
 import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
-import type { PlatformError } from 'effect/PlatformError'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'

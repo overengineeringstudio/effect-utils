@@ -15,7 +15,10 @@ interface ParsedAction {
 }
 
 const parseProbeOutput = (stdout: string) => {
-  const lines = stdout.trim().split('\n').filter((line) => line.length > 0)
+  const lines = stdout
+    .trim()
+    .split('\n')
+    .filter((line) => line.length > 0)
   const summaryLine = lines.find((line) => line.startsWith('SUMMARY '))
   expect(summaryLine).toBeDefined()
   const [created, updated, unchanged, skipped, failed] = (summaryLine ?? '')
