@@ -5,8 +5,8 @@ tsconfig, and a pruned node_modules closure. Producing that tree belongs to the
 03-materialization boundary; these rules deliberately do not interpret the
 non-authoritative TypeScript input-plan evidence.
 
-The action shapes follow the tsgo prototype and check-surface partition
-experiments in context/buck2/02-execution/.experiments/.
+The action shape follows
+context/buck2/02-execution/.experiments/2026-08-25-tsgo-rule-prototype.md.
 """
 
 load("@root//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
@@ -17,8 +17,8 @@ TsgoTypecheckInfo = provider(fields = {
 })
 
 TsgoEmitInfo = provider(fields = {
+    "directory": Artifact,
     "toolchain_identity": str,
-    "dist": Artifact,
 })
 
 
@@ -66,48 +66,8 @@ def _tsgo_typecheck_impl(ctx):
     ]
 
 
-def _tsgo_emit_impl(ctx):
-    _require_relative_path(ctx.attrs.project, "project")
-    toolchain = ctx.attrs._tsgo[EffectTsgoToolchainInfo]
-    dist = ctx.actions.declare_output("dist", dir = True)
-
-    # Command-line compiler options override the project safely: --noEmit false
-    # re-enables emit while compiler output locations remain inside the one declared
-    # directory artifact. No shell or ambient PATH participates in the action.
-    args = cmd_args([
-        toolchain.executable,
-        "--project",
-        cmd_args(ctx.attrs.package_tree, format = "{}/" + ctx.attrs.project),
-        "--noEmit",
-        "false",
-        "--outDir",
-        dist.as_output(),
-        "--declarationDir",
-        dist.as_output(),
-        "--tsBuildInfoFile",
-        cmd_args(dist.as_output(), format = "{}/tsconfig.tsbuildinfo"),
-        "--pretty",
-        "false",
-    ])
-    ctx.actions.run(
-        args,
-        category = "tsgo_emit",
-        identifier = ctx.attrs.name,
-        # Materialized pnpm trees can contain executor-local node_modules
-        # semantics. Conservatively keep every consumer of that tree local.
-        local_only = True,
-    )
-    return [
-        DefaultInfo(default_output = dist),
-        TsgoEmitInfo(
-            toolchain_identity = toolchain.identity,
-            dist = dist,
-        ),
-    ]
-
-
-tsgo_emit = rule(
-    impl = _tsgo_emit_impl,
+tsgo_typecheck = rule(
+    impl = _tsgo_typecheck_impl,
     attrs = {
         "package_tree": attrs.source(),
         "project": attrs.string(default = "tsconfig.json"),
@@ -119,11 +79,78 @@ tsgo_emit = rule(
 )
 
 
-tsgo_typecheck = rule(
-    impl = _tsgo_typecheck_impl,
+def _tsgo_emit_impl(ctx):
+    _require_relative_path(ctx.attrs.project, "project")
+    _require_relative_path(ctx.attrs.out_dir, "out_dir")
+    _require_relative_path(ctx.attrs.declaration_entrypoint, "declaration_entrypoint")
+    toolchain = ctx.attrs._tsgo[EffectTsgoToolchainInfo]
+    directory = ctx.actions.declare_output(ctx.attrs.out_dir, dir = True)
+
+    # The materialized package tree remains immutable. tsgo sees an identical
+    # writable staging layout, except that out_dir is a symlink to the sole
+    # declared output. Making every other staged path read-only turns any
+    # compiler write outside out_dir into an action failure.
+    script = """package_tree="$2"
+project="$3"
+out_dir="$4"
+declaration_entrypoint="$5"
+output="$6"
+staging="${TMPDIR:-/tmp}/tsgo-emit.$$"
+trap 'rm -rf "$staging"' EXIT HUP INT TERM
+mkdir -p "$staging/package"
+cp -R "$package_tree"/. "$staging/package"/
+rm -rf "$staging/package/$out_dir"
+mkdir -p "$output"
+output_abs=$(cd "$output" && pwd -P)
+mkdir -p "$(dirname "$staging/package/$out_dir")"
+ln -s "$output_abs" "$staging/package/$out_dir"
+find "$staging/package" -type d -exec chmod a-w {} +
+find "$staging/package" -type f -exec chmod a-w {} +
+"$1" \
+  --project "$staging/package/$project" \
+  --outDir "$staging/package/$out_dir" \
+  --noEmit false \
+  --pretty false
+if [ ! -f "$output/$declaration_entrypoint" ]; then
+  printf '%s\n' "tsgo_emit: expected declaration entrypoint $out_dir/$declaration_entrypoint was not emitted" >&2
+  exit 1
+fi
+"""
+    args = cmd_args([
+        "/bin/sh",
+        "-eu",
+        "-c",
+        script,
+        "tsgo-emit",
+        toolchain.executable,
+        ctx.attrs.package_tree,
+        ctx.attrs.project,
+        ctx.attrs.out_dir,
+        ctx.attrs.declaration_entrypoint,
+        directory.as_output(),
+    ])
+    ctx.actions.run(
+        args,
+        category = "tsgo_emit",
+        identifier = ctx.attrs.name,
+        local_only = True,
+    )
+    return [
+        DefaultInfo(default_output = directory),
+        TsgoEmitInfo(
+            directory = directory,
+            toolchain_identity = toolchain.identity,
+        ),
+    ]
+
+
+tsgo_emit = rule(
+    impl = _tsgo_emit_impl,
     attrs = {
         "package_tree": attrs.source(),
         "project": attrs.string(default = "tsconfig.json"),
+        "out_dir": attrs.string(default = "dist"),
+        "declaration_entrypoint": attrs.string(default = "src/mod.d.ts"),
         "_tsgo": attrs.default_only(attrs.exec_dep(
             default = "toolchains//:effect_tsgo",
             providers = [EffectTsgoToolchainInfo],
