@@ -168,30 +168,23 @@ def pnpm_materializer_toolchain(name, bun_by_platform, pnpm_by_platform, store_d
 
 
 EffectTsgoToolchainInfo = provider(fields = {
+    "bun": str,
     "executable": str,
     "identity": str,
+    "runner": Artifact,
 })
 
 
-def _require_nix_store_executable(executable):
-    if not executable.startswith("/nix/store/"):
-        fail("effect-tsgo must resolve to an immutable /nix/store executable: {}".format(executable))
-    components = executable.split("/")
-    if len(components) < 6 or components[-2:] != ["bin", "tsgo"]:
-        fail("effect-tsgo executable must have the shape /nix/store/<realization>/bin/tsgo: {}".format(executable))
-    for component in components[3:]:
-        if component == "" or component == "." or component == "..":
-            fail("effect-tsgo executable path is not normalized: {}".format(executable))
-
-
 def _effect_tsgo_toolchain_impl(ctx):
-    executable = ctx.attrs.executable
-    _require_nix_store_executable(executable)
+    _require_nix_store_binary(ctx.attrs.bun, "bun", "Bun")
+    _require_nix_store_binary(ctx.attrs.executable, "tsgo", "effect-tsgo")
     return [
         DefaultInfo(),
         EffectTsgoToolchainInfo(
-            executable = executable,
-            identity = executable,
+            bun = ctx.attrs.bun,
+            executable = ctx.attrs.executable,
+            identity = "bun={};tsgo={}".format(ctx.attrs.bun, ctx.attrs.executable),
+            runner = ctx.attrs.runner,
         ),
     ]
 
@@ -199,7 +192,9 @@ def _effect_tsgo_toolchain_impl(ctx):
 _effect_tsgo_toolchain = rule(
     impl = _effect_tsgo_toolchain_impl,
     attrs = {
+        "bun": attrs.string(),
         "executable": attrs.string(),
+        "runner": attrs.source(),
     },
 )
 
@@ -215,18 +210,22 @@ def _host_nix_platform():
     fail("configured Nix toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
 
 
-def effect_tsgo_toolchain(name, executable_by_platform, **kwargs):
-    """Declares effect-tsgo using the exact executable path of each Nix realization."""
+def effect_tsgo_toolchain(name, bun_by_platform, executable_by_platform, runner, **kwargs):
+    """Declares the exact Nix Bun/effect-tsgo pair used by TypeScript actions."""
     if "exec_compatible_with" in kwargs:
         fail("effect_tsgo_toolchain owns execution compatibility")
     platform = _host_nix_platform()
+    bun = bun_by_platform.get(platform)
     executable = executable_by_platform.get(platform)
-    if executable == None:
-        fail("effect_tsgo_toolchain has no executable for {}".format(platform))
-    _require_nix_store_executable(executable)
+    if bun == None or executable == None:
+        fail("effect-tsgo has no tool realization for {}".format(platform))
+    _require_nix_store_binary(bun, "bun", "Bun")
+    _require_nix_store_binary(executable, "tsgo", "effect-tsgo")
     _effect_tsgo_toolchain(
         name = name,
+        bun = bun,
         executable = executable,
+        runner = runner,
         exec_compatible_with = host_execution_constraints(),
         **kwargs
     )

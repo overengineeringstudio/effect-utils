@@ -37,15 +37,13 @@ def _tsgo_typecheck_impl(ctx):
     toolchain = ctx.attrs._tsgo[EffectTsgoToolchainInfo]
     verdict = ctx.actions.declare_output("typecheck.ok")
 
-    # --noEmit keeps the declared package tree read-only and makes the small
-    # verdict the only output. Passing the tree Artifact on argv makes its full
-    # digest, including node_modules declarations, part of the action key.
+    # The pinned runner hashes the complete input tree before and after tsgo.
+    # Disabling both composite and incremental mode makes --noEmit write-free;
+    # the byte invariant turns any compiler regression into an action failure.
     args = cmd_args([
-        "/bin/sh",
-        "-eu",
-        "-c",
-        "\"$1\" --project \"$2/$3\" --noEmit --pretty false\nprintf \"%s\\n\" \"$1\" > \"$4\"",
-        "tsgo-typecheck",
+        toolchain.bun,
+        toolchain.runner,
+        "typecheck",
         toolchain.executable,
         ctx.attrs.package_tree,
         ctx.attrs.project,
@@ -86,42 +84,15 @@ def _tsgo_emit_impl(ctx):
     toolchain = ctx.attrs._tsgo[EffectTsgoToolchainInfo]
     directory = ctx.actions.declare_output(ctx.attrs.out_dir, dir = True)
 
-    # The materialized package tree remains immutable. tsgo sees an identical
-    # writable staging layout, except that out_dir is a symlink to the sole
-    # declared output. Making every other staged path read-only turns any
-    # compiler write outside out_dir into an action failure.
-    script = """package_tree="$2"
-project="$3"
-out_dir="$4"
-declaration_entrypoint="$5"
-output="$6"
-staging="${TMPDIR:-/tmp}/tsgo-emit.$$"
-trap 'rm -rf "$staging"' EXIT HUP INT TERM
-mkdir -p "$staging/package"
-cp -R "$package_tree"/. "$staging/package"/
-rm -rf "$staging/package/$out_dir"
-mkdir -p "$output"
-output_abs=$(cd "$output" && pwd -P)
-mkdir -p "$(dirname "$staging/package/$out_dir")"
-ln -s "$output_abs" "$staging/package/$out_dir"
-find "$staging/package" -type d -exec chmod a-w {} +
-find "$staging/package" -type f -exec chmod a-w {} +
-"$1" \
-  --project "$staging/package/$project" \
-  --outDir "$staging/package/$out_dir" \
-  --noEmit false \
-  --pretty false
-if [ ! -f "$output/$declaration_entrypoint" ]; then
-  printf '%s\n' "tsgo_emit: expected declaration entrypoint $out_dir/$declaration_entrypoint was not emitted" >&2
-  exit 1
-fi
-"""
+    # The pinned runner copies the input tree with platform filesystem APIs,
+    # replaces out_dir with the sole writable output, makes all staged inputs
+    # read-only, invokes tsgo directly, validates declarations, and restores
+    # write bits only while removing staging. No host shell or PATH tool enters
+    # the action contract.
     args = cmd_args([
-        "/bin/sh",
-        "-eu",
-        "-c",
-        script,
-        "tsgo-emit",
+        toolchain.bun,
+        toolchain.runner,
+        "emit",
         toolchain.executable,
         ctx.attrs.package_tree,
         ctx.attrs.project,
