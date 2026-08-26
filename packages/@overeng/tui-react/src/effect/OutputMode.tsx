@@ -434,7 +434,7 @@ export const useRenderConfig = (): RenderConfig => {
  */
 export const stripAnsi = (str: string): string => {
   // eslint-disable-next-line no-control-regex
-  const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07/g
+  const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07/g
   return str.replace(ansiRegex, '')
 }
 
