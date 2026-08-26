@@ -479,7 +479,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   }),
   buck2: job({
     step: {
-      name: 'Buck2 local evidence and Nix bridge',
+      name: 'Buck2 toolchain surface and Nix bridge',
       run: runDevenvTasksBefore('buck2:check'),
     },
   }),
