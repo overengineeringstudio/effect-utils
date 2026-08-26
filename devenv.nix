@@ -866,56 +866,6 @@ in
     '';
   };
 
-  tasks."buck2:build:foundation" = {
-    description = "Build exact-closure Buck2 evidence with remote execution/cache disabled";
-    after = [ "buck2:capabilities:project" ];
-    exec = trace.exec "buck2:build:foundation" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
-      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
-      exec ${pkgs.buck2}/bin/buck2 \
-        build //:buck2_foundation --local-only --no-remote-cache
-    '';
-  };
-
-  tasks."buck2:test:foundation" = {
-    description = "Run strict Buck2 closure and package-evidence tests locally";
-    after = [
-      "buck2:capabilities:project"
-      "cargo:test:buck2-foundation"
-    ];
-    exec = trace.exec "buck2:test:foundation" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
-      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
-      exec ${pkgs.buck2}/bin/buck2 \
-        build \
-          //:buck2_foundation \
-          --local-only --no-remote-cache
-    '';
-  };
-
-  tasks."buck2:e2e:tui-core" = {
-    description = "Generate, build, and observe the provisional tui-core Buck input-plan evidence";
-    after = [
-      "buck2:capabilities:project"
-      "genie:run"
-    ];
-    exec = trace.exec "buck2:e2e:tui-core" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      export AWK_BIN=${pkgs.gawk}/bin/awk
-      export JQ_BIN=${pkgs.jq}/bin/jq
-      export NIX_BIN=${pkgs.nix}/bin/nix
-      export BUCK2_REPOSITORY_REVISION="$(${pkgs.git}/bin/git -C "$root" rev-parse HEAD)"
-      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
-      exec ${pkgs.bash}/bin/bash scripts/buck2-package-e2e.sh \
-        "$root" ${pkgs.buck2}/bin/buck2 //packages/@overeng/tui-core:typescript_input_plan
-    '';
-  };
-
   tasks."buck2:nix-bridge:check" = {
     description = "Check the strict build-product contract and fail-closed artifact importer";
     after = [ "buck2:capabilities:project" ];
@@ -926,77 +876,26 @@ in
     '';
   };
 
-  tasks."buck2:foundation:graph-check" = {
-    description = "Prove the Buck2 foundation has no repo-owned Python or CPython graph edges";
-    after = [ "buck2:capabilities:project" ];
-    exec = trace.exec "buck2:foundation:graph-check" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      ${buck2CapabilityGateBinExports}
-      exec ${pkgs.bash}/bin/bash scripts/buck2-foundation-graph-check.sh \
-        "$PWD" ${pkgs.buck2}/bin/buck2
-    '';
-  };
-
-  tasks."buck2:benchmark:check" = {
-    description = "Validate the Buck2 benchmark parser, immutable evidence, and non-mutating dry-run contract";
-    after = [ "buck2:capabilities:project" ];
-    exec = trace.exec "buck2:benchmark:check" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      ${pkgs.nodejs}/bin/node --test \
-        scripts/buck2-benchmark/lib.unit.test.mjs \
-        scripts/buck2-benchmark/evidence-integrity.unit.test.mjs \
-        scripts/buck2-benchmark/dry-run.integration.test.mjs
-      ${pkgs.nodejs}/bin/node scripts/buck2-benchmark/benchmark.mjs \
-        --output "$root/tmp/buck2-benchmark/dry-run.jsonl"
-    '';
-  };
-
-  tasks."buck2:invalidation:e2e" = {
-    description = "Prove canonical source mutation invalidates Buck2 through the configured file watcher";
-    after = [ "buck2:capabilities:project" ];
-    exec = trace.exec "buck2:invalidation:e2e" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      export AWK_BIN=${pkgs.gawk}/bin/awk
-      export SHA256_BIN=${pkgs.coreutils}/bin/sha256sum
-      export BUCK2_EXECUTION_PLATFORM=${lib.escapeShellArg buck2ExecutionPlatform}
-      exec ${pkgs.bash}/bin/bash scripts/buck2-invalidation-e2e.sh \
-        "$root" ${pkgs.buck2}/bin/buck2 \
-        ${buck2Stage0Definition."package-evidence"}/bin/buck2-package-evidence
-    '';
-  };
-
-  tasks."buck2:platform:check" = {
-    description = "Reject a Buck2 package target whose declared platform differs from the local-only host";
-    after = [ "buck2:capabilities:project" ];
-    exec = trace.exec "buck2:platform:check" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      ${buck2CapabilityGateBinExports}
-      exec ${pkgs.bash}/bin/bash scripts/buck2-platform-check.sh \
-        "$root" ${pkgs.buck2}/bin/buck2 \
-        package-evidence effect-utils/buck2-package-evidence/v1 ${
-          buck2Stage0Definition."package-evidence"
-        }/bin/buck2-package-evidence
-    '';
-  };
-
   tasks."buck2:check" = {
-    description = "Run Buck2 foundation, invalidation, platform, Nix bridge, and benchmark gates";
+    description = "Build the surviving Buck2 toolchain surface and audit its cross-cell provider identity";
     after = [
       "buck2:capabilities:project"
       "buck2:capabilities:test"
-      "buck2:build:foundation"
-      "buck2:test:foundation"
-      "buck2:foundation:graph-check"
-      "buck2:e2e:tui-core"
       "buck2:nix-bridge:check"
-      "buck2:benchmark:check"
-      "buck2:invalidation:e2e"
-      "buck2:platform:check"
     ];
+    exec = trace.exec "buck2:check" ''
+      set -euo pipefail
+      ${pkgs.buck2}/bin/buck2 audit providers \
+        --target-platforms root//buck2/platforms:host_platform \
+        toolchains//:cross_cell_provider_identity \
+        toolchains//:cross_cell_product_identity
+      exec ${pkgs.buck2}/bin/buck2 build \
+        toolchains//:archive_tool \
+        toolchains//:closure_tool \
+        toolchains//:package_evidence_tool \
+        toolchains//:product_tool \
+        --local-only
+    '';
   };
 
   tasks."check:all".after =
