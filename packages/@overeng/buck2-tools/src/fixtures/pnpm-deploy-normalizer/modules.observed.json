@@ -211,9 +211,7 @@
       "@rolldown/binding-linux-x64-musl": "private"
     }
   },
-  "hoistPattern": [
-    "*"
-  ],
+  "hoistPattern": ["*"],
   "included": {
     "dependencies": true,
     "devDependencies": true,
@@ -224,9 +222,7 @@
   "layoutVersion": 5,
   "nodeLinker": "isolated",
   "packageManager": "pnpm@11.8.0",
-  "pendingBuilds": [
-    "esbuild@0.27.7"
-  ],
+  "pendingBuilds": ["esbuild@0.27.7"],
   "publicHoistPattern": [],
   "prunedAt": "Wed, 26 Aug 2026 14:59:52 GMT",
   "registries": {

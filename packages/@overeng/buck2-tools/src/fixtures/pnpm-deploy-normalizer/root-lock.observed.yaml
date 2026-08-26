@@ -2,4 +2,4 @@ lockfileVersion: '9.0'
 
 packages:
   '@overeng/tui-core@file:///tmp/effect-utils-pnpm-normalizer-evidence/stage/packages/@overeng/tui-core':
-    resolution: {directory: ../stage/packages/@overeng/tui-core, type: directory}
+    resolution: { directory: ../stage/packages/@overeng/tui-core, type: directory }

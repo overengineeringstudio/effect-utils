@@ -94,6 +94,9 @@ importers:
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
+      '@types/bun':
+        specifier: 1.3.14
+        version: 1.3.14
       '@types/node':
         specifier: 26.0.0
         version: 26.0.0
@@ -505,9 +508,6 @@ importers:
       '@overeng/tui-react':
         injected: true
     devDependencies:
-      '@overeng/tui-core':
-        specifier: workspace:^
-        version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
         version: link:../tui-react

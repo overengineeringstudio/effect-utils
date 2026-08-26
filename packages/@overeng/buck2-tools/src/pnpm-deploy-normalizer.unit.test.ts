@@ -23,11 +23,21 @@ import {
   runPnpmDeployNormalizerCli,
 } from './pnpm-deploy-normalizer.ts'
 
-const fixtureDirectory = fileURLToPath(new URL('./fixtures/pnpm-deploy-normalizer/', import.meta.url))
+const fixtureDirectory = fileURLToPath(
+  new URL('./fixtures/pnpm-deploy-normalizer/', import.meta.url),
+)
 const observedPrefix = '/tmp/effect-utils-pnpm-normalizer-evidence'
 const scratchDirectories: string[] = []
 
-const copyFixture = (name: string, destination: string, replacePrefix?: string) => {
+const copyFixture = ({
+  name,
+  destination,
+  replacePrefix,
+}: {
+  readonly name: string
+  readonly destination: string
+  readonly replacePrefix?: string
+}) => {
   mkdirSync(dirname(destination), { recursive: true })
   if (replacePrefix === undefined) {
     copyFileSync(join(fixtureDirectory, name), destination)
@@ -46,14 +56,25 @@ const createDeployFixture = () => {
   const nodeModules = join(tree, 'node_modules')
   mkdirSync(join(nodeModules, '.pnpm', 'present', 'node_modules', 'present'), { recursive: true })
 
-  copyFixture('modules.observed.json', join(nodeModules, '.modules.yaml'))
-  copyFixture('tsc-shim.observed.sh', join(nodeModules, '.bin', 'tsc'), root)
-  copyFixture(
-    'workspace-state.observed.json',
-    join(nodeModules, '.pnpm-workspace-state-v1.json'),
-    root,
-  )
-  copyFixture('root-lock.observed.yaml', join(tree, 'pnpm-lock.yaml'), root)
+  copyFixture({
+    name: 'modules.observed.json',
+    destination: join(nodeModules, '.modules.yaml'),
+  })
+  copyFixture({
+    name: 'tsc-shim.observed.sh',
+    destination: join(nodeModules, '.bin', 'tsc'),
+    replacePrefix: root,
+  })
+  copyFixture({
+    name: 'workspace-state.observed.json',
+    destination: join(nodeModules, '.pnpm-workspace-state-v1.json'),
+    replacePrefix: root,
+  })
+  copyFixture({
+    name: 'root-lock.observed.yaml',
+    destination: join(tree, 'pnpm-lock.yaml'),
+    replacePrefix: root,
+  })
   writeFileSync(join(nodeModules, '.pnpm', 'lock.yaml'), 'lockfileVersion: 9.0\n')
   symlinkSync('.pnpm/present/node_modules/present', join(nodeModules, 'present'))
   symlinkSync('.pnpm/missing/node_modules/optional-native', join(nodeModules, 'optional-native'))
@@ -69,12 +90,12 @@ const treeDigest = (root: string) => {
     )) {
       const path = join(directory, entry.name)
       const relativePath = path.slice(root.length + 1)
-      if (entry.isDirectory()) {
+      if (entry.isDirectory() === true) {
         hash.update(`d ${relativePath}\n`)
         visit(path)
-      } else if (entry.isSymbolicLink()) {
+      } else if (entry.isSymbolicLink() === true) {
         hash.update(`l ${relativePath} ${readlinkSync(path)}\n`)
-      } else if (entry.isFile()) {
+      } else if (entry.isFile() === true) {
         hash.update(`f ${relativePath} `)
         hash.update(readFileSync(path))
       }
@@ -110,9 +131,15 @@ describe('pnpm deploy normalizer', () => {
       rewrittenShims: 1,
       prunedDanglingSymlinks: 1,
     })
-    const normalizedModulesMetadata = readFileSync(join(fixture.nodeModules, '.modules.yaml'), 'utf8')
-    expect(normalizedModulesMetadata).toBe(
+    const normalizedModulesMetadata = readFileSync(
+      join(fixture.nodeModules, '.modules.yaml'),
+      'utf8',
+    )
+    const expectedModulesMetadata: unknown = JSON.parse(
       readFileSync(join(fixtureDirectory, 'modules.normalized.json'), 'utf8'),
+    )
+    expect(normalizedModulesMetadata).toBe(
+      `${JSON.stringify(expectedModulesMetadata, undefined, 2)}\n`,
     )
     expect(normalizedModulesMetadata).not.toContain('storeDir')
     expect(readFileSync(join(fixture.nodeModules, '.bin', 'tsc'), 'utf8')).toContain(
@@ -141,12 +168,7 @@ describe('pnpm deploy normalizer', () => {
   it('accepts the required CLI argument contract', () => {
     const fixture = createDeployFixture()
 
-    runPnpmDeployNormalizerCli([
-      '--tree',
-      fixture.tree,
-      '--stage-prefix',
-      fixture.root,
-    ])
+    runPnpmDeployNormalizerCli(['--tree', fixture.tree, '--stage-prefix', fixture.root])
 
     expect(readFileSync(join(fixture.nodeModules, '.bin', 'tsc'), 'utf8')).not.toContain(
       fixture.root,
@@ -174,7 +196,6 @@ describe('pnpm deploy normalizer', () => {
       ),
     ).toBe('unsafe-symlink')
   })
-
 
   it('rejects an existing absolute symlink target even when it points inside the tree', () => {
     const fixture = createDeployFixture()

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 
-import { createGenieOutput } from '../genie/src/runtime/core.ts'
 import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
+import { createGenieOutput } from '../genie/src/runtime/core.ts'
 import {
   discoverPackageSources,
   packagePath,
@@ -13,7 +13,7 @@ const rootManifestPath = new URL('../../../package.json', import.meta.url)
 const rootManifestValue: unknown = JSON.parse(readFileSync(rootManifestPath, 'utf8'))
 if (
   rootManifestValue === null ||
-  Array.isArray(rootManifestValue) ||
+  Array.isArray(rootManifestValue) === true ||
   typeof rootManifestValue !== 'object'
 ) {
   throw new Error('Root package.json must contain an object')
@@ -21,55 +21,54 @@ if (
 const workspacesValue = Reflect.get(rootManifestValue, 'workspaces')
 if (
   Array.isArray(workspacesValue) === false ||
-  workspacesValue.some((workspace) => typeof workspace !== 'string')
+  workspacesValue.some((workspace) => typeof workspace !== 'string') === true
 ) {
   throw new Error('Root package.json must declare an explicit string workspaces list')
 }
 
-const workspacePaths: readonly string[] = workspacesValue.toSorted()
+const compareStrings = ({ left, right }: { left: string; right: string }): number =>
+  left < right ? -1 : left > right ? 1 : 0
+
+const workspacePaths: readonly string[] = workspacesValue.toSorted((left, right) =>
+  compareStrings({ left, right }),
+)
 const packageSources = discoverPackageSources(new URL('./', import.meta.url))
-const patches = [
-  'packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch',
-] as const
+const patches = ['packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch'] as const
 const runtime = '//:packages/@overeng/buck2-tools/src/buck2-materializer.ts'
 const descriptorModule = '//:packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts'
 const normalizer = '//:packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts'
 
 const sourceLabel = (repoRelativePath: string): string =>
-  repoRelativePath.startsWith(`${packagePath}/`)
+  repoRelativePath.startsWith(`${packagePath}/`) === true
     ? repoRelativePath.slice(packagePath.length + 1)
     : `//:${repoRelativePath}`
 
 const starlarkString = (value: string): string => JSON.stringify(value)
 
-const renderMap = (
-  name: string,
-  entries: readonly (readonly [string, string])[],
-): readonly string[] => [
+const renderMap = ({
+  name,
+  entries,
+}: {
+  name: string
+  entries: readonly (readonly [string, string])[]
+}): readonly string[] => [
   `    ${name} = {`,
   ...entries.map(
-    ([destination, source]) =>
-      `        ${starlarkString(destination)}: ${starlarkString(source)},`,
+    ([destination, source]) => `        ${starlarkString(destination)}: ${starlarkString(source)},`,
   ),
   '    },',
 ]
 
-const workspaceManifestEntries = workspacePaths.map(
-  (workspace): readonly [string, string] => {
-    const manifest = `${workspace}/package.json`
-    return [manifest, sourceLabel(manifest)]
-  },
-)
+const workspaceManifestEntries = workspacePaths.map((workspace): readonly [string, string] => {
+  const manifest = `${workspace}/package.json`
+  return [manifest, sourceLabel(manifest)]
+})
 const packageFileEntries = [
-  ...packageSources.map(
-    (source): readonly [string, string] => [source, source],
-  ),
+  ...packageSources.map((source): readonly [string, string] => [source, source]),
   ['package.json', 'package.json'] as const,
   ['tsconfig.json', 'tsconfig.json'] as const,
-].toSorted(([left], [right]) => left.localeCompare(right, 'en'))
-const patchEntries = patches.map(
-  (patch): readonly [string, string] => [patch, sourceLabel(patch)],
-)
+].toSorted(([left], [right]) => compareStrings({ left, right }))
+const patchEntries = patches.map((patch): readonly [string, string] => [patch, sourceLabel(patch)])
 
 const data = {
   packagePath,
@@ -90,7 +89,14 @@ const stringify = (): string => {
     '# Projection schema version: 1',
     '# Projection generator: effect-utils/genie/buck2-materialization',
     `# Semantic fingerprint: ${fingerprint}`,
-    `# Semantic inputs: ${[...semanticInputs, 'package.json.genie.ts', 'packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts', ...patches].toSorted().join(', ')}`,
+    `# Semantic inputs: ${[
+      ...semanticInputs,
+      'package.json.genie.ts',
+      'packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts',
+      ...patches,
+    ]
+      .toSorted((left, right) => compareStrings({ left, right }))
+      .join(', ')}`,
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("//buck2:materialization.bzl", "package_tree", "pnpm_node_modules")',
@@ -102,8 +108,11 @@ const stringify = (): string => {
     '    root_package_json = "//:package.json",',
     '    lockfile = "//:pnpm-lock.yaml",',
     '    workspace_manifest = "//:pnpm-workspace.yaml",',
-    ...renderMap('workspace_package_manifests', workspaceManifestEntries),
-    ...renderMap('patches', patchEntries),
+    ...renderMap({
+      name: 'workspace_package_manifests',
+      entries: workspaceManifestEntries,
+    }),
+    ...renderMap({ name: 'patches', entries: patchEntries }),
     `    runtime = ${starlarkString(runtime)},`,
     `    descriptor_module = ${starlarkString(descriptorModule)},`,
     `    normalizer = ${starlarkString(normalizer)},`,
@@ -112,7 +121,7 @@ const stringify = (): string => {
     'package_tree(',
     '    name = "package_tree",',
     '    node_modules = ":node_modules",',
-    ...renderMap('files', packageFileEntries),
+    ...renderMap({ name: 'files', entries: packageFileEntries }),
     `    runtime = ${starlarkString(runtime)},`,
     '    workspace_siblings = {},',
     ')',
