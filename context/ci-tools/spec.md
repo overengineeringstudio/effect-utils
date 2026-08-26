@@ -203,17 +203,17 @@ Requirement trace: R06, R17.
 Expected failures are represented as `Schema.TaggedError` classes. The initial
 tags are:
 
-| Error tag                     | Retryable   | Meaning                                                                  |
-| ----------------------------- | ----------- | ------------------------------------------------------------------------ |
-| `MissingAuth`                 | no          | Required provider token env var is absent or empty                       |
-| `Unauthorized`                | no          | Provider rejected the token or account access                            |
-| `MissingBuildOutput`          | no          | Local artifact directory does not exist                                  |
-| `ProviderProjectLookupFailed` | yes         | Provider project/site lookup failed or returned incomplete metadata      |
-| `InvalidProviderOutput`       | no          | Provider CLI/API response does not decode to the expected schema         |
-| `ProviderOperationFailed`     | conditional | Provider command/API failed without a more specific classification       |
+| Error tag                     | Retryable   | Meaning                                                                                                          |
+| ----------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `MissingAuth`                 | no          | Required provider token env var is absent or empty                                                               |
+| `Unauthorized`                | no          | Provider rejected the token or account access                                                                    |
+| `MissingBuildOutput`          | no          | Local artifact directory does not exist                                                                          |
+| `ProviderProjectLookupFailed` | yes         | Provider project/site lookup failed or returned incomplete metadata                                              |
+| `InvalidProviderOutput`       | no          | Provider CLI/API response does not decode to the expected schema                                                 |
+| `ProviderOperationFailed`     | conditional | Provider command/API failed without a more specific classification                                               |
 | `AliasAssignmentFailed`       | no          | Alias could not be assigned after collision handling; carries the classified inner failure and the attempt count |
-| `UnsafeE2EAlias`              | no          | Live E2E attempted a shared-project alias outside the reserved namespace |
-| `VerificationFailed`          | yes         | Deployed URL did not serve the expected local fixture content            |
+| `UnsafeE2EAlias`              | no          | Live E2E attempted a shared-project alias outside the reserved namespace                                         |
+| `VerificationFailed`          | yes         | Deployed URL did not serve the expected local fixture content                                                    |
 
 Unexpected defects remain defects. They are not converted into expected domain
 errors unless the boundary has enough information to classify them.
