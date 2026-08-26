@@ -2694,6 +2694,7 @@ Initial release of effect-notion monorepo.
 - Initial monorepo setup with pnpm workspaces
 - TypeScript configuration with project references
 - Modern ESM-first package structure
+- **oxc-config Nix package**: expose the prepared pnpm dependency boundary, source-owned hash metadata, and Evergreen FOD graph under the canonical `oxc-config` flake package.
 - Add an evidence-derived pnpm 11.8 deploy-tree normalizer that removes nondeterministic metadata, rewrites absolute command shims, prunes dangling dependency links, and fails closed on residual staging paths or symlinks.
 - Record an aarch64-linux Buck-owned Vite development-launch experiment proving
   exact closure launch, live local and workspace HMR, external writable caches,

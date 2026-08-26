@@ -216,7 +216,9 @@
             npm-release = cliPackages.npm-release;
             npm-release-dirty = cliPackagesDirty.npm-release;
             "npm-release-pnpm-deps" = cliPackages.npm-release.passthru.depsBuildsByInstallRoot.root;
-            "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
+            oxc-config = oxlintNpm.pluginBundle;
+            "oxc-config-plugin-pnpm-deps" =
+              oxlintNpm.pluginBundle.passthru.depsBuildsByInstallRoot.root;
             # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
             oxlint-npm = oxlintNpm;
             # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
