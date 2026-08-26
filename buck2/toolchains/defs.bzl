@@ -1,8 +1,9 @@
-"""Configured Rust toolchain interface; realizations are supplied by composition."""
+"""Configured Rust and TypeScript toolchains realized by pinned Nix inputs."""
 
 load(
     "@root//buck2/platforms:defs.bzl",
     "ProductPlatformInfo",
+    "host_execution_constraints",
     "native_execution_constraints",
     "product_platform_constraints",
 )
@@ -96,5 +97,70 @@ def configured_rust_toolchain(
         target_triple = target_triple,
         exec_compatible_with = native_execution_constraints(target_platform),
         target_compatible_with = product_platform_constraints(target_platform),
+        **kwargs
+    )
+
+
+EffectTsgoToolchainInfo = provider(fields = {
+    "executable": str,
+    "identity": str,
+})
+
+
+def _require_nix_store_executable(executable):
+    if not executable.startswith("/nix/store/"):
+        fail("effect-tsgo must resolve to an immutable /nix/store executable: {}".format(executable))
+    components = executable.split("/")
+    if len(components) < 6 or components[-2:] != ["bin", "tsgo"]:
+        fail("effect-tsgo executable must have the shape /nix/store/<realization>/bin/tsgo: {}".format(executable))
+    for component in components[3:]:
+        if component == "" or component == "." or component == "..":
+            fail("effect-tsgo executable path is not normalized: {}".format(executable))
+
+
+def _effect_tsgo_toolchain_impl(ctx):
+    executable = ctx.attrs.executable
+    _require_nix_store_executable(executable)
+    return [
+        DefaultInfo(),
+        EffectTsgoToolchainInfo(
+            executable = executable,
+            identity = executable,
+        ),
+    ]
+
+
+_effect_tsgo_toolchain = rule(
+    impl = _effect_tsgo_toolchain_impl,
+    attrs = {
+        "executable": attrs.string(),
+    },
+)
+
+
+def _host_nix_platform():
+    host = host_info()
+    if host.os.is_linux and host.arch.is_x86_64:
+        return "x86_64-linux"
+    if host.os.is_linux and host.arch.is_aarch64:
+        return "aarch64-linux"
+    if host.os.is_macos and host.arch.is_aarch64:
+        return "aarch64-darwin"
+    fail("effect-tsgo supports only x86_64-linux, aarch64-linux, and aarch64-darwin")
+
+
+def effect_tsgo_toolchain(name, executable_by_platform, **kwargs):
+    """Declares effect-tsgo using the exact executable path of each Nix realization."""
+    if "exec_compatible_with" in kwargs:
+        fail("effect_tsgo_toolchain owns execution compatibility")
+    platform = _host_nix_platform()
+    executable = executable_by_platform.get(platform)
+    if executable == None:
+        fail("effect_tsgo_toolchain has no executable for {}".format(platform))
+    _require_nix_store_executable(executable)
+    _effect_tsgo_toolchain(
+        name = name,
+        executable = executable,
+        exec_compatible_with = host_execution_constraints(),
         **kwargs
     )

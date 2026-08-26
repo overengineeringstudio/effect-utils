@@ -1,5 +1,5 @@
 load("@root//buck2/platforms:defs.bzl", "host_platform_label")
-load("@root//buck2/toolchains:defs.bzl", "configured_rust_toolchain", "host_rust_target_triple")
+load("@root//buck2/toolchains:defs.bzl", "configured_rust_toolchain", "effect_tsgo_toolchain", "host_rust_target_triple")
 load(":configured.bzl", "support_tool")
 load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
 
@@ -23,6 +23,20 @@ support_tool(
     name = "product_tool",
     protocol = "effect-utils/buck2-product/v1",
     tool_id = "product",
+    visibility = ["PUBLIC"],
+)
+
+# TypeScript vertical-slice toolchain. Each value is the executable path of
+# the effect-tsgo realization pinned by this repository's flake inputs. The
+# selected path is immutable and identical across worktrees on the same host
+# platform, so it is both the command and the action-key identity (EXEC-R02).
+effect_tsgo_toolchain(
+    name = "effect_tsgo",
+    executable_by_platform = {
+        "aarch64-darwin": "/nix/store/ail3pcz77kk0l1zbagrx21afafshbdjy-effect-tsgo/bin/tsgo",
+        "aarch64-linux": "/nix/store/ff6w5r5rhnfx31cb1b3ff0h21x058150-effect-tsgo/bin/tsgo",
+        "x86_64-linux": "/nix/store/m59qqc61pdii7xfjnpfzjas5fx0z2ggx-effect-tsgo/bin/tsgo",
+    },
     visibility = ["PUBLIC"],
 )
 
