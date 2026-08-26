@@ -4,7 +4,8 @@ import {
   CheckboxButton as AriaCheckboxButton,
   CheckboxField as AriaCheckboxField,
 } from 'react-aria-components'
-import { fontSizes, radii, spacing } from 'tailwind-stylex/tokens.stylex'
+
+import { fontSizes, radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 import { FieldWrapper } from './FieldWrapper.tsx'

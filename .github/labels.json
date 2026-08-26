@@ -296,6 +296,11 @@
       "description": "@overeng/restate-effect package · Set: manual"
     },
     {
+      "name": "system:stylex-preset",
+      "color": "a371f7",
+      "description": "@overeng/stylex-preset package · Set: manual"
+    },
+    {
       "name": "system:tui-core",
       "color": "a371f7",
       "description": "@overeng/tui-core package · Set: manual"

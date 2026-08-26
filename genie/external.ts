@@ -342,6 +342,7 @@ export const catalog = defineCatalog({
   vite: '8.0.16',
   vitest: '4.1.9',
   '@vitejs/plugin-react': '6.0.2',
+  unplugin: '3.0.0',
 
   // TanStack
   '@tanstack/react-router': '1.170.16',
@@ -353,7 +354,6 @@ export const catalog = defineCatalog({
   '@tailwindcss/vite': '4.3.1',
   '@stylexjs/stylex': '0.19.0',
   '@stylexjs/unplugin': '0.19.0',
-  'tailwind-stylex': '0.1.1',
 
   // Storybook
   storybook: '10.4.6',
@@ -459,7 +459,7 @@ export const commonPnpmPolicySettings = {
   // The Effect 4 RC cohort moves fast; keep minimum-release-age strict
   // globally but let these advance immediately during the coordinated
   // migration window.
-  minimumReleaseAgeExclude: ['@types/node', 'tailwind-stylex', ...effectV4Cohort],
+  minimumReleaseAgeExclude: ['@types/node', ...effectV4Cohort],
   pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,

@@ -52,6 +52,9 @@
       "path": "../effect-schema-form"
     },
     {
+      "path": "../stylex-preset"
+    },
+    {
       "path": "../utils"
     }
   ]

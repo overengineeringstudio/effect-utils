@@ -1,13 +1,13 @@
 import * as stylex from '@stylexjs/stylex'
 import type { Schema } from 'effect'
 import type { ReactNode } from 'react'
-import { spacing } from 'tailwind-stylex/tokens.stylex'
 
 import {
   formatLiteralLabel,
   SchemaForm,
   type SchemaFormRenderProps,
 } from '@overeng/effect-schema-form'
+import { spacing } from '@overeng/stylex-preset/tokens.stylex'
 
 import { FieldGroup, FieldGroupEmpty } from './components/FieldGroup.tsx'
 import { ariaRenderers } from './renderers.tsx'

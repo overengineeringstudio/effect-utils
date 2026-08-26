@@ -51,6 +51,7 @@
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-react",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/stylex-preset",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

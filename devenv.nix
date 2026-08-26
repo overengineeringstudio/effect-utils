@@ -178,6 +178,7 @@ let
     "packages/@overeng/pty-effect"
     "packages/@overeng/react-inspector"
     "packages/@overeng/restate-effect"
+    "packages/@overeng/stylex-preset"
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
     "packages/@overeng/tui-stories"

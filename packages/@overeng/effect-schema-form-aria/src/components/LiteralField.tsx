@@ -11,9 +11,9 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from 'react-aria-components'
-import { fontSizes, radii, spacing } from 'tailwind-stylex/tokens.stylex'
 
 import { formatLiteralLabel } from '@overeng/effect-schema-form'
+import { fontSizes, radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 import { FieldWrapper } from './FieldWrapper.tsx'

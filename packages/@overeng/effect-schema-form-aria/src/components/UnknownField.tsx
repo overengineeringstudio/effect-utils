@@ -1,8 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
-import { radii, spacing } from 'tailwind-stylex/tokens.stylex'
 
 import type { FieldMeta } from '@overeng/effect-schema-form'
+import { radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 

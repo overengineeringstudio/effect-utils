@@ -63,11 +63,15 @@ All notable changes to this project will be documented in this file.
   collapses the per-parent-dir watchers into one recursive watch rooted at the
   deepest common ancestor of the targets.
 
-- **@overeng/effect-schema-form-aria** (pilot): migrate styling from Tailwind
-  CSS v4 to StyleX (`@stylexjs/stylex`). Components consume a semantic token
-  layer (`src/tokens.stylex.ts`, exported as `tokens`) built on StyleX vars;
-  raw scales (spacing, radii, font sizes) come from `tailwind-stylex`.
-  State-dependent styling (selection) moves to React Aria render-prop
+- **@overeng/stylex-preset**: add the shared StyleX Vite integration,
+  parity-preserving preflight, and typed Tailwind-compatible design scales.
+  The token definitions are vendored from `tailwind-stylex@0.1.1` with MIT
+  attribution so downstream repositories do not inherit the new package as a
+  supply-chain dependency.
+- **@overeng/effect-schema-form-aria**: styling now uses StyleX
+  (`@stylexjs/stylex`) through a package-local semantic token layer
+  (`src/tokens.stylex.ts`, exported as `tokens`) whose raw scales come from
+  `@overeng/stylex-preset`. Selection styling uses React Aria render-prop
   `className` instead of Tailwind group/data variants. Consumers import the
   required reset from `@overeng/effect-schema-form-aria/styles.css`; the
   publication build emits that reset and compiled component rules together.
