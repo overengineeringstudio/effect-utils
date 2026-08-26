@@ -613,6 +613,46 @@ server edited out of band) and vice versa. Like a plan, an observation
 is advisory for the observed window (T11/T12) — there is no snapshot
 isolation across the paginated children walk.
 
+## Page-lifecycle enforcement (R41)
+
+`pageLifecycle: 'managed' | 'append-only'` on `sync()`/`plan()`
+(default `'managed'`, the full existing contract). `'append-only'`
+exists for consumers managing an irreplaceable live tree — pages whose
+identity carries grants and cannot be recreated through the public API
+— where a JSX bug (or diff edge case) implying page destruction must
+fail before mutation, not execute.
+
+The enforcement point is `pageLifecycleViolations({ ops, candidate })`
+(`page-lifecycle.ts`): one pure predicate over the computed plan plus
+the diffed candidate tree, evaluated immediately after `diff()` — the
+first point where the full op set exists and before anything applies.
+Violations, in plan order:
+
+- every `archivePage` / `movePage` / `reorderPages`;
+- every `createPage` whose page sits before a retained page sibling in
+  candidate order. Notion creates children at the tail, so additive page
+  publication is append-last by nature; a consumer wanting a fixed
+  presentation order must accept tail placement rather than reorder (a
+  reorder is a second, non-atomic lifecycle op on an irreplaceable
+  tree). The tail test needs the candidate tree — the ops alone cannot
+  tell a tail create from a mid-run create.
+
+`sync()` fails the whole sync with
+`NotionSyncError { reason: 'page-lifecycle-violation', violations }`
+before any op applies — fail, not skip: dropping the offending ops
+would silently diverge server from cache. This is a plan predicate,
+not a mid-apply guard ("a late counter guard is not an apply
+boundary"). `plan()` evaluates the same predicate into
+`SyncPlan.lifecycleViolations` without failing — a free preview, and
+present only when the option was passed.
+
+Under the mode, block ops and page content (`updatePage`, including
+the root-metadata update) remain fully managed. #1100
+pending-adoption runs before the diff and is read + cache-save only,
+so crash recovery stays legal: a checkpointed page that _moved_ in the
+retry JSX is adopted first (harmless) and its implied `movePage` then
+rejected by the predicate.
+
 ## Upload coordination
 
 See `src/renderer/upload-registry.ts`.

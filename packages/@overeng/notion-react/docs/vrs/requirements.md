@@ -310,6 +310,21 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   (uploaded-asset signed URLs, built-in-icon name↔URL mapping) must be
   masked explicitly and documented, never compared best-effort.
 
+### Must guarantee page survival on demand
+
+- **R41 Append-only page lifecycle:** With `pageLifecycle: 'append-only'`
+  on `sync()`/`plan()`, the library must guarantee it never archives,
+  moves, or reorders a page and never creates one out of tail position in
+  its parent's page-sibling run — enforced by a single pure predicate
+  over the computed plan, evaluated immediately after `diff()` and before
+  any op applies. A violation fails the WHOLE sync (fail, not skip —
+  dropping ops would silently diverge server from cache) with
+  `NotionSyncError { reason: 'page-lifecycle-violation' }` carrying the
+  offending `DiffOp[]`. Block ops and page content (`updatePage`
+  title/icon/cover) remain fully managed; `plan()` reports the same
+  violations without failing; #1100 pending-adoption (read + cache-save)
+  remains legal under the mode.
+
 ### Must project authored JSX to readable Markdown (experimental)
 
 - **R31 Read-only offline projection:** Rendering JSX through the Markdown

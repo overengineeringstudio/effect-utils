@@ -116,6 +116,16 @@ All notable changes to this project will be documented in this file.
   into a `CacheTree` out-of-band can no longer drift from the scheme
   `buildCandidateTree` / `diff` actually produce.
 
+- **@overeng/notion-react**: add `pageLifecycle: 'managed' | 'append-only'` on
+  `sync()`/`plan()` (#1124). `'append-only'` guarantees a sync never archives,
+  moves, or reorders a page and never creates one out of tail position in its
+  parent's page-sibling run — for irreplaceable live trees whose page identity
+  carries grants. One pure post-diff predicate fails the whole sync before any
+  op applies with `NotionSyncError { reason: 'page-lifecycle-violation',
+violations }` (the offending `DiffOp[]`); block ops and page content
+  (`updatePage`) stay fully managed. `plan()` reports the same violations in
+  `SyncPlan.lifecycleViolations` without failing, and #1100 crash-recovery
+  adoption (read + cache-save) stays legal under the mode.
 - **@overeng/notion-react**: add the readback verification oracle (#1123).
   `compareReadback({candidate, observed})` folds server-observed block JSON
   and rendered candidate trees into one canonical form and compares them by
