@@ -489,26 +489,40 @@ export const runBatchWatch = <A, R>(
       const emit = opts.emit ?? writeJsonLine
       const paths = uniqueSorted(opts.paths.map((path) => resolve(path)))
       const watchedPaths = new Set(paths)
-      const watchRoot = commonAncestor(paths.map((path) => dirname(path)))
+      const parentDirs = uniqueSorted(paths.map((path) => dirname(path)))
+      // Collapse to ONE recursive watcher over the targets' common ancestor,
+      // unless that ancestor is so broad it approaches the filesystem root
+      // (e.g. '/' or '/home') — recursing there would watch unrelated trees.
+      // In the degenerate case, keep one recursive watcher per parent dir.
+      const ancestor = commonAncestor(parentDirs)
+      const watchRoots =
+        ancestor.split(sep).filter((segment) => segment !== '').length <= 1
+          ? parentDirs
+          : [ancestor]
 
       yield* Effect.forEach(paths, (path) => Queue.offer(queue, { path, reason: 'initial' }))
 
       yield* Effect.forkScoped(
-        fs.watch(watchRoot, { recursive: true }).pipe(
-          Stream.filter((event) => watchedPaths.has(resolve(watchRoot, event.path))),
-          Stream.runForEach((event) =>
-            Queue.offer(queue, {
-              path: resolve(watchRoot, event.path),
-              reason: 'file',
-            }),
-          ),
-          Effect.catch((error) =>
-            emit({
-              event: 'watch_error',
-              path: watchRoot,
-              error: watchErrorJson(error),
-            }),
-          ),
+        Effect.forEach(
+          watchRoots,
+          (watchRoot) =>
+            fs.watch(watchRoot, { recursive: true }).pipe(
+              Stream.filter((event) => watchedPaths.has(resolve(watchRoot, event.path))),
+              Stream.runForEach((event) =>
+                Queue.offer(queue, {
+                  path: resolve(watchRoot, event.path),
+                  reason: 'file',
+                }),
+              ),
+              Effect.catch((error) =>
+                emit({
+                  event: 'watch_error',
+                  path: watchRoot,
+                  error: watchErrorJson(error),
+                }),
+              ),
+            ),
+          { concurrency: 'unbounded', discard: true },
         ),
       )
 

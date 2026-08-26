@@ -1,6 +1,17 @@
 import { resolve } from 'node:path'
 
-import { Cause, Data, Deferred, Duration, Effect, FileSystem, Option, Queue, Stream } from 'effect'
+import {
+  Cause,
+  Data,
+  Deferred,
+  Duration,
+  Effect,
+  FileSystem,
+  Option,
+  Queue,
+  Ref,
+  Stream,
+} from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
 /**
@@ -128,28 +139,41 @@ export const watchScoped = (
         // died with the original cause on unexpected defects.
         const halted = yield* Deferred.make<never, PlatformError | WatchSourceEnded>()
 
-        // One filler fiber per root; the supervisor waits for all of them and
-        // signals `halted` with the first watcher error, or with the sentinel
-        // once every watcher ended cleanly (e.g. a watched directory vanished).
+        // One filler fiber per root. Each fiber signals `halted` the moment IT
+        // exits — with its watcher error on failure (so one dead root fails the
+        // stream immediately instead of waiting for the others), and with the
+        // sentinel once every root has ended cleanly (e.g. a watched directory
+        // vanished).
         yield* Effect.gen(function* () {
-          const results = yield* Effect.forEach(
-            options.roots,
-            (root) =>
-              fs.watch(root, { recursive: true }).pipe(
-                Stream.map((event) => ({ absolutePath: resolve(root, event.path), event })),
-                Stream.filter((entry) => inScope(entry.absolutePath)),
-                Stream.runForEach((entry) => Queue.offer(pending, entry)),
-                Effect.result,
-              ),
-            { concurrency: 'unbounded' },
-          )
+          const remaining = yield* Ref.make(options.roots.length)
 
-          const failure = results.find((result) => result._tag === 'Failure')
-          if (failure !== undefined && failure._tag === 'Failure') {
-            yield* Deferred.fail(halted, failure.failure)
-          } else {
-            yield* Deferred.fail(halted, new WatchSourceEnded())
-          }
+          const watchRoot = (root: string) =>
+            fs.watch(root, { recursive: true }).pipe(
+              Stream.map((event) => ({ absolutePath: resolve(root, event.path), event })),
+              Stream.filter((entry) => inScope(entry.absolutePath)),
+              Stream.runForEach((entry) => Queue.offer(pending, entry)),
+              Effect.result,
+              Effect.tap((result) => {
+                if (result._tag === 'Failure') {
+                  return Deferred.fail(halted, result.failure).pipe(Effect.asVoid)
+                }
+                return Ref.modify(remaining, (count) => {
+                  const next = count - 1
+                  return [next, next]
+                }).pipe(
+                  Effect.flatMap((left) =>
+                    left === 0
+                      ? Deferred.fail(halted, new WatchSourceEnded()).pipe(Effect.asVoid)
+                      : Effect.void,
+                  ),
+                )
+              }),
+            )
+
+          yield* Effect.forEach(options.roots, watchRoot, {
+            concurrency: 'unbounded',
+            discard: true,
+          })
         }).pipe(Effect.forkScoped)
 
         // Windowed batch loop: each iteration blocks until a first scoped event
