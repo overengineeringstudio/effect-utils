@@ -24,7 +24,8 @@ __pycache__/
 
 # Buck2 daemon and materialized build state
 buck-out/
-# Machine-local cache client wiring (devenv-generated; never track endpoints)
+# Machine-local cache client wiring (devenv-generated from the fleet default in
+# devenv.nix; hand-edited overrides stay local)
 /.buckconfig.local
 # Executor-local, Nix-realized Buck capability projection
 /.buck2/capabilities/
