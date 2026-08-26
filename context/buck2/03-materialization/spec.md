@@ -24,12 +24,19 @@ inputs: all workspace package.json + pnpm-lock.yaml + pnpm-workspace.yaml
   -> stage skeleton at a fixed path derived from the output
   -> chmod manifests writable (generated manifests are checked in read-only)
   -> pnpm deploy --offline --frozen-lockfile --store-dir <shared store>
-  -> normalize: delete pnpm metadata files, rewrite .bin shims,
-     prune dangling optional-dep symlinks
+  -> normalize: strip the prunedAt timestamp from .modules.yaml (a JSON file
+     despite the name), DELETE node_modules/.pnpm/lock.yaml from inside the
+     tree (it describes the tree it lives in — self-referentially unstable),
+     rewrite .bin shims, prune dangling optional-dep symlinks
   -> replace injected workspace-dep copies with relative symlinks
      to live member sources (symlink-back)
 output: relocatable node_modules tree (relative symlinks, store hardlinks)
 ```
+
+The normalization set is load-bearing for invalidation, not cosmetic: an
+unnormalized timestamp alone makes every rebuild a new output digest and
+cascades into every consumer
+([.experiments/2026-08-26-pruned-lockfile-keying.md](./.experiments/2026-08-26-pruned-lockfile-keying.md)).
 
 `pnpm deploy` is the only pnpm mode emitting internal-relative symlinks; a
 normal workspace install emits upward-escaping links and is not relocatable.
@@ -38,9 +45,18 @@ virtual-store keys, so a random staging dir breaks determinism. Measured cost:
 ~1 s for a 74-package closure, ~3 s for a 328-package closure, from a warm
 store.
 
-Keying upgrade (DEPS-R07): a first stage prunes the lockfile per package
-(deploy emits this natively); the install action keys on the pruned lockfile,
-so unrelated manifest churn stops invalidating the cell.
+Keying upgrade (DEPS-R07): the per-package pruned lockfile is the deploy's
+INSTALL BYPRODUCT (`<deploy>/node_modules/.pnpm/lock.yaml`; the deploy-root
+lockfile is NOT pruned — its package set grows under single-importer peer
+re-resolution), so a keying stage runs a real deploy and discards the tree.
+Raw pruned bytes are unusable as a key — pnpm re-serializes declared peer
+ranges inconsistently under unrelated workspace churn — so the key is the
+CANONICALIZED pruned lockfile: staging path replaced by a placeholder,
+declared peer ranges dropped (resolved peer suffixes in snapshot keys are
+kept). Validated exactly precise and sound over 81 cell-observations. The
+cheap alternative (mini-workspace `--lockfile-only` re-resolution) is
+rejected on correctness: it resolves different versions than the real
+deploy.
 
 ## Editor Surface
 
