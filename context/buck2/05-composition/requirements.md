@@ -8,8 +8,11 @@ BUCK-R05 and BUCK-R14. Architecture:
 
 ## Assumptions
 
-- **COMP-A01 Megarepo materialization:** Megarepo materializes member sources
-  as real directories in composed worktrees.
+- **COMP-A01 Megarepo ownership:** Megarepo owns member materialization and
+  the store-liveness accounting derived from it. (Its original form — "members
+  are materialized as real directories" — was falsified on 2026-08-26: mr
+  materializes absolute symlinks today; see COMP-R10 and
+  [.experiments/2026-08-26-composition-root-real-repos.md](./.experiments/2026-08-26-composition-root-real-repos.md).)
 - **COMP-A02 Identity mechanics:** Source paths render project-relative in
   action command lines, and outputs render under
   `buck-out/<isolation>/…/<cell>/<config-hash>/…`; mount path, cell name,
@@ -47,9 +50,19 @@ BUCK-R05 and BUCK-R14. Architecture:
 - **COMP-R07 Fixed isolation dir:** One isolation dir across all shapes; it is
   part of output paths and therefore of action identity. Per-invocation
   isolation dirs are forbidden.
-- **COMP-R08 Real directories and relative links:** Member mounts are real
-  directories. Absolute symlinks anywhere in inputs split keys silently;
-  relative symlinks are the only permitted link form.
-- **COMP-R09 Projection ownership:** Genie projects the composition root and
-  megarepo materializes it; the discipline above is enforced by generation,
-  not by developer memory (GRAPH-R07).
+- **COMP-R08 Real directories and admissible links:** Member mounts are real
+  directories. Symlinks in inputs are either relative or target `/nix/store`
+  paths (content-addressed, host-identical, and already carried in the digest
+  via the capability closure identity); any other absolute symlink splits keys
+  silently and is forbidden. Dereferencing `/nix/store` links is not a
+  substitute — the capability contract requires store-resolved executables.
+- **COMP-R09 Projection ownership:** The composition-root generator lives in
+  megarepo (mr) and consumes per-member facts (canonical cell name, mount,
+  ignore contributions) from a genie-projected member manifest; the discipline
+  above is enforced by generation, not by developer memory (GRAPH-R07).
+  Projected member targets declare cross-cell visibility — a member target
+  without it is unreachable from consumers.
+- **COMP-R10 Real-directory materialization:** mr materializes member mounts
+  as real directories. Today's absolute-symlink materialization builds
+  successfully but silently splits the cache namespace, so no shared-cache
+  claim holds until this lands; store-liveness accounting must move with it.

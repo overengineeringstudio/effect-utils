@@ -22,18 +22,39 @@ provably pays. Every step lands its deletion-ledger entry in the same change.
 
 ## Phase 1 — vertical slice with reuse (tui-core)
 
+- Cache wiring first: the config-only diff (executor cache fields + SHA256 +
+  upload defaults + devenv-generated `.buckconfig.local`), the
+  `--no-remote-cache` flags deleted from the buck2 devenv tasks, and the
+  validated two-worktree canary run against the deployed service.
 - tui-core typecheck under Buck2 using the validated tsgo rule and
-  manifest-only `pnpm deploy` materialization; its devenv check path deleted in
-  the same change (first deletion-ledger entry).
-- Measured against BUCK-R07 budgets; cache canary across two worktrees proves
-  BUCK-R06 zero-re-execution.
+  manifest-only `pnpm deploy` materialization; its devenv check path deleted
+  in the same change (first deletion-ledger entry) via the spiked partition
+  mechanism
+  ([02-execution/.experiments/2026-08-26-check-surface-partition.md](./02-execution/.experiments/2026-08-26-check-surface-partition.md)):
+  `exports` gains a `types -> dist` condition, references drop from the five
+  dependents and BOTH root solutions (check and emit), and CI materializes the
+  Buck2 artifact before `ts:check:strict` — the ordering gate without which
+  the transfer is fictional.
+- Implementation contraction lands with or before the slice: the branch's
+  evidence regime (~5.6k lines: benchmark harness, enumerated input-plan
+  chain, synthetic foundation gate, per-invocation isolation dirs) is deleted
+  per the 2026-08-26 audit; PR #1080 closes (built on the rejected
+  Nix-materialized-deps authority), #1081 parks as Phase 5 reference.
+- Measured against BUCK-R07 budgets; BUCK-R06 zero-re-execution proven via the
+  canary runbook.
 - Product path retained: strict v1 product -> independent Nix import (existing
   bridge tests).
 
 ## Phase 2 — composition root
 
-- genie projects the synthesized composition root (.buckconfig cells,
-  canonical mounts, shared platform labels); megarepo materializes members.
+- mr gains real-directory member materialization (COMP-R10) — the
+  precondition for any shared cache namespace; today's absolute-symlink
+  mounts silently split digests.
+- The composition-root generator lands in mr (validated shape per
+  [05-composition/.experiments/2026-08-26-composition-root-real-repos.md](./05-composition/.experiments/2026-08-26-composition-root-real-repos.md)),
+  with the member-portability changes in effect-utils (label rewrites,
+  cross-cell visibility in genie's projection, delete the member
+  `.buckconfig`).
 - Standalone-vs-composed key stability holds per
   [decision 0014](./.decisions/0014-megarepo-cell-composition.md); CI moves to
   the composition shape.
