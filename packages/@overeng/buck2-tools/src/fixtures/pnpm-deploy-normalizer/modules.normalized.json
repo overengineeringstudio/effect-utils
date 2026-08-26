@@ -275,7 +275,6 @@
     "lightningcss-win32-arm64-msvc@1.32.0",
     "lightningcss-win32-x64-msvc@1.32.0"
   ],
-  "storeDir": "/pnpm-store/v11",
   "virtualStoreDir": ".pnpm",
   "virtualStoreDirMaxLength": 120,
   "allowBuilds": {

@@ -24,22 +24,34 @@ inputs: all workspace package.json + pnpm-lock.yaml + pnpm-workspace.yaml
   -> stage skeleton at a fixed path derived from the output
   -> chmod manifests writable (generated manifests are checked in read-only)
   -> pnpm deploy --offline --frozen-lockfile --store-dir <shared store>
-  -> normalize: strip the prunedAt timestamp from .modules.yaml (a JSON file
-     despite the name); DELETE the deploy-root pnpm-lock.yaml,
-     node_modules/.pnpm/lock.yaml (it describes the tree it lives in —
-     self-referentially unstable), and .pnpm-workspace-state-v1.json;
-     rewrite every recursive .bin shim relative to its own $basedir; prune
-     dangling node_modules symlinks; fail if the fixed stage prefix or any
-     dangling symlink remains
-  -> replace injected workspace-dep copies with relative symlinks
-     to live member sources (symlink-back)
-output: relocatable node_modules tree (relative symlinks, store hardlinks)
+  -> normalize: strip the prunedAt timestamp and non-runtime storeDir from
+     .modules.yaml (a JSON file despite the name); DELETE the deploy-root
+     pnpm-lock.yaml, node_modules/.pnpm/lock.yaml (it describes the tree it
+     lives in — self-referentially unstable), and
+     .pnpm-workspace-state-v1.json; rewrite every recursive .bin shim relative
+     to its own $basedir; prune known dangling node_modules symlinks; fail if
+     any worktree, store, stage, or output absolute prefix remains
+  -> validate every retained symlink after normalization and again after the
+     final node_modules relocation: its target text is relative and both its
+     lexical and fully resolved destinations stay inside the output tree
+  -> assemble the package tree, copy declared workspace inputs under
+     .workspace-siblings, create only explicit relative links to those
+     contained copies, then repeat the full symlink-containment validation
+output: relocatable node_modules tree (relative contained symlinks, store hardlinks)
 ```
 
 The normalization set is load-bearing for invalidation, not cosmetic: an
 unnormalized timestamp alone makes every rebuild a new output digest and
 cascades into every consumer
 ([.experiments/2026-08-26-pruned-lockfile-keying.md](./.experiments/2026-08-26-pruned-lockfile-keying.md)).
+
+The containment rule deliberately does not permit a workspace link whose
+resolved destination is the live worktree. Such a link necessarily escapes the
+relocatable action output. The current package-tree API can project declared
+workspace files into the output and link to that contained projection, but that
+is not DEPS-R03 live-source behavior; the editor-surface realization therefore
+still needs a boundary outside the cacheable package tree that satisfies
+DEPS-R03 without weakening DEPS-R02.
 
 `pnpm deploy` is the only pnpm mode emitting internal-relative symlinks; a
 normal workspace install emits upward-escaping links and is not relocatable.
