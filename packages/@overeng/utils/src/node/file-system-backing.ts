@@ -21,6 +21,7 @@ import {
   SemaphoreForceRevokeOperation as SemaphoreForceRevokeContract,
   SemaphoreKeyOperation as SemaphoreKeyContract,
 } from './semaphore.contract.ts'
+import { watchScoped } from './watch.ts'
 
 /** Information about a holder's lock state */
 export interface HolderInfo {
@@ -387,16 +388,23 @@ export const layer = (
   const onPermitsReleased = (key: string): Stream.Stream<void, never, FileSystem.FileSystem> => {
     const keyDir = getKeyDir({ lockDir, key })
 
-    return Stream.unwrap(
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-
-        return fs.watch(keyDir).pipe(
-          Stream.filter((event) => event._tag === 'Update' || event._tag === 'Remove'),
-          Stream.map((): void => undefined),
-          Stream.catch(() => Stream.empty),
-        )
-      }),
+    // Recursive scoped watch via the shared helper (rc.111 recursion is
+    // opt-in): holder locks live flat inside the key directory, so the
+    // recursive scope observes exactly the same files as before.
+    return watchScoped({
+      roots: [keyDir],
+      scope: (absolutePath) => absolutePath.endsWith('.lock'),
+      debounce: Duration.millis(0),
+    }).pipe(
+      Stream.filter((groups) =>
+        groups.some((group) =>
+          group.events.some((event) => event._tag === 'Update' || event._tag === 'Remove'),
+        ),
+      ),
+      Stream.map((): void => undefined),
+      // Preserve the previous failure semantics: a dead watcher (e.g. a deleted
+      // lock directory) must not fail consumers — they fall back to polling.
+      Stream.catchCause(() => Stream.empty),
     )
   }
 

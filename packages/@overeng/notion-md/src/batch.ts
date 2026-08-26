@@ -1,4 +1,4 @@
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, resolve, sep } from 'node:path'
 
 import { Duration, Effect, FileSystem, Path, Queue, Stream } from 'effect'
 
@@ -456,6 +456,28 @@ const watchErrorJson = (error: unknown): Record<string, unknown> => {
   return { message: String(error) }
 }
 
+/**
+ * Deepest directory that contains every given absolute directory.
+ *
+ * Collapses the N parent-directory watchers of a batch watch into one
+ * recursive watcher rooted at the common ancestor
+ * (context/effect-4/watch-recursion-experiments.md §3.4): the resolved-path
+ * Set filter is depth-independent, so extra events from sibling subtrees are
+ * rejected and the existing debounce/coalesce machinery absorbs the volume.
+ */
+export const commonAncestor = (dirs: ReadonlyArray<string>): string => {
+  const segmentLists = dirs.map((dir) => dir.split(sep))
+  const first = segmentLists[0] ?? []
+  const prefix: Array<string> = []
+  for (let index = 0; index < first.length; index++) {
+    const segment = first[index] ?? ''
+    if (!segmentLists.every((segments) => segments[index] === segment)) break
+    prefix.push(segment)
+  }
+  const joined = prefix.join(sep)
+  return joined === '' ? sep : joined
+}
+
 /** Watch a resolved set of `.nmd` files and run coalesced batch sync passes. */
 export const runBatchWatch = <A, R>(
   opts: BatchWatchOptions<A, R>,
@@ -467,30 +489,28 @@ export const runBatchWatch = <A, R>(
       const emit = opts.emit ?? writeJsonLine
       const paths = uniqueSorted(opts.paths.map((path) => resolve(path)))
       const watchedPaths = new Set(paths)
-      const watchedDirs = uniqueSorted(paths.map((path) => dirname(path)))
+      const watchRoot = commonAncestor(paths.map((path) => dirname(path)))
 
       yield* Effect.forEach(paths, (path) => Queue.offer(queue, { path, reason: 'initial' }))
 
-      for (const watchedDir of watchedDirs) {
-        yield* Effect.forkScoped(
-          fs.watch(watchedDir).pipe(
-            Stream.filter((event) => watchedPaths.has(resolve(watchedDir, event.path))),
-            Stream.runForEach((event) =>
-              Queue.offer(queue, {
-                path: resolve(watchedDir, event.path),
-                reason: 'file',
-              }),
-            ),
-            Effect.catch((error) =>
-              emit({
-                event: 'watch_error',
-                path: watchedDir,
-                error: watchErrorJson(error),
-              }),
-            ),
+      yield* Effect.forkScoped(
+        fs.watch(watchRoot, { recursive: true }).pipe(
+          Stream.filter((event) => watchedPaths.has(resolve(watchRoot, event.path))),
+          Stream.runForEach((event) =>
+            Queue.offer(queue, {
+              path: resolve(watchRoot, event.path),
+              reason: 'file',
+            }),
           ),
-        )
-      }
+          Effect.catch((error) =>
+            emit({
+              event: 'watch_error',
+              path: watchRoot,
+              error: watchErrorJson(error),
+            }),
+          ),
+        ),
+      )
 
       yield* Effect.forkScoped(
         Effect.forever(

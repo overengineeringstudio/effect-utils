@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **@overeng/utils, @overeng/genie, @overeng/notion-md**: apply the watch-recursion
+  design study for effect@4.0.0-rc.111 (recursion is opt-in again). New
+  `watchScoped` helper in `@overeng/utils/node` wraps `FileSystem.watch` with an
+  explicit `{ recursive: true }`, resolves event paths against each root,
+  filters by absolute-path scope, coalesces bursts into deduped batches over a
+  250 ms window (configurable), and ties watcher cleanup to the stream scope;
+  watcher failures propagate through the stream. The utils file-system semaphore
+  backing's `onPermitsReleased` now watches via the helper (recursive, explicit)
+  with unchanged failure semantics. Genie `--watch` embraces recursion — closing
+  the latent blindness to nested `*.genie.ts` edits — and regenerates each
+  250 ms burst as a single TUI cycle instead of one cycle per event; watch-stream
+  errors are surfaced in the TUI. notion-md single-file watch pins
+  `{ recursive: false }` explicitly and keeps its exact-path filter; batch watch
+  collapses the per-parent-dir watchers into one recursive watch rooted at the
+  deepest common ancestor of the targets.
 
 - **Repository-wide**: atomic Effect 4 cohort flip to `effect@4.0.0-rc.111`
   (with `@effect/platform-node`, `@effect/vitest`, `@effect/opentelemetry`,

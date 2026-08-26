@@ -354,7 +354,11 @@ export const runWatch = (opts: {
         )
 
       const initialEvents = Stream.succeed<WatchTrigger>({ reason: 'initial' })
-      const fileEvents = fs.watch(watchedDir).pipe(
+      // Single-file scope: watch the parent directory NON-recursively and keep
+      // the exact-path filter (context/effect-4/watch-recursion-experiments.md
+      // §3.3) — recursion would only widen the event stream past a cheap
+      // equality check, and rc.111's default (false) is pinned explicitly.
+      const fileEvents = fs.watch(watchedDir, { recursive: false }).pipe(
         Stream.filter((event) => resolve(watchedDir, event.path) === watchedPath),
         Stream.map((): WatchTrigger => ({ reason: 'file' })),
         Stream.catchCause((cause) => {
