@@ -111,6 +111,7 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
     stories = ['../src/**/*.stories.@(ts|tsx)'],
     addons,
     disableMinify = false,
+    stylex: enableStylex = false,
     viteFinal,
   } = options
 
@@ -128,16 +129,15 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
         typedConfig.build = { minify: false }
       }
 
-      if (typedConfig.plugins === undefined) {
-        typedConfig.plugins = []
+      if (enableStylex === true) {
+        // `externalPackages` is supported at runtime (unplugin core destructures it)
+        // but missing from @stylexjs/unplugin@0.19 UserOptions typings; required so
+        // tailwind-stylex token modules compile instead of being bundled raw.
+        const stylexOptions = {
+          externalPackages: ['tailwind-stylex'],
+        } as Parameters<typeof stylex.vite>[0]
+        typedConfig.plugins = [stylex.vite(stylexOptions), ...(typedConfig.plugins ?? [])]
       }
-      // `externalPackages` is supported at runtime (unplugin core destructures it)
-      // but missing from @stylexjs/unplugin@0.19 UserOptions typings; required so
-      // tailwind-stylex token modules compile instead of being bundled raw.
-      const stylexOptions = {
-        externalPackages: ['tailwind-stylex'],
-      } as Parameters<typeof stylex.vite>[0]
-      typedConfig.plugins = [stylex.vite(stylexOptions), ...typedConfig.plugins]
 
       return callUserViteFinal({ config: typedConfig, viteFinal })
     },

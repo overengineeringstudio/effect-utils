@@ -14,6 +14,7 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-schema-form-aria' }),
   dependencies: {
     workspace: [schemaFormPkg],
+    external: catalog.pick('@stylexjs/stylex', 'tailwind-stylex'),
   },
   devDependencies: {
     workspace: [utilsPkg],
@@ -21,13 +22,11 @@ const runtimeDeps = catalog.compose({
       'effect',
       '@storybook/react',
       '@storybook/react-vite',
-      '@stylexjs/stylex',
       '@stylexjs/unplugin',
       '@types/react',
       '@types/react-dom',
       '@vitejs/plugin-react',
       'storybook',
-      'tailwind-stylex',
       'typescript',
       'vite',
       'vitest',
@@ -45,11 +44,13 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       '.': exportEntry('./src/mod.ts', { environment: 'browser' }),
+      './styles.css': exportEntry('./src/styles.css', { environment: 'browser' }),
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': './dist/mod.js',
+        './styles.css': './dist/styles.css',
       },
     },
     scripts: {

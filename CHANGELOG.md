@@ -68,8 +68,9 @@ All notable changes to this project will be documented in this file.
   layer (`src/tokens.stylex.ts`, exported as `tokens`) built on StyleX vars;
   raw scales (spacing, radii, font sizes) come from `tailwind-stylex`.
   State-dependent styling (selection) moves to React Aria render-prop
-  `className` instead of Tailwind group/data variants. Byte-identical markup
-  baselines were regenerated with hashed StyleX class names.
+  `className` instead of Tailwind group/data variants. Consumers import the
+  required reset from `@overeng/effect-schema-form-aria/styles.css`.
+  Byte-identical markup baselines were regenerated with hashed StyleX class names.
 
 - **@overeng/effect-rpc-tanstack**: client request-id policy — `layerClient`
   now validates outgoing RPC request ids at the client boundary. Non-empty
