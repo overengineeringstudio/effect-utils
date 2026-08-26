@@ -24,6 +24,8 @@ type PromptTrace =
 type PtyResult = {
   readonly readinessObserved: boolean
   readonly trace: PromptTrace
+  /** Raw PTY transcript bytes (first ESC through the last frame before the TRACE marker). */
+  readonly transcript: Buffer
 }
 
 const fixturePath = fileURLToPath(new URL('./prompt-select-pty-fixture.ts', import.meta.url))
@@ -111,8 +113,14 @@ const runPromptCase = (testCase: PromptCase): Promise<PtyResult> =>
         .trim()
       const trace = JSON.parse(Buffer.from(encodedTrace, 'base64').toString('utf8')) as PromptTrace
 
+      // Transcript = first ESC through the last frame before the TRACE marker, dropping the
+      // shell's echo of the launched command (contains absolute paths). Byte-exact so the
+      // baseline below pins the rc.111 rendering deliberately.
+      const transcriptStart = output.indexOf(0x1b)
+      const transcript = output.subarray(transcriptStart === -1 ? 0 : transcriptStart, markerIndex)
+
       settled = true
-      resolve({ readinessObserved, trace })
+      resolve({ readinessObserved, trace, transcript })
     })
   })
 
@@ -126,10 +134,18 @@ describe.skipIf(process.platform === 'darwin')('Prompt.select real-PTY semantics
       inputs: [Buffer.from('\u001b[B'), Buffer.from('\r')],
     })
 
-    expect(result).toEqual({
-      readinessObserved: true,
-      trace: { case: 'select', result: 'skip', rawAfter: false },
+    expect(result.readinessObserved).toBe(true)
+    expect(result.trace).toEqual({ case: 'select', result: 'skip', rawAfter: false })
+  })
+
+  it('pins the rc.111 selection transcript bytes (deliberate rebaseline)', async () => {
+    const result = await runPromptCase({
+      id: 'select',
+      readiness: 'Choose missing-ref action',
+      inputs: [Buffer.from('\u001b[B'), Buffer.from('\r')],
     })
+
+    expect(result.transcript.toString('hex')).toMatchSnapshot()
   })
 
   it('classifies Ctrl-C as Quit and restores cooked mode', async () => {
@@ -139,9 +155,17 @@ describe.skipIf(process.platform === 'darwin')('Prompt.select real-PTY semantics
       inputs: [Buffer.from('\u0003')],
     })
 
-    expect(result).toEqual({
-      readinessObserved: true,
-      trace: { case: 'interrupt', exit: 'Quit', rawAfter: false },
+    expect(result.readinessObserved).toBe(true)
+    expect(result.trace).toEqual({ case: 'interrupt', exit: 'Quit', rawAfter: false })
+  })
+
+  it('pins the rc.111 interrupted transcript bytes (deliberate rebaseline)', async () => {
+    const result = await runPromptCase({
+      id: 'interrupt',
+      readiness: 'Abort missing-ref action',
+      inputs: [Buffer.from('\u0003')],
     })
+
+    expect(result.transcript.toString('hex')).toMatchSnapshot()
   })
 })

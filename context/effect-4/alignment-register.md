@@ -293,6 +293,15 @@
   and visual contracts pass.
 - **Blast radius:** `tui-react`, `pty-effect`, and any CLI snapshot or terminal parser built on
   Effect Prompt.
-- **Status:** two exact transcript paths allowlisted. Raw-mode lifecycle, key and Escape decoding,
-  resize 80x24 -> 101x37, selected value, Quit behavior, bell, cursor restoration, and cleanup are
-  identical across five same-major repetitions.
+- **Status:** RESOLVED (owner review complete, rc.111 rebaseline accepted for this repo). The
+  rc.111 sequences were reviewed byte-by-byte against a live PTY capture: minimal per-attribute
+  SGRs with `\x1b[0m` resets, cursor ops (`\x1b[2K`, `\x1b[1A`, `\x1b[G`), and DEC private-mode
+  cursor visibility (`\x1b[?25l`/`\x1b[?25h`) — all well-formed CSI, visible text and cleanup
+  identical to v3. No in-repo snapshot had pinned the old bytes; the two transcript paths are now
+  deliberately baselined in `megarepo/src/cli/prompt-select-pty.test.ts` (external snapshots,
+  verified stable across repeated runs). Parser sweep found three strippers that leaked the DEC
+  private-mode codes every Prompt frame emits; fixed in `tui-react`
+  (`OutputMode.stripAnsi`, `TestRenderer` ANSI_REGEX) and `megarepo` test-utils, each with a
+  regression test over the exact captured sequence set. Raw-mode lifecycle, key and Escape
+  decoding, resize 80x24 -> 101x37, selected value, Quit behavior, bell, cursor restoration, and
+  cleanup are identical across five same-major repetitions.
