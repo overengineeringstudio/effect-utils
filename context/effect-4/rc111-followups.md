@@ -24,8 +24,12 @@ owner decision or upstream movement before/with test-suite convergence.
 ## Wire/format decisions recorded during migration
 
 6. **RPC string request IDs accepted** — v3 rejected non-BigInt ids; wire
-   baseline updated. Client-side id validation policy remains open. Envelope
-   versioning is now governed by the recorded mixed-major contract decision on
+   baseline updated. Client-side id validation policy RESOLVED: conservative
+   policy implemented in `@overeng/effect-rpc-tanstack` — non-empty strings and
+   non-negative numbers/bigints are accepted at the client boundary; anything
+   else fails with `InvalidRequestIdError` instead of reaching the wire
+   (`rpc-request-id-policy` in alignment-register.md). Envelope versioning
+   remains governed by the recorded mixed-major contract decision on
    `rpc-failure-cause-wire-shape` (alignment-register.md, issue #1115): the
    runtime versioned gate is deferred and mixed-major `effect-rpc-tanstack`
    deployment is out of contract until it lands.
