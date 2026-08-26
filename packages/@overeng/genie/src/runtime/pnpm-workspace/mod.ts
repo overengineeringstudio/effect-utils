@@ -738,6 +738,13 @@ export interface PnpmWorkspaceData {
   injectWorkspacePackages?: boolean
 
   /**
+   * Reuse live workspace symlinks when an injected dependency does not need a
+   * distinct peer graph.
+   * @see https://pnpm.io/settings#dedupe-injected-deps
+   */
+  dedupeInjectedDeps?: boolean
+
+  /**
    * The location of the content-addressable store.
    * @see https://pnpm.io/settings#store-dir
    */
@@ -1015,6 +1022,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.injectWorkspacePackages !== undefined) {
     result.injectWorkspacePackages = data.injectWorkspacePackages
+  }
+
+  if (data.dedupeInjectedDeps !== undefined) {
+    result.dedupeInjectedDeps = data.dedupeInjectedDeps
   }
 
   if (data.storeDir !== undefined) {

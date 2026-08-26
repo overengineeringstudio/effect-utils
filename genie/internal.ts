@@ -114,16 +114,18 @@ export const workspaceMember = ({
  * Common pnpm workspace data for effect-utils workspaces.
  *
  * Extends `commonPnpmPolicySettings` with effect-utils-specific patch metadata
- * and `injectWorkspacePackages: true`.
+ * and an injection policy for workspace packages.
  *
- * `injectWorkspacePackages: true` is required for effect-utils' pure Nix/FOD
- * package closure model: a package-local dependency build must hash every
- * workspace package it consumes as dependency input, not accidentally reach
- * outside the staged closure through a live symlink. It is intentionally
- * NOT part of `commonPnpmPolicySettings` because downstream consumers without
- * a Nix/FOD closure model lose their workspace `devDependencies` /
- * `peerDependencies` at type-check time when injection rewrites the
- * resolution graph (see livestorejs/livestore#1271).
+ * `injectWorkspacePackages: true` with `dedupeInjectedDeps: false` is required
+ * for effect-utils' pure Nix/FOD package closure model: every package-local
+ * dependency build must hash a physical snapshot of each workspace package it
+ * consumes, never dedupe that edge back to a live workspace symlink outside the
+ * staged closure.
+ *
+ * Injection is intentionally NOT part of `commonPnpmPolicySettings` because
+ * downstream consumers without a Nix/FOD closure model lose their workspace
+ * `devDependencies` / `peerDependencies` at type-check time when injection
+ * rewrites the resolution graph (see livestorejs/livestore#1271).
  *
  * All effect-utils workspaces share the same `patchedDependencies` and `allowUnusedPatches`
  * so that internal package-closure projections and the aggregate root stay on
@@ -139,6 +141,7 @@ export const workspaceMember = ({
 export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
   injectWorkspacePackages: true as const,
+  dedupeInjectedDeps: false,
   packageExtensions: {
     ...commonPnpmPolicySettings.packageExtensions,
     // Storybook loads the configured framework preset dynamically from the

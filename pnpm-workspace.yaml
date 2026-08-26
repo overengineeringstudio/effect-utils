@@ -85,6 +85,8 @@ strictPeerDependencies: true
 
 injectWorkspacePackages: true
 
+dedupeInjectedDeps: false
+
 packageImportMethod: auto
 
 optimisticRepeatInstall: false

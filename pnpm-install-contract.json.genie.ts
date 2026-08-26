@@ -41,6 +41,7 @@ export default projectionArtifact.json({
       verifyStoreIntegrity: workspaceData.verifyStoreIntegrity,
     },
     workspaceManifestContract: {
+      dedupeInjectedDeps: workspaceData.dedupeInjectedDeps,
       injectWorkspacePackages: workspaceData.injectWorkspacePackages,
       allowUnusedPatches: workspaceData.allowUnusedPatches,
       patchedDependencies: workspaceData.patchedDependencies,

@@ -199,6 +199,19 @@ describe('metadata-based workspace projections', () => {
     expect(workspaceFile.stringify(mockGenieContext)).toContain('storeDir: .pnpm-store')
   })
 
+  it('serializes the workspace injection dedupe policy', () => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      injectWorkspacePackages: true,
+      dedupeInjectedDeps: false,
+    })
+
+    const output = workspaceFile.stringify(mockGenieContext)
+    expect(output).toContain('injectWorkspacePackages: true')
+    expect(output).toContain('dedupeInjectedDeps: false')
+  })
+
   it('serializes hoistingLimits for hoisted pnpm workspaces', () => {
     const workspaceFile = pnpmWorkspaceYaml.root({
       packages: [app],
