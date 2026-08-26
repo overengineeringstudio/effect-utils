@@ -47,10 +47,15 @@ as authority transfers (BUCK-R09).
   surface's manifest fingerprint against the repository's before use; a stale
   surface fails loudly (vision criterion 8). Silent drift is the defect class
   this subsystem exists to eliminate.
-- **DEPS-R07 Bounded fan-out:** Materialization keying bounds invalidation: a
-  manifest change in one package must not rebuild every package's tree.
-  Per-cell pruned-lockfile keying is the accepted mechanism and a transfer
-  gate ([decision 0015](../.decisions/0015-buck-owned-dependency-surface.md)).
+- **DEPS-R07 Bounded fan-out:** Materialization keying bounds invalidation
+  literally: a manifest change in one package must not rebuild every package's
+  TREE — bounded action count and no per-touch rewrite of every tree, not
+  merely no downstream cascade. The end-state mechanism is the two-stage
+  prune->install split keyed on the CANONICALIZED per-package pruned lockfile;
+  the output-normalization fixes land first and independently (they alone stop
+  the consumer cascade). Both are transfer-gate content
+  ([decision 0015](../.decisions/0015-buck-owned-dependency-surface.md),
+  Amendment 1).
 - **DEPS-R08 Fail-closed offline:** Materialization runs offline against the
   store; a missing package fails the action rather than reaching the network.
   Adding a genuinely new version is an explicit, network-using developer step

@@ -75,3 +75,19 @@ machines; cross-machine caching applies to the actions consuming them.
   the keying fix is gate work, and BUCK-R07 applies.
 - Store wiring must be explicit (`--store-dir`; `PNPM_STORE_DIR` is ignored)
   and same-filesystem so hardlinking holds (BUCK-R08).
+
+## Amendment 1
+
+The de-risk investigation
+([../03-materialization/.experiments/2026-08-26-pruned-lockfile-keying.md](../03-materialization/.experiments/2026-08-26-pruned-lockfile-keying.md))
+found the measured fan-out's root cause was an output-normalization bug (an
+unstripped JSON `prunedAt` timestamp plus the self-referential in-tree pruned
+lockfile), not keying: fixing normalization alone stops the consumer cascade
+with no graph change. It also corrected the mechanism: the pruned lockfile is
+the deploy's install byproduct, its raw bytes are key-unusable under pnpm's
+peer-range re-serialization, and only a canonicalized form keys soundly. The
+cutover gate is accordingly restated (q10, 2026-08-26): (1) the normalization
+fixes land first and independently; (2) the two-stage prune->install split
+keyed on the canonicalized pruned lockfile is the end-state mechanism
+(DEPS-R07 keeps the literal reading: bounded action count and no per-touch
+rewrite of every tree); (3) the real-editor soak stands unchanged.
