@@ -38,6 +38,13 @@ All notable changes to this project will be documented in this file.
   http.client span-header patch are retired — see
   `context/effect-4/rc111-followups.md` for known behavior changes and
   follow-ups.
+- **@overeng/tui-react, @overeng/megarepo**: `stripAnsi` now strips DEC
+  private-mode CSI sequences (e.g. `\x1b[?25l`/`\x1b[?25h` cursor visibility,
+  `\x1b[?2026h`/`\x1b[?2026l` synchronized output) that every Effect rc.111
+  `Prompt` frame emits under a PTY — previously these raw escape bytes leaked
+  into "plain text" output in colors-off (`ci`/`log`/`ci-plain`) modes. The
+  rc.111 Prompt PTY transcript bytes (shorter SGR/reset sequences) are now
+  deliberately baselined in megarepo's real-PTY gate.
 - **context/effect-4**: record rc.111 contract decisions in the alignment
   register and retire their stale statuses: cli-C rendering/stdout differences
   are accepted under the locked full-rebaseline decision (v4 help, version,

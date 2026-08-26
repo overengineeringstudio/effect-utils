@@ -18,8 +18,11 @@ owner decision or upstream movement before/with test-suite convergence.
    `{ recursive }` is opt-in again (Node backend defaults false). Design study
    in watch-recursion-experiments.md; refactor of genie/notion-md consumers
    still open.
-5. **Prompt PTY ANSI byte drift** — shorter SGR/reset sequences; raw-terminal
-   parsers and PTY snapshots need owner review before rebaseline.
+5. ~~**Prompt PTY ANSI byte drift**~~ — RESOLVED by owner review (see
+   `prompt-pty-ansi-rendering` in alignment-register.md): rc.111's shorter SGR/reset
+   sequences confirmed semantically equivalent; transcripts now deliberately baselined in
+   `megarepo`'s real-PTY gate, and the three ANSI strippers that leaked DEC private-mode
+   cursor codes were fixed with regression tests.
 
 ## Wire/format decisions recorded during migration
 
