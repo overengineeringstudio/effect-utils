@@ -5,6 +5,12 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
+  isRootTsconfigCheckProject,
+  isRootTsconfigEmitProject,
+  rootTsconfigProjects,
+  type RootTsconfigProject,
+} from '../tsconfig-projects.ts'
+import {
   conservativeFullImporterRoots,
   decodePnpmLockfile,
   discoverPackageSources,
@@ -28,6 +34,53 @@ afterEach(() => {
 })
 
 describe('tui-core Buck projection policy', () => {
+  it('partitions only the explicitly Buck-owned project from root check and emit graphs', () => {
+    const rootPaths = rootTsconfigProjects.map((project) => project.path)
+    const checkPaths = rootTsconfigProjects
+      .filter(isRootTsconfigCheckProject)
+      .map((project) => project.path)
+    const emitPaths = rootTsconfigProjects
+      .filter(isRootTsconfigEmitProject)
+      .map((project) => project.path)
+    const transferredProject: RootTsconfigProject | undefined = rootTsconfigProjects.find(
+      (project) => project.path === 'packages/@overeng/tui-core',
+    )
+
+    // Build mode counts the solution itself in addition to its direct references.
+    expect(rootPaths.length + 1).toBe(39)
+    expect(checkPaths.length + 1).toBe(38)
+    expect(emitPaths.length + 1).toBe(38)
+    expect(rootPaths.filter((path) => checkPaths.includes(path) === false)).toEqual([
+      'packages/@overeng/tui-core',
+    ])
+    expect(rootPaths.filter((path) => emitPaths.includes(path) === false)).toEqual([
+      'packages/@overeng/tui-core',
+    ])
+    expect(transferredProject?.buck2Authority).toEqual({
+      _tag: 'Buck2TypeScriptAuthority',
+      typecheckTarget: '//packages/@overeng/tui-core:typecheck',
+      emitTarget: '//packages/@overeng/tui-core:dist',
+    })
+  })
+
+  it('keeps all five former dependents detached from the Buck-owned project reference', () => {
+    const dependentPaths = [
+      'packages/@overeng/genie',
+      'packages/@overeng/megarepo',
+      'packages/@overeng/notion-cli',
+      'packages/@overeng/tui-react',
+      'packages/@overeng/tui-stories',
+    ] as const
+
+    for (const dependentPath of dependentPaths) {
+      const dependent = rootTsconfigProjects.find((project) => project.path === dependentPath)
+      expect(dependent, dependentPath).toBeDefined()
+      expect(dependent?.tsconfig.data.references ?? [], dependentPath).not.toContainEqual({
+        path: '../tui-core',
+      })
+    }
+  })
+
   it('includes newly-added nested TypeScript sources in deterministic order', () => {
     const root = temporaryPackage()
     mkdirSync(path.join(root, 'src', 'nested'))

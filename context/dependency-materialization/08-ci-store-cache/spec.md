@@ -28,15 +28,16 @@ It does not define the CI measurement architecture (see
 
 ## Store Layout
 
-The store, home, and state paths are workspace-relative constants (e.g.
-`${{ github.workspace }}/.pnpm-store` and sibling home/state paths), shared by
-setup, restore, and save steps so every job addresses the same location.
+The store, home, and state paths are workspace-relative constants (for example,
+`${{ github.workspace }}/.devenv/pnpm-store-pure-v1` and sibling home/state
+paths), shared by setup, restore, and save steps so every job addresses the same
+location.
 
 Ordering invariant (`DMP.CICACHE-R02`): because a gitignored workspace path is
 wiped by the pre-checkout clean, restore must run **after** checkout.
 
 ```text
-checkout (wipes gitignored .pnpm-store)
+checkout (wipes gitignored .devenv/pnpm-store-pure-v1)
   -> restore store  (exact composed key)
      -> install / build / test steps
         -> save store  (single publisher only)

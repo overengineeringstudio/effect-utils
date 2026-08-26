@@ -1,5 +1,7 @@
-import { rootTsconfigProjects } from './genie/tsconfig-projects.ts'
-import { isTsconfigReferenceTarget } from './packages/@overeng/genie/src/runtime/composition/mod.ts'
+import {
+  isRootTsconfigCheckProject,
+  rootTsconfigProjects,
+} from './genie/tsconfig-projects.ts'
 import type { TSConfigArgs } from './packages/@overeng/genie/src/runtime/mod.ts'
 import { tsconfigJson } from './packages/@overeng/genie/src/runtime/mod.ts'
 
@@ -7,7 +9,7 @@ import { tsconfigJson } from './packages/@overeng/genie/src/runtime/mod.ts'
 export default tsconfigJson({
   files: [],
   references: rootTsconfigProjects
-    .filter((project) => isTsconfigReferenceTarget(project.tsconfig.data))
+    .filter(isRootTsconfigCheckProject)
     .map((project) => ({ path: `./${project.path}` }))
     .toSorted((a, b) => a.path.localeCompare(b.path)),
 } satisfies TSConfigArgs)
