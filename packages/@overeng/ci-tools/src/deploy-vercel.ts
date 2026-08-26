@@ -45,8 +45,8 @@ import {
   writeGithubDeployOutputs,
 } from './deploy-io.ts'
 
-const decodeInputEither = Schema.decodeUnknownResult(DeployInputV1)
-const decodeResultEither = Schema.decodeUnknownResult(DeployResultV1)
+const decodeInputResult = Schema.decodeUnknownResult(DeployInputV1)
+const decodeDeployResult = Schema.decodeUnknownResult(DeployResultV1)
 
 export type VercelDeployCommandOptions = {
   readonly target: string
@@ -148,7 +148,7 @@ const vercelProductionDomains = (opts: {
 const decodeDeployInput = Effect.fn('ci-tools.deploy.vercel.decode-input')(function* (
   value: unknown,
 ) {
-  const decoded = decodeInputEither(value)
+  const decoded = decodeInputResult(value)
   if (Result.isSuccess(decoded) === true) return decoded.success
   return yield* new InvalidProviderOutput({
     provider: 'vercel',
@@ -208,6 +208,16 @@ const runVercelCommand = Effect.fn('ci-tools.deploy.vercel.command')(
 
 const vercelScopeArgs = (scope: string | undefined) =>
   scope === undefined ? [] : ['--scope', scope]
+
+const vercelCommandEnv = (opts: {
+  readonly projectId: string
+  readonly orgId: string
+  readonly teamId: string | undefined
+}) => ({
+  VERCEL_PROJECT_ID: opts.projectId,
+  VERCEL_ORG_ID: opts.orgId,
+  ...(opts.teamId === undefined ? {} : { VERCEL_TEAM_ID: opts.teamId }),
+})
 
 const buildEnvRecord = Effect.fn('ci-tools.deploy.vercel.build-env')(function* (opts: {
   readonly target: string
@@ -525,9 +535,7 @@ const prepareLocalPrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-loc
     ]
     const commandEnv = {
       ...opts.buildEnv,
-      VERCEL_PROJECT_ID: opts.projectId,
-      VERCEL_ORG_ID: opts.orgId,
-      ...(opts.teamId === undefined ? {} : { VERCEL_TEAM_ID: opts.teamId }),
+      ...vercelCommandEnv(opts),
     }
 
     process.stdout.write(
@@ -747,11 +755,7 @@ const assignAliasResilient = (opts: {
             '--token',
             opts.authToken,
           ],
-          env: {
-            VERCEL_PROJECT_ID: opts.projectId,
-            VERCEL_ORG_ID: opts.orgId,
-            ...(opts.teamId === undefined ? {} : { VERCEL_TEAM_ID: opts.teamId }),
-          },
+          env: vercelCommandEnv(opts),
         }),
       })
 
@@ -989,11 +993,7 @@ const cleanupAlias = Effect.fn('ci-tools.deploy.vercel.cleanup-alias')(function*
       '--token',
       opts.authToken,
     ],
-    env: {
-      VERCEL_PROJECT_ID: opts.projectId,
-      VERCEL_ORG_ID: opts.orgId,
-      ...(opts.teamId === undefined ? {} : { VERCEL_TEAM_ID: opts.teamId }),
-    },
+    env: vercelCommandEnv(opts),
   }).pipe(Effect.result)
 
   if (Result.isFailure(result) === true || result.success.status !== 0) {
@@ -1218,11 +1218,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
             '--token',
             authTokenValue,
           ],
-          env: {
-            VERCEL_PROJECT_ID: projectId,
-            VERCEL_ORG_ID: orgId,
-            ...(teamId === undefined ? {} : { VERCEL_TEAM_ID: teamId }),
-          },
+          env: vercelCommandEnv({ projectId, orgId, teamId }),
         }),
       })
 
@@ -1295,11 +1291,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
               '--token',
               authTokenValue,
             ],
-            env: {
-              VERCEL_PROJECT_ID: projectId,
-              VERCEL_ORG_ID: orgId,
-              ...(teamId === undefined ? {} : { VERCEL_TEAM_ID: teamId }),
-            },
+            env: vercelCommandEnv({ projectId, orgId, teamId }),
           }),
         })
         if (domainResult.status !== 0) {
@@ -1319,7 +1311,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         finalUrl = `https://${productionDomains[0]}`
       }
 
-      const preliminary = decodeResultEither({
+      const preliminary = decodeDeployResult({
         _tag: 'DeployResult',
         schemaVersion: 1,
         provider: 'vercel',
@@ -1372,7 +1364,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
             })
           : undefined
 
-      const decoded = decodeResultEither({
+      const decoded = decodeDeployResult({
         _tag: 'DeployResult',
         schemaVersion: 1,
         provider: 'vercel',
