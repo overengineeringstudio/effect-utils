@@ -52,19 +52,33 @@ const formatError = (error: unknown): string =>
 const isErrnoException = (error: unknown): error is NodeJS.ErrnoException =>
   error instanceof Error && 'code' in error
 
-const requireArgument = (args: readonly string[], index: number, name: string): string =>
-  args[index] ?? fail(`missing ${name}`)
+const requireArgument = (options: {
+  readonly args: readonly string[]
+  readonly index: number
+  readonly name: string
+}): string => options.args[options.index] ?? fail(`missing ${options.name}`)
 
-const requireExactArgumentCount = (args: readonly string[], count: number, command: string): void => {
-  if (args.length !== count) fail(`${command} expected ${count} arguments, received ${args.length}`)
+const requireExactArgumentCount = (options: {
+  readonly args: readonly string[]
+  readonly command: string
+  readonly count: number
+}): void => {
+  if (options.args.length !== options.count)
+    fail(`${options.command} expected ${options.count} arguments, received ${options.args.length}`)
 }
 
-const requireNormalizedRelativePath = (value: string, name: string): string => {
+const requireNormalizedRelativePath = (options: {
+  readonly name: string
+  readonly value: string
+}): string => {
+  const { name, value } = options
   if (
     value.length === 0 ||
-    isAbsolute(value) ||
-    value.includes('\\') ||
-    value.split('/').some((component) => component === '' || component === '.' || component === '..')
+    isAbsolute(value) === true ||
+    value.includes('\\') === true ||
+    value
+      .split('/')
+      .some((component) => component === '' || component === '.' || component === '..') === true
   ) {
     fail(`${name} must be a normalized portable relative path: ${value}`)
   }
@@ -79,36 +93,56 @@ const requireTsgo = (value: string): string => {
 }
 
 const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions => {
-  requireExactArgumentCount(args, 4, 'typecheck')
+  requireExactArgumentCount({ args, command: 'typecheck', count: 4 })
   return {
-    tsgo: requireTsgo(requireArgument(args, 0, 'tsgo')),
-    packageTree: requireArgument(args, 1, 'package tree'),
-    project: requireNormalizedRelativePath(requireArgument(args, 2, 'project'), 'project'),
-    verdict: requireArgument(args, 3, 'verdict'),
+    tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
+    packageTree: requireArgument({ args, index: 1, name: 'package tree' }),
+    project: requireNormalizedRelativePath({
+      name: 'project',
+      value: requireArgument({ args, index: 2, name: 'project' }),
+    }),
+    verdict: requireArgument({ args, index: 3, name: 'verdict' }),
   }
 }
 
 const parseEmitOptions = (args: readonly string[]): EmitOptions => {
-  requireExactArgumentCount(args, 6, 'emit')
+  requireExactArgumentCount({ args, command: 'emit', count: 6 })
   return {
-    tsgo: requireTsgo(requireArgument(args, 0, 'tsgo')),
-    packageTree: requireArgument(args, 1, 'package tree'),
-    project: requireNormalizedRelativePath(requireArgument(args, 2, 'project'), 'project'),
-    outDir: requireNormalizedRelativePath(requireArgument(args, 3, 'out dir'), 'out dir'),
-    declarationEntrypoint: requireNormalizedRelativePath(
-      requireArgument(args, 4, 'declaration entrypoint'),
-      'declaration entrypoint',
-    ),
-    output: requireArgument(args, 5, 'output'),
+    tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
+    packageTree: requireArgument({ args, index: 1, name: 'package tree' }),
+    project: requireNormalizedRelativePath({
+      name: 'project',
+      value: requireArgument({ args, index: 2, name: 'project' }),
+    }),
+    outDir: requireNormalizedRelativePath({
+      name: 'out dir',
+      value: requireArgument({ args, index: 3, name: 'out dir' }),
+    }),
+    declarationEntrypoint: requireNormalizedRelativePath({
+      name: 'declaration entrypoint',
+      value: requireArgument({ args, index: 4, name: 'declaration entrypoint' }),
+    }),
+    output: requireArgument({ args, index: 5, name: 'output' }),
   }
 }
 
-const updateFramedText = (hash: Hash, value: string): void => {
+const updateFramedText = (options: { readonly hash: Hash; readonly value: string }): void => {
+  const { hash, value } = options
   const bytes = Buffer.from(value)
   const length = Buffer.allocUnsafe(4)
   length.writeUInt32BE(bytes.byteLength)
   hash.update(length)
   hash.update(bytes)
+}
+
+const forEachSequential = async <T>(options: {
+  readonly iterator: Iterator<T> | AsyncIterator<T>
+  readonly visit: (value: T) => void | Promise<void>
+}): Promise<void> => {
+  const next = await options.iterator.next()
+  if (next.done === true) return
+  await options.visit(next.value)
+  await forEachSequential(options)
 }
 
 const hashTree = async (root: string): Promise<string> => {
@@ -117,23 +151,31 @@ const hashTree = async (root: string): Promise<string> => {
   const visit = async (path: string): Promise<void> => {
     const metadata = await lstat(path)
     const entry = relative(root, path).split(sep).join('/') || '.'
-    updateFramedText(hash, entry)
-    updateFramedText(hash, String(metadata.mode & 0o7777))
+    updateFramedText({ hash, value: entry })
+    updateFramedText({ hash, value: String(metadata.mode & 0o7777) })
 
-    if (metadata.isDirectory()) {
-      updateFramedText(hash, 'directory')
-      const children = (await readdir(path)).sort()
-      for (const child of children) await visit(join(path, child))
+    if (metadata.isDirectory() === true) {
+      updateFramedText({ hash, value: 'directory' })
+      const children = (await readdir(path)).toSorted()
+      await forEachSequential({
+        iterator: children.values(),
+        visit: async (child) => visit(join(path, child)),
+      })
       return
     }
-    if (metadata.isSymbolicLink()) {
-      updateFramedText(hash, 'symlink')
-      updateFramedText(hash, await readlink(path))
+    if (metadata.isSymbolicLink() === true) {
+      updateFramedText({ hash, value: 'symlink' })
+      updateFramedText({ hash, value: await readlink(path) })
       return
     }
-    if (metadata.isFile()) {
-      updateFramedText(hash, 'file')
-      for await (const chunk of createReadStream(path)) hash.update(chunk)
+    if (metadata.isFile() === true) {
+      updateFramedText({ hash, value: 'file' })
+      await forEachSequential({
+        iterator: createReadStream(path)[Symbol.asyncIterator](),
+        visit: (chunk) => {
+          hash.update(chunk)
+        },
+      })
       return
     }
     fail(`unsupported filesystem entry while hashing: ${path}`)
@@ -148,16 +190,19 @@ const pathExists = async (path: string): Promise<boolean> => {
     await lstat(path)
     return true
   } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') return false
+    if (isErrnoException(error) === true && error.code === 'ENOENT') return false
     throw error
   }
 }
 
 const makeTreeReadOnly = async (path: string): Promise<void> => {
   const metadata = await lstat(path)
-  if (metadata.isSymbolicLink()) return
-  if (metadata.isDirectory()) {
-    for (const child of await readdir(path)) await makeTreeReadOnly(join(path, child))
+  if (metadata.isSymbolicLink() === true) return
+  if (metadata.isDirectory() === true) {
+    await forEachSequential({
+      iterator: (await readdir(path)).values(),
+      visit: async (child) => makeTreeReadOnly(join(path, child)),
+    })
   } else if (metadata.isFile() === false) {
     fail(`unsupported filesystem entry while making staging read-only: ${path}`)
   }
@@ -169,16 +214,20 @@ const makeTreeRemovable = async (path: string): Promise<void> => {
   try {
     metadata = await lstat(path)
   } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') return
+    if (isErrnoException(error) === true && error.code === 'ENOENT') return
     throw error
   }
-  if (metadata.isSymbolicLink()) return
-  if (metadata.isDirectory()) {
+  if (metadata.isSymbolicLink() === true) return
+  if (metadata.isDirectory() === true) {
     await chmod(path, metadata.mode | 0o700)
-    for (const child of await readdir(path)) await makeTreeRemovable(join(path, child))
+    await forEachSequential({
+      iterator: (await readdir(path)).values(),
+      visit: async (child) => makeTreeRemovable(join(path, child)),
+    })
     return
   }
-  if (metadata.isFile() === false) fail(`unsupported filesystem entry while cleaning staging: ${path}`)
+  if (metadata.isFile() === false)
+    fail(`unsupported filesystem entry while cleaning staging: ${path}`)
   await chmod(path, metadata.mode | 0o600)
 }
 
@@ -193,19 +242,23 @@ const ensureWritableDirectory = async (path: string): Promise<void> => {
   await chmod(path, metadata.mode | 0o700)
 }
 
-const prepareStagedOutput = async (
-  packageRoot: string,
-  outDir: string,
-  output: string,
-): Promise<void> => {
+const prepareStagedOutput = async (options: {
+  readonly outDir: string
+  readonly output: string
+  readonly packageRoot: string
+}): Promise<void> => {
+  const { outDir, output, packageRoot } = options
   let current = packageRoot
   await ensureWritableDirectory(current)
   const parentComponents = dirname(outDir) === '.' ? [] : dirname(outDir).split('/')
-  for (const component of parentComponents) {
-    current = join(current, component)
-    if (await pathExists(current)) await ensureWritableDirectory(current)
-    else await mkdir(current, { mode: 0o700 })
-  }
+  await forEachSequential({
+    iterator: parentComponents.values(),
+    visit: async (component) => {
+      current = join(current, component)
+      if ((await pathExists(current)) === true) await ensureWritableDirectory(current)
+      else await mkdir(current, { mode: 0o700 })
+    },
+  })
 
   const stagedOutput = join(packageRoot, outDir)
   await removeTree(stagedOutput)
@@ -214,13 +267,17 @@ const prepareStagedOutput = async (
   await symlink(resolve(output), stagedOutput)
 }
 
-const validateOutput = async (output: string, declarationEntrypoint: string): Promise<void> => {
+const validateOutput = async (options: {
+  readonly declarationEntrypoint: string
+  readonly output: string
+}): Promise<void> => {
+  const { declarationEntrypoint, output } = options
   const expected = join(output, declarationEntrypoint)
   let expectedMetadata: Stats
   try {
     expectedMetadata = await lstat(expected)
   } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') {
+    if (isErrnoException(error) === true && error.code === 'ENOENT') {
       fail(`expected declaration entrypoint was not emitted: ${declarationEntrypoint}`)
     }
     throw error
@@ -231,9 +288,13 @@ const validateOutput = async (output: string, declarationEntrypoint: string): Pr
 
   const visit = async (path: string): Promise<void> => {
     const metadata = await lstat(path)
-    if (metadata.isSymbolicLink()) fail(`emitted output must not contain symlinks: ${path}`)
-    if (metadata.isDirectory()) {
-      for (const child of await readdir(path)) await visit(join(path, child))
+    if (metadata.isSymbolicLink() === true)
+      fail(`emitted output must not contain symlinks: ${path}`)
+    if (metadata.isDirectory() === true) {
+      await forEachSequential({
+        iterator: (await readdir(path)).values(),
+        visit: async (child) => visit(join(path, child)),
+      })
       return
     }
     if (metadata.isFile() === false) fail(`unsupported emitted filesystem entry: ${path}`)
@@ -241,10 +302,13 @@ const validateOutput = async (output: string, declarationEntrypoint: string): Pr
   await visit(output)
 }
 
-const runTsgo = async (argv: readonly string[], cwd: string): Promise<number> => {
+const runTsgo = async (options: {
+  readonly argv: readonly string[]
+  readonly cwd: string
+}): Promise<number> => {
   if (forwardedSignal !== undefined) return 128 + signalNumbers[forwardedSignal]
-  const child = Bun.spawn(argv, {
-    cwd,
+  const child = Bun.spawn([...options.argv], {
+    cwd: options.cwd,
     env: { ...process.env, PATH: '' },
     stdin: 'ignore',
     stdout: 'inherit',
@@ -264,8 +328,8 @@ const runTypecheck = async (options: TypecheckOptions): Promise<number> => {
   let status = 1
   let compilerError: unknown
   try {
-    status = await runTsgo(
-      [
+    status = await runTsgo({
+      argv: [
         options.tsgo,
         '--project',
         join(packageTree, options.project),
@@ -277,8 +341,8 @@ const runTypecheck = async (options: TypecheckOptions): Promise<number> => {
         '--pretty',
         'false',
       ],
-      packageTree,
-    )
+      cwd: packageTree,
+    })
   } catch (error) {
     compilerError = error
   }
@@ -319,10 +383,10 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
       recursive: true,
       verbatimSymlinks: true,
     })
-    await prepareStagedOutput(packageRoot, options.outDir, output)
+    await prepareStagedOutput({ outDir: options.outDir, output, packageRoot })
     await makeTreeReadOnly(packageRoot)
-    status = await runTsgo(
-      [
+    status = await runTsgo({
+      argv: [
         options.tsgo,
         '--project',
         join(packageRoot, options.project),
@@ -333,9 +397,10 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
         '--pretty',
         'false',
       ],
-      packageRoot,
-    )
-    if (status === 0) await validateOutput(output, options.declarationEntrypoint)
+      cwd: packageRoot,
+    })
+    if (status === 0)
+      await validateOutput({ declarationEntrypoint: options.declarationEntrypoint, output })
   } catch (error) {
     primaryError = error
   }
@@ -348,7 +413,8 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
   }
 
   if (primaryError !== undefined) console.error(formatError(primaryError))
-  if (cleanupError !== undefined) console.error(`typescript runner cleanup failed: ${formatError(cleanupError)}`)
+  if (cleanupError !== undefined)
+    console.error(`typescript runner cleanup failed: ${formatError(cleanupError)}`)
   if (primaryError !== undefined || cleanupError !== undefined) return status === 0 ? 1 : status
   return status
 }
@@ -380,7 +446,7 @@ const main = async (): Promise<number> => {
   const [command, ...args] = process.argv.slice(2)
   if (command === 'typecheck') return runTypecheck(parseTypecheckOptions(args))
   if (command === 'emit') return runEmit(parseEmitOptions(args))
-  fail(`expected command "typecheck" or "emit", received ${command ?? '<missing>'}`)
+  return fail(`expected command "typecheck" or "emit", received ${command ?? '<missing>'}`)
 }
 
 installSignalForwarding()

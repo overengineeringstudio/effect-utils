@@ -30,10 +30,19 @@ def _add_mapped_sources(args, flag, sources):
 
 def _pnpm_node_modules_impl(ctx):
     toolchain = ctx.attrs._materializer[PnpmMaterializerToolchainInfo]
+    runtime = ctx.actions.copied_dir(
+        "pnpm_materializer_runtime",
+        {
+            "buck2-materializer.ts": ctx.attrs.runtime,
+            "pnpm-deploy-normalizer.ts": ctx.attrs.normalizer,
+            "pnpm-install-descriptor.ts": ctx.attrs.descriptor_module,
+        },
+    )
+    runtime_entry = runtime.project("buck2-materializer.ts")
     descriptor = ctx.actions.declare_output("pnpm_install_descriptor", dir = True)
     prune_args = cmd_args([
         toolchain.bun,
-        ctx.attrs.runtime,
+        runtime_entry,
         "prune-node-modules",
         "--output",
         descriptor.as_output(),
@@ -41,8 +50,6 @@ def _pnpm_node_modules_impl(ctx):
         ctx.attrs.package_name,
         "--pnpm",
         toolchain.pnpm,
-        "--descriptor-module",
-        ctx.attrs.descriptor_module,
         "--store-dir",
         toolchain.store_dir,
         "--root-package-json",
@@ -59,13 +66,13 @@ def _pnpm_node_modules_impl(ctx):
         category = "pnpm_pruned_lock",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = False,
+        allow_cache_upload = True,
     )
 
     out = ctx.actions.declare_output("node_modules", dir = True)
     install_args = cmd_args([
         toolchain.bun,
-        ctx.attrs.runtime,
+        runtime_entry,
         "materialize-node-modules",
         "--output",
         out.as_output(),
@@ -73,10 +80,6 @@ def _pnpm_node_modules_impl(ctx):
         descriptor,
         "--pnpm",
         toolchain.pnpm,
-        "--descriptor-module",
-        ctx.attrs.descriptor_module,
-        "--normalizer",
-        ctx.attrs.normalizer,
         "--store-dir",
         toolchain.store_dir,
     ])
@@ -85,7 +88,7 @@ def _pnpm_node_modules_impl(ctx):
         category = "pnpm_node_modules",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = False,
+        allow_cache_upload = True,
     )
     return [
         DefaultInfo(default_output = out),
@@ -147,7 +150,7 @@ def _package_tree_impl(ctx):
         category = "package_tree",
         identifier = ctx.attrs.name,
         local_only = True,
-        allow_cache_upload = False,
+        allow_cache_upload = True,
     )
     return [
         DefaultInfo(default_output = out),

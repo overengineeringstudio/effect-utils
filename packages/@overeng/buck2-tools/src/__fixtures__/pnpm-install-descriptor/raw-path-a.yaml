@@ -16,14 +16,14 @@ importers:
 
 packages:
   '@acme/lib@file:/fixed/a/packages/acme/lib':
-    resolution: {directory: /fixed/a/packages/acme/lib, type: directory}
+    resolution: { directory: /fixed/a/packages/acme/lib, type: directory }
     peerDependencies:
       react: '^18.0.0'
     peerDependenciesMeta:
       react:
         optional: true
   react@19.0.0:
-    resolution: {integrity: sha512-example}
+    resolution: { integrity: sha512-example }
 
 snapshots:
   '@acme/lib@file:/fixed/a/packages/acme/lib(hash)(react@19.0.0)':

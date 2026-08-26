@@ -81,6 +81,9 @@ importers:
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
+      '@types/bun':
+        specifier: 1.3.14
+        version: 1.3.14
       '@types/node':
         specifier: 26.0.0
         version: 26.0.0
@@ -489,9 +492,6 @@ importers:
       '@overeng/tui-react':
         injected: true
     devDependencies:
-      '@overeng/tui-core':
-        specifier: workspace:^
-        version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
         version: link:../tui-react
@@ -1532,9 +1532,6 @@ importers:
       '@opentui/react':
         specifier: 0.4.1
         version: 0.4.1(react-devtools-core@7.0.1)(react@19.2.7)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.0)
-      '@overeng/tui-core':
-        specifier: workspace:^
-        version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
         version: link:../tui-react

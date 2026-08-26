@@ -13,7 +13,10 @@ import {
 } from './pnpm-install-descriptor.ts'
 
 const fixture = (name: string): string =>
-  readFileSync(fileURLToPath(new URL(`./__fixtures__/pnpm-install-descriptor/${name}`, import.meta.url)), 'utf8')
+  readFileSync(
+    fileURLToPath(new URL(`./__fixtures__/pnpm-install-descriptor/${name}`, import.meta.url)),
+    'utf8',
+  )
 
 const prepareFixture = () =>
   preparePnpmInstallDescriptor({
@@ -22,14 +25,8 @@ const prepareFixture = () =>
     packageName: 'app',
     workspaceManifest: 'patchedDependencies:\n  patched@1.0.0: patches/p.patch\n',
     packageManifests: new Map([
-      [
-        'packages/app/package.json',
-        '{"name":"app","dependencies":{"@acme/lib":"workspace:*"}}',
-      ],
-      [
-        'packages/acme/lib/package.json',
-        '{"name":"@acme/lib","peerDependencies":{"react":"^18"}}',
-      ],
+      ['packages/app/package.json', '{"name":"app","dependencies":{"@acme/lib":"workspace:*"}}'],
+      ['packages/acme/lib/package.json', '{"name":"@acme/lib","peerDependencies":{"react":"^18"}}'],
     ]),
     patches: new Map([['patches/p.patch', 'patch bytes\n']]),
   })
@@ -80,17 +77,17 @@ describe('canonical pnpm pruned lock', () => {
       '  react@19.0.0:\n    resolution:',
       `  '${pnpmWorkspacePlaceholder}': {}\n  '/fixed/a': {}\n  react@19.0.0:\n    resolution:`,
     )
-    expect(() => canonicalizePnpmPrunedLock({ rawLockfile: collision, stagePrefix: '/fixed/a' })).toThrow(
-      'duplicate mapping key',
-    )
+    expect(() =>
+      canonicalizePnpmPrunedLock({ rawLockfile: collision, stagePrefix: '/fixed/a' }),
+    ).toThrow('duplicate mapping key')
 
     const residual = fixture('raw-path-a.yaml').replace(
       'version: file:/fixed/a/packages/acme/lib(hash)(react@19.0.0)',
       'version: file:/unresolved/root/packages/acme/lib(hash)(react@19.0.0)',
     )
-    expect(() => canonicalizePnpmPrunedLock({ rawLockfile: residual, stagePrefix: '/fixed/a' })).toThrow(
-      'unresolved absolute file reference',
-    )
+    expect(() =>
+      canonicalizePnpmPrunedLock({ rawLockfile: residual, stagePrefix: '/fixed/a' }),
+    ).toThrow('unresolved absolute file reference')
   })
 })
 
@@ -99,7 +96,9 @@ describe('pnpm frozen-install descriptor', () => {
     const prepared = prepareFixture()
 
     expect(prepared.descriptor.schema).toBe(pnpmInstallDescriptorSchema)
-    expect(`${JSON.stringify(prepared.descriptor, null, 2)}\n`).toBe(fixture('descriptor.golden.json'))
+    expect(`${JSON.stringify(prepared.descriptor, null, 2)}\n`).toBe(
+      fixture('descriptor.golden.json'),
+    )
     expect(prepared.packageManifest).toBe(fixture('package.golden.json'))
     expect(prepared.workspaceManifest).toBe(fixture('workspace.golden.yaml'))
     expect([...prepared.workspacePackageManifests]).toEqual([
@@ -113,7 +112,9 @@ describe('pnpm frozen-install descriptor', () => {
 
   it('fixes and resolves the exact frozen Stage-2 pnpm argv', () => {
     const descriptor = prepareFixture().descriptor
-    expect(resolvePnpmInstallArgv({ descriptor, installRoot: '/fixed/install', storeDir: '/store' })).toEqual([
+    expect(
+      resolvePnpmInstallArgv({ descriptor, installRoot: '/fixed/install', storeDir: '/store' }),
+    ).toEqual([
       '--dir',
       '/fixed/install',
       '--store-dir',
@@ -124,9 +125,12 @@ describe('pnpm frozen-install descriptor', () => {
       '--offline',
       '--frozen-lockfile',
     ])
-    expect(rehydratePnpmWorkspacePlaceholder(fixture('canonical.golden.yaml'), '/fixed/install')).toContain(
-      'file:/fixed/install/packages/acme/lib',
-    )
+    expect(
+      rehydratePnpmWorkspacePlaceholder({
+        lockfile: fixture('canonical.golden.yaml'),
+        installRoot: '/fixed/install',
+      }),
+    ).toContain('file:/fixed/install/packages/acme/lib')
   })
 
   it('fails on unresolved file and patch references', () => {
@@ -135,9 +139,7 @@ describe('pnpm frozen-install descriptor', () => {
       stagePrefix: '/fixed/a',
       packageName: 'app',
       workspaceManifest: 'patchedDependencies:\n  patched@1.0.0: patches/p.patch\n',
-      packageManifests: new Map([
-        ['packages/app/package.json', '{"name":"app"}'],
-      ]),
+      packageManifests: new Map([['packages/app/package.json', '{"name":"app"}']]),
       patches: new Map([['patches/p.patch', 'patch bytes\n']]),
     }
     expect(() => preparePnpmInstallDescriptor(base)).toThrow('unresolved file reference')
