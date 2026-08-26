@@ -50,9 +50,6 @@
   "include": ["src/**/*", "test/**/*", "examples/**/*"],
   "references": [
     {
-      "path": "../tui-core"
-    },
-    {
       "path": "../utils"
     },
     {

@@ -67,9 +67,6 @@
       "path": "../otel-contract"
     },
     {
-      "path": "../tui-core"
-    },
-    {
       "path": "../tui-react"
     },
     {
