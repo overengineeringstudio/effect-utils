@@ -1,8 +1,12 @@
+import { unplugin as stylex } from '@stylexjs/unplugin'
+import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
-// The root project config does not resolve correctly from this package task's cwd.
+// StyleX styles are compiled away at build time, so unit tests that render
+// components need the same transform the bundler applies. The token package
+// ships uncompiled StyleX source and must be inlined so the plugin can
+// transform it.
 export default defineConfig({
-  test: {
-    include: ['src/**/*.unit.test.ts', 'src/**/*.unit.test.tsx'],
-  },
+  plugins: [stylex.vite({ externalPackages: ['tailwind-stylex'] }), react()],
+  ssr: { noExternal: ['tailwind-stylex'] },
 })

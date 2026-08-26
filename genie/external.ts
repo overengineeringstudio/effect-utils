@@ -351,6 +351,9 @@ export const catalog = defineCatalog({
   // Styling
   tailwindcss: '4.3.1',
   '@tailwindcss/vite': '4.3.1',
+  '@stylexjs/stylex': '0.19.0',
+  '@stylexjs/unplugin': '0.19.0',
+  'tailwind-stylex': '0.1.1',
 
   // Storybook
   storybook: '10.4.6',
@@ -443,6 +446,9 @@ export const commonPnpmPolicySettings = {
       typescript: '>=6.0.0',
       eslint: '>=10.0.0',
       vitest: '>=4.0.0',
+      // @stylexjs/unplugin@0.19 declares unplugin ^2 but works with v3;
+      // proven by the effect-schema-form-aria StyleX pilot (build + storybook).
+      unplugin: '>=3.0.0',
     },
   },
   packageImportMethod: 'auto' as const,
@@ -453,7 +459,7 @@ export const commonPnpmPolicySettings = {
   // The Effect 4 RC cohort moves fast; keep minimum-release-age strict
   // globally but let these advance immediately during the coordinated
   // migration window.
-  minimumReleaseAgeExclude: ['@types/node', ...effectV4Cohort],
+  minimumReleaseAgeExclude: ['@types/node', 'tailwind-stylex', ...effectV4Cohort],
   pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,

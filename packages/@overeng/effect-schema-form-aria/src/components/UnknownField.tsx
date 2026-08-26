@@ -1,6 +1,10 @@
+import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
+import { radii, spacing } from 'tailwind-stylex/tokens.stylex'
 
 import type { FieldMeta } from '@overeng/effect-schema-form'
+
+import { tokens } from '../tokens.stylex.ts'
 
 /** Props for UnknownField component */
 export interface UnknownFieldProps {
@@ -10,13 +14,35 @@ export interface UnknownFieldProps {
   meta: FieldMeta
 }
 
+const styles = stylex.create({
+  root: {
+    display: 'grid',
+    rowGap: spacing['1.5'],
+    padding: spacing[2],
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    borderRadius: radii.default,
+    backgroundColor: tokens.surface,
+  },
+  title: {
+    fontSize: '13px',
+    color: tokens['muted-ink'],
+  },
+  message: {
+    fontSize: '12px',
+    fontStyle: 'italic',
+    color: tokens['subtle-ink'],
+  },
+})
+
 /**
  * Fallback renderer for unsupported field types.
  * Shows a visual indicator that the schema type cannot be rendered.
  */
 export const UnknownField = ({ fieldKey, meta }: UnknownFieldProps): ReactNode => (
-  <div className="grid gap-1.5 p-2 border border-border rounded bg-surface">
-    <span className="text-[13px] text-muted-ink">{meta.title ?? fieldKey}</span>
-    <span className="text-[12px] text-subtle-ink italic">Unsupported schema type: {meta.type}</span>
+  <div {...stylex.props(styles.root)}>
+    <span {...stylex.props(styles.title)}>{meta.title ?? fieldKey}</span>
+    <span {...stylex.props(styles.message)}>Unsupported schema type: {meta.type}</span>
   </div>
 )

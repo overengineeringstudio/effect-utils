@@ -13,5 +13,7 @@ export { NumberField, type NumberFieldProps } from './components/NumberField.tsx
 /** Styled components for building custom field renderers */
 export { TextField, type TextFieldProps } from './components/TextField.tsx'
 export { UnknownField, type UnknownFieldProps } from './components/UnknownField.tsx'
+/** Semantic design tokens (StyleX vars) */
+export { tokens } from './tokens.stylex.ts'
 /** Field renderers for use with SchemaFormProvider */
 export { ariaRenderers } from './renderers.tsx'

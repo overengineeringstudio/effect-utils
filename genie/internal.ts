@@ -152,9 +152,10 @@ export const commonPnpmWorkspaceData = {
   patchedDependencies: { ...effectUtilsWorkspacePatches },
   allowUnusedPatches: true as const,
   peerDependencyRules: {
+    // Merge the shared rules (e.g. `unplugin: '>=3.0.0'`) with repo-specific
+    // entries instead of shadowing them.
     allowedVersions: {
-      // bun-ffi-structs@0.2.3 (via @myobie/pty) declares typescript ^5 but the
-      // repo compiles with TS 6; resolution is proven fine.
+      ...commonPnpmPolicySettings.peerDependencyRules.allowedVersions,
       typescript: '>=6.0.0',
       eslint: '>=10.0.0',
       vitest: '>=4.0.0',

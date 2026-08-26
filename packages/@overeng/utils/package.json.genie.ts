@@ -34,6 +34,7 @@ const runtimeDeps = catalog.compose({
         ...otelSdkDeps,
         '@effect/vitest',
         '@types/node',
+        '@stylexjs/unplugin',
         'storybook',
         '@storybook/react-vite',
         'typescript',

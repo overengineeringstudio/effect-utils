@@ -1,5 +1,9 @@
+import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 import { TextField as AriaTextField, Input, Label, Text } from 'react-aria-components'
+import { fontSizes, radii, spacing } from 'tailwind-stylex/tokens.stylex'
+
+import { tokens } from '../tokens.stylex.ts'
 
 /** Props for TextField component */
 export interface TextFieldProps {
@@ -21,6 +25,46 @@ export interface TextFieldProps {
   isDisabled?: boolean | undefined
 }
 
+const styles = stylex.create({
+  root: {
+    display: 'grid',
+    rowGap: spacing['1.5'],
+  },
+  label: {
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    color: tokens.ink,
+  },
+  input: {
+    width: '100%',
+    paddingInline: spacing['2.5'],
+    paddingBlock: spacing[2],
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    borderRadius: radii.default,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.input,
+    color: tokens.ink,
+    outline: 'none',
+    ':focus': {
+      boxShadow: `0 0 0 1px ${tokens.primary}`,
+    },
+    '::placeholder': {
+      color: tokens['subtle-ink'],
+    },
+    ':disabled': {
+      opacity: 0.5,
+      cursor: 'not-allowed',
+    },
+  },
+  description: {
+    fontSize: '12px',
+    color: tokens['subtle-ink'],
+  },
+})
+
 /**
  * Accessible text field using React Aria.
  * Supports text, number, email, password, and url types.
@@ -35,16 +79,16 @@ export const TextField = ({
   placeholder,
   isDisabled = false,
 }: TextFieldProps): ReactNode => (
-  <AriaTextField className="grid gap-1.5" value={value} onChange={onChange} isDisabled={isDisabled}>
-    <Label className="text-sm text-ink">{label}</Label>
-    <Input
-      id={id}
-      type={type}
-      placeholder={placeholder ?? ''}
-      className="w-full px-2.5 py-2 text-sm rounded border border-border bg-input text-ink placeholder:text-subtle-ink focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-    />
+  <AriaTextField
+    {...stylex.props(styles.root)}
+    value={value}
+    onChange={onChange}
+    isDisabled={isDisabled}
+  >
+    <Label {...stylex.props(styles.label)}>{label}</Label>
+    <Input {...stylex.props(styles.input)} id={id} type={type} placeholder={placeholder ?? ''} />
     {hint !== undefined && (
-      <Text slot="description" className="text-[12px] text-subtle-ink">
+      <Text slot="description" {...stylex.props(styles.description)}>
         {hint}
       </Text>
     )}
