@@ -212,6 +212,22 @@
   `patterns/rpc-payload-codecs/scenario.json`; payload bytes and decoded handler values are
   otherwise identical.
 
+## rpc-request-id-policy
+
+- **Difference:** v3 RPC request ids were BigInt-only; v4 accepts string or
+  numeric ids on the wire and echoes them back opaquely.
+- **Decision:** accept both shapes for v4 interop, but validate at the client
+  boundary: non-empty strings and non-negative, finite numbers or bigints are
+  accepted; anything else fails with `InvalidRequestIdError` instead of
+  passing through to the wire. Server-side handling stays permissive. Envelope
+  versioning for persisted ids remains under `rpc-failure-cause-wire-shape`.
+- **Blast radius:** outgoing client envelopes in `@overeng/effect-rpc-tanstack`
+  (`layerClient`); custom `generateRequestId` implementations that emit
+  malformed ids now fail loudly.
+- **Status:** DECIDED — enforced by the `layerClient` serialization wrapper
+  (`validateRequestId`); wire acceptance of both shapes characterized in
+  `rpc-wire-baseline.test.ts`.
+
 ## browser-testing-barrel
 
 - **Difference:** a static re-export from v4 `effect/testing` reaches

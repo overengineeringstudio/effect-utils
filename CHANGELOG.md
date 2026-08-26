@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/effect-rpc-tanstack**: client request-id policy — `layerClient`
+  now validates outgoing RPC request ids at the client boundary. Non-empty
+  strings and non-negative, finite numbers/bigints are accepted (v4 interop);
+  malformed ids fail with the new typed `InvalidRequestIdError` instead of
+  reaching the wire (`validateRequestId` is exported for direct use). See
+  `rpc-request-id-policy` in `context/effect-4/alignment-register.md`.
 - **Repository-wide**: atomic Effect 4 cohort flip to `effect@4.0.0-rc.111`
   (with `@effect/platform-node`, `@effect/vitest`, `@effect/opentelemetry`,
   `@effect/atom-react`, all rc.111). Platform, CLI, RPC, Schema, AI, Cluster,
