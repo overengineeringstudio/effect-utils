@@ -407,7 +407,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   typecheck: job({
     step: {
       name: 'Type check',
-      run: runDevenvTasksBefore('buck2:tui-core:materialize-dist', 'ts:check:strict'),
+      run: runDevenvTasksBefore('ts:check:strict'),
     },
     extraSteps: [verifyOtelShellEntryStep],
   }),

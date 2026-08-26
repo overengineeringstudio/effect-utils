@@ -335,7 +335,7 @@ export const workspaceLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
  * exhaustion. The writable virtual topology remains under the workspace's
  * `node_modules/.pnpm`; the store carries content and auxiliary metadata.
  */
-export const workspaceLocalPnpmStore = '${{ github.workspace }}/.pnpm-store'
+export const workspaceLocalPnpmStore = '${{ github.workspace }}/.devenv/pnpm-store-pure-v1'
 
 /**
  * Canonical workspace-local pnpm CI state surface on self-hosted runners.

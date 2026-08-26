@@ -487,8 +487,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -496,8 +496,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -620,7 +620,7 @@ jobs:
         shell: bash
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
+          bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
           command -v script >/dev/null 2>&1
           tmp_log="$(mktemp)"
           before="$(git status --porcelain=v1)"
@@ -634,15 +634,15 @@ jobs:
       - name: Type check
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:tui-core:materialize-dist ts:check:strict' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:tui-core:materialize-dist ts:check:strict'
+          bash "$__genie_ci_retry_script" 'devenv tasks run ts:check:strict' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check:strict'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -764,8 +764,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -773,8 +773,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -896,15 +896,15 @@ jobs:
       - name: Format + lint
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1029,8 +1029,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -1038,8 +1038,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -1161,15 +1161,15 @@ jobs:
       - name: Unit tests
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1291,8 +1291,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -1300,8 +1300,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -1423,15 +1423,15 @@ jobs:
       - name: Megarepo cold-GC tests
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1556,8 +1556,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -1565,8 +1565,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -1688,15 +1688,15 @@ jobs:
       - name: Nix hash check
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run nix:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run nix:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2001,8 +2001,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -2010,8 +2010,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -2191,8 +2191,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2314,8 +2314,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -2323,8 +2323,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -2455,8 +2455,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2578,8 +2578,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -2587,8 +2587,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -2710,15 +2710,15 @@ jobs:
       - name: Bundle smoke tests
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
+          bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2840,8 +2840,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -2849,8 +2849,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -2972,15 +2972,15 @@ jobs:
       - name: Buck2 toolchain surface and Nix bridge
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:check'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -3102,8 +3102,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -3111,8 +3111,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -3234,15 +3234,15 @@ jobs:
       - name: Cargo build + test + clippy + fmt
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run cargo:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run cargo:check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run cargo:check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run cargo:check'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -3364,8 +3364,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -3373,8 +3373,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -3503,15 +3503,15 @@ jobs:
       - name: Weaver registry gates (check + diff + live-check)
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run weaver:check weaver:diff weaver:live-check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run weaver:check weaver:diff weaver:live-check'
+          bash "$__genie_ci_retry_script" 'devenv tasks run weaver:check weaver:diff weaver:live-check' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run weaver:check weaver:diff weaver:live-check'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -3633,8 +3633,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -3642,8 +3642,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -3765,15 +3765,15 @@ jobs:
       - name: Bootstrap cold-proof (R32)
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
+          bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -3905,8 +3905,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -3914,8 +3914,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -4759,8 +4759,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -4768,8 +4768,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -5372,8 +5372,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -8270,8 +8270,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -8279,8 +8279,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -8402,15 +8402,15 @@ jobs:
       - name: Notion integration tests
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:notion-integration' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:notion-integration' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -8535,8 +8535,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -8544,8 +8544,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -8667,15 +8667,15 @@ jobs:
       - name: Restate integration tests
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run test:restate-integration' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:restate-integration'
+          bash "$__genie_ci_retry_script" 'devenv tasks run test:restate-integration' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:restate-integration'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -8831,8 +8831,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
         if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - id: restore-pnpm-state
@@ -8841,8 +8841,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
         if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Resolve devenv
         run: |
@@ -8998,8 +8998,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: (failure()) && (steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true')
         shell: bash
@@ -9122,8 +9122,8 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ github.workspace }}/.devenv/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -9131,8 +9131,8 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -9263,11 +9263,11 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             deploy_ran=1
             __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
+          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --input missingAuthPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             deploy_ran=1
             __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
+          bash "$__genie_ci_retry_script" 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --input missingAuthPolicy=skip --input unauthorizedPolicy=skip --input urlEnvKey=NETLIFY_DEPLOY_URL_STORYBOOK'
           fi
           if [ "$deploy_ran" = "1" ] && [ ! -s "$workflow_report_path" ]; then
             echo "Error: ci-tools did not emit a Netlify workflow report record." >&2
@@ -9287,7 +9287,7 @@ jobs:
           WORKFLOW_REPORT_ALLOW_MISSING_INPUT: '1'
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:collect-bundle --show-output' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:collect-bundle --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:collect-bundle --show-output' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:collect-bundle --show-output'
       - name: Render workflow report comment
         shell: bash
         env:
@@ -9308,7 +9308,7 @@ jobs:
           WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:render-comment-body --show-output' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:render-comment-body --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:render-comment-body --show-output' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:render-comment-body --show-output'
       - name: Publish workflow report
         if: always() && !cancelled()
         shell: bash
@@ -9324,15 +9324,15 @@ jobs:
           WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
         run: |
           __genie_ci_retry_script='${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:publish --show-output' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:publish --show-output'
+          bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:publish --show-output' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ github.workspace }}/.devenv/pnpm-store-pure-v1}" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:publish --show-output'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ github.workspace }}/.pnpm-home
-            ${{ github.workspace }}/.pnpm-store
-          key: "pnpm-state-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+            ${{ github.workspace }}/.devenv/pnpm-store-pure-v1
+          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash

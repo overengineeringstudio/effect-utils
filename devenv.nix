@@ -877,7 +877,7 @@ in
   };
 
   tasks."buck2:tui-core:materialize-dist" = {
-    description = "Atomically materialize Buck-owned tui-core declarations for strict TypeScript checks";
+    description = "Atomically materialize Buck-owned tui-core declarations for TypeScript checks";
     after = [ "genie:run" ];
     exec = trace.exec "buck2:tui-core:materialize-dist" ''
       set -euo pipefail
@@ -912,7 +912,7 @@ in
     '';
   };
 
-  tasks."ts:check:strict".after = [ "buck2:tui-core:materialize-dist" ];
+  tasks."ts:check".after = [ "buck2:tui-core:materialize-dist" ];
 
   tasks."buck2:check" = {
     description = "Build the surviving Buck2 toolchain surface and audit its cross-cell provider identity";

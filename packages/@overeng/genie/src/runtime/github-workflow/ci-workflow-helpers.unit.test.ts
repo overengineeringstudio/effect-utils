@@ -307,8 +307,8 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(restorePnpmStateStepSource).not.toContain("'restore-keys':")
   })
 
-  it('centralizes the pnpm state cache contract version at v2', () => {
-    expect(ciWorkflowSource).toContain("export const pnpmStateCacheVersion = 'v2'")
+  it('centralizes the pnpm state cache contract version at v3', () => {
+    expect(ciWorkflowSource).toContain("export const pnpmStateCacheVersion = 'v3'")
     expect(ciWorkflowSource).toContain("export const defaultPnpmStateKeyPrefix = 'pnpm-state'")
     expect(ciWorkflowSource).toContain(
       `const defaultPnpmStateHashFilesExpression = "\${{ hashFiles('**/pnpm-lock.yaml') }}"`,
@@ -325,8 +325,12 @@ describe('ci workflow pnpm cache defaults', () => {
 
   it('defaults the pnpm store to a workspace-relative path stable across jobs', () => {
     expect(ciWorkflowSource).toContain(
-      "export const workspaceLocalPnpmStore = '${{ github.workspace }}/.pnpm-store'",
+      "export const workspaceLocalPnpmStore = '${{ github.workspace }}/.devenv/pnpm-store-pure-v1'",
     )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      '${{ github.workspace }}/.devenv/pnpm-store-pure-v1',
+    )
+    expect(generatedCiWorkflowYamlSource).not.toContain('${{ github.workspace }}/.pnpm-store')
     expect(ciWorkflowSource).not.toContain('runner.temp }}/pnpm-store')
   })
 
