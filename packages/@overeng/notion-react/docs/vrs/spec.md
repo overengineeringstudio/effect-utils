@@ -560,6 +560,59 @@ Staleness (R38, T11):
 `SyncStart`/`SyncEnd`/`CacheOutcome` — plan probes must not skew
 cache-efficiency or sync-duration metrics aggregated across real syncs.
 
+## Readback oracle (R39–R40)
+
+`readback.ts` answers "does the live page equal what this JSX renders?"
+in one dedicated hash space. Both sides — server-observed block JSON
+(response shape) and the rendered `CandidateTree` (request-shape props)
+— normalize into `NormalizedReadbackNode` trees and hash through the
+shared `hashStable`:
+
+```ts
+compareReadback({ candidate, observed })
+// → { candidateHash, observedHash, equal, candidate, observed }
+compareReadbackPage({ candidate, observed }) // page title/icon/cover envelope
+observeBlockTree({ blockId }) // effectful ObservedBlockTree walk
+```
+
+**Separate hash space (R39).** `CacheNode.hash` hashes request-shape
+projected props; readback hashes hash the canonical readback form. Both
+use `hashStable` (djb2 over stable-stringify) but are never comparable
+against each other. Unifying them would change the cache hash function
+and invalidate every deployed cache, so the two spaces are permanent.
+
+**Canonicalization.** Rich-text runs get fully explicit annotation
+frames, empty text runs drop, adjacent identical-frame text runs
+coalesce (Notion re-segments), mention envelopes reduce to
+`{type, ref}` (the response expands referenced objects), and
+`plain_text` / `href` are dropped as derived. Per-type props fold
+explicit API defaults (`color`, `is_toggleable`, `checked`, table
+header flags, empty captions).
+
+**Candidate-contextual masking (R40).** `maskProviderOwned` blanks
+fields on the observed side only where the candidate made no claim:
+callout `icon`, code `language`, column `width_ratio`, table
+`table_width`. Claimed values compare exactly. Two things are masked
+unconditionally because block JSON cannot verify them: uploaded media
+sources (`file_upload` request / expiring signed-URL `file` response →
+`uploaded` sentinel) and, on page metadata, the A07 built-in-icon
+rewrite (external notion.so/icons URL ↔ undocumented `{type:'icon'}`
+envelope → `builtin-unverified` sentinel).
+
+**Boundaries.** `child_page` blocks compare by title identity only and
+are never recursed into — a sub-page is its own reconciliation unit
+(R26) and gets its own `compareReadback` (blocks) +
+`compareReadbackPage` (envelope) pass; `observeBlockTree` stops at the
+same boundary. Raw escape-hatch payloads (`<Raw>`, `synced_block`, …)
+throw: their response shape is not normalizable generically.
+
+**Relation to plan().** `plan().empty` proves cache×intent convergence;
+`compareReadback` proves server×intent equality. The pair brackets the
+cache: a page can be plan-empty yet readback-unequal (cache poisoned or
+server edited out of band) and vice versa. Like a plan, an observation
+is advisory for the observed window (T11/T12) — there is no snapshot
+isolation across the paginated children walk.
+
 ## Upload coordination
 
 See `src/renderer/upload-registry.ts`.

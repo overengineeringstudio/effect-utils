@@ -101,6 +101,52 @@ so the _plan_ can go stale — the applied result cannot, because `sync()`
 recomputes from scratch. Treat a plan as advisory for the observed
 instant; use the post-apply empty-plan check for proof of convergence.
 
+## Readback verification
+
+```ts
+import {
+  compareReadback,
+  compareReadbackPage,
+  observeBlockTree,
+  type ObservedBlockTree,
+  type ReadbackComparison,
+} from '@overeng/notion-react'
+```
+
+The readback oracle certifies **server × intent** equality — the
+complement of `plan()`'s cache × intent fixpoint. Both the observed
+block JSON and the rendered `CandidateTree` normalize into one
+canonical form; `equal` is decided by full stable-serialization equality
+of that form, with the reported hashes as diagnostics only.
+
+```ts
+const candidate = buildCandidateTree(element, pageId)
+const observed = yield * observeBlockTree({ blockId: pageId }) // GET-only walk
+const { equal, candidateHash, observedHash } = compareReadback({ candidate, observed })
+
+// Page envelope (title/icon/cover) — root or any sub-page:
+const page = yield * NotionPages.retrieve({ pageId })
+compareReadbackPage({ candidate: candidate.rootPage ?? {}, observed: page })
+```
+
+**Readback hashes are a separate hash space from `CacheNode.hash`.**
+The cache hashes request-shape projected props; readback hashes a
+response-normalized canonical form. Both build on the exported
+`hashStable`, but a cache hash never equals a readback hash for the
+same content — comparing across the two spaces is always a bug.
+
+**There is no context-free observed hash.** Masking is
+candidate-contextual: fields the JSX never claimed (callout `icon`,
+code `language`, column `widthRatio`, table `tableWidth`) are
+provider-owned and excluded; claimed fields compare exactly. Uploaded
+media sources and built-in-icon rewrites are masked as unverifiable —
+see [Limitations → Readback](./limitations.md#readback-verification-scope).
+
+`child_page` blocks compare by title identity only; verify a sub-page's
+own content with its own `compareReadback`/`compareReadbackPage` pass
+(same per-page boundary as sync itself). Raw escape-hatch blocks
+(`<Raw>`, `SyncedBlock`, …) are unsupported and throw.
+
 ## Block components
 
 From `@overeng/notion-react` (Notion host) and
