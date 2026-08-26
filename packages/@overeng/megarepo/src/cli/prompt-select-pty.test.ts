@@ -25,7 +25,7 @@ type PtyResult = {
   readonly readinessObserved: boolean
   readonly trace: PromptTrace
   /** Raw PTY transcript bytes (first ESC through the last frame before the TRACE marker). */
-  readonly transcript: string
+  readonly transcript: Buffer
 }
 
 const fixturePath = fileURLToPath(new URL('./prompt-select-pty-fixture.ts', import.meta.url))
@@ -117,9 +117,10 @@ const runPromptCase = (testCase: PromptCase): Promise<PtyResult> =>
       // shell's echo of the launched command (contains absolute paths). Byte-exact so the
       // baseline below pins the rc.111 rendering deliberately.
       const transcriptStart = output.indexOf(0x1b)
-      const transcript = output
-        .subarray(transcriptStart === -1 ? 0 : transcriptStart, markerIndex)
-        .toString('utf8')
+      const transcript = output.subarray(
+        transcriptStart === -1 ? 0 : transcriptStart,
+        markerIndex,
+      )
 
       settled = true
       resolve({ readinessObserved, trace, transcript })
@@ -147,7 +148,7 @@ describe.skipIf(process.platform === 'darwin')('Prompt.select real-PTY semantics
       inputs: [Buffer.from('\u001b[B'), Buffer.from('\r')],
     })
 
-    expect(result.transcript).toMatchSnapshot()
+    expect(result.transcript.toString('hex')).toMatchSnapshot()
   })
 
   it('classifies Ctrl-C as Quit and restores cooked mode', async () => {
@@ -168,6 +169,6 @@ describe.skipIf(process.platform === 'darwin')('Prompt.select real-PTY semantics
       inputs: [Buffer.from('\u0003')],
     })
 
-    expect(result.transcript).toMatchSnapshot()
+    expect(result.transcript.toString('hex')).toMatchSnapshot()
   })
 })

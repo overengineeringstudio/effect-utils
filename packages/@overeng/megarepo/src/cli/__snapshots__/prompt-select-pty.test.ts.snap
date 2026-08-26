@@ -1,19 +1,5 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`Prompt.select real-PTY semantics > pins the rc.111 interrupted transcript bytes (deliberate rebaseline) 1`] = `
-"[?25l[96m?[0m [1mAbort missing-ref action[0m [90m›[0m 
-[96m❯[0m [4m[96mCreate branch[0m 
-  Skip this member 
-  Abort sync [?25h"
-`;
+exports[`Prompt.select real-PTY semantics > pins the rc.111 interrupted transcript bytes (deliberate rebaseline) 1`] = `"1b5b3f32356c1b5b39366d3f1b5b306d201b5b316d41626f7274206d697373696e672d72656620616374696f6e1b5b306d201b5b39306de280ba1b5b306d200d0a1b5b39366de29daf1b5b306d201b5b346d1b5b39366d437265617465206272616e63681b5b306d200d0a2020536b69702074686973206d656d626572200d0a202041626f72742073796e6320071b5b3f323568"`;
 
-exports[`Prompt.select real-PTY semantics > pins the rc.111 selection transcript bytes (deliberate rebaseline) 1`] = `
-"[?25l[96m?[0m [1mChoose missing-ref action[0m [90m›[0m 
-[96m❯[0m [4m[96mCreate branch[0m 
-  Skip this member 
-  Abort sync [2K[1A[2K[1A[2K[1A[2K[G[2K[G[?25l[96m?[0m [1mChoose missing-ref action[0m [90m›[0m 
-  Create branch 
-[96m❯[0m [4m[96mSkip this member[0m 
-  Abort sync [2K[1A[2K[1A[2K[1A[2K[G[2K[G[32m✔[0m [1mChoose missing-ref action[0m [90m…[0m  [37mSkip this member[0m
-[?25h"
-`;
+exports[`Prompt.select real-PTY semantics > pins the rc.111 selection transcript bytes (deliberate rebaseline) 1`] = `"1b5b3f32356c1b5b39366d3f1b5b306d201b5b316d43686f6f7365206d697373696e672d72656620616374696f6e1b5b306d201b5b39306de280ba1b5b306d200d0a1b5b39366de29daf1b5b306d201b5b346d1b5b39366d437265617465206272616e63681b5b306d200d0a2020536b69702074686973206d656d626572200d0a202041626f72742073796e63201b5b324b1b5b31411b5b324b1b5b31411b5b324b1b5b31411b5b324b1b5b471b5b324b1b5b471b5b3f32356c1b5b39366d3f1b5b306d201b5b316d43686f6f7365206d697373696e672d72656620616374696f6e1b5b306d201b5b39306de280ba1b5b306d200d0a2020437265617465206272616e6368200d0a1b5b39366de29daf1b5b306d201b5b346d1b5b39366d536b69702074686973206d656d6265721b5b306d200d0a202041626f72742073796e63201b5b324b1b5b31411b5b324b1b5b31411b5b324b1b5b31411b5b324b1b5b471b5b324b1b5b471b5b33326de29c941b5b306d201b5b316d43686f6f7365206d697373696e672d72656620616374696f6e1b5b306d201b5b39306de280a61b5b306d20201b5b33376d536b69702074686973206d656d6265721b5b306d0d0a1b5b3f323568"`;
