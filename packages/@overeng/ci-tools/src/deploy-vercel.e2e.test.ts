@@ -15,10 +15,12 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-project'
+type AliasApiMode = 'ok' | 'transient-error' | 'transport-error'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
 let apiMode: ApiMode = 'ok'
+let aliasApiMode: AliasApiMode = 'ok'
 let server: Server
 let apiBaseUrl = ''
 let deploymentCommitShas: Record<string, string> = {}
@@ -127,6 +129,14 @@ beforeAll(async () => {
       const url = new URL(request.url, 'http://localhost')
       if (url.searchParams.get('teamId') !== 'fake-org') {
         response.writeHead(400, { connection: 'close' }).end('missing team scope')
+        return
+      }
+      if (aliasApiMode === 'transient-error') {
+        response.writeHead(503, { connection: 'close' }).end('temporarily unavailable')
+        return
+      }
+      if (aliasApiMode === 'transport-error') {
+        request.socket.destroy()
         return
       }
       if (aliasHolder === undefined) {
@@ -766,6 +776,7 @@ exit 1
         alias: 'ptg',
         finalUrl: 'https://ptg.vercel.app/',
         rawDeployUrl: 'https://deploy-web.vercel.app/',
+        attempts: 1,
       })
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
@@ -796,7 +807,11 @@ exit 1
       expect(countAliasAttempts(workspace.logPath)).toBe(2)
       const record = readRecord(reportFile)
       expect(record.status).toBe('success')
-      expect(record.data).toMatchObject({ alias: 'ptg', finalUrl: 'https://ptg.vercel.app/' })
+      expect(record.data).toMatchObject({
+        alias: 'ptg',
+        finalUrl: 'https://ptg.vercel.app/',
+        attempts: 2,
+      })
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }
@@ -884,6 +899,37 @@ exit 1
         attempts: 1,
       })
     } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    ['transient-error', 'ProviderOperationFailed'],
+    ['transport-error', 'ProviderProjectLookupFailed'],
+  ] as const)('preserves %s alias lookup failures as retryable', async (mode, errorKind) => {
+    apiMode = 'ok'
+    aliasApiMode = mode
+    deploymentCommitShas = {}
+    aliasHolder = undefined
+    const workspace = makeCollisionWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: prodDeployArgs(workspace),
+        env: { FAKE_VERCEL_ALIAS_MODE: 'permanent' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(countAliasAttempts(workspace.logPath)).toBe(1)
+      expect(readRecord(reportFile).data).toMatchObject({
+        errorKind,
+        retryable: true,
+        attempts: 1,
+      })
+    } finally {
+      aliasApiMode = 'ok'
       rmSync(workspace.root, { recursive: true, force: true })
     }
   })

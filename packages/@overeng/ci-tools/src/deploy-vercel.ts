@@ -708,13 +708,40 @@ const fetchVercelAliasRecord = Effect.fn('ci-tools.deploy.vercel.alias-record')(
     path: `/v4/aliases/${encodeURIComponent(opts.aliasHost)}${
       opts.teamId === undefined ? '' : `?teamId=${encodeURIComponent(opts.teamId)}`
     }`,
-  }).pipe(Effect.orElseSucceed(() => undefined))
-  if (response === undefined || response.status < 200 || response.status >= 300) {
+  })
+  if (response.status === 401 || response.status === 403) {
+    return yield* new Unauthorized({
+      provider: 'vercel',
+      target: opts.target,
+      message: 'Vercel API rejected deploy credentials while resolving an alias collision',
+      diagnostics: { apiStatus: String(response.status) },
+    })
+  }
+  if (response.status === 404) {
     return undefined
+  }
+  if (response.status < 200 || response.status >= 300) {
+    return yield* new ProviderOperationFailed({
+      provider: 'vercel',
+      target: opts.target,
+      operation: 'alias',
+      transient: response.status >= 500,
+      message: 'Vercel alias lookup failed while resolving an alias collision',
+      diagnostics: { apiStatus: String(response.status) },
+    })
   }
   const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(VercelAliasJson))(response.text)
   if (Result.isFailure(decoded) === true) {
-    return undefined
+    return yield* new InvalidProviderOutput({
+      provider: 'vercel',
+      target: opts.target,
+      outputKind: 'provider-response',
+      message: 'Vercel alias lookup returned an invalid provider response',
+      diagnostics: {
+        apiStatus: String(response.status),
+        cause: String(decoded.failure),
+      },
+    })
   }
   return {
     projectId: decoded.success.projectId,
@@ -763,7 +790,7 @@ const assignAliasResilient = (opts: {
 
     const first = yield* runAliasAttempt(1)
     if (first.status === 0) {
-      return
+      return 1
     }
     const classifyFirstFailure = () =>
       classifyVercelFailure({
@@ -784,7 +811,7 @@ const assignAliasResilient = (opts: {
       authToken: opts.authToken,
       teamId: apiTeamId,
       aliasHost: opts.aliasHost,
-    })
+    }).pipe(Effect.mapError((failure) => new AliasAssignmentFailed({ failure, attempts: 1 })))
     let holderCommitSha: string | undefined
     if (holder?.deploymentRef !== undefined) {
       holderCommitSha = yield* fetchVercelDeploymentCommitSha({
@@ -830,7 +857,7 @@ const assignAliasResilient = (opts: {
         deploymentRef: deployHost,
       })
       if (ourCommitSha === holderCommitSha) {
-        return
+        return 1
       }
     }
 
@@ -838,7 +865,7 @@ const assignAliasResilient = (opts: {
     // recheck once immediately before giving up.
     const second = yield* runAliasAttempt(2)
     if (second.status === 0) {
-      return
+      return 2
     }
     return yield* new AliasAssignmentFailed({
       failure: classifyVercelFailure({
@@ -1254,9 +1281,10 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
       }
 
       let finalUrl = rawDeployUrl
+      let attempts = 1
       if (alias !== undefined) {
         const aliasHost = `${alias}.vercel.app`
-        yield* assignAliasResilient({
+        attempts = yield* assignAliasResilient({
           target: options.target,
           aliasHost,
           rawDeployUrl,
@@ -1325,7 +1353,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         productionDomains,
         startedAtUtc: createdAtUtc,
         endedAtUtc: isoNow(),
-        attempts: 1,
+        attempts,
       })
 
       if (Result.isFailure(preliminary) === true) {
@@ -1378,7 +1406,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         productionDomains,
         startedAtUtc: createdAtUtc,
         endedAtUtc: isoNow(),
-        attempts: 1,
+        attempts,
         ...(cleanup === undefined ? {} : { cleanup }),
       })
       if (Result.isFailure(decoded) === true) {

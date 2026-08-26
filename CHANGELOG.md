@@ -191,6 +191,7 @@ All notable changes to this project will be documented in this file.
   plain `Context.Reference` values now, not classes — type-level references
   must use the exported shape types (e.g. `ProgressReporterShape`,
   `NotionThrottleShape`) instead of the tag name.
+
 ### Fixed
 
 - **@overeng/ci-tools**: handle Vercel `already in use` alias collisions
