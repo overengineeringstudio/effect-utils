@@ -565,6 +565,14 @@ const shellQuote = (value: string): string => `'${value.replaceAll("'", `'"'"'`)
 const renderBuckWrapper = (input: NormalizedCompositionRootInput): string => `#!/bin/sh
 set -eu
 
+wrapper_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+workspace_root=$(CDPATH= cd -- "$wrapper_dir/../.." && pwd -P)
+update_lock="$workspace_root/.megarepo/workspace-update.lock"
+if [ -e "$update_lock" ] || [ -L "$update_lock" ]; then
+  printf '%s\\n' "megarepo buck2 wrapper: workspace update lock exists at $update_lock; recover the workspace update through mr before running Buck" >&2
+  exit 75
+fi
+
 for arg in "$@"; do
   case "$arg" in
     --isolation-dir|--isolation-dir=*)

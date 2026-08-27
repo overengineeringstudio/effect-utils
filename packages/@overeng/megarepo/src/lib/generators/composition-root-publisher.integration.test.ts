@@ -122,6 +122,7 @@ const optionsFor = ({
   publicationRuntime = runtime(),
   lockToken = 'test-token',
   recoverToken,
+  afterAuthorityPublished,
 }: {
   readonly fixture: Fixture
   readonly memberKeys?: ReadonlyArray<string>
@@ -132,6 +133,7 @@ const optionsFor = ({
   readonly publicationRuntime?: CompositionRootPublicationRuntime
   readonly lockToken?: string
   readonly recoverToken?: string
+  readonly afterAuthorityPublished?: () => Promise<void>
 }): PublishCompositionRootOptions => ({
   workspaceRoot: fixture.workspaceRoot,
   configMemberKeys: memberKeys,
@@ -148,6 +150,7 @@ const optionsFor = ({
     ...(recoverToken === undefined ? {} : { recoverToken }),
   },
   runtime: publicationRuntime,
+  ...(afterAuthorityPublished === undefined ? {} : { afterAuthorityPublished }),
 })
 
 const readGenerated = (fixture: Fixture, relativePath: string): Effect.Effect<Buffer> =>
@@ -205,6 +208,104 @@ describe('composition root publisher', () => {
           expect(yield* exists(NodePath.join(fixture.root, relativePath))).toBe(true)
         }
         expect(result.memberManifests.map(({ memberKey }) => memberKey)).toEqual(['alpha', 'beta'])
+      }),
+    ),
+  )
+
+  it.effect('commits only after the authority callback succeeds', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        let callbacks = 0
+        yield* publishCompositionRoot(
+          optionsFor({
+            fixture,
+            afterAuthorityPublished: async () => {
+              callbacks += 1
+              expect(
+                (await readFile(NodePath.join(fixture.root, '.buckconfig'), 'utf8')).length,
+              ).toBeGreaterThan(0)
+              expect(
+                (
+                  await readFile(
+                    NodePath.join(fixture.root, '.megarepo/composition-publication.json'),
+                  )
+                ).byteLength,
+              ).toBeGreaterThan(0)
+            },
+          }),
+        )
+        expect(callbacks).toBe(1)
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+        ).toBe(false)
+      }),
+    ),
+  )
+
+  it.effect('rolls back every first-create authority file when the callback fails', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const error = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              afterAuthorityPublished: async () => {
+                throw new Error('authority side effect failed')
+              },
+            }),
+          ),
+        )
+        expect(error.reason).toBe('IoFailure')
+        for (const path of generatedPaths) {
+          expect(yield* exists(NodePath.join(fixture.root, path))).toBe(false)
+        }
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+        ).toBe(false)
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+        ).toBe(false)
+      }),
+    ),
+  )
+
+  it.effect('restores the previous generation byte-exact when an update callback fails', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* publishCompositionRoot(optionsFor({ fixture, cacheValue: 'old:1234' }))
+        const before = new Map(
+          yield* Effect.promise(() =>
+            Promise.all(
+              generatedPaths.map(async (path) => {
+                const absolute = NodePath.join(fixture.root, path)
+                const info = await stat(absolute)
+                return [path, { bytes: await readFile(absolute), mode: info.mode & 0o777 }] as const
+              }),
+            ),
+          ),
+        )
+        const error = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'new:5678',
+              lockToken: 'update-callback-token',
+              afterAuthorityPublished: async () => {
+                throw new Error('projection side effect failed')
+              },
+            }),
+          ),
+        )
+        expect(error.reason).toBe('IoFailure')
+        for (const path of generatedPaths) {
+          const absolute = NodePath.join(fixture.root, path)
+          const info = yield* Effect.promise(() => stat(absolute))
+          expect(yield* Effect.promise(() => readFile(absolute))).toEqual(before.get(path)?.bytes)
+          expect(info.mode & 0o777).toBe(before.get(path)?.mode)
+        }
       }),
     ),
   )
@@ -711,40 +812,58 @@ describe('composition root publisher', () => {
       ),
   )
 
-  it.effect('rolls forward a fully observed config-last commit after process death', () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const fixture = yield* makeFixture()
-        const fault = yield* failureReason(
-          publishCompositionRoot(
-            optionsFor({
-              fixture,
-              cacheValue: 'committed:1234',
-              lockToken: 'commit-token',
-              publicationRuntime: runtime({
-                simulateProcessFaultAfterPublishedFile: (path) => path === '.buckconfig',
+  it.effect(
+    'rolls back a config-last process fault before any callback can be assumed complete',
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeFixture()
+          let callbacks = 0
+          const fault = yield* failureReason(
+            publishCompositionRoot(
+              optionsFor({
+                fixture,
+                cacheValue: 'uncommitted:1234',
+                lockToken: 'commit-token',
+                afterAuthorityPublished: async () => {
+                  callbacks += 1
+                },
+                publicationRuntime: runtime({
+                  simulateProcessFaultAfterPublishedFile: (path) => path === '.buckconfig',
+                }),
               }),
-            }),
-          ),
-        )
-        expect(fault.reason).toBe('SimulatedProcessFault')
-        expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain(
-          'committed:1234',
-        )
-        const recovered = yield* publishCompositionRoot(
-          optionsFor({
-            fixture,
-            cacheValue: 'committed:1234',
-            lockToken: 'after-commit-token',
-            recoverToken: 'commit-token',
-          }),
-        )
-        expect(recovered.changedPaths).toEqual([])
-        expect(
-          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
-        ).toBe(false)
-      }),
-    ),
+            ),
+          )
+          expect(fault.reason).toBe('SimulatedProcessFault')
+          expect(callbacks).toBe(0)
+          expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain(
+            'uncommitted:1234',
+          )
+
+          const recoveryFailure = yield* failureReason(
+            publishCompositionRoot(
+              optionsFor({
+                fixture,
+                cacheValue: 'uncommitted:1234',
+                lockToken: 'after-commit-token',
+                recoverToken: 'commit-token',
+                publicationRuntime: runtime({
+                  assertCapabilityProjection: async () => {
+                    throw new Error('stop after recovery')
+                  },
+                }),
+              }),
+            ),
+          )
+          expect(recoveryFailure.reason).toBe('CapabilityPrerequisiteFailure')
+          for (const path of generatedPaths) {
+            expect(yield* exists(NodePath.join(fixture.root, path))).toBe(false)
+          }
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+          ).toBe(false)
+        }),
+      ),
   )
 
   it.effect('refuses a foreign candidate during exact-token recovery', () =>
