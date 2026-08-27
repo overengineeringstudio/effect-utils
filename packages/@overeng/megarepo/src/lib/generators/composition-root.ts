@@ -15,8 +15,16 @@ export const DEFAULT_BUCK_ISOLATION_DIR = 'megarepo' as const
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
 const textEncoder = new TextEncoder()
 
+const compareCodeUnits = ({
+  left,
+  right,
+}: {
+  readonly left: string
+  readonly right: string
+}): number => (left < right ? -1 : left > right ? 1 : 0)
+
 const canonicalStringSet = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
-  [...new Set(values)].toSorted((left, right) => (left < right ? -1 : left > right ? 1 : 0))
+  [...new Set(values)].toSorted((left, right) => compareCodeUnits({ left, right }))
 
 const printableAscii = (value: string): boolean => /^[\x20-\x7e]+$/u.test(value)
 
@@ -153,10 +161,10 @@ export const normalizeBuckMemberManifest = (manifest: BuckMemberManifest): BuckM
     .map(normalizeCapability)
     .toSorted(
       (left, right) =>
-        left.toolId.localeCompare(right.toolId) ||
-        left.protocol.localeCompare(right.protocol) ||
-        left.flakePackage.localeCompare(right.flakePackage) ||
-        left.executable.localeCompare(right.executable),
+        compareCodeUnits({ left: left.toolId, right: right.toolId }) ||
+        compareCodeUnits({ left: left.protocol, right: right.protocol }) ||
+        compareCodeUnits({ left: left.flakePackage, right: right.flakePackage }) ||
+        compareCodeUnits({ left: left.executable, right: right.executable }),
     ),
 })
 
@@ -330,19 +338,21 @@ export const decodeCompositionRootInput = (input: unknown): NormalizedCompositio
     cacheSectionNames.add(section.section)
     return {
       section: section.section,
-      entries: [...section.entries].toSorted((left, right) => left.key.localeCompare(right.key)),
+      entries: [...section.entries].toSorted((left, right) =>
+        compareCodeUnits({ left: left.key, right: right.key }),
+      ),
     }
   })
 
   return {
     schemaVersion: COMPOSITION_ROOT_SCHEMA_VERSION,
     members: members.toSorted((left, right) =>
-      left.manifest.cell.localeCompare(right.manifest.cell),
+      compareCodeUnits({ left: left.manifest.cell, right: right.manifest.cell }),
     ),
     platformHubCell: decoded.platformHubCell,
     isolationDir: decoded.isolationDir ?? DEFAULT_BUCK_ISOLATION_DIR,
     cacheSections: cacheSections.toSorted((left, right) =>
-      left.section.localeCompare(right.section),
+      compareCodeUnits({ left: left.section, right: right.section }),
     ),
     resolvedBuckExecutable: decoded.resolvedBuckExecutable,
   }
@@ -359,11 +369,21 @@ export const encodeCompositionRootInput = (
 /** One generated relative path with its exact publication mode and bytes. */
 export const GeneratedCompositionFileSchema = Schema.Struct({
   path: Schema.String.check(
-    Schema.makeFilter<string>((value) =>
-      value.length > 0 && value.startsWith('/') === false && PosixPath.normalize(value) === value
-        ? undefined
-        : 'Expected a canonical generated relative file path',
-    ),
+    Schema.makeFilter<string>((value) => {
+      if (
+        printableAscii(value) === false ||
+        value.startsWith('/') === true ||
+        value.includes('\\') === true ||
+        PosixPath.normalize(value) !== value
+      ) {
+        return 'Expected a canonical generated relative POSIX file path'
+      }
+      return value
+        .split('/')
+        .some((segment) => segment === '' || segment === '.' || segment === '..') === true
+        ? 'Generated paths may not contain empty, dot, or parent segments'
+        : undefined
+    }),
   ),
   mode: Schema.Literals([0o644, 0o755]),
   bytes: Schema.Uint8Array,
@@ -548,7 +568,7 @@ const generationManifestFor = (
 ): CompositionGenerationManifest => ({
   schemaVersion: COMPOSITION_ROOT_SCHEMA_VERSION,
   files: [...files]
-    .toSorted((left, right) => left.path.localeCompare(right.path))
+    .toSorted((left, right) => compareCodeUnits({ left: left.path, right: right.path }))
     .map((file) => ({ path: file.path, mode: file.mode, sha256: sha256(file.bytes) })),
 })
 
@@ -591,6 +611,6 @@ export const generateCompositionRoot = (rawInput: CompositionRootInput): Composi
   const beforeAuthority = [
     ...ownedFiles.filter((file) => file.path !== '.buckconfig'),
     manifest,
-  ].toSorted((left, right) => left.path.localeCompare(right.path))
+  ].toSorted((left, right) => compareCodeUnits({ left: left.path, right: right.path }))
   return decodeCompositionRootOutput({ files: [...beforeAuthority, authority] })
 }
