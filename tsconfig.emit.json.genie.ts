@@ -1,7 +1,4 @@
-import {
-  isRootTsconfigEmitProject,
-  rootTsconfigProjects,
-} from './genie/tsconfig-projects.ts'
+import { isRootTsconfigEmitProject, rootTsconfigProjects } from './genie/tsconfig-projects.ts'
 import { tsconfigJson, type TSConfigArgs } from './packages/@overeng/genie/src/runtime/mod.ts'
 
 export default tsconfigJson({

@@ -24,6 +24,8 @@ import {
 
 const decoder = new TextDecoder()
 const text = (file: GeneratedCompositionFile): string => decoder.decode(file.bytes)
+const compareCodeUnits = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0
 const filesByPath = (input: CompositionRootInput): ReadonlyMap<string, GeneratedCompositionFile> =>
   new Map(generateCompositionRoot(input).files.map((file) => [file.path, file]))
 
@@ -488,8 +490,9 @@ describe('composition determinism and detector coverage', () => {
       )
       const detectorCells = [...config.matchAll(/target:([A-Za-z][A-Za-z0-9_-]*)\/\/\.\.\.-/gu)]
         .map((match) => match[1])
-        .sort()
-      expect(detectorCells).toEqual([...cells].sort())
+        .filter((cell): cell is string => cell !== undefined)
+        .sort(compareCodeUnits)
+      expect(detectorCells).toEqual([...cells].sort(compareCodeUnits))
       expect(detectorCells).toHaveLength(new Set(cells).size)
     },
     { fastCheck: { numRuns: 100 } },
@@ -518,7 +521,7 @@ describe('ignore projection', () => {
     expect(ignore).toContain('repos/alpha/**/dist')
     expect(ignore).toContain('repos/.staging-*')
     expect(ignore).toContain('.buck2/capabilities.candidate.*')
-    expect(ignore).toEqual([...ignore].sort())
+    expect(ignore).toEqual([...ignore].sort(compareCodeUnits))
   })
 })
 
