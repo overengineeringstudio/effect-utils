@@ -28,6 +28,9 @@ const canonicalStringSet = (values: ReadonlyArray<string>): ReadonlyArray<string
 
 const printableAscii = (value: string): boolean => /^[\x20-\x7e]+$/u.test(value)
 
+const hasEmptyOrDotSegment = (value: string): boolean =>
+  value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..') === true
+
 const CellName = Schema.String.check(
   Schema.makeFilter<string>((value) =>
     /^[A-Za-z][A-Za-z0-9_-]*$/u.test(value) === true
@@ -112,6 +115,54 @@ const CapabilityExecutable = Schema.String.check(
   }),
 ).annotate({ identifier: 'Megarepo.BuckCapabilityExecutable' })
 
+const DistOverlayTarget = Schema.String.check(
+  Schema.makeFilter<string>((value) => {
+    if (
+      printableAscii(value) === false ||
+      /\s/u.test(value) === true ||
+      value.includes('\\') === true
+    ) {
+      return 'Expected a whitespace-free member-relative Buck label'
+    }
+    const match = /^\/\/([^:]+):([^:]+)$/u.exec(value)
+    if (match === null) return 'Expected a member-relative Buck label //<package>:<target>'
+    const buckPackage = match[1]!
+    const target = match[2]!
+    return PosixPath.normalize(buckPackage) !== buckPackage ||
+      PosixPath.normalize(target) !== target ||
+      hasEmptyOrDotSegment(buckPackage) === true ||
+      hasEmptyOrDotSegment(target) === true
+      ? 'Buck overlay labels may not contain empty, dot, or parent segments'
+      : undefined
+  }),
+).annotate({ identifier: 'Megarepo.BuckDistOverlayTarget' })
+
+const DistOverlayDestination = Schema.String.check(
+  Schema.makeFilter<string>((value) => {
+    if (
+      printableAscii(value) === false ||
+      value.startsWith('/') === true ||
+      value.includes('\\') === true ||
+      value.includes(',') === true ||
+      PosixPath.normalize(value) !== value
+    ) {
+      return 'Expected a normalized member-relative POSIX overlay destination'
+    }
+    return value
+      .split('/')
+      .some((segment) => segment === '' || segment === '.' || segment === '..') === true
+      ? 'Overlay destinations may not contain empty, dot, or parent segments'
+      : undefined
+  }),
+).annotate({ identifier: 'Megarepo.BuckDistOverlayDestination' })
+
+/** One Buck-built distribution overlaid into a member mount. */
+export const BuckMemberDistOverlaySchema = Schema.Struct({
+  target: DistOverlayTarget,
+  destination: DistOverlayDestination,
+}).annotate({ identifier: 'Megarepo.BuckMemberDistOverlay' })
+export type BuckMemberDistOverlay = typeof BuckMemberDistOverlaySchema.Type
+
 /** One Nix-resolved executable capability required by a member. */
 export const BuckMemberCapabilitySchema = Schema.Struct({
   toolId: CapabilityToken,
@@ -127,6 +178,7 @@ export const BuckMemberManifestSchema = Schema.Struct({
   cell: CellName,
   mount: MemberMount,
   projectIgnore: Schema.Array(IgnorePattern),
+  distOverlays: Schema.Array(BuckMemberDistOverlaySchema),
   capabilities: Schema.Array(BuckMemberCapabilitySchema),
 })
   .check(
@@ -138,11 +190,28 @@ export const BuckMemberManifestSchema = Schema.Struct({
         }
         tools.add(capability.toolId)
       }
+      const overlayTargets = new Set<string>()
+      const overlayDestinations = new Set<string>()
+      for (const overlay of manifest.distOverlays) {
+        if (overlayTargets.has(overlay.target) === true) {
+          return `Duplicate dist overlay target: ${overlay.target}`
+        }
+        if (overlayDestinations.has(overlay.destination) === true) {
+          return `Duplicate dist overlay destination: ${overlay.destination}`
+        }
+        overlayTargets.add(overlay.target)
+        overlayDestinations.add(overlay.destination)
+      }
       return undefined
     }),
   )
   .annotate({ identifier: 'Megarepo.BuckMemberManifest' })
 export type BuckMemberManifest = typeof BuckMemberManifestSchema.Type
+
+const normalizeDistOverlay = (overlay: BuckMemberDistOverlay): BuckMemberDistOverlay => ({
+  target: overlay.target,
+  destination: overlay.destination,
+})
 
 const normalizeCapability = (capability: BuckMemberCapability): BuckMemberCapability => ({
   toolId: capability.toolId,
@@ -157,6 +226,13 @@ export const normalizeBuckMemberManifest = (manifest: BuckMemberManifest): BuckM
   cell: manifest.cell,
   mount: manifest.mount,
   projectIgnore: canonicalStringSet(manifest.projectIgnore),
+  distOverlays: [...manifest.distOverlays]
+    .map(normalizeDistOverlay)
+    .toSorted(
+      (left, right) =>
+        compareCodeUnits({ left: left.target, right: right.target }) ||
+        compareCodeUnits({ left: left.destination, right: right.destination }),
+    ),
   capabilities: [...manifest.capabilities]
     .map(normalizeCapability)
     .toSorted(

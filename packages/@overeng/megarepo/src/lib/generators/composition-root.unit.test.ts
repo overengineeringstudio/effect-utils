@@ -38,17 +38,20 @@ const manifest = ({
   cell,
   memberKey = cell,
   projectIgnore = [],
+  distOverlays = [],
   capabilities = [],
 }: {
   readonly cell: string
   readonly memberKey?: string
   readonly projectIgnore?: ReadonlyArray<string>
+  readonly distOverlays?: BuckMemberManifest['distOverlays']
   readonly capabilities?: BuckMemberManifest['capabilities']
 }): BuckMemberManifest => ({
   schemaVersion: 1,
   cell,
   mount: `repos/${memberKey}`,
   projectIgnore,
+  distOverlays,
   capabilities,
 })
 
@@ -81,9 +84,19 @@ describe('buck2 member manifest', () => {
       cell: 'alpha',
       mount: 'repos/alpha',
       projectIgnore: ['generated', '**/dist', 'generated'],
+      distOverlays: [
+        { target: '//pkg:item_x', destination: 'dist/item_x' },
+        { target: '//pkg:item.x', destination: 'dist/item.x' },
+        { target: '//pkg:item-x', destination: 'dist/item-x' },
+      ],
       capabilities: [capability('zeta'), capability('alpha')],
     })
     expect(decoded.projectIgnore).toEqual(['**/dist', 'generated'])
+    expect(decoded.distOverlays).toEqual([
+      { target: '//pkg:item-x', destination: 'dist/item-x' },
+      { target: '//pkg:item.x', destination: 'dist/item.x' },
+      { target: '//pkg:item_x', destination: 'dist/item_x' },
+    ])
     expect(decoded.capabilities.map((item) => item.toolId)).toEqual(['alpha', 'zeta'])
 
     const encoded = encodeBuckMemberManifestJson(decoded)
@@ -131,6 +144,50 @@ describe('buck2 member manifest', () => {
     ],
   ])('rejects %s', (_name, value) => {
     expect(() => decodeBuckMemberManifest(value)).toThrow()
+  })
+
+  it.each([
+    ['missing field', undefined],
+    ['cell-qualified target', [{ target: 'alpha//pkg:item', destination: 'dist/item' }]],
+    ['root-alias target', [{ target: 'root//pkg:item', destination: 'dist/item' }]],
+    ['root-package target', [{ target: '//:item', destination: 'dist/item' }]],
+    ['target whitespace', [{ target: '//pkg:bad item', destination: 'dist/item' }]],
+    ['target backslash', [{ target: '//pkg:bad\\item', destination: 'dist/item' }]],
+    ['target package traversal', [{ target: '//pkg/../other:item', destination: 'dist/item' }]],
+    ['target-name dot segment', [{ target: '//pkg:../item', destination: 'dist/item' }]],
+    ['absolute destination', [{ target: '//pkg:item', destination: '/dist/item' }]],
+    ['destination traversal', [{ target: '//pkg:item', destination: '../dist/item' }]],
+    ['destination inner traversal', [{ target: '//pkg:item', destination: 'dist/../item' }]],
+    ['destination backslash', [{ target: '//pkg:item', destination: 'dist\\item' }]],
+    ['destination comma', [{ target: '//pkg:item', destination: 'dist,item' }]],
+    ['empty destination', [{ target: '//pkg:item', destination: '' }]],
+    [
+      'duplicate target',
+      [
+        { target: '//pkg:item', destination: 'dist/one' },
+        { target: '//pkg:item', destination: 'dist/two' },
+      ],
+    ],
+    [
+      'duplicate destination',
+      [
+        { target: '//pkg:one', destination: 'dist/item' },
+        { target: '//pkg:two', destination: 'dist/item' },
+      ],
+    ],
+  ])('rejects dist overlays with %s', (_name, distOverlays) => {
+    const valid = manifest({ cell: 'alpha' })
+    const candidate =
+      distOverlays === undefined
+        ? {
+            schemaVersion: valid.schemaVersion,
+            cell: valid.cell,
+            mount: valid.mount,
+            projectIgnore: valid.projectIgnore,
+            capabilities: valid.capabilities,
+          }
+        : { ...valid, distOverlays }
+    expect(() => decodeBuckMemberManifest(candidate)).toThrow()
   })
 })
 
@@ -283,6 +340,10 @@ describe('composition determinism and detector coverage', () => {
             manifest: manifest({
               cell: 'beta',
               projectIgnore: ['generated', '**/dist'],
+              distOverlays: [
+                { target: '//pkg:item_x', destination: 'dist/item_x' },
+                { target: '//pkg:item-x', destination: 'dist/item-x' },
+              ],
               capabilities: [capability('zeta'), capability('alpha')],
             }),
           },
@@ -309,6 +370,10 @@ describe('composition determinism and detector coverage', () => {
             manifest: manifest({
               cell: 'beta',
               projectIgnore: ['**/dist', 'generated'],
+              distOverlays: [
+                { target: '//pkg:item-x', destination: 'dist/item-x' },
+                { target: '//pkg:item_x', destination: 'dist/item_x' },
+              ],
               capabilities: [capability('alpha'), capability('zeta')],
             }),
           },
