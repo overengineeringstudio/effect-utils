@@ -1000,50 +1000,89 @@ const emptyCache = (rootId: string): CacheTree => ({
   children: [],
 })
 
+interface LiveIdentityNode {
+  readonly blockId: string
+  readonly type: string
+  readonly children: readonly LiveIdentityNode[]
+}
+
 /**
- * Build a cache-shaped base from the live top-level block ids on drift.
- *
- * When a prior cache is available, this preserves entries whose blockIds are
- * still live — their meaningful key/hash/children let `diff()` retain them
- * against matching candidate keys. Live blockIds that are NOT in the prior
- * cache get synthetic `drift:<blockId>` keys so `diff()` emits a `remove` for
- * each (they're unowned leftovers).
- *
- * Without a prior (cold-clean path), every live id becomes a ghost entry so
- * every live top-level block converts into an idempotent remove.
- *
- * Why this matters: the naive "all-ghost" base turns a 1-block out-of-band
- * drift into a full page rebuild — N removes + N appends — which is O(minutes)
- * on 500+ block pages. The hybrid base preserves locality: only the actual
- * drift (blocks added/removed out-of-band) drives ops; the stable majority is
- * retained via the normal LCS path.
+ * Observe the ordered live identity tree below a page or block. Warm-cache
+ * drift detection recurses through blocks with children and through every
+ * child-page boundary; cold cleanup only needs the root children.
  */
+const retrieveLiveIdentities: (
+  parentId: string,
+  recursive: boolean,
+) => Effect.Effect<readonly LiveIdentityNode[], NotionSyncError, NotionConfig | HttpClient> =
+  Effect.fn('notion-react.retrieve-live-identities')(function* (
+    parentId: string,
+    recursive: boolean,
+  ) {
+    const live = yield* Stream.runCollect(
+      NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
+    ).pipe(
+      Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
+    )
+    const identities: LiveIdentityNode[] = []
+    for (const block of Array.from(live)) {
+      if (block.in_trash === true) continue
+      const children =
+        recursive && (block.has_children === true || block.type === 'child_page')
+          ? yield* retrieveLiveIdentities(block.id, true)
+          : []
+      identities.push({ blockId: block.id, type: block.type, children })
+    }
+    return identities
+  })
+
+/**
+ * Build a cache-shaped base from the recursive live identity tree on drift.
+ *
+ * Prior entries whose identities are still live retain their key/hash data,
+ * while untracked live entries become synthetic ghosts that the diff removes.
+ * The same rule is applied at every nested block and child-page scope, so a
+ * stale cache cannot blindly re-append descendants that already landed.
+ */
+const mergeLiveIdentityBase = (
+  liveNodes: readonly LiveIdentityNode[],
+  priorNodes: readonly CacheNode[],
+): readonly CacheNode[] => {
+  const priorByBlockId = new Map(priorNodes.map((node) => [node.blockId, node]))
+  return liveNodes.map((liveNode) => {
+    const priorNode = priorByBlockId.get(liveNode.blockId)
+    if (priorNode !== undefined) {
+      return {
+        ...priorNode,
+        children: mergeLiveIdentityBase(liveNode.children, priorNode.children),
+      }
+    }
+    return {
+      key: `drift:${liveNode.blockId}`,
+      blockId: liveNode.blockId,
+      type: liveNode.type,
+      hash: '',
+      children: mergeLiveIdentityBase(liveNode.children, []),
+      nodeKind: liveNode.type === 'child_page' ? 'page' : 'block',
+    }
+  })
+}
+
 const driftedBase = (
   rootId: string,
-  liveIds: readonly string[],
+  live: readonly LiveIdentityNode[],
   prior: CacheTree | undefined,
-): CacheTree => {
-  const priorByBlockId = new Map<string, CacheNode>()
-  if (prior !== undefined) {
-    for (const c of prior.children) priorByBlockId.set(c.blockId, c)
-  }
-  return {
-    schemaVersion: CACHE_SCHEMA_VERSION,
-    rootId,
-    children: liveIds.map((blockId) => {
-      const priorNode = priorByBlockId.get(blockId)
-      if (priorNode !== undefined) return priorNode
-      return {
-        key: `drift:${blockId}`,
-        blockId,
-        type: 'unknown',
-        hash: '',
-        children: [],
-        nodeKind: 'block',
-      }
-    }),
-  }
-}
+): CacheTree => ({
+  schemaVersion: CACHE_SCHEMA_VERSION,
+  rootId,
+  children: mergeLiveIdentityBase(live, prior?.children ?? []),
+})
+
+/** Remove synthetic drift entries before a working cache can be checkpointed. */
+const withoutDriftGhosts = (nodes: readonly CacheNode[]): readonly CacheNode[] =>
+  nodes.flatMap((node) =>
+    node.key.startsWith('drift:') ? [] : [{ ...node, children: withoutDriftGhosts(node.children) }],
+  )
 
 /**
  * Adopt the inline descendants of a page that was created with inline
@@ -1184,14 +1223,44 @@ const resolvePendingPages = ({
   })
 
 /**
- * Ordered top-level drift predicate (#105). Out-of-band reorders leave the
- * block-id set intact but scramble order, and we must rebuild to converge —
- * so this is sequence equality, not set equality.
+ * Compare recursive identities. Root and ordinary block children are ordered;
+ * child-page content is matched by identity because existing page-scope
+ * application can interleave nested pages and blocks in server order.
  */
-const topLevelDrifted = (expectedIds: readonly string[], liveIds: readonly string[]): boolean => {
-  if (liveIds.length !== expectedIds.length) return true
-  for (let k = 0; k < expectedIds.length; k++) {
-    if (liveIds[k] !== expectedIds[k]) return true
+const identityTreeDrifted = (
+  expected: readonly CacheNode[],
+  live: readonly LiveIdentityNode[],
+  ordered = true,
+): boolean => {
+  if (live.length !== expected.length) return true
+  if (ordered) {
+    for (let index = 0; index < expected.length; index++) {
+      const expectedNode = expected[index]!
+      const liveNode = live[index]!
+      if (liveNode.blockId !== expectedNode.blockId) return true
+      if (
+        identityTreeDrifted(
+          expectedNode.children,
+          liveNode.children,
+          expectedNode.nodeKind !== 'page',
+        )
+      )
+        return true
+    }
+    return false
+  }
+  const liveById = new Map(live.map((node) => [node.blockId, node]))
+  for (const expectedNode of expected) {
+    const liveNode = liveById.get(expectedNode.blockId)
+    if (liveNode === undefined) return true
+    if (
+      identityTreeDrifted(
+        expectedNode.children,
+        liveNode.children,
+        expectedNode.nodeKind !== 'page',
+      )
+    )
+      return true
   }
   return false
 }
@@ -1208,7 +1277,7 @@ const selectDiffBase = ({
   pageIdDrift,
   coldBaseline,
   drifted,
-  liveTopLevelIds,
+  liveIdentities,
 }: {
   readonly pageId: string
   readonly prior: CacheTree | undefined
@@ -1216,7 +1285,7 @@ const selectDiffBase = ({
   readonly pageIdDrift: boolean
   readonly coldBaseline: ColdBaseline
   readonly drifted: boolean
-  readonly liveTopLevelIds: readonly string[]
+  readonly liveIdentities: readonly LiveIdentityNode[]
 }): {
   readonly useCold: boolean
   readonly coldClean: boolean
@@ -1224,13 +1293,13 @@ const selectDiffBase = ({
   readonly fallbackReason: SyncFallbackReason | undefined
 } => {
   const useCold = prior === undefined || pageIdDrift
-  const coldClean = useCold && coldBaseline === 'clean' && liveTopLevelIds.length > 0
+  const coldClean = useCold && coldBaseline === 'clean' && liveIdentities.length > 0
   const diffBase: CacheTree = useCold
     ? coldClean
-      ? driftedBase(pageId, liveTopLevelIds, undefined)
+      ? driftedBase(pageId, liveIdentities, undefined)
       : emptyCache(pageId)
     : drifted
-      ? driftedBase(pageId, liveTopLevelIds, prior)
+      ? driftedBase(pageId, liveIdentities, prior)
       : (prior ?? emptyCache(pageId))
   const fallbackReason: SyncFallbackReason | undefined = pageIdDrift
     ? 'page-id-drift'
@@ -1466,29 +1535,19 @@ export const sync = (
     // that require a hard rebuild should bump the schema explicitly and
     // clear the cache out-of-band.
 
-    // Pre-flight drift detection (#105). When we have a usable prior cache,
-    // fetch the page's current top-level children and compare against the
-    // cache's expected block-id set. Any divergence (block archived out of
-    // band, added by another client, cache bitrot) means the diff would
-    // target stale ids — patching ghosts and leaving live content orphaned.
-    // Treat drift as a cold start: rebuild from scratch so server state
-    // converges on the rendered tree.
-    //
-    // Cost: one GET per sync in the hot-cache path. Kept shallow — nested
-    // children are verified lazily through the checkpoint round-trip since
-    // every mutation resolves to a real server id.
-    // Pre-computed so the retrieve decision below can see it. `useCold` also
-    // covers `schemaMismatch` implicitly — we diff against the stale tree in
-    // that case, so the cold-baseline sweep doesn't apply there (see below).
+    // Pre-flight drift detection (#105). A usable warm cache is compared with
+    // the ordered live identity tree recursively, including child-page scopes.
+    // A stale nested cache is unsafe for the same reason as a stale root: the
+    // diff would append already-live descendants and then persist a snapshot
+    // that omits those duplicate identities. Cold-clean only needs root ids,
+    // because removing a root subtree removes all of its descendants.
     const useColdPath = prior === undefined || pageIdDrift
 
     let drifted = false
-    let liveTopLevelIds: readonly string[] = []
-    // Retrieve live top-level ids when either (a) we have a warm cache and
-    // want drift detection, or (b) we're taking the cold path with
-    // `coldBaseline === 'clean'` and need the live ids to synthesize a
-    // drift-style base so every leftover block converts into an idempotent
-    // remove (Fix B — pixeltrail dogfood v5).
+    let liveIdentities: readonly LiveIdentityNode[] = []
+    // Retrieve live identities when either (a) we have a warm cache and want
+    // recursive drift detection, or (b) the cold-clean path needs root ids to
+    // synthesize removals for existing content.
     const wantsLiveRetrieve =
       (prior !== undefined && !schemaMismatch && !pageIdDrift) ||
       (useColdPath && coldBaseline === 'clean')
@@ -1498,9 +1557,8 @@ export const sync = (
       if (onEvent !== undefined) {
         onEvent(SyncEvent.OpIssued({ id: retrieveOpId, kind: 'retrieve', at: Date.now() }))
       }
-      const liveChildren = yield* Stream.runCollect(
-        NotionBlocks.retrieveChildrenStream({ blockId: opts.pageId }),
-      ).pipe(
+      const recursive = prior !== undefined && !schemaMismatch && !pageIdDrift
+      const observed = yield* retrieveLiveIdentities(opts.pageId, recursive).pipe(
         Effect.tapError((cause) =>
           Effect.sync(() => {
             if (onEvent !== undefined) {
@@ -1516,9 +1574,6 @@ export const sync = (
             }
           }),
         ),
-        Effect.mapError(
-          (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
-        ),
       )
       o11y.opCount.n += 1
       if (onEvent !== undefined) {
@@ -1527,43 +1582,29 @@ export const sync = (
             id: retrieveOpId,
             kind: 'retrieve',
             durationMs: performance.now() - t0,
-            resultCount: liveChildren.length,
+            resultCount: observed.length,
             at: Date.now(),
           }),
         )
       }
-      const liveIds: string[] = []
-      for (const b of Array.from(liveChildren)) {
-        if (b.in_trash !== true) liveIds.push(b.id)
-      }
-      liveTopLevelIds = liveIds
+      const holdingParentId =
+        typeof opts.reorderSiblings === 'object' ? opts.reorderSiblings.holdingParentId : undefined
+      liveIdentities =
+        holdingParentId === undefined
+          ? observed
+          : observed.filter((node) => node.blockId !== holdingParentId)
       // Drift detection only applies to the warm-cache path; the cold path
       // always cleans pre-existing children when `coldBaseline === 'clean'`.
       if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
-        drifted = topLevelDrifted(
-          prior.children.map((c) => c.blockId),
-          liveIds,
-        )
+        drifted = identityTreeDrifted(prior.children, liveIdentities)
       }
     }
 
-    // Cold start when either there's no prior cache or the prior cache is
-    // for a different page (pageIdDrift). On `drifted` we keep a synthesized
-    // base built from the *actual* live top-level ids so the diff emits
-    // removes for the orphaned blocks and appends for the candidate tree —
-    // otherwise a drifted page would get duplicated content (old blocks
-    // remain, new copies append) and never converge.
-    // `diffBase` feeds the diff algorithm; on drift (or cold-clean with
-    // pre-existing live blocks) it carries synthetic `drift:*` ghost entries
-    // so every live top-level block becomes a remove op. `workingBase` seeds
-    // the in-memory working cache that is checkpointed to disk — it must
-    // NEVER contain ghost entries, or a mid-sync failure will leak them
-    // into the persisted cache and poison the next warm sync (dogfood v4:
-    // ghosts drove 111 deletes against already-archived blocks). For
-    // drift / cold-clean, start the working cache empty: ops confirmed
-    // against Notion populate it via `workingAppend`; pending removes
-    // target ghost blockIds that are absent from `working.byId`, which is
-    // a safe no-op.
+    // `diffBase` carries the recursive live identity shape on warm drift:
+    // retained cache nodes keep their keys and hashes while untracked live
+    // nodes become `drift:*` ghosts that the normal diff removes. The working
+    // cache strips those ghosts at every depth so a mid-sync checkpoint can
+    // never persist them; successful operations repopulate confirmed nodes.
     const { useCold, diffBase, fallbackReason } = selectDiffBase({
       pageId: opts.pageId,
       prior,
@@ -1571,18 +1612,15 @@ export const sync = (
       pageIdDrift,
       coldBaseline,
       drifted,
-      liveTopLevelIds,
+      liveIdentities,
     })
-    /* Working base mirrors diffBase for warm drift (no ghost leakage risk —
-       we only copy prior entries whose blockIds are still live server-side,
-       so they're real confirmed entries). For cold paths we stay empty. */
     const workingBase: CacheTree = useCold
       ? emptyCache(opts.pageId)
       : drifted
         ? {
             schemaVersion: CACHE_SCHEMA_VERSION,
             rootId: opts.pageId,
-            children: diffBase.children.filter((c) => !c.key.startsWith('drift:')),
+            children: withoutDriftGhosts(diffBase.children),
           }
         : (prior ?? emptyCache(opts.pageId))
 
@@ -2423,7 +2461,7 @@ export const sync = (
  *
  * `'live'` (default): mirror `sync()`'s pre-flight exactly — resolve pending
  * inline markers (in memory; nothing is persisted) and fetch the page's live
- * top-level children for shallow drift detection. The returned plan is what
+ * recursive identity tree for drift detection. The returned plan is what
  * `sync()` would compute if invoked now, at the cost of read-only API calls.
  * There is still no lock: a writer racing between `plan()` and a later
  * `sync()` can invalidate the plan (sync re-computes, so it stays correct —
@@ -2479,7 +2517,7 @@ export interface SyncPlan {
  * Read-only companion to {@link sync}: compute the plan `sync()` would apply
  * for `element` against the current cache WITHOUT performing any write — no
  * Notion mutation, no cache save. Composed from the same building blocks as
- * `sync()`'s own pre-flight (`resolvePendingPages`, `topLevelDrifted`,
+ * `sync()`'s own pre-flight (`resolvePendingPages`, `identityTreeDrifted`,
  * `selectDiffBase`, `diff`, `rootPageUpdateOpFor`), so the two cannot
  * disagree about what a sync would do for a given observed state.
  *
@@ -2541,7 +2579,7 @@ export const plan = (
     const useColdPath = prior === undefined || pageIdDrift
 
     let drifted = false
-    let liveTopLevelIds: readonly string[] = []
+    let liveIdentities: readonly LiveIdentityNode[] = []
     const wantsLiveRetrieve =
       staleness === 'live' &&
       ((prior !== undefined && !schemaMismatch && !pageIdDrift) ||
@@ -2552,9 +2590,8 @@ export const plan = (
       if (onEvent !== undefined) {
         onEvent(SyncEvent.OpIssued({ id: retrieveOpId, kind: 'retrieve', at: Date.now() }))
       }
-      const liveChildren = yield* Stream.runCollect(
-        NotionBlocks.retrieveChildrenStream({ blockId: opts.pageId }),
-      ).pipe(
+      const recursive = prior !== undefined && !schemaMismatch && !pageIdDrift
+      const observed = yield* retrieveLiveIdentities(opts.pageId, recursive).pipe(
         Effect.tapError((cause) =>
           Effect.sync(() => {
             if (onEvent !== undefined) {
@@ -2570,9 +2607,6 @@ export const plan = (
             }
           }),
         ),
-        Effect.mapError(
-          (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
-        ),
       )
       if (onEvent !== undefined) {
         onEvent(
@@ -2580,21 +2614,19 @@ export const plan = (
             id: retrieveOpId,
             kind: 'retrieve',
             durationMs: performance.now() - t0,
-            resultCount: Array.from(liveChildren).length,
+            resultCount: observed.length,
             at: Date.now(),
           }),
         )
       }
-      const liveIds: string[] = []
-      for (const b of Array.from(liveChildren)) {
-        if (b.in_trash !== true) liveIds.push(b.id)
-      }
-      liveTopLevelIds = liveIds
+      const holdingParentId =
+        typeof opts.reorderSiblings === 'object' ? opts.reorderSiblings.holdingParentId : undefined
+      liveIdentities =
+        holdingParentId === undefined
+          ? observed
+          : observed.filter((node) => node.blockId !== holdingParentId)
       if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
-        drifted = topLevelDrifted(
-          prior.children.map((c) => c.blockId),
-          liveIds,
-        )
+        drifted = identityTreeDrifted(prior.children, liveIdentities)
       }
     }
 
@@ -2605,7 +2637,7 @@ export const plan = (
       pageIdDrift,
       coldBaseline,
       drifted,
-      liveTopLevelIds,
+      liveIdentities,
     })
 
     const rootUpdateOp = rootPageUpdateOpFor({ candidate, prior, pageId: opts.pageId })

@@ -146,7 +146,7 @@ describe('sync() against in-memory fake Notion', () => {
     }
   })
 
-  it('same-tree resync → {0,0,0,0}, no fallback, only the drift-check GET', async () => {
+  it('same-tree resync → {0,0,0,0}, no fallback, recursive drift reads only', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
@@ -155,9 +155,11 @@ describe('sync() against in-memory fake Notion', () => {
     const res = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(res.fallbackReason).toBeUndefined()
-    // Pre-flight drift check (#105) issues exactly one GET; no mutating ops.
+    // Recursive pre-flight drift detection reads every nested identity scope
+    // and emits no mutations.
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(newReqs.length).toBeGreaterThan(0)
+    expect(newReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('body change → exactly one PATCH to the nested paragraph', async () => {
@@ -185,9 +187,10 @@ describe('sync() against in-memory fake Notion', () => {
       }),
     )
     expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
-    // Pre-flight drift GET + one PATCH for the body change.
+    // Recursive pre-flight reads followed by the one PATCH for the body change.
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET', 'PATCH'])
+    expect(newReqs.at(-1)?.method).toBe('PATCH')
+    expect(newReqs.slice(0, -1).every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('append session → 2 new-block ops (toggle + nested paragraph)', async () => {
@@ -311,7 +314,8 @@ describe('sync() against in-memory fake Notion', () => {
     )
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const rerunReqs = fake.requests.slice(before)
-    expect(rerunReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(rerunReqs.length).toBeGreaterThan(0)
+    expect(rerunReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('delete session → one DELETE', async () => {
@@ -352,9 +356,10 @@ describe('sync() against in-memory fake Notion', () => {
       expect(r).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       expect(r.fallbackReason).toBeUndefined()
     }
-    // Exactly one drift-check GET per hot-cache resync, no mutations.
+    // Recursive identity reads only; no mutations across hot-cache resyncs.
     const methods = fake.requests.slice(after).map((r) => r.method)
-    expect(methods).toEqual(['GET', 'GET', 'GET'])
+    expect(methods.length).toBeGreaterThan(3)
+    expect(methods.every((method) => method === 'GET')).toBe(true)
   })
 
   it('drift detection: out-of-band archive on a tracked block forces cache-drift rebuild', async () => {
@@ -505,7 +510,8 @@ describe('sync() against in-memory fake Notion', () => {
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(newReqs.length).toBeGreaterThan(0)
+    expect(newReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   // Warm-sync regression: any structural change inside a retained
@@ -641,7 +647,8 @@ describe('sync() against in-memory fake Notion', () => {
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(newReqs.length).toBeGreaterThan(0)
+    expect(newReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('mixed atomic nesting: ColumnList with a table inside a column', async () => {
@@ -782,7 +789,8 @@ describe('sync() against in-memory fake Notion', () => {
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(newReqs.length).toBeGreaterThan(0)
+    expect(newReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('nested atomic overflow (table with 150 rows inside column_list > column) — throws clearly', async () => {
@@ -829,8 +837,9 @@ describe('sync() against in-memory fake Notion', () => {
     const warm = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const warmReqs = fake.requests.slice(before)
-    // Only the drift-check GET; no PATCH / DELETE / POST.
-    expect(warmReqs.map((r) => r.method)).toEqual(['GET'])
+    // Recursive drift verification performs reads only.
+    expect(warmReqs.length).toBeGreaterThan(0)
+    expect(warmReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('cold-cache: persisted cache has zero ghost entries', async () => {

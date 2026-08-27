@@ -7,7 +7,7 @@ import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
-import { ChildPage, Page, Paragraph, Toggle } from '../components/blocks.ts'
+import { ChildPage, Page, Paragraph, Table, TableRow, Toggle } from '../components/blocks.ts'
 import {
   createFakeNotion,
   FakeNotionResponseError,
@@ -55,9 +55,15 @@ const crashMidCreate = async (preamble?: ReactNode) => {
   const fake = createFakeNotion()
   const cache = InMemoryCache.make()
   if (preamble !== undefined) await runSync(fake, preamble, cache)
+  const pagesBeforeCrash = fake.pages.size
   let tripped = false
   fake.failOn((request) => {
-    if (!tripped && request.method === 'GET' && request.path !== `/v1/blocks/${ROOT}/children`) {
+    if (
+      !tripped &&
+      fake.pages.size > pagesBeforeCrash &&
+      request.method === 'GET' &&
+      request.path !== `/v1/blocks/${ROOT}/children`
+    ) {
       tripped = true
       return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
     }
@@ -489,6 +495,53 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
     const after = fake.requests.slice(before)
     expect(after.filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  it('recovers a stale cache after rows were appended under a retained nested table', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const page = (count: number) => (
+      <Page>
+        <ChildPage blockKey="domain:tools" title="Tools">
+          <Table tableWidth={1}>
+            {Array.from({ length: count }, (_, index) => (
+              <TableRow key={String(index)} cells={[`command-${String(index)}`]} />
+            ))}
+          </Table>
+        </ChildPage>
+      </Page>
+    )
+
+    await runSync(fake, page(17), cache)
+    const stale = await Effect.runPromise(cache.load)
+    expect(stale).toBeDefined()
+    const appended = await runSync(fake, page(22), cache)
+    expect(appended.appends).toBe(5)
+    const liveTable = fake.childrenOf([...fake.pages.values()][0]!.id)[0]!
+    expect(fake.childrenOf(liveTable.id)).toHaveLength(22)
+
+    // Model a caller retaining the pre-append snapshot after the successful
+    // live append. Recovery must inspect nested identities instead of blindly
+    // appending the five rows again from the stale cache.
+    const recoveredCache = InMemoryCache.make(stale)
+    const recovered = await runSync(fake, page(22), recoveredCache)
+    const persisted = await Effect.runPromise(recoveredCache.load)
+    const persistedTable = persisted?.children[0]?.children[0]
+    expect(persistedTable?.children.map(({ blockId }) => blockId)).toEqual(
+      fake.childrenOf(liveTable.id).map(({ id }) => id),
+    )
+    expect(fake.childrenOf(liveTable.id)).toHaveLength(22)
+    expect(recovered).toMatchObject({
+      appends: 5,
+      inserts: 0,
+      updates: 0,
+      removes: 5,
+      fallbackReason: 'cache-drift',
+    })
+
+    const second = await runSync(fake, page(22), recoveredCache)
+    expect(second.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(second.appends + second.inserts + second.updates + second.removes).toBe(0)
   })
 
   it('phase 3c: nested-page mutation → 1 scoped block update, 0 page ops', async () => {

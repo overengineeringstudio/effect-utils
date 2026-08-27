@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+
 - **@overeng/utils, @overeng/genie, @overeng/notion-md**: apply the watch-recursion
   design study for effect@4.0.0-rc.111 (recursion is opt-in again). New
   `watchScoped` helper in `@overeng/utils/node` wraps `FileSystem.watch` with an
@@ -133,6 +134,7 @@ All notable changes to this project will be documented in this file.
   `NotionThrottleShape`) instead of the tag name.
 
 ### Added
+
 - **@overeng/utils-dev**: add a shared `normalizeCliOutput` helper at the
   `./cli-contract` export for CLI contract baselines. Each masking policy
   (ANSI, log timestamps, checkout root, local-source suffix) is an explicit
@@ -247,6 +249,10 @@ violations }` (the offending `DiffOp[]`); block ops and page content
 
 ### Fixed
 
+- **@overeng/notion-react**: verify warm-cache block identities recursively,
+  including nested blocks and child-page scopes. A stale nested cache now
+  reconciles untracked live descendants instead of appending duplicates, and
+  the persisted `CacheTree` exactly reflects the identities left live.
 - **Nix prepared dependencies**: normalize ordinary, non-injected local
   `file:` packages through pnpm's exact package-map locator before removing
   transient Source Input aliases. Restored CLI workspaces now resolve the

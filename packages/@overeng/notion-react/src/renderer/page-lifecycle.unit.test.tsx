@@ -246,9 +246,15 @@ describe("pageLifecycle: 'append-only' (#1124)", () => {
         { pageId: ROOT, cache },
       ),
     )
+    const pagesBeforeCrash = fake.pages.size
     let tripped = false
     fake.failOn((request) => {
-      if (!tripped && request.method === 'GET' && request.path !== `/v1/blocks/${ROOT}/children`) {
+      if (
+        !tripped &&
+        fake.pages.size > pagesBeforeCrash &&
+        request.method === 'GET' &&
+        request.path !== `/v1/blocks/${ROOT}/children`
+      ) {
         tripped = true
         return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
       }
