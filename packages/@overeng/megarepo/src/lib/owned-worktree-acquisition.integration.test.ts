@@ -1,4 +1,4 @@
-import { mkdir, readFile, readlink, rename, rm, writeFile } from 'node:fs/promises'
+import { link, mkdir, readFile, readlink, rename, rm, writeFile } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -16,6 +16,7 @@ import {
   acquireOwnedWorktree,
   ownedWorktreeAcquisitionJournalPath,
   recoverOwnedWorktreeAcquisition,
+  recoverStaleOwnedWorktreeAcquisitionLock,
   teardownOwnedWorkspace,
   type OwnedWorkspaceGenerationContext,
   type OwnedWorktreeAcquisitionBoundary,
@@ -91,11 +92,47 @@ const cleanupWorkspace = (context: OwnedWorkspaceGenerationContext) =>
   })
 
 const readText = (path: string) => Effect.promise(() => readFile(path, 'utf8'))
+const regularFileExists = (path: string) =>
+  Effect.promise(() =>
+    readFile(path).then(
+      () => true,
+      () => false,
+    ),
+  )
 
 const status = (path: string) =>
   Git.runCommand({
     cwd: path,
     args: ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'],
+  })
+
+const installOrphanAcquisitionLock = ({
+  fixture,
+  token,
+  pid,
+  malformed = false,
+}: {
+  fixture: Effect.Success<ReturnType<typeof makeFixture>>
+  token: string
+  pid: number
+  malformed?: boolean
+}) =>
+  Effect.tryPromise({
+    try: async () => {
+      const lockPath = NodePath.join(
+        fixture.tmp,
+        `.${NodePath.basename(fixture.workspaceRoot)}.owned-worktree-acquisition.lock`,
+      )
+      const ownerPath = `${lockPath}.owner-${token}`
+      const bytes =
+        malformed === true
+          ? '{ malformed owner\n'
+          : `{"nonce":"${token}","pid":${pid},"version":1}\n`
+      await writeFile(ownerPath, bytes, { flag: 'wx', mode: 0o600 })
+      await link(ownerPath, lockPath)
+      return { lockPath, ownerPath }
+    },
+    catch: (cause) => new TestWorkspaceIoError({ cause }),
   })
 
 const acquire = (
@@ -350,6 +387,122 @@ describe('owned worktree acquisition', () => {
           ),
         ).toBe(false)
       }).pipe(withNode),
+  )
+
+  it.effect('recovers a crash-orphaned lock for an exact definitely-dead owner and proceeds', () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      const token = 'd'.repeat(32)
+      const orphan = yield* installOrphanAcquisitionLock({
+        fixture,
+        token,
+        pid: 999_999,
+      })
+      let parentSynced = false
+      yield* recoverStaleOwnedWorktreeAcquisitionLock({
+        workspaceRoot: fixture.workspaceRoot,
+        token,
+        runtime: {
+          processAlive: async () => 'dead',
+          directoryFsync: async ({ sync }) => {
+            await sync()
+            parentSynced = true
+          },
+        },
+      })
+      expect(parentSynced).toBe(true)
+      expect(yield* regularFileExists(orphan.lockPath)).toBe(false)
+      expect(yield* regularFileExists(orphan.ownerPath)).toBe(false)
+      const acquired = yield* acquire(fixture)
+      expect(acquired.ownedWorktree).toBe(`${fixture.ownedWorktree}/`)
+    }).pipe(withNode),
+  )
+
+  it.effect('refuses stale recovery for a live owner and prints its exact token instruction', () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      const token = 'a'.repeat(32)
+      const orphan = yield* installOrphanAcquisitionLock({
+        fixture,
+        token,
+        pid: process.pid,
+      })
+      const recoveryFailure = yield* recoverStaleOwnedWorktreeAcquisitionLock({
+        workspaceRoot: fixture.workspaceRoot,
+        token,
+      }).pipe(Effect.flip)
+      expect(recoveryFailure.reason).toBe('StaleLockRecoveryRefused')
+      expect(recoveryFailure.message).toContain('is alive')
+      expect(yield* regularFileExists(orphan.lockPath)).toBe(true)
+      const unknownFailure = yield* recoverStaleOwnedWorktreeAcquisitionLock({
+        workspaceRoot: fixture.workspaceRoot,
+        token,
+        runtime: { processAlive: async () => 'unknown' },
+      }).pipe(Effect.flip)
+      expect(unknownFailure.reason).toBe('StaleLockRecoveryRefused')
+      expect(unknownFailure.message).toContain('is unknown')
+      expect(yield* regularFileExists(orphan.lockPath)).toBe(true)
+
+      const acquisitionFailure = yield* acquire(fixture).pipe(Effect.flip)
+      expect(acquisitionFailure.reason).toBe('AcquisitionLocked')
+      expect(acquisitionFailure.message).toContain(`token '${token}'`)
+      expect(acquisitionFailure.message).toContain('recoverStaleOwnedWorktreeAcquisitionLock')
+    }).pipe(withNode),
+  )
+
+  it.effect(
+    'refuses a wrong stale-lock token without consulting liveness or deleting the owner',
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const token = 'b'.repeat(32)
+        const orphan = yield* installOrphanAcquisitionLock({
+          fixture,
+          token,
+          pid: 999_998,
+        })
+        let livenessConsulted = false
+        const failure = yield* recoverStaleOwnedWorktreeAcquisitionLock({
+          workspaceRoot: fixture.workspaceRoot,
+          token: 'c'.repeat(32),
+          runtime: {
+            processAlive: async () => {
+              livenessConsulted = true
+              return 'dead'
+            },
+          },
+        }).pipe(Effect.flip)
+        expect(failure.reason).toBe('StaleLockRecoveryRefused')
+        expect(livenessConsulted).toBe(false)
+        expect(yield* regularFileExists(orphan.lockPath)).toBe(true)
+        expect(yield* regularFileExists(orphan.ownerPath)).toBe(true)
+      }).pipe(withNode),
+  )
+
+  it.effect('refuses malformed owner bytes without exposing an unsafe recovery path', () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      const token = 'e'.repeat(32)
+      const orphan = yield* installOrphanAcquisitionLock({
+        fixture,
+        token,
+        pid: 999_997,
+        malformed: true,
+      })
+      const recoveryFailure = yield* recoverStaleOwnedWorktreeAcquisitionLock({
+        workspaceRoot: fixture.workspaceRoot,
+        token,
+        runtime: { processAlive: async () => 'dead' },
+      }).pipe(Effect.flip)
+      expect(recoveryFailure.reason).toBe('StaleLockRecoveryRefused')
+      expect(yield* regularFileExists(orphan.lockPath)).toBe(true)
+      expect(yield* regularFileExists(orphan.ownerPath)).toBe(true)
+
+      const acquisitionFailure = yield* acquire(fixture).pipe(Effect.flip)
+      expect(acquisitionFailure.reason).toBe('AcquisitionLocked')
+      expect(acquisitionFailure.message).toContain('owner/token')
+      expect(acquisitionFailure.message).toContain('unavailable')
+    }).pipe(withNode),
   )
 
   it.effect('leaves no journal or mutation when interrupted after preflight', () =>

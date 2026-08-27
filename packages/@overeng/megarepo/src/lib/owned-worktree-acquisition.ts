@@ -29,9 +29,12 @@ import {
   OWNED_WORKTREE_ROOT_MANIFEST,
   OwnedWorktreeAcquisitionError,
   OwnedWorktreeAcquisitionJournal,
+  OwnedWorktreeAcquisitionLockOwner,
+  OwnedWorktreeAcquisitionLockToken,
   OwnedWorktreeRootManifest,
   type OwnedWorkspaceTeardownResult,
   type OwnedWorktreeAcquisitionJournal as Journal,
+  type OwnedWorktreeAcquisitionLockOwner as AcquisitionLockOwner,
   type OwnedWorktreeAcquisitionResult,
   type OwnedWorktreeAcquisitionState,
   type OwnedWorktreeConfigName,
@@ -42,6 +45,7 @@ import {
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
 const JournalJson = Schema.fromJsonString(OwnedWorktreeAcquisitionJournal)
 const RootManifestJson = Schema.fromJsonString(OwnedWorktreeRootManifest)
+const LockOwnerJson = Schema.fromJsonString(OwnedWorktreeAcquisitionLockOwner)
 
 /** Deterministic interruption and durability checkpoints exposed to tests. */
 export type OwnedWorktreeAcquisitionBoundary =
@@ -59,10 +63,14 @@ export type OwnedWorktreeAcquisitionBoundary =
   | 'CompleteJournaled'
   | 'JournalRemoved'
 
-/** Optional crash-injection and directory-durability runtime seams. */
+/** Conservative liveness observation used by exact-token stale-lock recovery. */
+export type OwnedWorktreeOwnerProcessState = 'alive' | 'dead' | 'unknown'
+
+/** Optional crash-injection, process-liveness, and directory-durability runtime seams. */
 export interface OwnedWorktreeAcquisitionRuntime {
   readonly nonce?: () => string
   readonly afterBoundary?: (boundary: OwnedWorktreeAcquisitionBoundary) => Promise<void>
+  readonly processAlive?: (pid: number) => Promise<OwnedWorktreeOwnerProcessState>
   /** Test seam which must call `sync` to retain the durability guarantee. */
   readonly directoryFsync?: (input: {
     readonly path: string
@@ -101,6 +109,10 @@ export const recoverOwnedWorktreeAcquisition: typeof recoverOwnedWorktreeAcquisi
     effect: recoverOwnedWorktreeAcquisitionUnlocked({ ...args, runtime }),
   })
 }
+
+/** Remove a dead owner's durable lock only with its exact validated token. */
+export const recoverStaleOwnedWorktreeAcquisitionLock: typeof recoverStaleOwnedWorktreeAcquisitionLockUnlocked =
+  (args) => recoverStaleOwnedWorktreeAcquisitionLockUnlocked(args)
 
 /** Tear down a complete owned workspace while excluding concurrent lifecycle mutation. */
 export const teardownOwnedWorkspace: typeof teardownOwnedWorkspaceUnlocked = (args) => {
@@ -292,13 +304,6 @@ const syncDirectory = ({
     },
   })
 
-const AcquisitionLockOwner = Schema.Struct({
-  nonce: Schema.String.check(Schema.isPattern(/^[0-9a-f]{32}$/u)),
-  pid: Schema.Int.check(Schema.isGreaterThan(0)),
-  version: Schema.Literal(OWNED_WORKTREE_ACQUISITION_VERSION),
-})
-type AcquisitionLockOwner = typeof AcquisitionLockOwner.Type
-
 interface HeldAcquisitionLock {
   readonly lockPath: string
   readonly ownerPath: string
@@ -309,6 +314,72 @@ interface HeldAcquisitionLock {
 
 const canonicalLockOwner = (owner: AcquisitionLockOwner): string =>
   `${JSON.stringify({ nonce: owner.nonce, pid: owner.pid, version: owner.version })}\n`
+
+const decodeCanonicalLockOwner = ({
+  bytes,
+  path,
+}: {
+  bytes: string
+  path: string
+}): AcquisitionLockOwner => {
+  const owner = Schema.decodeUnknownSync(LockOwnerJson, strictParseOptions)(bytes)
+  if (canonicalLockOwner(owner) !== bytes) {
+    throw error({
+      reason: 'StaleLockRecoveryRefused',
+      path,
+      message: `Owned-worktree lock owner at '${path}' is not canonical`,
+      recoveryPaths: [path],
+    })
+  }
+  return owner
+}
+
+const acquisitionLockedError = async ({
+  workspaceRoot,
+  lockPath,
+  cause,
+}: {
+  workspaceRoot: string
+  lockPath: string
+  cause: unknown
+}): Promise<OwnedWorktreeAcquisitionError> => {
+  try {
+    const bytes = await readFile(lockPath, 'utf8')
+    const owner = decodeCanonicalLockOwner({ bytes, path: lockPath })
+    const ownerPath = `${lockPath}.owner-${owner.nonce}`
+    return error({
+      reason: 'AcquisitionLocked',
+      path: lockPath,
+      message:
+        `Owned-worktree lifecycle for '${workspaceRoot}' is locked by pid ${owner.pid} ` +
+        `with token '${owner.nonce}'. After that exact owner exits, call ` +
+        `recoverStaleOwnedWorktreeAcquisitionLock({ workspaceRoot: '${workspaceRoot}', token: '${owner.nonce}' }).`,
+      recoveryPaths: [lockPath, ownerPath],
+      cause,
+    })
+  } catch (ownerCause) {
+    if (ownerCause instanceof OwnedWorktreeAcquisitionError) {
+      return error({
+        reason: 'AcquisitionLocked',
+        path: lockPath,
+        message:
+          `Owned-worktree lifecycle for '${workspaceRoot}' is locked, but its owner/token record is malformed. ` +
+          `Exact-token recovery is unavailable and automatic deletion is refused.`,
+        recoveryPaths: [lockPath],
+        cause: ownerCause,
+      })
+    }
+    return error({
+      reason: 'AcquisitionLocked',
+      path: lockPath,
+      message:
+        `Owned-worktree lifecycle for '${workspaceRoot}' is locked, but its owner/token cannot be read. ` +
+        `Exact-token recovery is unavailable and automatic deletion is refused.`,
+      recoveryPaths: [lockPath],
+      cause: ownerCause,
+    })
+  }
+}
 
 const acquireAcquisitionLock = ({
   workspaceRoot,
@@ -359,13 +430,7 @@ const acquireAcquisitionLock = ({
             ? cause.code
             : undefined
         if (code === 'EEXIST') {
-          throw error({
-            reason: 'AcquisitionLocked',
-            path: paths.lockPath,
-            message: `Owned-worktree lifecycle is already locked for '${workspaceRoot}'`,
-            recoveryPaths: [paths.lockPath],
-            cause,
-          })
+          throw await acquisitionLockedError({ workspaceRoot, lockPath: paths.lockPath, cause })
         }
         throw cause
       }
@@ -410,6 +475,98 @@ const releaseAcquisitionLock = ({
       await (runtime.directoryFsync?.({ path: NodePath.dirname(held.lockPath), sync }) ?? sync())
     },
   })
+
+const defaultProcessAlive = async (pid: number): Promise<OwnedWorktreeOwnerProcessState> => {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') return 'unknown'
+  try {
+    process.kill(pid, 0)
+    return 'alive'
+  } catch (cause) {
+    const code =
+      cause instanceof Error && 'code' in cause && typeof cause.code === 'string'
+        ? cause.code
+        : undefined
+    return code === 'ESRCH' ? 'dead' : 'unknown'
+  }
+}
+
+const recoverStaleOwnedWorktreeAcquisitionLockUnlocked = ({
+  workspaceRoot: rawWorkspaceRoot,
+  token: rawToken,
+  runtime = {},
+}: {
+  workspaceRoot: string
+  token: string
+  runtime?: Pick<OwnedWorktreeAcquisitionRuntime, 'directoryFsync' | 'processAlive'>
+}): Effect.Effect<void, OwnedWorktreeAcquisitionError> => {
+  const workspaceRoot = normalizedAbsolute(rawWorkspaceRoot)
+  const paths = derivePaths({ workspaceRoot, ownedMember: '_lock-path-only_' })
+  return io({
+    path: paths.lockPath,
+    message: `Cannot recover stale owned-worktree lifecycle lock '${paths.lockPath}'`,
+    reason: 'StaleLockRecoveryRefused',
+    recoveryPaths: [paths.lockPath],
+    try: async () => {
+      const token = Schema.decodeUnknownSync(
+        OwnedWorktreeAcquisitionLockToken,
+        strictParseOptions,
+      )(rawToken)
+      const lockBytes = await readFile(paths.lockPath, 'utf8')
+      const owner = decodeCanonicalLockOwner({ bytes: lockBytes, path: paths.lockPath })
+      const ownerPath = `${paths.lockPath}.owner-${owner.nonce}`
+      if (token !== owner.nonce) {
+        throw error({
+          reason: 'StaleLockRecoveryRefused',
+          path: paths.lockPath,
+          message: `Stale-lock recovery token does not match owner token '${owner.nonce}'`,
+          recoveryPaths: [paths.lockPath, ownerPath],
+        })
+      }
+      const processState = await (runtime.processAlive?.(owner.pid) ??
+        defaultProcessAlive(owner.pid))
+      if (processState !== 'dead') {
+        throw error({
+          reason: 'StaleLockRecoveryRefused',
+          path: paths.lockPath,
+          message:
+            `Lock owner pid ${owner.pid} with token '${owner.nonce}' is ${processState}; ` +
+            `only a definitely dead exact-token owner may be recovered.`,
+          recoveryPaths: [paths.lockPath, ownerPath],
+        })
+      }
+      const [lockIdentity, ownerIdentity, ownerBytes] = await Promise.all([
+        lstat(paths.lockPath),
+        lstat(ownerPath),
+        readFile(ownerPath, 'utf8'),
+      ])
+      if (
+        lockIdentity.dev !== ownerIdentity.dev ||
+        lockIdentity.ino !== ownerIdentity.ino ||
+        ownerBytes !== lockBytes
+      ) {
+        throw error({
+          reason: 'StaleLockRecoveryRefused',
+          path: paths.lockPath,
+          message: `Exact-token lock owner identity changed during stale recovery`,
+          recoveryPaths: [paths.lockPath, ownerPath],
+        })
+      }
+      await unlink(ownerPath)
+      const claimedIdentity = await lstat(paths.lockPath)
+      if (claimedIdentity.dev !== lockIdentity.dev || claimedIdentity.ino !== lockIdentity.ino) {
+        throw error({
+          reason: 'StaleLockRecoveryRefused',
+          path: paths.lockPath,
+          message: `Lock identity changed after exact owner claim; refusing deletion`,
+          recoveryPaths: [paths.lockPath],
+        })
+      }
+      await unlink(paths.lockPath)
+      const sync = (): Promise<void> => syncDirectoryNative(paths.parent)
+      await (runtime.directoryFsync?.({ path: paths.parent, sync }) ?? sync())
+    },
+  })
+}
 
 const withAcquisitionLock = <A, E, R>({
   workspaceRoot,
