@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -8,6 +9,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -49,6 +51,7 @@ const makeFixture = (): Fixture => {
   const editorInputs = join(root, 'inputs', 'editor_inputs')
   const nodeModules = join(root, 'inputs', 'node_modules')
   mkdirSync(join(packageDir, 'node_modules'), { recursive: true })
+  writeFileSync(join(packageDir, 'package.json'), '{}\n')
   writeFileSync(join(packageDir, 'node_modules', 'legacy-root-install'), 'retained')
   mkdirSync(editorInputs, { recursive: true })
   writeFileSync(join(editorInputs, 'install-descriptor.json'), '{"revision":1}\n')
@@ -70,8 +73,21 @@ const makeFixture = (): Fixture => {
   }
   return { root, packageDir, editorRoot, editorInputs, nodeModules, options }
 }
+const makeWritable = (path: string): void => {
+  const status = lstatSync(path)
+  if (status.isSymbolicLink() === true) return
+  if (status.isDirectory() === true) {
+    chmodSync(path, 0o700)
+    for (const name of readdirSync(path)) makeWritable(join(path, name))
+    return
+  }
+  chmodSync(path, 0o600)
+}
 
-const cleanup = (fixture: Fixture): void => rmSync(fixture.root, { recursive: true, force: true })
+const cleanup = (fixture: Fixture): void => {
+  makeWritable(fixture.root)
+  rmSync(fixture.root, { recursive: true, force: true })
+}
 
 const currentTarget = (fixture: Fixture): string =>
   readlinkSync(join(fixture.editorRoot, 'tui-core'))
@@ -108,7 +124,11 @@ describe('editor view publisher', () => {
   it('exchanges a non-empty first hop, retains it, and publishes idempotently', async () => {
     const fixture = makeFixture()
     try {
+      const packageManifest = join(fixture.packageDir, 'package.json')
+      utimesSync(packageManifest, new Date(0), new Date(0))
+      const signalBefore = statSync(packageManifest).mtimeMs
       const record = await publishEditorView(fixture.options)
+      expect(statSync(packageManifest).mtimeMs).toBeGreaterThan(signalBefore)
       expect(readlinkSync(join(fixture.packageDir, 'node_modules'))).toBe(
         '../../.editor-view/tui-core/node_modules',
       )
@@ -134,6 +154,11 @@ describe('editor view publisher', () => {
         'index.js',
       )
       const admittedStatus = statSync(admittedFile, { bigint: true })
+      expect(statSync(join(fixture.editorRoot, record.snapshot)).mode & 0o222).toBe(0)
+      expect(statSync(join(fixture.editorRoot, record.snapshot, 'node_modules')).mode & 0o222).toBe(
+        0,
+      )
+      expect(statSync(recordPath(fixture)).mode & 0o222).toBe(0)
       const snapshotStatus = statSync(snapshotFile, { bigint: true })
       expect([snapshotStatus.dev, snapshotStatus.ino]).toEqual([
         admittedStatus.dev,
@@ -279,6 +304,9 @@ describe('editor view publisher', () => {
         `.store/tui-core-${record.editorInputsFingerprint}`,
         join(dangling.editorRoot, 'tui-core'),
       )
+      makeWritable(
+        join(dangling.editorRoot, '.store', `tui-core-${record.editorInputsFingerprint}`),
+      )
       rmSync(join(dangling.editorRoot, '.store', `tui-core-${record.editorInputsFingerprint}`), {
         recursive: true,
       })
@@ -306,6 +334,7 @@ describe('editor view publisher', () => {
     const incomplete = makeFixture()
     try {
       const record = await publishEditorView(incomplete.options)
+      makeWritable(join(incomplete.editorRoot, currentTarget(incomplete)))
       rmSync(join(incomplete.editorRoot, currentTarget(incomplete), 'node_modules', 'dep'))
       await expect(checkEditorView(incomplete.options)).rejects.toThrow(
         `recorded fingerprint=${record.editorInputsFingerprint}; current fingerprint=${record.editorInputsFingerprint}`,
@@ -322,6 +351,7 @@ describe('editor view publisher', () => {
       const path = recordPath(malformed)
       const record = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
       record.untrusted = true
+      chmodSync(path, 0o600)
       writeFileSync(path, `${JSON.stringify(record)}\n`)
       await expect(checkEditorView(malformed.options)).rejects.toThrow(
         'record has unknown or missing fields',

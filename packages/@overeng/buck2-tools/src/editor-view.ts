@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -14,6 +15,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
@@ -473,6 +475,19 @@ const assertHardlinkedTrees = ({
   for (const name of sourceNames) visit(name)
 }
 
+const hardenSnapshot = (snapshotDir: string): void => {
+  const visit = (directory: string): void => {
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name)
+      if (lstatSync(path).isDirectory() === true) visit(path)
+    }
+    const mode = statSync(directory).mode
+    chmodSync(directory, mode & ~0o222)
+  }
+  chmodSync(join(snapshotDir, 'editor-view.json'), 0o444)
+  visit(snapshotDir)
+}
+
 type LockOwner = {
   readonly schema: typeof lockSchema
   readonly token: string
@@ -673,6 +688,15 @@ const adoptFirstHop = ({
   }
 }
 
+const signalEditorResolution = (paths: ViewPaths): void => {
+  const packageManifest = join(paths.packageDir, 'package.json')
+  const status = lstatSync(packageManifest)
+  if (status.isFile() === false)
+    fail(`editor resolution signal is not a regular package manifest: ${packageManifest}`)
+  const now = new Date()
+  utimesSync(packageManifest, now, now)
+}
+
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
 export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
   requireScopedRecordIdentity(options)
@@ -724,8 +748,10 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       renameSync(candidate, snapshotDir)
       candidate = undefined
     }
+    hardenSnapshot(snapshotDir)
     publishCurrentPointer({ paths, fingerprint, token: tokenSafe(lock.token) })
     adoptFirstHop({ paths, mv: options.mv, token: tokenSafe(lock.token) })
+    signalEditorResolution(paths)
     await checkEditorView(options)
     return record
   } finally {
