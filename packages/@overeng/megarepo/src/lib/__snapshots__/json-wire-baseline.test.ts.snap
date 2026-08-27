@@ -6,6 +6,11 @@ exports[`megarepo wire baselines (cross-major invariant) > captures megarepo con
   "decoded": MegarepoConfig {
     "$schema": "https://example.invalid/megarepo.schema.json",
     "generators": GeneratorsConfig {
+      "composition": CompositionGeneratorConfig {
+        "enabled": true,
+        "isolationDir": "fleet-buck",
+        "platformHub": "unicode-hub",
+      },
       "vscode": VscodeGeneratorConfig {
         "color": "#123abc",
         "colorEnvVar": "MEGAREPO_COLOR",
@@ -57,6 +62,11 @@ path",
         "terminal.integrated.defaultProfile.linux": "bash\\r\\nzsh",
         "nullable": null
       }
+    },
+    "composition": {
+      "enabled": true,
+      "platformHub": "unicode-hub",
+      "isolationDir": "fleet-buck"
     }
   },
   "lockSync": {
@@ -88,6 +98,11 @@ path",
         "terminal.integrated.defaultProfile.linux": "bash\\r\\nzsh",
         "nullable": null
       }
+    },
+    "composition": {
+      "enabled": true,
+      "platformHub": "unicode-hub",
+      "isolationDir": "fleet-buck"
     }
   },
   "lockSync": {

@@ -10,6 +10,7 @@ import type { AbsoluteDirPath, AbsoluteFilePath, MegarepoConfig } from '../confi
 import { generateVscode } from './vscode.ts'
 
 export * from './composition-root.ts'
+export * from './composition-root-publisher.ts'
 export * from './schema.ts'
 export * from './vscode.ts'
 

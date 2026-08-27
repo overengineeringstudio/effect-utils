@@ -61,6 +61,40 @@
       },
       "additionalProperties": false
     },
+    "CompositionGeneratorConfigEncoded": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "platformHub": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "isolationDir": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "platformHub"
+      ],
+      "additionalProperties": false
+    },
     "GeneratorsConfigEncoded": {
       "type": "object",
       "properties": {
@@ -68,6 +102,16 @@
           "anyOf": [
             {
               "$ref": "#/$defs/VscodeGeneratorConfigEncoded"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "composition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompositionGeneratorConfigEncoded"
             },
             {
               "type": "null"
@@ -156,7 +200,9 @@
           ]
         }
       },
-      "required": ["members"],
+      "required": [
+        "members"
+      ],
       "additionalProperties": false
     }
   }
