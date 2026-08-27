@@ -1,15 +1,39 @@
 # 0020 Content-Real Read-Only Member Mounts; Writable Mounts Deferred
 
-Status: proposed (q11 answered 2026-08-27; final acceptance pending the read-only-mount e2e prototype and adversarial design review)
+Status: proposed (q11 answered 2026-08-27; e2e prototype and adversarial
+review returned 2026-08-27 — mechanism settled, scope under revision; q13
+chose pause-and-prototype for the one-writable-mount workspace shape before
+final acceptance)
+
+> **Post-review state (2026-08-27).** The e2e prototype
+> ([../05-composition/.experiments/2026-08-27-readonly-mount-e2e.md](../../05-composition/.experiments/2026-08-27-readonly-mount-e2e.md))
+> disqualified BOTH mechanisms named below: hardlink farms write-protect the
+> STORE through shared inodes and demonstrably launder corruption into the
+> cache; detached worktrees cannot regenerate atomically (a half-failed
+> checkout moved HEAD over stale bytes that Buck2 silently built, and the
+> swap variant is orphaned by routine prune). The settled mechanism is a
+> **`cp -a` copy from the immutable store with a RENAME_EXCHANGE advance**
+> (4 ms atomic swap under a live daemon; six-point regeneration contract in
+> the experiment record; one macOS unknown: GNU `mv --exchange` on APFS).
+> The adversarial review
+> ([../05-composition/.experiments/2026-08-27-adversarial-review-0020.md](../../05-composition/.experiments/2026-08-27-adversarial-review-0020.md))
+> returned REVISE: legacy in-mount write consumers exist as configured policy
+> (overeng pnpm tasks, dotfiles bun-from-mount) and need a named retirement
+> phase; cross-member TypeScript consumption is an owned open question; and
+> the hub's root-cell/member identity duality means the deferred-writable
+> scoping is contradictory as written — the candidate resolution
+> (one-writable-mount workspaces: every repo at `repos/<name>`, the owned
+> repo as the single writable branch worktree) is being prototyped per q13
+> before this decision is finalized.
 
 ## Context
 
-Decision [0014](./0014-megarepo-cell-composition.md) committed to cells for
+Decision [0014](../0014-megarepo-cell-composition.md) committed to cells for
 cross-member source deps but left mr's mount mechanism open. Three
 investigations closed the space: symlink mounts are content-blind (Buck2
 hashes the target string, not the member content — cache poisoning, no
 upstream fix exists or is coming;
-[05-composition/.experiments/2026-08-27-symlink-content-blindness.md](../05-composition/.experiments/2026-08-27-symlink-content-blindness.md));
+[05-composition/.experiments/2026-08-27-symlink-content-blindness.md](../../05-composition/.experiments/2026-08-27-symlink-content-blindness.md));
 git enforces one worktree per branch, so writable branch mounts require
 exclusive per-branch ownership; and content-real mounts on the tracked tier
 cost ~31 MiB / ~150 ms with every legacy toolchain payload (.devenv,
@@ -37,11 +61,11 @@ into each mount at ~4 ms with a 20 ms `--check` gate.
 
 ## Options
 
-| Option                                                | Tradeoff                                                                       | Outcome  |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------ | -------- |
-| Content-real read-only mounts now; writable deferred  | Smallest mr change covering all cache goals; authoring stays in member worktrees | Accepted |
+| Option                                                 | Tradeoff                                                                                                              | Outcome  |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | -------- |
+| Content-real read-only mounts now; writable deferred   | Smallest mr change covering all cache goals; authoring stays in member worktrees                                      | Accepted |
 | Full ref-type-keyed shape incl. writable branch mounts | In-composition authoring day one; exclusivity/prune/ref-identity machinery for a consumer evidence says barely exists | Rejected |
-| Keep symlinks, forbid cache upload from compositions  | Zero mr work; forfeits cross-repo reuse and vision criterion 6 entirely        | Rejected |
+| Keep symlinks, forbid cache upload from compositions   | Zero mr work; forfeits cross-repo reuse and vision criterion 6 entirely                                               | Rejected |
 
 ## Decision
 
