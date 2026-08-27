@@ -1,4 +1,4 @@
-import { chmod, lstat, readdir, unlink } from 'node:fs/promises'
+import { chmod, lstat, readdir, realpath, rename, unlink } from 'node:fs/promises'
 import { createServer, type Server } from 'node:net'
 import * as NodePath from 'node:path'
 
@@ -10,6 +10,7 @@ import type { PlatformError } from 'effect/PlatformError'
 import { expect } from 'vitest'
 
 import {
+  assertOwnedCpAMountIdentity,
   computeR6SourcePathIdentity,
   encodeOwnedCpAMountMetadata,
   inspectOwnedCpAMount,
@@ -111,6 +112,18 @@ const makeFixture = (
     return root
   })
 
+const makeProtectedTreeAt = (
+  path: string,
+): Effect.Effect<string, PlatformError, FileSystem.FileSystem | Scope.Scope> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    yield* fs.makeDirectory(path, { recursive: true })
+    yield* Effect.addFinalizer(() => setTreeWritable(path).pipe(Effect.ignore))
+    yield* makeTree({ root: path })
+    yield* setTreeModes({ root: path, policy: 'protected' })
+    return path
+  })
+
 const makeOwnedFixture = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -121,7 +134,7 @@ const makeOwnedFixture = () =>
     yield* Effect.addFinalizer(() => setTreeWritable(mountPath).pipe(Effect.ignore))
     yield* makeTree({ root: mountPath })
     yield* setTreeModes({ root: mountPath, policy: 'protected' })
-    const scan = yield* scanR6ProtectedMount(mountPath)
+    const scan = yield* scanR6ProtectedMount({ root: mountPath })
     const expected: OwnedCpAMountExpectedIdentity = {
       member,
       lockedCommit: 'a'.repeat(40),
@@ -158,12 +171,25 @@ const changeProtectedDirectory = <A, E>(
     return yield* effect.pipe(Effect.ensuring(fs.chmod(path, 0o555).pipe(Effect.ignore)))
   })
 
+const exchangeDirectories = async ({
+  left,
+  right,
+}: {
+  left: string
+  right: string
+}): Promise<void> => {
+  const temporary = `${left}.exchange-test`
+  await rename(left, temporary)
+  await rename(right, left)
+  await rename(temporary, right)
+}
+
 describe('R6 source and protected scans', () => {
   it.effect(
     'includes empty directories and preserves executable versus non-executable file modes',
     Effect.fnUntraced(function* () {
       const root = yield* makeFixture('source')
-      const scan = yield* scanR6Source(root)
+      const scan = yield* scanR6Source({ root: root })
       const byPath = new Map(scan.repository.manifest.entries.map((entry) => [entry.path, entry]))
 
       expect(byPath.get('empty')).toEqual({
@@ -183,8 +209,8 @@ describe('R6 source and protected scans', () => {
     Effect.fnUntraced(function* () {
       const source = yield* makeFixture('source')
       const mount = yield* makeFixture('protected')
-      const sourceScan = yield* scanR6Source(source)
-      const mountScan = yield* scanR6ProtectedMount(mount)
+      const sourceScan = yield* scanR6Source({ root: source })
+      const mountScan = yield* scanR6ProtectedMount({ root: mount })
 
       expect(sourceScan.repository).toEqual(mountScan.repository)
       expect(sourceScan.capabilities).toEqual(mountScan.capabilities)
@@ -197,13 +223,13 @@ describe('R6 source and protected scans', () => {
       const fs = yield* FileSystem.FileSystem
       const writableFileRoot = yield* makeFixture('source')
       yield* fs.chmod(NodePath.join(writableFileRoot, 'plain.txt'), 0o644)
-      const fileResult = yield* scanR6Source(writableFileRoot).pipe(Effect.result)
+      const fileResult = yield* scanR6Source({ root: writableFileRoot }).pipe(Effect.result)
       expect(fileResult._tag).toBe('Failure')
       if (fileResult._tag === 'Failure') expect(fileResult.failure.reason).toBe('UnexpectedMode')
 
       const wrongDirRoot = yield* makeFixture('source')
       yield* fs.chmod(NodePath.join(wrongDirRoot, 'empty'), 0o555)
-      const dirResult = yield* scanR6Source(wrongDirRoot).pipe(Effect.result)
+      const dirResult = yield* scanR6Source({ root: wrongDirRoot }).pipe(Effect.result)
       expect(dirResult._tag).toBe('Failure')
       if (dirResult._tag === 'Failure') expect(dirResult.failure.reason).toBe('UnexpectedMode')
     }, withNode),
@@ -215,7 +241,7 @@ describe('R6 source and protected scans', () => {
       const fs = yield* FileSystem.FileSystem
       const root = yield* makeFixture('protected')
       yield* fs.chmod(NodePath.join(root, 'plain.txt'), 0o644)
-      const result = yield* scanR6ProtectedMount(root).pipe(Effect.result)
+      const result = yield* scanR6ProtectedMount({ root: root }).pipe(Effect.result)
       expect(result._tag).toBe('Failure')
       if (result._tag === 'Failure') expect(result.failure.reason).toBe('UnexpectedMode')
     }, withNode),
@@ -226,14 +252,14 @@ describe('R6 source and protected scans', () => {
     Effect.fnUntraced(function* () {
       const fs = yield* FileSystem.FileSystem
       const root = yield* makeFixture('protected')
-      const initial = yield* scanR6ProtectedMount(root)
+      const initial = yield* scanR6ProtectedMount({ root: root })
 
       yield* rewriteProtectedFile({ path: NodePath.join(root, 'plain.txt'), content: 'changed\n' })
-      const content = yield* scanR6ProtectedMount(root)
+      const content = yield* scanR6ProtectedMount({ root: root })
       expect(content.repository.digest).not.toBe(initial.repository.digest)
 
       yield* fs.chmod(NodePath.join(root, 'plain.txt'), 0o555)
-      const mode = yield* scanR6ProtectedMount(root)
+      const mode = yield* scanR6ProtectedMount({ root: root })
       expect(mode.repository.digest).not.toBe(content.repository.digest)
 
       yield* changeProtectedDirectory(
@@ -243,7 +269,7 @@ describe('R6 source and protected scans', () => {
           yield* fs.symlink('../script.sh', NodePath.join(root, 'dir', 'safe-link'))
         }),
       )
-      const link = yield* scanR6ProtectedMount(root)
+      const link = yield* scanR6ProtectedMount({ root: root })
       expect(link.repository.digest).not.toBe(mode.repository.digest)
 
       yield* changeProtectedDirectory(
@@ -253,7 +279,7 @@ describe('R6 source and protected scans', () => {
           yield* fs.chmod(NodePath.join(root, 'another-empty'), 0o555)
         }),
       )
-      const count = yield* scanR6ProtectedMount(root)
+      const count = yield* scanR6ProtectedMount({ root: root })
       expect(count.repository.count).toBe(link.repository.count + 1)
       expect(count.repository.digest).not.toBe(link.repository.digest)
     }, withNode),
@@ -263,12 +289,12 @@ describe('R6 source and protected scans', () => {
     'excludes .buck2/capabilities from repository identity and binds it separately',
     Effect.fnUntraced(function* () {
       const root = yield* makeFixture('protected')
-      const before = yield* scanR6ProtectedMount(root)
+      const before = yield* scanR6ProtectedMount({ root: root })
       yield* rewriteProtectedFile({
         path: NodePath.join(root, '.buck2', 'capabilities', 'defs.bzl'),
         content: 'TOOLS = {"changed": True}\n',
       })
-      const after = yield* scanR6ProtectedMount(root)
+      const after = yield* scanR6ProtectedMount({ root: root })
 
       expect(after.repository).toEqual(before.repository)
       expect(after.capabilities.present).toBe(true)
@@ -298,8 +324,8 @@ describe('R6 source and protected scans', () => {
         }),
       )
 
-      const missing = yield* scanR6ProtectedMount(missingRoot)
-      const present = yield* scanR6ProtectedMount(presentRoot)
+      const missing = yield* scanR6ProtectedMount({ root: missingRoot })
+      const present = yield* scanR6ProtectedMount({ root: presentRoot })
       expect(missing.capabilities.present).toBe(false)
       expect(present.capabilities.present).toBe(true)
       expect(missing.capabilities.digest).toBe(present.capabilities.digest)
@@ -315,14 +341,14 @@ describe('R6 source and protected scans', () => {
       yield* fs.writeFileString(NodePath.join(collision, 'README'), 'b')
       yield* fs.chmod(NodePath.join(collision, 'Readme'), 0o444)
       yield* fs.chmod(NodePath.join(collision, 'README'), 0o444)
-      const collisionResult = yield* scanR6Source(collision).pipe(Effect.result)
+      const collisionResult = yield* scanR6Source({ root: collision }).pipe(Effect.result)
       expect(collisionResult._tag).toBe('Failure')
       if (collisionResult._tag === 'Failure')
         expect(collisionResult.failure.reason).toBe('PathCollision')
 
       const forbidden = yield* makeFixture('source')
       yield* fs.symlink('../../escape', NodePath.join(forbidden, 'dir', 'escape-link'))
-      const linkResult = yield* scanR6Source(forbidden).pipe(Effect.result)
+      const linkResult = yield* scanR6Source({ root: forbidden }).pipe(Effect.result)
       expect(linkResult._tag).toBe('Failure')
       if (linkResult._tag === 'Failure') expect(linkResult.failure.reason).toBe('ForbiddenSymlink')
     }, withNode),
@@ -341,11 +367,72 @@ describe('R6 source and protected scans', () => {
         server.listen(socketPath, () => resume(Effect.void))
       })
       yield* fs.chmod(root, 0o555)
-      const result = yield* scanR6ProtectedMount(root).pipe(Effect.result)
+      const result = yield* scanR6ProtectedMount({ root: root }).pipe(Effect.result)
       expect(result._tag).toBe('Failure')
       if (result._tag === 'Failure') expect(result.failure.reason).toBe('SpecialFile')
       yield* closeServer(server)
       yield* Effect.promise(() => unlink(socketPath).catch(() => undefined))
+    }, withNode),
+  )
+  it.effect(
+    'admits only existing absolute links whose realpath is inside a valid Nix store object',
+    Effect.fnUntraced(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const actualStoreTarget = yield* Effect.promise(() => realpath(process.execPath))
+      expect(actualStoreTarget).toMatch(
+        /^\/nix\/store\/[0-9abcdfghijklmnpqrsvwxyz]{32}-[^/]+(?:\/.*)?$/u,
+      )
+      const admitted = yield* makeFixture('source')
+      yield* fs.symlink(actualStoreTarget, NodePath.join(admitted, 'store-tool'))
+      const admittedScan = yield* scanR6Source({ root: admitted })
+      expect(
+        admittedScan.repository.manifest.entries.some((entry) => entry.path === 'store-tool'),
+      ).toBe(true)
+
+      const nonexistent = yield* makeFixture('source')
+      yield* fs.symlink(
+        `/nix/store/${'0'.repeat(32)}-missing-object/bin/tool`,
+        NodePath.join(nonexistent, 'store-tool'),
+      )
+      const nonexistentResult = yield* scanR6Source({ root: nonexistent }).pipe(Effect.result)
+      expect(nonexistentResult._tag).toBe('Failure')
+      if (nonexistentResult._tag === 'Failure') {
+        expect(nonexistentResult.failure.reason).toBe('ForbiddenSymlink')
+      }
+
+      const invalidObject = yield* makeFixture('source')
+      yield* fs.symlink(
+        '/nix/store/not-a-valid-object/bin/tool',
+        NodePath.join(invalidObject, 'store-tool'),
+      )
+      const invalidResult = yield* scanR6Source({ root: invalidObject }).pipe(Effect.result)
+      expect(invalidResult._tag).toBe('Failure')
+      if (invalidResult._tag === 'Failure') {
+        expect(invalidResult.failure.reason).toBe('ForbiddenSymlink')
+      }
+    }, withNode),
+  )
+
+  it.effect(
+    'rejects a deterministic A/B directory exchange during a scan',
+    Effect.fnUntraced(function* () {
+      const original = yield* makeFixture('protected')
+      const replacement = yield* makeProtectedTreeAt(`${original}.replacement`)
+      const result = yield* scanR6ProtectedMount({
+        root: original,
+        hooks: {
+          afterInitialRootIdentity: () =>
+            exchangeDirectories({ left: original, right: replacement }),
+        },
+      }).pipe(Effect.result)
+
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') {
+        expect(result.failure).toMatchObject({
+          reason: 'InvalidRoot',
+          message: expect.stringContaining('identity changed'),
+        })
+      }
     }, withNode),
   )
 })
@@ -414,8 +501,9 @@ describe('owned cp-a metadata and inspection', () => {
       })
       const result = yield* inspectOwnedCpAMount({
         workspaceRoot: fixture.workspaceRoot,
-        mountPath: fixture.mountPath,
+        physicalPath: fixture.mountPath,
         expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
       })
       expect(result._tag).toBe('Owned')
     }, withNode),
@@ -427,8 +515,9 @@ describe('owned cp-a metadata and inspection', () => {
       const fixture = yield* makeOwnedFixture()
       const result = yield* inspectOwnedCpAMount({
         workspaceRoot: fixture.workspaceRoot,
-        mountPath: fixture.mountPath,
+        physicalPath: fixture.mountPath,
         expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
       })
       expect(result).toMatchObject({ _tag: 'InvalidOwned', reason: 'MetadataMissing' })
     }, withNode),
@@ -447,8 +536,9 @@ describe('owned cp-a metadata and inspection', () => {
       yield* fs.writeFileString(metadataPath, '{"version":1,"unknown":true}\n')
       const corrupt = yield* inspectOwnedCpAMount({
         workspaceRoot: fixture.workspaceRoot,
-        mountPath: fixture.mountPath,
+        physicalPath: fixture.mountPath,
         expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
       })
       expect(corrupt).toMatchObject({ _tag: 'InvalidOwned', reason: 'MetadataInvalid' })
 
@@ -458,8 +548,9 @@ describe('owned cp-a metadata and inspection', () => {
       )
       const unknown = yield* inspectOwnedCpAMount({
         workspaceRoot: fixture.workspaceRoot,
-        mountPath: fixture.mountPath,
+        physicalPath: fixture.mountPath,
         expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
       })
       expect(unknown).toMatchObject({ _tag: 'InvalidOwned', reason: 'MetadataInvalid' })
     }, withNode),
@@ -476,8 +567,9 @@ describe('owned cp-a metadata and inspection', () => {
       })
       const stale = yield* inspectOwnedCpAMount({
         workspaceRoot: fixture.workspaceRoot,
-        mountPath: fixture.mountPath,
+        physicalPath: fixture.mountPath,
         expected: { ...fixture.expected, lockedCommit: 'c'.repeat(40) },
+        expectedPreExchangeIdentity: fixture.scan.identity,
       })
       expect(stale).toMatchObject({ _tag: 'InvalidOwned', reason: 'IdentityMismatch' })
 
@@ -494,8 +586,9 @@ describe('owned cp-a metadata and inspection', () => {
       )
       const wrongMember = yield* inspectOwnedCpAMount({
         workspaceRoot: fixture.workspaceRoot,
-        mountPath: fixture.mountPath,
+        physicalPath: fixture.mountPath,
         expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
       })
       expect(wrongMember).toMatchObject({ _tag: 'InvalidOwned', reason: 'MetadataInvalid' })
     }, withNode),
@@ -515,8 +608,9 @@ describe('owned cp-a metadata and inspection', () => {
       })
       const replacement = yield* inspectOwnedCpAMount({
         workspaceRoot: fixture.workspaceRoot,
-        mountPath: fixture.mountPath,
+        physicalPath: fixture.mountPath,
         expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
       })
       expect(replacement).toMatchObject({ _tag: 'InvalidOwned', reason: 'ManifestMismatch' })
 
@@ -530,8 +624,9 @@ describe('owned cp-a metadata and inspection', () => {
       })
       const capabilities = yield* inspectOwnedCpAMount({
         workspaceRoot: fixture.workspaceRoot,
-        mountPath: fixture.mountPath,
+        physicalPath: fixture.mountPath,
         expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
       })
       expect(capabilities).toMatchObject({ _tag: 'InvalidOwned', reason: 'ManifestMismatch' })
     }, withNode),
@@ -550,8 +645,9 @@ describe('owned cp-a metadata and inspection', () => {
       }
       const missing = yield* inspectOwnedCpAMount({
         workspaceRoot,
-        mountPath: expected.publishedPath,
+        physicalPath: expected.publishedPath,
         expected,
+        expectedPreExchangeIdentity: { dev: 0, ino: 0 },
       })
       expect(missing).toEqual({ _tag: 'Missing' })
 
@@ -559,10 +655,76 @@ describe('owned cp-a metadata and inspection', () => {
       yield* fs.symlink('/nix/store/target', expected.publishedPath)
       const symlink = yield* inspectOwnedCpAMount({
         workspaceRoot,
-        mountPath: expected.publishedPath,
+        physicalPath: expected.publishedPath,
         expected,
+        expectedPreExchangeIdentity: { dev: 0, ino: 0 },
       })
       expect(symlink).toEqual({ _tag: 'Symlink', target: '/nix/store/target' })
+    }, withNode),
+  )
+
+  it.effect(
+    'rechecks the exact inode under the lifecycle seam and rejects replacement before authorization',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeOwnedFixture()
+      expect(
+        yield* assertOwnedCpAMountIdentity({
+          path: fixture.mountPath,
+          expected: fixture.scan.identity,
+        }),
+      ).toEqual(fixture.scan.identity)
+
+      const replacement = yield* makeProtectedTreeAt(`${fixture.mountPath}.replacement`)
+      const replaced = yield* assertOwnedCpAMountIdentity({
+        path: fixture.mountPath,
+        expected: fixture.scan.identity,
+        hooks: {
+          beforeLstat: () => exchangeDirectories({ left: fixture.mountPath, right: replacement }),
+        },
+      }).pipe(Effect.result)
+      expect(replaced._tag).toBe('Failure')
+      if (replaced._tag === 'Failure') {
+        expect(replaced.failure._tag).toBe('OwnedCpAMountIdentityError')
+      }
+    }, withNode),
+  )
+
+  it.effect(
+    'authorizes a swapped-old A at its staging path and refuses a foreign inode replacement',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeOwnedFixture()
+      const stagePath = yield* makeProtectedTreeAt(`${fixture.mountPath}.stage`)
+      yield* writeOwnedCpAMountMetadata({
+        workspaceRoot: fixture.workspaceRoot,
+        metadata: fixture.metadata,
+      })
+      yield* Effect.promise(() =>
+        exchangeDirectories({ left: fixture.mountPath, right: stagePath }),
+      )
+
+      const swappedOld = yield* inspectOwnedCpAMount({
+        workspaceRoot: fixture.workspaceRoot,
+        physicalPath: stagePath,
+        expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
+      })
+      expect(swappedOld).toMatchObject({
+        _tag: 'Owned',
+        identity: fixture.scan.identity,
+      })
+
+      const foreign = yield* makeProtectedTreeAt(`${fixture.mountPath}.foreign`)
+      yield* Effect.promise(() => exchangeDirectories({ left: stagePath, right: foreign }))
+      const refused = yield* inspectOwnedCpAMount({
+        workspaceRoot: fixture.workspaceRoot,
+        physicalPath: stagePath,
+        expected: fixture.expected,
+        expectedPreExchangeIdentity: fixture.scan.identity,
+      })
+      expect(refused).toMatchObject({
+        _tag: 'InvalidOwned',
+        reason: 'MountIdentityMismatch',
+      })
     }, withNode),
   )
 
