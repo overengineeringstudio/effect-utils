@@ -70,7 +70,7 @@ export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLogg
       // the previous write-per-entry sink.
       const entry = Logger.make<unknown, string>((options) => {
         const out = pretty.log(options)
-        return out.endsWith('\n') ? out.slice(0, -1) : out
+        return out.endsWith('\n') === true ? out.slice(0, -1) : out
       })
 
       return yield* Logger.toFile(entry, logFilePath, { flag: 'a', mode: 0o666 })

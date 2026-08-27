@@ -79,10 +79,17 @@ const program = Effect.gen(function* () {
     args,
   ).pipe(
     Effect.scoped,
-    Effect.provide(CliVersion.formatterLayer),
-    Effect.provide(jsonStdoutGuardLayer(args)),
-    Effect.provideService(CliVersion, { name: 'mr', version }),
-    Effect.provide(Layer.mergeAll(NodeServices.layer, otelLayer)),
+    Effect.provide(
+      Layer.mergeAll(
+        Layer.provide(
+          CliVersion.formatterLayer,
+          Layer.succeed(CliVersion, { name: 'mr', version }),
+        ),
+        jsonStdoutGuardLayer(args),
+        NodeServices.layer,
+        otelLayer,
+      ),
+    ),
   )
 })
 

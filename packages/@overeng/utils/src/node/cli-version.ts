@@ -19,10 +19,13 @@ const versionSuffix = ({ name, version }: CliVersionInfo): string => ` (${name} 
  * getter-only `message` accessors under Bun: errors are no longer mutated, and
  * help/version rendering stays upstream bytes.
  */
-const stampErrorsWithVersion = (
-  formatter: CliOutput.Formatter,
-  info: CliVersionInfo,
-): CliOutput.Formatter => {
+const stampErrorsWithVersion = ({
+  formatter,
+  info,
+}: {
+  formatter: CliOutput.Formatter
+  info: CliVersionInfo
+}): CliOutput.Formatter => {
   const stamp = (rendered: string): string => `${rendered}${versionSuffix(info)}`
   return {
     ...formatter,
@@ -60,7 +63,9 @@ export class CliVersion extends Context.Service<CliVersion, CliVersionInfo>()('C
    */
   static formatterLayer: Layer.Layer<never, never, CliVersion> = Layer.effect(
     CliOutput.Formatter,
-    Effect.map(CliVersion, (info) => stampErrorsWithVersion(CliOutput.defaultFormatter(), info)),
+    Effect.map(CliVersion, (info) =>
+      stampErrorsWithVersion({ formatter: CliOutput.defaultFormatter(), info }),
+    ),
   )
 }
 

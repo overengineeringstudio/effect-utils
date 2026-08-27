@@ -1,4 +1,4 @@
-import { Effect, Fiber, Option, Redacted, Result, Schema, Tracer } from 'effect'
+import { Effect, Fiber, Layer, Option, Redacted, Result, Schema, Tracer } from 'effect'
 import { adjust as testClockAdjust } from 'effect/testing/TestClock'
 import { HttpClient, make as makeHttpClient } from 'effect/unstable/http/HttpClient'
 import { EncodeError, HttpClientError, TransportError } from 'effect/unstable/http/HttpClientError'
@@ -752,8 +752,7 @@ Vitest.describe('HttpClient.TracerHeaderFilter span-header allowlist', () => {
       expect(span?.attributes['http.request.method']).toBe('GET')
       expect(span?.attributes['http.response.status_code']).toBe(200)
     }).pipe(
-      Effect.provide(createTestLayer(noisyResponse)),
-      Effect.provide(NotionTracerHeaderFilterLive),
+      Effect.provide(Layer.mergeAll(createTestLayer(noisyResponse), NotionTracerHeaderFilterLive)),
     ),
   )
 

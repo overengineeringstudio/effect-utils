@@ -139,11 +139,13 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
           },
         })
       }),
-      Effect.provide(CliVersion.formatterLayer),
-      Effect.provide(jsonStdoutGuardLayer(argv)),
-      Effect.provideService(CliVersion, { name: 'notion', version }),
       Effect.provide(
         Layer.mergeAll(
+          Layer.provide(
+            CliVersion.formatterLayer,
+            Layer.succeed(CliVersion, { name: 'notion', version }),
+          ),
+          jsonStdoutGuardLayer(argv),
           NodeServices.layer,
           CurrentWorkingDirectory.live,
           withTelemetry({ identity, shape: 'cli', endpoint }),

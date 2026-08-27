@@ -85,6 +85,7 @@ const tracerHeaderAllowlist: Record<string, true> = {
  * Notion span headers (one set for both request and response phases, matching
  * the v3 patch).
  */
+// oxlint-disable-next-line overeng/named-args -- matches the upstream HttpClient.TracerHeaderFilter positional signature
 export const notionTracerHeaderFilter = (
   headerName: string,
   _phase: 'request' | 'response',

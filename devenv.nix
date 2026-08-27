@@ -703,7 +703,7 @@ in
   tasks."test:run".exec = lib.mkForce (
     trace.exec "test:run" ''
       set -euo pipefail
-      ${pkgs.bun}/bin/bun packages/@overeng/utils-dev/src/node-vitest/check-baseline-test-collection.ts \
+      ${pkgs.bun}/bin/bun packages/@overeng/utils-dev/check-baseline-test-collection.ts \
         --task-registry ${baselineTestTaskRegistry}
     ''
   );

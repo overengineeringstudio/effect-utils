@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 
 import { runTuiMain } from '@overeng/tui-react/node'
@@ -28,9 +28,15 @@ Cli.Command.runWith(Cli.Command.provide(tuiStoriesCommand, handlerConsoleLayer),
   args,
 ).pipe(
   Effect.scoped,
-  Effect.provide(CliVersion.formatterLayer),
-  Effect.provide(jsonStdoutGuardLayer(args)),
-  Effect.provideService(CliVersion, { name: 'tui-stories', version }),
-  Effect.provide(NodeServices.layer),
+  Effect.provide(
+    Layer.mergeAll(
+      Layer.provide(
+        CliVersion.formatterLayer,
+        Layer.succeed(CliVersion, { name: 'tui-stories', version }),
+      ),
+      jsonStdoutGuardLayer(args),
+      NodeServices.layer,
+    ),
+  ),
   runTuiMain(NodeRuntime),
 )

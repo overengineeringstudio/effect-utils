@@ -43,11 +43,16 @@ const program = Effect.gen(function* () {
 
   yield* Cli.Command.runWith(command, { version })(args).pipe(
     Effect.scoped,
-    Effect.provide(CliVersion.formatterLayer),
-    Effect.provide(jsonStdoutGuardLayer(args)),
-    Effect.provideService(CliVersion, { name: 'genie', version }),
     Effect.provide(
-      Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
+      Layer.mergeAll(
+        Layer.provide(
+          CliVersion.formatterLayer,
+          Layer.succeed(CliVersion, { name: 'genie', version }),
+        ),
+        jsonStdoutGuardLayer(args),
+        NodeServices.layer,
+        withTelemetry({ identity, shape: 'cli', endpoint }),
+      ),
     ),
   )
 })
