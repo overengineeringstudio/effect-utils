@@ -633,7 +633,7 @@ export const runCommand = ({
   verbose: boolean
   /** When true, runs fetch first (silently), then apply with output rendering. Used by `mr fetch --apply`. */
   applyAfterFetch?: boolean
-  /** Worktree strategy for apply mode: 'commit', 'tracking', or 'auto' (default). */
+  /** Worktree strategy for apply mode. Auto tracks outside CI and is rejected in CI. */
   worktreeMode?: 'commit' | 'tracking' | 'auto'
   /** Controls whether apply also rewrites Nix/nested megarepo lock files. */
   lockSyncMode?: LockSyncMode
@@ -641,11 +641,17 @@ export const runCommand = ({
   Effect.gen(function* () {
     const json = output === 'json' || output === 'ndjson'
 
-    // Resolve worktree mode: 'auto' → commit in CI, tracking otherwise
     const resolvedWorktreeMode = worktreeMode ?? 'auto'
-    const commitMode =
-      resolvedWorktreeMode === 'commit' ||
-      (resolvedWorktreeMode === 'auto' && process.env.CI === 'true')
+    const appliesWorkspace = mode === 'apply' || applyAfterFetch === true
+
+    if (appliesWorkspace === true && resolvedWorktreeMode === 'auto' && process.env.CI === 'true') {
+      return yield* new InvalidOptionsError({
+        message:
+          'CI requires an explicit worktree strategy; pass --worktree-mode commit for deterministic detached worktrees or --worktree-mode tracking for branch worktrees',
+      })
+    }
+
+    const commitMode = resolvedWorktreeMode === 'commit'
 
     const cwd = yield* Cwd
     const root = yield* findMegarepoRoot(cwd)
