@@ -119,6 +119,7 @@ export class OwnedWorktreeAcquisitionError extends Schema.TaggedError<OwnedWorkt
   {
     reason: Schema.Literals([
       'InvalidRequest',
+      'AcquisitionLocked',
       'PreflightRefused',
       'Collision',
       'GitIdentityConflict',
