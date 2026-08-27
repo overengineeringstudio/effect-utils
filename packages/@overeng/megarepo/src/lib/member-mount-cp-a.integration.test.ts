@@ -73,11 +73,15 @@ const writeSource = ({ root, version }: { root: string; version: string }): Effe
     await mkdir(NodePath.join(root, 'dir', 'empty'), { recursive: true })
     await mkdir(NodePath.join(root, '.buck2', 'capabilities'), { recursive: true })
     await writeFile(NodePath.join(root, 'version.txt'), `${version}\n`)
+    await writeFile(NodePath.join(root, 'version-left.txt'), `${version}\n`)
+    await writeFile(NodePath.join(root, 'version-right.txt'), `${version}\n`)
     await writeFile(NodePath.join(root, 'dir', 'data.txt'), `data-${version}\n`)
     await writeFile(NodePath.join(root, 'run.sh'), '#!/bin/sh\nexit 0\n')
     await writeFile(NodePath.join(root, '.buck2', 'capabilities', 'stale.bzl'), 'STALE = True\n')
     await symlink('dir/data.txt', NodePath.join(root, 'literal-link'))
     await chmod(NodePath.join(root, 'version.txt'), 0o444)
+    await chmod(NodePath.join(root, 'version-left.txt'), 0o444)
+    await chmod(NodePath.join(root, 'version-right.txt'), 0o444)
     await chmod(NodePath.join(root, 'dir', 'data.txt'), 0o444)
     await chmod(NodePath.join(root, 'run.sh'), 0o555)
     await chmod(NodePath.join(root, '.buck2', 'capabilities', 'stale.bzl'), 0o444)
@@ -298,6 +302,49 @@ describe('cp-a member mount lifecycle', () => {
     }, withNode),
   )
 
+  for (const racedDestination of ['regular file', 'symlink', 'empty directory'] as const) {
+    it.effect(
+      `does not replace a raced ${racedDestination} during first publish`,
+      Effect.fnUntraced(function* () {
+        const fixture = yield* makeFixture()
+        const raceTarget = NodePath.join(fixture.workspaceRoot, `race-target-${racedDestination}`)
+        const result = yield* firstPublish(fixture, {
+          beforeFirstPublish: async ({ destinationPath }) => {
+            if (racedDestination === 'regular file') {
+              await writeFile(destinationPath, 'racer\n')
+            } else if (racedDestination === 'symlink') {
+              await mkdir(raceTarget)
+              await symlink(raceTarget, destinationPath)
+            } else {
+              await mkdir(destinationPath)
+            }
+          },
+        }).pipe(Effect.result)
+
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure') expect(result.failure.reason).toBe('DestinationRefused')
+        expect(
+          yield* Effect.promise(() =>
+            readFile(NodePath.join(stagePath(fixture), 'version.txt'), 'utf8'),
+          ),
+        ).toBe('A\n')
+        expect(yield* pathExists(fixture.transactionPath)).toBe(true)
+        if (racedDestination === 'regular file') {
+          expect(yield* Effect.promise(() => readFile(fixture.destinationPath, 'utf8'))).toBe(
+            'racer\n',
+          )
+        } else if (racedDestination === 'symlink') {
+          expect(yield* Effect.promise(() => readlink(fixture.destinationPath))).toBe(raceTarget)
+        } else {
+          expect((yield* Effect.promise(() => lstat(fixture.destinationPath))).isDirectory()).toBe(
+            true,
+          )
+          expect(yield* Effect.promise(() => readdir(fixture.destinationPath))).toEqual([])
+        }
+      }, withNode),
+    )
+  }
+
   it.effect(
     'advances A to B atomically while live readers sample only whole states',
     Effect.fnUntraced(function* () {
@@ -305,13 +352,30 @@ describe('cp-a member mount lifecycle', () => {
       yield* firstPublish(fixture)
       const samples = new Set<string>()
       let reading = true
+      let resolveFirstSample!: () => void
+      let resolveBPair!: () => void
+      const firstSample = new Promise<void>((resolve) => {
+        resolveFirstSample = resolve
+      })
+      const bPair = new Promise<void>((resolve) => {
+        resolveBPair = resolve
+      })
       const reader = (async () => {
         while (reading === true) {
-          samples.add(await readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'))
+          const [left, right] = await Promise.all([
+            readFile(NodePath.join(fixture.destinationPath, 'version-left.txt'), 'utf8'),
+            readFile(NodePath.join(fixture.destinationPath, 'version-right.txt'), 'utf8'),
+          ])
+          const pair = `${left.trim()}:${right.trim()}`
+          samples.add(pair)
+          resolveFirstSample()
+          if (pair === 'B:B') resolveBPair()
           await new Promise<void>((resolve) => setImmediate(resolve))
         }
       })()
+      yield* Effect.promise(() => firstSample)
       const result = yield* advance(fixture)
+      yield* Effect.promise(() => bPair)
       reading = false
       yield* Effect.promise(() => reader)
 
@@ -322,8 +386,9 @@ describe('cp-a member mount lifecycle', () => {
           readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
         ),
       ).toBe('B\n')
-      expect([...samples].every((sample) => sample === 'A\n' || sample === 'B\n')).toBe(true)
-      expect(samples.has('A\n')).toBe(true)
+      expect([...samples].every((sample) => sample === 'A:A' || sample === 'B:B')).toBe(true)
+      expect(samples.has('A:A')).toBe(true)
+      expect(samples.has('B:B')).toBe(true)
       const metadata = yield* readOwnedCpAMountMetadata({
         workspaceRoot: fixture.workspaceRoot,
         member: fixture.member,
@@ -486,6 +551,85 @@ describe('cp-a member mount lifecycle', () => {
         ),
       ).toBe(false)
       expect(yield* pathExists(fixture.transactionPath)).toBe(true)
+    }, withNode),
+  )
+
+  it.effect(
+    'fsyncs transaction and namespace directories before acknowledging each phase',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      const events: string[] = []
+      const result = yield* firstPublish(fixture, {
+        directoryFsync: async ({ reason, sync }) => {
+          await sync()
+          events.push(`fsync:${reason}`)
+        },
+        afterPhase: async (phase) => {
+          events.push(`phase:${phase}`)
+        },
+      })
+      expect(result._tag).toBe('Published')
+      expect(events).toEqual([
+        'fsync:TransactionCreate',
+        'phase:Intent',
+        'fsync:TransactionReplace',
+        'fsync:StageCreate',
+        'fsync:TransactionReplace',
+        'phase:CandidateCreated',
+        'fsync:TransactionReplace',
+        'phase:Staged',
+        'fsync:FirstPublish',
+        'fsync:TransactionReplace',
+        'phase:Exchanged',
+        'fsync:MetadataPublish',
+        'fsync:TransactionReplace',
+        'phase:MetadataPublished',
+        'fsync:TransactionRemove',
+      ])
+    }, withNode),
+  )
+
+  it.effect(
+    'keeps fsync failures recoverable at transaction, publish, and metadata boundaries',
+    Effect.fnUntraced(function* () {
+      for (const failureReason of [
+        'TransactionCreate',
+        'StageCreate',
+        'FirstPublish',
+        'MetadataPublish',
+      ] as const) {
+        const fixture = yield* makeFixture()
+        let failed = false
+        const result = yield* firstPublish(fixture, {
+          nonce: () => `fsync-${failureReason}`,
+          directoryFsync: async ({ reason, sync }) => {
+            if (reason === failureReason && failed === false) {
+              failed = true
+              throw new Error(`injected ${reason} fsync failure`)
+            }
+            await sync()
+          },
+        }).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        expect(yield* pathExists(fixture.transactionPath)).toBe(true)
+
+        const recovered = yield* recoverCpAMemberMount({
+          request: {
+            workspaceRoot: fixture.workspaceRoot,
+            member: fixture.member,
+            allowVerifiedDarwinAdvance: false,
+          },
+          runtime: { mvPath: fixture.mvPath, platform: 'linux' },
+        })
+        expect(recovered).toMatchObject({
+          _tag: 'Recovered',
+          action:
+            failureReason === 'TransactionCreate' || failureReason === 'StageCreate'
+              ? 'RolledBack'
+              : 'RolledForward',
+        })
+        expect(yield* pathExists(fixture.transactionPath)).toBe(false)
+      }
     }, withNode),
   )
 
