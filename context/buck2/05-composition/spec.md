@@ -98,6 +98,14 @@ store GC and hygiene rules keep working):
   repos/.staging-<member>/ # transient RENAME_EXCHANGE staging
 ```
 
+Member mounts carry tracked sources plus a dist overlay — the member's
+Buck2-built dist artifacts at the locked revision, pulled from the shared
+cache (built locally on miss), declared per member by a genie-projected dist
+manifest, and kept out of action digests by the root's `[project] ignore`
+([decision 0021](../.decisions/0021-cross-member-types-dist-overlay.md)).
+This is what gives editors and typecheck actions cross-member types through
+the unchanged `exports` types→dist mechanism.
+
 The workspace root is not a git repository; the owned member is, and it is
 the default working directory (git, devenv, genie, and pnpm all operate from
 the member; nothing operates only from the root). `buck2 build` works from
