@@ -47,7 +47,7 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
     })
   ];
   passthru = oldAttrs.passthru // {
-    executionPlatform = platform.executionPlatform;
+    inherit (platform) executionPlatform;
     prelude = pkgs.fetchurl {
       inherit (release.prelude) url hash;
     };
