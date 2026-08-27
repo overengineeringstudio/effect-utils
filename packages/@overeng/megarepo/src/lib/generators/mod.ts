@@ -9,6 +9,7 @@ import { Effect } from 'effect'
 import type { AbsoluteDirPath, AbsoluteFilePath, MegarepoConfig } from '../config.ts'
 import { generateVscode } from './vscode.ts'
 
+export * from './composition-root.ts'
 export * from './schema.ts'
 export * from './vscode.ts'
 
