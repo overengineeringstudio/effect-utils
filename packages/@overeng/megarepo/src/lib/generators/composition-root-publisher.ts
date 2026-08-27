@@ -714,6 +714,25 @@ const finalMatchesTransaction = async ({
     const snapshot = await snapshotMaybe(finalPathFor(workspaceRoot, file.path))
     if (snapshot === undefined || snapshotMatchesTransaction(snapshot, file) === false) return false
   }
+  const manifestPath = finalPathFor(workspaceRoot, COMPOSITION_GENERATION_MANIFEST_PATH)
+  const manifestSnapshot = await snapshotMaybe(manifestPath)
+  if (manifestSnapshot === undefined || manifestSnapshot.mode !== 0o644) return false
+  let manifest: CompositionGenerationManifest
+  try {
+    manifest = decodeGenerationManifest({ snapshot: manifestSnapshot, path: manifestPath })
+  } catch {
+    return false
+  }
+  for (const record of manifest.files) {
+    const snapshot = await snapshotMaybe(finalPathFor(workspaceRoot, record.path))
+    if (
+      snapshot === undefined ||
+      snapshot.mode !== record.mode ||
+      snapshot.sha256 !== record.sha256
+    ) {
+      return false
+    }
+  }
   return true
 }
 
