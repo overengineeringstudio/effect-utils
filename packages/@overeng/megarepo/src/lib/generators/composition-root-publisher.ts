@@ -35,6 +35,7 @@ import {
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
 const LOCK_PATH = '.megarepo/composition-publisher.lock.json' as const
 const TRANSACTION_PATH = '.megarepo/composition-publication.json' as const
+const COMMITTED_TRANSACTION_PATH = '.megarepo/composition-publication.committed.json' as const
 const TRANSACTION_ROOT = '.megarepo/composition-publication' as const
 const OWNED_DIRECTORIES = ['.megarepo/bin', '.megarepo', 'none', 'toolchains'] as const
 const memberKeyPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u
@@ -82,6 +83,7 @@ export const CompositionPublicationTransactionSchema = Schema.Struct({
   schemaVersion: Schema.Literal(COMPOSITION_ROOT_SCHEMA_VERSION),
   lockOwner: LockOwner,
   lockToken: LockToken,
+  phase: Schema.Literals(['AuthorityPending', 'AuthorityCommitted']),
   files: Schema.Array(TransactionFileSchema),
 })
   .check(
@@ -149,6 +151,8 @@ export interface CompositionRootPublicationRuntime {
   readonly beforeInstallFile?: (path: string) => Promise<void>
   /** Observation seam after installation and parent-directory fsync. */
   readonly afterPublishedFile?: (path: string) => Promise<void>
+  /** Fault seam after the callback's committed phase is durable, before forward cleanup. */
+  readonly afterAuthorityCommitted?: () => Promise<void>
   /** Deterministic process-death seam: true leaves the exact-token lock and transaction durable. */
   readonly simulateProcessFaultAfterCandidate?: (path: string) => boolean
   /** Deterministic process-death seam after one final file is durable. */
@@ -551,16 +555,21 @@ const validateTransactionShape = ({
   }
 }
 
-const readTransactionMaybe = async (
-  workspaceRoot: string,
-): Promise<
-  | {
-      readonly transaction: CompositionPublicationTransaction
-      readonly snapshot: FileSnapshot
-    }
-  | undefined
-> => {
-  const path = finalPathFor(workspaceRoot, TRANSACTION_PATH)
+interface PublicationTransactionRecord {
+  readonly transaction: CompositionPublicationTransaction
+  readonly snapshot: FileSnapshot
+}
+
+const readTransactionRecordMaybe = async ({
+  workspaceRoot,
+  relativePath,
+  phase,
+}: {
+  readonly workspaceRoot: string
+  readonly relativePath: string
+  readonly phase: CompositionPublicationTransaction['phase']
+}): Promise<PublicationTransactionRecord | undefined> => {
+  const path = finalPathFor(workspaceRoot, relativePath)
   const snapshot = await snapshotMaybe(path)
   if (snapshot === undefined) return undefined
   if (snapshot.mode !== 0o644) {
@@ -577,8 +586,29 @@ const readTransactionMaybe = async (
     reason: 'RecoveryRefused',
   })
   validateTransactionShape({ transaction, workspaceRoot })
+  if (transaction.phase !== phase) {
+    throw failure({
+      reason: 'RecoveryRefused',
+      path,
+      message: `Transaction manifest has unexpected phase ${transaction.phase}: ${path}`,
+    })
+  }
   return { transaction, snapshot }
 }
+
+const readTransactionMaybe = (workspaceRoot: string) =>
+  readTransactionRecordMaybe({
+    workspaceRoot,
+    relativePath: TRANSACTION_PATH,
+    phase: 'AuthorityPending',
+  })
+
+const readCommittedTransactionMaybe = (workspaceRoot: string) =>
+  readTransactionRecordMaybe({
+    workspaceRoot,
+    relativePath: COMMITTED_TRANSACTION_PATH,
+    phase: 'AuthorityCommitted',
+  })
 
 const readLock = async (
   workspaceRoot: string,
@@ -665,15 +695,16 @@ const verifyOwnedArtifact = async ({
 
 const cleanupTransactionForward = async ({
   workspaceRoot,
-  transactionRecord,
+  transaction,
+  pendingRecord,
+  committedRecord,
 }: {
   readonly workspaceRoot: string
-  readonly transactionRecord: {
-    readonly transaction: CompositionPublicationTransaction
-    readonly snapshot: FileSnapshot
-  }
+  readonly transaction: CompositionPublicationTransaction
+  readonly pendingRecord?: PublicationTransactionRecord
+  readonly committedRecord?: PublicationTransactionRecord
 }): Promise<void> => {
-  for (const file of transactionRecord.transaction.files) {
+  for (const file of transaction.files) {
     const candidate = await verifyOwnedArtifact({
       workspaceRoot,
       relativePath: file.candidatePath,
@@ -695,14 +726,56 @@ const cleanupTransactionForward = async ({
       await removeExact({ path: finalPathFor(workspaceRoot, file.backupPath), expected: backup })
     }
   }
-  await removeExact({
-    path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
-    expected: transactionRecord.snapshot,
-  })
+  if (pendingRecord !== undefined) {
+    await removeExact({
+      path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
+      expected: pendingRecord.snapshot,
+    })
+  }
+  // The committed marker remains durable until every rollback artifact and pending record is gone.
+  if (committedRecord !== undefined) {
+    await removeExact({
+      path: finalPathFor(workspaceRoot, COMMITTED_TRANSACTION_PATH),
+      expected: committedRecord.snapshot,
+    })
+  }
   await cleanupEmptyTransactionDirectories({
     workspaceRoot,
-    token: transactionRecord.transaction.lockToken,
+    token: transaction.lockToken,
   })
+}
+
+const finalMatchesTransaction = async ({
+  workspaceRoot,
+  transaction,
+}: {
+  readonly workspaceRoot: string
+  readonly transaction: CompositionPublicationTransaction
+}): Promise<boolean> => {
+  for (const file of transaction.files) {
+    const snapshot = await snapshotMaybe(finalPathFor(workspaceRoot, file.path))
+    if (snapshot === undefined || snapshotMatchesTransaction(snapshot, file) === false) return false
+  }
+  const manifestPath = finalPathFor(workspaceRoot, COMPOSITION_GENERATION_MANIFEST_PATH)
+  const manifestSnapshot = await snapshotMaybe(manifestPath)
+  if (manifestSnapshot === undefined || manifestSnapshot.mode !== 0o644) return false
+  let manifest: CompositionGenerationManifest
+  try {
+    manifest = decodeGenerationManifest({ snapshot: manifestSnapshot, path: manifestPath })
+  } catch {
+    return false
+  }
+  for (const record of manifest.files) {
+    const snapshot = await snapshotMaybe(finalPathFor(workspaceRoot, record.path))
+    if (
+      snapshot === undefined ||
+      snapshot.mode !== record.mode ||
+      snapshot.sha256 !== record.sha256
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 const restoreTransactionFile = async ({
@@ -820,6 +893,24 @@ const rollbackTransaction = async ({
   })
 }
 
+const assertTransactionLockIdentity = ({
+  transaction,
+  lock,
+  path,
+}: {
+  readonly transaction: CompositionPublicationTransaction
+  readonly lock: CompositionPublisherLock
+  readonly path: string
+}): void => {
+  if (transaction.lockToken !== lock.token || transaction.lockOwner !== lock.owner) {
+    throw failure({
+      reason: 'RecoveryRefused',
+      path,
+      message: 'Transaction identity does not match the exact stale lock identity',
+    })
+  }
+}
+
 const recoverTransaction = async ({
   workspaceRoot,
   lock,
@@ -827,7 +918,54 @@ const recoverTransaction = async ({
   readonly workspaceRoot: string
   readonly lock: CompositionPublisherLock
 }): Promise<void> => {
-  const record = await readTransactionMaybe(workspaceRoot)
+  const [record, committedRecord] = await Promise.all([
+    readTransactionMaybe(workspaceRoot),
+    readCommittedTransactionMaybe(workspaceRoot),
+  ])
+  if (committedRecord !== undefined) {
+    assertTransactionLockIdentity({
+      transaction: committedRecord.transaction,
+      lock,
+      path: finalPathFor(workspaceRoot, COMMITTED_TRANSACTION_PATH),
+    })
+    if (record !== undefined) {
+      assertTransactionLockIdentity({
+        transaction: record.transaction,
+        lock,
+        path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
+      })
+      const expectedCommitted = encodeJson(CompositionPublicationTransactionSchema, {
+        ...record.transaction,
+        phase: 'AuthorityCommitted',
+      })
+      if (bytesEqual(committedRecord.snapshot.bytes, expectedCommitted) === false) {
+        throw failure({
+          reason: 'RecoveryRefused',
+          path: finalPathFor(workspaceRoot, COMMITTED_TRANSACTION_PATH),
+          message: 'Committed publication phase disagrees with its pending transaction',
+        })
+      }
+    }
+    if (
+      (await finalMatchesTransaction({
+        workspaceRoot,
+        transaction: committedRecord.transaction,
+      })) === false
+    ) {
+      throw failure({
+        reason: 'RecoveryRefused',
+        path: finalPathFor(workspaceRoot, COMMITTED_TRANSACTION_PATH),
+        message: 'Committed publication authority no longer matches its durable transaction',
+      })
+    }
+    await cleanupTransactionForward({
+      workspaceRoot,
+      transaction: committedRecord.transaction,
+      ...(record === undefined ? {} : { pendingRecord: record }),
+      committedRecord,
+    })
+    return
+  }
   if (record === undefined) {
     const candidateRelativePath = transactionRecordCandidatePath({ token: lock.token })
     const candidatePath = finalPathFor(workspaceRoot, candidateRelativePath)
@@ -840,31 +978,29 @@ const recoverTransaction = async ({
         reason: 'RecoveryRefused',
       })
       validateTransactionShape({ transaction: candidateTransaction, workspaceRoot })
-      if (
-        candidateTransaction.lockToken !== lock.token ||
-        candidateTransaction.lockOwner !== lock.owner
-      ) {
+      if (candidateTransaction.phase !== 'AuthorityPending') {
         throw failure({
           reason: 'RecoveryRefused',
           path: candidatePath,
-          message: 'Transaction-record candidate does not match the exact stale lock identity',
+          message: 'Transaction-record candidate has an impossible committed phase',
         })
       }
+      assertTransactionLockIdentity({
+        transaction: candidateTransaction,
+        lock,
+        path: candidatePath,
+      })
       await removeExact({ path: candidatePath, expected: candidate })
     }
     await cleanupEmptyTransactionDirectories({ workspaceRoot, token: lock.token })
     return
   }
-  if (record.transaction.lockToken !== lock.token || record.transaction.lockOwner !== lock.owner) {
-    throw failure({
-      reason: 'RecoveryRefused',
-      path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
-      message: 'Transaction identity does not match the exact stale lock identity',
-    })
-  }
-  // A durable transaction is deliberately uncommitted until the authority callback succeeds.
-  // Recovery cannot know whether an external side effect completed, so it always restores the
-  // previous generation rather than treating config-last installation as a commit marker.
+  assertTransactionLockIdentity({
+    transaction: record.transaction,
+    lock,
+    path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
+  })
+  // Without a committed phase, recovery cannot assume the external callback completed.
   await rollbackTransaction({ workspaceRoot, transactionRecord: record })
 }
 
@@ -904,7 +1040,10 @@ const acquireLock = async ({
     }
     await recoverTransaction({ workspaceRoot, lock: existing.lock })
     await removeExact({ path: finalPathFor(workspaceRoot, LOCK_PATH), expected: existing.snapshot })
-  } else if ((await readTransactionMaybe(workspaceRoot)) !== undefined) {
+  } else if (
+    (await readTransactionMaybe(workspaceRoot)) !== undefined ||
+    (await readCommittedTransactionMaybe(workspaceRoot)) !== undefined
+  ) {
     throw failure({
       reason: 'RecoveryRefused',
       path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
@@ -1156,6 +1295,7 @@ const makeTransaction = ({
     schemaVersion: COMPOSITION_ROOT_SCHEMA_VERSION,
     lockOwner: lock.owner,
     lockToken: lock.token,
+    phase: 'AuthorityPending',
     files,
   })
 }
@@ -1184,6 +1324,24 @@ const writeTransaction = async ({
     bytes: encodeJson(CompositionPublicationTransactionSchema, transaction),
   })
   return { transaction, snapshot }
+}
+
+const writeCommittedTransaction = async ({
+  workspaceRoot,
+  transaction,
+}: {
+  readonly workspaceRoot: string
+  readonly transaction: CompositionPublicationTransaction
+}): Promise<PublicationTransactionRecord> => {
+  const committed: CompositionPublicationTransaction = {
+    ...transaction,
+    phase: 'AuthorityCommitted',
+  }
+  const snapshot = await writeExclusive({
+    path: finalPathFor(workspaceRoot, COMMITTED_TRANSACTION_PATH),
+    bytes: encodeJson(CompositionPublicationTransactionSchema, committed),
+  })
+  return { transaction: committed, snapshot }
 }
 
 const stageTransaction = async ({
@@ -1442,6 +1600,7 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
               memberManifests: members.map(({ memberKey, manifest }) => ({ memberKey, manifest })),
             }
           }
+          let authorityCommitted = false
           try {
             await writeTransaction({ workspaceRoot, transaction })
             const desired = new Map(output.files.map((file) => [file.path, file]))
@@ -1460,6 +1619,9 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
               runtime: options.runtime,
             })
             await options.afterAuthorityPublished?.()
+            const committedRecord = await writeCommittedTransaction({ workspaceRoot, transaction })
+            authorityCommitted = true
+            await options.runtime.afterAuthorityCommitted?.()
             const current = await readTransactionMaybe(workspaceRoot)
             if (current === undefined) {
               throw failure({
@@ -1468,13 +1630,18 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
                 message: 'Transaction disappeared before committed cleanup',
               })
             }
-            await cleanupTransactionForward({ workspaceRoot, transactionRecord: current })
+            await cleanupTransactionForward({
+              workspaceRoot,
+              transaction: committedRecord.transaction,
+              pendingRecord: current,
+              committedRecord,
+            })
             return {
               changedPaths,
               memberManifests: members.map(({ memberKey, manifest }) => ({ memberKey, manifest })),
             }
           } catch (cause) {
-            if (cause instanceof SimulatedProcessFault) {
+            if (cause instanceof SimulatedProcessFault || authorityCommitted === true) {
               leaveForRecovery = true
               throw cause
             }

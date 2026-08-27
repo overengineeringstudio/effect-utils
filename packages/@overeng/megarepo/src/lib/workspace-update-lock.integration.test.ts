@@ -77,6 +77,41 @@ describe('workspace update lock', () => {
     ),
   )
 
+  it.effect('durably removes both names when acquisition parent fsync fails', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const root = yield* fixture
+        const parent = NodePath.join(root, '.megarepo')
+        let parentSyncs = 0
+        const error = yield* failureOf(
+          acquireWorkspaceUpdateLock({
+            workspaceRoot: root,
+            runtime: {
+              token: () => tokenA,
+              directoryFsync: async ({ path, sync }) => {
+                if (path === parent) {
+                  parentSyncs += 1
+                  if (parentSyncs === 1) throw new Error('publication fsync failed')
+                }
+                await sync()
+              },
+            },
+          }),
+        )
+        expect(error.reason).toBe('IoFailure')
+        expect(parentSyncs).toBe(2)
+        expect(
+          yield* Effect.promise(() => exists(NodePath.join(root, WORKSPACE_UPDATE_LOCK_PATH))),
+        ).toBe(false)
+        expect(
+          yield* Effect.promise(() =>
+            exists(NodePath.join(root, `${WORKSPACE_UPDATE_LOCK_PATH}.owner-${tokenA}`)),
+          ),
+        ).toBe(false)
+      }),
+    ),
+  )
+
   it.effect('refuses contention and reports the exact recovery token', () =>
     Effect.scoped(
       Effect.gen(function* () {

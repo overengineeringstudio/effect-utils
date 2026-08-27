@@ -565,7 +565,22 @@ const shellQuote = (value: string): string => `'${value.replaceAll("'", `'"'"'`)
 const renderBuckWrapper = (input: NormalizedCompositionRootInput): string => `#!/bin/sh
 set -eu
 
-wrapper_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+case "$0" in
+  */*) wrapper_path=$0 ;;
+  *) wrapper_path=$(command -v "$0") ;;
+esac
+case "$wrapper_path" in
+  /*) ;;
+  *) wrapper_path=$PWD/$wrapper_path ;;
+esac
+while [ -L "$wrapper_path" ]; do
+  wrapper_link=$(readlink "$wrapper_path")
+  case "$wrapper_link" in
+    /*) wrapper_path=$wrapper_link ;;
+    *) wrapper_path=$(dirname -- "$wrapper_path")/$wrapper_link ;;
+  esac
+done
+wrapper_dir=$(CDPATH= cd -- "$(dirname -- "$wrapper_path")" && pwd -P)
 workspace_root=$(CDPATH= cd -- "$wrapper_dir/../.." && pwd -P)
 update_lock="$workspace_root/.megarepo/workspace-update.lock"
 if [ -e "$update_lock" ] || [ -L "$update_lock" ]; then

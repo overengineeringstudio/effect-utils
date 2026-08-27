@@ -230,9 +230,11 @@ export const acquireWorkspaceUpdateLock = ({
       }
       const bytes = canonicalOwner(owner)
       const ownerPath = `${paths.lockPath}.owner-${token}`
+      let ownerCreated = false
       let linked = false
       try {
         const handle = await open(ownerPath, 'wx', 0o600)
+        ownerCreated = true
         try {
           await handle.writeFile(bytes, 'utf8')
           await handle.sync()
@@ -253,8 +255,31 @@ export const acquireWorkspaceUpdateLock = ({
           ino: identity.ino,
         }
       } catch (cause) {
-        if (linked === true) await unlink(paths.lockPath).catch(() => undefined)
-        await unlink(ownerPath).catch(() => undefined)
+        const cleanupFailures: unknown[] = []
+        if (linked === true) {
+          await unlink(paths.lockPath).catch((cleanupCause: unknown) => {
+            cleanupFailures.push(cleanupCause)
+          })
+        }
+        if (ownerCreated === true) {
+          await unlink(ownerPath).catch((cleanupCause: unknown) => {
+            cleanupFailures.push(cleanupCause)
+          })
+        }
+        if (linked === true || ownerCreated === true) {
+          await syncDirectory({ path: paths.parent, runtime }).catch((cleanupCause: unknown) => {
+            cleanupFailures.push(cleanupCause)
+          })
+        }
+        if (cleanupFailures.length > 0) {
+          throw failure({
+            reason: 'IoFailure',
+            path: paths.lockPath,
+            message: `Workspace update lock candidate cleanup failed for '${paths.lockPath}'`,
+            recoveryPaths: [paths.lockPath, ownerPath],
+            cause: new AggregateError([cause, ...cleanupFailures]),
+          })
+        }
         if (isErrno(cause, 'EEXIST') === true) {
           throw await lockHeldFailure({
             workspaceRoot: paths.workspaceRoot,
