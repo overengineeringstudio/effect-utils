@@ -6,8 +6,8 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
   "status": 1,
   "stderr": "
 ERROR
-  Invalid value for flag --width: "nope". Expected a string representing a finite number
-~effect/cli/CliError/ShowHelp: Help requested (tui-stories 0.1.0)
+  Invalid value for flag --width: "nope". Expected a string representing a finite number (tui-stories 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
     at <anonymous> (<repo>/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
   "stdout": "DESCRIPTION
@@ -35,6 +35,44 @@ GLOBAL FLAGS
   --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
 ",
+}
+`;
+
+exports[`tui-stories CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > invalid width with json output (stdout guard) 1`] = `
+{
+  "signal": null,
+  "status": 1,
+  "stderr": "DESCRIPTION
+  Render a story to terminal output
+
+USAGE
+  tui-stories render [flags] <story-id>
+
+ARGUMENTS
+  story-id string    Story title or ID to render (supports prefix/substring match)
+
+FLAGS
+  --story, -s string     Named story export to render (defaults to first)
+  --path string          Package directory to search for stories
+  --width, -w integer    Terminal width for layout
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+  --final                Apply all timeline events (show final state)
+  --at integer           Apply timeline events up to this timestamp (ms)
+  --arg, -a string       Override story arg (key=value format, repeatable)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+ERROR
+  Invalid value for flag --width: "nope". Expected a string representing a finite number (tui-stories 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
+    at <anonymous> (<repo>/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
+",
+  "stdout": "",
 }
 `;
 
@@ -69,8 +107,8 @@ exports[`tui-stories CLI contract baselines (status/signal invariant, prose owne
   "status": 1,
   "stderr": "
 ERROR
-  Missing required flag: --path
-~effect/cli/CliError/ShowHelp: Help requested (tui-stories 0.1.0)
+  Missing required flag: --path (tui-stories 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
     at <anonymous> (<repo>/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
   "stdout": "DESCRIPTION

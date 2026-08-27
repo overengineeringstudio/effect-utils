@@ -6,7 +6,7 @@ exports[`ci-tools CLI contract baselines (status/signal invariant, prose owner-r
   "status": 1,
   "stderr": "
 ERROR
-  Invalid value for flag --mode: "nope". Expected: "prod" | "pr" | "draft"
+  Invalid value for flag --mode: "nope". Expected: "prod" | "pr" | "draft" (ci-tools 0.1.0)
 ",
   "stdout": "DESCRIPTION
   Deploy a local static directory to Netlify
@@ -55,7 +55,7 @@ exports[`ci-tools CLI contract baselines (status/signal invariant, prose owner-r
   "status": 1,
   "stderr": "
 ERROR
-  Missing required flag: --bundle-id
+  Missing required flag: --bundle-id (ci-tools 0.1.0)
 ",
   "stdout": "DESCRIPTION
   Collect marked workflow report records into a bundle

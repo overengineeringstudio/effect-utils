@@ -6,8 +6,8 @@ exports[`genie CLI contract baselines (status/signal invariant, prose owner-reba
   "status": 1,
   "stderr": "
 ERROR
-  Invalid value for flag --phase: "nope". Expected: "bootstrap" | "design-time"
-~effect/cli/CliError/ShowHelp: Help requested (genie 0.1.0)
+  Invalid value for flag --phase: "nope". Expected: "bootstrap" | "design-time" (genie 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
     at <anonymous> (<repo>node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
 ",
   "stdout": "USAGE
@@ -34,14 +34,48 @@ GLOBAL FLAGS
 }
 `;
 
+exports[`genie CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > invalid phase with json output (stdout guard) 1`] = `
+{
+  "signal": null,
+  "status": 1,
+  "stderr": "USAGE
+  genie [flags]
+
+FLAGS
+  --cwd string           Working directory to search for .genie.ts files
+  --watch                Watch for changes and regenerate automatically
+  --writeable            Generate files as writable (default: read-only)
+  --check                Check if generated files are up to date (for CI)
+  --dry-run              Preview changes without writing files
+  --defer-validation     Generate projections before a repair step; the caller must finish with genie --check
+  --phase choice         Only run generators declaring this phase (bootstrap runs before install; default: all phases) (choices: bootstrap, design-time)
+  --oxfmt-config file    Path to oxfmt config file (default: .oxfmtrc.json or oxfmt.json)
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+ERROR
+  Invalid value for flag --phase: "nope". Expected: "bootstrap" | "design-time" (genie 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
+    at <anonymous> (<repo>node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
+",
+  "stdout": "",
+}
+`;
+
 exports[`genie CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > missing option value 1`] = `
 {
   "signal": null,
   "status": 1,
   "stderr": "
 ERROR
-  Missing value for flag --cwd. Expected: string
-~effect/cli/CliError/ShowHelp: Help requested (genie 0.1.0)
+  Missing value for flag --cwd. Expected: string (genie 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
     at <anonymous> (<repo>node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1070:34)
 ",
   "stdout": "USAGE

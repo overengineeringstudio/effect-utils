@@ -84,6 +84,10 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
     ['version', ['--version']],
     ['missing required repo', ['add']],
     ['invalid shell', ['env', '--shell', 'nope']],
+    [
+      'invalid shell with json output (stdout guard)',
+      ['env', '--shell', 'nope', '--output', 'json'],
+    ],
   ] as const)('%s', (_name, args) => {
     expect(runCli(...args)).toMatchSnapshot()
   })
@@ -94,36 +98,36 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
       args: ['add', '--', '--not-a-flag'],
       stdout:
         '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --not-a-flag"}\n',
-      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n\n',
+      stderr: 'AddCommandError: Invalid repo reference\n\n',
     },
     {
       name: 'parent flag-name collision',
       args: ['add', '--', '--cwd'],
       stdout: '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --cwd"}\n',
-      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n\n',
+      stderr: 'AddCommandError: Invalid repo reference\n\n',
     },
     {
       name: 'subcommand flag-name collision',
       args: ['add', '--', '--name'],
       stdout:
         '{"_tag":"Error","error":"invalid_repo","message":"Invalid repo reference: --name"}\n',
-      stderr: 'AddCommandError: Invalid repo reference (mr 0.1.0)\n\n',
+      stderr: 'AddCommandError: Invalid repo reference\n\n',
     },
     {
       name: 'multiple operands preserve order until positional arity is exhausted',
       args: ['add', '--', '--first', '--name', '--last'],
       stdout: addHelpDoc,
       stderr:
-        '\nERROR\n  Unexpected positional arguments: "--name", "--last"\n' +
-        '~effect/cli/CliError/ShowHelp: Help requested (mr 0.1.0)\n\n',
+        '\nERROR\n  Unexpected positional arguments: "--name", "--last" (mr 0.1.0)\n' +
+        '~effect/cli/CliError/ShowHelp: Help requested\n\n',
     },
     {
       name: 'empty trailing operands',
       args: ['add', '--'],
       stdout: addHelpDoc,
       stderr:
-        '\nERROR\n  Missing required argument: repo\n' +
-        '~effect/cli/CliError/ShowHelp: Help requested (mr 0.1.0)\n\n',
+        '\nERROR\n  Missing required argument: repo (mr 0.1.0)\n' +
+        '~effect/cli/CliError/ShowHelp: Help requested\n\n',
     },
   ])('retains nested terminator argv: $name', ({ args, stdout, stderr }) => {
     expect(runCli('--cwd', workspaceRoot, ...args)).toEqual({

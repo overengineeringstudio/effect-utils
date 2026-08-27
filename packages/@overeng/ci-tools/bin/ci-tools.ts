@@ -27,11 +27,11 @@ const identity = Schema.decodeSync(ServiceIdentity)({
 const program = Effect.gen(function* () {
   const endpoint = yield* otelEndpointFromConfig()
 
-  yield* Cli.Command.runWith(ciToolsCommand, {
-    version,
-  })(rewriteHelpSubcommand(process.argv.slice(2))).pipe(
+  yield* Cli.Command.runWith(ciToolsCommand, { version })(
+    rewriteHelpSubcommand(process.argv.slice(2)),
+  ).pipe(
     Effect.scoped,
-    CliVersion.enrichErrors,
+    Effect.provide(CliVersion.formatterLayer),
     Effect.provideService(CliVersion, { name: 'ci-tools', version }),
     Effect.provide(
       Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),

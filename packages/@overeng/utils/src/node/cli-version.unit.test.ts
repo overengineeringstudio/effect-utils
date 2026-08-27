@@ -1,8 +1,13 @@
+import { Console, Effect } from 'effect'
+import { CliError, CliOutput } from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import {
+  argvRequestsJsonStdout,
+  CliVersion,
+  jsonStdoutGuardLayer,
   parseCliBuildStamp,
   resolveCliBuildIdentity,
   resolveCliMachineVersion,
@@ -203,5 +208,79 @@ Vitest.describe('resolveCliBuildIdentity', () => {
         now,
       }),
     ).toBe('0.1.0+def456')
+  })
+})
+
+Vitest.describe('argvRequestsJsonStdout', () => {
+  Vitest.it('matches explicit json/ndjson output requests', () => {
+    expect(argvRequestsJsonStdout(['--output', 'json'])).toBe(true)
+    expect(argvRequestsJsonStdout(['--output=ndjson'])).toBe(true)
+    expect(argvRequestsJsonStdout(['-o', 'json'])).toBe(true)
+    expect(argvRequestsJsonStdout(['-o=ndjson'])).toBe(true)
+    expect(argvRequestsJsonStdout(['md', 'status', '--json', 'page.nmd'])).toBe(true)
+  })
+
+  Vitest.it('leaves human invocations unguarded', () => {
+    expect(argvRequestsJsonStdout([])).toBe(false)
+    expect(argvRequestsJsonStdout(['--output', 'auto'])).toBe(false)
+    expect(argvRequestsJsonStdout(['env', '--output', 'tty'])).toBe(false)
+    expect(argvRequestsJsonStdout(['--output'])).toBe(false)
+    expect(argvRequestsJsonStdout(['--jsonify'])).toBe(false)
+  })
+})
+
+Vitest.describe('CliVersion.formatterLayer', () => {
+  Vitest.it(
+    'stamps rendered errors with the CLI version and keeps upstream version bytes',
+    async () => {
+      process.env.NO_COLOR = '1'
+      const rendered = await Effect.runPromise(
+        Effect.gen(function* () {
+          const formatter = yield* CliOutput.Formatter
+          return {
+            error: formatter.formatError(new CliError.UserError({ cause: 'boom' })),
+            errors: formatter.formatErrors([new CliError.UserError({ cause: 'nope' })]),
+            version: formatter.formatVersion('mr', '0.1.0'),
+          }
+        }).pipe(
+          Effect.provide(CliVersion.formatterLayer),
+          Effect.provideService(CliVersion, { name: 'mr', version: '0.1.0' }),
+        ),
+      )
+      expect(rendered.error).toBe('\nERROR\n  boom (mr 0.1.0)')
+      expect(rendered.errors).toBe('\nERROR\n  nope (mr 0.1.0)')
+      expect(rendered.version).toBe('mr v0.1.0')
+    },
+  )
+})
+
+Vitest.describe('jsonStdoutGuardLayer', () => {
+  Vitest.it('binds the parse-phase Console to stderr for JSON invocations only', async () => {
+    const stderrWrites: Array<string> = []
+    const originalStderrWrite = process.stderr.write
+    const capture =
+      (sink: Array<string>) =>
+      (chunk: Uint8Array | string): boolean => {
+        sink.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString())
+        return true
+      }
+    process.stderr.write = capture(stderrWrites) as typeof process.stderr.write
+    const logViaConsole = Effect.flatMap(Console.Console, (console) =>
+      Effect.sync(() => console.log('x')),
+    )
+    try {
+      await Effect.runPromise(
+        logViaConsole.pipe(Effect.provide(jsonStdoutGuardLayer(['--output', 'json']))),
+      )
+      expect(stderrWrites).toEqual(['x\n'])
+
+      // Guard inert: the ambient console stays bound, so nothing new reaches stderr.
+      await Effect.runPromise(
+        logViaConsole.pipe(Effect.provide(jsonStdoutGuardLayer(['--output', 'tty']))),
+      )
+      expect(stderrWrites).toEqual(['x\n'])
+    } finally {
+      process.stderr.write = originalStderrWrite
+    }
   })
 })

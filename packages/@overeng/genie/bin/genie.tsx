@@ -8,7 +8,12 @@ import { ServiceIdentity } from '@overeng/otel-contract'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
-import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
+import {
+  CliVersion,
+  handlerConsoleLayer,
+  jsonStdoutGuardLayer,
+  resolveCliVersion,
+} from '@overeng/utils/node/cli-version'
 import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
 import { genieCommand } from '../src/build/mod.tsx'
@@ -26,16 +31,20 @@ const identity = Schema.decodeSync(ServiceIdentity)({
   version,
 })
 
-const command = Cli.Command.provide(genieCommand, CurrentWorkingDirectory.live)
+const command = Cli.Command.provide(
+  Cli.Command.provide(genieCommand, CurrentWorkingDirectory.live),
+  handlerConsoleLayer,
+)
 
 const program = Effect.gen(function* () {
   const endpoint = yield* otelEndpointFromConfig()
 
-  yield* Cli.Command.runWith(command, {
-    version,
-  })(rewriteHelpSubcommand(process.argv.slice(2))).pipe(
+  const args = rewriteHelpSubcommand(process.argv.slice(2))
+
+  yield* Cli.Command.runWith(command, { version })(args).pipe(
     Effect.scoped,
-    CliVersion.enrichErrors,
+    Effect.provide(CliVersion.formatterLayer),
+    Effect.provide(jsonStdoutGuardLayer(args)),
     Effect.provideService(CliVersion, { name: 'genie', version }),
     Effect.provide(
       Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),

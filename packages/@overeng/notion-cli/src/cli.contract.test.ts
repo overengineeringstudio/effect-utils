@@ -51,6 +51,10 @@ describe('notion-cli CLI contract baselines (status/signal invariant, prose owne
     ['version', ['--version']],
     ['missing required database id', ['db', 'info']],
     ['invalid integer', ['md', 'status', '--concurrency', 'nope', 'page.nmd']],
+    [
+      'invalid integer with json output (stdout guard)',
+      ['md', 'status', '--concurrency', 'nope', '--json', 'page.nmd'],
+    ],
   ] as const)('%s', (_name, args) => {
     expect(runCli(...args)).toMatchSnapshot()
   })

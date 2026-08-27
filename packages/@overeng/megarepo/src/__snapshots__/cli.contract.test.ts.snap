@@ -6,8 +6,8 @@ exports[`megarepo CLI contract baselines (status/signal invariant, prose owner-r
   "status": 1,
   "stderr": "
 ERROR
-  Invalid value for flag --shell: "nope". Expected: "bash" | "zsh" | "fish"
-~effect/cli/CliError/ShowHelp: Help requested (mr 0.1.0)
+  Invalid value for flag --shell: "nope". Expected: "bash" | "zsh" | "fish" (mr 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
 
 ",
   "stdout": "DESCRIPTION
@@ -31,14 +31,45 @@ GLOBAL FLAGS
 }
 `;
 
+exports[`megarepo CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > invalid shell with json output (stdout guard) 1`] = `
+{
+  "signal": null,
+  "status": 1,
+  "stderr": "DESCRIPTION
+  Output environment variables for shell integration
+
+USAGE
+  mr env [flags]
+
+FLAGS
+  --shell choice         Shell type for output format (choices: bash, zsh, fish)
+  --output, -o choice    Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson (choices: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+  --cwd string                                                        Override the working directory
+
+ERROR
+  Invalid value for flag --shell: "nope". Expected: "bash" | "zsh" | "fish" (mr 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
+
+",
+  "stdout": "",
+}
+`;
+
 exports[`megarepo CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > missing required repo 1`] = `
 {
   "signal": null,
   "status": 1,
   "stderr": "
 ERROR
-  Missing required argument: repo
-~effect/cli/CliError/ShowHelp: Help requested (mr 0.1.0)
+  Missing required argument: repo (mr 0.1.0)
+~effect/cli/CliError/ShowHelp: Help requested
 
 ",
   "stdout": "DESCRIPTION
