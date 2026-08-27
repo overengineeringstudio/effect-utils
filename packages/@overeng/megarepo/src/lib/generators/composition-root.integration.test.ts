@@ -48,9 +48,10 @@ const withWrapperFixture = async <T>(
   try {
     const fakeDirectory = join(directory, "fake buck's directory")
     const fakeBuck = join(fakeDirectory, "buck2's fake")
-    const wrapper = join(directory, 'buck2')
+    const wrapper = join(directory, '.megarepo', 'bin', 'buck2')
     const argvFile = join(directory, 'argv')
     await mkdir(fakeDirectory)
+    await mkdir(join(directory, '.megarepo', 'bin'), { recursive: true })
     await writeFile(fakeBuck, fakeBuckSource)
     await chmod(fakeBuck, 0o755)
     const generated = generateCompositionRoot(makeInput(fakeBuck))
@@ -80,6 +81,21 @@ describe('generated Buck wrapper', () => {
       expect(await readFile(argvFile, 'utf8')).toBe(
         '--isolation-dir\nmegarepo\nbuild\nalpha//:target with space\n--verbose\n',
       )
+    }))
+
+  it('refuses Buck while the workspace update lock exists and names mr recovery', () =>
+    withWrapperFixture(async ({ wrapper, argvFile, env }) => {
+      const lockPath = join(wrapper, '..', '..', 'workspace-update.lock')
+      await writeFile(lockPath, '{malformed-but-present}\n')
+      const result = spawnSync(wrapper, ['build', 'alpha//:target'], {
+        cwd: tmpdir(),
+        env,
+        encoding: 'utf8',
+      })
+      expect(result.status).toBe(75)
+      expect(result.stderr).toContain(`workspace update lock exists at ${lockPath}`)
+      expect(result.stderr).toContain('through mr')
+      await expect(readFile(argvFile, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     }))
 
   it('passes through the exact Buck exit status', () =>
