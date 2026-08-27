@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
+  adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
+  lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`
+  and unpadded base64 is rejected). `FileLogger` rebuilds its sink on
+  `Logger.toFile` with byte-identical on-disk output. One canonical
+  `stripAnsi` lives in `@overeng/tui-core` (superset regex incl. DEC
+  private-mode CSI, charset, and keypad escapes); tui-react re-exports it. New
+  shared `nonEmptyTrimmedString` schema helper (`NonEmptyString` +
+  `check(isTrimmed())`), adopted by agent-session-ingest,
+  notion-datasource-sync, ci-tools, and notion-effect-client;
+  content-address stays dependency-free to avoid a utils ->
+  otel-contract -> content-address -> utils cycle.
+- **@overeng/notion-effect-client**: the request throttle reads
+  `RateLimiter.ConsumeResult.delay` directly (the double-Clock measurement and
+  the `isRateLimiterError` catch-to-die workaround are gone; e2e wait assertions
+  tightened to exact values). `mapHttpClientError` now discriminates
+  retryability by transport reason (`invalid_request` vs `service_unavailable`)
+  with unchanged wire envelopes. New opt-in `NotionTracerHeaderFilterLive`
+  layer re-expresses the retired v3 span-header allowlist as the upstream
+  `HttpClient.TracerHeaderFilter` reference, enabling verbose Notion traffic
+  spans without core patches.
+- **All CLIs (mr, genie, notion, notion-md, tui-stories, ci-tools,
+  npm-release)**: version/help/error rendering now comes from upstream
+  `CliOutput`/`GlobalFlag` via `Command.runWith({ version })`. The
+  `CliVersion.enrichErrors` descriptor-clone hack is deleted (errors are never
+  mutated; version stamps are appended at render time). `notion --version` now
+  prints the upstream `notion v0.1.0` format; validation errors gain
+  ` (name version)` stamps. A JSON-stdout guard (incl. the schema command's
+  `--output-mode`) keeps validation help off stdout for JSON/NDJSON modes;
+  `resolveCliBuildIdentity` is unchanged.
+
+### Removed
+- **context/effect-4/**: the flip-era migration docs (alignment register, idiom
+  catalog, differential recipes, ops manuals). The executable
+  baseline-collection gate moved to
+  `@overeng/utils-dev/check-baseline-test-collection.ts`. The empty
+  `utilsPatches` projection registry is gone from genie config.
 
 - **@overeng/utils, @overeng/genie, @overeng/notion-md**: apply the watch-recursion
   design study for effect@4.0.0-rc.111 (recursion is opt-in again). New
@@ -36,9 +73,8 @@ All notable changes to this project will be documented in this file.
   model; error handling uses `Effect.catch`/`catchCause`; forks are
   `forkChild`/`forkDetach`; wire formats preserved via `DateFromString`/
   `DateTimeUtcFromString`. The mixed-major duplicate exception and the v3
-  http.client span-header patch are retired — see
-  `context/effect-4/rc111-followups.md` for known behavior changes and
-  follow-ups.
+  http.client span-header patch are retired — known behavior changes and
+  follow-ups were tracked in the retired `context/effect-4/` migration docs (git history).
 - **@overeng/tui-react, @overeng/megarepo**: `stripAnsi` now strips DEC
   private-mode CSI sequences (e.g. `\x1b[?25l`/`\x1b[?25h` cursor visibility,
   `\x1b[?2026h`/`\x1b[?2026l` synchronized output) that every Effect rc.111
