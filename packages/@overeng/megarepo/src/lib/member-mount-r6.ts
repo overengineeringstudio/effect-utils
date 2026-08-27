@@ -129,8 +129,23 @@ export interface R6TreeScan {
   readonly count: number
 }
 
+/** No-follow filesystem identity for one mount-directory inode. */
+export interface OwnedCpAMountIdentity {
+  readonly dev: number
+  readonly ino: number
+}
+
+/** Deterministic test seam after a scan captures its initial root identity. */
+export interface R6ScanHooks {
+  readonly afterInitialRootIdentity?: (input: {
+    readonly root: string
+    readonly identity: OwnedCpAMountIdentity
+  }) => Promise<void>
+}
+
 /** Repository and separately excluded capability-tree scans. */
 export interface R6MountScan {
+  readonly identity: OwnedCpAMountIdentity
   readonly repository: R6TreeScan
   readonly capabilities: R6TreeScan & { readonly present: boolean }
 }
@@ -363,10 +378,13 @@ export const validateR6SymlinkTarget = ({
   }
   if (NodePath.posix.isAbsolute(target) === true) {
     const normalized = NodePath.posix.normalize(target)
-    if (normalized !== '/nix/store' && normalized.startsWith('/nix/store/') === false) {
+    if (
+      normalized !== target ||
+      /^\/nix\/store\/[0-9abcdfghijklmnpqrsvwxyz]{32}-[^/]+(?:\/.*)?$/u.test(normalized) === false
+    ) {
       throw new R6ManifestValidationError({
         reason: 'ForbiddenSymlink',
-        message: `Absolute symlink at '${path}' must target /nix/store, got '${target}'`,
+        message: `Absolute symlink at '${path}' must target a valid /nix/store object descendant, got '${target}'`,
       })
     }
     return
@@ -387,15 +405,58 @@ export const validateR6SymlinkTarget = ({
   }
 }
 
+const mountIdentity = (info: {
+  readonly dev: number
+  readonly ino: number
+}): OwnedCpAMountIdentity => Object.freeze({ dev: info.dev, ino: info.ino })
+
+const mountIdentityMatches = ({
+  actual,
+  expected,
+}: {
+  actual: OwnedCpAMountIdentity
+  expected: OwnedCpAMountIdentity
+}): boolean => actual.dev === expected.dev && actual.ino === expected.ino
+
+const validateAbsoluteStoreTargetExists = async ({
+  path,
+  target,
+}: {
+  path: string
+  target: string
+}): Promise<void> => {
+  if (NodePath.posix.isAbsolute(target) === false) return
+  const resolved = await realpath(target).catch((cause) =>
+    failWalk(
+      scanError({
+        reason: 'ForbiddenSymlink',
+        path,
+        message: `Absolute Nix store symlink target does not exist: '${target}'`,
+        cause,
+      }),
+    ),
+  )
+  try {
+    validateR6SymlinkTarget({ path, target: resolved })
+  } catch (cause) {
+    if (cause instanceof R6ManifestValidationError) {
+      failWalk(scanError({ reason: cause.reason, path, message: cause.message }))
+    }
+    throw cause
+  }
+}
+
 const scanTreePromise = async ({
   root,
   policy,
   excludeCapabilities,
+  hooks,
 }: {
   root: string
   policy: ScanPolicy
   excludeCapabilities: boolean
-}): Promise<R6TreeScan> => {
+  hooks?: R6ScanHooks
+}): Promise<{ readonly scan: R6TreeScan; readonly identity: OwnedCpAMountIdentity }> => {
   const rootInfo = await lstat(root)
   if (rootInfo.isDirectory() === false) {
     failWalk(
@@ -407,6 +468,8 @@ const scanTreePromise = async ({
     )
   }
   validateMode({ policy, kind: 'directory', mode: rootInfo.mode, path: root })
+  const initialIdentity = mountIdentity(rootInfo)
+  await hooks?.afterInitialRootIdentity?.({ root, identity: initialIdentity })
 
   const entries: Array<R6ManifestEntry> = []
   const visit = async ({
@@ -444,6 +507,7 @@ const scanTreePromise = async ({
           }
           throw cause
         }
+        await validateAbsoluteStoreTargetExists({ path: childPath, target })
         entries.push({ path: manifestChild, kind: 'symlink', mode: null, payload: target })
       } else if (info.isDirectory() === true) {
         validateMode({ policy, kind: 'directory', mode: info.mode, path: childPath })
@@ -479,7 +543,24 @@ const scanTreePromise = async ({
     }
     throw cause
   }
-  return { manifest, digest: digestR6Manifest(manifest), count: manifest.entries.length }
+  const finalInfo = await lstat(root)
+  const finalIdentity = mountIdentity(finalInfo)
+  if (
+    finalInfo.isDirectory() === false ||
+    mountIdentityMatches({ actual: finalIdentity, expected: initialIdentity }) === false
+  ) {
+    failWalk(
+      scanError({
+        reason: 'InvalidRoot',
+        path: root,
+        message: `R6 scan root identity changed during scan: '${root}'`,
+      }),
+    )
+  }
+  return {
+    scan: { manifest, digest: digestR6Manifest(manifest), count: manifest.entries.length },
+    identity: initialIdentity,
+  }
 }
 
 const emptyTreeScan = (): R6TreeScan => {
@@ -487,15 +568,25 @@ const emptyTreeScan = (): R6TreeScan => {
   return { manifest, digest: digestR6Manifest(manifest), count: 0 }
 }
 
-const scanMount = ({ root, policy }: { root: string; policy: ScanPolicy }) =>
+const scanMount = ({
+  root,
+  policy,
+  hooks,
+}: {
+  root: string
+  policy: ScanPolicy
+  hooks?: R6ScanHooks
+}) =>
   Effect.tryPromise({
     try: async (): Promise<R6MountScan> => {
       const absoluteRoot = NodePath.resolve(root)
-      const repository = await scanTreePromise({
+      const repositoryResult = await scanTreePromise({
         root: absoluteRoot,
         policy,
         excludeCapabilities: true,
+        ...(hooks === undefined ? {} : { hooks }),
       })
+      const repository = repositoryResult.scan
       const capabilityRoot = NodePath.join(absoluteRoot, '.buck2', 'capabilities')
       let capabilities: R6TreeScan & { readonly present: boolean }
       try {
@@ -510,11 +601,13 @@ const scanMount = ({ root, policy }: { root: string; policy: ScanPolicy }) =>
           )
         }
         capabilities = {
-          ...(await scanTreePromise({
-            root: capabilityRoot,
-            policy,
-            excludeCapabilities: false,
-          })),
+          ...(
+            await scanTreePromise({
+              root: capabilityRoot,
+              policy,
+              excludeCapabilities: false,
+            })
+          ).scan,
           present: true,
         }
       } catch (cause) {
@@ -529,7 +622,7 @@ const scanMount = ({ root, policy }: { root: string; policy: ScanPolicy }) =>
           throw cause
         }
       }
-      return { repository, capabilities }
+      return { identity: repositoryResult.identity, repository, capabilities }
     },
     catch: (cause): R6ScanError =>
       cause instanceof WalkFailure
@@ -543,12 +636,24 @@ const scanMount = ({ root, policy }: { root: string; policy: ScanPolicy }) =>
   })
 
 /** Scan an immutable source tree: files 0444/0555 and directories exactly 0755. */
-export const scanR6Source = (root: string): Effect.Effect<R6MountScan, R6ScanError> =>
-  scanMount({ root, policy: 'source' })
+export const scanR6Source = ({
+  root,
+  hooks,
+}: {
+  root: string
+  hooks?: R6ScanHooks
+}): Effect.Effect<R6MountScan, R6ScanError> =>
+  scanMount({ root, policy: 'source', ...(hooks === undefined ? {} : { hooks }) })
 
 /** Scan a published protected mount: files 0444/0555 and directories exactly 0555. */
-export const scanR6ProtectedMount = (root: string): Effect.Effect<R6MountScan, R6ScanError> =>
-  scanMount({ root, policy: 'protected' })
+export const scanR6ProtectedMount = ({
+  root,
+  hooks,
+}: {
+  root: string
+  hooks?: R6ScanHooks
+}): Effect.Effect<R6MountScan, R6ScanError> =>
+  scanMount({ root, policy: 'protected', ...(hooks === undefined ? {} : { hooks }) })
 
 const canonicalAbsolutePath = (path: string): string => {
   if (NodePath.isAbsolute(path) === false) {
@@ -680,6 +785,64 @@ export const readOwnedCpAMountMetadata = ({
     return metadata
   })
 
+/** Typed refusal when a lifecycle identity recheck no longer names the authorized inode. */
+export class OwnedCpAMountIdentityError extends Schema.TaggedError<OwnedCpAMountIdentityError>()(
+  'OwnedCpAMountIdentityError',
+  {
+    path: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+/** Deterministic test seam immediately before the no-follow lifecycle recheck. */
+export interface OwnedCpAMountIdentityCheckHooks {
+  readonly beforeLstat?: (path: string) => Promise<void>
+}
+
+/**
+ * Recheck an owned mount inode immediately under the caller's lifecycle lock.
+ * A successful return authorizes only this exact `{dev, ino}` at this instant.
+ */
+export const assertOwnedCpAMountIdentity = ({
+  path,
+  expected,
+  hooks,
+}: {
+  path: string
+  expected: OwnedCpAMountIdentity
+  hooks?: OwnedCpAMountIdentityCheckHooks
+}): Effect.Effect<OwnedCpAMountIdentity, OwnedCpAMountIdentityError> =>
+  Effect.gen(function* () {
+    const absolutePath = NodePath.resolve(path)
+    const beforeLstat = hooks?.beforeLstat
+    if (beforeLstat !== undefined) {
+      yield* Effect.tryPromise({
+        try: () => beforeLstat(absolutePath),
+        catch: () =>
+          new OwnedCpAMountIdentityError({
+            path: absolutePath,
+            message: `Owned mount identity hook failed for '${absolutePath}'`,
+          }),
+      })
+    }
+    const info = yield* Effect.tryPromise({
+      try: () => lstat(absolutePath),
+      catch: () =>
+        new OwnedCpAMountIdentityError({
+          path: absolutePath,
+          message: `Cannot lstat owned mount '${absolutePath}'`,
+        }),
+    })
+    const actual = mountIdentity(info)
+    if (info.isDirectory() === false || mountIdentityMatches({ actual, expected }) === false) {
+      return yield* new OwnedCpAMountIdentityError({
+        path: absolutePath,
+        message: `Owned mount inode identity changed at '${absolutePath}'`,
+      })
+    }
+    return actual
+  })
+
 /** Caller-supplied identity that metadata must match exactly. */
 export interface OwnedCpAMountExpectedIdentity {
   readonly member: string
@@ -690,11 +853,11 @@ export interface OwnedCpAMountExpectedIdentity {
 
 /** Loud reasons a real directory failed owned-mount proof. */
 export type InvalidOwnedCpAMountReason =
-  | 'PublishedPathMismatch'
   | 'MetadataMissing'
   | 'MetadataInvalid'
   | 'IdentityMismatch'
   | 'MountInvalid'
+  | 'MountIdentityMismatch'
   | 'ManifestMismatch'
 
 /** S0 classification refined with metadata and fresh R6 proof. */
@@ -710,6 +873,7 @@ export type OwnedCpAMountInspection =
     }
   | {
       readonly _tag: 'Owned'
+      readonly identity: OwnedCpAMountIdentity
       readonly metadata: OwnedCpAMountMetadata
       readonly scan: R6MountScan
     }
@@ -757,43 +921,39 @@ const scanIdentityMatches = ({
   metadata.capabilities.count === scan.capabilities.count
 
 /**
- * Start with the S0 no-follow classification. A real directory becomes Owned only
- * after strict metadata identity checks and a fresh protected R6 scan. Every
- * absent/corrupt/stale proof remains InvalidOwned and therefore confers no delete permission.
+ * Refine S0 for either the published path or a swapped-old staging path.
+ * Metadata remains bound to `expected.publishedPath`; the independently supplied
+ * physical path is authorized only when its pre-exchange inode and fresh R6
+ * repository/capability identities all match.
  */
 export const inspectOwnedCpAMount = ({
   workspaceRoot,
-  mountPath,
+  physicalPath,
   expected,
+  expectedPreExchangeIdentity,
 }: {
   workspaceRoot: string
-  mountPath: string
+  physicalPath: string
   expected: OwnedCpAMountExpectedIdentity
+  expectedPreExchangeIdentity: OwnedCpAMountIdentity
 }): Effect.Effect<OwnedCpAMountInspection, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
-    const absoluteMountPath = NodePath.resolve(mountPath)
-    const s0 = yield* inspectMemberMount(absoluteMountPath)
+    const absolutePhysicalPath = NodePath.resolve(physicalPath)
+    const publishedPath = canonicalAbsolutePath(expected.publishedPath)
+    const s0 = yield* inspectMemberMount(absolutePhysicalPath)
     if (s0._tag !== 'Foreign') return s0
-
-    if (canonicalAbsolutePath(expected.publishedPath) !== absoluteMountPath) {
-      return invalidOwned({
-        reason: 'PublishedPathMismatch',
-        path: absoluteMountPath,
-        message: `Expected published path '${expected.publishedPath}' does not match '${absoluteMountPath}'`,
-      })
-    }
 
     const metadataResult = yield* readOwnedCpAMountMetadata({
       workspaceRoot,
       member: expected.member,
-      publishedPath: absoluteMountPath,
+      publishedPath,
     }).pipe(Effect.result)
     if (metadataResult._tag === 'Failure') {
       const cause = metadataResult.failure
       return invalidOwned({
         reason: isPlatformNotFound(cause) === true ? 'MetadataMissing' : 'MetadataInvalid',
-        path: absoluteMountPath,
-        message: `Cannot prove ownership of member '${expected.member}' at '${absoluteMountPath}': metadata is ${isPlatformNotFound(cause) === true ? 'missing' : 'invalid'}`,
+        path: absolutePhysicalPath,
+        message: `Cannot prove ownership of member '${expected.member}' at '${absolutePhysicalPath}': metadata is ${isPlatformNotFound(cause) === true ? 'missing' : 'invalid'}`,
         cause,
       })
     }
@@ -802,33 +962,47 @@ export const inspectOwnedCpAMount = ({
       metadata.member !== expected.member ||
       metadata.lockedCommit !== expected.lockedCommit ||
       metadata.sourcePathIdentity !== expected.sourcePathIdentity ||
-      metadata.publishedPath !== absoluteMountPath
+      metadata.publishedPath !== publishedPath
     ) {
       return invalidOwned({
         reason: 'IdentityMismatch',
-        path: absoluteMountPath,
+        path: absolutePhysicalPath,
         message: `Owned mount metadata does not match the expected identity for member '${expected.member}'`,
       })
     }
 
-    const scanResult = yield* scanR6ProtectedMount(absoluteMountPath).pipe(Effect.result)
+    const scanResult = yield* scanR6ProtectedMount({ root: absolutePhysicalPath }).pipe(
+      Effect.result,
+    )
     if (scanResult._tag === 'Failure') {
       return invalidOwned({
         reason: 'MountInvalid',
-        path: absoluteMountPath,
+        path: absolutePhysicalPath,
         message: `Owned mount R6 validation failed for member '${expected.member}'`,
         cause: scanResult.failure,
       })
     }
     const scan = scanResult.success
+    if (
+      mountIdentityMatches({
+        actual: scan.identity,
+        expected: expectedPreExchangeIdentity,
+      }) === false
+    ) {
+      return invalidOwned({
+        reason: 'MountIdentityMismatch',
+        path: absolutePhysicalPath,
+        message: `Owned mount inode does not match the pre-exchange identity for member '${expected.member}'`,
+      })
+    }
     if (scanIdentityMatches({ metadata, scan }) === false) {
       return invalidOwned({
         reason: 'ManifestMismatch',
-        path: absoluteMountPath,
+        path: absolutePhysicalPath,
         message: `Owned mount content does not match bound R6 manifests for member '${expected.member}'`,
       })
     }
-    return { _tag: 'Owned' as const, metadata, scan }
+    return { _tag: 'Owned' as const, identity: scan.identity, metadata, scan }
   })
 
 /** Realpath-based opaque source identity for metadata binding. */

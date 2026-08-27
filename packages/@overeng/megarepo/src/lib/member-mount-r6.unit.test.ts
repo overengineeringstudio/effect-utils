@@ -85,7 +85,6 @@ describe('member-mount R6 symlink admission', () => {
   it.each([
     { path: 'dir/link', target: '../file' },
     { path: 'dir/link', target: './nested/file' },
-    { path: 'link', target: '/nix/store/abc-tool/bin/tool' },
   ])('admits safe target $target', ({ path, target }) => {
     expect(() => validateR6SymlinkTarget({ path, target })).not.toThrow()
   })
@@ -93,6 +92,8 @@ describe('member-mount R6 symlink admission', () => {
   it.each([
     { path: 'link', target: '../escape' },
     { path: 'dir/link', target: '../../escape' },
+    { path: 'link', target: '/nix/store' },
+    { path: 'link', target: '/nix/store/not-a-valid-object/bin/tool' },
     { path: 'link', target: '/etc/passwd' },
     { path: 'link', target: '/nix/store/../etc/passwd' },
   ])('rejects forbidden target $target', ({ path, target }) => {
