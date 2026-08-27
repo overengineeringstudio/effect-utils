@@ -38,15 +38,6 @@ const canonicalJsonValue = ({
   )
 }
 
-export const renderBuck2Visibility = ({
-  visibility,
-}: {
-  visibility: readonly string[]
-}): string => {
-  if (visibility.length === 0) throw new Error('Buck2 visibility must not be empty')
-  return `    visibility = [${visibility.map((pattern) => JSON.stringify(pattern)).join(', ')}],`
-}
-
 export const buck2SemanticFingerprint = ({
   generator,
   schemaVersion,

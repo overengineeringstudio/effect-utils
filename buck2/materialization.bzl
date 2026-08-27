@@ -1,6 +1,6 @@
 """Manifest-only pnpm materialization and generic TypeScript package trees."""
 
-load("@effect_utils//buck2/toolchains:defs.bzl", "PnpmMaterializerToolchainInfo")
+load("@root//buck2/toolchains:defs.bzl", "PnpmMaterializerToolchainInfo")
 
 PnpmNodeModulesInfo = provider(fields = {
     "editor_inputs": Artifact,
@@ -121,7 +121,7 @@ pnpm_node_modules = rule(
         "descriptor_module": attrs.source(),
         "normalizer": attrs.source(),
         "_materializer": attrs.default_only(attrs.exec_dep(
-            default = "effect_utils//toolchains:pnpm_materializer",
+            default = "toolchains//:pnpm_materializer",
             providers = [PnpmMaterializerToolchainInfo],
         )),
     },
@@ -190,7 +190,7 @@ _package_tree = rule(
         ),
         "runtime": attrs.source(),
         "_materializer": attrs.default_only(attrs.exec_dep(
-            default = "effect_utils//toolchains:pnpm_materializer",
+            default = "toolchains//:pnpm_materializer",
             providers = [PnpmMaterializerToolchainInfo],
         )),
     },
