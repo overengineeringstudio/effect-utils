@@ -81,11 +81,14 @@ RENAME_EXCHANGE advance.
   probe on a profiled Mac worktree.
 - tierA-scale build validation (fixture-scale digest claims are exact but
   small); root-cause the genrule lookup/upload key-mismatch anomaly.
-- Named retirement phase for legacy in-mount write consumers (a private downstream repo's
-  pnpm task modules, dotfiles bun-from-mount); those compositions keep symlink
-  mounts and stay outside the shared cache namespace until retired.
-- Cross-member TypeScript consumption: owned open question (types for
-  consumed members without node_modules/dist in read-only mounts).
+- Legacy in-mount write consumers (q16): each consuming repo retires its
+  writers as part of its own Phase-6 workspace adoption; the symlink+no-cache
+  guard stands meanwhile. Pulled forward: dotfiles' bun-from-mount switches
+  to the already-packaged Nix CLI as a standalone quick win.
+- Cross-member TypeScript consumption: SETTLED as
+  [decision 0021](./.decisions/0021-cross-member-types-dist-overlay.md) —
+  dist overlay in mounts (cache-pulled, ignore-covered, manifest-declared);
+  source aliasing across members retires when the overlay lands.
 - Agent workflow contract rev 3 (authoring surface = the owned member;
   `repos/<other>` is a read-only build input); skill updates in dotfiles.
 - Standalone-vs-composed and writable-vs-mount key stability hold per
