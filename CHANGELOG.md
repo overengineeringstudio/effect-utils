@@ -2769,6 +2769,7 @@ Initial release of effect-notion monorepo.
 - Initial monorepo setup with pnpm workspaces
 - TypeScript configuration with project references
 - Modern ESM-first package structure
+- **Buck tui-core editor view**: expose the canonical Stage-1 descriptor and add scoped, fail-closed hardlink snapshot publication and validation without rewiring global consumers or removing the root pnpm install.
 - **oxc-config Nix package**: expose the prepared pnpm dependency boundary, source-owned hash metadata, and Evergreen FOD graph under the canonical `oxc-config` flake package.
 - Add an evidence-derived pnpm 11.8 deploy-tree normalizer that removes nondeterministic metadata, rewrites absolute command shims, prunes dangling dependency links, and fails closed on residual staging paths or symlinks.
 - Record an aarch64-linux Buck-owned Vite development-launch experiment proving
@@ -2891,6 +2892,7 @@ Initial release of effect-notion monorepo.
   `NotionThrottleShape`) instead of the tag name.
 
 ### Added
+
 - **@overeng/utils-dev**: add a shared `normalizeCliOutput` helper at the
   `./cli-contract` export for CLI contract baselines. Each masking policy
   (ANSI, log timestamps, checkout root, local-source suffix) is an explicit

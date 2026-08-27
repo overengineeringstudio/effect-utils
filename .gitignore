@@ -24,6 +24,8 @@ __pycache__/
 
 # Buck2 daemon and materialized build state
 buck-out/
+# Scoped generated editor snapshots for packages/@overeng/*
+/packages/.editor-view/
 # Machine-local cache client wiring (devenv-generated from the fleet default in
 # devenv.nix; hand-edited overrides stay local)
 /.buckconfig.local

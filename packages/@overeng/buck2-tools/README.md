@@ -71,3 +71,13 @@ consumer is `@overeng/tui-core`: its generated shard is deliberately a non-autho
 It proves exact source census and lock/policy reachability, but cannot become a production closure
 until a Buck action materializes every selected package, records verified normalized final-tree
 digests, and calls the authoritative compiler. Remote admission remains disabled for that reason.
+
+## Scoped editor publisher
+
+`src/editor-view.ts` publishes and checks the tui-core editor dependency view.
+It consumes the built Buck `:editor_inputs` and `:node_modules` artifacts,
+uses immutable Nix `cp -al` and GNU `mv --exchange --no-copy`, and retains all
+published snapshots and any exchanged root-install directory. Repository tasks
+`buck2:tui-core:publish-editor`, `buck2:tui-core:check-editor`, and the
+exact-token `buck2:tui-core:recover-editor-lock` are scoped and are not wired
+into global checks.

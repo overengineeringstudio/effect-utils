@@ -919,6 +919,93 @@ in
     '';
   };
 
+  tasks."buck2:tui-core:publish-editor" = {
+    description = "Publish the admitted Buck tui-core node_modules tree to the scoped editor view";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:tui-core:publish-editor" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      scratch="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/editor-publish-inputs.XXXXXX")"
+      isolation="editor-publish-$(${pkgs.coreutils}/bin/basename "$scratch")"
+      cleanup_editor_publish() {
+        status=$?
+        (
+          cd "$root"
+          ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" kill
+        ) >/dev/null 2>&1 || true
+        ${pkgs.coreutils}/bin/rm -rf -- "$root/buck-out/$isolation" || status=$?
+        ${pkgs.coreutils}/bin/rm -rf -- "$scratch" || status=$?
+        trap - EXIT
+        exit "$status"
+      }
+      trap cleanup_editor_publish EXIT
+      (
+        cd "$root"
+        ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" build //packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
+        ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" build //packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
+      )
+      ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" publish \
+        --repo-root "$root" \
+        --package packages/@overeng/tui-core \
+        --cell tui-core \
+        --target //packages/@overeng/tui-core:editor_inputs \
+        --editor-inputs "$scratch/editor_inputs" \
+        --node-modules "$scratch/node_modules" \
+        --cp ${pkgs.coreutils}/bin/cp \
+        --mv ${pkgs.coreutils}/bin/mv
+    '';
+  };
+
+  tasks."buck2:tui-core:check-editor" = {
+    description = "Check the scoped tui-core editor view against current admitted Buck outputs";
+    after = [ "genie:run" ];
+    exec = trace.exec "buck2:tui-core:check-editor" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      scratch="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/editor-check-inputs.XXXXXX")"
+      isolation="editor-check-$(${pkgs.coreutils}/bin/basename "$scratch")"
+      cleanup_editor_check() {
+        status=$?
+        (
+          cd "$root"
+          ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" kill
+        ) >/dev/null 2>&1 || true
+        ${pkgs.coreutils}/bin/rm -rf -- "$root/buck-out/$isolation" || status=$?
+        ${pkgs.coreutils}/bin/rm -rf -- "$scratch" || status=$?
+        trap - EXIT
+        exit "$status"
+      }
+      trap cleanup_editor_check EXIT
+      (
+        cd "$root"
+        ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" build //packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
+        ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" build //packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
+      )
+      ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" check \
+        --repo-root "$root" \
+        --package packages/@overeng/tui-core \
+        --cell tui-core \
+        --target //packages/@overeng/tui-core:editor_inputs \
+        --editor-inputs "$scratch/editor_inputs" \
+        --node-modules "$scratch/node_modules" \
+        --cp ${pkgs.coreutils}/bin/cp \
+        --mv ${pkgs.coreutils}/bin/mv
+    '';
+  };
+
+  tasks."buck2:tui-core:recover-editor-lock" = {
+    description = "Recover the scoped tui-core editor publication lock with its exact owner token";
+    exec = trace.exec "buck2:tui-core:recover-editor-lock" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      token="''${EDITOR_VIEW_LOCK_TOKEN:?set EDITOR_VIEW_LOCK_TOKEN to the owner token printed by publish}"
+      ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" recover-lock \
+        --repo-root "$root" \
+        --package packages/@overeng/tui-core \
+        --token "$token"
+    '';
+  };
+
   tasks."buck2:tui-core:materialize-dist" = {
     description = "Atomically materialize Buck-owned tui-core declarations for TypeScript checks";
     after = [ "genie:run" ];
