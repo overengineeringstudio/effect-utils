@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "cell": "effect_utils",
+  "mount": "repos/effect-utils",
+  "projectIgnore": [
+    "**/__pycache__",
+    "**/dist",
+    "**/node_modules",
+    "**/node_modules/**",
+    "**/target",
+    "**/target/**",
+    ".devenv",
+    ".git",
+    "buck-out",
+    "node_modules",
+    "packages/.editor-view",
+    "target",
+    "tmp"
+  ],
+  "capabilities": [
+    {
+      "toolId": "archive-tool",
+      "protocol": "effect-utils/buck2-archive-tool/v1",
+      "flakePackage": "buck2-archive-tool",
+      "executable": "bin/buck2-archive-tool"
+    },
+    {
+      "toolId": "closure-tool",
+      "protocol": "effect-utils/buck2-closure-tool/v1",
+      "flakePackage": "buck2-closure-tool",
+      "executable": "bin/buck2-closure-tool"
+    },
+    {
+      "toolId": "package-evidence",
+      "protocol": "effect-utils/buck2-package-evidence/v1",
+      "flakePackage": "buck2-package-evidence",
+      "executable": "bin/buck2-package-evidence"
+    },
+    {
+      "toolId": "product",
+      "protocol": "effect-utils/buck2-product/v1",
+      "flakePackage": "buck2-product",
+      "executable": "bin/buck2-product"
+    }
+  ]
+}
