@@ -243,6 +243,66 @@ describe('composition root publisher', () => {
     ),
   )
 
+  it.effect('forward-recovers a durable committed phase after post-callback cleanup faults', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, cacheValue: 'old:1234', lockToken: 'initial-commit-token' }),
+        )
+        let callbacks = 0
+        const fault = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'committed:5678',
+              lockToken: 'durable-commit-token',
+              afterAuthorityPublished: async () => {
+                callbacks += 1
+              },
+              publicationRuntime: runtime({
+                afterAuthorityCommitted: async () => {
+                  throw new Error('cleanup read failed')
+                },
+              }),
+            }),
+          ),
+        )
+        expect(fault.reason).toBe('IoFailure')
+        expect(callbacks).toBe(1)
+        expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain(
+          'committed:5678',
+        )
+        expect(
+          yield* exists(
+            NodePath.join(fixture.root, '.megarepo/composition-publication.committed.json'),
+          ),
+        ).toBe(true)
+
+        const recovered = yield* publishCompositionRoot(
+          optionsFor({
+            fixture,
+            cacheValue: 'committed:5678',
+            lockToken: 'after-durable-commit-token',
+            recoverToken: 'durable-commit-token',
+          }),
+        )
+        expect(recovered.changedPaths).toEqual([])
+        expect(callbacks).toBe(1)
+        expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain(
+          'committed:5678',
+        )
+        for (const path of [
+          '.megarepo/composition-publication.json',
+          '.megarepo/composition-publication.committed.json',
+          '.megarepo/composition-publisher.lock.json',
+        ]) {
+          expect(yield* exists(NodePath.join(fixture.root, path))).toBe(false)
+        }
+      }),
+    ),
+  )
+
   it.effect('rolls back every first-create authority file when the callback fails', () =>
     Effect.scoped(
       Effect.gen(function* () {

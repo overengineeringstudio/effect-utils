@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -40,6 +40,7 @@ exit "\${FAKE_EXIT:-0}"
 const withWrapperFixture = async <T>(
   run: (fixture: {
     readonly wrapper: string
+    readonly workspaceRoot: string
     readonly argvFile: string
     readonly env: NodeJS.ProcessEnv
   }) => Promise<T> | T,
@@ -61,6 +62,7 @@ const withWrapperFixture = async <T>(
     await chmod(wrapper, wrapperFile.mode)
     return await run({
       wrapper,
+      workspaceRoot: directory,
       argvFile,
       env: { ...process.env, ARGV_FILE: argvFile },
     })
@@ -83,11 +85,17 @@ describe('generated Buck wrapper', () => {
       )
     }))
 
-  it('refuses Buck while the workspace update lock exists and names mr recovery', () =>
-    withWrapperFixture(async ({ wrapper, argvFile, env }) => {
-      const lockPath = join(wrapper, '..', '..', 'workspace-update.lock')
+  it('resolves a relative external symlink chain and refuses Buck while update-locked', () =>
+    withWrapperFixture(async ({ workspaceRoot, argvFile, env }) => {
+      const externalDirectory = join(workspaceRoot, 'external-links')
+      const nestedDirectory = join(externalDirectory, 'nested')
+      const externalWrapper = join(externalDirectory, 'buck2')
+      await mkdir(nestedDirectory, { recursive: true })
+      await symlink('nested/buck2', externalWrapper)
+      await symlink('../../.megarepo/bin/buck2', join(nestedDirectory, 'buck2'))
+      const lockPath = join(workspaceRoot, '.megarepo', 'workspace-update.lock')
       await writeFile(lockPath, '{malformed-but-present}\n')
-      const result = spawnSync(wrapper, ['build', 'alpha//:target'], {
+      const result = spawnSync(externalWrapper, ['build', 'alpha//:target'], {
         cwd: tmpdir(),
         env,
         encoding: 'utf8',
