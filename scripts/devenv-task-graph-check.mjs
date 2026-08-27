@@ -38,11 +38,12 @@ try {
   process.exit(1)
 }
 
-const rawTasks = Array.isArray(document)
-  ? document.map((task) => [task.name, task])
-  : Array.isArray(document.tasks)
-    ? document.tasks.map((task) => [task.name, task])
-    : Object.entries(document.tasks ?? document)
+const rawTasks =
+  Array.isArray(document) === true
+    ? document.map((task) => [task.name, task])
+    : Array.isArray(document.tasks) === true
+      ? document.tasks.map((task) => [task.name, task])
+      : Object.entries(document.tasks ?? document)
 
 const tasks = new Map()
 for (const [key, value] of rawTasks) {
@@ -59,7 +60,7 @@ const dependencyName = (dependency) => {
 }
 const dependencies = new Map([...tasks.keys()].map((name) => [name, new Set()]))
 const ensureTask = (name) => {
-  if (!dependencies.has(name)) dependencies.set(name, new Set())
+  if (dependencies.has(name) === false) dependencies.set(name, new Set())
 }
 for (const [name, task] of tasks) {
   for (const dependency of task.after ?? []) {
@@ -77,8 +78,8 @@ for (const [name, task] of tasks) {
 }
 
 let testCount = 0
-const ok = (condition, name, detail = '') => {
-  if (!condition) {
+const ok = ({ condition, name, detail = '' }) => {
+  if (condition === false) {
     console.error(`not ok ${testCount + 1} - ${name}${detail === '' ? '' : `: ${detail}`}`)
     process.exit(1)
   }
@@ -87,14 +88,14 @@ const ok = (condition, name, detail = '') => {
 }
 const requireTask = (name) => {
   const task = tasks.get(name)
-  ok(task !== undefined, `evaluated graph contains ${name}`)
+  ok({ condition: task !== undefined, name: `evaluated graph contains ${name}` })
   return task
 }
-const reaches = (start, target) => {
+const reaches = ({ start, target }) => {
   const seen = new Set()
   const visit = (name) => {
     if (name === target) return true
-    if (seen.has(name)) return false
+    if (seen.has(name) === true) return false
     seen.add(name)
     return [...(dependencies.get(name) ?? [])].some(visit)
   }
@@ -108,13 +109,14 @@ for (const name of [
   'buck2:tui-core:materialize-dist',
   'buck2:tui-core:publish-editor',
   'buck2:tui-core:check-editor',
-]) requireTask(name)
+])
+  requireTask(name)
 
 const visiting = new Set()
 const visited = new Set()
 const visitAcyclic = (name) => {
-  if (visiting.has(name)) throw new Error(`cycle reaches ${name}`)
-  if (visited.has(name)) return
+  if (visiting.has(name) === true) throw new Error(`cycle reaches ${name}`)
+  if (visited.has(name) === true) return
   visiting.add(name)
   for (const dependency of dependencies.get(name) ?? []) visitAcyclic(dependency)
   visiting.delete(name)
@@ -122,36 +124,43 @@ const visitAcyclic = (name) => {
 }
 try {
   for (const name of dependencies.keys()) visitAcyclic(name)
-  ok(true, 'evaluated task graph is acyclic')
+  ok({ condition: true, name: 'evaluated task graph is acyclic' })
 } catch (error) {
-  ok(false, 'evaluated task graph is acyclic', error.message)
+  ok({ condition: false, name: 'evaluated task graph is acyclic', detail: error.message })
 }
 
 const materializer = 'buck2:tui-core:materialize-dist'
 for (const name of ['ts:check', 'ts:check:strict', 'check:quick']) {
-  ok(reaches(name, materializer), `${name} reaches ${materializer}`)
+  ok({
+    condition: reaches({ start: name, target: materializer }),
+    name: `${name} reaches ${materializer}`,
+  })
 }
 
 const source = readFileSync(`${root}/devenv.nix`, 'utf8')
 const taskSource = (name) => {
-  const start = source.indexOf(`  tasks.\"${name}\" = {`)
-  ok(start !== -1, `devenv.nix contains ${name}`)
-  const end = source.indexOf('\n  tasks.\"', start + 1)
+  const start = source.indexOf(`  tasks."${name}" = {`)
+  ok({ condition: start !== -1, name: `devenv.nix contains ${name}` })
+  const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
 
 const materializerSource = taskSource(materializer)
-ok(
-  materializerSource.includes('tui-core-materialize-dist.sh') &&
-    materializerSource.includes('BUCK2_BIN='),
-  'materializer dispatches the tested Buck publication helper',
-)
+ok({
+  condition:
+    materializerSource.includes('tui-core-materialize-dist.sh') === true &&
+    materializerSource.includes('BUCK2_BIN=') === true,
+  name: 'materializer dispatches the tested Buck publication helper',
+})
 
 for (const name of ['buck2:tui-core:publish-editor', 'buck2:tui-core:check-editor']) {
   const task = taskSource(name)
-  ok(!task.includes('--isolation-dir'), `${name} has no dynamic isolation directory`)
-  ok(!/buck2[^\n]*\bkill\b/.test(task), `${name} has no daemon kill`)
-  ok(!task.includes('buck-out'), `${name} has no buck-out cleanup`)
+  ok({
+    condition: task.includes('--isolation-dir') === false,
+    name: `${name} has no dynamic isolation directory`,
+  })
+  ok({ condition: /buck2[^\n]*\bkill\b/.test(task) === false, name: `${name} has no daemon kill` })
+  ok({ condition: task.includes('buck-out') === false, name: `${name} has no buck-out cleanup` })
 }
 
 console.log(`1..${testCount}`)

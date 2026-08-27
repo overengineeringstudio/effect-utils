@@ -90,9 +90,7 @@
           ]
         }
       },
-      "required": [
-        "platformHub"
-      ],
+      "required": ["platformHub"],
       "additionalProperties": false
     },
     "GeneratorsConfigEncoded": {
@@ -200,9 +198,7 @@
           ]
         }
       },
-      "required": [
-        "members"
-      ],
+      "required": ["members"],
       "additionalProperties": false
     }
   }

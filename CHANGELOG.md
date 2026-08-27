@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+
 - Retire the dormant Buck closure-compiler and package-evidence regime, including
   its unused Buck rules, Rust tools, Nix capabilities, and projection tests;
   retain the live archive/product bridge and real tui-core TypeScript actions.
@@ -161,6 +162,7 @@ All notable changes to this project will be documented in this file.
   `NotionThrottleShape`) instead of the tag name.
 
 ### Added
+
 - **@overeng/utils-dev**: add a shared `normalizeCliOutput` helper at the
   `./cli-contract` export for CLI contract baselines. Each masking policy
   (ANSI, log timestamps, checkout root, local-source suffix) is an explicit
