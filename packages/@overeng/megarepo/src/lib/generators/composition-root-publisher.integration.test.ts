@@ -5,9 +5,11 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   stat,
   symlink,
+  unlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -15,7 +17,7 @@ import * as NodePath from 'node:path'
 import { promisify } from 'node:util'
 
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Fiber } from 'effect'
 import { expect } from 'vitest'
 
 import { CompositionGeneratorConfig, EffectPath } from '../config.ts'
@@ -117,6 +119,8 @@ const optionsFor = ({
   isolationDir = 'megarepo',
   cacheValue,
   publicationRuntime = runtime(),
+  lockToken = 'test-token',
+  recoverToken,
 }: {
   readonly fixture: Fixture
   readonly memberKeys?: ReadonlyArray<string>
@@ -125,6 +129,8 @@ const optionsFor = ({
   readonly isolationDir?: string
   readonly cacheValue?: string
   readonly publicationRuntime?: CompositionRootPublicationRuntime
+  readonly lockToken?: string
+  readonly recoverToken?: string
 }): PublishCompositionRootOptions => ({
   workspaceRoot: fixture.workspaceRoot,
   configMemberKeys: memberKeys,
@@ -135,6 +141,11 @@ const optionsFor = ({
     cacheValue === undefined
       ? []
       : [{ section: 'buck2_re_client', entries: [{ key: 'address', value: cacheValue }] }],
+  lock: {
+    owner: 'publisher-test',
+    token: lockToken,
+    ...(recoverToken === undefined ? {} : { recoverToken }),
+  },
   runtime: publicationRuntime,
 })
 
@@ -342,6 +353,37 @@ describe('composition root publisher', () => {
     ),
   )
 
+  it.effect('rolls back and cleans first-create files after an installed-file failure', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const error = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              lockToken: 'first-create-rollback',
+              publicationRuntime: runtime({
+                afterPublishedFile: async (path) => {
+                  if (path === 'BUCK') throw new Error('fail after install')
+                },
+              }),
+            }),
+          ),
+        )
+        expect(error.reason).toBe('IoFailure')
+        for (const path of generatedPaths) {
+          expect(yield* exists(NodePath.join(fixture.root, path))).toBe(false)
+        }
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+        ).toBe(false)
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+        ).toBe(false)
+      }),
+    ),
+  )
+
   it.effect('preserves previous root authority when an update candidate fails', () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -493,6 +535,277 @@ describe('composition root publisher', () => {
     ),
   )
 
+  it.effect('refuses a cooperating concurrent publisher while the exclusive lock is live', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        let signalEntered: () => void = () => undefined
+        let releaseFirst: () => void = () => undefined
+        const entered = new Promise<void>((resolve) => {
+          signalEntered = resolve
+        })
+        const gate = new Promise<void>((resolve) => {
+          releaseFirst = resolve
+        })
+        const first = yield* Effect.forkChild(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              lockToken: 'live-token',
+              publicationRuntime: runtime({
+                afterCandidateFile: async (path) => {
+                  if (path !== '.buckconfig') return
+                  signalEntered()
+                  await gate
+                },
+              }),
+            }),
+          ),
+        )
+        yield* Effect.promise(() => entered)
+        const second = yield* failureReason(
+          publishCompositionRoot(optionsFor({ fixture, lockToken: 'concurrent-token' })),
+        )
+        expect(second.reason).toBe('LockHeld')
+        releaseFirst()
+        yield* Fiber.join(first)
+      }),
+    ),
+  )
+
+  it.effect(
+    'serializes publication and requires the exact stale-lock token for changed-input recovery',
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeFixture()
+          const fault = yield* failureReason(
+            publishCompositionRoot(
+              optionsFor({
+                fixture,
+                cacheValue: 'old:1234',
+                lockToken: 'stale-token',
+                publicationRuntime: runtime({
+                  simulateProcessFaultAfterCandidate: (path) => path === '.buckconfig',
+                }),
+              }),
+            ),
+          )
+          expect(fault.reason).toBe('SimulatedProcessFault')
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+          ).toBe(true)
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+          ).toBe(true)
+          expect(
+            (yield* failureReason(
+              publishCompositionRoot(
+                optionsFor({ fixture, cacheValue: 'new:5678', lockToken: 'new-token' }),
+              ),
+            )).reason,
+          ).toBe('LockHeld')
+          expect(
+            (yield* failureReason(
+              publishCompositionRoot(
+                optionsFor({
+                  fixture,
+                  cacheValue: 'new:5678',
+                  lockToken: 'new-token',
+                  recoverToken: 'wrong-token',
+                }),
+              ),
+            )).reason,
+          ).toBe('LockHeld')
+
+          yield* publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'new:5678',
+              lockToken: 'new-token',
+              recoverToken: 'stale-token',
+            }),
+          )
+          const config = (yield* readGenerated(fixture, '.buckconfig')).toString()
+          expect(config).toContain('new:5678')
+          expect(config).not.toContain('old:1234')
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+          ).toBe(false)
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+          ).toBe(false)
+          expect(
+            yield* exists(
+              NodePath.join(fixture.root, '.megarepo/composition-publication/stale-token'),
+            ),
+          ).toBe(false)
+        }),
+      ),
+  )
+
+  it.effect(
+    'recovers observed backups after a process fault and then publishes changed inputs',
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeFixture()
+          yield* publishCompositionRoot(
+            optionsFor({ fixture, cacheValue: 'old:1234', lockToken: 'initial-token' }),
+          )
+          const fault = yield* failureReason(
+            publishCompositionRoot(
+              optionsFor({
+                fixture,
+                cacheValue: 'middle:5678',
+                lockToken: 'backup-token',
+                publicationRuntime: runtime({
+                  simulateProcessFaultAfterPublishedFile: (path) =>
+                    path === COMPOSITION_GENERATION_MANIFEST_PATH,
+                }),
+              }),
+            ),
+          )
+          expect(fault.reason).toBe('SimulatedProcessFault')
+          expect(yield* exists(NodePath.join(fixture.root, '.buckconfig'))).toBe(false)
+
+          yield* publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'final:9012',
+              lockToken: 'recovered-token',
+              recoverToken: 'backup-token',
+            }),
+          )
+          const config = (yield* readGenerated(fixture, '.buckconfig')).toString()
+          expect(config).toContain('final:9012')
+          expect(config).not.toContain('middle:5678')
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+          ).toBe(false)
+        }),
+      ),
+  )
+
+  it.effect('rolls forward a fully observed config-last commit after process death', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const fault = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'committed:1234',
+              lockToken: 'commit-token',
+              publicationRuntime: runtime({
+                simulateProcessFaultAfterPublishedFile: (path) => path === '.buckconfig',
+              }),
+            }),
+          ),
+        )
+        expect(fault.reason).toBe('SimulatedProcessFault')
+        expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain(
+          'committed:1234',
+        )
+        const recovered = yield* publishCompositionRoot(
+          optionsFor({
+            fixture,
+            cacheValue: 'committed:1234',
+            lockToken: 'after-commit-token',
+            recoverToken: 'commit-token',
+          }),
+        )
+        expect(recovered.changedPaths).toEqual([])
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+        ).toBe(false)
+      }),
+    ),
+  )
+
+  it.effect('refuses a foreign candidate during exact-token recovery', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              lockToken: 'foreign-candidate-token',
+              publicationRuntime: runtime({
+                simulateProcessFaultAfterCandidate: (path) => path === '.buckconfig',
+              }),
+            }),
+          ),
+        )
+        const candidate = NodePath.join(
+          fixture.root,
+          '.megarepo/composition-publication/foreign-candidate-token/candidates',
+          Buffer.from('.buckconfig').toString('hex'),
+        )
+        yield* Effect.promise(async () => {
+          await unlink(candidate)
+          await writeFile(candidate, 'foreign candidate\n')
+          await chmod(candidate, 0o644)
+        })
+        const error = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              lockToken: 'replacement-token',
+              recoverToken: 'foreign-candidate-token',
+            }),
+          ),
+        )
+        expect(error.reason).toBe('ForeignPath')
+        expect(yield* Effect.promise(() => readFile(candidate, 'utf8'))).toBe('foreign candidate\n')
+      }),
+    ),
+  )
+
+  it.effect('revalidates each destination identity and restores prior authority last', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, cacheValue: 'old:1234', lockToken: 'initial-token' }),
+        )
+        const manifestPath = NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)
+        const oldManifest = yield* Effect.promise(() => readFile(manifestPath))
+        const oldConfig = yield* readGenerated(fixture, '.buckconfig')
+        const oldIdentity = yield* Effect.promise(() => lstat(manifestPath))
+        const error = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'new:5678',
+              lockToken: 'race-token',
+              publicationRuntime: runtime({
+                beforeInstallFile: async (path) => {
+                  if (path !== COMPOSITION_GENERATION_MANIFEST_PATH) return
+                  const replacementPath = `${manifestPath}.foreign`
+                  await writeFile(replacementPath, oldManifest)
+                  await chmod(replacementPath, 0o644)
+                  await rename(replacementPath, manifestPath)
+                },
+              }),
+            }),
+          ),
+        )
+        expect(error.reason).toBe('ForeignPath')
+        const replacementIdentity = yield* Effect.promise(() => lstat(manifestPath))
+        expect(replacementIdentity.ino).not.toBe(oldIdentity.ino)
+        expect(yield* readGenerated(fixture, '.buckconfig')).toEqual(oldConfig)
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+        ).toBe(false)
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+        ).toBe(false)
+      }),
+    ),
+  )
+
   it.effect('teardown removes only verified generated files and empty owned directories', () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -505,7 +818,10 @@ describe('composition root publisher', () => {
           await writeFile(NodePath.join(fixture.root, 'buck-out/keep'), 'keep\n')
         })
         yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
-        const result = yield* teardownCompositionRoot({ workspaceRoot: fixture.workspaceRoot })
+        const result = yield* teardownCompositionRoot({
+          workspaceRoot: fixture.workspaceRoot,
+          lock: { owner: 'publisher-test', token: 'teardown-token' },
+        })
         expect(result.removedPaths.toSorted()).toEqual([...generatedPaths].toSorted())
         for (const path of generatedPaths) {
           expect(yield* exists(NodePath.join(fixture.root, path))).toBe(false)
@@ -514,6 +830,40 @@ describe('composition root publisher', () => {
         expect(yield* exists(NodePath.join(fixture.root, 'megarepo.kdl'))).toBe(true)
         expect(yield* exists(NodePath.join(fixture.root, 'buck-out/keep'))).toBe(true)
         expect(yield* exists(ownedConfig)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect('teardown revalidates no-follow identity immediately before unlink', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, memberKeys: ['alpha'], lockToken: 'publish-token' }),
+        )
+        const configPath = NodePath.join(fixture.root, '.buckconfig')
+        const configBytes = yield* Effect.promise(() => readFile(configPath))
+        const before = yield* Effect.promise(() => lstat(configPath))
+        const error = yield* failureReason(
+          teardownCompositionRoot({
+            workspaceRoot: fixture.workspaceRoot,
+            lock: { owner: 'publisher-test', token: 'teardown-race-token' },
+            beforeRemoveFile: async (path) => {
+              if (path !== '.buckconfig') return
+              const replacementPath = `${configPath}.foreign`
+              await writeFile(replacementPath, configBytes)
+              await chmod(replacementPath, 0o644)
+              await rename(replacementPath, configPath)
+            },
+          }),
+        )
+        expect(error.reason).toBe('ForeignPath')
+        const replacement = yield* Effect.promise(() => lstat(configPath))
+        expect(replacement.ino).not.toBe(before.ino)
+        expect(yield* readGenerated(fixture, '.buckconfig')).toEqual(configBytes)
+        expect(
+          yield* exists(NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)),
+        ).toBe(true)
       }),
     ),
   )
@@ -527,7 +877,10 @@ describe('composition root publisher', () => {
           writeFile(NodePath.join(fixture.root, 'toolchains/BUCK'), 'foreign\n'),
         )
         const error = yield* failureReason(
-          teardownCompositionRoot({ workspaceRoot: fixture.workspaceRoot }),
+          teardownCompositionRoot({
+            workspaceRoot: fixture.workspaceRoot,
+            lock: { owner: 'publisher-test', token: 'teardown-token' },
+          }),
         )
         expect(error.reason).toBe('ForeignPath')
         expect(yield* exists(NodePath.join(fixture.root, '.buckconfig'))).toBe(true)
