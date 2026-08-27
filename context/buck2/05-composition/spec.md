@@ -23,11 +23,11 @@ The mr-generated root `.buckconfig` (validated on real content):
 
 ```ini
 [cells]
-  <root-repo> = .
+  workspace = .                        # the synthesized shell; declares no targets
   prelude = prelude
   toolchains = toolchains
   none = none
-  <member-cell> = repos/<member>       # one line per member, canonical name+path
+  <member-cell> = repos/<member>       # one line per member incl. the owned repo
 [cell_aliases]
   config = prelude
   ovr_config = prelude
@@ -38,11 +38,15 @@ The mr-generated root `.buckconfig` (validated on real content):
 [external_cells]
   prelude = bundled
 [parser]
-  target_platform_detector_spec = target:<root>//...-><hub>//buck2/platforms:host_platform \
-                                  target:<member-cell>//...-><hub>//buck2/platforms:host_platform
+  target_platform_detector_spec = target:<member-cell>//...-><hub>//buck2/platforms:host_platform
+                                  # one clause per member cell, every cell covered
 [build]
   execution_platforms = <hub>//buck2/platforms:host_execution_platform
 ```
+
+The workspace cell is a pure synthesized shell (decision 0020 abolished the
+root-repo-at-`.` special case): every repository, including the one under
+development, is a member cell at `repos/<name>`.
 
 plus `toolchains/BUCK` containing `system_demo_toolchains()` (an EMPTY
 toolchains cell breaks prelude rule resolution), empty `none/BUCK`, one
@@ -79,14 +83,39 @@ cache island. (A member's `.buckconfig` is inert under composition — only its
 runs the capability projection per mount rather than expecting it from a git
 export.
 
+## Workspace Anatomy
+
+Per [decision 0020](../.decisions/0020-one-writable-mount-workspaces.md), the
+workspace root sits at the store worktree path (policy-compatible with the
+fleet worktree-placement and search-depth guards, and the layout under which
+store GC and hygiene rules keep working):
+
+```text
+~/.megarepo/github.com/<owner>/<repo>/refs/heads/<branch>/   # workspace root
+  .buckconfig .buckroot BUCK toolchains/ none/ buck-out/
+  repos/<repo>/            # THE writable branch-attached worktree (owned)
+  repos/<other-member>/    # read-only cp -a mounts at locked revs
+  repos/.staging-<member>/ # transient RENAME_EXCHANGE staging
+```
+
+The workspace root is not a git repository; the owned member is, and it is
+the default working directory (git, devenv, genie, and pnpm all operate from
+the member; nothing operates only from the root). `buck2 build` works from
+the root, the member, and package dirs alike (COMP-R06); note `buck2 root`
+defaults to `--kind cell` (the member) — scripts wanting the workspace pass
+`--kind project`. Teardown is an mr operation (protected mounts need a
+dirs-only unprotect before removal), never a bare `rm -rf`.
+
 ## Standalone Variant
 
-A single-member build uses the same generated root with the other members
-absent: the member still mounts at `repos/<name>` under its canonical cell
-name, and the platform labels are byte-identical. Proven at the action-digest
-level: the member's real digest is identical across single-member, two-member,
-renamed-root, and real-dotfiles-root shapes — the root cell's name and content
-are irrelevant to member identity.
+A single-member build is simply a workspace with no other members mounted:
+the owned repo still lives at `repos/<name>` under its canonical cell name,
+and the platform labels are byte-identical. Proven at the action-digest
+level: digests are identical across single-member, two-member, renamed-root,
+and real-dotfiles-root shapes, and between a writable branch worktree and a
+read-only mount at the same commit — the root cell's name, the root's
+absolute path, and the mount's write bit are all irrelevant to member
+identity.
 
 ## Invariants Worth Restating
 

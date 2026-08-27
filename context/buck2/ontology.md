@@ -16,11 +16,21 @@ configuration hash.
 platform tuple makes Buck its sole producer. **Authority Transfer** is the
 change that consumes an admission and deletes the superseded producer.
 
-**Composition Root** is the synthesized project root whose `.buckconfig`
-declares members as cells at canonical mount paths. Every build runs from one.
+**Workspace** is the unit of work: a synthesized composition root at the
+store worktree path containing every repository as a member mount. Every
+build runs from one; a workspace is disposable and is never itself a git
+repository.
+
+**Owned Member** is a Workspace's single writable member — the
+branch-attached git worktree of the repo the workspace exists to develop, on
+a branch the workspace owns. It is the default working directory.
+
+**Member Mount** is any other member: a read-only `cp -a` copy of its locked
+revision, advanced atomically by RENAME_EXCHANGE.
 
 **Member Cell** is a megarepo member mounted at its canonical path
-(`repos/<name>`) under its canonical cell name inside a Composition Root.
+(`repos/<name>`) under its canonical cell name inside a Workspace. Every
+repository, including the Owned Member, is a Member Cell.
 
 **Materialization** is a Buck action that produces a dependency surface
 (a package's `node_modules` tree) from manifests, the lockfile, and patches

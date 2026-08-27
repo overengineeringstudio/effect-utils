@@ -29,9 +29,13 @@ BUCK-R05 and BUCK-R14. Architecture:
 - **COMP-R01 Synthesized root everywhere:** Every build — composed, single-repo
   CI, and standalone — runs from a synthesized composition root. A bare
   checkout as its own project root is a cache island and is not a supported
-  build shape.
-- **COMP-R02 Canonical mounts:** Each member has one canonical mount path
-  (`repos/<name>`), identical in every composition and at every nesting level.
+  build shape. The workspace root is located at the store worktree path and is
+  not itself a git repository; the owned member is.
+- **COMP-R02 Canonical mounts including the hub:** Every repository — including
+  the one under development — has one canonical mount path (`repos/<name>`),
+  identical in every composition and at every nesting level. No repo builds
+  from its own root as a cell: one cell identity per repo, one cache namespace
+  ([decision 0020](../.decisions/0020-one-writable-mount-workspaces.md)).
 - **COMP-R03 Canonical cell names:** Each member has one canonical cell name,
   identical everywhere; a member's checked-in `[cell_aliases]` must agree with
   it (nested `[cells]` is ignored, nested `[cell_aliases]` is honored).
@@ -74,10 +78,21 @@ BUCK-R05 and BUCK-R14. Architecture:
   Projected member targets declare cross-cell visibility — a member target
   without it is unreachable from consumers.
 - **COMP-R10 Content-real materialization:** mr materializes member mounts in
-  a COMP-R08-satisfying shape (real directories or an equivalent
-  content-reachable form). Today's absolute-symlink materialization is not a
-  degraded cache mode but an incorrect build input: Buck2 is blind to member
+  a COMP-R08-satisfying shape. Today's absolute-symlink materialization is not
+  a degraded cache mode but an incorrect build input: Buck2 is blind to member
   content behind it, so a symlink-mounted composition must never write to a
   shared cache. Until content-real materialization lands, member cells and
   cache upload must not be combined; store-liveness accounting moves with the
-  mount shape.
+  mount shape. The settled mechanism is a `cp -a` copy from the immutable
+  store advanced by stage + RENAME_EXCHANGE under the six-point regeneration
+  contract; hardlink farms and in-place git-worktree regeneration are
+  disqualified with demonstrated failures
+  ([.experiments/2026-08-27-readonly-mount-e2e.md](./.experiments/2026-08-27-readonly-mount-e2e.md)).
+- **COMP-R11 One writable mount per workspace:** A workspace has exactly one
+  writable member — the branch-attached git worktree of the repo it exists to
+  develop, on a branch the workspace owns (git's one-worktree-per-branch rule
+  is the enforcement). All other members are read-only locked-rev mounts. A
+  workspace's default working directory is its owned member. Legacy consumers
+  that write into other members' mounts keep symlink mounts and stay outside
+  the shared cache namespace until retired
+  ([decision 0020](../.decisions/0020-one-writable-mount-workspaces.md)).
