@@ -17,3 +17,6 @@ export * from './lib/member-mount.ts'
 export * from './lib/member-mount-r6.ts'
 export * from './lib/member-mount-cp-a-schema.ts'
 export * from './lib/member-mount-cp-a.ts'
+
+// Pure Buck composition-root projection
+export * from './lib/generators/composition-root.ts'
