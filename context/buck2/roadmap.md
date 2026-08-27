@@ -105,6 +105,5 @@ reported five cached actions and zero local actions, within BUCK-R07 budgets.
 - OCI product distribution durability machinery: parked per
   [decision 0013](./.decisions/0013-shared-cache-foundation.md) partial
   supersession of decision 0008.
-- Buck2 pin bump toward upstream (post Phase 1 merge).
 - pnpm store consolidation on dev3 (one shared store per filesystem) — disk
   work, orthogonal to Buck authority but required for BUCK-R08 economics.
