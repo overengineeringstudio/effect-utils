@@ -921,7 +921,6 @@ in
 
   tasks."buck2:tui-core:publish-editor" = {
     description = "Publish the admitted Buck tui-core node_modules tree to the scoped editor view";
-    after = [ "genie:run" ];
     exec = trace.exec "buck2:tui-core:publish-editor" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -958,7 +957,6 @@ in
 
   tasks."buck2:tui-core:check-editor" = {
     description = "Check the scoped tui-core editor view against current admitted Buck outputs";
-    after = [ "genie:run" ];
     exec = trace.exec "buck2:tui-core:check-editor" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
