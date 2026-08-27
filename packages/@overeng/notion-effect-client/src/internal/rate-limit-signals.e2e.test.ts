@@ -242,12 +242,15 @@ Vitest.describe('rate-limit pressure signals (decision 0017 Half 2)', () => {
 
         const span = trace.spans.find((candidate) => candidate.name === 'NotionHttp.GET')
         expect(span).toBeDefined()
-        expect(span?.attributes['notion.rate_limit.wait_ms']).toBeGreaterThan(0)
+        // The wait equals the limiter's ConsumeResult.delay exactly (one
+        // 1000ms refill interval), not a wall-clock measurement of it.
+        expect(span?.attributes['notion.rate_limit.wait_ms']).toBe(1000)
 
         const histoAfter = yield* histogramState(NotionRateLimitMetricBridges.rateLimitWaitMs, {})
-        // The wait histogram recorded at least the measured request's wait.
-        expect(histoAfter.count - histoBefore.count).toBeGreaterThanOrEqual(1)
-        expect(histoAfter.sum - histoBefore.sum).toBeGreaterThan(0)
+        // Both logical requests recorded: the drainer (0ms) and the blocked
+        // request (1000ms), summing to exactly the pacing delay.
+        expect(histoAfter.count - histoBefore.count).toBe(2)
+        expect(histoAfter.sum - histoBefore.sum).toBe(1000)
       }),
   )
 })

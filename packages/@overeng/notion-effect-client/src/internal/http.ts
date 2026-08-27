@@ -1,5 +1,5 @@
-import { Cause, Context, Duration, Effect, Option, Redacted, Schedule, Schema } from 'effect'
-import { HttpClient } from 'effect/unstable/http/HttpClient'
+import { Cause, Context, Duration, Effect, Layer, Option, Redacted, Schedule, Schema } from 'effect'
+import { HttpClient, TracerHeaderFilter } from 'effect/unstable/http/HttpClient'
 import type { HttpClientError } from 'effect/unstable/http/HttpClientError'
 import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import type { HttpClientResponse } from 'effect/unstable/http/HttpClientResponse'
@@ -62,6 +62,46 @@ export const NotionHttpTelemetry: Context.Reference<NotionHttpTelemetryReporter>
     '@overeng/notion-effect-client/NotionHttpTelemetry',
     { defaultValue: () => ({ report: () => Effect.void }) },
   )
+
+/**
+ * Case-insensitive span-header allowlist re-expressing the retired v3
+ * platform patch (see `context/effect-4/platform-patch-analysis.md`) as the
+ * upstream-native `HttpClient.TracerHeaderFilter`. Only these header names
+ * become `http.{request,response}.header.*` attributes on Notion client
+ * spans; transmission headers are untouched — this filters telemetry only.
+ */
+const tracerHeaderAllowlist: Record<string, true> = {
+  'content-type': true,
+  'content-length': true,
+  date: true,
+  'x-request-id': true,
+  'x-notion-request-id': true,
+  'retry-after': true,
+  'x-ratelimit-remaining': true,
+}
+
+/**
+ * `HttpClient.TracerHeaderFilter` predicate admitting exactly the allowlisted
+ * Notion span headers (one set for both request and response phases, matching
+ * the v3 patch).
+ */
+export const notionTracerHeaderFilter = (
+  headerName: string,
+  _phase: 'request' | 'response',
+): boolean => tracerHeaderAllowlist[headerName.toLowerCase()] === true
+
+/**
+ * Opt-in layer binding `HttpClient.TracerHeaderFilter` to
+ * {@link notionTracerHeaderFilter}, keeping verbose Notion traffic spans
+ * (header attributes) controllable without core patches. Default behavior —
+ * every header name emitted as a span attribute, with value redaction intact —
+ * is unchanged unless this layer (or an explicit
+ * `Effect.provideService(HttpClient.TracerHeaderFilter, ...)`) is provided.
+ */
+export const NotionTracerHeaderFilterLive: Layer.Layer<never> = Layer.succeed(
+  TracerHeaderFilter,
+  notionTracerHeaderFilter,
+)
 
 /** Options for building a Notion API request */
 export interface BuildRequestOptions {
@@ -364,21 +404,35 @@ const parseErrorResponse = (opts: {
   })
 }
 
-/** Map HttpClientError to NotionApiError. */
+/**
+ * Map HttpClientError to NotionApiError.
+ *
+ * The persisted envelope stays byte-identical to the legacy mapping (status 0,
+ * verbatim reason message): `NotionErrorCode` has no transport/timeout codes,
+ * so the reason tag itself remains visible only through the verbatim `message`
+ * ("Transport error (...)", "Encode error (...)", ...). The `code` carries the
+ * retryability discrimination instead: deterministic request-construction
+ * failures (encode/URL) map to non-retryable `invalid_request`, while
+ * transport, decode, and status failures stay retryable `service_unavailable`
+ * (connection drops and truncated bodies are transient).
+ */
 const mapHttpClientError = (opts: {
   error: HttpClientError
   path: string
   method: string
-}): NotionApiError =>
-  new NotionApiError({
+}): NotionApiError => {
+  const deterministicRequestFailure =
+    opts.error.reason._tag === 'EncodeError' || opts.error.reason._tag === 'InvalidUrlError'
+  return new NotionApiError({
     status: 0,
-    code: 'service_unavailable',
+    code: deterministicRequestFailure === true ? 'invalid_request' : 'service_unavailable',
     message: opts.error.message,
     retryAfterSeconds: Option.none(),
     requestId: Option.none(),
     url: Option.some(`${NOTION_API_BASE_URL}${opts.path}`),
     method: Option.some(opts.method),
   })
+}
 
 /**
  * Execute a Notion API request with error handling and automatic retry.

@@ -7,6 +7,7 @@ import {
   hashCanonicalJson,
   type ContentDigest,
 } from '@overeng/content-address'
+import { nonEmptyTrimmedString } from '@overeng/utils'
 
 import { NOTION_API_VERSION } from './config.ts'
 
@@ -26,8 +27,8 @@ export type BodyEvidenceFingerprint = typeof BodyEvidenceFingerprint.Type
 /** Content-addressed evidence for one remote page body observation: endpoint markdown, block tree, rendered body, and inventory as content descriptors plus the stability window. */
 export const RemoteBodyObservationEvidence = Schema.TaggedStruct('RemoteBodyObservationEvidence', {
   schemaVersion: Schema.Literal(1),
-  notionApiVersion: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
-  pageId: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
+  notionApiVersion: nonEmptyTrimmedString,
+  pageId: nonEmptyTrimmedString,
   observedAt: Schema.DateTimeUtcFromString,
   observationWindow: Schema.Struct({
     beforeLastEditedTime: Schema.DateTimeUtcFromString,
@@ -43,8 +44,8 @@ export type RemoteBodyObservationEvidence = typeof RemoteBodyObservationEvidence
 
 const RemoteBodyObservationIdentityEvidence = Schema.TaggedStruct('RemoteBodyObservationEvidence', {
   schemaVersion: Schema.Literal(1),
-  notionApiVersion: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
-  pageId: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
+  notionApiVersion: nonEmptyTrimmedString,
+  pageId: nonEmptyTrimmedString,
   observationWindow: Schema.Struct({
     beforeLastEditedTime: Schema.DateTimeUtcFromString,
     afterLastEditedTime: Schema.DateTimeUtcFromString,

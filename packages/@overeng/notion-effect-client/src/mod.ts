@@ -114,7 +114,13 @@ export type {
   NotionHttpTelemetryReporter,
   RateLimitInfo,
 } from './internal/http.ts'
-export { NotionHttpTelemetry, notionHttpRouteInfo, parseRateLimitHeaders } from './internal/http.ts'
+export {
+  NotionHttpTelemetry,
+  notionHttpRouteInfo,
+  notionTracerHeaderFilter,
+  parseRateLimitHeaders,
+} from './internal/http.ts'
+export { NotionTracerHeaderFilterLive } from './internal/http.ts'
 // Rate-limit pressure metrics (decision 0017 Half 2)
 export { NotionRateLimitMetrics } from './internal/metrics.ts'
 // Request throttle
