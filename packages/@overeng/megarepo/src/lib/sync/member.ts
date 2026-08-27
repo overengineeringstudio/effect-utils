@@ -21,6 +21,7 @@ import {
 import * as Git from '../git.ts'
 import { detectRefMismatch, formatRefMismatchMessage } from '../issues.ts'
 import type { LockFile } from '../lock.ts'
+import { foreignMemberMountMessage, inspectMemberMount } from '../member-mount.ts'
 import * as Observability from '../observability.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../ref.ts'
 import { StoreLock } from '../store-lock.ts'
@@ -246,6 +247,22 @@ export const syncMember = <R = never>({
     const memberPath = getMemberPath({ megarepoRoot, name })
     const memberPathNormalized = memberPath.replace(/\/$/, '')
 
+    // Lock and apply must never interpret a foreign real path as an absent member mount.
+    if (isFetchMode === false) {
+      const memberMount = yield* inspectMemberMount(memberPathNormalized)
+      if (memberMount._tag === 'Foreign') {
+        return {
+          name,
+          status: 'error',
+          message: foreignMemberMountMessage({
+            name,
+            path: memberPathNormalized,
+            operation: 'replace',
+          }),
+        } satisfies MemberSyncResult
+      }
+    }
+
     // Fetch mode: skip local path members (nothing to fetch)
     if (source.type === 'path' && isFetchMode === true) {
       return { name, status: 'skipped', message: 'local path member' } satisfies MemberSyncResult
@@ -296,8 +313,12 @@ export const syncMember = <R = never>({
         if (exists === true) {
           return {
             name,
-            status: 'skipped',
-            message: 'Directory exists but is not a symlink',
+            status: 'error',
+            message: foreignMemberMountMessage({
+              name,
+              path: memberPathNormalized,
+              operation: 'replace',
+            }),
           } satisfies MemberSyncResult
         }
       }
@@ -995,8 +1016,12 @@ export const syncMember = <R = never>({
       if (exists === true) {
         return {
           name,
-          status: 'skipped',
-          message: 'Directory exists but is not a symlink',
+          status: 'error',
+          message: foreignMemberMountMessage({
+            name,
+            path: memberPathNormalized,
+            operation: 'replace',
+          }),
         } satisfies MemberSyncResult
       }
     }

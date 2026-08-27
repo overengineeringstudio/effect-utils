@@ -2782,6 +2782,142 @@ describe('sync error handling', () => {
   )
 })
 
+describe('foreign member mount guards', () => {
+  it.effect(
+    'fails apply and dry-run identically for a configured local-path real directory',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const sourcePath = yield* createRepo({
+          basePath: tmpDir,
+          fixture: { name: 'local-source', files: { 'source.txt': 'source\n' } },
+        })
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: { 'local-lib': sourcePath },
+        })
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          ),
+          lockFile: createEmptyLockFile(),
+        })
+
+        const memberPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile('repos/local-lib'),
+        )
+        const sentinelPath = EffectPath.ops.join(
+          EffectPath.unsafe.absoluteDir(`${memberPath}/`),
+          EffectPath.unsafe.relativeFile('sentinel.bin'),
+        )
+        const sentinel = new Uint8Array([0, 255, 17, 10, 0, 99])
+        yield* fs.makeDirectory(memberPath, { recursive: true })
+        yield* fs.writeFile(sentinelPath, sentinel)
+
+        const applied = yield* runApplyCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json'],
+        })
+        const previewed = yield* runApplyCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json', '--dry-run'],
+        })
+        const appliedResult = decodeSyncJsonOutput(applied.stdout.trim()).results[0]
+        const previewedResult = decodeSyncJsonOutput(previewed.stdout.trim()).results[0]
+        const expectedMessage = `Refusing to replace member 'local-lib' at '${memberPath}': it is a foreign non-symlink mount`
+
+        expect(applied.exitCode).toBe(1)
+        expect(previewed.exitCode).toBe(1)
+        expect(appliedResult).toMatchObject({
+          name: 'local-lib',
+          status: 'error',
+          message: expectedMessage,
+        })
+        expect(previewedResult).toEqual(appliedResult)
+        expect(Array.from(yield* fs.readFile(sentinelPath))).toEqual(Array.from(sentinel))
+        expect(yield* fs.readDirectory(memberPath)).toEqual(['sentinel.bin'])
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'fails apply and dry-run identically for a configured remote real directory',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const store = yield* createStoreFixture([
+          { host: 'example.com', owner: 'acme', repo: 'lib', branches: ['main'] },
+        ])
+        const mainWorktree = store.worktreePaths['example.com/acme/lib#main']
+        if (mainWorktree === undefined) throw new Error('Missing main worktree')
+        const commit = (yield* runGitCommand(mainWorktree, 'rev-parse', 'HEAD')).trim()
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: { lib: 'https://example.com/acme/lib#main' },
+          lockEntries: {
+            lib: { url: 'https://example.com/acme/lib', ref: 'main', commit },
+          },
+        })
+        const memberPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile('repos/lib'),
+        )
+        const sentinelPath = EffectPath.ops.join(
+          EffectPath.unsafe.absoluteDir(`${memberPath}/`),
+          EffectPath.unsafe.relativeFile('sentinel.bin'),
+        )
+        const configPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
+        )
+        const lockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const sentinel = new Uint8Array([222, 173, 190, 239, 0, 10])
+        yield* fs.makeDirectory(memberPath, { recursive: true })
+        yield* fs.writeFile(sentinelPath, sentinel)
+        const configBefore = yield* fs.readFile(configPath)
+        const lockBefore = yield* fs.readFile(lockPath)
+        const env = { MEGAREPO_STORE: store.storePath.slice(0, -1) }
+
+        const applied = yield* runApplyCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json'],
+          env,
+        })
+        const previewed = yield* runApplyCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json', '--dry-run'],
+          env,
+        })
+        const appliedResult = decodeSyncJsonOutput(applied.stdout.trim()).results[0]
+        const previewedResult = decodeSyncJsonOutput(previewed.stdout.trim()).results[0]
+        const expectedMessage = `Refusing to replace member 'lib' at '${memberPath}': it is a foreign non-symlink mount`
+
+        expect(applied.exitCode).toBe(1)
+        expect(previewed.exitCode).toBe(1)
+        expect(appliedResult).toMatchObject({
+          name: 'lib',
+          status: 'error',
+          message: expectedMessage,
+        })
+        expect(previewedResult).toEqual(appliedResult)
+        expect(Array.from(yield* fs.readFile(sentinelPath))).toEqual(Array.from(sentinel))
+        expect(yield* fs.readDirectory(memberPath)).toEqual(['sentinel.bin'])
+        expect(yield* fs.readFile(configPath)).toEqual(configBefore)
+        expect(yield* fs.readFile(lockPath)).toEqual(lockBefore)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 15_000 },
+  )
+})
+
 // =============================================================================
 // Member Filtering Tests (--only and --skip)
 // =============================================================================
@@ -3515,78 +3651,66 @@ describe('sync member removal detection', () => {
   )
 
   it.effect(
-    'should only remove symlinks, not actual directories',
+    'fails identically for real directory and regular-file orphans without changing bytes',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
-
-        // Create temp directory with a local repo
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const repo1Path = yield* createRepo({
-          basePath: tmpDir,
-          fixture: {
-            name: 'repo1',
-            files: { 'package.json': '{"name": "repo1"}' },
-          },
+        const { workspacePath } = yield* createWorkspaceWithLock({ members: {} })
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          ),
+          lockFile: createEmptyLockFile(),
         })
 
-        // Create workspace
-        const workspacePath = EffectPath.ops.join(
-          tmpDir,
-          EffectPath.unsafe.relativeDir('workspace/'),
-        )
-        yield* fs.makeDirectory(workspacePath, { recursive: true })
-        yield* initGitRepo(workspacePath)
-
-        const configPath = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
-        )
-
-        // Config with only repo1
-        const config: MegarepoConfig = new MegarepoConfig({
-          members: {
-            repo1: repo1Path,
-          },
-        })
-        yield* fs.writeFileString(
-          configPath,
-          (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
-            config,
-          )) + '\n',
-        )
-        yield* addCommit({
-          repoPath: workspacePath,
-          message: 'Initialize megarepo',
-        })
-
-        // First sync - create repo1 symlink
-        yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
-
-        // Manually create a directory (not symlink) called 'orphan-dir' in repos/
         const orphanDirPath = EffectPath.ops.join(
           workspacePath,
-          EffectPath.unsafe.relativeDir('repos/orphan-dir/'),
+          EffectPath.unsafe.relativeFile('repos/orphan-dir'),
         )
+        const directorySentinelPath = EffectPath.ops.join(
+          EffectPath.unsafe.absoluteDir(`${orphanDirPath}/`),
+          EffectPath.unsafe.relativeFile('sentinel.bin'),
+        )
+        const orphanFilePath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile('repos/orphan-file'),
+        )
+        const directorySentinel = new Uint8Array([0, 1, 2, 253, 254, 255])
+        const orphanFile = new Uint8Array([255, 0, 127, 128, 10, 13])
         yield* fs.makeDirectory(orphanDirPath, { recursive: true })
-        yield* fs.writeFileString(
-          EffectPath.ops.join(orphanDirPath, EffectPath.unsafe.relativeFile('test.txt')),
-          'test content\n',
-        )
+        yield* fs.writeFile(directorySentinelPath, directorySentinel)
+        yield* fs.writeFile(orphanFilePath, orphanFile)
 
-        // Sync again - should NOT remove the directory (only removes symlinks)
-        const result = yield* runFetchApplyCommand({
+        const applied = yield* runApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json'],
         })
-        const json = decodeSyncJsonOutput(result.stdout.trim())
+        const previewed = yield* runApplyCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json', '--dry-run'],
+        })
+        const appliedResults = decodeSyncJsonOutput(applied.stdout.trim()).results
+        const previewedResults = decodeSyncJsonOutput(previewed.stdout.trim()).results
 
-        // Should not have a 'removed' result for orphan-dir
-        const orphanResult = json.results.find((r) => r.name === 'orphan-dir')
-        expect(orphanResult).toBeUndefined()
-
-        // The directory should still exist
-        expect(yield* fs.exists(orphanDirPath)).toBe(true)
+        expect(applied.exitCode).toBe(1)
+        expect(previewed.exitCode).toBe(1)
+        expect(previewedResults).toEqual(appliedResults)
+        expect(appliedResults.find((result) => result.name === 'orphan-dir')).toEqual({
+          name: 'orphan-dir',
+          status: 'error',
+          message: `Refusing to remove member 'orphan-dir' at '${orphanDirPath}': it is a foreign non-symlink mount`,
+        })
+        expect(appliedResults.find((result) => result.name === 'orphan-file')).toEqual({
+          name: 'orphan-file',
+          status: 'error',
+          message: `Refusing to remove member 'orphan-file' at '${orphanFilePath}': it is a foreign non-symlink mount`,
+        })
+        expect(Array.from(yield* fs.readFile(directorySentinelPath))).toEqual(
+          Array.from(directorySentinel),
+        )
+        expect(yield* fs.readDirectory(orphanDirPath)).toEqual(['sentinel.bin'])
+        expect(Array.from(yield* fs.readFile(orphanFilePath))).toEqual(Array.from(orphanFile))
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
