@@ -1,5 +1,5 @@
-load("@root//buck2/platforms:defs.bzl", "host_platform_label")
-load("@root//buck2/toolchains:defs.bzl", "configured_rust_toolchain", "effect_tsgo_toolchain", "host_rust_target_triple", "pnpm_materializer_toolchain")
+load("@effect_utils//buck2/platforms:defs.bzl", "host_platform_label")
+load("@effect_utils//buck2/toolchains:defs.bzl", "configured_rust_toolchain", "effect_tsgo_toolchain", "host_rust_target_triple", "pnpm_materializer_toolchain")
 load(":configured.bzl", "support_tool")
 load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
 
@@ -52,12 +52,12 @@ effect_tsgo_toolchain(
     name = "effect_tsgo",
     bun_by_platform = _BUN_BY_PLATFORM,
     executable_by_platform = _TSGO_BY_PLATFORM,
-    runner = "root//:packages/@overeng/buck2-tools/src/typescript-runner.ts",
+    runner = "effect_utils//:packages/@overeng/buck2-tools/src/typescript-runner.ts",
     visibility = ["PUBLIC"],
 )
 
-# Analysis-only fixture: the rule is loaded into toolchains// but must consume
-# the root cell's exact ProductPlatformInfo identity.
+# Analysis-only fixture: the rule and platform live in the effect_utils cell
+# and must consume the exact same ProductPlatformInfo identity.
 configured_rust_toolchain(
     name = "cross_cell_provider_identity",
     archiver = ":archive_tool",
@@ -67,15 +67,18 @@ configured_rust_toolchain(
     linker = ":archive_tool",
     target_platform = host_platform_label(),
     target_triple = host_rust_target_triple(),
+    visibility = ["PUBLIC"],
 )
 
 cross_cell_product_identity(
     name = "cross_cell_product_identity",
     target_platform = host_platform_label(),
+    visibility = ["PUBLIC"],
 )
 
 cross_cell_product_identity(
     name = "cross_cell_product_mismatch",
-    executable_target_platform = "root//buck2/platforms:macos_aarch64",
-    target_platform = "root//buck2/platforms:linux_x86_64",
+    executable_target_platform = "effect_utils//buck2/platforms:macos_aarch64",
+    target_platform = "effect_utils//buck2/platforms:linux_x86_64",
+    visibility = ["PUBLIC"],
 )
