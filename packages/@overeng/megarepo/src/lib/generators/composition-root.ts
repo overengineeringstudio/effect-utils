@@ -172,6 +172,16 @@ export const BuckMemberCapabilitySchema = Schema.Struct({
 }).annotate({ identifier: 'Megarepo.BuckMemberCapability' })
 export type BuckMemberCapability = typeof BuckMemberCapabilitySchema.Type
 
+/** Find one declared member capability by its stable tool id. */
+export const buckMemberCapabilityByToolId = ({
+  manifest,
+  toolId,
+}: {
+  readonly manifest: BuckMemberManifest
+  readonly toolId: string
+}): BuckMemberCapability | undefined =>
+  manifest.capabilities.find((capability) => capability.toolId === toolId)
+
 /** Strict tracked `buck2-member.json` wire schema, version 1. */
 export const BuckMemberManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(COMPOSITION_ROOT_SCHEMA_VERSION),

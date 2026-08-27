@@ -1,0 +1,103 @@
+import * as PosixPath from 'node:path/posix'
+
+import { Schema } from 'effect'
+
+import { BuckMemberCapabilitySchema } from './generators/composition-root.ts'
+
+/** Tracked projector owned by each capability-bearing member. */
+export const COMPOSITION_CAPABILITY_PROJECTOR_PATH = 'scripts/buck2-capability-project.sh' as const
+
+const AbsolutePath = Schema.String.check(
+  Schema.makeFilter<string>((value) =>
+    value.startsWith('/') === true && PosixPath.normalize(value) === value
+      ? undefined
+      : 'Expected a normalized absolute POSIX path',
+  ),
+).annotate({ identifier: 'Megarepo.CompositionCapabilityAbsolutePath' })
+
+const Sha256Digest = Schema.String.check(
+  Schema.makeFilter<string>((value) =>
+    /^sha256:[0-9a-f]{64}$/u.test(value) === true
+      ? undefined
+      : 'Expected a sha256:<64 lowercase hex> digest',
+  ),
+).annotate({ identifier: 'Megarepo.CompositionCapabilitySha256' })
+
+const ProjectionDigest = Schema.String.check(
+  Schema.makeFilter<string>((value) =>
+    /^[0-9a-f]{64}$/u.test(value) === true
+      ? undefined
+      : 'Expected a 64-character lowercase hexadecimal projection digest',
+  ),
+).annotate({ identifier: 'Megarepo.CompositionCapabilityProjectionDigest' })
+
+/** Nix systems supported by the tracked Buck capability projector. */
+export const CompositionCapabilitySystemSchema = Schema.Literals([
+  'x86_64-linux',
+  'aarch64-linux',
+  'aarch64-darwin',
+]).annotate({ identifier: 'Megarepo.CompositionCapabilitySystem' })
+export type CompositionCapabilitySystem = typeof CompositionCapabilitySystemSchema.Type
+
+/** One exact process invocation, suitable for plan output and audit. */
+export const CompositionCapabilityCommandSchema = Schema.Struct({
+  executable: AbsolutePath,
+  args: Schema.Array(Schema.String),
+}).annotate({ identifier: 'Megarepo.CompositionCapabilityCommand' })
+export type CompositionCapabilityCommand = typeof CompositionCapabilityCommandSchema.Type
+
+/** Manifest capability plus its exact Nix realization and executable identity. */
+export const ResolvedCompositionCapabilitySchema = Schema.Struct({
+  capability: BuckMemberCapabilitySchema,
+  nixOutputPath: AbsolutePath,
+  executablePath: AbsolutePath,
+  executableDigest: Sha256Digest,
+}).annotate({ identifier: 'Megarepo.ResolvedCompositionCapability' })
+export type ResolvedCompositionCapability = typeof ResolvedCompositionCapabilitySchema.Type
+
+/** Successful non-mutating plan. External commands have not run. */
+export const CompositionCapabilityPlanSchema = Schema.TaggedStruct('Planned', {
+  system: CompositionCapabilitySystemSchema,
+  projectorPlatform: Schema.Literals(['x86_64-linux', 'aarch64-linux', 'aarch64-macos']),
+  projectorPath: AbsolutePath,
+  candidateRoot: AbsolutePath,
+  nixCommands: Schema.Array(CompositionCapabilityCommandSchema),
+  projectorCommand: CompositionCapabilityCommandSchema,
+}).annotate({ identifier: 'Megarepo.CompositionCapabilityPlan' })
+export type CompositionCapabilityPlan = typeof CompositionCapabilityPlanSchema.Type
+
+/** Successful realized projection retained below the caller-owned scratch directory. */
+export const CompositionCapabilityResolutionSchema = Schema.TaggedStruct('Resolved', {
+  system: CompositionCapabilitySystemSchema,
+  projectorPlatform: Schema.Literals(['x86_64-linux', 'aarch64-linux', 'aarch64-macos']),
+  projectorPath: AbsolutePath,
+  candidateRoot: AbsolutePath,
+  projectionPath: AbsolutePath,
+  projectionDigest: ProjectionDigest,
+  capabilities: Schema.Array(ResolvedCompositionCapabilitySchema),
+  capabilitiesByToolId: Schema.Record(Schema.String, ResolvedCompositionCapabilitySchema),
+  nixCommands: Schema.Array(CompositionCapabilityCommandSchema),
+  projectorCommand: CompositionCapabilityCommandSchema,
+  checkCommand: CompositionCapabilityCommandSchema,
+}).annotate({ identifier: 'Megarepo.CompositionCapabilityResolution' })
+export type CompositionCapabilityResolution = typeof CompositionCapabilityResolutionSchema.Type
+
+/** Structured fail-closed resolver error. */
+export class CompositionCapabilityResolutionError extends Schema.TaggedError<CompositionCapabilityResolutionError>()(
+  'CompositionCapabilityResolutionError',
+  {
+    reason: Schema.Literals([
+      'InvalidInput',
+      'InvalidRuntime',
+      'MissingProjector',
+      'CommandFailure',
+      'InvalidNixOutput',
+      'InvalidExecutable',
+      'ProjectionFailure',
+    ]),
+    message: Schema.String,
+    path: Schema.optional(AbsolutePath),
+    command: Schema.optional(CompositionCapabilityCommandSchema),
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
