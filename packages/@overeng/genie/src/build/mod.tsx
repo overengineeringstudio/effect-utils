@@ -299,8 +299,7 @@ export const genieCommand = Cli.Command.make(
 
                 if (watch && !check && !dryRun) {
                   // Watch mode — recursive scoped watch with a 250 ms
-                  // coalescing window (context/effect-4/
-                  // watch-recursion-experiments.md §3.2). Discovery is already
+                  // coalescing window. Discovery is already
                   // recursive, so the previous non-recursive watcher silently
                   // never fired for nested *.genie.ts edits; the window
                   // collapses editor write bursts into one regeneration pass.

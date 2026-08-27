@@ -64,9 +64,9 @@ export const NotionHttpTelemetry: Context.Reference<NotionHttpTelemetryReporter>
   )
 
 /**
- * Case-insensitive span-header allowlist re-expressing the retired v3
- * platform patch (see `context/effect-4/platform-patch-analysis.md`) as the
- * upstream-native `HttpClient.TracerHeaderFilter`. Only these header names
+ * Case-insensitive span-header allowlist for Notion client spans, expressed
+ * as the upstream-native `HttpClient.TracerHeaderFilter` (replaces a retired
+ * v3-era platform patch). Only these header names
  * become `http.{request,response}.header.*` attributes on Notion client
  * spans; transmission headers are untouched — this filters telemetry only.
  */
