@@ -66,6 +66,7 @@
             dirty
             ;
         };
+        buck2 = import ./nix/buck2.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -188,7 +189,7 @@
           cliPackages
           // providerCliPackages
           // {
-            inherit otelite otel-scrape;
+            inherit buck2 otelite otel-scrape;
             buck2-archive-tool = buck2-stage0-tools.archive-tool;
             buck2-product = buck2-stage0-tools.product;
             cli-build-stamp = cliBuildStamp.package;

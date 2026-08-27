@@ -41,6 +41,12 @@ const manifestProjection = {
       executable: 'bin/buck2-archive-tool',
     },
     {
+      toolId: 'buck2',
+      protocol: 'facebook/buck2-cli/2026-08-22',
+      flakePackage: 'buck2',
+      executable: 'bin/buck2',
+    },
+    {
       toolId: 'product',
       protocol: 'effect-utils/buck2-product/v1',
       flakePackage: 'buck2-product',
