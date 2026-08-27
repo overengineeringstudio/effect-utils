@@ -60,8 +60,34 @@ const TransactionJson = Schema.fromJsonString(CpAMemberMountTransaction, { space
 
 type RuntimePlatform = 'linux' | 'darwin' | (string & {})
 
+/** Directory namespace durability checkpoints used by the lifecycle and recovery state machines. */
+export type CpAMemberMountDirectorySyncReason =
+  | 'TransactionCreate'
+  | 'TransactionReplace'
+  | 'TransactionRemove'
+  | 'StageCreate'
+  | 'FirstPublish'
+  | 'Exchange'
+  | 'CandidateCleanup'
+  | 'OldCleanup'
+  | 'MetadataPublish'
+  | 'MetadataRemove'
+  | 'MountTeardown'
+
+/**
+ * Optional durability seam. Implementations may record or fail a checkpoint but must call `sync`
+ * to retain the production power-loss guarantee.
+ */
+export interface CpAMemberMountDurabilityRuntime {
+  readonly directoryFsync?: (input: {
+    readonly path: string
+    readonly reason: CpAMemberMountDirectorySyncReason
+    readonly sync: () => Promise<void>
+  }) => Promise<void>
+}
+
 /** Injected pinned commands, capability gate, platform policy, and deterministic test seams. */
-export interface CpAMemberMountRuntime {
+export interface CpAMemberMountRuntime extends CpAMemberMountDurabilityRuntime {
   /** Absolute pinned GNU coreutils paths. PATH lookup is intentionally impossible. */
   readonly cpPath: string
   readonly mvPath: string
@@ -74,12 +100,39 @@ export interface CpAMemberMountRuntime {
   }) => Promise<void>
   /** Deterministic crash-boundary seam. Throwing preserves the transaction for recovery. */
   readonly afterPhase?: (phase: CpAMemberMountPhaseHint) => Promise<void>
+  /** Boundary after the final missing check and immediately before no-clobber first publish. */
+  readonly beforeFirstPublish?: (input: {
+    readonly destinationPath: string
+    readonly stagePath: string
+  }) => Promise<void>
 }
 
 /** Runtime dependencies needed to reconcile an existing transaction. */
-export interface CpAMemberMountRecoveryRuntime {
+export interface CpAMemberMountRecoveryRuntime extends CpAMemberMountDurabilityRuntime {
   readonly mvPath: string
   readonly platform?: RuntimePlatform
+}
+
+const syncDirectoryNative = async (path: string): Promise<void> => {
+  const handle = await open(path, 'r')
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+}
+
+const syncDirectoryPromise = ({
+  runtime,
+  path,
+  reason,
+}: {
+  runtime: CpAMemberMountDurabilityRuntime
+  path: string
+  reason: CpAMemberMountDirectorySyncReason
+}): Promise<void> => {
+  const sync = (): Promise<void> => syncDirectoryNative(path)
+  return runtime.directoryFsync?.({ path, reason, sync }) ?? sync()
 }
 
 const error = ({
@@ -143,6 +196,22 @@ const io = <A>({
         ...(reason === undefined ? {} : { reason }),
         ...(recoveryPaths === undefined ? {} : { recoveryPaths }),
       }),
+  })
+
+const syncDirectory = ({
+  runtime,
+  path,
+  reason,
+}: {
+  runtime: CpAMemberMountDurabilityRuntime
+  path: string
+  reason: CpAMemberMountDirectorySyncReason
+}): Effect.Effect<void, CpAMemberMountError> =>
+  io({
+    path,
+    message: `Cannot make directory namespace durable at '${path}' (${reason})`,
+    recoveryPaths: [path],
+    try: () => syncDirectoryPromise({ runtime, path, reason }),
   })
 
 const decodeRequest = Schema.decodeUnknownEffect(CpAMemberMountRequest, strictParseOptions)
@@ -366,9 +435,11 @@ const encodeTransaction = (transaction: CpAMemberMountTransactionType): string =
 const writeExclusiveTransaction = ({
   path,
   transaction,
+  runtime,
 }: {
   path: string
   transaction: CpAMemberMountTransactionType
+  runtime: CpAMemberMountDurabilityRuntime
 }): Effect.Effect<void, CpAMemberMountError> =>
   io({
     path,
@@ -403,15 +474,22 @@ const writeExclusiveTransaction = ({
       } finally {
         await unlink(temporary).catch(() => undefined)
       }
+      await syncDirectoryPromise({
+        runtime,
+        path: NodePath.dirname(path),
+        reason: 'TransactionCreate',
+      })
     },
   })
 
 const replaceTransaction = ({
   path,
   transaction,
+  runtime,
 }: {
   path: string
   transaction: CpAMemberMountTransactionType
+  runtime: CpAMemberMountDurabilityRuntime
 }): Effect.Effect<void, CpAMemberMountError> =>
   io({
     path,
@@ -431,6 +509,11 @@ const replaceTransaction = ({
       } finally {
         await unlink(temporary).catch(() => undefined)
       }
+      await syncDirectoryPromise({
+        runtime,
+        path: NodePath.dirname(path),
+        reason: 'TransactionReplace',
+      })
     },
   })
 
@@ -448,7 +531,13 @@ const readTransaction = (
     },
   })
 
-const removeTransaction = (path: string): Effect.Effect<void, CpAMemberMountError> =>
+const removeTransaction = ({
+  path,
+  runtime,
+}: {
+  path: string
+  runtime: CpAMemberMountDurabilityRuntime
+}): Effect.Effect<void, CpAMemberMountError> =>
   io({
     path,
     message: `Cannot remove completed cp-a member mount transaction '${path}'`,
@@ -462,6 +551,11 @@ const removeTransaction = (path: string): Effect.Effect<void, CpAMemberMountErro
         )
           return
         throw cause
+      })
+      await syncDirectoryPromise({
+        runtime,
+        path: NodePath.dirname(path),
+        reason: 'TransactionRemove',
       })
     },
   })
@@ -496,11 +590,13 @@ const updatePhase = ({
   transaction,
   phaseHint,
   candidateIdentity,
+  runtime,
 }: {
   transactionPath: string
   transaction: CpAMemberMountTransactionType
   phaseHint: CpAMemberMountPhaseHint
   candidateIdentity?: CpAMountInodeIdentity
+  runtime: CpAMemberMountDurabilityRuntime
 }): Effect.Effect<CpAMemberMountTransactionType, CpAMemberMountError> =>
   Effect.gen(function* () {
     const next: CpAMemberMountTransactionType = {
@@ -511,7 +607,7 @@ const updatePhase = ({
         candidateIdentity: candidateIdentity ?? transaction.newIdentity.candidateIdentity,
       },
     }
-    yield* replaceTransaction({ path: transactionPath, transaction: next })
+    yield* replaceTransaction({ path: transactionPath, transaction: next, runtime })
     return next
   })
 
@@ -970,7 +1066,12 @@ const planSteps = (operation: CpAMemberMountOperation): ReadonlyArray<CpAMemberM
   ]
 }
 
-/** Materialize or advance one cp-a member mount. This primitive is not wired into syncMember. */
+/**
+ * Materialize or advance one cp-a member mount. This primitive is not wired into syncMember.
+ * Transactions make every process-interruption boundary recoverable. Directory fsync orders durable
+ * namespace entries, but copied file-byte durability across power loss remains a filesystem/store
+ * responsibility; recovery always revalidates observed R6 identities before acting.
+ */
 export const materializeCpAMemberMount = ({
   request: untrustedRequest,
   runtime,
@@ -1104,7 +1205,7 @@ export const materializeCpAMemberMount = ({
       oldIdentity,
       newIdentity: { metadata: newMetadata, candidateIdentity: null },
     }
-    yield* writeExclusiveTransaction({ path: transactionPath, transaction })
+    yield* writeExclusiveTransaction({ path: transactionPath, transaction, runtime })
     yield* runPhaseHook({ runtime, phase: 'Intent', transaction })
 
     const stageInfo = yield* io({
@@ -1119,18 +1220,37 @@ export const materializeCpAMemberMount = ({
     const candidateRecordResult = yield* updatePhase({
       transactionPath,
       transaction,
-      phaseHint: 'CandidateCreated',
+      phaseHint: transaction.phaseHint,
       candidateIdentity,
+      runtime,
     }).pipe(Effect.result)
     if (candidateRecordResult._tag === 'Failure') {
       const cleanupResult = yield* teardownBoundDirectory({
         path: stagePath,
         identity: candidateIdentity,
       }).pipe(Effect.result)
-      if (cleanupResult._tag === 'Success') yield* removeTransaction(transactionPath)
+      if (cleanupResult._tag === 'Success') {
+        yield* syncDirectory({
+          runtime,
+          path: NodePath.dirname(stagePath),
+          reason: 'CandidateCleanup',
+        })
+        yield* removeTransaction({ path: transactionPath, runtime })
+      }
       return yield* candidateRecordResult.failure
     }
     transaction = candidateRecordResult.success
+    yield* syncDirectory({
+      runtime,
+      path: NodePath.dirname(stagePath),
+      reason: 'StageCreate',
+    })
+    transaction = yield* updatePhase({
+      transactionPath,
+      transaction,
+      phaseHint: 'CandidateCreated',
+      runtime,
+    })
     yield* runPhaseHook({ runtime, phase: 'CandidateCreated', transaction })
 
     const stageResult = yield* Effect.gen(function* () {
@@ -1180,11 +1300,18 @@ export const materializeCpAMemberMount = ({
         path: stagePath,
         identity: candidateIdentity,
       }).pipe(Effect.result)
-      if (cleanupResult._tag === 'Success') yield* removeTransaction(transactionPath)
+      if (cleanupResult._tag === 'Success') {
+        yield* syncDirectory({
+          runtime,
+          path: NodePath.dirname(stagePath),
+          reason: 'CandidateCleanup',
+        })
+        yield* removeTransaction({ path: transactionPath, runtime })
+      }
       return yield* stageResult.failure
     }
 
-    transaction = yield* updatePhase({ transactionPath, transaction, phaseHint: 'Staged' })
+    transaction = yield* updatePhase({ transactionPath, transaction, phaseHint: 'Staged', runtime })
     yield* runPhaseHook({ runtime, phase: 'Staged', transaction })
 
     if (operation === 'FirstPublish') {
@@ -1197,11 +1324,45 @@ export const materializeCpAMemberMount = ({
           recoveryPaths: [destinationPath, stagePath, transactionPath],
         })
       }
-      yield* io({
+      if (runtime.beforeFirstPublish !== undefined) {
+        yield* io({
+          path: destinationPath,
+          message: `First-publish boundary hook failed for '${destinationPath}'`,
+          recoveryPaths: [destinationPath, stagePath, transactionPath],
+          try: () => runtime.beforeFirstPublish!({ destinationPath, stagePath }),
+        })
+      }
+      yield* runCommand({
+        binary: runtime.mvPath,
+        args: ['-T', '--no-clobber', '--no-copy', stagePath, destinationPath],
         path: destinationPath,
-        message: `Atomic first publish failed for '${destinationPath}'`,
+        commandName: 'GNU mv no-clobber first publish',
         recoveryPaths: [destinationPath, stagePath, transactionPath],
-        try: () => rename(stagePath, destinationPath),
+      })
+      const [stageAfterPublish, destinationAfterPublish] = yield* Effect.all([
+        lstatMaybe(stagePath),
+        lstatMaybe(destinationPath),
+      ])
+      if (
+        stageAfterPublish !== undefined ||
+        destinationAfterPublish === undefined ||
+        destinationAfterPublish.isDirectory() === false ||
+        identitiesEqual({
+          left: identityFromStat(destinationAfterPublish),
+          right: candidateIdentity,
+        }) === false
+      ) {
+        return yield* error({
+          reason: 'DestinationRefused',
+          path: destinationPath,
+          message: `No-clobber first publish did not install the recorded candidate; preserving both paths`,
+          recoveryPaths: [destinationPath, stagePath, transactionPath],
+        })
+      }
+      yield* syncDirectory({
+        runtime,
+        path: NodePath.dirname(destinationPath),
+        reason: 'FirstPublish',
       })
     } else {
       yield* runCommand({
@@ -1211,8 +1372,18 @@ export const materializeCpAMemberMount = ({
         commandName: 'GNU mv exchange',
         recoveryPaths: [destinationPath, stagePath, transactionPath],
       })
+      yield* syncDirectory({
+        runtime,
+        path: NodePath.dirname(destinationPath),
+        reason: 'Exchange',
+      })
     }
-    transaction = yield* updatePhase({ transactionPath, transaction, phaseHint: 'Exchanged' })
+    transaction = yield* updatePhase({
+      transactionPath,
+      transaction,
+      phaseHint: 'Exchanged',
+      runtime,
+    })
     yield* runPhaseHook({ runtime, phase: 'Exchanged', transaction })
 
     if (operation !== 'FirstPublish') {
@@ -1243,10 +1414,18 @@ export const materializeCpAMemberMount = ({
         }),
       ),
     )
+    yield* syncDirectory({
+      runtime,
+      path: NodePath.dirname(
+        ownedCpAMountMetadataPath({ workspaceRoot: request.workspaceRoot, member: request.member }),
+      ),
+      reason: 'MetadataPublish',
+    })
     transaction = yield* updatePhase({
       transactionPath,
       transaction,
       phaseHint: 'MetadataPublished',
+      runtime,
     })
     yield* runPhaseHook({ runtime, phase: 'MetadataPublished', transaction })
 
@@ -1259,11 +1438,21 @@ export const materializeCpAMemberMount = ({
           recoveryPaths: [destinationPath, stagePath, transactionPath],
         })
       }
-      transaction = yield* updatePhase({ transactionPath, transaction, phaseHint: 'Cleanup' })
+      transaction = yield* updatePhase({
+        transactionPath,
+        transaction,
+        phaseHint: 'Cleanup',
+        runtime,
+      })
       yield* runPhaseHook({ runtime, phase: 'Cleanup', transaction })
       yield* deleteOldAtStage({ stagePath, oldIdentity })
+      yield* syncDirectory({
+        runtime,
+        path: NodePath.dirname(stagePath),
+        reason: 'OldCleanup',
+      })
     }
-    yield* removeTransaction(transactionPath)
+    yield* removeTransaction({ path: transactionPath, runtime })
     return { _tag: 'Published' as const, operation, destinationPath, metadata: newMetadata }
   }).pipe(
     Observability.withLabelSpan({
@@ -1356,26 +1545,41 @@ const validateTransactionPaths = ({
 const publishMetadataFromTransaction = ({
   workspaceRoot,
   transaction,
+  runtime,
 }: {
   workspaceRoot: string
   transaction: CpAMemberMountTransactionType
+  runtime: CpAMemberMountDurabilityRuntime
 }): Effect.Effect<void, CpAMemberMountError, FileSystem.FileSystem> =>
-  writeOwnedCpAMountMetadata({
-    workspaceRoot,
-    metadata: transaction.newIdentity.metadata,
-  }).pipe(
-    Effect.mapError((cause) =>
-      error({
-        reason: 'IoFailure',
-        path: transaction.destinationPath,
-        message: `Cannot roll forward cp-a metadata for '${transaction.member}'`,
-        recoveryPaths: [transaction.destinationPath, transaction.stagePath],
-        cause,
-      }),
-    ),
-  )
+  Effect.gen(function* () {
+    yield* writeOwnedCpAMountMetadata({
+      workspaceRoot,
+      metadata: transaction.newIdentity.metadata,
+    }).pipe(
+      Effect.mapError((cause) =>
+        error({
+          reason: 'IoFailure',
+          path: transaction.destinationPath,
+          message: `Cannot roll forward cp-a metadata for '${transaction.member}'`,
+          recoveryPaths: [transaction.destinationPath, transaction.stagePath],
+          cause,
+        }),
+      ),
+    )
+    yield* syncDirectory({
+      runtime,
+      path: NodePath.dirname(
+        ownedCpAMountMetadataPath({ workspaceRoot, member: transaction.member }),
+      ),
+      reason: 'MetadataPublish',
+    })
+  })
 
-/** Reconcile a recorded lifecycle transaction from observed inode and R6 identities, never phase hints. */
+/**
+ * Reconcile process interruption from observed inode and R6 identities, never phase hints. Directory
+ * fsync checkpoints order namespace durability across power loss; they do not fsync every staged file
+ * byte, so recovery treats failed R6 observation as ambiguous rather than claiming full byte durability.
+ */
 export const recoverCpAMemberMount = ({
   request: untrustedRequest,
   runtime,
@@ -1409,7 +1613,12 @@ export const recoverCpAMemberMount = ({
         })
       }
       yield* teardownBoundDirectory({ path: transaction.stagePath, identity })
-      yield* removeTransaction(transactionPath)
+      yield* syncDirectory({
+        runtime,
+        path: NodePath.dirname(transaction.stagePath),
+        reason: 'CandidateCleanup',
+      })
+      yield* removeTransaction({ path: transactionPath, runtime })
       return {
         _tag: 'Recovered' as const,
         action: 'RolledBack' as const,
@@ -1419,7 +1628,7 @@ export const recoverCpAMemberMount = ({
 
     if (transaction.operation === 'FirstPublish') {
       if (destination._tag === 'Missing' && stage._tag === 'Missing') {
-        yield* removeTransaction(transactionPath)
+        yield* removeTransaction({ path: transactionPath, runtime })
         return {
           _tag: 'Recovered' as const,
           action: 'RolledBack' as const,
@@ -1430,18 +1639,56 @@ export const recoverCpAMemberMount = ({
         return yield* rollbackCandidate
       }
       if (destination._tag === 'Missing' && stage._tag === 'New') {
-        yield* io({
+        yield* runCommand({
+          binary: runtime.mvPath,
+          args: [
+            '-T',
+            '--no-clobber',
+            '--no-copy',
+            transaction.stagePath,
+            transaction.destinationPath,
+          ],
           path: transaction.destinationPath,
-          message: `Cannot roll forward first cp-a publish`,
+          commandName: 'GNU mv no-clobber recovery publish',
           recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
-          try: () => rename(transaction.stagePath, transaction.destinationPath),
+        })
+        const candidateIdentity = transaction.newIdentity.candidateIdentity
+        const [stageAfterPublish, destinationAfterPublish] = yield* Effect.all([
+          lstatMaybe(transaction.stagePath),
+          lstatMaybe(transaction.destinationPath),
+        ])
+        if (
+          candidateIdentity === null ||
+          stageAfterPublish !== undefined ||
+          destinationAfterPublish === undefined ||
+          destinationAfterPublish.isDirectory() === false ||
+          identitiesEqual({
+            left: identityFromStat(destinationAfterPublish),
+            right: candidateIdentity,
+          }) === false
+        ) {
+          return yield* error({
+            reason: 'AmbiguousRecovery',
+            path: transaction.destinationPath,
+            message: 'Recovery no-clobber publish did not install the recorded candidate',
+            recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+          })
+        }
+        yield* syncDirectory({
+          runtime,
+          path: NodePath.dirname(transaction.destinationPath),
+          reason: 'FirstPublish',
         })
         destination = { _tag: 'New' }
         stage = { _tag: 'Missing' }
       }
       if (destination._tag === 'New' && stage._tag === 'Missing') {
-        yield* publishMetadataFromTransaction({ workspaceRoot: request.workspaceRoot, transaction })
-        yield* removeTransaction(transactionPath)
+        yield* publishMetadataFromTransaction({
+          workspaceRoot: request.workspaceRoot,
+          transaction,
+          runtime,
+        })
+        yield* removeTransaction({ path: transactionPath, runtime })
         return {
           _tag: 'Recovered' as const,
           action: 'RolledForward' as const,
@@ -1450,7 +1697,7 @@ export const recoverCpAMemberMount = ({
       }
     } else {
       if (destination._tag === 'Old' && stage._tag === 'Missing') {
-        yield* removeTransaction(transactionPath)
+        yield* removeTransaction({ path: transactionPath, runtime })
         return {
           _tag: 'Recovered' as const,
           action: 'RolledBack' as const,
@@ -1479,6 +1726,11 @@ export const recoverCpAMemberMount = ({
           commandName: 'GNU mv recovery exchange',
           recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
         })
+        yield* syncDirectory({
+          runtime,
+          path: NodePath.dirname(transaction.destinationPath),
+          reason: 'Exchange',
+        })
         destination = yield* observeTransactionPath({
           path: transaction.destinationPath,
           transaction,
@@ -1489,7 +1741,11 @@ export const recoverCpAMemberMount = ({
         destination._tag === 'New' &&
         (stage._tag === 'Old' || stage._tag === 'OldPartial' || stage._tag === 'Missing')
       ) {
-        yield* publishMetadataFromTransaction({ workspaceRoot: request.workspaceRoot, transaction })
+        yield* publishMetadataFromTransaction({
+          workspaceRoot: request.workspaceRoot,
+          transaction,
+          runtime,
+        })
         if (stage._tag !== 'Missing') {
           const oldIdentity = transaction.oldIdentity
           if (oldIdentity._tag === 'Missing') {
@@ -1505,8 +1761,13 @@ export const recoverCpAMemberMount = ({
             oldIdentity,
             allowPartial: stage._tag === 'OldPartial',
           })
+          yield* syncDirectory({
+            runtime,
+            path: NodePath.dirname(transaction.stagePath),
+            reason: 'OldCleanup',
+          })
         }
-        yield* removeTransaction(transactionPath)
+        yield* removeTransaction({ path: transactionPath, runtime })
         return {
           _tag: 'Recovered' as const,
           action: 'RolledForward' as const,
@@ -1532,8 +1793,10 @@ export const recoverCpAMemberMount = ({
 /** Explicitly remove a currently verified owned mount. Symlinks and foreign directories are refused. */
 export const teardownCpAMemberMount = ({
   request: untrustedRequest,
+  runtime = {},
 }: {
   request: CpAMemberMountTeardownRequest
+  runtime?: CpAMemberMountDurabilityRuntime
 }): Effect.Effect<CpAMemberMountResult, CpAMemberMountError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const request = yield* decodeTeardownRequest(untrustedRequest).pipe(
@@ -1581,6 +1844,11 @@ export const teardownCpAMemberMount = ({
     }
     yield* assertStoredOwnedTree({ path: destinationPath, expected: oldIdentity })
     yield* teardownBoundDirectory({ path: destinationPath, identity: oldIdentity.identity })
+    yield* syncDirectory({
+      runtime,
+      path: NodePath.dirname(destinationPath),
+      reason: 'MountTeardown',
+    })
     const metadataPath = ownedCpAMountMetadataPath({
       workspaceRoot: request.workspaceRoot,
       member: request.member,
@@ -1591,6 +1859,11 @@ export const teardownCpAMemberMount = ({
       try: async () => {
         await unlink(metadataPath)
       },
+    })
+    yield* syncDirectory({
+      runtime,
+      path: NodePath.dirname(metadataPath),
+      reason: 'MetadataRemove',
     })
     return { _tag: 'TornDown' as const, destinationPath }
   }).pipe(
