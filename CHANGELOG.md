@@ -61,6 +61,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-react**: verify warm-cache block identities recursively,
+  including nested blocks and child-page scopes. A stale nested cache now
+  reconciles untracked live descendants instead of appending duplicates, and
+  the persisted `CacheTree` exactly reflects the identities left live.
 - **Nix prepared dependencies**: normalize ordinary, non-injected local
   `file:` packages through pnpm's exact package-map locator before removing
   transient Source Input aliases. Restored CLI workspaces now resolve the
