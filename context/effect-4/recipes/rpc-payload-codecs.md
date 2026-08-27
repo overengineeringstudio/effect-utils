@@ -39,9 +39,11 @@ failure and message.
 ## Intended differences (alignment register entries)
 
 - RPC failure Cause bytes change from `{"_tag":"Fail",...}` to
-  `[{"_tag":"Fail",...}]` — v4 flattened Cause representation — accept this only for atomically
-  upgraded/internal RPC peers; require a protocol version or compatibility adapter anywhere peers
-  can run different majors or envelopes are persisted — blast radius is every RPC error boundary.
+  `[{"_tag":"Fail",...}]`, the v4 flattened Cause representation. The library
+  supports only its current format. Independently deployed consumers own the
+  same-contract peer upgrade, explicit cache/open-tab rollout policy, and live
+  verification at every HTTP RPC, SSR `Exit`, or persisted-envelope boundary;
+  mixed-major decoding is unsupported.
 
 ## Gotchas
 
