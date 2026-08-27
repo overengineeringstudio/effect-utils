@@ -37,8 +37,9 @@ Stage 2: frozen install
   -> public PnpmNodeModulesInfo / node_modules output
 ```
 
-Both actions remain internal to the public `pnpm_node_modules` rule. The label,
-default output, and `PnpmNodeModulesInfo` provider are unchanged. Stage 2 does
+Both actions remain internal to the public `pnpm_node_modules` rule. Its label,
+default output, and existing provider fields remain compatible; the provider also
+exposes the Stage-1 tree as `editor_inputs`. Stage 2 does
 not receive the full lockfile, workspace manifest, root manifest, all workspace
 package manifests, or the full patch map directly. Its only dependency-data
 bridge is the content digest of Stage 1's descriptor TREE; tool/runtime inputs
@@ -131,24 +132,93 @@ without weakening DEPS-R02.
 ## Editor Surface
 
 ```text
-<pkg>/node_modules -> ../../.editor-view/<cell>/node_modules   (stable link)
-.editor-view/<cell> -> .editor-view/.store/<cell>-<stamp>      (atomic flip)
+packages/@overeng/tui-core/node_modules
+  -> ../../.editor-view/tui-core/node_modules       (stable first hop)
+packages/.editor-view/tui-core
+  -> .store/tui-core-<editor-inputs-fingerprint>   (atomic current pointer)
+packages/.editor-view/.store/tui-core-<fingerprint>/
+  editor-view.json
+  node_modules/                                    (hardlink snapshot)
 ```
+
+The literal two-level first hop is part of the scoped contract. From
+`packages/@overeng/tui-core` it resolves to `packages/.editor-view`, not the
+repository-root `.editor-view`; `packages/.editor-view` is therefore the owning
+state root for scoped `packages/@overeng/*` editor views.
+
+`//packages/@overeng/tui-core:editor_inputs` exposes the canonical Stage-1
+descriptor tree carried by `PnpmNodeModulesInfo.editor_inputs`. The existing
+`:node_modules` default output and provider identity remain valid. The
+publisher fingerprints the built `:editor_inputs` artifact rather than
+reimplementing manifest discovery.
+
+Every published snapshot contains this repository-local record:
+
+```json
+{
+  "schema": "effect-utils/editor-view/v1",
+  "package": "packages/@overeng/tui-core",
+  "cell": "tui-core",
+  "target": "//packages/@overeng/tui-core:editor_inputs",
+  "editorInputsFingerprint": "<lowercase SHA-256 tree digest>",
+  "snapshot": ".store/tui-core-<editorInputsFingerprint>",
+  "nodeModulesTreeDigest": "<lowercase SHA-256 tree digest>"
+}
+```
+
+The tree digest begins with the `effect-utils/tree-digest/v1` domain separator.
+Entries are traversed by unsigned UTF-8 byte order. Each entry frames its kind
+and repository-relative path with an unsigned 64-bit big-endian byte length;
+regular files additionally frame size then bytes, symlinks frame their target,
+and directories frame their own entry. Unsupported special files and entries that mutate while hashing fail closed.
+
+Publication holds the exclusive `packages/.editor-view/.publish.lock`, created
+atomically. Any existing lock rejects publication immediately and prints the
+explicit token-gated `recover-lock` operation; there is no age heuristic,
+sleep, timeout, or automatic stale-lock theft. Under the lock the publisher:
+
+1. hashes the admitted `editor_inputs` and `node_modules` outputs;
+2. creates same-filesystem `.store/.candidate-*` state;
+3. invokes the immutable Nix GNU `cp -al` without a byte-copy fallback;
+4. verifies every regular file shares device and inode with the admitted tree,
+   verifies the complete candidate digest, and writes `editor-view.json`;
+5. renames the candidate to deterministic
+   `.store/tui-core-<editorInputsFingerprint>`;
+6. creates a same-directory candidate symlink and renames it over `tui-core`;
+7. installs the package first hop once. If root pnpm left a directory or other
+   entry there, immutable Nix GNU `mv --exchange --no-copy` swaps it with the
+   candidate link without an absent-path window, and the exchanged entry is
+   retained under `.legacy/`.
+
+An already-correct first hop is validated and never mutated during later
+refreshes. Published snapshots are immutable and are never deleted by publish,
+check, or lock recovery; snapshot garbage collection is outside this spec. A
+failure before the current-pointer rename leaves the old current view intact.
 
 The flip target is a `cp -al` snapshot of the action output, not `buck-out`
 itself: Buck deletes an action's output directory before re-running it, which
 would leave the stable link dangling for the whole action (measured 3.06 s
-window); the snapshot costs ~0.23 s and closes it entirely. A live tsserver
-resolves through the two-hop link and survives flips without restart; vitest
-runs through the same view.
+window). Hardlink snapshot publication closes that window without duplicating
+file bytes.
 
 ## Staleness Gate
 
-Before a materialized view is used, its recorded manifest fingerprint is
-compared against the repository's current manifests; mismatch fails with both
-fingerprints named (DEPS-R06). The gate runs in the refresh flow and in CI
-entry points. This inverts the status-quo failure mode, where a removed
-dependency stays silently green locally and only a fresh CI install notices.
+The scoped `buck2:tui-core:publish-editor` and
+`buck2:tui-core:check-editor` tasks each build the current `:editor_inputs` and
+`:node_modules` outputs with a task-private Buck daemon into ignored scratch,
+then stop the daemon and remove both scratch and its private Buck output. They
+call the pinned Bun publisher or checker respectively. The checker validates
+record schema and identity, both symlink hops, store containment, pointer
+liveness, snapshot completeness, and admitted versus recorded versus snapshot
+node_modules digests. It does not call tsgo as an oracle.
+
+Missing, malformed, escaping, dangling, incomplete, or stale state fails with
+both the recorded and current editor-input fingerprints named. The scoped
+publish/check tasks are intentionally not dependencies of global check, test,
+or TypeScript tasks during this cutover.
+`buck2:tui-core:recover-editor-lock` is the only recovery surface; it requires
+the exact printed owner token through `EDITOR_VIEW_LOCK_TOKEN` and neither
+builds nor mutates snapshots (DEPS-R06).
 
 ## Relationship to the Closure Compiler
 

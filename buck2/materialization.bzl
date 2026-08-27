@@ -3,6 +3,7 @@
 load("@root//buck2/toolchains:defs.bzl", "PnpmMaterializerToolchainInfo")
 
 PnpmNodeModulesInfo = provider(fields = {
+    "editor_inputs": Artifact,
     "node_modules": Artifact,
     "toolchain_identity": str,
 })
@@ -93,6 +94,7 @@ def _pnpm_node_modules_impl(ctx):
     return [
         DefaultInfo(default_output = out),
         PnpmNodeModulesInfo(
+            editor_inputs = descriptor,
             node_modules = out,
             toolchain_identity = toolchain.identity,
         ),
@@ -122,6 +124,19 @@ pnpm_node_modules = rule(
             default = "toolchains//:pnpm_materializer",
             providers = [PnpmMaterializerToolchainInfo],
         )),
+    },
+)
+
+
+def _pnpm_editor_inputs_impl(ctx):
+    editor_inputs = ctx.attrs.node_modules[PnpmNodeModulesInfo].editor_inputs
+    return [DefaultInfo(default_output = editor_inputs)]
+
+
+pnpm_editor_inputs = rule(
+    impl = _pnpm_editor_inputs_impl,
+    attrs = {
+        "node_modules": attrs.dep(providers = [PnpmNodeModulesInfo]),
     },
 )
 
