@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
-import { buck2SemanticFingerprint, renderBuck2Visibility } from '../../../genie/buck2/mod.ts'
+import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
 import { createGenieOutput } from '../genie/src/runtime/core.ts'
 
 const rootManifestPath = path.join(process.cwd(), 'package.json')
@@ -95,16 +95,14 @@ const workspacePaths: readonly string[] = workspacesValue.toSorted((left, right)
 )
 const packageSources = discoverPackageSources(packagePath)
 const patches = ['packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch'] as const
-const visibility = ['PUBLIC'] as const
-const runtime = 'effect_utils//:packages/@overeng/buck2-tools/src/buck2-materializer.ts'
-const descriptorModule =
-  'effect_utils//:packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts'
-const normalizer = 'effect_utils//:packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts'
+const runtime = '//:packages/@overeng/buck2-tools/src/buck2-materializer.ts'
+const descriptorModule = '//:packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts'
+const normalizer = '//:packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts'
 
 const sourceLabel = (repoRelativePath: string): string =>
   repoRelativePath.startsWith(`${packagePath}/`) === true
     ? repoRelativePath.slice(packagePath.length + 1)
-    : `effect_utils//:${repoRelativePath}`
+    : `//:${repoRelativePath}`
 
 const starlarkString = (value: string): string => JSON.stringify(value)
 
@@ -140,7 +138,6 @@ const data = {
   normalizer,
   patches,
   runtime,
-  visibility,
   workspacePaths,
 }
 const fingerprint = buck2SemanticFingerprint({
@@ -160,15 +157,15 @@ const stringify = (): string => {
       .join(', ')}`,
     `# Regenerate: ${regenerationCommand}`,
     '',
-    'load("@effect_utils//buck2:materialization.bzl", "package_tree", "pnpm_editor_inputs", "pnpm_node_modules")',
-    'load("@effect_utils//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")',
+    'load("//buck2:materialization.bzl", "package_tree", "pnpm_editor_inputs", "pnpm_node_modules")',
+    'load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")',
     '',
     'pnpm_node_modules(',
     '    name = "node_modules",',
     '    package_name = "@overeng/tui-core",',
-    '    root_package_json = "effect_utils//:package.json",',
-    '    lockfile = "effect_utils//:pnpm-lock.yaml",',
-    '    workspace_manifest = "effect_utils//:pnpm-workspace.yaml",',
+    '    root_package_json = "//:package.json",',
+    '    lockfile = "//:pnpm-lock.yaml",',
+    '    workspace_manifest = "//:pnpm-workspace.yaml",',
     ...renderMap({
       name: 'workspace_package_manifests',
       entries: workspaceManifestEntries,
@@ -177,13 +174,11 @@ const stringify = (): string => {
     `    runtime = ${starlarkString(runtime)},`,
     `    descriptor_module = ${starlarkString(descriptorModule)},`,
     `    normalizer = ${starlarkString(normalizer)},`,
-    renderBuck2Visibility({ visibility }),
     ')',
     '',
     'pnpm_editor_inputs(',
     '    name = "editor_inputs",',
     '    node_modules = ":node_modules",',
-    renderBuck2Visibility({ visibility }),
     ')',
     '',
     'package_tree(',
@@ -192,19 +187,16 @@ const stringify = (): string => {
     ...renderMap({ name: 'files', entries: packageFileEntries }),
     `    runtime = ${starlarkString(runtime)},`,
     '    workspace_siblings = {},',
-    renderBuck2Visibility({ visibility }),
     ')',
     '',
     'tsgo_typecheck(',
     '    name = "typecheck",',
     '    package_tree = ":package_tree",',
-    renderBuck2Visibility({ visibility }),
     ')',
     '',
     'tsgo_emit(',
     '    name = "dist",',
     '    package_tree = ":package_tree",',
-    renderBuck2Visibility({ visibility }),
     ')',
     '',
   ]

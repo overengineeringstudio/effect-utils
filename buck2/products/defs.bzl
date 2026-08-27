@@ -1,7 +1,7 @@
 """Language-neutral portable build-product packaging contract."""
 
-load("@effect_utils//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints")
-load("@effect_utils//buck2/provenance:defs.bzl", "ProductExecutableInfo")
+load("@root//buck2/platforms:defs.bzl", "ProductPlatformInfo", "native_execution_constraints")
+load("@root//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 
 BuildProductInfo = provider(fields = {
     "descriptor": Artifact,
@@ -75,7 +75,7 @@ _build_product = rule(
         "entrypoint": attrs.string(),
         "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
         "_descriptor_tool": attrs.default_only(attrs.exec_dep(
-            default = "effect_utils//toolchains:product_tool",
+            default = "toolchains//:product_tool",
             providers = [RunInfo],
         )),
     },
