@@ -199,12 +199,6 @@ let
       archive-tool effect-utils/buck2-archive-tool/v1 ${
         buck2Stage0Definition."archive-tool"
       }/bin/buck2-archive-tool \
-      closure-tool effect-utils/buck2-closure-tool/v1 ${
-        buck2Stage0Definition."closure-tool"
-      }/bin/buck2-closure-tool \
-      package-evidence effect-utils/buck2-package-evidence/v1 ${
-        buck2Stage0Definition."package-evidence"
-      }/bin/buck2-package-evidence \
       product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product
   '';
   # CLI packages built with Nix (for hash management)
@@ -670,8 +664,6 @@ in
     repoFlake.packages.${currentSystem}.otel-scrape
     # Nix-distributed Buck binary used by direct repository tasks.
     buck2Machine
-    buck2Stage0Definition.closure-tool
-    buck2Stage0Definition.package-evidence
     buck2Stage0Definition.product
     cliBuildStamp.package
     ciToolsSourceCli
@@ -924,14 +916,8 @@ in
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       scratch="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/editor-publish-inputs.XXXXXX")"
-      isolation="editor-publish-$(${pkgs.coreutils}/bin/basename "$scratch")"
       cleanup_editor_publish() {
         status=$?
-        (
-          cd "$root"
-          ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" kill
-        ) >/dev/null 2>&1 || true
-        ${pkgs.coreutils}/bin/rm -rf -- "$root/buck-out/$isolation" || status=$?
         ${pkgs.coreutils}/bin/rm -rf -- "$scratch" || status=$?
         trap - EXIT
         exit "$status"
@@ -939,8 +925,8 @@ in
       trap cleanup_editor_publish EXIT
       (
         cd "$root"
-        ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" build //packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
-        ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" build //packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
+        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
+        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
       )
       ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" publish \
         --repo-root "$root" \
@@ -960,14 +946,8 @@ in
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       scratch="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/editor-check-inputs.XXXXXX")"
-      isolation="editor-check-$(${pkgs.coreutils}/bin/basename "$scratch")"
       cleanup_editor_check() {
         status=$?
-        (
-          cd "$root"
-          ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" kill
-        ) >/dev/null 2>&1 || true
-        ${pkgs.coreutils}/bin/rm -rf -- "$root/buck-out/$isolation" || status=$?
         ${pkgs.coreutils}/bin/rm -rf -- "$scratch" || status=$?
         trap - EXIT
         exit "$status"
@@ -975,8 +955,8 @@ in
       trap cleanup_editor_check EXIT
       (
         cd "$root"
-        ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" build //packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
-        ${buck2Machine}/bin/buck2 --isolation-dir "$isolation" build //packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
+        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
+        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
       )
       ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" check \
         --repo-root "$root" \
@@ -1009,44 +989,33 @@ in
     exec = trace.exec "buck2:tui-core:materialize-dist" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      package_dir="$root/packages/@overeng/tui-core"
-      dist="$package_dir/dist"
-      staging_root="$(${pkgs.coreutils}/bin/mktemp -d "$package_dir/.dist-buck2.XXXXXX")"
-      staging="$staging_root/dist"
-      cleanup_staging() {
-        status=$?
-        ${pkgs.coreutils}/bin/chmod -R u+w "$staging_root" || status=$?
-        ${pkgs.coreutils}/bin/rm -rf -- "$staging_root" || status=$?
-        trap - EXIT
-        exit "$status"
-      }
-      trap cleanup_staging EXIT
-
-      (
-        cd "$root"
-        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:dist --out "$staging"
-      )
-      if [ ! -d "$staging" ]; then
-        echo "Buck target //packages/@overeng/tui-core:dist did not materialize a directory" >&2
-        exit 1
-      fi
-
-      if [ -e "$dist" ] || [ -L "$dist" ]; then
-        ${pkgs.coreutils}/bin/mv --exchange --no-copy -T "$staging" "$dist"
-      else
-        ${pkgs.coreutils}/bin/mv --no-copy -T "$staging" "$dist"
-      fi
+      export PATH=${lib.makeBinPath [ pkgs.coreutils ]}
+      export BUCK2_BIN=${buck2Machine}/bin/buck2
+      exec ${pkgs.bash}/bin/bash "$root/scripts/tui-core-materialize-dist.sh" "$root"
     '';
   };
 
   tasks."ts:check".after = [ "buck2:tui-core:materialize-dist" ];
 
+  tasks."buck2:task-guards:check" = {
+    description = "Check tui-core publication failure paths and evaluated task ordering";
+    exec = trace.exec "buck2:task-guards:check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      ${pkgs.bash}/bin/bash "$root/nix/devenv-modules/tasks/shared/tests/tui-core-materialize-dist.test.sh"
+      DEVENV_TASKS_JSON="$root/.devenv/gc/task-config-devenv-config-task-config" \
+        NODE_BIN=${pkgs.nodejs}/bin/node exec ${pkgs.bash}/bin/bash \
+        "$root/nix/devenv-modules/tasks/shared/tests/devenv-task-graph.test.sh"
+    '';
+  };
+
   tasks."buck2:check" = {
-    description = "Build the surviving Buck2 toolchain surface and audit its cross-cell provider identity";
+    description = "Build the real tui-core typecheck and surviving archive/product Buck2 surface";
     after = [
       "buck2:capabilities:project"
       "buck2:capabilities:test"
       "buck2:nix-bridge:check"
+      "buck2:task-guards:check"
     ];
     exec = trace.exec "buck2:check" ''
       set -euo pipefail
@@ -1055,9 +1024,8 @@ in
         toolchains//:cross_cell_provider_identity \
         toolchains//:cross_cell_product_identity
       exec ${buck2Machine}/bin/buck2 build \
+        //packages/@overeng/tui-core:typecheck \
         toolchains//:archive_tool \
-        toolchains//:closure_tool \
-        toolchains//:package_evidence_tool \
         toolchains//:product_tool \
         --local-only
     '';
