@@ -25,9 +25,8 @@ jj). Verdict per attack: BROKEN with evidence, or HOLDS.
 
 - **Attack 1 — hidden in-mount write consumers: BROKEN.** Composed
   workspaces run destructive writes inside member mounts today as
-  configured policy: overeng's `devenv.nix` declares four pnpm task modules
-  with `workspaceRoot = "repos/<member>"` (effect-utils, livestore,
-  diffstream, private-shared), and its `nestedRepoPreInstall` (~line 58)
+  configured policy: a private downstream repository's `devenv.nix` declares four pnpm task modules
+  with `workspaceRoot = "repos/<member>"` (effect-utils, livestore, and two private members), and its `nestedRepoPreInstall` (~line 58)
   begins `find . -type d -name dist … -exec rm -rf {} +` inside three
   member trees it does not own; dotfiles `devenv.nix:2639` executes member
   source via bun out of `repos/effect-utils`, resolving bare specifiers
@@ -106,7 +105,7 @@ jj). Verdict per attack: BROKEN with evidence, or HOLDS.
   contradiction, and removes the `<root-repo> = .` special case from the
   generator. Cost: relocates the workspace model one level down (fleet
   git-wrapper store-root rule, one-time migration). It does NOT solve
-  Attack 1 (overeng writes into members it does not own either way).
+  Attack 1 (the private downstream repo writes into members it does not own either way).
   Paired suggestion: ZFS-resident disposable composition roots retire the
   disk axis. Status: q13 (2026-08-27) chose pause-and-prototype before
   committing.
@@ -133,4 +132,4 @@ list. Feeds COMP-R02 (hub identity duality is a live violation),
 COMP-R10's migration guards (S0 + foreign-real-dir refusal), the workflow
 contract rev 3, and two newly named open questions with owners required:
 cross-member TypeScript consumption, and retirement of in-mount write
-consumers in overeng/dotfiles devenv configurations.
+consumers in private-downstream and dotfiles devenv configurations.

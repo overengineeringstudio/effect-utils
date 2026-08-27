@@ -78,8 +78,8 @@ RENAME_EXCHANGE advance.
   cp -a/chmod semantics — required before Darwin admission.
 - tierA-scale build validation (fixture-scale digest claims are exact but
   small); root-cause the genrule lookup/upload key-mismatch anomaly.
-- Named retirement phase for legacy in-mount write consumers (overeng pnpm
-  task modules, dotfiles bun-from-mount); those compositions keep symlink
+- Named retirement phase for legacy in-mount write consumers (a private downstream repo's
+  pnpm task modules, dotfiles bun-from-mount); those compositions keep symlink
   mounts and stay outside the shared cache namespace until retired.
 - Cross-member TypeScript consumption: owned open question (types for
   consumed members without node_modules/dist in read-only mounts).

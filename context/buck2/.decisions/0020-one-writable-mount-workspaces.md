@@ -92,8 +92,8 @@ epic:
   and refuse-to-delete-foreign real directories (18 exist in the wild).
 - mr code change for the `CI=true` silent-detach trap (loud diagnostic or
   refusal), not a contract line.
-- A named retirement phase for the legacy in-mount write consumers (overeng
-  pnpm task modules, dotfiles bun-from-mount execution) — those compositions
+- A named retirement phase for the legacy in-mount write consumers (a private
+  downstream repo's pnpm task modules, dotfiles bun-from-mount execution) — those compositions
   keep symlink mounts and stay out of the shared cache namespace until
   retired.
 - Cross-member TypeScript consumption (types for consumed members without
