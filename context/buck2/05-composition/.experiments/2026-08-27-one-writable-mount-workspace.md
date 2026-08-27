@@ -115,3 +115,22 @@ default member cwd), the per-member ignore audit, the `buck2 root` and
 teardown items in the mr command surface, and roadmap Phase 2. The macOS
 primitive verification, tierA build validation, and the genrule key anomaly
 carry forward as Phase-2 obligations.
+
+## Amendment 1 — Apparent Genrule Key Mismatch Retracted
+
+A 2026-08-27 minimal reproduction disproved the claimed target-key split. For
+every cacheable genrule/custom-run shape tested, the Buck event
+`CacheQuery.action_digest` and `CacheUpload.action_digest` matched, and the
+wiped-daemon repeat hit the prior upload (12/12 cacheable repeats; 0/14
+mismatches across eight shapes).
+
+The extra server-side AC PUT was Buck's RE write-permission probe. Its decoded
+command was `/command -to check permission EMPTY_ACTION_RESULT_…`; it was not a
+target action. The plain genrule queried AC but correctly emitted no target PUT
+because Prelude set `allows_cache_upload=false`. Pairing that GET with the next
+uncorrelated server-log PUT created the false mismatch. Target cache identity
+claims must correlate Buck-owned CacheQuery/CacheUpload event records, not
+adjacent server access lines.
+
+Issue #1160 is therefore closed as a corrected observation, and the anomaly no
+longer gates tier-A validation.

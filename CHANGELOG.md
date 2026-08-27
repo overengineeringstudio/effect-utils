@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+
 - **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
   adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
   lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`

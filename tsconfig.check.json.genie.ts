@@ -1,7 +1,4 @@
-import {
-  isRootTsconfigCheckProject,
-  rootTsconfigProjects,
-} from './genie/tsconfig-projects.ts'
+import { isRootTsconfigCheckProject, rootTsconfigProjects } from './genie/tsconfig-projects.ts'
 import type { TSConfigArgs } from './packages/@overeng/genie/src/runtime/mod.ts'
 import { tsconfigJson } from './packages/@overeng/genie/src/runtime/mod.ts'
 
