@@ -189,9 +189,7 @@
           // providerCliPackages
           // {
             inherit otelite otel-scrape;
-            buck2-closure-tool = buck2-stage0-tools.closure-tool;
             buck2-archive-tool = buck2-stage0-tools.archive-tool;
-            buck2-package-evidence = buck2-stage0-tools.package-evidence;
             buck2-product = buck2-stage0-tools.product;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;

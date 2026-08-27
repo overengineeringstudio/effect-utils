@@ -32,16 +32,6 @@ let
       packageRoot = workspaceRoot + "/buck2-tools/archive-tool";
       workspaceMember = "buck2-tools/archive-tool";
     };
-    closure-tool = {
-      package = "buck2-closure-tool";
-      packageRoot = workspaceRoot + "/buck2-tools/closure-tool";
-      workspaceMember = "buck2-tools/closure-tool";
-    };
-    package-evidence = {
-      package = "buck2-package-evidence";
-      packageRoot = workspaceRoot + "/buck2-tools/package-evidence";
-      workspaceMember = "buck2-tools/package-evidence";
-    };
     product = {
       package = "buck2-product";
       packageRoot = workspaceRoot + "/buck2-tools/product";
@@ -92,7 +82,5 @@ in
   source-inputs = lib.mapAttrs (
     _: definition: lib.fileset.toList (mkSourceFileset definition.packageRoot)
   ) toolDefinitions;
-  closure-tool = mkTool toolDefinitions.closure-tool;
-  package-evidence = mkTool toolDefinitions.package-evidence;
   product = mkTool toolDefinitions.product;
 }

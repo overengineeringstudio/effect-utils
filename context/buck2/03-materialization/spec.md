@@ -220,10 +220,10 @@ or TypeScript tasks during this cutover.
 the exact printed owner token through `EDITOR_VIEW_LOCK_TOKEN` and neither
 builds nor mutates snapshots (DEPS-R06).
 
-## Relationship to the Closure Compiler
+## Relationship to Exact Closure Materialization
 
-The exact lockfile-closure compiler in `@overeng/buck2-tools` remains dormant
-as the front-end for a future exact-materialization tier (per-package fetch
-and verify materializers). The deploy-based action is the same declared-input
-boundary, so upgrading tiers later swaps the implementation behind the target
-without reworking consumers.
+The retired package-evidence regime has no retained closure compiler. The
+current deploy-based action owns the declared-input boundary directly. A future
+per-package fetch-and-verify tier must introduce its closure implementation
+with a live consumer and pass the Buck admission contract rather than reviving
+unused evidence infrastructure.

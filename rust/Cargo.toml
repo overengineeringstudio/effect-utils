@@ -5,8 +5,6 @@ members = [
   "../packages/@overeng/otelite",
   "buck2-tools/archive-tool",
   "buck2-tools/core",
-  "buck2-tools/closure-tool",
-  "buck2-tools/package-evidence",
   "buck2-tools/product",
 ]
 
