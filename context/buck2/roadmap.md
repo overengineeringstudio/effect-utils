@@ -74,8 +74,11 @@ RENAME_EXCHANGE advance.
   `[project] ignore` audit, and workspace teardown command.
 - Member portability in effect-utils: label rewrites, cross-cell visibility
   in genie's projection, delete the member `.buckconfig`.
-- macOS verification of RENAME_EXCHANGE (GNU `mv --exchange` on APFS) plus
-  cp -a/chmod semantics — required before Darwin admission.
+- macOS verification: DONE 2026-08-27 (decision 0020 Amendment 1) — Darwin
+  admission proceeds; cp -a clones on APFS (~0 disk); R6 post-condition
+  mandatory on Darwin. Still gating the Darwin ADVANCE path only: FSEvents
+  invalidation confirmation in a real login session, and the darwin digest
+  probe on a profiled Mac worktree.
 - tierA-scale build validation (fixture-scale digest claims are exact but
   small); root-cause the genrule lookup/upload key-mismatch anomaly.
 - Named retirement phase for legacy in-mount write consumers (a private downstream repo's
