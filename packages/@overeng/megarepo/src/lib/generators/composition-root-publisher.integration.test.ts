@@ -60,6 +60,7 @@ const memberManifest = ({
   cell,
   mount,
   projectIgnore: [],
+  distOverlays: [],
   capabilities: [],
 })
 
@@ -247,6 +248,29 @@ describe('composition root publisher', () => {
         const after = yield* Effect.promise(() => stat(NodePath.join(fixture.root, '.buckconfig')))
         expect(result.changedPaths).toEqual([])
         expect(after.mtimeMs).toBe(before.mtimeMs)
+      }),
+    ),
+  )
+
+  it.effect('strictly decodes and carries member dist overlays without publishing them yet', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const alpha = {
+          ...memberManifest({ memberKey: 'alpha' }),
+          distOverlays: [{ target: '//packages/app:dist', destination: 'dist/app' }],
+        }
+        const fixture = yield* makeFixture({
+          members: ['alpha'],
+          manifests: { alpha },
+        })
+        const result = yield* publishCompositionRoot(
+          optionsFor({ fixture, memberKeys: ['alpha'], lockToken: 'overlay-token' }),
+        )
+        expect(result.memberManifests[0]?.manifest.distOverlays).toEqual(alpha.distOverlays)
+        const config = (yield* readGenerated(fixture, '.buckconfig')).toString()
+        expect(config).not.toContain('//packages/app:dist')
+        expect(config).not.toContain('dist/app')
+        expect(yield* exists(NodePath.join(fixture.root, 'repos/alpha/dist/app'))).toBe(false)
       }),
     ),
   )
