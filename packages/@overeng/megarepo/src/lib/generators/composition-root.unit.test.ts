@@ -328,6 +328,79 @@ describe('composition determinism and detector coverage', () => {
     expect(permuted).toEqual(first)
   })
 
+  it('uses locale-independent code-unit order for every canonical collection', () => {
+    const normalized = decodeCompositionRootInput(
+      input({
+        members: [
+          {
+            memberKey: 'member-underscore',
+            manifest: manifest({ cell: 'a_b', memberKey: 'member-underscore' }),
+          },
+          {
+            memberKey: 'member-hyphen',
+            manifest: manifest({
+              cell: 'a-b',
+              memberKey: 'member-hyphen',
+              projectIgnore: ['item_x', 'item.x', 'item-x'],
+              capabilities: [capability('tool_x'), capability('tool.x'), capability('tool-x')],
+            }),
+          },
+        ],
+        platformHubCell: 'a-b',
+        cacheSections: [
+          { section: 'cache_x', entries: [] },
+          {
+            section: 'cache-x',
+            entries: [
+              { key: 'key_x', value: '3' },
+              { key: 'key.x', value: '2' },
+              { key: 'key-x', value: '1' },
+            ],
+          },
+          { section: 'cache.x', entries: [] },
+        ],
+      }),
+    )
+
+    expect(normalized.members.map((member) => member.manifest.cell)).toEqual(['a-b', 'a_b'])
+    expect(normalized.members[0]?.manifest.projectIgnore).toEqual(['item-x', 'item.x', 'item_x'])
+    expect(normalized.members[0]?.manifest.capabilities.map((item) => item.toolId)).toEqual([
+      'tool-x',
+      'tool.x',
+      'tool_x',
+    ])
+    expect(normalized.cacheSections.map((section) => section.section)).toEqual([
+      'cache-x',
+      'cache.x',
+      'cache_x',
+    ])
+    expect(normalized.cacheSections[0]?.entries.map((entry) => entry.key)).toEqual([
+      'key-x',
+      'key.x',
+      'key_x',
+    ])
+
+    const digest = `sha256:${'0'.repeat(64)}`
+    const canonicalManifest = {
+      schemaVersion: 1,
+      files: [
+        { path: 'a-b', mode: 0o644, sha256: digest },
+        { path: 'a.b', mode: 0o644, sha256: digest },
+        { path: 'a_b', mode: 0o644, sha256: digest },
+      ],
+    }
+    expect(
+      Schema.decodeUnknownSync(CompositionGenerationManifestSchema, {
+        onExcessProperty: 'error',
+      })(canonicalManifest).files.map((file) => file.path),
+    ).toEqual(['a-b', 'a.b', 'a_b'])
+    expect(() =>
+      Schema.decodeUnknownSync(CompositionGenerationManifestSchema, {
+        onExcessProperty: 'error',
+      })({ ...canonicalManifest, files: canonicalManifest.files.toReversed() }),
+    ).toThrow(/byte-sorted/u)
+  })
+
   it.prop(
     'emits exactly one detector clause for every member cell',
     [
@@ -414,6 +487,36 @@ describe('generation manifest and output schema', () => {
         `sha256:${createHash('sha256').update(generated.bytes).digest('hex')}`,
       )
     }
+  })
+
+  it.each([
+    ['', 'empty'],
+    ['/absolute', 'absolute'],
+    ['.', 'dot'],
+    ['..', 'parent'],
+    ['../outside', 'leading parent'],
+    ['nested/../outside', 'inner parent'],
+    ['nested/./file', 'inner dot'],
+    ['nested//file', 'empty segment'],
+    ['nested\\file', 'backslash'],
+  ])('rejects %s as a generated and ownership %s path', (path) => {
+    const generatedFile = { path, mode: 0o644, bytes: new Uint8Array() }
+    expect(() =>
+      Schema.decodeUnknownSync(CompositionRootOutputSchema, {
+        onExcessProperty: 'error',
+      })({
+        files: [generatedFile, { path: '.buckconfig', mode: 0o644, bytes: new Uint8Array() }],
+      }),
+    ).toThrow()
+
+    expect(() =>
+      Schema.decodeUnknownSync(CompositionGenerationManifestSchema, {
+        onExcessProperty: 'error',
+      })({
+        schemaVersion: 1,
+        files: [{ path, mode: 0o644, sha256: `sha256:${'0'.repeat(64)}` }],
+      }),
+    ).toThrow()
   })
 
   it('canonically encodes input defaults and round-trips output bytes', () => {
