@@ -5,12 +5,17 @@ import { expect } from 'vitest'
 import {
   OWNED_WORKTREE_ACQUISITION_VERSION,
   OwnedWorktreeAcquisitionJournal,
+  OwnedWorktreeAcquisitionLockOwner,
   OwnedWorktreeAcquisitionState,
   OwnedWorktreeName,
 } from './owned-worktree-acquisition-schema.ts'
 
 const decodeName = Schema.decodeUnknownSync(OwnedWorktreeName)
 const decodeState = Schema.decodeUnknownSync(OwnedWorktreeAcquisitionState)
+const decodeLockOwner = Schema.decodeUnknownSync(OwnedWorktreeAcquisitionLockOwner, {
+  errors: 'all',
+  onExcessProperty: 'error',
+})
 const decodeJournal = Schema.decodeUnknownSync(OwnedWorktreeAcquisitionJournal, {
   errors: 'all',
   onExcessProperty: 'error',
@@ -31,6 +36,18 @@ describe('OwnedWorktreeAcquisition schema', () => {
     for (const invalid of ['', '.', '..', '../owner', 'repos/owner', 'owner\\nested', '-owner']) {
       expect(() => decodeName(invalid), invalid).toThrow()
     }
+  })
+
+  it('strictly validates durable lock owner pid and exact token', () => {
+    const owner = {
+      nonce: 'a'.repeat(32),
+      pid: 42,
+      version: OWNED_WORKTREE_ACQUISITION_VERSION,
+    }
+    expect(decodeLockOwner(owner)).toEqual(owner)
+    expect(() => decodeLockOwner({ ...owner, nonce: 'short' })).toThrow()
+    expect(() => decodeLockOwner({ ...owner, pid: 0 })).toThrow()
+    expect(() => decodeLockOwner({ ...owner, extra: true })).toThrow()
   })
 
   it('strictly validates journal identity and canonical paths', () => {

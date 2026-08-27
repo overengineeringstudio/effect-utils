@@ -39,6 +39,20 @@ const Base64Bytes = Schema.String.check(
   ),
 )
 
+/** Exact token binding one durable lifecycle lock owner. */
+export const OwnedWorktreeAcquisitionLockToken = Schema.String.check(
+  Schema.isPattern(/^[0-9a-f]{32}$/u),
+).annotate({ identifier: 'Megarepo.OwnedWorktreeAcquisitionLockToken' })
+export type OwnedWorktreeAcquisitionLockToken = typeof OwnedWorktreeAcquisitionLockToken.Type
+
+/** Strict durable owner record shared by live-lock errors and stale-lock recovery. */
+export const OwnedWorktreeAcquisitionLockOwner = Schema.Struct({
+  nonce: OwnedWorktreeAcquisitionLockToken,
+  pid: Schema.Int.check(Schema.isGreaterThan(0)),
+  version: Schema.Literal(OWNED_WORKTREE_ACQUISITION_VERSION),
+}).annotate({ identifier: 'Megarepo.OwnedWorktreeAcquisitionLockOwner' })
+export type OwnedWorktreeAcquisitionLockOwner = typeof OwnedWorktreeAcquisitionLockOwner.Type
+
 /** Closed diagnostic journal state set; recovery still trusts observed paths and Git. */
 export const OwnedWorktreeAcquisitionState = Schema.Literals([
   'prepared',
@@ -120,6 +134,7 @@ export class OwnedWorktreeAcquisitionError extends Schema.TaggedError<OwnedWorkt
     reason: Schema.Literals([
       'InvalidRequest',
       'AcquisitionLocked',
+      'StaleLockRecoveryRefused',
       'PreflightRefused',
       'Collision',
       'GitIdentityConflict',
