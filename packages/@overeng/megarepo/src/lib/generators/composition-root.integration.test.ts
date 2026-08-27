@@ -18,6 +18,7 @@ const makeInput = (resolvedBuckExecutable: string): CompositionRootInput => ({
         cell: 'alpha',
         mount: 'repos/alpha',
         projectIgnore: [],
+        distOverlays: [],
         capabilities: [],
       },
     },
