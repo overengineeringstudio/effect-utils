@@ -1,4 +1,4 @@
-load("//buck2:materialization.bzl", "export_materialization_inputs")
+load("@effect_utils//buck2:materialization.bzl", "export_materialization_inputs")
 
 # Exact root-package inputs for tui-core dependency materialization.
 _TUI_CORE_MATERIALIZATION_INPUTS = [
