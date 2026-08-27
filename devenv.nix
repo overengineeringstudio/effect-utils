@@ -97,14 +97,57 @@ let
     name = "ci-tools";
     entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
   };
-  buck2Machine = pkgs.buck2;
-  buck2ExecutionPlatform =
-    {
-      x86_64-linux = "x86_64-linux";
-      aarch64-linux = "aarch64-linux";
-      aarch64-darwin = "aarch64-macos";
-    }
-    .${currentSystem} or (throw "Buck2 does not admit execution platform ${currentSystem}");
+  buck2Release = rec {
+    version = "2026-08-22";
+    releaseBaseUrl = "https://github.com/facebook/buck2/releases/download/${version}";
+    prelude = rec {
+      revision = "b662bc5f374762afc05e7033d6a0f8d4da462d45";
+      url = "https://github.com/facebook/buck2-prelude/archive/${revision}.tar.gz";
+      hash = "sha256-sblbKPjU4t/kK0DyCt16/KW6DqmZaJRA/lXXyE3Ez1k=";
+    };
+    platforms = {
+      x86_64-linux = {
+        executionPlatform = "x86_64-linux";
+        suffix = "x86_64-unknown-linux-gnu";
+        buck2Hash = "sha256-ZcsR/hR5Szrz5zK2Up8scs5OXZKdEeYMAcMfXMuDi6c=";
+        rustProjectHash = "sha256-oFfEizUVfMsG7Q33HXf3API5INeaLiXEAsIkjLwENoU=";
+      };
+      aarch64-linux = {
+        executionPlatform = "aarch64-linux";
+        suffix = "aarch64-unknown-linux-gnu";
+        buck2Hash = "sha256-935OTtLIOgWqh0vFfC+P64yElBLQkWdLNccion3Ph5o=";
+        rustProjectHash = "sha256-4zhvmVOM/w+R8VJ74HoNhrkLM4gX6MxrXvHc+Q5Kikg=";
+      };
+      aarch64-darwin = {
+        executionPlatform = "aarch64-macos";
+        suffix = "aarch64-apple-darwin";
+        buck2Hash = "sha256-odZQ/iiMmM0XCMk6hO2lvRtQ5PCQ93WeSkjtKXfDNS8=";
+        rustProjectHash = "sha256-1kI0OHkBV8Cq9YR3T2Fyvn9jk9ZHD9sDD/Zx5eCDk3M=";
+      };
+    };
+  };
+  buck2ReleasePlatform =
+    buck2Release.platforms.${currentSystem}
+      or (throw "Buck2 release ${buck2Release.version} does not support ${currentSystem}");
+  buck2Machine = pkgs.buck2.overrideAttrs (oldAttrs: {
+    version = "unstable-${buck2Release.version}";
+    srcs = [
+      (pkgs.fetchurl {
+        url = "${buck2Release.releaseBaseUrl}/buck2-${buck2ReleasePlatform.suffix}.zst";
+        hash = buck2ReleasePlatform.buck2Hash;
+      })
+      (pkgs.fetchurl {
+        url = "${buck2Release.releaseBaseUrl}/rust-project-${buck2ReleasePlatform.suffix}.zst";
+        hash = buck2ReleasePlatform.rustProjectHash;
+      })
+    ];
+    passthru = oldAttrs.passthru // {
+      prelude = pkgs.fetchurl {
+        inherit (buck2Release.prelude) url hash;
+      };
+    };
+  });
+  buck2ExecutionPlatform = buck2ReleasePlatform.executionPlatform;
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
   buck2CapabilityProjectionTools = [
     pkgs.bash
@@ -847,7 +890,7 @@ in
     description = "Atomically project exact Nix support capabilities for Buck2 analysis";
     exec = trace.exec "buck2:capabilities:project" ''
       set -euo pipefail
-      export BUCK2_BIN=${pkgs.buck2}/bin/buck2
+      export BUCK2_BIN=${buck2Machine}/bin/buck2
       ${buck2CapabilityGateBinExports}
       ${buck2CapabilityProjection}
       ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh --check "$PWD"
@@ -862,7 +905,7 @@ in
       export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
       ${buck2CapabilityGateBinExports}
       exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.test.sh \
-        "$PWD" ${pkgs.buck2}/bin/buck2
+        "$PWD" ${buck2Machine}/bin/buck2
     '';
   };
 
@@ -923,11 +966,11 @@ in
     ];
     exec = trace.exec "buck2:check" ''
       set -euo pipefail
-      ${pkgs.buck2}/bin/buck2 audit providers \
+      ${buck2Machine}/bin/buck2 audit providers \
         --target-platforms root//buck2/platforms:host_platform \
         toolchains//:cross_cell_provider_identity \
         toolchains//:cross_cell_product_identity
-      exec ${pkgs.buck2}/bin/buck2 build \
+      exec ${buck2Machine}/bin/buck2 build \
         toolchains//:archive_tool \
         toolchains//:closure_tool \
         toolchains//:package_evidence_tool \
