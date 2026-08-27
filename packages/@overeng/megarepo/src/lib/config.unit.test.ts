@@ -442,11 +442,25 @@ describe('config', () => {
         members: {},
         generators: {
           vscode: { enabled: true, exclude: ['docs'] },
+          composition: { enabled: true, platformHub: 'effect-utils', isolationDir: 'fleet-buck' },
         },
       }
       const result = Schema.decodeUnknownSync(MegarepoConfig)(input)
       expect(result.generators?.vscode?.enabled).toBe(true)
       expect(result.generators?.vscode?.exclude).toEqual(['docs'])
+      expect(result.generators?.composition?.enabled).toBe(true)
+      expect(result.generators?.composition?.platformHub).toBe('effect-utils')
+      expect(result.generators?.composition?.isolationDir).toBe('fleet-buck')
+    })
+
+    it.each([
+      ['missing platform hub', { enabled: true }],
+      ['invalid platform hub', { platformHub: '../effect-utils' }],
+      ['invalid isolation directory', { platformHub: 'effect-utils', isolationDir: 'nested/path' }],
+    ])('should reject composition config with %s', (_name, composition) => {
+      expect(() =>
+        Schema.decodeUnknownSync(MegarepoConfig)({ members: {}, generators: { composition } }),
+      ).toThrow()
     })
 
     it('should decode config with $schema field', () => {
@@ -483,6 +497,16 @@ describe('config', () => {
       const defs = schema['$defs'] as Record<string, Record<string, unknown>>
       expect(defs['MegarepoConfigEncoded']).toBeDefined()
       expect(defs['MegarepoConfigEncoded']?.['type']).toBe('object')
+      const composition = defs['CompositionGeneratorConfigEncoded']!
+      expect(composition).toMatchObject({
+        type: 'object',
+        required: ['platformHub'],
+        additionalProperties: false,
+      })
+      expect((composition['properties'] as Record<string, unknown>)['platformHub']).toMatchObject({
+        type: 'string',
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$',
+      })
     })
   })
 

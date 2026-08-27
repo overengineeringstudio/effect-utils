@@ -59,6 +59,11 @@ describe('megarepo wire baselines (cross-major invariant)', () => {
                 nullable: null,
               },
             },
+            composition: {
+              enabled: true,
+              platformHub: 'unicode-hub',
+              isolationDir: 'fleet-buck',
+            },
           },
           lockSync: {
             enabled: false,
