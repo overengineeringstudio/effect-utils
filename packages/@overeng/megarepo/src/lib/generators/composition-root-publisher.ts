@@ -165,6 +165,8 @@ export interface PublishCompositionRootOptions {
   readonly cacheSections?: ReadonlyArray<BuckCacheSection>
   readonly lock: CompositionPublisherLockOptions
   readonly runtime: CompositionRootPublicationRuntime
+  /** Runs after `.buckconfig` is durable, before the transaction is committed or cleaned. */
+  readonly afterAuthorityPublished?: () => Promise<void>
 }
 
 /** Observable result of an idempotent composition publication. */
@@ -703,39 +705,6 @@ const cleanupTransactionForward = async ({
   })
 }
 
-const finalMatchesTransaction = async ({
-  workspaceRoot,
-  transaction,
-}: {
-  readonly workspaceRoot: string
-  readonly transaction: CompositionPublicationTransaction
-}): Promise<boolean> => {
-  for (const file of transaction.files) {
-    const snapshot = await snapshotMaybe(finalPathFor(workspaceRoot, file.path))
-    if (snapshot === undefined || snapshotMatchesTransaction(snapshot, file) === false) return false
-  }
-  const manifestPath = finalPathFor(workspaceRoot, COMPOSITION_GENERATION_MANIFEST_PATH)
-  const manifestSnapshot = await snapshotMaybe(manifestPath)
-  if (manifestSnapshot === undefined || manifestSnapshot.mode !== 0o644) return false
-  let manifest: CompositionGenerationManifest
-  try {
-    manifest = decodeGenerationManifest({ snapshot: manifestSnapshot, path: manifestPath })
-  } catch {
-    return false
-  }
-  for (const record of manifest.files) {
-    const snapshot = await snapshotMaybe(finalPathFor(workspaceRoot, record.path))
-    if (
-      snapshot === undefined ||
-      snapshot.mode !== record.mode ||
-      snapshot.sha256 !== record.sha256
-    ) {
-      return false
-    }
-  }
-  return true
-}
-
 const restoreTransactionFile = async ({
   workspaceRoot,
   file,
@@ -893,13 +862,10 @@ const recoverTransaction = async ({
       message: 'Transaction identity does not match the exact stale lock identity',
     })
   }
-  if (
-    (await finalMatchesTransaction({ workspaceRoot, transaction: record.transaction })) === true
-  ) {
-    await cleanupTransactionForward({ workspaceRoot, transactionRecord: record })
-  } else {
-    await rollbackTransaction({ workspaceRoot, transactionRecord: record })
-  }
+  // A durable transaction is deliberately uncommitted until the authority callback succeeds.
+  // Recovery cannot know whether an external side effect completed, so it always restores the
+  // previous generation rather than treating config-last installation as a commit marker.
+  await rollbackTransaction({ workspaceRoot, transactionRecord: record })
 }
 
 const acquireLock = async ({
@@ -1493,6 +1459,7 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
               output: output.files,
               runtime: options.runtime,
             })
+            await options.afterAuthorityPublished?.()
             const current = await readTransactionMaybe(workspaceRoot)
             if (current === undefined) {
               throw failure({
