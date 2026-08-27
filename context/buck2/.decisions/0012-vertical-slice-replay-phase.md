@@ -37,3 +37,14 @@ Run adoption as a parallel replay phase that lands a principled vertical slice b
 - Milestone C/D progress is measured by the vertical slice rather than layer completion.
 - Mach-O inspection contract mistakes version the artifact variant instead of blocking the ELF lane.
 - devenv-perf policy tension (blocking classification vs advisory epic text) stays open until the rebased run yields real signal.
+
+## Amendment 1
+
+The redesigned roadmap and decision 0016 supersede items 1–6 and 8 as an
+execution/evidence plan; they remain historical context for why replay was
+chosen. Item 7 remained a live sequencing constraint and is now discharged:
+after the Phase-1 tui-core authority-transfer gate passed, the repository
+advanced directly to immutable upstream Buck2 `2026-08-22`
+(`c89474de8970db1d3784063e2fb1efb1803bb177`) through a narrow package
+override. Compatibility evidence is retained in
+[2026-08-27-buck2-pin-2026-08-22.md](../02-execution/.experiments/2026-08-27-buck2-pin-2026-08-22.md).
