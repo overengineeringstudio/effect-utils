@@ -55,19 +55,38 @@ remaining `buck2:check` lane builds the retained toolchain surface and is
 non-vacuous. Warm unchanged execution is zero actions; a wiped second worktree
 reported five cached actions and zero local actions, within BUCK-R07 budgets.
 
-## Phase 2 — composition root
+## Phase 2 — one-writable-mount workspaces
 
-- mr gains real-directory member materialization (COMP-R10) — the
-  precondition for any shared cache namespace; today's absolute-symlink
-  mounts silently split digests.
-- The composition-root generator lands in mr (validated shape per
-  [05-composition/.experiments/2026-08-26-composition-root-real-repos.md](./05-composition/.experiments/2026-08-26-composition-root-real-repos.md)),
-  with the member-portability changes in effect-utils (label rewrites,
-  cross-cell visibility in genie's projection, delete the member
-  `.buckconfig`).
-- Standalone-vs-composed key stability holds per
-  [decision 0014](./.decisions/0014-megarepo-cell-composition.md); CI moves to
-  the composition shape.
+Architecture per [decision 0020](./.decisions/0020-one-writable-mount-workspaces.md)
+(accepted 2026-08-27 after the e2e, adversarial, and workspace prototypes):
+the store worktree path becomes the workspace root; every repo incl. the
+owned one is a member cell at `repos/<name>`; the owned repo is the single
+writable branch worktree; other members are read-only `cp -a` mounts with
+RENAME_EXCHANGE advance.
+
+- S0 guards FIRST: loud non-zero on non-symlink mounts; refuse to delete
+  foreign real directories (18 exist).
+- mr code change for the `CI=true` silent-detach trap (loud diagnostic or
+  refusal).
+- mr workspace materialization + composition-root generator (validated shapes
+  per the 2026-08-26/27 experiments in 05-composition), incl. the six-point
+  regeneration contract, capability-projection copy + `--check`, per-member
+  `[project] ignore` audit, and workspace teardown command.
+- Member portability in effect-utils: label rewrites, cross-cell visibility
+  in genie's projection, delete the member `.buckconfig`.
+- macOS verification of RENAME_EXCHANGE (GNU `mv --exchange` on APFS) plus
+  cp -a/chmod semantics — required before Darwin admission.
+- tierA-scale build validation (fixture-scale digest claims are exact but
+  small); root-cause the genrule lookup/upload key-mismatch anomaly.
+- Named retirement phase for legacy in-mount write consumers (overeng pnpm
+  task modules, dotfiles bun-from-mount); those compositions keep symlink
+  mounts and stay outside the shared cache namespace until retired.
+- Cross-member TypeScript consumption: owned open question (types for
+  consumed members without node_modules/dist in read-only mounts).
+- Agent workflow contract rev 3 (authoring surface = the owned member;
+  `repos/<other>` is a read-only build input); skill updates in dotfiles.
+- Standalone-vs-composed and writable-vs-mount key stability hold per
+  decisions 0014/0020; CI moves to the workspace shape.
 
 ## Phase 3 — TypeScript surface widening
 
