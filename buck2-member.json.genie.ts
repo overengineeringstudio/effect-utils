@@ -27,24 +27,18 @@ const manifestProjection = {
     'target',
     'tmp',
   ],
+  distOverlays: [
+    {
+      target: '//packages/@overeng/tui-core:dist',
+      destination: 'packages/@overeng/tui-core/dist',
+    },
+  ],
   capabilities: [
     {
       toolId: 'archive-tool',
       protocol: 'effect-utils/buck2-archive-tool/v1',
       flakePackage: 'buck2-archive-tool',
       executable: 'bin/buck2-archive-tool',
-    },
-    {
-      toolId: 'closure-tool',
-      protocol: 'effect-utils/buck2-closure-tool/v1',
-      flakePackage: 'buck2-closure-tool',
-      executable: 'bin/buck2-closure-tool',
-    },
-    {
-      toolId: 'package-evidence',
-      protocol: 'effect-utils/buck2-package-evidence/v1',
-      flakePackage: 'buck2-package-evidence',
-      executable: 'bin/buck2-package-evidence',
     },
     {
       toolId: 'product',

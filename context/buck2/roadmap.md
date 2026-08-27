@@ -53,11 +53,12 @@ provably pays. Every step lands its deletion-ledger entry in the same change.
 representative failure, relevant/irrelevant causality, hostile environment,
 strict task ordering, and fresh-context cache reuse all pass. Deletion-ledger
 entry 1 removes tui-core from both root TypeScript solutions and deletes the
-synthetic `buck2_foundation` / `typescript_input_plan` evidence producers. The
-remaining `buck2:check` lane retains provider/toolchain analysis coverage, but a
-2026-08-27 verification found that it executes zero actions; the earlier
-real-work implication is withdrawn pending real target wiring or further
-contraction. Warm unchanged execution is zero actions; a wiped second worktree
+synthetic `buck2_foundation` / `typescript_input_plan` evidence producers; the
+remaining `buck2:check` lane builds the real tui-core TypeScript action plus
+the retained archive/product toolchain surface and is non-vacuous. The dormant
+closure compiler and package-evidence pair are deleted because their evidence
+regime retired before any live target admission; expiry is therefore
+irrelevant. Warm unchanged execution is zero actions; a wiped second worktree
 reported five cached actions and zero local actions, within BUCK-R07 budgets.
 
 ## Phase 2 — one-writable-mount workspaces

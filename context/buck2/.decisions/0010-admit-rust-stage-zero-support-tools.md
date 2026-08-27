@@ -48,6 +48,20 @@ and the earlier prototype experiment's then-current rejection. It does not
 supersede decision 0003's per-platform admission rule or decision 0009's
 separate boundary for upstream Prelude Python actions.
 
+## Amendment 1 — Retire Evidence-Only Tools (2026-08-27)
+
+The Phase-1 contraction retired the package-evidence regime before any live
+Buck target loaded its closure or package-evidence rules. Delete
+`buck2-closure-tool` and `buck2-package-evidence`, their Nix capabilities, and
+the dormant TypeScript closure compiler now rather than carrying speculative
+stage-zero surface. Because the regime itself is retired, an expiry date for
+these unused tools is irrelevant. A future exact-materialization tier must
+justify and admit new implementation from its live consumer boundary.
+
+`buck2-product` remains the loaded product and Buck-to-Nix bridge tool;
+`buck2-archive-tool` remains the cross-cell configured-Rust-toolchain fixture
+exercised by `buck2:check`.
+
 ## Consequences
 
 - The removed repository Python helpers and CPython archive are not supported

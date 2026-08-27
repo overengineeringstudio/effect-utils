@@ -46,6 +46,9 @@ All notable changes to this project will be documented in this file.
   baseline-collection gate moved to
   `@overeng/utils-dev/check-baseline-test-collection.ts`. The empty
   `utilsPatches` projection registry is gone from genie config.
+- Retire the dormant Buck closure-compiler and package-evidence regime, including
+  its unused Buck rules, Rust tools, Nix capabilities, and projection tests;
+  retain the live archive/product bridge and real tui-core TypeScript actions.
 
 - **@overeng/utils, @overeng/genie, @overeng/notion-md**: apply the watch-recursion
   design study for effect@4.0.0-rc.111 (recursion is opt-in again). New
