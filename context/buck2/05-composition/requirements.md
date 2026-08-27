@@ -50,19 +50,34 @@ BUCK-R05 and BUCK-R14. Architecture:
 - **COMP-R07 Fixed isolation dir:** One isolation dir across all shapes; it is
   part of output paths and therefore of action identity. Per-invocation
   isolation dirs are forbidden.
-- **COMP-R08 Real directories and admissible links:** Member mounts are real
-  directories. Symlinks in inputs are either relative or target `/nix/store`
-  paths (content-addressed, host-identical, and already carried in the digest
-  via the capability closure identity); any other absolute symlink splits keys
-  silently and is forbidden. Dereferencing `/nix/store` links is not a
-  substitute — the capability contract requires store-resolved executables.
+- **COMP-R08 Content-reachable mounts and admissible links:** Member bytes
+  must be reachable at the mount path without traversing an absolute symlink,
+  and any relative symlink must normalize to a path inside the project root.
+  This is a correctness requirement, not a key-hygiene rule: Buck2 collapses
+  an absolute-symlink component into an opaque leaf whose only hashed payload
+  is the target path string — the content behind it is NOT an input, edits do
+  not invalidate, and one key serves stale artifacts (cache poisoning; see
+  [.experiments/2026-08-27-symlink-content-blindness.md](./.experiments/2026-08-27-symlink-content-blindness.md)).
+  Real directories, hardlink farms, and in-root relative symlinks all qualify;
+  hardlink farms only where the mount is a read-only build input (in-place
+  writers mutate the source through shared inodes). The one admissible
+  absolute-symlink class is `/nix/store` targets (content-addressed,
+  host-identical, carried in the digest via the capability closure identity);
+  dereferencing them is not a substitute — the capability contract requires
+  store-resolved executables. No Buck2-side lever exists or is coming:
+  upstream's stated direction is banning symlinks, and the pin-bump changes
+  nothing.
 - **COMP-R09 Projection ownership:** The composition-root generator lives in
   megarepo (mr) and consumes per-member facts (canonical cell name, mount,
   ignore contributions) from a genie-projected member manifest; the discipline
   above is enforced by generation, not by developer memory (GRAPH-R07).
   Projected member targets declare cross-cell visibility — a member target
   without it is unreachable from consumers.
-- **COMP-R10 Real-directory materialization:** mr materializes member mounts
-  as real directories. Today's absolute-symlink materialization builds
-  successfully but silently splits the cache namespace, so no shared-cache
-  claim holds until this lands; store-liveness accounting must move with it.
+- **COMP-R10 Content-real materialization:** mr materializes member mounts in
+  a COMP-R08-satisfying shape (real directories or an equivalent
+  content-reachable form). Today's absolute-symlink materialization is not a
+  degraded cache mode but an incorrect build input: Buck2 is blind to member
+  content behind it, so a symlink-mounted composition must never write to a
+  shared cache. Until content-real materialization lands, member cells and
+  cache upload must not be combined; store-liveness accounting moves with the
+  mount shape.
