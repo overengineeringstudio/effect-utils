@@ -1,5 +1,9 @@
 # Alignment Register
 
+> Scenario-harness allowlists (`patterns/*/scenario.json`) lived in the retired
+> `tmp/effect4-proto` differential harness. The surviving evidence is the
+> per-package cross-major baseline test suite.
+
 ## schema-date
 
 - **Difference:** v4 `Schema.Date` validates Date instances, while v3 `Schema.Date`
@@ -34,7 +38,7 @@
   `tui-react` renders tagged/stringified errors, and `restate-effect` formats
   `ParseError` via `ParseResult.TreeFormatter`.
 - **Status:** allowlisted only as a harness classification in
-  `patterns/schema-date/scenario.json`; migration acceptance requires auditing
+  the retired `patterns/schema-date` scenario harness (tmp/effect4-proto, deleted); migration acceptance requires auditing
   the user-facing boundaries above.
 
 ## cli-A-nested-terminator-loss
@@ -137,7 +141,7 @@
 - **Blast radius:** any migrated fork where a worker copied options to preserve
   imagined v3 behaviour.
 - **Status:** allowlisted as a negative-control diff in
-  `patterns/fork-defaults/scenario.json`.
+  the retired `patterns/fork-defaults` scenario harness (tmp/effect4-proto, deleted).
 
 ## equality-structural-default
 
@@ -147,7 +151,7 @@
   dedup/cache/change-detection code for identity-sensitive sites.
 - **Blast radius:** Effect `HashSet`/`HashMap`, `Equal.equals`, cache keys, and
   any custom collection membership checks.
-- **Status:** allowlisted in `patterns/equality/scenario.json`.
+- **Status:** allowlisted in the retired `patterns/equality` scenario harness (tmp/effect4-proto, deleted).
 
 ## equality-nan
 
@@ -156,7 +160,7 @@
   `NaN` inequality as a sentinel.
 - **Blast radius:** numeric dedup, cache invalidation, and schema/property tests
   with `NaN` sentinels.
-- **Status:** allowlisted in `patterns/equality/scenario.json`.
+- **Status:** allowlisted in the retired `patterns/equality` scenario harness (tmp/effect4-proto, deleted).
 
 ## equality-by-reference-opt-out
 
@@ -166,7 +170,7 @@
   `byReference` for safety and `byReferenceUnsafe` only when the proxy identity
   cost is unacceptable and object mutation is controlled.
 - **Blast radius:** identity-sensitive caches and sets.
-- **Status:** documented in `patterns/equality/RECIPE.md`.
+- **Status:** documented in the equality recipe (`context/effect-4/recipes/equality.md`).
 
 ## layer-memoization-default
 
@@ -177,7 +181,7 @@
   observable.
 - **Blast radius:** test layers, scoped resources, process/RPC clients, caches,
   and service factories.
-- **Status:** allowlisted in `patterns/layer-memoization/scenario.json`.
+- **Status:** allowlisted in the retired `patterns/layer-memoization` scenario harness (tmp/effect4-proto, deleted).
 
 ## layer-memoization-freshness-opt-outs
 
@@ -211,7 +215,7 @@
   exits.
 - **Status:** DECIDED — the single-current-format package policy and
   consumer-owned rollout gate are recorded above (#979). Allowlisted in
-  `patterns/rpc-payload-codecs/scenario.json`; payload bytes and decoded handler values are
+  the retired `patterns/rpc-payload-codecs` scenario harness (tmp/effect4-proto, deleted); payload bytes and decoded handler values are
   otherwise identical.
 
 ## rpc-request-id-policy
@@ -239,7 +243,7 @@
   facades and use direct `effect/testing/*` imports in test files.
 - **Blast radius:** all browser-facing packages and any shared Effect facade.
 - **Status:** allowlisted characterization in
-  `patterns/browser-builtin-leakage/scenario.json`; the runtime-only facade
+  the retired `patterns/browser-builtin-leakage` scenario harness (tmp/effect4-proto, deleted); the runtime-only facade
   passes the Node-builtin-forbidden bundle gate on both majors.
 
 ## effect-never-idle-timer
@@ -251,7 +255,7 @@
   must stay alive.
 - **Blast radius:** long-lived PTY, Restate, and agent-ingestion processes plus
   idle/hibernating runtimes.
-- **Status:** allowlisted in `patterns/effect-never-idle/scenario.json`.
+- **Status:** allowlisted in the retired `patterns/effect-never-idle` scenario harness (tmp/effect4-proto, deleted).
 
 ## filesystem-watch-recursive-option-removed
 

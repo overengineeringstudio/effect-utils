@@ -2,7 +2,6 @@
 import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
-  utilsPatches,
   workspaceMember,
   exportEntry,
   packageJson,
@@ -81,9 +80,7 @@ export default packageJson(
         [{ environment: 'browser' }, { environment: 'node' }],
       ),
     },
-    pnpm: {
-      patchedDependencies: utilsPatches,
-    },
+
     publishConfig: {
       access: 'public',
       exports: {
