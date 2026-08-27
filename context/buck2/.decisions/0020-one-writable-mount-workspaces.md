@@ -108,3 +108,21 @@ epic:
 - Follow-ups filed separately: the devenv-profile PATH shadowing of the
   policy git wrapper (guard bypass affecting all agents), and the
   same-build lookup/upload key mismatch anomaly observed on a genrule.
+
+## Amendment 1
+
+macOS verification (mbp2021, APFS;
+[../05-composition/.experiments/2026-08-27-macos-apfs-primitives.md](../05-composition/.experiments/2026-08-27-macos-apfs-primitives.md))
+discharged the Darwin-admission obligation: the production Nix GNU `mv -T
+--exchange` routes to renamex_np/RENAME_SWAP and is atomic (42,619 reader
+samples, zero intermediate states); cp -a, protection, teardown,
+dirty-isolation, and the R6 manifest post-condition all replicate the Linux
+results — and GNU cp -a CLONES on APFS, so mount disk cost on Darwin is ~0.
+Two rules join the mr implementation contract: the R6 post-condition is
+MANDATORY on Darwin (case-insensitive APFS silently collapses colliding
+paths at materialization; R6 catches it loudly), and mr branches on mv exit
+codes, never stderr text (Darwin errno rendering is unreliable). Two items
+gate shipping the Darwin ADVANCE path, not admission: FSEvents invalidation
+across the exchange needs confirmation in a real login session (FSEvents
+delivers nothing to ssh-spawned processes), and the real-dir-vs-cp -a digest
+equality probe still needs a Mac worktree with a devenv profile.
