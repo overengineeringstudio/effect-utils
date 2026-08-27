@@ -31,11 +31,11 @@ owner decision or upstream movement before/with test-suite convergence.
    policy implemented in `@overeng/effect-rpc-tanstack` — non-empty strings and
    non-negative numbers/bigints are accepted at the client boundary; anything
    else fails with `InvalidRequestIdError` instead of reaching the wire
-   (`rpc-request-id-policy` in alignment-register.md). Envelope versioning
-   remains governed by the recorded mixed-major contract decision on
-   `rpc-failure-cause-wire-shape` (alignment-register.md, issue #1115): the
-   runtime versioned gate is deferred and mixed-major `effect-rpc-tanstack`
-   deployment is out of contract until it lands.
+   (`rpc-request-id-policy` in alignment-register.md). Cross-major envelope
+   rollout follows `rpc-failure-cause-wire-shape` (alignment-register.md,
+   issue #979): the package stays single-current-format, while each deployed
+   consumer owns same-contract peers, explicit cache/open-tab handling, and
+   live HTTP RPC plus SSR `Exit` boundary evidence.
 7. **`JSONSchema.make` → `Schema.toJsonSchemaDocument`** — generated JSON
    Schema is now draft-2020-12 Document shape (megarepo generator artifact).
 8. **`NonEmptyTrimmedString` trim semantics dropped** in ci-tools provider

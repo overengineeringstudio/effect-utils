@@ -196,19 +196,21 @@
   v4 encodes the flattened Cause reasons array. A tagged failure therefore
   changes bytes from `{"cause":{"_tag":"Fail",...}}` to
   `{"cause":[{"_tag":"Fail",...}]}`.
-- **Decision:** (2026-08-25, issue #1115, human-approved; docs/CI-level record only — the
-  runtime gate is explicitly deferred) v3 encodes a Cause envelope object while v4 encodes the
-  flattened reasons array, and opposite-major decodes fail symmetrically, so neither a
-  server-first nor a client-first rollout preserves failure handling without adaptation.
-  `effect-rpc-tanstack` cannot be deployed atomically: cached browser JS outlives any
-  coordinated upgrade, and its SSR route-loader boundary adds a second server-to-browser Exit
-  encoding boundary. DECISION: mixed-major deployment of `effect-rpc-tanstack` is OUT OF
-  CONTRACT until a future runtime versioned gate lands; runtime negotiation/versioning is
-  deferred and tracked by issue #1115.
+- **Decision:** (2026-08-27, issue #979) v3 encodes a Cause envelope object while
+  v4 encodes the flattened reasons array, and opposite-major decodes fail
+  symmetrically, so neither an unadapted server-first nor client-first rollout
+  preserves failure handling. The package remains single-current-format: it
+  does not negotiate, emit legacy responses, or dual-decode historical
+  envelopes. Each independently deployable consumer owns a same-contract
+  browser/server upgrade plus an explicit cache-horizon and already-open-tab
+  policy. The consumer must verify its HTTP RPC and SSR `Exit` boundaries on the
+  deployed revision before calling that site migrated. Mixed-major failure
+  decoding remains unsupported; any overlap is a consumer-owned rollout
+  condition, not compatibility supplied by this library.
 - **Blast radius:** every RPC error response, including unary exits and streaming
   exits.
-- **Status:** DECIDED — contract-level gate recorded above; runtime versioned
-  negotiation/gate deferred (#1115). Allowlisted in
+- **Status:** DECIDED — the single-current-format package policy and
+  consumer-owned rollout gate are recorded above (#979). Allowlisted in
   `patterns/rpc-payload-codecs/scenario.json`; payload bytes and decoded handler values are
   otherwise identical.
 
@@ -219,8 +221,8 @@
 - **Decision:** accept both shapes for v4 interop, but validate at the client
   boundary: non-empty strings and non-negative, finite numbers or bigints are
   accepted; anything else fails with `InvalidRequestIdError` instead of
-  passing through to the wire. Server-side handling stays permissive. Envelope
-  versioning for persisted ids remains under `rpc-failure-cause-wire-shape`.
+  passing through to the wire. Server-side handling stays permissive.
+  Cross-major envelope rollout remains governed by `rpc-failure-cause-wire-shape`.
 - **Blast radius:** outgoing client envelopes in `@overeng/effect-rpc-tanstack`
   (`layerClient`); custom `generateRequestId` implementations that emit
   malformed ids now fail loudly.

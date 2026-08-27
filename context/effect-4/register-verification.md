@@ -243,19 +243,20 @@ rejected the v3 cause object (`SchemaError(Expected array, got {...})`).
 Therefore neither an unadapted server-first nor client-first rollout preserves
 failure handling.
 
-**If refuted:** Add an explicit protocol marker; Effect beta.99 does not supply
-one. The object-vs-array difference is mechanically detectable, so upgraded
-clients/servers can normalize both forms at the serialization boundary, but a
-client-only shim cannot repair cached v3 clients. Deploy a compatibility server
-first: route by a versioned URL or request header, default missing markers to
-v3-shaped failures, and emit v4 arrays only to marked v4 clients. Then deploy v4
-clients that send the marker and defensively accept both forms; retire v3 only
-after the browser-cache horizon and compatibility telemetry. Apply the same
-versioning/dual-decode rule to SSR `ExitEncoded`.
+**Resolution:** Keep `effect-rpc-tanstack` single-current-format rather than
+adding a protocol marker, legacy response encoder, or dual decoder. The
+object-vs-array difference remains mechanically detectable, but a client-only
+shim cannot repair already-loaded v3 clients, and permanent server negotiation
+would move every consumer's finite deployment transition into the library.
+Each independently deployed consumer instead owns a same-contract
+browser/server upgrade, an explicit cache horizon and already-open-tab policy,
+and deployed verification of both the HTTP RPC and SSR `ExitEncoded`
+boundaries. Mixed-major failure decoding remains unsupported; a site is not
+called migrated until those consumer-owned live checks pass (#979).
 
-`effect-rpc-tanstack` may stay in Wave 0 only if Wave 0 means repository-graph
-independence and this protocol/deployment gate is explicit. It is independently
-mergeable but not independently deploy-safe.
+`effect-rpc-tanstack` may stay in Wave 0 only when Wave 0 means
+repository-graph independence. It is independently mergeable; deployment
+completion is determined per consumer site.
 
 ## browser-testing-barrel
 
@@ -328,10 +329,11 @@ No process currently relies on `Effect.never`'s incidental v3 timer handle.
 
 ## Entries that must be reclassified before migration starts
 
-- `rpc-failure-cause-wire-shape` — from accepted-for-atomic-peers to a mandatory
-  versioned compatibility and deployment gate for `effect-rpc-tanstack`,
-  including its SSR Exit boundary. Atomic browser/server upgrade is impossible
-  to guarantee.
+- `rpc-failure-cause-wire-shape` — from accepted-for-atomic-peers to a
+  consumer-owned deployment gate for `effect-rpc-tanstack`, including its SSR
+  `Exit` boundary, cache horizon, and already-open-tab policy. Atomic
+  browser/server upgrade is impossible to guarantee, and the package does not
+  provide mixed-major compatibility.
 - `schema-date-invalid-message` — from an unresolved allowlist caveat to a
   required stable caller-facing error contract at Restate ingress. The lack of
   an existing snapshot does not make raw framework parser text unobservable.

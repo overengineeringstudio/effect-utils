@@ -78,8 +78,8 @@ const decodeExitFailure = (encoded: unknown) => {
 }
 
 describe('effect-rpc-tanstack RPC wire baselines (cross-major invariant)', () => {
-  // These bytes pin the package's single current SSR Exit format. #979 tracks
-  // consumer-owned coordinated upgrades and cache invalidation; there is no dual decoder.
+  // These bytes pin the package's single current SSR Exit format. #979 records
+  // consumer-owned coordinated rollout and cache policy; there is no dual decoder.
   it('captures SSR Exit JSON bytes and re-encoded identity', () => {
     const exits = {
       success: encodeExit(
@@ -122,8 +122,8 @@ describe('effect-rpc-tanstack RPC wire baselines (cross-major invariant)', () =>
     }).toMatchSnapshot()
   })
 
-  // These bytes pin the package's single current HTTP RPC format. #979 tracks
-  // consumer-owned coordinated upgrades and cache invalidation; there is no dual decoder.
+  // These bytes pin the package's single current HTTP RPC format. #979 records
+  // consumer-owned coordinated rollout and cache policy; there is no dual decoder.
   it('captures HTTP RPC NDJSON bytes and failure partition', async () => {
     const handlers = Api.toLayer(
       Effect.succeed(

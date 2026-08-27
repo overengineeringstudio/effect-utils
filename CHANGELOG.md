@@ -51,8 +51,10 @@ All notable changes to this project will be documented in this file.
   and validation rendering on all audited binaries, no compatibility shims);
   filesystem-watch recursion is resolved upstream at rc.111
   (`WatchOptions.recursive` opt-in again, Node backend defaults to false); and
-  mixed-major deployment of `effect-rpc-tanstack` is out of contract until a
-  runtime versioned gate lands (#1115). Docs-only change.
+  `effect-rpc-tanstack` stays single-current-format; independently deployed
+  consumers own same-contract rollout, explicit browser cache/open-tab
+  handling, and live HTTP RPC plus SSR `Exit` boundary evidence (#979).
+  Docs-only change.
 - **@overeng/tui-react, @overeng/tui-stories, @overeng/effect-react,
   @overeng/effect-schema-form, @overeng/effect-schema-form-aria**: migrate to
   effect@4.0.0-rc.111. Schema AST introspection updated to v4 node kinds
