@@ -20,3 +20,4 @@ export * from './lib/member-mount-cp-a.ts'
 
 // Pure Buck composition-root projection
 export * from './lib/generators/composition-root.ts'
+export * from './lib/generators/composition-root-publisher.ts'

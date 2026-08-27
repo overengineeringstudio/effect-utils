@@ -94,6 +94,20 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
   settings: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 }) {}
 
+/** Buck2 composition-root generator configuration. */
+export class CompositionGeneratorConfig extends Schema.Class<CompositionGeneratorConfig>(
+  'CompositionGeneratorConfig',
+)({
+  /** Enable/disable publication (default: false). */
+  enabled: Schema.optional(Schema.Boolean),
+  /** Member key whose manifest cell provides the shared execution platform. */
+  platformHub: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
+  /** Fleet-stable Buck output isolation directory (default: megarepo). */
+  isolationDir: Schema.optional(
+    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
+  ),
+}) {}
+
 /**
  * Configuration for syncing flake.lock and devenv.lock files
  *
@@ -131,6 +145,7 @@ export class LockSyncConfig extends Schema.Class<LockSyncConfig>('LockSyncConfig
 /** All generator configurations */
 export class GeneratorsConfig extends Schema.Class<GeneratorsConfig>('GeneratorsConfig')({
   vscode: Schema.optional(VscodeGeneratorConfig),
+  composition: Schema.optional(CompositionGeneratorConfig),
 }) {}
 
 // =============================================================================
