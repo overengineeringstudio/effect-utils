@@ -25,6 +25,8 @@
 
 import type { ReactElement } from 'react'
 
+import { stripAnsi } from '@overeng/tui-core'
+
 import { renderToString, renderToLines } from '../renderToString.ts'
 
 // =============================================================================
@@ -72,24 +74,10 @@ export interface RenderResult {
 }
 
 // =============================================================================
-// ANSI Stripping
+// ANSI Stripping — canonical implementation lives in @overeng/tui-core.
 // =============================================================================
 
-/**
- * Regex to match ANSI escape sequences.
- * Handles:
- * - CSI sequences (colors, styles, cursor movement)
- * - OSC sequences (hyperlinks, titles)
- * - Simple escape sequences
- */
-const ANSI_REGEX =
-  // eslint-disable-next-line no-control-regex -- ANSI escape sequences require control characters
-  /\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]/g
-
-/**
- * Strip ANSI escape codes from a string.
- */
-export const stripAnsi = (str: string): string => str.replace(ANSI_REGEX, '')
+export { stripAnsi }
 
 // =============================================================================
 // TestRenderer Class

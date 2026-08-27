@@ -5,21 +5,9 @@
  * Use this for quick iteration on component logic.
  * For accurate ANSI verification, use VirtualTerminal instead.
  */
+import { type Terminal, stripAnsi } from '@overeng/tui-core'
 
-import type { Terminal } from '@overeng/tui-core'
-
-// ANSI escape code regex for stripping
-// Using String.raw to avoid linter complaints about control characters
-const ESC = '\x1b'
-const ANSI_REGEX = new RegExp(
-  `${ESC}\\[[0-9;]*[a-zA-Z]|${ESC}\\][^\\x07]*\\x07|${ESC}\\[\\?[0-9;]*[a-zA-Z]`,
-  'g',
-)
-
-/**
- * Strip ANSI escape codes from a string.
- */
-export const stripAnsi = (str: string): string => str.replace(ANSI_REGEX, '')
+export { stripAnsi }
 
 /**
  * Mock terminal that captures all writes.

@@ -13,9 +13,10 @@ import {
   PropertyId as SchemaPropertyId,
   PropertyName as SchemaPropertyName,
 } from '@overeng/notion-effect-schema'
+import { nonEmptyTrimmedString } from '@overeng/utils'
 
-/** String with no leading or trailing whitespace (v4 composition of `NonEmptyString` + `isTrimmed`). */
-export const NonEmptyTrimmedString = Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()))
+/** String with no leading or trailing whitespace (shared `@overeng/utils` definition). */
+export const NonEmptyTrimmedString = nonEmptyTrimmedString
 export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Type
 
 /** Integer greater than zero. */

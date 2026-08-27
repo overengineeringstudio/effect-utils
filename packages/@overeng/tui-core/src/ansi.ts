@@ -91,6 +91,35 @@ export const beginSyncOutput = (): string => `${CSI}?2026h`
 export const endSyncOutput = (): string => `${CSI}?2026l`
 
 // =============================================================================
+// ANSI Stripping
+// =============================================================================
+
+/**
+ * Regex matching ANSI escape sequences:
+ * - CSI sequences (colors, styles, cursor movement)
+ * - DEC private-mode CSI sequences (e.g. `\x1b[?25l` cursor hide, `\x1b[?2026h` sync output)
+ * - OSC sequences terminated by BEL (hyperlinks, titles)
+ * - Charset selection (e.g. `\x1b(B`)
+ * - Keypad modes (`\x1b=`, `\x1b>`)
+ */
+// eslint-disable-next-line no-control-regex -- ANSI escape sequences require control characters
+const STRIP_ANSI_REGEX =
+  /\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]/g
+
+/**
+ * Strip ANSI escape codes from a string.
+ *
+ * @param str - String potentially containing ANSI codes
+ * @returns Plain text without ANSI codes
+ *
+ * @example
+ * ```typescript
+ * stripAnsi('\x1b[32mHello\x1b[0m') // => 'Hello'
+ * ```
+ */
+export const stripAnsi = (str: string): string => str.replace(STRIP_ANSI_REGEX, '')
+
+// =============================================================================
 // Text Styles
 // =============================================================================
 

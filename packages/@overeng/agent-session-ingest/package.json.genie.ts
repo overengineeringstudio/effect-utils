@@ -8,11 +8,15 @@ import {
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/agent-session-ingest' }),
+  dependencies: {
+    workspace: [utilsPkg],
+  },
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {

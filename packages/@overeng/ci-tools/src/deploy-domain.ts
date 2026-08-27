@@ -2,6 +2,8 @@
 
 import { Schema } from 'effect'
 
+import { nonEmptyTrimmedString } from '@overeng/utils'
+
 import {
   DeployAttemptOperation as DeployAttemptOperationContract,
   DeployCleanupOperation as DeployCleanupOperationContract,
@@ -11,9 +13,8 @@ import {
 } from './deploy-domain.contract.ts'
 import type { WorkflowReportRecord } from './mod.ts'
 
-export const NonEmptyTrimmedString = Schema.NonEmptyString.check(
-  Schema.makeFilter((s: string) => s.trim().length === s.length),
-)
+/** Non-empty trimmed string (shared `@overeng/utils` definition). */
+export const NonEmptyTrimmedString = nonEmptyTrimmedString
 
 export const DeployProvider = Schema.Literals(['netlify', 'vercel']).annotate({
   identifier: 'CiTools.Deploy.Provider',

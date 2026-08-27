@@ -50,6 +50,8 @@ export {
   // Synchronized output
   beginSyncOutput,
   endSyncOutput,
+  // ANSI stripping
+  stripAnsi,
   // Colors and styles
   reset,
   bold,

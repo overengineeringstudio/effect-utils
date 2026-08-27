@@ -1,3 +1,14 @@
+import { Schema } from 'effect'
+
+/**
+ * Schema for a non-empty string with no leading or trailing whitespace.
+ *
+ * The shared definition for the wire-level identifier/idempotency-key contract
+ * that several packages hand-rolled as `NonEmptyString` + `isTrimmed`.
+ * Compose with `Schema.brand` / `Schema.annotate` at each call site.
+ */
+export const nonEmptyTrimmedString = Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()))
+
 /** Converts the first character of a string to lowercase */
 export const lowercaseFirstChar = (str: string) => str.charAt(0).toLowerCase() + str.slice(1)
 

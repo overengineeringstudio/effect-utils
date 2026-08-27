@@ -2,6 +2,8 @@ import type { FileSystem } from 'effect'
 import type { Effect } from 'effect'
 import { Schema } from 'effect'
 
+import { nonEmptyTrimmedString } from '@overeng/utils'
+
 import type { SessionIngestError, SessionSourceDiscoveryError } from '../errors.ts'
 
 /** Stable logical identifier for a session source such as `codex`. */
@@ -29,8 +31,8 @@ export type ArtifactPath = typeof ArtifactPath.Type
 
 /** Non-negative integer schema. */
 export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-/** Non-empty, trimmed string schema. */
-export const NonEmptyTrimmedString = Schema.NonEmptyString.check(Schema.isTrimmed())
+/** Non-empty, trimmed string schema (shared `@overeng/utils` definition). */
+export const NonEmptyTrimmedString = nonEmptyTrimmedString
 
 /** Artifact lifecycle classification used to decide how aggressively to reprocess it. */
 export const ArtifactStatus = Schema.Literals(['open', 'stable', 'finalized']).annotate({
