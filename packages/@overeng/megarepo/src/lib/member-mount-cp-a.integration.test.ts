@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process'
+import { constants } from 'node:fs'
 import {
   chmod,
   lstat,
   mkdir,
+  open,
   readFile,
   readdir,
   readlink,
@@ -345,7 +347,7 @@ describe('cp-a member mount lifecycle', () => {
     )
   }
 
-  it.effect(
+  it.effect.skipIf(process.platform !== 'linux')(
     'advances A to B atomically while live readers sample only whole states',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
@@ -362,14 +364,23 @@ describe('cp-a member mount lifecycle', () => {
       })
       const reader = (async () => {
         while (reading === true) {
-          const [left, right] = await Promise.all([
-            readFile(NodePath.join(fixture.destinationPath, 'version-left.txt'), 'utf8'),
-            readFile(NodePath.join(fixture.destinationPath, 'version-right.txt'), 'utf8'),
-          ])
-          const pair = `${left.trim()}:${right.trim()}`
-          samples.add(pair)
-          resolveFirstSample()
-          if (pair === 'B:B') resolveBPair()
+          const directory = await open(
+            fixture.destinationPath,
+            constants.O_RDONLY | constants.O_DIRECTORY,
+          )
+          try {
+            const directoryFdPath = `/proc/self/fd/${directory.fd}`
+            const [left, right] = await Promise.all([
+              readFile(NodePath.join(directoryFdPath, 'version-left.txt'), 'utf8'),
+              readFile(NodePath.join(directoryFdPath, 'version-right.txt'), 'utf8'),
+            ])
+            const pair = `${left.trim()}:${right.trim()}`
+            samples.add(pair)
+            resolveFirstSample()
+            if (pair === 'B:B') resolveBPair()
+          } finally {
+            await directory.close()
+          }
           await new Promise<void>((resolve) => setImmediate(resolve))
         }
       })()
