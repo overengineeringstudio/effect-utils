@@ -78,3 +78,10 @@ ceiling is enforceable only on the client side; REUSE-R05 carries the
 corrected clause, and the dotfiles build-cache trait records the same fact as
 a trait tradeoff. (Found while authoring the fleet trait VRS for
 dotfiles#2048, 2026-08-26.)
+
+## Amendment 2
+
+The VRS client template intentionally redacts the endpoint. The tracked
+`devenv.nix` owns the public fleet-default operational endpoint, while generated
+`.buckconfig.local` is untracked and overrideable. A service move updates the
+fleet trait and that tracked default together.

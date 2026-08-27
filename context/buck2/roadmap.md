@@ -35,10 +35,13 @@ provably pays. Every step lands its deletion-ledger entry in the same change.
   dependents and BOTH root solutions (check and emit), and CI materializes the
   Buck2 artifact before `ts:check:strict` — the ordering gate without which
   the transfer is fictional.
-- Implementation contraction lands with or before the slice: the branch's
-  evidence regime (~5.6k lines: benchmark harness, enumerated input-plan
-  chain, synthetic foundation gate, per-invocation isolation dirs) is deleted
-  per the 2026-08-26 audit; PR #1080 closes (built on the rejected
+- Implementation contraction lands with or before the slice: exactly 3,915
+  lines are deleted — 2,390 evidence-regime lines under `scripts/buck2-*`
+  (`dcbf241fa`); 1,494 synthetic-producer and input-plan lines under
+  `buck2/evidence`, `genie/buck2`, and `packages/@overeng/tui-core/buck2`, plus
+  their projection wiring (`95e4e171d`); and 31 replaced TypeScript check-path
+  lines in root and dependent configs (`a19b24deb`). These commits and paths are
+  the measurement sources; PR #1080 closes (built on the rejected
   Nix-materialized-deps authority), #1081 parks as Phase 5 reference.
 - Measured against BUCK-R07 budgets; BUCK-R06 zero-re-execution proven via the
   canary runbook.
@@ -50,9 +53,11 @@ provably pays. Every step lands its deletion-ledger entry in the same change.
 representative failure, relevant/irrelevant causality, hostile environment,
 strict task ordering, and fresh-context cache reuse all pass. Deletion-ledger
 entry 1 removes tui-core from both root TypeScript solutions and deletes the
-synthetic `buck2_foundation` / `typescript_input_plan` evidence producers; the
-remaining `buck2:check` lane builds the retained toolchain surface and is
-non-vacuous. Warm unchanged execution is zero actions; a wiped second worktree
+synthetic `buck2_foundation` / `typescript_input_plan` evidence producers. The
+remaining `buck2:check` lane retains provider/toolchain analysis coverage, but a
+2026-08-27 verification found that it executes zero actions; the earlier
+real-work implication is withdrawn pending real target wiring or further
+contraction. Warm unchanged execution is zero actions; a wiped second worktree
 reported five cached actions and zero local actions, within BUCK-R07 budgets.
 
 ## Phase 2 — one-writable-mount workspaces
