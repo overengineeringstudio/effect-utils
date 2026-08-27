@@ -18,6 +18,10 @@ export * from './lib/member-mount-r6.ts'
 export * from './lib/member-mount-cp-a-schema.ts'
 export * from './lib/member-mount-cp-a.ts'
 
+// Owned branch-worktree workspace lifecycle
+export * from './lib/owned-worktree-acquisition-schema.ts'
+export * from './lib/owned-worktree-acquisition.ts'
+
 // Pure Buck composition-root projection
 export * from './lib/generators/composition-root.ts'
 export * from './lib/generators/composition-root-publisher.ts'
