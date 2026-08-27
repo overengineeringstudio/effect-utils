@@ -1,9 +1,9 @@
-import { mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readlink, rename, rm, writeFile } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Fiber, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { afterAll, beforeAll, expect } from 'vitest'
 
@@ -305,6 +305,53 @@ describe('owned worktree acquisition', () => {
     }).pipe(withNode),
   )
 
+  it.effect(
+    'excludes a synchronized concurrent acquisition before it can replace the journal',
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        let signalEntered: () => void = () => undefined
+        let releaseFirst: () => void = () => undefined
+        const entered = new Promise<void>((resolve) => {
+          signalEntered = resolve
+        })
+        const gate = new Promise<void>((resolve) => {
+          releaseFirst = resolve
+        })
+        const blockingGenerate = (context: OwnedWorkspaceGenerationContext) =>
+          Effect.promise(async () => {
+            signalEntered()
+            await gate
+          }).pipe(Effect.andThen(generateWorkspace(context)))
+        const first = yield* Effect.forkChild(acquire(fixture, { generate: blockingGenerate }))
+        yield* Effect.promise(() => entered)
+        const journalPath = ownedWorktreeAcquisitionJournalPath(fixture.workspaceRoot)
+        const winnerJournal = yield* readText(journalPath)
+        const second = yield* acquire(fixture).pipe(Effect.result)
+        expect(second._tag).toBe('Failure')
+        if (second._tag === 'Failure') expect(second.failure.reason).toBe('AcquisitionLocked')
+        expect(yield* readText(journalPath)).toBe(winnerJournal)
+        expect(yield* git(fixture.ownedWorktree, 'rev-parse', '--show-toplevel')).toBe(
+          fixture.ownedWorktree,
+        )
+        releaseFirst()
+        const completed = yield* Fiber.join(first)
+        expect(completed.ownedWorktree).toBe(`${fixture.ownedWorktree}/`)
+        const lockPath = NodePath.join(
+          fixture.tmp,
+          `.${NodePath.basename(fixture.workspaceRoot)}.owned-worktree-acquisition.lock`,
+        )
+        expect(
+          yield* Effect.promise(() =>
+            readFile(lockPath, 'utf8').then(
+              () => true,
+              () => false,
+            ),
+          ),
+        ).toBe(false)
+      }).pipe(withNode),
+  )
+
   it.effect('leaves no journal or mutation when interrupted after preflight', () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture()
@@ -414,7 +461,11 @@ describe('owned worktree acquisition', () => {
         ]
         for (const boundaryToFail of boundaries) {
           const fixture = yield* makeFixture()
+          let generationCount = 0
+          const countedGenerate = (context: OwnedWorkspaceGenerationContext) =>
+            generateWorkspace(context).pipe(Effect.tap(() => Effect.sync(() => generationCount++)))
           const result = yield* acquire(fixture, {
+            generate: countedGenerate,
             runtime: {
               afterBoundary: async (boundary) => {
                 if (boundary === boundaryToFail) throw new Error(`crash ${boundary}`)
@@ -424,9 +475,10 @@ describe('owned worktree acquisition', () => {
           expect(result._tag, boundaryToFail).toBe('Failure')
           const recovered = yield* recoverOwnedWorktreeAcquisition({
             workspaceRoot: fixture.workspaceRoot,
-            generate: generateWorkspace,
+            generate: countedGenerate,
           })
           expect(recovered._tag, boundaryToFail).toBe('RolledForward')
+          expect(generationCount, boundaryToFail).toBe(boundaryToFail === 'Generated' ? 2 : 1)
           expect(yield* readText(NodePath.join(fixture.workspaceRoot, 'generated.txt'))).toBe(
             'generated\n',
           )
@@ -470,6 +522,117 @@ describe('owned worktree acquisition', () => {
       expect(failure.reason).toBe('ForeignRootEntry')
       expect(yield* readText(NodePath.join(fixture.workspaceRoot, 'foreign.txt'))).toBe('foreign\n')
     }).pipe(withNode),
+  )
+
+  it.effect(
+    'revalidates owned Git identity after cleanup and before the first teardown move',
+    () =>
+      Effect.gen(function* () {
+        const mutations = [
+          'tracked',
+          'staged',
+          'untracked',
+          'head',
+          'branch',
+          'replacement',
+        ] as const
+        for (const mutation of mutations) {
+          const fixture = yield* makeFixture()
+          yield* acquire(fixture)
+          const cleanup = (context: OwnedWorkspaceGenerationContext) =>
+            Effect.gen(function* () {
+              yield* cleanupWorkspace(context)
+              if (mutation === 'tracked') {
+                yield* Effect.promise(() =>
+                  writeFile(
+                    NodePath.join(context.ownedWorktree, 'tracked.txt'),
+                    'cleanup mutation\n',
+                  ),
+                )
+              } else if (mutation === 'staged') {
+                yield* Effect.promise(() =>
+                  writeFile(
+                    NodePath.join(context.ownedWorktree, 'staged-by-cleanup.txt'),
+                    'staged\n',
+                  ),
+                )
+                yield* git(context.ownedWorktree, 'add', 'staged-by-cleanup.txt')
+              } else if (mutation === 'untracked') {
+                yield* Effect.promise(() =>
+                  writeFile(
+                    NodePath.join(context.ownedWorktree, 'untracked-by-cleanup.txt'),
+                    'untracked\n',
+                  ),
+                )
+              } else if (mutation === 'head') {
+                yield* Effect.promise(() =>
+                  writeFile(
+                    NodePath.join(context.ownedWorktree, 'tracked.txt'),
+                    'committed by cleanup\n',
+                  ),
+                )
+                yield* git(context.ownedWorktree, 'add', 'tracked.txt')
+                yield* git(
+                  context.ownedWorktree,
+                  'commit',
+                  '--no-gpg-sign',
+                  '--no-verify',
+                  '-m',
+                  'cleanup mutation',
+                )
+              } else if (mutation === 'branch') {
+                yield* git(context.ownedWorktree, 'checkout', '--detach')
+              } else {
+                const replaced = NodePath.join(
+                  NodePath.dirname(context.workspaceRoot.slice(0, -1)),
+                  'owned-worktree-replaced',
+                )
+                yield* Effect.promise(async () => {
+                  await rename(context.ownedWorktree, replaced)
+                  await mkdir(context.ownedWorktree)
+                  await writeFile(
+                    NodePath.join(context.ownedWorktree, context.configName),
+                    'members {}\n',
+                  )
+                })
+              }
+            })
+          const failure = yield* teardownOwnedWorkspace({
+            workspaceRoot: fixture.workspaceRoot,
+            callerCwd: fixture.tmp,
+            cleanup,
+          }).pipe(Effect.flip)
+          expect(['GitIdentityConflict', 'CommandFailure'].includes(failure.reason), mutation).toBe(
+            true,
+          )
+          const temporary = NodePath.join(
+            fixture.tmp,
+            `.${NodePath.basename(fixture.workspaceRoot)}.owned-worktree-acquisition-temp`,
+          )
+          expect(
+            yield* Effect.promise(() =>
+              readFile(
+                NodePath.join(fixture.workspaceRoot, OWNED_WORKTREE_ROOT_MANIFEST),
+                'utf8',
+              ).then(
+                () => true,
+                () => false,
+              ),
+            ),
+            mutation,
+          ).toBe(true)
+          expect(
+            yield* Effect.promise(() =>
+              readFile(temporary, 'utf8').then(
+                () => true,
+                () => false,
+              ),
+            ),
+            mutation,
+          ).toBe(false)
+        }
+      }).pipe(withNode),
+    { timeout: 60_000 },
   )
 
   it.effect(

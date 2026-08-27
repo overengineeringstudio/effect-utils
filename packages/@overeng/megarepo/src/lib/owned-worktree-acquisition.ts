@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import {
+  link,
   lstat,
   mkdir,
   open,
@@ -77,12 +78,47 @@ export interface OwnedWorkspaceGenerationContext {
   readonly configName: OwnedWorktreeConfigName
 }
 
+/**
+ * Move an existing canonical branch worktree under an exclusive sibling lifecycle lock.
+ */
+export const acquireOwnedWorktree: typeof acquireOwnedWorktreeUnlocked = (args) => {
+  const runtime = args.runtime ?? {}
+  return withAcquisitionLock({
+    workspaceRoot: normalizedAbsolute(args.workspaceRoot),
+    runtime,
+    effect: acquireOwnedWorktreeUnlocked({ ...args, runtime }),
+  })
+}
+
+/** Reconcile an interrupted acquisition while excluding concurrent lifecycle mutation. */
+export const recoverOwnedWorktreeAcquisition: typeof recoverOwnedWorktreeAcquisitionUnlocked = (
+  args,
+) => {
+  const runtime = args.runtime ?? {}
+  return withAcquisitionLock({
+    workspaceRoot: normalizedAbsolute(args.workspaceRoot),
+    runtime,
+    effect: recoverOwnedWorktreeAcquisitionUnlocked({ ...args, runtime }),
+  })
+}
+
+/** Tear down a complete owned workspace while excluding concurrent lifecycle mutation. */
+export const teardownOwnedWorkspace: typeof teardownOwnedWorkspaceUnlocked = (args) => {
+  const runtime = args.runtime ?? {}
+  return withAcquisitionLock({
+    workspaceRoot: normalizedAbsolute(args.workspaceRoot),
+    runtime,
+    effect: teardownOwnedWorkspaceUnlocked({ ...args, runtime }),
+  })
+}
+
 interface Paths {
   readonly workspaceRoot: string
   readonly parent: string
   readonly ownedWorktree: string
   readonly tempPath: string
   readonly journalPath: string
+  readonly lockPath: string
   readonly rootStagePath: string
   readonly rootManifestPath: string
 }
@@ -206,6 +242,7 @@ const derivePaths = ({
     ownedWorktree: NodePath.join(root, 'repos', ownedMember),
     tempPath: NodePath.join(parent, `.${base}.owned-worktree-acquisition-temp`),
     journalPath: NodePath.join(parent, `.${base}.owned-worktree-acquisition.json`),
+    lockPath: NodePath.join(parent, `.${base}.owned-worktree-acquisition.lock`),
     rootStagePath: NodePath.join(parent, `.${base}.owned-worktree-root-stage`),
     rootManifestPath: NodePath.join(root, OWNED_WORKTREE_ROOT_MANIFEST),
   }
@@ -254,6 +291,140 @@ const syncDirectory = ({
       return runtime.directoryFsync?.({ path, sync }) ?? sync()
     },
   })
+
+const AcquisitionLockOwner = Schema.Struct({
+  nonce: Schema.String.check(Schema.isPattern(/^[0-9a-f]{32}$/u)),
+  pid: Schema.Int.check(Schema.isGreaterThan(0)),
+  version: Schema.Literal(OWNED_WORKTREE_ACQUISITION_VERSION),
+})
+type AcquisitionLockOwner = typeof AcquisitionLockOwner.Type
+
+interface HeldAcquisitionLock {
+  readonly lockPath: string
+  readonly ownerPath: string
+  readonly bytes: string
+  readonly dev: number
+  readonly ino: number
+}
+
+const canonicalLockOwner = (owner: AcquisitionLockOwner): string =>
+  `${JSON.stringify({ nonce: owner.nonce, pid: owner.pid, version: owner.version })}\n`
+
+const acquireAcquisitionLock = ({
+  workspaceRoot,
+  runtime,
+}: {
+  workspaceRoot: string
+  runtime: OwnedWorktreeAcquisitionRuntime
+}) => {
+  const paths = derivePaths({ workspaceRoot, ownedMember: '_lock-path-only_' })
+  return io({
+    path: paths.lockPath,
+    message: `Cannot acquire owned-worktree lifecycle lock '${paths.lockPath}'`,
+    recoveryPaths: [paths.lockPath],
+    try: async () => {
+      const owner: AcquisitionLockOwner = {
+        nonce: randomBytes(16).toString('hex'),
+        pid: process.pid,
+        version: OWNED_WORKTREE_ACQUISITION_VERSION,
+      }
+      const bytes = canonicalLockOwner(owner)
+      const ownerPath = `${paths.lockPath}.owner-${owner.nonce}`
+      let linked = false
+      try {
+        const handle = await open(ownerPath, 'wx', 0o600)
+        try {
+          await handle.writeFile(bytes, 'utf8')
+          await handle.sync()
+        } finally {
+          await handle.close()
+        }
+        await link(ownerPath, paths.lockPath)
+        linked = true
+        const sync = (): Promise<void> => syncDirectoryNative(paths.parent)
+        await (runtime.directoryFsync?.({ path: paths.parent, sync }) ?? sync())
+        const identity = await lstat(ownerPath)
+        return {
+          lockPath: paths.lockPath,
+          ownerPath,
+          bytes,
+          dev: identity.dev,
+          ino: identity.ino,
+        } satisfies HeldAcquisitionLock
+      } catch (cause) {
+        if (linked === true) await unlink(paths.lockPath).catch(() => undefined)
+        await unlink(ownerPath).catch(() => undefined)
+        const code =
+          cause instanceof Error && 'code' in cause && typeof cause.code === 'string'
+            ? cause.code
+            : undefined
+        if (code === 'EEXIST') {
+          throw error({
+            reason: 'AcquisitionLocked',
+            path: paths.lockPath,
+            message: `Owned-worktree lifecycle is already locked for '${workspaceRoot}'`,
+            recoveryPaths: [paths.lockPath],
+            cause,
+          })
+        }
+        throw cause
+      }
+    },
+  })
+}
+
+const releaseAcquisitionLock = ({
+  held,
+  runtime,
+}: {
+  held: HeldAcquisitionLock
+  runtime: OwnedWorktreeAcquisitionRuntime
+}) =>
+  io({
+    path: held.lockPath,
+    message: `Cannot release owned-worktree lifecycle lock '${held.lockPath}'`,
+    recoveryPaths: [held.lockPath, held.ownerPath],
+    try: async () => {
+      const [lockIdentity, ownerIdentity, lockBytes] = await Promise.all([
+        lstat(held.lockPath),
+        lstat(held.ownerPath),
+        readFile(held.lockPath, 'utf8'),
+      ])
+      if (
+        lockIdentity.dev !== held.dev ||
+        lockIdentity.ino !== held.ino ||
+        ownerIdentity.dev !== held.dev ||
+        ownerIdentity.ino !== held.ino ||
+        lockBytes !== held.bytes
+      ) {
+        throw error({
+          reason: 'RecoveryConflict',
+          path: held.lockPath,
+          message: `Owned-worktree lifecycle lock ownership changed before release`,
+          recoveryPaths: [held.lockPath, held.ownerPath],
+        })
+      }
+      await unlink(held.lockPath)
+      await unlink(held.ownerPath)
+      const sync = (): Promise<void> => syncDirectoryNative(NodePath.dirname(held.lockPath))
+      await (runtime.directoryFsync?.({ path: NodePath.dirname(held.lockPath), sync }) ?? sync())
+    },
+  })
+
+const withAcquisitionLock = <A, E, R>({
+  workspaceRoot,
+  runtime,
+  effect,
+}: {
+  workspaceRoot: string
+  runtime: OwnedWorktreeAcquisitionRuntime
+  effect: Effect.Effect<A, E, R>
+}): Effect.Effect<A, E | OwnedWorktreeAcquisitionError, R> =>
+  Effect.acquireUseRelease(
+    acquireAcquisitionLock({ workspaceRoot, runtime }),
+    () => effect,
+    (held) => releaseAcquisitionLock({ held, runtime }).pipe(Effect.orDie),
+  )
 
 const canonicalJournal = (journal: Journal): string =>
   `${JSON.stringify({
@@ -1166,28 +1337,41 @@ const finishForward = <R, E>({
       ownedMember: journal.ownedMember,
       configName,
     })
-    yield* ensureConfigSymlink({ context, runtime })
-    yield* afterBoundary({ runtime, boundary: 'ConfigLinked', journalPath: paths.journalPath })
-    yield* generate(context).pipe(
-      Effect.mapError((cause) =>
-        normalizeError({
-          cause,
-          path: journal.workspaceRoot,
-          message: `Workspace generation failed for '${journal.workspaceRoot}'`,
-          reason: 'GenerationFailed',
-          recoveryPaths: [paths.journalPath, journal.workspaceRoot],
-        }),
-      ),
-    )
-    yield* afterBoundary({ runtime, boundary: 'Generated', journalPath: paths.journalPath })
-    yield* writeJournal({ journal, state: 'generated', path: paths.journalPath, runtime })
-    yield* afterBoundary({
+    const generationAlreadyJournaled = journal.state === 'generated' || journal.state === 'complete'
+    yield* ensureConfigSymlink({
+      context,
       runtime,
-      boundary: 'GeneratedJournaled',
-      journalPath: paths.journalPath,
+      createIfMissing: generationAlreadyJournaled === false,
     })
-    yield* writeJournal({ journal, state: 'complete', path: paths.journalPath, runtime })
-    yield* afterBoundary({ runtime, boundary: 'CompleteJournaled', journalPath: paths.journalPath })
+    if (generationAlreadyJournaled === false) {
+      yield* afterBoundary({ runtime, boundary: 'ConfigLinked', journalPath: paths.journalPath })
+      yield* generate(context).pipe(
+        Effect.mapError((cause) =>
+          normalizeError({
+            cause,
+            path: journal.workspaceRoot,
+            message: `Workspace generation failed for '${journal.workspaceRoot}'`,
+            reason: 'GenerationFailed',
+            recoveryPaths: [paths.journalPath, journal.workspaceRoot],
+          }),
+        ),
+      )
+      yield* afterBoundary({ runtime, boundary: 'Generated', journalPath: paths.journalPath })
+      yield* writeJournal({ journal, state: 'generated', path: paths.journalPath, runtime })
+      yield* afterBoundary({
+        runtime,
+        boundary: 'GeneratedJournaled',
+        journalPath: paths.journalPath,
+      })
+    }
+    if (journal.state !== 'complete') {
+      yield* writeJournal({ journal, state: 'complete', path: paths.journalPath, runtime })
+      yield* afterBoundary({
+        runtime,
+        boundary: 'CompleteJournaled',
+        journalPath: paths.journalPath,
+      })
+    }
     yield* removeDurable({ path: paths.journalPath, runtime })
     yield* afterBoundary({ runtime, boundary: 'JournalRemoved', journalPath: paths.journalPath })
     return resultFromContext(context)
@@ -1197,7 +1381,7 @@ const finishForward = <R, E>({
  * Move an existing canonical branch worktree into `workspaceRoot/repos/<ownedMember>` without
  * checking out, copying, resetting, stashing, pruning, or creating a branch.
  */
-export const acquireOwnedWorktree = <R, E>({
+const acquireOwnedWorktreeUnlocked = <R, E>({
   bareRepo,
   workspaceRoot,
   ownedMember,
@@ -1329,7 +1513,7 @@ export const acquireOwnedWorktree = <R, E>({
   })
 
 /** Reconcile an interrupted acquisition from observed paths and the bare repository registration. */
-export const recoverOwnedWorktreeAcquisition = <R, E>({
+const recoverOwnedWorktreeAcquisitionUnlocked = <R, E>({
   workspaceRoot: rawWorkspaceRoot,
   generate,
   runtime = {},
@@ -1492,7 +1676,7 @@ const assertCleanupShape = ({
   })
 
 /** Restore the canonical worktree pathname after callback-owned generated state has been removed. */
-export const teardownOwnedWorkspace = <R, E>({
+const teardownOwnedWorkspaceUnlocked = <R, E>({
   workspaceRoot: rawWorkspaceRoot,
   cleanup,
   callerCwd = process.cwd(),
@@ -1552,6 +1736,12 @@ export const teardownOwnedWorkspace = <R, E>({
     )
     yield* ensureConfigSymlink({ context, runtime, createIfMissing: false })
     yield* assertCleanupShape({ manifest, configName })
+    yield* verifyIdentity({
+      bareRepo: manifest.bareRepo,
+      worktree: paths.ownedWorktree,
+      workspaceRoot,
+      expected: teardownIdentity,
+    })
     yield* command(
       manifest.bareRepo,
       Git.moveWorktree({
