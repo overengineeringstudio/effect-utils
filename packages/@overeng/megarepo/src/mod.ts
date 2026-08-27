@@ -22,6 +22,12 @@ export * from './lib/member-mount-cp-a.ts'
 export * from './lib/owned-worktree-acquisition-schema.ts'
 export * from './lib/owned-worktree-acquisition.ts'
 
+// Serialized workspace update lock and capability resolution
+export * from './lib/workspace-update-lock-schema.ts'
+export * from './lib/workspace-update-lock.ts'
+export * from './lib/composition-capability-resolver-schema.ts'
+export * from './lib/composition-capability-resolver.ts'
+
 // Pure Buck composition-root projection
 export * from './lib/generators/composition-root.ts'
 export * from './lib/generators/composition-root-publisher.ts'

@@ -10,6 +10,7 @@ import {
   COMPOSITION_GENERATION_MANIFEST_PATH,
   CompositionGenerationManifestSchema,
   CompositionRootOutputSchema,
+  buckMemberCapabilityByToolId,
   decodeBuckMemberManifest,
   decodeBuckMemberManifestJson,
   decodeCompositionRootInput,
@@ -100,6 +101,10 @@ describe('buck2 member manifest', () => {
       { target: '//pkg:item_x', destination: 'dist/item_x' },
     ])
     expect(decoded.capabilities.map((item) => item.toolId)).toEqual(['alpha', 'zeta'])
+    expect(buckMemberCapabilityByToolId({ manifest: decoded, toolId: 'alpha' })).toEqual(
+      capability('alpha'),
+    )
+    expect(buckMemberCapabilityByToolId({ manifest: decoded, toolId: 'missing' })).toBeUndefined()
 
     const encoded = encodeBuckMemberManifestJson(decoded)
     expect(encoded.endsWith('\n')).toBe(true)
