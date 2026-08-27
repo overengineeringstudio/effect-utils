@@ -6,8 +6,6 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
 import { Effect, Schema } from 'effect'
 
-import { nonEmptyTrimmedString } from '@overeng/utils'
-
 /** Branded SHA-256 content digest in lowercase-hex `sha256:<64 hex>` form. */
 export const ContentDigest = Schema.String.pipe(
   Schema.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)),
@@ -29,14 +27,16 @@ const NonNegativeInt = Schema.Int.pipe(
 )
 
 /** Branded non-empty media (MIME) type describing the encoded byte payload. */
-export const MediaType = nonEmptyTrimmedString.pipe(
+export const MediaType = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
   Schema.brand('ContentAddress.MediaType'),
   Schema.annotate({ identifier: 'ContentAddress.MediaType' }),
 )
 export type MediaType = typeof MediaType.Type
 
 /** Branded codec tag naming the byte-encoding scheme (e.g. `canonical-json`). */
-export const Codec = nonEmptyTrimmedString.pipe(
+export const Codec = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isTrimmed()),
   Schema.brand('ContentAddress.Codec'),
   Schema.annotate({ identifier: 'ContentAddress.Codec' }),
 )
@@ -55,15 +55,15 @@ export type ContentDescriptor = typeof ContentDescriptor.Type
 /** One child object referenced by a manifest, optionally with a stable logical path and role. */
 export const ContentManifestEntry = Schema.Struct({
   descriptor: ContentDescriptor,
-  logicalPath: Schema.optional(nonEmptyTrimmedString),
-  role: Schema.optional(nonEmptyTrimmedString),
+  logicalPath: Schema.optional(Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()))),
+  role: Schema.optional(Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed()))),
 }).annotate({ identifier: 'ContentAddress.ContentManifestEntry' })
 export type ContentManifestEntry = typeof ContentManifestEntry.Type
 
 /** Versioned CAS manifest containing descriptors for a logical artifact or artifact set. */
 export const ContentManifest = Schema.TaggedStruct('ContentManifest', {
   schemaVersion: Schema.Literal(1),
-  role: nonEmptyTrimmedString,
+  role: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
   createdAt: Schema.optional(Schema.DateTimeUtcFromString),
   entries: Schema.Array(ContentManifestEntry),
 }).annotate({ identifier: 'ContentAddress.ContentManifest' })

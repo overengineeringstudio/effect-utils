@@ -33,6 +33,10 @@ const workspaceDeps = catalog.compose({
   peerDependencies: {
     external: catalog.pick(...peerDepNames),
   },
+  // `@overeng/utils` is a runtime workspace dep that carries peer dependencies
+  // (the @effect/* cluster + @playwright/test). `mode: 'install'` makes genie
+  // install those inherited peers explicitly so a standalone consumer resolves.
+  mode: 'install',
 })
 
 export default packageJson(

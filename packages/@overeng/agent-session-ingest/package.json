@@ -20,6 +20,15 @@
       "./jsonl": "./dist/adapters/jsonl.js"
     }
   },
+  "dependencies": {
+    "@effect/opentelemetry": "4.0.0-rc.111",
+    "@effect/platform-node": "4.0.0-rc.111",
+    "@effect/vitest": "4.0.0-rc.111",
+    "@overeng/utils": "workspace:^",
+    "@playwright/test": "1.61.0",
+    "effect": "4.0.0-rc.111",
+    "vitest": "4.1.9"
+  },
   "devDependencies": {
     "@effect/platform-node": "4.0.0-rc.111",
     "@effect/vitest": "4.0.0-rc.111",
@@ -37,6 +46,10 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/agent-session-ingest",
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]
   }

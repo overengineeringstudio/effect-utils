@@ -53,28 +53,38 @@ importers:
         version: 19.2.17
 
   packages/@overeng/agent-session-ingest:
-    devDependencies:
+    dependencies:
+      '@effect/opentelemetry':
+        specifier: 4.0.0-rc.111
+        version: 4.0.0-rc.111(@opentelemetry/api-logs@0.219.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.219.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.8.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(effect@4.0.0-rc.111)
       '@effect/platform-node':
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111(effect@4.0.0-rc.111)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0)))
+      '@overeng/utils':
+        specifier: workspace:^
+        version: link:../utils
+      '@playwright/test':
+        specifier: 1.61.0
+        version: 1.61.0
+      effect:
+        specifier: 4.0.0-rc.111
+        version: 4.0.0-rc.111
+      vitest:
+        specifier: 4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
+    devDependencies:
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
       '@types/node':
         specifier: 26.0.0
         version: 26.0.0
-      effect:
-        specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111
       typescript:
         specifier: 6.0.3
         version: 6.0.3
-      vitest:
-        specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.0)(happy-dom@20.10.6)(vite@8.0.16(@types/node@26.0.0)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/@overeng/ci-tools:
     dependencies:
