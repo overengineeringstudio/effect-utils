@@ -59,6 +59,12 @@ staleness, global task edges, or deletion of the previous dependency surface?
   with zero warnings/errors; targeted formatting; Genie freshness; strict VRS;
   Buck target/provider/build; real scoped publish, check, and token-gated lock
   recovery.
+- Integration in the main worktree exposed one task-graph negative control:
+  making scoped publish/check depend on `genie:run` also pulled in the
+  transitional root `pnpm:install`, which replaced the stable first hop before
+  every check. Removing that edge made publish/check independent of the legacy
+  producer; sequential real publish and check then passed with the first hop
+  still a symlink.
 - No live editor or language-server process was held open. This is a resolver
   atomicity control, not the real-editor soak reserved for the next gate.
 
