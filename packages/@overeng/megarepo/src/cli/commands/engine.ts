@@ -37,6 +37,7 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../../lib/lock.ts'
+import { foreignMemberMountMessage, inspectMemberMount } from '../../lib/member-mount.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
@@ -319,17 +320,26 @@ export const syncMegarepo = <R = never>({
               EffectPath.unsafe.relativeFile(entry),
             )
 
-            // Only remove symlinks (not directories that might be local repos)
-            const linkTarget = yield* fs.readLink(entryPath).pipe(Effect.orElseSucceed(() => null))
-
-            if (linkTarget !== null) {
+            const memberMount = yield* inspectMemberMount(entryPath)
+            if (memberMount._tag === 'Foreign') {
+              return {
+                name: entry,
+                status: 'error' as const,
+                message: foreignMemberMountMessage({
+                  name: entry,
+                  path: entryPath,
+                  operation: 'remove',
+                }),
+              }
+            }
+            if (memberMount._tag === 'Symlink') {
               if (dryRun === false) {
                 yield* fs.remove(entryPath).pipe(Effect.catch(() => Effect.void))
               }
               return {
                 name: entry,
                 status: 'removed' as const,
-                message: linkTarget,
+                message: memberMount.target,
               }
             }
             return undefined

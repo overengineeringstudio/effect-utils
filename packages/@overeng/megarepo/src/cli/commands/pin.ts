@@ -34,6 +34,7 @@ import {
   updateLockedMember,
   writeLockFile,
 } from '../../lib/lock.ts'
+import { foreignMemberMountMessage, inspectMemberMount } from '../../lib/member-mount.ts'
 import { classifyRef } from '../../lib/ref.ts'
 import { runPreflightChecks } from '../../lib/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
@@ -42,6 +43,7 @@ import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context
 import {
   NotInMegarepoError,
   MemberNotFoundError,
+  ForeignMemberMountError,
   InvalidSourceError,
   CannotUseLocalPathError,
   CannotGetCloneUrlError,
@@ -105,6 +107,23 @@ export const pinCommand = Cli.Command.make(
             return yield* new MemberNotFoundError({ message: 'Member not found', member })
           }
 
+          const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
+          const memberPathNormalized = memberPath.replace(/\/$/, '')
+          const memberMount = yield* inspectMemberMount(memberPathNormalized)
+          if (memberMount._tag === 'Foreign') {
+            const message = foreignMemberMountMessage({
+              name: member,
+              path: memberPathNormalized,
+              operation: 'pin',
+            })
+            tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
+            return yield* new ForeignMemberMountError({
+              message,
+              member,
+              path: memberPathNormalized,
+            })
+          }
+
           // Check if it's a local path (can't pin local paths)
           let sourceString = config.members[member]
           if (sourceString === undefined) {
@@ -146,9 +165,6 @@ export const pinCommand = Cli.Command.make(
             lockFile,
             store,
           })
-
-          const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
-          const memberPathNormalized = memberPath.replace(/\/$/, '')
 
           // If -c is provided, switch to the new ref
           if (Option.isSome(checkout) === true) {
@@ -563,6 +579,23 @@ export const unpinCommand = Cli.Command.make(
             return yield* new MemberNotFoundError({ message: 'Member not found', member })
           }
 
+          const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
+          const memberPathNormalized = memberPath.replace(/\/$/, '')
+          const memberMount = yield* inspectMemberMount(memberPathNormalized)
+          if (memberMount._tag === 'Foreign') {
+            const message = foreignMemberMountMessage({
+              name: member,
+              path: memberPathNormalized,
+              operation: 'unpin',
+            })
+            tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
+            return yield* new ForeignMemberMountError({
+              message,
+              member,
+              path: memberPathNormalized,
+            })
+          }
+
           // Load lock file
           const lockPath = EffectPath.ops.join(
             root.value,
@@ -619,9 +652,6 @@ export const unpinCommand = Cli.Command.make(
             const source = parseSourceString(sourceString)
             if (source !== undefined && isRemoteSource(source) === true) {
               const store = yield* Store
-              const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
-              const memberPathNormalized = memberPath.replace(/\/$/, '')
-
               // Get the ref-based worktree path (use the locked ref)
               const refWorktreePath = store.getWorktreePath({
                 source,
