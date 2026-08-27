@@ -13,16 +13,16 @@ fail() {
 
 expect_failure() {
   local label="$1"
-  local expected="$2"
+  local expected_pattern="$2"
   shift 2
   local log="$fixture_root/$label.log"
 
   if "$@" >"$log" 2>&1; then
     fail "expected $label to fail"
   fi
-  if ! grep -F "$expected" "$log" >/dev/null; then
+  if ! grep -E "$expected_pattern" "$log" >/dev/null; then
     sed -n '1,120p' "$log" >&2
-    fail "$label failed without expected diagnostic: $expected"
+    fail "$label failed without expected diagnostic: $expected_pattern"
   fi
   echo "rust-workspace-contract: RED $label"
 }
@@ -34,7 +34,7 @@ cargo metadata \
   --no-deps \
   --format-version 1 >"$metadata"
 
-expected_packages='["buck2-archive-tool","buck2-closure-tool","buck2-package-evidence","buck2-product","buck2-tool-core","otel-scrape","otelite"]'
+expected_packages='["buck2-archive-tool","buck2-product","buck2-tool-core","otel-scrape","otelite"]'
 jq -e --argjson expected "$expected_packages" '
   (.packages | map(.name) | sort) == $expected and
   all(.packages[]; .version == "0.0.0" and .edition == "2021" and .license == "MIT") and
@@ -61,7 +61,7 @@ grep -v '^workspace = ' "$inheritance_manifest" >"$inheritance_manifest_rewritte
 mv "$inheritance_manifest_rewritten" "$inheritance_manifest"
 expect_failure \
   "missing-explicit-workspace-link" \
-  "failed to find a workspace root" \
+  "failed to find a workspace root|workspace[.]dependencies.*was not defined" \
   cargo metadata \
   --manifest-path "$fixture_root/inheritance/packages/@overeng/otel-scrape/Cargo.toml" \
   --offline \
@@ -75,7 +75,7 @@ cp "$repo_root/packages/@overeng/otel-scrape/src/lib.rs" \
   "$fixture_root/member-only/packages/@overeng/otel-scrape/src/lib.rs"
 expect_failure \
   "member-only-source" \
-  "/rust/Cargo.toml" \
+  "/rust/Cargo[.]toml" \
   cargo metadata \
   --manifest-path "$fixture_root/member-only/packages/@overeng/otel-scrape/Cargo.toml" \
   --offline \

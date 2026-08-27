@@ -25,7 +25,7 @@ inputs="$(nix eval --impure --json --expr "
 ")"
 
 jq -e '
-  (keys | sort) == ["archive-tool", "closure-tool", "package-evidence", "product"]
+  (keys | sort) == ["archive-tool", "product"]
 ' <<<"$inputs" >/dev/null || {
   echo "FAIL: support-tool source inventory is incomplete or has unknown tools" >&2
   exit 1
@@ -46,7 +46,7 @@ assert_excludes() {
   fi
 }
 
-for tool in archive-tool closure-tool package-evidence product; do
+for tool in archive-tool product; do
   assert_contains "$tool" rust/Cargo.toml
   assert_contains "$tool" rust/Cargo.lock
   assert_contains "$tool" rust-toolchain.toml
@@ -54,7 +54,7 @@ for tool in archive-tool closure-tool package-evidence product; do
   assert_contains "$tool" "rust/buck2-tools/$tool/Cargo.toml"
   assert_excludes "$tool" packages/@overeng/otelite
   assert_excludes "$tool" packages/@overeng/otel-scrape
-  for sibling in archive-tool closure-tool package-evidence product; do
+  for sibling in archive-tool product; do
     if [ "$sibling" != "$tool" ]; then
       assert_excludes "$tool" "rust/buck2-tools/$sibling/src"
     fi

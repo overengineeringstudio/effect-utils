@@ -10,15 +10,6 @@ support_tool(
     visibility = ["PUBLIC"],
 )
 
-# Nix activation provides the logical commands; each tool attests its semantic
-# capability identity before performing work.
-support_tool(
-    name = "closure_tool",
-    protocol = "effect-utils/buck2-closure-tool/v1",
-    tool_id = "closure-tool",
-    visibility = ["PUBLIC"],
-)
-
 support_tool(
     name = "product_tool",
     protocol = "effect-utils/buck2-product/v1",
@@ -62,13 +53,6 @@ effect_tsgo_toolchain(
     bun_by_platform = _BUN_BY_PLATFORM,
     executable_by_platform = _TSGO_BY_PLATFORM,
     runner = "root//:packages/@overeng/buck2-tools/src/typescript-runner.ts",
-    visibility = ["PUBLIC"],
-)
-
-support_tool(
-    name = "package_evidence_tool",
-    protocol = "effect-utils/buck2-package-evidence/v1",
-    tool_id = "package-evidence",
     visibility = ["PUBLIC"],
 )
 
