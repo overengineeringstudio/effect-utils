@@ -153,3 +153,70 @@ export class OwnedWorktreeAcquisitionError extends Schema.TaggedError<OwnedWorkt
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
+
+/** One exact ordered filesystem, Git, or callback step in an acquisition dry-run. */
+export const OwnedWorktreeAcquisitionPlanStep = Schema.Union([
+  Schema.TaggedStruct('WriteJournal', {
+    path: AbsolutePath,
+    state: OwnedWorktreeAcquisitionState,
+  }),
+  Schema.TaggedStruct('GitWorktreeMove', {
+    bareRepo: AbsolutePath,
+    fromPath: AbsolutePath,
+    toPath: AbsolutePath,
+  }),
+  Schema.TaggedStruct('PublishManagedRoot', {
+    rootStagePath: AbsolutePath,
+    workspaceRoot: AbsolutePath,
+    reposPath: AbsolutePath,
+    manifestPath: AbsolutePath,
+  }),
+  Schema.TaggedStruct('RemoveManagedRoot', { path: AbsolutePath }),
+  Schema.TaggedStruct('CreateConfigSymlink', {
+    path: AbsolutePath,
+    target: Schema.String,
+  }),
+  Schema.TaggedStruct('InvokeGenerate', {
+    workspaceRoot: AbsolutePath,
+    ownedWorktree: AbsolutePath,
+    configPath: AbsolutePath,
+  }),
+  Schema.TaggedStruct('RemoveJournal', { path: AbsolutePath }),
+]).annotate({ identifier: 'Megarepo.OwnedWorktreeAcquisitionPlanStep' })
+export type OwnedWorktreeAcquisitionPlanStep = typeof OwnedWorktreeAcquisitionPlanStep.Type
+
+const OwnedWorktreePlanPaths = {
+  workspaceRoot: AbsolutePath,
+  ownedWorktree: AbsolutePath,
+  tempPath: AbsolutePath,
+  journalPath: AbsolutePath,
+  rootStagePath: AbsolutePath,
+  rootConfigPath: AbsolutePath,
+  configPath: AbsolutePath,
+  configName: OwnedWorktreeConfigName,
+} as const
+
+/** Read-only acquisition/recovery classification consumed by apply dry-run. */
+export const OwnedWorktreeAcquisitionPlan = Schema.Union([
+  Schema.TaggedStruct('AlreadySynthesized', OwnedWorktreePlanPaths),
+  Schema.TaggedStruct('Acquire', {
+    ...OwnedWorktreePlanPaths,
+    steps: Schema.Array(OwnedWorktreeAcquisitionPlanStep),
+  }),
+  Schema.TaggedStruct('Recover', {
+    ...OwnedWorktreePlanPaths,
+    journalState: OwnedWorktreeAcquisitionState,
+    action: Schema.Literals([
+      'RemoveJournalAtCanonicalWorktree',
+      'RollbackTemporary',
+      'RollForwardInstalled',
+      'FinishGenerated',
+      'FinishComplete',
+    ]),
+    steps: Schema.Array(OwnedWorktreeAcquisitionPlanStep),
+  }),
+  Schema.TaggedStruct('Refused', {
+    error: OwnedWorktreeAcquisitionError,
+  }),
+]).annotate({ identifier: 'Megarepo.OwnedWorktreeAcquisitionPlan' })
+export type OwnedWorktreeAcquisitionPlan = typeof OwnedWorktreeAcquisitionPlan.Type

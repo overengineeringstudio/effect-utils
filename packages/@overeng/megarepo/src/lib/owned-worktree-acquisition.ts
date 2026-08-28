@@ -35,6 +35,8 @@ import {
   type OwnedWorkspaceTeardownResult,
   type OwnedWorktreeAcquisitionJournal as Journal,
   type OwnedWorktreeAcquisitionLockOwner as AcquisitionLockOwner,
+  type OwnedWorktreeAcquisitionPlan,
+  type OwnedWorktreeAcquisitionPlanStep,
   type OwnedWorktreeAcquisitionResult,
   type OwnedWorktreeAcquisitionState,
   type OwnedWorktreeConfigName,
@@ -85,6 +87,10 @@ export interface OwnedWorkspaceGenerationContext {
   readonly configPath: AbsoluteFilePath
   readonly configName: OwnedWorktreeConfigName
 }
+
+/** Classify legacy, complete, interrupted, or refused acquisition state without mutation. */
+export const planOwnedWorktreeAcquisition: typeof planOwnedWorktreeAcquisitionUnlocked = (args) =>
+  planOwnedWorktreeAcquisitionUnlocked(args)
 
 /**
  * Move an existing canonical branch worktree under an exclusive sibling lifecycle lock.
@@ -1285,36 +1291,17 @@ const removeManagedEmptyRoot = ({
     yield* syncDirectory({ path: NodePath.dirname(workspaceRoot), runtime })
   })
 
-const removeManagedRootStage = ({
-  paths,
-  expected,
-  runtime,
-}: {
-  paths: Paths
-  expected: RootManifest
-  runtime: OwnedWorktreeAcquisitionRuntime
-}) =>
+const inspectManagedRootStage = ({ paths, expected }: { paths: Paths; expected: RootManifest }) =>
   Effect.gen(function* () {
     const entries = yield* io({
       path: paths.rootStagePath,
       message: `Cannot inspect staged workspace root '${paths.rootStagePath}'`,
       try: () => readdir(paths.rootStagePath),
     })
-    if (entries.length === 0) {
-      yield* io({
-        path: paths.rootStagePath,
-        message: `Cannot remove incomplete empty staged root '${paths.rootStagePath}'`,
-        try: () => rmdir(paths.rootStagePath),
-      })
-      yield* syncDirectory({ path: paths.parent, runtime })
-      return
-    }
+    if (entries.length === 0) return 'Empty' as const
     if (entries.includes(OWNED_WORKTREE_ROOT_MANIFEST) === true) {
-      return yield* removeManagedEmptyRoot({
-        workspaceRoot: paths.rootStagePath,
-        expected,
-        runtime,
-      })
+      yield* assertManagedEmptyRoot({ workspaceRoot: paths.rootStagePath, expected })
+      return 'Managed' as const
     }
     if (entries.length !== 1 || entries[0] !== 'repos') {
       return yield* error({
@@ -1338,11 +1325,32 @@ const removeManagedRootStage = ({
         recoveryPaths: repoEntries.map((entry) => NodePath.join(repos, entry)),
       })
     }
+    return 'ReposOnly' as const
+  })
+
+const removeManagedRootStage = ({
+  paths,
+  expected,
+  runtime,
+}: {
+  paths: Paths
+  expected: RootManifest
+  runtime: OwnedWorktreeAcquisitionRuntime
+}) =>
+  Effect.gen(function* () {
+    const shape = yield* inspectManagedRootStage({ paths, expected })
+    if (shape === 'Managed') {
+      return yield* removeManagedEmptyRoot({
+        workspaceRoot: paths.rootStagePath,
+        expected,
+        runtime,
+      })
+    }
     yield* io({
       path: paths.rootStagePath,
       message: `Cannot remove incomplete staged root '${paths.rootStagePath}'`,
       try: async () => {
-        await rmdir(repos)
+        if (shape === 'ReposOnly') await rmdir(NodePath.join(paths.rootStagePath, 'repos'))
         await rmdir(paths.rootStagePath)
       },
     })
@@ -1457,6 +1465,376 @@ const resultFromContext = (
   configPath: context.configPath,
   configName: context.configName,
 })
+
+const plannedPathFields = ({
+  paths,
+  configName,
+}: {
+  paths: Paths
+  configName: OwnedWorktreeConfigName
+}) => ({
+  workspaceRoot: paths.workspaceRoot,
+  ownedWorktree: paths.ownedWorktree,
+  tempPath: paths.tempPath,
+  journalPath: paths.journalPath,
+  rootStagePath: paths.rootStagePath,
+  rootConfigPath: NodePath.join(paths.workspaceRoot, configName),
+  configPath: NodePath.join(paths.ownedWorktree, configName),
+  configName,
+})
+
+const plannedGenerateSteps = ({
+  paths,
+  configName,
+}: {
+  paths: Paths
+  configName: OwnedWorktreeConfigName
+}): ReadonlyArray<OwnedWorktreeAcquisitionPlanStep> => [
+  {
+    _tag: 'CreateConfigSymlink',
+    path: NodePath.join(paths.workspaceRoot, configName),
+    target: NodePath.posix.join('repos', NodePath.basename(paths.ownedWorktree), configName),
+  },
+  {
+    _tag: 'InvokeGenerate',
+    workspaceRoot: paths.workspaceRoot,
+    ownedWorktree: paths.ownedWorktree,
+    configPath: NodePath.join(paths.ownedWorktree, configName),
+  },
+  { _tag: 'WriteJournal', path: paths.journalPath, state: 'generated' },
+  { _tag: 'WriteJournal', path: paths.journalPath, state: 'complete' },
+  { _tag: 'RemoveJournal', path: paths.journalPath },
+]
+
+const acquirePlanSteps = ({
+  prepared,
+}: {
+  prepared: Prepared
+}): ReadonlyArray<OwnedWorktreeAcquisitionPlanStep> => {
+  const { paths } = prepared
+  return [
+    { _tag: 'WriteJournal', path: paths.journalPath, state: 'prepared' },
+    {
+      _tag: 'GitWorktreeMove',
+      bareRepo: prepared.bareRepo,
+      fromPath: paths.workspaceRoot,
+      toPath: paths.tempPath,
+    },
+    { _tag: 'WriteJournal', path: paths.journalPath, state: 'moved_to_temp' },
+    {
+      _tag: 'PublishManagedRoot',
+      rootStagePath: paths.rootStagePath,
+      workspaceRoot: paths.workspaceRoot,
+      reposPath: NodePath.join(paths.workspaceRoot, 'repos'),
+      manifestPath: NodePath.join(paths.rootStagePath, OWNED_WORKTREE_ROOT_MANIFEST),
+    },
+    { _tag: 'WriteJournal', path: paths.journalPath, state: 'root_created' },
+    {
+      _tag: 'GitWorktreeMove',
+      bareRepo: prepared.bareRepo,
+      fromPath: paths.tempPath,
+      toPath: paths.ownedWorktree,
+    },
+    { _tag: 'WriteJournal', path: paths.journalPath, state: 'installed' },
+    ...plannedGenerateSteps({ paths, configName: prepared.configName }),
+  ]
+}
+
+const ensurePlanPathMissing = (path: string) =>
+  io({ path, message: `Cannot inspect plan path '${path}'`, try: () => pathExists(path) }).pipe(
+    Effect.flatMap((exists) =>
+      exists === false
+        ? Effect.void
+        : error({
+            reason: 'Collision',
+            path,
+            message: `Observed acquisition conflict at '${path}'`,
+            recoveryPaths: [path],
+          }),
+    ),
+  )
+
+const planOwnedWorktreeAcquisitionUnlocked = ({
+  bareRepo: rawBareRepo,
+  workspaceRoot: rawWorkspaceRoot,
+  ownedMember,
+  branch,
+  callerCwd = process.cwd(),
+}: {
+  bareRepo: string
+  workspaceRoot: string
+  ownedMember: string
+  branch: string
+  callerCwd?: string
+}): Effect.Effect<
+  OwnedWorktreeAcquisitionPlan,
+  never,
+  FileSystem.FileSystem | ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const bareRepo = normalizedAbsolute(rawBareRepo)
+    const workspaceRoot = normalizedAbsolute(rawWorkspaceRoot)
+    const paths = derivePaths({ workspaceRoot, ownedMember })
+    const lockExists = yield* io({
+      path: paths.lockPath,
+      message: `Cannot inspect acquisition lock '${paths.lockPath}'`,
+      try: () => pathExists(paths.lockPath),
+    })
+    if (lockExists === true) {
+      const lockError = yield* io({
+        path: paths.lockPath,
+        message: `Cannot classify acquisition lock '${paths.lockPath}'`,
+        try: () =>
+          acquisitionLockedError({
+            workspaceRoot,
+            lockPath: paths.lockPath,
+            cause: 'read-only acquisition plan observed a live or stale lock',
+          }),
+      })
+      return yield* lockError
+    }
+    if (
+      /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(ownedMember) === false ||
+      ownedMember === '.' ||
+      ownedMember === '..'
+    ) {
+      return yield* error({
+        reason: 'InvalidRequest',
+        path: workspaceRoot,
+        message: `Invalid owned member name '${ownedMember}'`,
+      })
+    }
+    yield* command(
+      bareRepo,
+      Git.runCommand({ cwd: bareRepo, args: ['check-ref-format', '--branch', branch] }),
+    )
+    if (isWithin({ parent: workspaceRoot, path: normalizedAbsolute(callerCwd) }) === true) {
+      return yield* error({
+        reason: 'PreflightRefused',
+        path: normalizedAbsolute(callerCwd),
+        message: `Caller cwd '${normalizedAbsolute(callerCwd)}' is inside workspace '${workspaceRoot}'`,
+      })
+    }
+
+    const journalExists = yield* io({
+      path: paths.journalPath,
+      message: `Cannot inspect acquisition journal '${paths.journalPath}'`,
+      try: () => pathExists(paths.journalPath),
+    })
+    if (journalExists === true) {
+      const journal = yield* decodeJournal(paths.journalPath)
+      if (
+        journal.workspaceRoot !== workspaceRoot ||
+        journal.tempPath !== paths.tempPath ||
+        journal.bareRepo !== bareRepo ||
+        journal.ownedMember !== ownedMember ||
+        journal.branchRef !== `refs/heads/${branch}`
+      ) {
+        return yield* error({
+          reason: 'RecoveryConflict',
+          path: paths.journalPath,
+          message: `Acquisition journal identity conflicts with the requested workspace`,
+          recoveryPaths: [paths.journalPath, workspaceRoot, bareRepo],
+        })
+      }
+      const registrations = yield* command(bareRepo, Git.listWorktrees(bareRepo))
+      const matching = registrations.filter(
+        (registration) =>
+          registration.head === journal.head &&
+          Option.getOrUndefined(registration.branch) === branch,
+      )
+      if (matching.length !== 1) {
+        return yield* error({
+          reason: 'RecoveryConflict',
+          path: bareRepo,
+          message: `Cannot uniquely classify journaled branch registration`,
+          recoveryPaths: matching.map((registration) => registration.path),
+        })
+      }
+      const registeredPath = normalizedAbsolute(matching[0]!.path)
+      const expected = rootManifestFromJournal(journal)
+      if (registeredPath === paths.workspaceRoot) {
+        yield* verifyIdentity({
+          bareRepo,
+          worktree: paths.workspaceRoot,
+          workspaceRoot,
+          expected: journal,
+        })
+        yield* ensurePlanPathMissing(paths.tempPath)
+        yield* ensurePlanPathMissing(paths.ownedWorktree)
+        yield* ensurePlanPathMissing(paths.rootStagePath)
+        const configName = yield* discoverConfigName(paths.workspaceRoot)
+        return {
+          _tag: 'Recover',
+          ...plannedPathFields({ paths, configName }),
+          journalState: journal.state,
+          action: 'RemoveJournalAtCanonicalWorktree',
+          steps: [{ _tag: 'RemoveJournal', path: paths.journalPath }],
+        } as const
+      }
+      if (registeredPath === paths.tempPath) {
+        yield* verifyIdentity({
+          bareRepo,
+          worktree: paths.tempPath,
+          workspaceRoot,
+          expected: journal,
+        })
+        const configName = yield* discoverConfigName(paths.tempPath)
+        const steps: Array<OwnedWorktreeAcquisitionPlanStep> = []
+        const rootExists = yield* io({
+          path: paths.workspaceRoot,
+          message: `Cannot inspect workspace root '${paths.workspaceRoot}'`,
+          try: () => pathExists(paths.workspaceRoot),
+        })
+        if (rootExists === true) {
+          yield* assertManagedEmptyRoot({ workspaceRoot: paths.workspaceRoot, expected })
+          steps.push({ _tag: 'RemoveManagedRoot', path: paths.workspaceRoot })
+        }
+        const rootStageExists = yield* io({
+          path: paths.rootStagePath,
+          message: `Cannot inspect staged root '${paths.rootStagePath}'`,
+          try: () => pathExists(paths.rootStagePath),
+        })
+        if (rootStageExists === true) {
+          yield* inspectManagedRootStage({ paths, expected })
+          steps.push({ _tag: 'RemoveManagedRoot', path: paths.rootStagePath })
+        }
+        steps.push(
+          {
+            _tag: 'GitWorktreeMove',
+            bareRepo,
+            fromPath: paths.tempPath,
+            toPath: paths.workspaceRoot,
+          },
+          { _tag: 'RemoveJournal', path: paths.journalPath },
+        )
+        return {
+          _tag: 'Recover',
+          ...plannedPathFields({ paths, configName }),
+          journalState: journal.state,
+          action: 'RollbackTemporary',
+          steps,
+        } as const
+      }
+      if (registeredPath === paths.ownedWorktree) {
+        yield* verifyIdentity({
+          bareRepo,
+          worktree: paths.ownedWorktree,
+          workspaceRoot,
+          expected: journal,
+        })
+        yield* ensurePlanPathMissing(paths.tempPath)
+        yield* ensurePlanPathMissing(paths.rootStagePath)
+        const observedManifest = yield* decodeRootManifest(paths.rootManifestPath)
+        if (canonicalRootManifest(observedManifest) !== canonicalRootManifest(expected)) {
+          return yield* error({
+            reason: 'RecoveryConflict',
+            path: paths.rootManifestPath,
+            message: `Installed workspace ownership manifest conflicts with journal`,
+          })
+        }
+        const configName = yield* discoverConfigName(paths.ownedWorktree)
+        const context = configContext({ workspaceRoot, ownedMember, configName })
+        let action: Extract<OwnedWorktreeAcquisitionPlan, { _tag: 'Recover' }>['action']
+        let steps: ReadonlyArray<OwnedWorktreeAcquisitionPlanStep>
+        if (journal.state === 'generated') {
+          yield* ensureConfigSymlink({ context, runtime: {}, createIfMissing: false })
+          action = 'FinishGenerated'
+          steps = [
+            { _tag: 'WriteJournal', path: paths.journalPath, state: 'complete' },
+            { _tag: 'RemoveJournal', path: paths.journalPath },
+          ]
+        } else if (journal.state === 'complete') {
+          yield* ensureConfigSymlink({ context, runtime: {}, createIfMissing: false })
+          action = 'FinishComplete'
+          steps = [{ _tag: 'RemoveJournal', path: paths.journalPath }]
+        } else {
+          const rootConfigExists = yield* io({
+            path: NodePath.join(workspaceRoot, configName),
+            message: `Cannot inspect root config authority`,
+            try: () => pathExists(NodePath.join(workspaceRoot, configName)),
+          })
+          if (rootConfigExists === true) {
+            yield* ensureConfigSymlink({ context, runtime: {}, createIfMissing: false })
+          }
+          action = 'RollForwardInstalled'
+          steps = plannedGenerateSteps({ paths, configName })
+        }
+        return {
+          _tag: 'Recover',
+          ...plannedPathFields({ paths, configName }),
+          journalState: journal.state,
+          action,
+          steps,
+        } as const
+      }
+      return yield* error({
+        reason: 'RecoveryConflict',
+        path: registeredPath,
+        message: `Journaled branch is registered at unexpected path '${registeredPath}'`,
+        recoveryPaths: [paths.journalPath, registeredPath],
+      })
+    }
+
+    const completeManifestExists = yield* io({
+      path: paths.rootManifestPath,
+      message: `Cannot inspect complete workspace manifest '${paths.rootManifestPath}'`,
+      try: () => pathExists(paths.rootManifestPath),
+    })
+    if (completeManifestExists === true) {
+      const manifest = yield* readCompleteManifest(workspaceRoot)
+      if (
+        manifest.bareRepo !== bareRepo ||
+        manifest.ownedMember !== ownedMember ||
+        manifest.branchRef !== `refs/heads/${branch}`
+      ) {
+        return yield* error({
+          reason: 'GitIdentityConflict',
+          path: paths.rootManifestPath,
+          message: `Complete workspace identity conflicts with the plan request`,
+          recoveryPaths: [paths.rootManifestPath, manifest.bareRepo],
+        })
+      }
+      yield* ensurePlanPathMissing(paths.tempPath)
+      yield* ensurePlanPathMissing(paths.rootStagePath)
+      yield* observeOwnedWorkspaceIdentity({ manifest, worktree: paths.ownedWorktree })
+      const configName = yield* discoverConfigName(paths.ownedWorktree)
+      yield* ensureConfigSymlink({
+        context: configContext({ workspaceRoot, ownedMember, configName }),
+        runtime: {},
+        createIfMissing: false,
+      })
+      return {
+        _tag: 'AlreadySynthesized',
+        ...plannedPathFields({ paths, configName }),
+      } as const
+    }
+
+    const prepared = yield* preflight({
+      bareRepo,
+      workspaceRoot,
+      ownedMember,
+      branch,
+      callerCwd,
+    })
+    return {
+      _tag: 'Acquire',
+      ...plannedPathFields({ paths: prepared.paths, configName: prepared.configName }),
+      steps: acquirePlanSteps({ prepared }),
+    } as const
+  }).pipe(
+    Effect.catch((cause) =>
+      Effect.succeed({
+        _tag: 'Refused',
+        error: normalizeError({
+          cause,
+          path: normalizedAbsolute(rawWorkspaceRoot),
+          message: `Owned-worktree acquisition plan refused`,
+          reason: 'PreflightRefused',
+        }),
+      } as const),
+    ),
+  )
 
 const finishForward = <R, E>({
   journal,
