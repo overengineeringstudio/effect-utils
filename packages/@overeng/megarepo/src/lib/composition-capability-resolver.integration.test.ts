@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest'
 
 import { CompositionCapabilityResolutionError } from './composition-capability-resolver-schema.ts'
 import {
+  compositionCapabilityProjectorEnvironment,
   resolveCompositionCapabilities,
   resolvedCompositionCapabilityByToolId,
   type CompositionCapabilityRuntime,
@@ -90,6 +91,8 @@ interface Fixture {
   readonly memberRoot: string
   readonly scratchRoot: string
   readonly nixLog: string
+  readonly nixModePath: string
+  readonly nixOutputPath: string
   readonly runtime: CompositionCapabilityRuntime
 }
 
@@ -102,11 +105,18 @@ const makeFixture = async ({
   const scripts = NodePath.join(memberRoot, 'scripts')
   const nixPath = NodePath.join(root, 'fake-nix')
   const nixLog = NodePath.join(root, 'nix.log')
+  const nixModePath = NodePath.join(root, 'nix-mode')
+  const nixOutputPath = NodePath.join(root, 'nix-output')
   await Promise.all([mkdir(scripts, { recursive: true }), mkdir(scratchRoot, { mode: 0o700 })])
   await chmod(scratchRoot, 0o700)
+  await Promise.all([
+    writeFile(nixModePath, 'one\n'),
+    writeFile(nixOutputPath, `${bashOutput}\n`),
+    writeFile(NodePath.join(memberRoot, 'flake.lock'), '{"nodes":{},"root":"root","version":7}\n'),
+  ])
   await writeFile(
     nixPath,
-    `#!${shell}\nset -eu\nprintf '%s\\n' "$*" >>"$NIX_LOG"\ncase "\${FAKE_NIX_MODE:-one}" in\n  missing) exit 0 ;;\n  duplicate) printf '%s\\n%s\\n' "$FAKE_NIX_OUTPUT" "$FAKE_NIX_OUTPUT" ;;\n  nonstore) printf '/tmp/not-a-store-output\\n' ;;\n  lock-write-attempt)\n    case " $* " in\n      *" --no-write-lock-file "*) exit 73 ;;\n      *) printf 'mutated\\n' >"$FAKE_MEMBER_ROOT/flake.lock"; exit 74 ;;\n    esac ;;\n  fail) exit 37 ;;\n  *) printf '%s\\n' "$FAKE_NIX_OUTPUT" ;;\nesac\n`,
+    `#!${shell}\nset -eu\nprintf '%s\\n' "$*" >>"${nixLog}"\nIFS= read -r mode <"${nixModePath}"\nIFS= read -r output <"${nixOutputPath}"\ncase "$mode" in\n  missing) exit 0 ;;\n  duplicate) printf '%s\\n%s\\n' "$output" "$output" ;;\n  nonstore) printf '/tmp/not-a-store-output\\n' ;;\n  lock-write-attempt)\n    case " $* " in\n      *" --no-write-lock-file --no-update-lock-file "*) exit 73 ;;\n      *) printf 'mutated\\n' >"${memberRoot}/flake.lock"; exit 74 ;;\n    esac ;;\n  fail) exit 37 ;;\n  *) printf '%s\\n' "$output" ;;\nesac\n`,
     { mode: 0o755 },
   )
   await writeFile(
@@ -119,13 +129,16 @@ const makeFixture = async ({
     memberRoot,
     scratchRoot,
     nixLog,
+    nixModePath,
+    nixOutputPath,
     runtime: {
       nixPath,
       ...tools,
       env: {
         PATH: '/ambient-path-is-poison',
-        NIX_LOG: nixLog,
-        FAKE_NIX_OUTPUT: bashOutput,
+        GH_TOKEN: 'must-not-leak',
+        SSH_AUTH_SOCK: '/hostile/agent.sock',
+        HTTPS_PROXY: 'http://hostile.invalid',
       },
       nonce: () => 'candidate',
       createPrivateScratch: async () => {
@@ -194,8 +207,8 @@ describe('composition capability resolver', () => {
         'z-tool',
       ])
       expect(await readFile(fixture.nixLog, 'utf8')).toBe(
-        `build --no-link --print-out-paths --no-write-lock-file ${fixture.memberRoot}#a-package\n` +
-          `build --no-link --print-out-paths --no-write-lock-file ${fixture.memberRoot}#z-package\n`,
+        `build --no-link --print-out-paths --no-write-lock-file --no-update-lock-file ${fixture.memberRoot}#a-package\n` +
+          `build --no-link --print-out-paths --no-write-lock-file --no-update-lock-file ${fixture.memberRoot}#z-package\n`,
       )
       expect(result.projectorCommand.args.slice(2, 5)).toEqual([
         'x86_64-linux',
@@ -211,28 +224,66 @@ describe('composition capability resolver', () => {
     }
   })
 
+  it('passes only private scratch and pinned tools to the projector', async () => {
+    const tracked = await readFile(trackedProjectorPath, 'utf8')
+    const guarded = tracked.replace(
+      '\n',
+      '\n[ -n "${HOME-}" ] && [ "$HOME" = "${TMPDIR-}" ] || exit 90\n' +
+        'for name in GH_TOKEN SSH_AUTH_SOCK HTTPS_PROXY HTTP_PROXY ALL_PROXY; do\n' +
+        '  if [ "${!name+x}" = x ]; then exit 91; fi\n' +
+        'done\n',
+    )
+    const fixture = await makeFixture({ projector: guarded })
+    try {
+      const projectorEnv = compositionCapabilityProjectorEnvironment({
+        runtime: fixture.runtime,
+        privateRoot: '/private',
+      })
+      expect(projectorEnv).not.toHaveProperty('PATH')
+      expect(projectorEnv).not.toHaveProperty('GH_TOKEN')
+      expect(projectorEnv).not.toHaveProperty('SSH_AUTH_SOCK')
+      expect(projectorEnv).not.toHaveProperty('HTTPS_PROXY')
+      const result = await resolve(fixture)
+      expect(result._tag).toBe('Resolved')
+      if (result._tag === 'Resolved') await result.release()
+    } finally {
+      await clean(fixture)
+    }
+  })
+
+  it.each(['missing', 'symlink'] as const)(
+    'refuses a %s flake.lock during dry-run without invoking Nix',
+    async (kind) => {
+      const fixture = await makeFixture()
+      try {
+        const lockPath = NodePath.join(fixture.memberRoot, 'flake.lock')
+        await rm(lockPath)
+        if (kind === 'symlink') {
+          const outside = NodePath.join(fixture.root, 'outside.lock')
+          await writeFile(outside, 'outside\n')
+          await symlink(outside, lockPath)
+        }
+        expect((await failure(resolve(fixture, { dryRun: true }))).reason).toBe('InvalidLock')
+        await expect(readFile(fixture.nixLog, 'utf8')).rejects.toThrow()
+        expect(await readdir(fixture.scratchRoot)).toEqual([])
+      } finally {
+        await clean(fixture)
+      }
+    },
+  )
+
   it('passes --no-write-lock-file and fails closed without mutating a member lock', async () => {
     const fixture = await makeFixture()
     try {
       const lockPath = NodePath.join(fixture.memberRoot, 'flake.lock')
       await writeFile(NodePath.join(fixture.memberRoot, 'flake.nix'), '{ outputs = _: {}; }\n')
       await writeFile(lockPath, 'original-lock-bytes\n')
-      const error = await failure(
-        resolve(fixture, {
-          runtime: {
-            ...fixture.runtime,
-            env: {
-              ...fixture.runtime.env,
-              FAKE_NIX_MODE: 'lock-write-attempt',
-              FAKE_MEMBER_ROOT: fixture.memberRoot,
-            },
-          },
-        }),
-      )
+      await writeFile(fixture.nixModePath, 'lock-write-attempt\n')
+      const error = await failure(resolve(fixture))
       expect(error.reason).toBe('CommandFailure')
       expect(await readFile(lockPath, 'utf8')).toBe('original-lock-bytes\n')
       expect(await readFile(fixture.nixLog, 'utf8')).toContain(
-        '--print-out-paths --no-write-lock-file',
+        '--print-out-paths --no-write-lock-file --no-update-lock-file',
       )
     } finally {
       await clean(fixture)
@@ -247,14 +298,8 @@ describe('composition capability resolver', () => {
     const fixture = await makeFixture()
     try {
       await writeFile(NodePath.join(fixture.scratchRoot, 'caller-sentinel'), 'owned by caller')
-      const error = await failure(
-        resolve(fixture, {
-          runtime: {
-            ...fixture.runtime,
-            env: { ...fixture.runtime.env, FAKE_NIX_MODE: mode },
-          },
-        }),
-      )
+      await writeFile(fixture.nixModePath, `${mode}\n`)
+      const error = await failure(resolve(fixture))
       expect(error.reason).toBe('InvalidNixOutput')
       expect(await readdir(fixture.scratchRoot)).toEqual(['caller-sentinel'])
     } finally {
@@ -290,16 +335,9 @@ describe('composition capability resolver', () => {
   it('rejects a store-output executable whose realpath escapes that output', async () => {
     const fixture = await makeFixture()
     try {
-      if (escapingStoreOutput === undefined)
-        throw new Error('fixture needs an escaping store symlink')
-      const error = await failure(
-        resolve(fixture, {
-          runtime: {
-            ...fixture.runtime,
-            env: { ...fixture.runtime.env, FAKE_NIX_OUTPUT: escapingStoreOutput },
-          },
-        }),
-      )
+      if (escapingStoreOutput === undefined) return
+      await writeFile(fixture.nixOutputPath, `${escapingStoreOutput}\n`)
+      const error = await failure(resolve(fixture))
       expect(error.reason).toBe('InvalidExecutable')
       expect(await readdir(fixture.scratchRoot)).toEqual([])
     } finally {
@@ -388,6 +426,7 @@ describe('composition capability resolver', () => {
         '--no-link',
         '--print-out-paths',
         '--no-write-lock-file',
+        '--no-update-lock-file',
         `${fixture.memberRoot}#buck2`,
       ])
       expect(result.projectorCommand.args).toContain(
@@ -461,6 +500,7 @@ describe('composition capability resolver', () => {
     const second = await makeFixture()
     try {
       const firstResult = await resolve(first)
+      await writeFile(second.nixOutputPath, `${alternateOutput}\n`)
       const secondResult = await resolve(second, {
         manifest: manifest({
           capabilities: [
@@ -472,10 +512,6 @@ describe('composition capability resolver', () => {
             },
           ],
         }),
-        runtime: {
-          ...second.runtime,
-          env: { ...second.runtime.env, FAKE_NIX_OUTPUT: alternateOutput },
-        },
       })
       if (firstResult._tag !== 'Resolved' || secondResult._tag !== 'Resolved') {
         throw new Error('unreachable')

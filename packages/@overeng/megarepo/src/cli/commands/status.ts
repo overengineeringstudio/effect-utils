@@ -24,10 +24,13 @@ import {
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
-import { teardownCpAMemberMount } from '../../lib/member-mount-cp-a.ts'
-import { readOwnedCpAMountMetadata } from '../../lib/member-mount-r6.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { type MegarepoTraversal, withMegarepoTraversal } from '../../lib/megarepo-traversal.ts'
+import { teardownCpAMemberMount } from '../../lib/member-mount-cp-a.ts'
+import {
+  readOwnedCpAMountMetadata,
+  type OwnedCpAMountMetadataError,
+} from '../../lib/member-mount-r6.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
@@ -48,6 +51,7 @@ import type {
   StaleLock,
   SymlinkDrift,
 } from '../renderers/StatusOutput/mod.ts'
+import { loadOwnedIdentity, type CompositionCutoverError } from './composition.ts'
 
 /**
  * Recursively scan members and build status tree.
@@ -67,7 +71,11 @@ const scanMembersRecursive = ({
   depth?: number
 }): Effect.Effect<
   MemberStatus[],
-  PlatformError | Schema.SchemaError | Error,
+  | PlatformError
+  | Schema.SchemaError
+  | Git.GitCommandError
+  | OwnedCpAMountMetadataError
+  | CompositionCutoverError,
   FileSystem.FileSystem | ChildProcessSpawner | Store
 > =>
   Effect.gen(function* () {
@@ -91,11 +99,14 @@ const scanMembersRecursive = ({
     const { config, path: configPath } = configResult
     const compositionEnabled = config.generators?.composition?.enabled === true
     const ownedMemberKey =
-      compositionEnabled === true ? config.generators!.composition!.platformHub : undefined
+      compositionEnabled === true
+        ? (yield* loadOwnedIdentity({ workspaceRoot: megarepoRoot })).ownedMemberKey
+        : undefined
 
     // Load lock file (optional)
     const physicalConfigPath = yield* fs.realPath(configPath)
-    const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? megarepoRoot
+    const configOwner =
+      EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? megarepoRoot
     const lockPath = EffectPath.ops.join(
       configOwner,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -118,7 +129,7 @@ const scanMembersRecursive = ({
 
       const symlinkPath = memberPath.replace(/\/$/, '')
       const pathExists = yield* fs.exists(symlinkPath)
-      let symlinkExists = compositionEnabled === false && pathExists
+      let symlinkExists = compositionEnabled === false ? pathExists : isOwned === true && pathExists
       let memberExists = pathExists
       let mountKind: MemberStatus['mountKind'] = isOwned === true ? 'owned' : undefined
       let mountedCommit: string | undefined
@@ -127,6 +138,7 @@ const scanMembersRecursive = ({
           request: { workspaceRoot: megarepoRoot, member: memberName, dryRun: true },
         }).pipe(Effect.result)
         if (verification._tag === 'Success') {
+          symlinkExists = true
           mountKind = 'cp-a'
           mountedCommit = (yield* readOwnedCpAMountMetadata({
             workspaceRoot: megarepoRoot,
@@ -352,7 +364,8 @@ export const statusCommand = Cli.Command.make(
 
       // Get last sync time and lock staleness from lock file
       const physicalConfigPath = yield* fs.realPath(configPath)
-      const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
+      const configOwner =
+        EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
       const lockPath = EffectPath.ops.join(
         configOwner,
         EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),

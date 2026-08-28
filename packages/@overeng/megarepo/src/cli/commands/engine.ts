@@ -55,7 +55,6 @@ import {
 } from '../../lib/sync/mod.ts'
 import type { MegarepoSyncTree as MegarepoSyncTreeType } from '../../lib/sync/schema.ts'
 import { Cwd, findMegarepoRoot, outputModeLayer, type OutputModeValue } from '../context.ts'
-import { runCompositionApply } from './composition.ts'
 import {
   NotInMegarepoError,
   LockFileRequiredError,
@@ -76,6 +75,7 @@ import type {
   LockSharedSourceUpdate,
   SyncAction,
 } from '../renderers/SyncOutput/schema.ts'
+import { runCompositionApply } from './composition.ts'
 
 /** Policy for apply-time lock-file rewrites. */
 export type LockSyncMode = 'auto' | 'off' | 'direct' | 'recursive'
@@ -168,7 +168,8 @@ export const syncMegarepo = <R = never>({
 
     // Load lock file (optional unless apply)
     const physicalConfigPath = yield* fs.realPath(configPath)
-    const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? megarepoRoot
+    const configOwner =
+      EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? megarepoRoot
     const lockPath = EffectPath.ops.join(
       configOwner,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -680,12 +681,14 @@ export const runCommand = ({
     if (compositionEnabled === true && appliesWorkspace === true) {
       if (all === true || onlyMembers !== undefined || skipMembers !== undefined) {
         return yield* new InvalidOptionsError({
-          message: 'Composition apply owns the complete member set; --all, --only, and --skip are unavailable',
+          message:
+            'Composition apply owns the complete member set; --all, --only, and --skip are unavailable',
         })
       }
       if (commitMode === true) {
         return yield* new InvalidOptionsError({
-          message: 'Composition apply requires the owned branch worktree; --worktree-mode commit is unavailable',
+          message:
+            'Composition apply requires the owned branch worktree; --worktree-mode commit is unavailable',
         })
       }
     }
@@ -766,9 +769,6 @@ export const runCommand = ({
                 composition,
               } satisfies MegarepoSyncResult
             }),
-            Effect.mapError((cause) =>
-              cause instanceof Error ? cause : new Error(`Composition apply failed: ${String(cause)}`),
-            ),
           )
         : syncMegarepo({
             megarepoRoot: root.value,
