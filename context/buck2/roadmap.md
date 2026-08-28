@@ -114,6 +114,9 @@ RENAME_EXCHANGE advance.
 - Remaining TS package checks/builds admitted in value order; per-package
   devenv/pnpm build-path consumers deleted per admission.
 - Workspace-sibling live links (symlink-back) are part of the standard rule.
+- The coverage-asserted registry in `genie/tsconfig-projects.ts` has 38 root
+  projects. tui-core and tui-react are admitted; 36 projects remain in both
+  root solutions and leave them one deletion-ledger entry at a time.
 
 - Admission 2 transfers `@overeng/tui-react` typecheck and declaration emit to
   `//packages/@overeng/tui-react:typecheck` and
@@ -148,15 +151,21 @@ RENAME_EXCHANGE advance.
 
 ## Phase 5 — Rust and products
 
-- Rust operations admitted per the rust-cargo binding decisions
-  (0017–0019); complete-lock Nix vendoring dissolves per BUCK-R10 as products
-  cross the bridge.
+- The Rust workspace has five members: otelite, otel-scrape, and the three Buck
+  support crates. Admit deterministic Cargo operations first, then emit and
+  independently import real otelite/otel-scrape BuildProducts before deleting
+  Cargo/Nix source producers.
+- Eight repository pnpm-deps FODs remain: ci-tools, Genie, mr, notion-cli,
+  notion-md, npm-release, oxc-config, and tui-stories. Each disappears only
+  after its real Buck product passes the independent Nix bridge (BUCK-R10).
 
 ## Phase 6 — second consumer (dotfiles)
 
-- dotfiles consumes effect-utils targets through the composition (success
-  criterion 6); sharing mechanics (in-repo rules vs extracted package) decided
-  then, with a real consumer's requirements in hand.
+- dotfiles consumes effect-utils targets through composition (success criterion
+  6), compares producer/consumer action digests in CI, and proves zero local
+  execution from the shared cache. The same admission deletes its source-mount
+  CLI path, dependency writers, and live cross-workspace mutation paths; until
+  then symlink compositions remain no-upload.
 
 ## Deferred / parked
 
