@@ -928,6 +928,13 @@ describe('owned worktree acquisition', () => {
         fromPath: fixture.workspaceRoot,
         toPath: plan.tempPath,
       })
+      expect(plan.steps[3]).toEqual({
+        _tag: 'PublishManagedRoot',
+        rootStagePath: plan.rootStagePath,
+        workspaceRoot: fixture.workspaceRoot,
+        reposPath: NodePath.join(plan.rootStagePath, 'repos'),
+        manifestPath: NodePath.join(plan.rootStagePath, OWNED_WORKTREE_ROOT_MANIFEST),
+      })
       expect(plan.steps[5]).toEqual({
         _tag: 'GitWorktreeMove',
         bareRepo: fixture.bareRepo,
@@ -1010,6 +1017,29 @@ describe('owned worktree acquisition', () => {
             'WriteJournal',
             'RemoveJournal',
           ])
+        }
+
+        for (const linkedBoundary of ['ConfigLinked', 'Generated'] as const) {
+          const linkedFixture = yield* makeFixture()
+          const linkedSetup = yield* acquire(linkedFixture, {
+            runtime: {
+              afterBoundary: async (boundary) => {
+                if (boundary === linkedBoundary) throw new Error(`interrupt at ${boundary}`)
+              },
+            },
+          }).pipe(Effect.result)
+          expect(linkedSetup._tag, linkedBoundary).toBe('Failure')
+          const linkedBefore = yield* snapshotPlanningState(linkedFixture)
+          const linkedPlan = yield* planAcquisition(linkedFixture)
+          expect(yield* snapshotPlanningState(linkedFixture)).toEqual(linkedBefore)
+          expect(linkedPlan._tag, linkedBoundary).toBe('Recover')
+          if (linkedPlan._tag === 'Recover') {
+            expect(linkedPlan.action, linkedBoundary).toBe('RollForwardInstalled')
+            expect(
+              linkedPlan.steps.map((step) => step._tag),
+              linkedBoundary,
+            ).toEqual(['InvokeGenerate', 'WriteJournal', 'WriteJournal', 'RemoveJournal'])
+          }
         }
       }).pipe(withNode),
     { timeout: 60_000 },

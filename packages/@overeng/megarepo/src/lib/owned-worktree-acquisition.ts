@@ -1486,15 +1486,21 @@ const plannedPathFields = ({
 const plannedGenerateSteps = ({
   paths,
   configName,
+  configSymlinkExists = false,
 }: {
   paths: Paths
   configName: OwnedWorktreeConfigName
+  configSymlinkExists?: boolean
 }): ReadonlyArray<OwnedWorktreeAcquisitionPlanStep> => [
-  {
-    _tag: 'CreateConfigSymlink',
-    path: NodePath.join(paths.workspaceRoot, configName),
-    target: NodePath.posix.join('repos', NodePath.basename(paths.ownedWorktree), configName),
-  },
+  ...(configSymlinkExists === true
+    ? []
+    : [
+        {
+          _tag: 'CreateConfigSymlink' as const,
+          path: NodePath.join(paths.workspaceRoot, configName),
+          target: NodePath.posix.join('repos', NodePath.basename(paths.ownedWorktree), configName),
+        },
+      ]),
   {
     _tag: 'InvokeGenerate',
     workspaceRoot: paths.workspaceRoot,
@@ -1525,7 +1531,7 @@ const acquirePlanSteps = ({
       _tag: 'PublishManagedRoot',
       rootStagePath: paths.rootStagePath,
       workspaceRoot: paths.workspaceRoot,
-      reposPath: NodePath.join(paths.workspaceRoot, 'repos'),
+      reposPath: NodePath.join(paths.rootStagePath, 'repos'),
       manifestPath: NodePath.join(paths.rootStagePath, OWNED_WORKTREE_ROOT_MANIFEST),
     },
     { _tag: 'WriteJournal', path: paths.journalPath, state: 'root_created' },
@@ -1758,7 +1764,11 @@ const planOwnedWorktreeAcquisitionUnlocked = ({
             yield* ensureConfigSymlink({ context, runtime: {}, createIfMissing: false })
           }
           action = 'RollForwardInstalled'
-          steps = plannedGenerateSteps({ paths, configName })
+          steps = plannedGenerateSteps({
+            paths,
+            configName,
+            configSymlinkExists: rootConfigExists,
+          })
         }
         return {
           _tag: 'Recover',
