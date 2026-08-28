@@ -284,16 +284,100 @@ const validateRuntime = async (runtime: CompositionCapabilityRuntime): Promise<v
   )
 }
 
+interface RegularFileIdentity {
+  readonly path: string
+  readonly realpath: string
+  readonly device: number
+  readonly inode: number
+  readonly digest: string
+}
+
+const captureContainedRegularFile = async ({
+  root,
+  path,
+  label,
+}: {
+  readonly root: string
+  readonly path: string
+  readonly label: string
+}): Promise<RegularFileIdentity> => {
+  let handle
+  try {
+    const pathInfo = await lstat(path)
+    const canonicalPath = await realpath(path)
+    if (
+      pathInfo.isFile() === false ||
+      pathInfo.isSymbolicLink() === true ||
+      containedBy({ root, path: canonicalPath }) === false
+    ) {
+      throw invalidInput({ message: `${label} must be a contained regular file`, path })
+    }
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const before = await handle.stat()
+    const bytes = await handle.readFile()
+    const after = await handle.stat()
+    if (
+      before.isFile() === false ||
+      before.dev !== pathInfo.dev ||
+      before.ino !== pathInfo.ino ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino
+    ) {
+      throw invalidInput({ message: `${label} identity changed while reading`, path })
+    }
+    return {
+      path,
+      realpath: canonicalPath,
+      device: before.dev,
+      inode: before.ino,
+      digest: createHash('sha256').update(bytes).digest('hex'),
+    }
+  } finally {
+    await handle?.close()
+  }
+}
+
+const assertRegularFileIdentity = async (identity: RegularFileIdentity): Promise<void> => {
+  try {
+    const current = await captureContainedRegularFile({
+      root: NodePath.dirname(identity.realpath),
+      path: identity.path,
+      label: 'flake.lock',
+    })
+    if (
+      current.realpath !== identity.realpath ||
+      current.device !== identity.device ||
+      current.inode !== identity.inode ||
+      current.digest !== identity.digest
+    ) {
+      throw new TypeError('flake.lock identity changed')
+    }
+  } catch (cause) {
+    throw new CompositionCapabilityResolutionError({
+      reason: 'InvalidLock',
+      message: 'flake.lock bytes or inode changed during capability resolution',
+      path: identity.path,
+      cause,
+    })
+  }
+}
+
 const validateMemberAndProjector = async ({
   memberRoot,
 }: {
   readonly memberRoot: string
-}): Promise<{ readonly memberRoot: string; readonly projectorPath: string }> => {
+}): Promise<{
+  readonly memberRoot: string
+  readonly projectorPath: string
+  readonly lock: RegularFileIdentity
+}> => {
   assertAbsoluteNormalized({ value: memberRoot, name: 'memberRoot' })
+  let canonicalMemberRoot: string
+  let projectorPath: string
   try {
-    const canonicalMemberRoot = await realpath(memberRoot)
+    canonicalMemberRoot = await realpath(memberRoot)
     if ((await stat(canonicalMemberRoot)).isDirectory() === false) {
-      throw new Error('memberRoot must be a directory')
+      throw new TypeError('memberRoot must be a directory')
     }
     const declaredProjectorPath = NodePath.join(
       canonicalMemberRoot,
@@ -301,18 +385,32 @@ const validateMemberAndProjector = async ({
     )
     const projectorInfo = await lstat(declaredProjectorPath)
     if (projectorInfo.isFile() === false || projectorInfo.isSymbolicLink() === true) {
-      throw new Error('projector is not a regular tracked file')
+      throw new TypeError('projector is not a regular tracked file')
     }
-    const projectorPath = await realpath(declaredProjectorPath)
+    projectorPath = await realpath(declaredProjectorPath)
     if (containedBy({ root: canonicalMemberRoot, path: projectorPath }) === false) {
-      throw new Error('projector escapes member root')
+      throw new TypeError('projector escapes member root')
     }
-    return { memberRoot: canonicalMemberRoot, projectorPath }
   } catch (cause) {
     throw new CompositionCapabilityResolutionError({
       reason: 'MissingProjector',
       message: `Member must contain regular tracked projector '${COMPOSITION_CAPABILITY_PROJECTOR_PATH}'`,
       path: NodePath.join(memberRoot, COMPOSITION_CAPABILITY_PROJECTOR_PATH),
+      cause,
+    })
+  }
+  try {
+    const lock = await captureContainedRegularFile({
+      root: canonicalMemberRoot,
+      path: NodePath.join(canonicalMemberRoot, 'flake.lock'),
+      label: 'flake.lock',
+    })
+    return { memberRoot: canonicalMemberRoot, projectorPath, lock }
+  } catch (cause) {
+    throw new CompositionCapabilityResolutionError({
+      reason: 'InvalidLock',
+      message: 'Member must contain a regular, contained, immutable flake.lock',
+      path: NodePath.join(canonicalMemberRoot, 'flake.lock'),
       cause,
     })
   }
@@ -510,12 +608,16 @@ const resolveCapability = async ({
   capability,
   nixCommand,
   env,
+  lock,
 }: {
   readonly capability: BuckMemberCapability
   readonly nixCommand: CompositionCapabilityCommand
   readonly env: NodeJS.ProcessEnv
+  readonly lock: RegularFileIdentity
 }): Promise<ResolvedCompositionCapability> => {
-  const { stdout } = await run({ value: nixCommand, env })
+  const { stdout } = await run({ value: nixCommand, env }).finally(() =>
+    assertRegularFileIdentity(lock),
+  )
   const nixOutputPath = singleNixOutput({ stdout, capability, value: nixCommand })
   const declaredExecutable = NodePath.join(nixOutputPath, capability.executable)
   try {
@@ -552,26 +654,54 @@ const resolveCapabilitiesInOrder = ({
   capabilities,
   nixCommands,
   env,
+  lock,
 }: {
   readonly capabilities: ReadonlyArray<BuckMemberCapability>
   readonly nixCommands: ReadonlyArray<CompositionCapabilityCommand>
   readonly env: NodeJS.ProcessEnv
+  readonly lock: RegularFileIdentity
 }): Promise<Array<ResolvedCompositionCapability>> => {
   const resolved = [] as Array<ResolvedCompositionCapability>
   const next = (index: number): Promise<Array<ResolvedCompositionCapability>> => {
     const capability = capabilities[index]
     if (capability === undefined) return Promise.resolve(resolved)
-    return resolveCapability({ capability, nixCommand: nixCommands[index]!, env }).then((value) => {
-      resolved.push(value)
-      return next(index + 1)
-    })
+    return resolveCapability({ capability, nixCommand: nixCommands[index]!, env, lock }).then(
+      (value) => {
+        resolved.push(value)
+        return next(index + 1)
+      },
+    )
   }
   return next(0)
 }
 
-const projectorEnv = (runtime: CompositionCapabilityRuntime): NodeJS.ProcessEnv => ({
-  ...process.env,
-  ...runtime.env,
+const safeNixEnvironment = ({
+  runtime,
+  privateRoot,
+}: {
+  readonly runtime: CompositionCapabilityRuntime
+  readonly privateRoot: string
+}): NodeJS.ProcessEnv => {
+  const source = runtime.env ?? {}
+  return {
+    HOME: privateRoot,
+    TMPDIR: privateRoot,
+    ...(source['NIX_SSL_CERT_FILE'] === undefined
+      ? {}
+      : { NIX_SSL_CERT_FILE: source['NIX_SSL_CERT_FILE'] }),
+    ...(source['SSL_CERT_FILE'] === undefined ? {} : { SSL_CERT_FILE: source['SSL_CERT_FILE'] }),
+  }
+}
+
+/** Secret-free environment for tracked projector execution. */
+export const compositionCapabilityProjectorEnvironment = ({
+  runtime,
+  privateRoot,
+}: {
+  readonly runtime: CompositionCapabilityRuntime
+  readonly privateRoot: string
+}): NodeJS.ProcessEnv => ({
+  ...safeNixEnvironment({ runtime, privateRoot }),
   GAWK_BIN: runtime.gawkPath,
   AWK_BIN: runtime.awkPath,
   GREP_BIN: runtime.grepPath,
@@ -753,6 +883,7 @@ export const resolveCompositionCapabilities = async (
           '--no-link',
           '--print-out-paths',
           '--no-write-lock-file',
+          '--no-update-lock-file',
           `${roots.memberRoot}#${capability.flakePackage}`,
         ],
       }),
@@ -782,11 +913,17 @@ export const resolveCompositionCapabilities = async (
       }
     }
 
-    const env: NodeJS.ProcessEnv = { ...process.env, ...input.runtime.env }
-    const resolved = await resolveCapabilitiesInOrder({ capabilities, nixCommands, env })
     const scratch = await (input.runtime.createPrivateScratch ?? defaultCreatePrivateScratch)()
     const scratchIdentity = await capturePrivateScratchIdentity(scratch)
     release = makeScratchRelease({ scratch, identity: scratchIdentity })
+    const env = safeNixEnvironment({ runtime: input.runtime, privateRoot: scratchIdentity.path })
+    const resolved = await resolveCapabilitiesInOrder({
+      capabilities,
+      nixCommands,
+      env,
+      lock: roots.lock,
+    })
+    await assertRegularFileIdentity(roots.lock)
     const candidateRoot = NodePath.join(scratchIdentity.path, 'candidate')
     await mkdir(candidateRoot, { mode: 0o700 })
     const candidateIdentity = await captureCandidateRootIdentity({
@@ -813,7 +950,10 @@ export const resolveCompositionCapabilities = async (
     await assertDirectoryIdentity(candidateIdentity)
     await run({
       value: projectorCommand,
-      env: projectorEnv(input.runtime),
+      env: compositionCapabilityProjectorEnvironment({
+        runtime: input.runtime,
+        privateRoot: scratchIdentity.path,
+      }),
       reason: 'ProjectionFailure',
     })
     await assertDirectoryIdentity(candidateIdentity)
@@ -824,7 +964,10 @@ export const resolveCompositionCapabilities = async (
     await assertDirectoryIdentity(candidateIdentity)
     await run({
       value: checkCommand,
-      env: projectorEnv(input.runtime),
+      env: compositionCapabilityProjectorEnvironment({
+        runtime: input.runtime,
+        privateRoot: scratchIdentity.path,
+      }),
       reason: 'ProjectionFailure',
     })
     await assertDirectoryIdentity(candidateIdentity)
@@ -836,6 +979,7 @@ export const resolveCompositionCapabilities = async (
       candidate: candidateIdentity,
     })
     const digest = await projectionDigest({ projection, candidate: candidateIdentity })
+    await assertRegularFileIdentity(roots.lock)
     return {
       _tag: 'Resolved',
       system,

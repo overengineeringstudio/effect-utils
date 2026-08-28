@@ -15,6 +15,7 @@ import type {
 const execFile = promisify(execFileCallback)
 const generationPattern = /^[0-9a-f]{64}$/u
 
+/** Typed owned capability installation refusal. */
 export class OwnedCapabilityProjectionError extends Schema.TaggedError<OwnedCapabilityProjectionError>()(
   'OwnedCapabilityProjectionError',
   {
@@ -30,6 +31,10 @@ export interface OwnedCapabilityProjectionRuntime {
   readonly cpPath: string
   readonly mvPath: string
   readonly nonce?: () => string
+  /** Deterministic race seam; production runtimes must not provide it. */
+  readonly beforeCopy?: (capabilityParent: string) => Promise<void>
+  /** Deterministic race seam; production runtimes must not provide it. */
+  readonly beforePublish?: (capabilityParent: string) => Promise<void>
 }
 
 const failure = ({
@@ -64,7 +69,13 @@ const normalizedAbsolute = ({ value, name }: { readonly value: string; readonly 
 const containedBy = ({ root, path }: { readonly root: string; readonly path: string }) =>
   path === root || path.startsWith(`${root}${NodePath.sep}`) === true
 
-const assertDirectory = async ({ path, parent }: { readonly path: string; readonly parent?: string }) => {
+const assertDirectory = async ({
+  path,
+  parent,
+}: {
+  readonly path: string
+  readonly parent?: string
+}) => {
   const info = await lstat(path)
   const physical = await realpath(path)
   if (
@@ -77,8 +88,60 @@ const assertDirectory = async ({ path, parent }: { readonly path: string; readon
   return physical
 }
 
-const readGeneration = async ({ projectionPath }: { readonly projectionPath: string }) => {
-  const physicalProjection = await assertDirectory({ path: projectionPath })
+interface DirectoryIdentity {
+  readonly path: string
+  readonly realpath: string
+  readonly device: number
+  readonly inode: number
+}
+
+const captureContainedDirectory = async ({
+  path,
+  parent,
+}: {
+  readonly path: string
+  readonly parent: string
+}): Promise<DirectoryIdentity> => {
+  const info = await lstat(path)
+  const canonicalPath = await realpath(path)
+  if (
+    info.isDirectory() === false ||
+    info.isSymbolicLink() === true ||
+    containedBy({ root: parent, path: canonicalPath }) === false
+  ) {
+    throw new TypeError(`Expected a real contained directory at '${path}'`)
+  }
+  return { path, realpath: canonicalPath, device: info.dev, inode: info.ino }
+}
+
+const assertDirectoryIdentity = async (identity: DirectoryIdentity): Promise<void> => {
+  const current = await captureContainedDirectory({
+    path: identity.path,
+    parent: NodePath.dirname(identity.realpath),
+  })
+  if (
+    current.realpath !== identity.realpath ||
+    current.device !== identity.device ||
+    current.inode !== identity.inode
+  ) {
+    throw new TypeError(`Directory identity changed at '${identity.path}'`)
+  }
+}
+
+const isErrno = ({ cause, code }: { readonly cause: unknown; readonly code: string }): boolean =>
+  typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === code
+
+const readGeneration = async ({
+  projectionPath,
+  expectedParent,
+}: {
+  readonly projectionPath: string
+  readonly expectedParent?: string
+}) => {
+  const physicalProjection = await assertDirectory({
+    path: projectionPath,
+    ...(expectedParent === undefined ? {} : { parent: expectedParent }),
+  })
   const defsPath = NodePath.join(projectionPath, 'defs.bzl')
   let handle
   try {
@@ -95,7 +158,11 @@ const readGeneration = async ({ projectionPath }: { readonly projectionPath: str
     const before = await handle.stat()
     const bytes = await handle.readFile({ encoding: 'utf8' })
     const after = await handle.stat()
-    if (before.dev !== beforePath.dev || before.ino !== beforePath.ino || after.ino !== before.ino) {
+    if (
+      before.dev !== beforePath.dev ||
+      before.ino !== beforePath.ino ||
+      after.ino !== before.ino
+    ) {
       throw new TypeError('defs.bzl identity changed while reading')
     }
     const matches = [...bytes.matchAll(/^GENERATION = "([0-9a-f]{64})"$/gmu)]
@@ -108,7 +175,13 @@ const readGeneration = async ({ projectionPath }: { readonly projectionPath: str
   }
 }
 
-const runExact = async ({ executable, args }: { readonly executable: string; readonly args: ReadonlyArray<string> }) => {
+const runExact = async ({
+  executable,
+  args,
+}: {
+  readonly executable: string
+  readonly args: ReadonlyArray<string>
+}) => {
   await execFile(executable, [...args], { maxBuffer: 1024 * 1024 })
 }
 
@@ -162,8 +235,9 @@ export const installOwnedCapabilityProjection = async ({
     })
   }
 
+  let physicalOwned: string
   try {
-    const physicalOwned = await assertDirectory({ path: ownedMemberPath })
+    physicalOwned = await assertDirectory({ path: ownedMemberPath })
     await access(NodePath.join(ownedMemberPath, '.git'), constants.R_OK)
     const physicalProjection = await assertDirectory({ path: projectionPath })
     if (containedBy({ root: physicalOwned, path: physicalProjection }) === true) {
@@ -183,7 +257,26 @@ export const installOwnedCapabilityProjection = async ({
 
   const capabilityParent = NodePath.join(ownedMemberPath, '.buck2')
   const destination = NodePath.join(capabilityParent, 'capabilities')
-  await mkdir(capabilityParent, { recursive: true })
+  let capabilityParentIdentity: DirectoryIdentity
+  try {
+    try {
+      await mkdir(capabilityParent, { mode: 0o700 })
+    } catch (cause) {
+      if (isErrno({ cause, code: 'EEXIST' }) === false) throw cause
+    }
+    capabilityParentIdentity = await captureContainedDirectory({
+      path: capabilityParent,
+      parent: physicalOwned,
+    })
+  } catch (cause) {
+    throw failure({
+      reason: 'VerificationFailed',
+      path: capabilityParent,
+      message: 'Owned .buck2 parent must be a real contained directory',
+      cause,
+    })
+  }
+
   const token = runtime.nonce?.() ?? randomBytes(16).toString('hex')
   if (/^[A-Za-z0-9._-]+$/u.test(token) === false) {
     throw failure({
@@ -193,15 +286,32 @@ export const installOwnedCapabilityProjection = async ({
     })
   }
   const stage = NodePath.join(capabilityParent, `.capabilities.stage-${token}`)
-  await rm(stage, { recursive: true, force: true })
+  const removeStage = async (): Promise<void> => {
+    await assertDirectoryIdentity(capabilityParentIdentity)
+    await rm(stage, { recursive: true, force: true })
+    await assertDirectoryIdentity(capabilityParentIdentity)
+  }
 
   try {
+    await removeStage()
+    await runtime.beforeCopy?.(capabilityParent)
+    await assertDirectoryIdentity(capabilityParentIdentity)
     await runExact({ executable: runtime.cpPath, args: ['-a', '--', projectionPath, stage] })
-    if ((await readGeneration({ projectionPath: stage })) !== projectionDigest) {
+    await assertDirectoryIdentity(capabilityParentIdentity)
+    if (
+      (await readGeneration({
+        projectionPath: stage,
+        expectedParent: capabilityParentIdentity.realpath,
+      })) !== projectionDigest
+    ) {
       throw new TypeError('copied projection generation changed')
     }
   } catch (cause) {
-    await rm(stage, { recursive: true, force: true })
+    try {
+      await removeStage()
+    } catch {
+      // Never clean through a replaced parent path.
+    }
     throw failure({
       reason: 'CopyFailed',
       path: stage,
@@ -213,11 +323,19 @@ export const installOwnedCapabilityProjection = async ({
   let destinationExists = true
   let currentGeneration: string | undefined
   try {
-    currentGeneration = await readGeneration({ projectionPath: destination })
+    await assertDirectoryIdentity(capabilityParentIdentity)
+    currentGeneration = await readGeneration({
+      projectionPath: destination,
+      expectedParent: capabilityParentIdentity.realpath,
+    })
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') destinationExists = false
+    if (isErrno({ cause, code: 'ENOENT' }) === true) destinationExists = false
     else {
-      await rm(stage, { recursive: true, force: true })
+      try {
+        await removeStage()
+      } catch {
+        // Never clean through a replaced parent path.
+      }
       throw failure({
         reason: 'VerificationFailed',
         path: destination,
@@ -228,23 +346,42 @@ export const installOwnedCapabilityProjection = async ({
   }
 
   if (currentGeneration === projectionDigest) {
-    await rm(stage, { recursive: true, force: true })
+    await removeStage()
     return { memberKey, projectionPath: destination, projectionDigest, changed: false }
   }
 
   try {
+    await runtime.beforePublish?.(capabilityParent)
+    await assertDirectoryIdentity(capabilityParentIdentity)
     if (destinationExists === false) {
-      await runExact({ executable: runtime.mvPath, args: ['-T', '--no-clobber', '--', stage, destination] })
+      await runExact({
+        executable: runtime.mvPath,
+        args: ['-T', '--no-clobber', '--', stage, destination],
+      })
     } else {
-      await runExact({ executable: runtime.mvPath, args: ['-T', '--exchange', '--', stage, destination] })
+      await runExact({
+        executable: runtime.mvPath,
+        args: ['-T', '--exchange', '--', stage, destination],
+      })
     }
-    if ((await readGeneration({ projectionPath: destination })) !== projectionDigest) {
+    await assertDirectoryIdentity(capabilityParentIdentity)
+    if (
+      (await readGeneration({
+        projectionPath: destination,
+        expectedParent: capabilityParentIdentity.realpath,
+      })) !== projectionDigest
+    ) {
       throw new TypeError('published projection generation does not match')
     }
   } catch (cause) {
     if (destinationExists === true) {
       try {
-        await runExact({ executable: runtime.mvPath, args: ['-T', '--exchange', '--', stage, destination] })
+        await assertDirectoryIdentity(capabilityParentIdentity)
+        await runExact({
+          executable: runtime.mvPath,
+          args: ['-T', '--exchange', '--', stage, destination],
+        })
+        await assertDirectoryIdentity(capabilityParentIdentity)
       } catch {
         // Preserve both trees for explicit recovery when rollback cannot be proven.
       }
@@ -257,6 +394,6 @@ export const installOwnedCapabilityProjection = async ({
     })
   }
 
-  await rm(stage, { recursive: true, force: true })
+  await removeStage()
   return { memberKey, projectionPath: destination, projectionDigest, changed: true }
 }

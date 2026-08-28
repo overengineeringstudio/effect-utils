@@ -132,7 +132,10 @@ equality probe still needs a Mac worktree with a devenv profile.
 Phase 2 cuts production composition over to this workspace shape. `mr apply` now
 acquires or recovers the branch-attached owned worktree, resolves only immutable
 locked sources, applies capability/mount/overlay state under one update lock, and
-publishes root Buck authority last. The effect-utils member is portable and ships
+publishes root Buck authority last. Admission requires the canonical detached
+`refs/commits/<commit>` worktree at exact HEAD with no tracked, untracked, or ignored
+entries; ignored bytes are refused rather than entering the R6 source snapshot. The
+effect-utils member is portable and ships
 without `.buckconfig`; direct member-root Buck invocation is intentionally refused.
 Darwin advance remains separately gated on a verified login-session invalidation
 receipt or explicit runtime admission; fixture proof does not discharge tierA or CI.

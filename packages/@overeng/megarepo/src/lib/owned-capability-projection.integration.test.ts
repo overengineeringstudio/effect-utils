@@ -1,4 +1,14 @@
-import { mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  readlink,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
 
@@ -13,10 +23,19 @@ const coreutilsPath = async (name: 'cp' | 'mv') => {
   return NodePath.resolve('/run/current-system/sw/bin', linked)
 }
 
-const writeProjection = async ({ root, generation }: { readonly root: string; readonly generation: string }) => {
+const writeProjection = async ({
+  root,
+  generation,
+}: {
+  readonly root: string
+  readonly generation: string
+}) => {
   await mkdir(NodePath.join(root, 'generations', generation), { recursive: true })
-  await writeFile(NodePath.join(root, 'defs.bzl'), `GENERATION = "${generation}"
-`)
+  await writeFile(
+    NodePath.join(root, 'defs.bzl'),
+    `GENERATION = "${generation}"
+`,
+  )
 }
 
 describe('owned capability projection', () => {
@@ -73,6 +92,87 @@ describe('owned capability projection', () => {
       await rm(fixture, { recursive: true, force: true })
     }
   })
+
+  it.each(['symlink', 'file'] as const)(
+    'rejects a %s .buck2 parent without writing outside',
+    async (kind) => {
+      const fixture = await mkdtemp(NodePath.join(tmpdir(), 'owned-capability-parent-'))
+      try {
+        const owned = NodePath.join(fixture, 'owned')
+        const projection = NodePath.join(fixture, 'projection')
+        const outside = NodePath.join(fixture, 'outside')
+        const generation = 'c'.repeat(64)
+        await Promise.all([mkdir(owned), mkdir(outside)])
+        await writeFile(NodePath.join(owned, '.git'), 'gitdir: fixture\n')
+        await writeProjection({ root: projection, generation })
+        if (kind === 'symlink') await symlink(outside, NodePath.join(owned, '.buck2'))
+        else await writeFile(NodePath.join(owned, '.buck2'), 'not a directory\n')
+
+        await expect(
+          installOwnedCapabilityProjection({
+            memberKey: 'owned',
+            ownedMemberPath: owned,
+            projectionPath: projection,
+            projectionDigest: generation,
+            runtime: {
+              cpPath: await coreutilsPath('cp'),
+              mvPath: await coreutilsPath('mv'),
+              nonce: () => 'parent-kind',
+            },
+          }),
+        ).rejects.toMatchObject({
+          _tag: 'OwnedCapabilityProjectionError',
+          reason: 'VerificationFailed',
+        })
+        expect(await readdir(outside)).toEqual([])
+      } finally {
+        await rm(fixture, { recursive: true, force: true })
+      }
+    },
+  )
+
+  it.each(['copy', 'publish'] as const)(
+    'detects deterministic .buck2 replacement before %s without following the replacement',
+    async (phase) => {
+      const fixture = await mkdtemp(NodePath.join(tmpdir(), 'owned-capability-race-'))
+      try {
+        const owned = NodePath.join(fixture, 'owned')
+        const projection = NodePath.join(fixture, 'projection')
+        const outside = NodePath.join(fixture, 'outside')
+        const generation = 'd'.repeat(64)
+        await Promise.all([mkdir(owned), mkdir(outside)])
+        await writeFile(NodePath.join(owned, '.git'), 'gitdir: fixture\n')
+        await writeProjection({ root: projection, generation })
+        const replaceParent = async (parent: string) => {
+          await rename(parent, `${parent}.captured`)
+          await symlink(outside, parent)
+        }
+
+        await expect(
+          installOwnedCapabilityProjection({
+            memberKey: 'owned',
+            ownedMemberPath: owned,
+            projectionPath: projection,
+            projectionDigest: generation,
+            runtime: {
+              cpPath: await coreutilsPath('cp'),
+              mvPath: await coreutilsPath('mv'),
+              nonce: () => `race-${phase}`,
+              ...(phase === 'copy'
+                ? { beforeCopy: replaceParent }
+                : { beforePublish: replaceParent }),
+            },
+          }),
+        ).rejects.toMatchObject({
+          _tag: 'OwnedCapabilityProjectionError',
+          reason: phase === 'copy' ? 'CopyFailed' : 'PublishFailed',
+        })
+        expect(await readdir(outside)).toEqual([])
+      } finally {
+        await rm(fixture, { recursive: true, force: true })
+      }
+    },
+  )
 
   it('fails closed when the Nix wrapper environment is incomplete', () => {
     expect(() =>
