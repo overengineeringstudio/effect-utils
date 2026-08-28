@@ -249,10 +249,14 @@ violations }` (the offending `DiffOp[]`); block ops and page content
 
 ### Fixed
 
-- **@overeng/notion-react**: verify warm-cache block identities recursively,
-  including nested blocks and child-page scopes. A stale nested cache now
-  reconciles untracked live descendants instead of appending duplicates, and
-  the persisted `CacheTree` exactly reflects the identities left live.
+- **@overeng/notion-react**: verify warm-cache block identities recursively
+  through renderer-owned nested blocks and child-page scopes. A stale nested
+  cache now reconciles untracked live descendants instead of appending
+  duplicates, while opaque synced-block children remain untouched. Promised
+  but transiently empty child lists retry and fail closed on exhaustion;
+  recursive and retry requests are reflected exactly in retrieve metrics and
+  `SyncEnd.opCount`. The persisted `CacheTree` exactly reflects the identities
+  left live and an immediate identical sync emits zero mutations.
 - **Nix prepared dependencies**: normalize ordinary, non-injected local
   `file:` packages through pnpm's exact package-map locator before removing
   transient Source Input aliases. Restored CLI workspaces now resolve the

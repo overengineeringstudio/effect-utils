@@ -51,6 +51,12 @@ export interface FakeNotion {
    */
   readonly failOn: (hook: (req: FakeRequest) => Error | undefined) => void
   /**
+   * Make the next `emptyReads` children-list requests for `blockId` return an
+   * empty list while the parent envelope still reports its real
+   * `has_children` value. Models Notion's transient indexing paradox.
+   */
+  readonly delayChildrenVisibility: (blockId: string, emptyReads: number) => void
+  /**
    * Install a file_upload_id rejection predicate. Any append/update request
    * whose payload references a matching id surfaces as a Notion-shaped
    * `validation_error` with HTTP 400, matching the production API's
@@ -217,6 +223,7 @@ export const createFakeNotion = (): FakeNotion => {
 
   let failureHook: ((req: FakeRequest) => Error | undefined) | undefined
   let uploadIdPredicate: ((fileUploadId: string) => boolean) | undefined
+  const delayedChildrenReads = new Map<string, number>()
 
   /** Walk a nested block body collecting every `file_upload.id`. */
   const collectFileUploadIds = (body: unknown): string[] => {
@@ -650,6 +657,16 @@ export const createFakeNotion = (): FakeNotion => {
       if (pageParent !== undefined && pageParent.archived) {
         respErr(404, 'object_not_found', `Could not find block with ID: ${parent}.`)
       }
+      const delayedReads = delayedChildrenReads.get(parent) ?? 0
+      if (delayedReads > 0) {
+        delayedChildrenReads.set(parent, delayedReads - 1)
+        return {
+          object: 'list',
+          results: [],
+          has_more: false,
+          next_cursor: null,
+        }
+      }
       return {
         object: 'list',
         results: childrenOf(parent).map((b) => toBlockResponse(b, parent)),
@@ -795,6 +812,9 @@ export const createFakeNotion = (): FakeNotion => {
     childrenOf: (id) => childrenOf(id),
     failOn: (hook) => {
       failureHook = hook
+    },
+    delayChildrenVisibility: (blockId, emptyReads) => {
+      delayedChildrenReads.set(blockId, emptyReads)
     },
     rejectUploadIds: (predicate) => {
       uploadIdPredicate = predicate

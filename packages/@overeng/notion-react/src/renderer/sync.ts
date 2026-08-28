@@ -1,4 +1,4 @@
-import { Effect, Stream } from 'effect'
+import { Duration, Effect, Option, Schedule, Stream } from 'effect'
 import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { ReactNode } from 'react'
 
@@ -1007,29 +1007,136 @@ interface LiveIdentityNode {
 }
 
 /**
+ * Block scopes whose descendants are created and reconciled by the renderer.
+ *
+ * This is intentionally a positive list. Opaque passthrough blocks such as
+ * `synced_block` can report inherited children that belong to their source;
+ * traversing those children would misclassify them as renderer drift and
+ * archive content the renderer does not own.
+ */
+const RENDERER_OWNED_CHILD_SCOPES: Readonly<Record<string, true>> = {
+  paragraph: true,
+  heading_1: true,
+  heading_2: true,
+  heading_3: true,
+  heading_4: true,
+  bulleted_list_item: true,
+  numbered_list_item: true,
+  to_do: true,
+  toggle: true,
+  quote: true,
+  callout: true,
+  table: true,
+  column_list: true,
+  column: true,
+}
+
+type RetrieveO11yCtx = Pick<O11yCtx, 'onEvent' | 'nextOpId' | 'opCount'>
+
+const childrenSettleSchedule = Schedule.exponential(Duration.millis(500), 1.5).pipe(
+  Schedule.upTo({ times: 4 }),
+)
+
+/**
+ * Issue one physical children-list request and account for it exactly once.
+ * Pagination and settled-read retries both pass through this boundary.
+ */
+const retrieveLiveIdentityPage = (
+  parentId: string,
+  startCursor: string | undefined,
+  o11y: RetrieveO11yCtx,
+) =>
+  Effect.gen(function* () {
+    const opId = o11y.nextOpId()
+    const t0 = o11y.onEvent !== undefined ? performance.now() : 0
+    o11y.opCount.n += 1
+    o11y.onEvent?.(SyncEvent.OpIssued({ id: opId, kind: 'retrieve', at: Date.now() }))
+    const page = yield* NotionBlocks.retrieveChildren({
+      blockId: parentId,
+      ...(startCursor !== undefined ? { startCursor } : {}),
+    }).pipe(
+      Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
+      Effect.tapError((cause) =>
+        Effect.sync(() => {
+          o11y.onEvent?.(
+            SyncEvent.OpFailed({
+              id: opId,
+              kind: 'retrieve',
+              durationMs: performance.now() - t0,
+              error: String(cause),
+              at: Date.now(),
+            }),
+          )
+        }),
+      ),
+    )
+    o11y.onEvent?.(
+      SyncEvent.OpSucceeded({
+        id: opId,
+        kind: 'retrieve',
+        durationMs: performance.now() - t0,
+        resultCount: page.results.length,
+        at: Date.now(),
+      }),
+    )
+    return page
+  })
+
+/**
+ * Retrieve every page of direct children. When the parent explicitly promised
+ * children, a transiently empty aggregate is retried with the repository's
+ * bounded settle schedule; exhausting that budget fails closed.
+ */
+const retrieveLiveIdentityChildren = (
+  parentId: string,
+  expectChildren: boolean,
+  o11y: RetrieveO11yCtx,
+) =>
+  Effect.gen(function* () {
+    const blocks = []
+    let startCursor: string | undefined
+    do {
+      const page = yield* retrieveLiveIdentityPage(parentId, startCursor, o11y)
+      blocks.push(...page.results)
+      startCursor =
+        page.hasMore === true && Option.isSome(page.nextCursor) === true
+          ? page.nextCursor.value
+          : undefined
+    } while (startCursor !== undefined)
+    if (expectChildren && blocks.length === 0) {
+      return yield* Effect.fail(
+        new NotionSyncError({ reason: 'children-not-yet-visible', cause: parentId }),
+      )
+    }
+    return blocks
+  }).pipe(Effect.retry(childrenSettleSchedule))
+
+/**
  * Observe the ordered live identity tree below a page or block. Warm-cache
- * drift detection recurses through blocks with children and through every
- * child-page boundary; cold cleanup only needs the root children.
+ * drift detection recurses only through renderer-owned block scopes and
+ * through every child-page boundary; cold cleanup only needs root children.
  */
 const retrieveLiveIdentities: (
   parentId: string,
   recursive: boolean,
+  o11y: RetrieveO11yCtx,
+  expectChildren?: boolean,
 ) => Effect.Effect<readonly LiveIdentityNode[], NotionSyncError, NotionConfig | HttpClient> =
   Effect.fn('notion-react.retrieve-live-identities')(function* (
     parentId: string,
     recursive: boolean,
+    o11y: RetrieveO11yCtx,
+    expectChildren = false,
   ) {
-    const live = yield* Stream.runCollect(
-      NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
-    ).pipe(
-      Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
-    )
+    const live = yield* retrieveLiveIdentityChildren(parentId, expectChildren, o11y)
     const identities: LiveIdentityNode[] = []
-    for (const block of Array.from(live)) {
+    for (const block of live) {
       if (block.in_trash === true) continue
+      const ownsChildScope =
+        block.type === 'child_page' || RENDERER_OWNED_CHILD_SCOPES[block.type] === true
       const children =
-        recursive && (block.has_children === true || block.type === 'child_page')
-          ? yield* retrieveLiveIdentities(block.id, true)
+        recursive && ownsChildScope && (block.has_children === true || block.type === 'child_page')
+          ? yield* retrieveLiveIdentities(block.id, true, o11y, block.has_children === true)
           : []
       identities.push({ blockId: block.id, type: block.type, children })
     }
@@ -1552,41 +1659,8 @@ export const sync = (
       (prior !== undefined && !schemaMismatch && !pageIdDrift) ||
       (useColdPath && coldBaseline === 'clean')
     if (wantsLiveRetrieve) {
-      const retrieveOpId = o11y.nextOpId()
-      const t0 = onEvent !== undefined ? performance.now() : 0
-      if (onEvent !== undefined) {
-        onEvent(SyncEvent.OpIssued({ id: retrieveOpId, kind: 'retrieve', at: Date.now() }))
-      }
       const recursive = prior !== undefined && !schemaMismatch && !pageIdDrift
-      const observed = yield* retrieveLiveIdentities(opts.pageId, recursive).pipe(
-        Effect.tapError((cause) =>
-          Effect.sync(() => {
-            if (onEvent !== undefined) {
-              onEvent(
-                SyncEvent.OpFailed({
-                  id: retrieveOpId,
-                  kind: 'retrieve',
-                  durationMs: performance.now() - t0,
-                  error: String(cause),
-                  at: Date.now(),
-                }),
-              )
-            }
-          }),
-        ),
-      )
-      o11y.opCount.n += 1
-      if (onEvent !== undefined) {
-        onEvent(
-          SyncEvent.OpSucceeded({
-            id: retrieveOpId,
-            kind: 'retrieve',
-            durationMs: performance.now() - t0,
-            resultCount: observed.length,
-            at: Date.now(),
-          }),
-        )
-      }
+      const observed = yield* retrieveLiveIdentities(opts.pageId, recursive, o11y)
       const holdingParentId =
         typeof opts.reorderSiblings === 'object' ? opts.reorderSiblings.holdingParentId : undefined
       liveIdentities =
@@ -2558,6 +2632,15 @@ export const plan = (
   Effect.gen(function* () {
     const staleness: PlanStaleness = opts.staleness ?? 'live'
     const onEvent = opts.onEvent
+    let retrieveOpId = 0
+    const retrieveO11y: RetrieveO11yCtx = {
+      onEvent,
+      nextOpId: () => {
+        retrieveOpId += 1
+        return retrieveOpId
+      },
+      opCount: { n: 0 },
+    }
     const coldBaseline: ColdBaseline = opts.coldBaseline ?? 'clean'
     let prior = yield* opts.cache.load.pipe(
       Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-load-failed', cause })),
@@ -2585,40 +2668,8 @@ export const plan = (
       ((prior !== undefined && !schemaMismatch && !pageIdDrift) ||
         (useColdPath && coldBaseline === 'clean'))
     if (wantsLiveRetrieve) {
-      const retrieveOpId = 1
-      const t0 = onEvent !== undefined ? performance.now() : 0
-      if (onEvent !== undefined) {
-        onEvent(SyncEvent.OpIssued({ id: retrieveOpId, kind: 'retrieve', at: Date.now() }))
-      }
       const recursive = prior !== undefined && !schemaMismatch && !pageIdDrift
-      const observed = yield* retrieveLiveIdentities(opts.pageId, recursive).pipe(
-        Effect.tapError((cause) =>
-          Effect.sync(() => {
-            if (onEvent !== undefined) {
-              onEvent(
-                SyncEvent.OpFailed({
-                  id: retrieveOpId,
-                  kind: 'retrieve',
-                  durationMs: performance.now() - t0,
-                  error: String(cause),
-                  at: Date.now(),
-                }),
-              )
-            }
-          }),
-        ),
-      )
-      if (onEvent !== undefined) {
-        onEvent(
-          SyncEvent.OpSucceeded({
-            id: retrieveOpId,
-            kind: 'retrieve',
-            durationMs: performance.now() - t0,
-            resultCount: observed.length,
-            at: Date.now(),
-          }),
-        )
-      }
+      const observed = yield* retrieveLiveIdentities(opts.pageId, recursive, retrieveO11y)
       const holdingParentId =
         typeof opts.reorderSiblings === 'object' ? opts.reorderSiblings.holdingParentId : undefined
       liveIdentities =

@@ -204,7 +204,7 @@ describe('SyncMetrics — realistic daily-page shape', () => {
     expect(m.ok).toBe(true)
   })
 
-  it('[shape-warm-no-change] warm no-change: 0 mutations, drift probe only', async () => {
+  it('[shape-warm-no-change] warm no-change: 0 mutations, recursive drift probes only', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     await collect(fake, <RealisticPage spec={baseSpec()} />, cache)
@@ -212,7 +212,8 @@ describe('SyncMetrics — realistic daily-page shape', () => {
     expect(m.actualOps.append).toBe(0)
     expect(m.actualOps.update).toBe(0)
     expect(m.actualOps.delete).toBe(0)
-    expect(m.actualOps.retrieve).toBe(1)
+    // root + 2 tables + 10 column lists + 20 columns
+    expect(m.actualOps.retrieve).toBe(33)
     expect(m.cacheOutcome).toBe('hit')
     expect(m.updateNoopCount).toBe(0)
   })

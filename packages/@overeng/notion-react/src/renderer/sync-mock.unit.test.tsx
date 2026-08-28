@@ -16,6 +16,7 @@ import {
   Paragraph,
   Table,
   TableRow,
+  SyncedBlock,
 } from '../components/blocks.ts'
 import { h } from '../components/h.ts'
 import {
@@ -26,6 +27,7 @@ import {
   type FakeRequest,
 } from '../test/mock-client.ts'
 import type { SyncEvent } from './sync-events.ts'
+import type { SyncMetrics } from './sync-metrics.ts'
 import { sync } from './sync.ts'
 
 /**
@@ -360,6 +362,82 @@ describe('sync() against in-memory fake Notion', () => {
     const methods = fake.requests.slice(after).map((r) => r.method)
     expect(methods.length).toBeGreaterThan(3)
     expect(methods.every((method) => method === 'GET')).toBe(true)
+  })
+
+  it('warm sync treats inherited synced-block children as opaque', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <>
+        <SyncedBlock content={{ synced_from: { block_id: 'source-block' } }} />
+        <Paragraph>renderer-owned sibling</Paragraph>
+      </>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const synced = fake.childrenOf(ROOT).find((block) => block.type === 'synced_block')!
+    const inherited = fake.childrenOf(ROOT).find((block) => block.type === 'paragraph')!
+
+    // Notion exposes source-owned synchronized content through the synced
+    // block's children listing. It is not part of this renderer's CacheTree.
+    synced.children.push(inherited.id)
+    const before = fake.requests.length
+    const result = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+
+    expect(result).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(result.fallbackReason).toBeUndefined()
+    expect(inherited.archived).toBe(false)
+    expect(fake.requests.slice(before).filter((request) => request.method !== 'GET')).toEqual([])
+  })
+
+  it('recursive preflight retries promised-empty children and accounts for every request', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList blockKey="columns">
+        <Column blockKey="left">
+          <Paragraph>left</Paragraph>
+        </Column>
+        <Column blockKey="right">
+          <Paragraph>right</Paragraph>
+        </Column>
+      </ColumnList>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const columnList = fake.childrenOf(ROOT).find((block) => block.type === 'column_list')!
+    fake.delayChildrenVisibility(columnList.id, 1)
+
+    const events: SyncEvent[] = []
+    let metrics: SyncMetrics | undefined
+    const before = fake.requests.length
+    const result = await runWith(
+      fake,
+      sync(tree, {
+        pageId: ROOT,
+        cache,
+        onEvent: (event) => events.push(event),
+        onMetrics: (value) => {
+          metrics = value
+        },
+      }),
+    )
+    const requests = fake.requests.slice(before)
+    const retrieves = requests.filter((request) => request.method === 'GET')
+    const issuedRetrieves = events.filter(
+      (event) => event._tag === 'OpIssued' && event.kind === 'retrieve',
+    )
+    const successfulRetrieves = events.filter(
+      (event) => event._tag === 'OpSucceeded' && event.kind === 'retrieve',
+    )
+    const syncEnd = events.find((event) => event._tag === 'SyncEnd')
+
+    expect(result).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(result.fallbackReason).toBeUndefined()
+    expect(requests.every((request) => request.method === 'GET')).toBe(true)
+    expect(retrieves).toHaveLength(5)
+    expect(issuedRetrieves).toHaveLength(retrieves.length)
+    expect(successfulRetrieves).toHaveLength(retrieves.length)
+    expect(metrics?.actualOps.retrieve).toBe(retrieves.length)
+    expect(syncEnd).toMatchObject({ opCount: retrieves.length, ok: true })
   })
 
   it('drift detection: out-of-band archive on a tracked block forces cache-drift rebuild', async () => {

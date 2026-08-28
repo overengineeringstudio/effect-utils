@@ -151,11 +151,16 @@ describe('plan() — read-only companion to sync()', () => {
 
     const live: SyncEvent[] = []
     await runWith(fake, plan(doc(2), { pageId: ROOT, cache, onEvent: (e) => live.push(e) }))
-    expect(live.map((e) => e._tag)).toEqual(['OpIssued', 'OpSucceeded', 'PlanComputed'])
-    expect(live[0]).toMatchObject({ kind: 'retrieve' })
-    expect(live[1]).toMatchObject({ kind: 'retrieve' })
+    expect(live.map((e) => e._tag)).toEqual([
+      'OpIssued',
+      'OpSucceeded',
+      'OpIssued',
+      'OpSucceeded',
+      'PlanComputed',
+    ])
+    expect(live.slice(0, 4).every((e) => 'kind' in e && e.kind === 'retrieve')).toBe(true)
     // PlanComputed carries the block tallies of the computed plan.
-    expect(live[2]).toMatchObject({ pageId: ROOT, appends: 0, updates: 2, inserts: 1, removes: 0 })
+    expect(live[4]).toMatchObject({ pageId: ROOT, appends: 0, updates: 2, inserts: 1, removes: 0 })
 
     const offline: SyncEvent[] = []
     await runWith(
