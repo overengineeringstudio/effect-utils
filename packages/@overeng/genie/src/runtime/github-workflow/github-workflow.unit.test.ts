@@ -207,7 +207,7 @@ describe('githubWorkflow', () => {
       jobs: {
         large: {
           'runs-on': 'ubuntu-latest',
-          steps: [{ run: `echo ${'x'.repeat(512 * 1024)}` }],
+          steps: [{ run: `echo ${'x'.repeat(500_000)}` }],
         },
       },
     })
@@ -229,7 +229,7 @@ describe('githubWorkflow', () => {
       jobs: {
         large: {
           'runs-on': 'ubuntu-latest',
-          steps: [{ run: `echo ${'x'.repeat(480 * 1024)}` }],
+          steps: [{ run: `echo ${'x'.repeat(460_000)}` }],
         },
       },
     })

@@ -48,6 +48,10 @@ All notable changes to this project will be documented in this file.
   root install.
 - **@overeng/megarepo**: cut Buck workspaces over to decision-0020 composition: one acquired writable owned member, canonical clean detached locked sources, immutable verified `cp -a` mounts, secret-free Nix execution and trusted mr-owned TypeScript capability projection, lockfile-preserving exact Nix capabilities, inode-checked owned projection publication, atomic overlays, root-authority-last publication, composition-aware pin/status/orphan/liveness handling, reference-only ignored legacy members, and no bare-member `.buckconfig`.
 - **CI**: run every devenv, Buck, TypeScript, lint, test, cargo, and Genie lane from a disposable decision-0020 synthesized workspace while retaining the immutable actions checkout for cleanup and checkout-only artifacts; keep pnpm and Nix cache state at stable runner-temporary paths projected into the owned member.
+- **CI admission**: move repeated devenv resolution/repair logic into a prepared
+  runtime script and enforce GitHub's 500 kB workflow limit. The generated CI
+  workflow drops from 518,102 to 466,190 bytes, leaving 33,810 bytes below the
+  enforced admission ceiling.
 
 ### Removed
 - **context/effect-4/**: the flip-era migration docs (alignment register, idiom
