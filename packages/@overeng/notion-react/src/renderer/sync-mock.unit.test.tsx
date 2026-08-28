@@ -541,6 +541,50 @@ describe('sync() against in-memory fake Notion', () => {
     expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
   })
 
+  it('drift detection preserves a keyed child page moved between owned parents', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <>
+        <ChildPage blockKey="parent-a" title="Parent A">
+          <ChildPage blockKey="moved" title="Moved">
+            <Paragraph blockKey="body">Body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+        <ChildPage blockKey="parent-b" title="Parent B" />
+      </>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const [parentA, parentB] = fake.childrenOf(ROOT)
+    const moved = fake.childrenOf(parentA!.id).find((block) => block.type === 'child_page')!
+
+    // Another client reparents the tracked page while this renderer still
+    // owns both possible parents. Drift recovery must find the cached page by
+    // its durable ID across the whole tree, then move that same page back.
+    await runWith(
+      fake,
+      NotionPages.move({
+        pageId: moved.id,
+        parent: { type: 'page_id', page_id: parentB!.id },
+      }),
+    )
+
+    const repaired = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(repaired.fallbackReason).toBe('cache-drift')
+    expect(repaired.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 1, reorders: 0 })
+    expect(repaired).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+    expect(fake.childrenOf(parentA!.id).some((block) => block.id === moved.id)).toBe(true)
+    const persisted = await Effect.runPromise(cache.load)
+    expect(
+      persisted && flattenCache(persisted).find((node) => node.blockId === moved.id)?.key,
+    ).toBe('k:moved')
+
+    const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(stable.fallbackReason).toBeUndefined()
+    expect(stable.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
   it('propagates a nested caller holding-page exclusion through recursive reads', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()

@@ -1157,6 +1157,19 @@ const retrieveLiveIdentities: (
     return identities
   })
 
+/** Index page nodes globally by durable ID; ordinary blocks remain scope-local. */
+const indexCachedPagesByBlockId = (nodes: readonly CacheNode[]): Map<string, CacheNode> => {
+  const pages = new Map<string, CacheNode>()
+  const walk = (children: readonly CacheNode[]): void => {
+    for (const child of children) {
+      if (child.nodeKind === 'page') pages.set(child.blockId, child)
+      walk(child.children)
+    }
+  }
+  walk(nodes)
+  return pages
+}
+
 /**
  * Build a cache-shaped base from the recursive live identity tree on drift.
  *
@@ -1168,17 +1181,21 @@ const retrieveLiveIdentities: (
 const mergeLiveIdentityBase = (
   liveNodes: readonly LiveIdentityNode[],
   priorNodes: readonly CacheNode[],
+  priorPageByBlockId: ReadonlyMap<string, CacheNode>,
   preserveKindInterleaving = false,
 ): readonly CacheNode[] => {
   const priorByBlockId = new Map(priorNodes.map((node) => [node.blockId, node]))
   const merged = liveNodes.map((liveNode): CacheNode => {
-    const priorNode = priorByBlockId.get(liveNode.blockId)
+    const priorNode =
+      priorByBlockId.get(liveNode.blockId) ??
+      (liveNode.type === 'child_page' ? priorPageByBlockId.get(liveNode.blockId) : undefined)
     if (priorNode !== undefined) {
       return {
         ...priorNode,
         children: mergeLiveIdentityBase(
           liveNode.children,
           priorNode.children,
+          priorPageByBlockId,
           priorNode.nodeKind === 'page',
         ),
       }
@@ -1188,7 +1205,7 @@ const mergeLiveIdentityBase = (
       blockId: liveNode.blockId,
       type: liveNode.type,
       hash: '',
-      children: mergeLiveIdentityBase(liveNode.children, []),
+      children: mergeLiveIdentityBase(liveNode.children, [], priorPageByBlockId),
       nodeKind: liveNode.type === 'child_page' ? 'page' : 'block',
     }
   })
@@ -1220,11 +1237,14 @@ const driftedBase = (
   rootId: string,
   live: readonly LiveIdentityNode[],
   prior: CacheTree | undefined,
-): CacheTree => ({
-  schemaVersion: CACHE_SCHEMA_VERSION,
-  rootId,
-  children: mergeLiveIdentityBase(live, prior?.children ?? []),
-})
+): CacheTree => {
+  const priorChildren = prior?.children ?? []
+  return {
+    schemaVersion: CACHE_SCHEMA_VERSION,
+    rootId,
+    children: mergeLiveIdentityBase(live, priorChildren, indexCachedPagesByBlockId(priorChildren)),
+  }
+}
 
 /** Remove synthetic drift entries before a working cache can be checkpointed. */
 const withoutDriftGhosts = (nodes: readonly CacheNode[]): readonly CacheNode[] =>
