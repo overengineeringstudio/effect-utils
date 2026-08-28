@@ -902,6 +902,7 @@ const applyComposition = async ({
       const expectedKeys = new Set([
         request.ownedMemberKey,
         ...lockedMembers.map((member) => member.key),
+        ...(request.compositionConfig.ignoredMembers ?? []),
       ])
       const publishedKeys = await primitives.listPublishedMemberKeys(request.workspaceRoot)
       for (const memberKey of publishedKeys) {
