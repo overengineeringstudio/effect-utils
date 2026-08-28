@@ -42,10 +42,6 @@ const makeFixture = Effect.gen(function* () {
     EffectPath.unsafe.absoluteFile(NodePath.join(seed, 'flake.lock')),
     '{"nodes":{},"root":"root","version":7}\n',
   )
-  yield* fs.writeFileString(
-    EffectPath.unsafe.absoluteFile(NodePath.join(seed, 'scripts/buck2-capability-project.sh')),
-    '#!/bin/sh\nexit 0\n',
-  )
   yield* addCommit({ repoPath: seed, message: 'Create locked source' })
   const commit = yield* Git.getCurrentCommit(seed)
   yield* fs.makeDirectory(repoBase, { recursive: true })

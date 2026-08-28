@@ -137,6 +137,10 @@ export interface CompositionApplyPrimitives {
   readonly resolveCapabilities: (
     input: ResolveCompositionCapabilitiesInput,
   ) => Promise<ResolveCompositionCapabilitiesResult>
+  readonly assertLockedSourceClean: (input: {
+    readonly sourcePath: string
+    readonly lockedCommit: string
+  }) => Promise<void>
   readonly recoverMount: (input: {
     readonly request: CpAMemberMountRecoveryRequest
     readonly runtime: CpAMemberMountRecoveryRuntime
@@ -239,6 +243,7 @@ const defaultPrimitives: CompositionApplyPrimitives = {
   releaseUpdateLock: ({ held, runtime }) =>
     Effect.runPromise(releaseWorkspaceUpdateLock({ held, runtime })),
   resolveCapabilities: resolveCompositionCapabilities,
+  assertLockedSourceClean: async () => {},
   recoverMount: ({ request, runtime }) => runNode(recoverCpAMemberMount({ request, runtime })),
   planMount: async (input) => ({
     memberKey: input.memberKey,
@@ -527,15 +532,12 @@ const publicResolution = (
   _tag: 'Resolved',
   system: handle.system,
   projectorPlatform: handle.projectorPlatform,
-  projectorPath: handle.projectorPath,
   candidateRoot: handle.candidateRoot,
   projectionPath: handle.projectionPath,
   projectionDigest: handle.projectionDigest,
   capabilities: handle.capabilities,
   capabilitiesByToolId: handle.capabilitiesByToolId,
   nixCommands: handle.nixCommands,
-  projectorCommand: handle.projectorCommand,
-  checkCommand: handle.checkCommand,
 })
 
 /** Derive the only permitted Buck overlay build command. */
@@ -897,7 +899,10 @@ const applyComposition = async ({
     }
 
     if (request.dryRun === false) {
-      const expectedKeys = new Set([request.ownedMemberKey, ...lockedMembers.map((member) => member.key)])
+      const expectedKeys = new Set([
+        request.ownedMemberKey,
+        ...lockedMembers.map((member) => member.key),
+      ])
       const publishedKeys = await primitives.listPublishedMemberKeys(request.workspaceRoot)
       for (const memberKey of publishedKeys) {
         if (expectedKeys.has(memberKey) === true) continue
@@ -941,6 +946,13 @@ const applyComposition = async ({
       }
       capabilityResults.set(member.key, capabilityResult)
       if (capabilityResult._tag === 'Resolved') handles.push({ member, handle: capabilityResult })
+    }
+
+    for (const member of lockedMembers) {
+      await primitives.assertLockedSourceClean({
+        sourcePath: member.root,
+        lockedCommit: member.lockedCommit!,
+      })
     }
 
     const hubResolution = capabilityResults.get(request.compositionConfig.platformHub)
@@ -1123,6 +1135,10 @@ const applyComposition = async ({
       }
       let mount: CpAMemberMountResult
       try {
+        await primitives.assertLockedSourceClean({
+          sourcePath: member.root,
+          lockedCommit: member.lockedCommit!,
+        })
         mount = await primitives.materializeMount({
           request: {
             workspaceRoot: request.workspaceRoot,

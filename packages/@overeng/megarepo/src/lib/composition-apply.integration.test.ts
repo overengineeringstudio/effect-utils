@@ -126,6 +126,7 @@ const fixture = async (options: FixtureOptions = {}) => {
   let scratchIndex = 0
 
   const primitives: CompositionApplyPrimitives = {
+    assertLockedSourceClean: async () => {},
     readManifest: async (path) => manifests.get(path)!,
     pathExists: async (path) =>
       options.recovery === true &&
@@ -158,7 +159,6 @@ const fixture = async (options: FixtureOptions = {}) => {
         _tag: 'Resolved',
         system: input.system,
         projectorPlatform: 'x86_64-linux',
-        projectorPath: NodePath.join(input.memberRoot, 'scripts/buck2-capability-project.sh'),
         candidateRoot: NodePath.join(root, 'capabilities', key, 'candidate'),
         projectionPath: NodePath.join(root, 'capabilities', key, 'candidate/.buck2/capabilities'),
         projectionDigest: 'c'.repeat(64),
@@ -185,8 +185,6 @@ const fixture = async (options: FixtureOptions = {}) => {
               }
             : {},
         nixCommands: [],
-        projectorCommand: { executable: '/bin/bash', args: [] },
-        checkCommand: { executable: '/bin/bash', args: ['--check'] },
         release: async () => {
           calls.push(`cap:${key}:release`)
           if (options.releaseFailures?.includes(key) === true) {
@@ -331,24 +329,6 @@ const fixture = async (options: FixtureOptions = {}) => {
     buck2Protocol: protocol,
     capabilityRuntime: {
       nixPath: '/bin/nix',
-      bashPath: '/bin/bash',
-      gawkPath: '/bin/gawk',
-      awkPath: '/bin/awk',
-      grepPath: '/bin/grep',
-      jqPath: '/bin/jq',
-      mkdirPath: '/bin/mkdir',
-      rmPath: '/bin/rm',
-      mvPath: '/bin/mv',
-      lnPath: '/bin/ln',
-      readlinkPath: '/bin/readlink',
-      dirnamePath: '/bin/dirname',
-      basenamePath: '/bin/basename',
-      sha256Path: '/bin/sha256sum',
-      sortPath: '/bin/sort',
-      xargsPath: '/bin/xargs',
-      findPath: '/bin/find',
-      flockPath: '/bin/flock',
-      diffPath: '/bin/diff',
     },
     mountRuntime: { cpPath: '/bin/cp', mvPath: '/bin/mv', capabilityCheck: async () => {} },
     mountRecoveryRuntime: { mvPath: '/bin/mv' },

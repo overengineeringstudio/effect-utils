@@ -88,6 +88,7 @@ const fake = ({
   readonly runtime: CompositionApplyRuntime
 } => {
   const primitives: CompositionApplyPrimitives = {
+    assertLockedSourceClean: async () => {},
     readManifest: async (root) => {
       calls.push(`manifest:${root}`)
       const value = manifests.get(root)
@@ -118,10 +119,8 @@ const fake = ({
         _tag: 'Planned',
         system: input.system,
         projectorPlatform: 'x86_64-linux',
-        projectorPath: `${input.memberRoot}/scripts/buck2-capability-project.sh`,
         candidateRoot: `/scratch/${memberKey}/candidate`,
         nixCommands: [],
-        projectorCommand: { executable: '/bin/bash', args: [] },
       }
     },
     recoverMount: async () => {
@@ -202,24 +201,6 @@ const fake = ({
     buck2Protocol: buckProtocol,
     capabilityRuntime: {
       nixPath: '/bin/nix',
-      bashPath: '/bin/bash',
-      gawkPath: '/bin/gawk',
-      awkPath: '/bin/awk',
-      grepPath: '/bin/grep',
-      jqPath: '/bin/jq',
-      mkdirPath: '/bin/mkdir',
-      rmPath: '/bin/rm',
-      mvPath: '/bin/mv',
-      lnPath: '/bin/ln',
-      readlinkPath: '/bin/readlink',
-      dirnamePath: '/bin/dirname',
-      basenamePath: '/bin/basename',
-      sha256Path: '/bin/sha256sum',
-      sortPath: '/bin/sort',
-      xargsPath: '/bin/xargs',
-      findPath: '/bin/find',
-      flockPath: '/bin/flock',
-      diffPath: '/bin/diff',
     },
     mountRuntime: {
       cpPath: '/bin/cp',
