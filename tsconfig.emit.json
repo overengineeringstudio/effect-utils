@@ -103,9 +103,6 @@
       "path": "./packages/@overeng/restate-effect"
     },
     {
-      "path": "./packages/@overeng/tui-react"
-    },
-    {
       "path": "./packages/@overeng/tui-stories"
     },
     {
