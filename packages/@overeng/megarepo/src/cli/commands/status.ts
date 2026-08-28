@@ -24,6 +24,8 @@ import {
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
+import { teardownCpAMemberMount } from '../../lib/member-mount-cp-a.ts'
+import { readOwnedCpAMountMetadata } from '../../lib/member-mount-r6.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { type MegarepoTraversal, withMegarepoTraversal } from '../../lib/megarepo-traversal.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
@@ -86,11 +88,16 @@ const scanMembersRecursive = ({
     if (configResult === undefined) {
       return []
     }
-    const { config } = configResult
+    const { config, path: configPath } = configResult
+    const compositionEnabled = config.generators?.composition?.enabled === true
+    const ownedMemberKey =
+      compositionEnabled === true ? config.generators!.composition!.platformHub : undefined
 
     // Load lock file (optional)
+    const physicalConfigPath = yield* fs.realPath(configPath)
+    const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? megarepoRoot
     const lockPath = EffectPath.ops.join(
-      megarepoRoot,
+      configOwner,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
     )
     const lockFileOpt = yield* readLockFile(lockPath)
@@ -98,26 +105,45 @@ const scanMembersRecursive = ({
 
     // Build member status list
     const members: MemberStatus[] = []
-    for (const [memberName, sourceString] of Object.entries(config.members)) {
+    const effectiveMembers: ReadonlyArray<readonly [string, string]> = [
+      ...(ownedMemberKey === undefined ? [] : [[ownedMemberKey, 'owned:branch'] as const]),
+      ...Object.entries(config.members),
+    ]
+    for (const [memberName, sourceString] of effectiveMembers) {
+      const isOwned = memberName === ownedMemberKey
       const memberPath = getMemberPath({ megarepoRoot, name: memberName })
-      const source = parseSourceString(sourceString)
+      const source = isOwned === true ? undefined : parseSourceString(sourceString)
       const isLocal = source?.type === 'path'
       const lockedMember = lockFile?.members[memberName]
 
-      // Check if symlink exists in repos/<member>
       const symlinkPath = memberPath.replace(/\/$/, '')
-      const symlinkExists = yield* fs.exists(symlinkPath)
-
-      // For remote members, also check if the underlying worktree exists
-      // (symlink might exist but point to non-existent worktree)
-      let memberExists = symlinkExists
-      if (symlinkExists === true && isLocal === false) {
-        // Check if symlink target exists
+      const pathExists = yield* fs.exists(symlinkPath)
+      let symlinkExists = compositionEnabled === false && pathExists
+      let memberExists = pathExists
+      let mountKind: MemberStatus['mountKind'] = isOwned === true ? 'owned' : undefined
+      let mountedCommit: string | undefined
+      if (compositionEnabled === true && isOwned === false && pathExists === true) {
+        const verification = yield* teardownCpAMemberMount({
+          request: { workspaceRoot: megarepoRoot, member: memberName, dryRun: true },
+        }).pipe(Effect.result)
+        if (verification._tag === 'Success') {
+          mountKind = 'cp-a'
+          mountedCommit = (yield* readOwnedCpAMountMetadata({
+            workspaceRoot: megarepoRoot,
+            member: memberName,
+            publishedPath: symlinkPath,
+          })).lockedCommit
+        } else {
+          mountKind = 'foreign'
+        }
+      } else if (compositionEnabled === false && pathExists === true && isLocal === false) {
         const targetExists = yield* fs.readLink(symlinkPath).pipe(
           Effect.flatMap((target) => fs.exists(target)),
           Effect.orElseSucceed(() => false),
         )
+        symlinkExists = targetExists
         memberExists = targetExists
+        mountKind = 'symlink'
       }
 
       // Check if this member is itself a megarepo
@@ -145,7 +171,7 @@ const scanMembersRecursive = ({
       let gitStatus: GitStatus | undefined = undefined
       let currentBranch: string | undefined = undefined
       let fullCommit: string | undefined = undefined
-      if (memberExists === true) {
+      if (memberExists === true && (isOwned === true || compositionEnabled === false)) {
         // Check if it's a git repo first
         const isGit = yield* Git.isGitRepo(memberPath)
         if (isGit === true) {
@@ -180,9 +206,11 @@ const scanMembersRecursive = ({
         }
       }
 
+      if (mountedCommit !== undefined) fullCommit = mountedCommit
+
       // Read symlink target for drift detection
       const symlinkTarget =
-        memberExists === true && isLocal === false
+        compositionEnabled === false && memberExists === true && isLocal === false
           ? yield* fs.readLink(memberPath.replace(/\/$/, '')).pipe(Effect.orElseSucceed(() => null))
           : null
 
@@ -260,6 +288,8 @@ const scanMembersRecursive = ({
         symlinkExists,
         source: sourceString,
         isLocal,
+        mountKind,
+        writable: isOwned === true,
         lockInfo:
           lockedMember !== undefined
             ? {
@@ -305,7 +335,7 @@ export const statusCommand = Cli.Command.make(
       const store = yield* Store
 
       // Load config
-      const { config } = yield* readMegarepoConfig(root.value)
+      const { config, path: configPath } = yield* readMegarepoConfig(root.value)
 
       // Scan members (recursively if --all)
       const members = yield* withMegarepoTraversal({
@@ -321,8 +351,10 @@ export const statusCommand = Cli.Command.make(
       })
 
       // Get last sync time and lock staleness from lock file
+      const physicalConfigPath = yield* fs.realPath(configPath)
+      const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
       const lockPath = EffectPath.ops.join(
-        root.value,
+        configOwner,
         EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
       )
       const lockFileOpt = yield* readLockFile(lockPath)

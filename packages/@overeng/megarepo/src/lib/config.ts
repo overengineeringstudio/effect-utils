@@ -106,6 +106,8 @@ export class CompositionGeneratorConfig extends Schema.Class<CompositionGenerato
   isolationDir: Schema.optional(
     Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
   ),
+  /** Admit Darwin mount advance only after a verified login-session invalidation probe. */
+  allowVerifiedDarwinAdvance: Schema.optional(Schema.Boolean),
 }) {}
 
 /**

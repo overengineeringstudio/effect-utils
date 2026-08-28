@@ -1,4 +1,5 @@
-// Secondary members
-members {
-  effect "effect-ts/effect"
+members {}
+
+generators {
+  composition enabled=#true platformHub="effect-utils" isolationDir="megarepo" {}
 }

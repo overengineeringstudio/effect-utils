@@ -348,7 +348,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
 
         {/* Dynamic region */}
         <Box paddingTop={logs.length > 0 ? 1 : 0}>
-          <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
+          <WorkspaceRootLabel storePath={workspace.defaultCwd ?? workspace.root} modes={modes} />
           <Text> </Text>
 
           {/* Progress items */}
@@ -385,7 +385,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   if (_tag === 'Interrupted') {
     return (
       <Box>
-        <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
+        <WorkspaceRootLabel storePath={workspace.defaultCwd ?? workspace.root} modes={modes} />
         <Text> </Text>
         <Text color="yellow" bold>
           {symbols.circle} Sync interrupted
@@ -403,7 +403,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   if (_tag === 'PreflightFailed') {
     return (
       <Box>
-        <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
+        <WorkspaceRootLabel storePath={workspace.defaultCwd ?? workspace.root} modes={modes} />
         <Text> </Text>
         <PreflightFailedView issues={state.preflightIssues} mode={options.mode} />
       </Box>
@@ -416,7 +416,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   return (
     <Box>
       {/* Header */}
-      <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
+      <WorkspaceRootLabel storePath={workspace.defaultCwd ?? workspace.root} modes={modes} />
 
       {/* Skipped members info */}
       {options.skippedMembers !== undefined && options.skippedMembers.length > 0 && (
