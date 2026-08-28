@@ -107,9 +107,13 @@ if ! grep -A 14 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.ni
   echo "FAIL: mutation-free observability must use an instantiated bridge task" >&2
   exit 1
 fi
-if ! grep -A 14 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.nix" \
-  | grep -q 'prerequisiteTasks = \[ "pnpm:install" \]'; then
+observability_config="$(grep -A 40 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.nix")"
+if ! grep -q '"pnpm:install"' <<< "$observability_config"; then
   echo "FAIL: Genie OTEL verification must wait for the pnpm projection" >&2
+  exit 1
+fi
+if ! grep -q '"test:run"' <<< "$observability_config"; then
+  echo "FAIL: Genie OTEL verification must run after sibling check:all work" >&2
   exit 1
 fi
 
