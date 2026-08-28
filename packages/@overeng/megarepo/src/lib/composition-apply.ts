@@ -690,6 +690,20 @@ const applyComposition = async ({
       }
       foldedKeys.set(folded, member.key)
     }
+    for (const member of request.compositionConfig.ignoredMembers ?? []) {
+      const folded = member.toLowerCase()
+      const existing = foldedKeys.get(folded)
+      if (existing !== undefined) {
+        throw failure({
+          reason: 'MemberKeyCollision',
+          phase: 'Input',
+          memberKey: member,
+          message: `Member keys '${existing}' and '${member}' collide on Darwin`,
+          recoveryPaths: [],
+        })
+      }
+      foldedKeys.set(folded, member)
+    }
   }
   const keys = new Set<string>()
   for (const member of request.lockedMembers) {

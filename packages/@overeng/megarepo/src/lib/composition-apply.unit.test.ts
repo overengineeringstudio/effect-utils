@@ -352,6 +352,27 @@ describe('composition apply plan', () => {
     )
     expect(lockedError.reason).toBe('MemberKeyCollision')
     expect(lockedCalls).toEqual([])
+
+    for (const [ignoredMembers, lockedMembers] of [
+      [['Effect'], [{ key: 'effect', sourcePath: '/store/effect', lockedCommit: commit }]],
+      [['OWNED'], []],
+      [['Effect', 'effect'], []],
+    ] as const) {
+      const collisionCalls: Array<string> = []
+      const collision = fake({ calls: collisionCalls })
+      const collisionError = await failed(
+        request({
+          compositionConfig: new CompositionGeneratorConfig({
+            platformHub: 'owned',
+            ignoredMembers: [...ignoredMembers],
+          }),
+          lockedMembers: [...lockedMembers],
+        }),
+        { ...collision.runtime, platform: 'darwin', system: 'aarch64-darwin' },
+      )
+      expect(collisionError.reason).toBe('MemberKeyCollision')
+      expect(collisionCalls).toEqual([])
+    }
   })
 
   it('keeps Linux member keys byte-sensitive', async () => {
@@ -365,6 +386,10 @@ describe('composition apply plan', () => {
     const result = await Effect.runPromise(
       compositionApply({
         request: request({
+          compositionConfig: new CompositionGeneratorConfig({
+            platformHub: 'owned',
+            ignoredMembers: ['ALPHA'],
+          }),
           lockedMembers: [
             { key: 'Alpha', sourcePath: '/store/Alpha', lockedCommit: commit },
             { key: 'alpha', sourcePath: '/store/alpha', lockedCommit: commit },
