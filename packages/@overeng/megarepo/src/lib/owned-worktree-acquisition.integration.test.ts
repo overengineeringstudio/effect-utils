@@ -1,4 +1,14 @@
-import { link, mkdir, readFile, readlink, rename, rm, writeFile } from 'node:fs/promises'
+import {
+  link,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  readlink,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -15,6 +25,7 @@ import { OWNED_WORKTREE_ROOT_MANIFEST } from './owned-worktree-acquisition-schem
 import {
   acquireOwnedWorktree,
   ownedWorktreeAcquisitionJournalPath,
+  planOwnedWorktreeAcquisition,
   recoverOwnedWorktreeAcquisition,
   recoverStaleOwnedWorktreeAcquisitionLock,
   teardownOwnedWorkspace,
@@ -152,6 +163,74 @@ const acquire = (
     generate: options.generate ?? generateWorkspace,
     callerCwd: options.callerCwd ?? fixture.tmp,
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+  })
+
+const planAcquisition = (fixture: Effect.Success<ReturnType<typeof makeFixture>>) =>
+  planOwnedWorktreeAcquisition({
+    bareRepo: fixture.bareRepo,
+    workspaceRoot: fixture.workspaceRoot,
+    ownedMember: 'owner',
+    branch: 'main',
+    callerCwd: fixture.tmp,
+  })
+
+const snapshotPlanningState = (fixture: Effect.Success<ReturnType<typeof makeFixture>>) =>
+  Effect.gen(function* () {
+    const base = NodePath.basename(fixture.workspaceRoot)
+    const tempPath = NodePath.join(fixture.tmp, `.${base}.owned-worktree-acquisition-temp`)
+    const journalPath = ownedWorktreeAcquisitionJournalPath(fixture.workspaceRoot)
+    const lockPath = NodePath.join(fixture.tmp, `.${base}.owned-worktree-acquisition.lock`)
+    const rootStagePath = NodePath.join(fixture.tmp, `.${base}.owned-worktree-root-stage`)
+    const relevantPaths = [
+      fixture.workspaceRoot,
+      tempPath,
+      fixture.ownedWorktree,
+      journalPath,
+      lockPath,
+      rootStagePath,
+      NodePath.join(fixture.workspaceRoot, OWNED_WORKTREE_ROOT_MANIFEST),
+      NodePath.join(fixture.workspaceRoot, 'megarepo.kdl'),
+      NodePath.join(fixture.ownedWorktree, 'megarepo.kdl'),
+    ]
+    const observations = yield* Effect.promise(async () =>
+      Promise.all(
+        relevantPaths.map(async (path) => {
+          try {
+            const info = await lstat(path)
+            if (info.isSymbolicLink() === true) {
+              return { path, kind: 'Symlink', target: await readlink(path) } as const
+            }
+            if (info.isDirectory() === true) {
+              return { path, kind: 'Directory', entries: (await readdir(path)).toSorted() } as const
+            }
+            return { path, kind: 'File', bytes: await readFile(path, 'utf8') } as const
+          } catch (cause) {
+            const code =
+              cause instanceof Error && 'code' in cause && typeof cause.code === 'string'
+                ? cause.code
+                : undefined
+            if (code === 'ENOENT') return { path, kind: 'Missing' } as const
+            throw cause
+          }
+        }),
+      ),
+    )
+    const worktreeStatus: Array<{ readonly path: string; readonly porcelain: string }> = []
+    for (const path of [fixture.workspaceRoot, tempPath, fixture.ownedWorktree]) {
+      const dotGit = yield* Effect.promise(() =>
+        lstat(NodePath.join(path, '.git')).then(
+          () => true,
+          () => false,
+        ),
+      )
+      if (dotGit === true) worktreeStatus.push({ path, porcelain: yield* status(path) })
+    }
+    return {
+      parentEntries: (yield* Effect.promise(() => readdir(fixture.tmp))).toSorted(),
+      worktreeListPorcelain: yield* git(fixture.bareRepo, 'worktree', 'list', '--porcelain'),
+      worktreeStatus,
+      observations,
+    }
   })
 
 const withNode = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -807,5 +886,184 @@ describe('owned worktree acquisition', () => {
           fixture.ownedWorktree,
         )
       }).pipe(withNode),
+  )
+
+  it.effect('plans legacy acquisition with exact ordered paths without mutation', () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      const before = yield* snapshotPlanningState(fixture)
+      const plan = yield* planAcquisition(fixture)
+      const after = yield* snapshotPlanningState(fixture)
+      expect(after).toEqual(before)
+      expect(plan._tag).toBe('Acquire')
+      if (plan._tag !== 'Acquire') return
+      const base = NodePath.basename(fixture.workspaceRoot)
+      expect(plan).toMatchObject({
+        workspaceRoot: fixture.workspaceRoot,
+        ownedWorktree: fixture.ownedWorktree,
+        tempPath: NodePath.join(fixture.tmp, `.${base}.owned-worktree-acquisition-temp`),
+        journalPath: ownedWorktreeAcquisitionJournalPath(fixture.workspaceRoot),
+        rootStagePath: NodePath.join(fixture.tmp, `.${base}.owned-worktree-root-stage`),
+        rootConfigPath: NodePath.join(fixture.workspaceRoot, 'megarepo.kdl'),
+        configPath: NodePath.join(fixture.ownedWorktree, 'megarepo.kdl'),
+        configName: 'megarepo.kdl',
+      })
+      expect(plan.steps.map((step) => step._tag)).toEqual([
+        'WriteJournal',
+        'GitWorktreeMove',
+        'WriteJournal',
+        'PublishManagedRoot',
+        'WriteJournal',
+        'GitWorktreeMove',
+        'WriteJournal',
+        'CreateConfigSymlink',
+        'InvokeGenerate',
+        'WriteJournal',
+        'WriteJournal',
+        'RemoveJournal',
+      ])
+      expect(plan.steps[1]).toEqual({
+        _tag: 'GitWorktreeMove',
+        bareRepo: fixture.bareRepo,
+        fromPath: fixture.workspaceRoot,
+        toPath: plan.tempPath,
+      })
+      expect(plan.steps[5]).toEqual({
+        _tag: 'GitWorktreeMove',
+        bareRepo: fixture.bareRepo,
+        fromPath: plan.tempPath,
+        toPath: fixture.ownedWorktree,
+      })
+    }).pipe(withNode),
+  )
+
+  it.effect('classifies a complete synthesized workspace without mutation', () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture()
+      yield* acquire(fixture)
+      const before = yield* snapshotPlanningState(fixture)
+      const plan = yield* planAcquisition(fixture)
+      const after = yield* snapshotPlanningState(fixture)
+      expect(after).toEqual(before)
+      expect(plan).toEqual({
+        _tag: 'AlreadySynthesized',
+        workspaceRoot: fixture.workspaceRoot,
+        ownedWorktree: fixture.ownedWorktree,
+        tempPath: NodePath.join(
+          fixture.tmp,
+          `.${NodePath.basename(fixture.workspaceRoot)}.owned-worktree-acquisition-temp`,
+        ),
+        journalPath: ownedWorktreeAcquisitionJournalPath(fixture.workspaceRoot),
+        rootStagePath: NodePath.join(
+          fixture.tmp,
+          `.${NodePath.basename(fixture.workspaceRoot)}.owned-worktree-root-stage`,
+        ),
+        rootConfigPath: NodePath.join(fixture.workspaceRoot, 'megarepo.kdl'),
+        configPath: NodePath.join(fixture.ownedWorktree, 'megarepo.kdl'),
+        configName: 'megarepo.kdl',
+      })
+    }).pipe(withNode),
+  )
+
+  it.effect(
+    'classifies rollback and journaled forward recovery without mutation',
+    () =>
+      Effect.gen(function* () {
+        const rollbackFixture = yield* makeFixture()
+        const rollbackSetup = yield* acquire(rollbackFixture, {
+          runtime: {
+            afterBoundary: async (boundary) => {
+              if (boundary === 'RootCreated') throw new Error('interrupt before root journal')
+            },
+          },
+        }).pipe(Effect.result)
+        expect(rollbackSetup._tag).toBe('Failure')
+        const rollbackBefore = yield* snapshotPlanningState(rollbackFixture)
+        const rollbackPlan = yield* planAcquisition(rollbackFixture)
+        expect(yield* snapshotPlanningState(rollbackFixture)).toEqual(rollbackBefore)
+        expect(rollbackPlan._tag).toBe('Recover')
+        if (rollbackPlan._tag === 'Recover') {
+          expect(rollbackPlan.action).toBe('RollbackTemporary')
+          expect(rollbackPlan.steps.map((step) => step._tag)).toEqual([
+            'RemoveManagedRoot',
+            'GitWorktreeMove',
+            'RemoveJournal',
+          ])
+        }
+
+        const forwardFixture = yield* makeFixture()
+        const forwardSetup = yield* acquire(forwardFixture, {
+          runtime: {
+            afterBoundary: async (boundary) => {
+              if (boundary === 'GeneratedJournaled') throw new Error('interrupt after generation')
+            },
+          },
+        }).pipe(Effect.result)
+        expect(forwardSetup._tag).toBe('Failure')
+        const forwardBefore = yield* snapshotPlanningState(forwardFixture)
+        const forwardPlan = yield* planAcquisition(forwardFixture)
+        expect(yield* snapshotPlanningState(forwardFixture)).toEqual(forwardBefore)
+        expect(forwardPlan._tag).toBe('Recover')
+        if (forwardPlan._tag === 'Recover') {
+          expect(forwardPlan.action).toBe('FinishGenerated')
+          expect(forwardPlan.steps.map((step) => step._tag)).toEqual([
+            'WriteJournal',
+            'RemoveJournal',
+          ])
+        }
+      }).pipe(withNode),
+    { timeout: 60_000 },
+  )
+
+  it.effect(
+    'returns Refused for path and foreign recovery conflicts without mutation',
+    () =>
+      Effect.gen(function* () {
+        const collisionFixture = yield* makeFixture()
+        const collisionPath = NodePath.join(
+          collisionFixture.tmp,
+          `.${NodePath.basename(collisionFixture.workspaceRoot)}.owned-worktree-acquisition-temp`,
+        )
+        yield* Effect.promise(() => mkdir(collisionPath))
+        const collisionBefore = yield* snapshotPlanningState(collisionFixture)
+        const collisionPlan = yield* planAcquisition(collisionFixture)
+        expect(yield* snapshotPlanningState(collisionFixture)).toEqual(collisionBefore)
+        expect(collisionPlan._tag).toBe('Refused')
+        if (collisionPlan._tag === 'Refused') expect(collisionPlan.error.reason).toBe('Collision')
+
+        const foreignFixture = yield* makeFixture()
+        yield* acquire(foreignFixture, {
+          runtime: {
+            afterBoundary: async (boundary) => {
+              if (boundary === 'RootCreated') throw new Error('interrupt before foreign entry')
+            },
+          },
+        }).pipe(Effect.result)
+        yield* Effect.promise(() =>
+          writeFile(NodePath.join(foreignFixture.workspaceRoot, 'foreign.txt'), 'foreign\n'),
+        )
+        const foreignBefore = yield* snapshotPlanningState(foreignFixture)
+        const foreignPlan = yield* planAcquisition(foreignFixture)
+        expect(yield* snapshotPlanningState(foreignFixture)).toEqual(foreignBefore)
+        expect(foreignPlan._tag).toBe('Refused')
+        if (foreignPlan._tag === 'Refused') {
+          expect(foreignPlan.error.reason).toBe('ForeignRootEntry')
+        }
+
+        const lockedFixture = yield* makeFixture()
+        yield* installOrphanAcquisitionLock({
+          fixture: lockedFixture,
+          token: 'f'.repeat(32),
+          pid: process.pid,
+        })
+        const lockedBefore = yield* snapshotPlanningState(lockedFixture)
+        const lockedPlan = yield* planAcquisition(lockedFixture)
+        expect(yield* snapshotPlanningState(lockedFixture)).toEqual(lockedBefore)
+        expect(lockedPlan._tag).toBe('Refused')
+        if (lockedPlan._tag === 'Refused') {
+          expect(lockedPlan.error.reason).toBe('AcquisitionLocked')
+        }
+      }).pipe(withNode),
+    { timeout: 60_000 },
   )
 })
