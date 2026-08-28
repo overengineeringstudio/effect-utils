@@ -137,5 +137,9 @@ publishes root Buck authority last. Admission requires the canonical detached
 entries; ignored bytes are refused rather than entering the R6 source snapshot. The
 effect-utils member is portable and ships
 without `.buckconfig`; direct member-root Buck invocation is intentionally refused.
+Reference-only checkouts are not Member Cells or build inputs: `ignoredMembers` names
+configured legacy-symlink members whose entire `repos/<name>` path is added to root
+`[project].ignore`. No target or load may reference them; the legacy symlink is allowed
+only because Buck cannot traverse, hash, detect, or invalidate from the excluded path.
 Darwin advance remains separately gated on a verified login-session invalidation
 receipt or explicit runtime admission; fixture proof does not discharge tierA or CI.

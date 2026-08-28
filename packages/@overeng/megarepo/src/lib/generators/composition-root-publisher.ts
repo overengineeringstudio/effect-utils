@@ -1355,6 +1355,9 @@ const prepareComposition = async ({
         platformHubCell: hub.manifest.cell,
         isolationDir: options.compositionConfig.isolationDir,
         cacheSections: options.cacheSections,
+        additionalProjectIgnores: (options.compositionConfig.ignoredMembers ?? []).map(
+          (member) => `repos/${member}`,
+        ),
         resolvedBuckExecutable: options.resolvedBuckExecutable,
       }),
     }

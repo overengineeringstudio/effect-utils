@@ -63,6 +63,7 @@ const input = ({
   platformHubCell = 'alpha',
   isolationDir,
   cacheSections,
+  additionalProjectIgnores,
   resolvedBuckExecutable = '/nix/store/00000000000000000000000000000000-buck2/bin/buck2',
 }: Pick<CompositionRootInput, 'members'> &
   Partial<Omit<CompositionRootInput, 'schemaVersion' | 'members'>>): CompositionRootInput => ({
@@ -71,6 +72,7 @@ const input = ({
   platformHubCell,
   isolationDir,
   cacheSections,
+  additionalProjectIgnores,
   resolvedBuckExecutable,
 })
 
@@ -622,6 +624,19 @@ describe('generation manifest and output schema', () => {
         generatedAt: 'ambient-time',
       }),
     ).toThrow()
+  })
+})
+
+describe('reference-only project ignores', () => {
+  it('excludes references without adding a cell or detector clause', () => {
+    const config = text(
+      filesByPath(
+        input({ members: [alphaMember], additionalProjectIgnores: ['repos/effect'] }),
+      ).get('.buckconfig')!,
+    )
+    expect(config).toContain('repos/effect')
+    expect(config).not.toContain('effect = repos/effect')
+    expect(config).not.toContain('target:effect//')
   })
 })
 

@@ -316,6 +316,7 @@ export const CompositionRootInputSchema = Schema.Struct({
   platformHubCell: CellName,
   isolationDir: Schema.optional(IsolationDir),
   cacheSections: Schema.optional(Schema.Array(BuckCacheSectionSchema)),
+  additionalProjectIgnores: Schema.optional(Schema.Array(IgnorePattern)),
   resolvedBuckExecutable: ResolvedBuckExecutable,
 }).annotate({ identifier: 'Megarepo.CompositionRootInput' })
 export type CompositionRootInput = typeof CompositionRootInputSchema.Type
@@ -327,6 +328,7 @@ export interface NormalizedCompositionRootInput {
   readonly platformHubCell: string
   readonly isolationDir: string
   readonly cacheSections: ReadonlyArray<BuckCacheSection>
+  readonly additionalProjectIgnores: ReadonlyArray<string>
   readonly resolvedBuckExecutable: string
 }
 
@@ -391,6 +393,7 @@ export const decodeCompositionRootInput = (input: unknown): NormalizedCompositio
     cacheSections: cacheSections.toSorted((left, right) =>
       compareCodeUnits({ left: left.section, right: right.section }),
     ),
+    additionalProjectIgnores: canonicalStringSet(decoded.additionalProjectIgnores ?? []),
     resolvedBuckExecutable: decoded.resolvedBuckExecutable,
   }
 }
@@ -607,7 +610,11 @@ const renderBuckconfig = (input: NormalizedCompositionRootInput): string => {
   lines.push(
     '',
     '[project]',
-    `  ignore = ${canonicalStringSet([...ROOT_PROJECT_IGNORES, ...memberIgnores]).join(',')}`,
+    `  ignore = ${canonicalStringSet([
+      ...ROOT_PROJECT_IGNORES,
+      ...input.additionalProjectIgnores,
+      ...memberIgnores,
+    ]).join(',')}`,
     '',
   )
   return lines.join('\n')

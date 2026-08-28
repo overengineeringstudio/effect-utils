@@ -40,7 +40,7 @@ All notable changes to this project will be documented in this file.
   ` (name version)` stamps. A JSON-stdout guard (incl. the schema command's
   `--output-mode`) keeps validation help off stdout for JSON/NDJSON modes;
   `resolveCliBuildIdentity` is unchanged.
-- **@overeng/megarepo**: cut Buck workspaces over to decision-0020 composition: one acquired writable owned member, canonical clean detached locked sources, immutable verified `cp -a` mounts, secret-free Nix execution and trusted mr-owned TypeScript capability projection, lockfile-preserving exact Nix capabilities, inode-checked owned projection publication, atomic overlays, root-authority-last publication, composition-aware pin/status/orphan/liveness handling, and no bare-member `.buckconfig`.
+- **@overeng/megarepo**: cut Buck workspaces over to decision-0020 composition: one acquired writable owned member, canonical clean detached locked sources, immutable verified `cp -a` mounts, secret-free Nix execution and trusted mr-owned TypeScript capability projection, lockfile-preserving exact Nix capabilities, inode-checked owned projection publication, atomic overlays, root-authority-last publication, composition-aware pin/status/orphan/liveness handling, reference-only ignored legacy members, and no bare-member `.buckconfig`.
 
 ### Removed
 - **context/effect-4/**: the flip-era migration docs (alignment register, idiom

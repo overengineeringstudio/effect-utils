@@ -78,6 +78,19 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
         },
+        "ignoredMembers": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "isolationDir": {
           "anyOf": [
             {
@@ -100,9 +113,7 @@
           ]
         }
       },
-      "required": [
-        "platformHub"
-      ],
+      "required": ["platformHub"],
       "additionalProperties": false
     },
     "GeneratorsConfigEncoded": {
@@ -210,9 +221,7 @@
           ]
         }
       },
-      "required": [
-        "members"
-      ],
+      "required": ["members"],
       "additionalProperties": false
     }
   }

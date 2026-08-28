@@ -98,6 +98,7 @@ const scanMembersRecursive = ({
     }
     const { config, path: configPath } = configResult
     const compositionEnabled = config.generators?.composition?.enabled === true
+    const ignoredMembers = new Set(config.generators?.composition?.ignoredMembers ?? [])
     const ownedMemberKey =
       compositionEnabled === true
         ? (yield* loadOwnedIdentity({ workspaceRoot: megarepoRoot })).ownedMemberKey
@@ -122,6 +123,8 @@ const scanMembersRecursive = ({
     ]
     for (const [memberName, sourceString] of effectiveMembers) {
       const isOwned = memberName === ownedMemberKey
+      const compositionManaged =
+        compositionEnabled === true && ignoredMembers.has(memberName) === false
       const memberPath = getMemberPath({ megarepoRoot, name: memberName })
       const source = isOwned === true ? undefined : parseSourceString(sourceString)
       const isLocal = source?.type === 'path'
@@ -129,11 +132,11 @@ const scanMembersRecursive = ({
 
       const symlinkPath = memberPath.replace(/\/$/, '')
       const pathExists = yield* fs.exists(symlinkPath)
-      let symlinkExists = compositionEnabled === false ? pathExists : isOwned === true && pathExists
+      let symlinkExists = compositionManaged === false ? pathExists : isOwned === true && pathExists
       let memberExists = pathExists
       let mountKind: MemberStatus['mountKind'] = isOwned === true ? 'owned' : undefined
       let mountedCommit: string | undefined
-      if (compositionEnabled === true && isOwned === false && pathExists === true) {
+      if (compositionManaged === true && isOwned === false && pathExists === true) {
         const verification = yield* teardownCpAMemberMount({
           request: { workspaceRoot: megarepoRoot, member: memberName, dryRun: true },
         }).pipe(Effect.result)
@@ -148,7 +151,7 @@ const scanMembersRecursive = ({
         } else {
           mountKind = 'foreign'
         }
-      } else if (compositionEnabled === false && pathExists === true && isLocal === false) {
+      } else if (compositionManaged === false && pathExists === true && isLocal === false) {
         const targetExists = yield* fs.readLink(symlinkPath).pipe(
           Effect.flatMap((target) => fs.exists(target)),
           Effect.orElseSucceed(() => false),
@@ -183,7 +186,7 @@ const scanMembersRecursive = ({
       let gitStatus: GitStatus | undefined = undefined
       let currentBranch: string | undefined = undefined
       let fullCommit: string | undefined = undefined
-      if (memberExists === true && (isOwned === true || compositionEnabled === false)) {
+      if (memberExists === true && (isOwned === true || compositionManaged === false)) {
         // Check if it's a git repo first
         const isGit = yield* Git.isGitRepo(memberPath)
         if (isGit === true) {
@@ -222,7 +225,7 @@ const scanMembersRecursive = ({
 
       // Read symlink target for drift detection
       const symlinkTarget =
-        compositionEnabled === false && memberExists === true && isLocal === false
+        compositionManaged === false && memberExists === true && isLocal === false
           ? yield* fs.readLink(memberPath.replace(/\/$/, '')).pipe(Effect.orElseSucceed(() => null))
           : null
 
