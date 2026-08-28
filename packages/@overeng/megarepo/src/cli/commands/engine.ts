@@ -744,28 +744,36 @@ export const runCommand = ({
     const doSync = (progressHandle?: SyncUIHandle) =>
       effectiveMode === 'apply' && compositionEnabled === true
         ? Effect.gen(function* () {
-            const ignoredMembers = config.generators?.composition?.ignoredMembers ?? []
-            const legacy =
-              ignoredMembers.length === 0
-                ? undefined
-                : yield* syncMegarepo({
-                    megarepoRoot: root.value,
-                    options: {
-                      mode: 'apply',
-                      dryRun,
-                      force,
-                      all: false,
-                      only: ignoredMembers,
-                      skip: undefined,
-                      gitProtocol,
-                      createBranches,
-                    },
-                  })
             const composition = yield* runCompositionApply({
               workspaceRoot: root.value,
               dryRun,
               callerCwd: cwd,
             })
+            const ignoredMembers = config.generators?.composition?.ignoredMembers ?? []
+            const ignoredLock = yield* readLockFile(
+              EffectPath.ops.join(
+                EffectPath.unsafe.absoluteDir(
+                  composition.defaultCwd.endsWith('/')
+                    ? composition.defaultCwd
+                    : `${composition.defaultCwd}/`,
+                ),
+                EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+              ),
+            )
+            const legacyResults = yield* Effect.forEach(ignoredMembers, (name) =>
+              syncMember({
+                name,
+                sourceString: config.members[name]!,
+                megarepoRoot: root.value,
+                lockFile: Option.getOrUndefined(ignoredLock),
+                mode: 'apply',
+                dryRun,
+                force,
+                gitProtocol,
+                createBranches,
+                commitMode: true,
+              }),
+            )
             const appliedMembers =
               composition.composition._tag === 'Applied'
                 ? composition.composition.members.map((member) => member.memberKey)
@@ -775,7 +783,7 @@ export const runCommand = ({
             return {
               root: root.value,
               results: [
-                ...(legacy?.results ?? []),
+                ...legacyResults,
                 ...[...new Set(appliedMembers)].map((name) => ({
                   name,
                   status: 'applied' as const,
