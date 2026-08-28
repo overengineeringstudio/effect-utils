@@ -680,6 +680,18 @@ in
   tasks."mr:check".after = [ "pnpm:install" ];
   tasks."mr:source-policy-check".after = [ "pnpm:install" ];
 
+  # buck2-tools executes inside pinned Bun actions and exercises Bun.YAML/Bun.which.
+  # Keep its package gate on that runtime rather than Vitest's Node process.
+  tasks."test:buck2-tools".description = lib.mkForce "Run buck2-tools tests under pinned Bun";
+  tasks."test:buck2-tools".exec = lib.mkForce (
+    trace.exec "test:buck2-tools" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      cd "$root/packages/@overeng/buck2-tools"
+      exec ${pkgs.bun}/bin/bun test src/*.test.ts
+    ''
+  );
+
   # NOTE (decision 0004): there is deliberately NO `genie:bootstrap`-before-`pnpm:install` edge.
   # An earlier form wired `pnpm:install.after = [ "genie:bootstrap" ]` so install would run
   # `genie --phase bootstrap` first. Verified during implementation that this does NOT arbitrate
@@ -995,7 +1007,7 @@ in
   };
 
   tasks."buck2:check" = {
-    description = "Build the real tui-core typecheck and surviving archive/product Buck2 surface";
+    description = "Build admitted TypeScript checks and surviving archive/product Buck2 surface";
     after = [
       "buck2:capabilities:project"
       "buck2:capabilities:test"
@@ -1009,13 +1021,13 @@ in
       buck="$workspace_root/.megarepo/bin/buck2"
       "$buck" audit providers \
         --target-platforms effect_utils//buck2/platforms:host_platform \
-        toolchains//:cross_cell_provider_identity \
-        toolchains//:cross_cell_product_identity
+        effect_utils//toolchains:cross_cell_provider_identity \
+        effect_utils//toolchains:cross_cell_product_identity
       exec "$buck" build \
         effect_utils//packages/@overeng/tui-core:typecheck \
         effect_utils//packages/@overeng/tui-react:typecheck \
-        toolchains//:archive_tool \
-        toolchains//:product_tool \
+        effect_utils//toolchains:archive_tool \
+        effect_utils//toolchains:product_tool \
         --local-only
     '';
   };
