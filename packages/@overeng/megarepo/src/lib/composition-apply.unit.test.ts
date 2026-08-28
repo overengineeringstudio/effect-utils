@@ -291,7 +291,7 @@ describe('composition apply plan', () => {
       'capability:owned',
       'owned:owned:plan',
       'mount:dep:plan',
-      'root:plan:dep',
+      'root:plan:dep,owned',
       'overlay:dep://pkg:dist:plan',
     ])
     expect(result.defaultCwd).toBe('/workspace/repos/owned')

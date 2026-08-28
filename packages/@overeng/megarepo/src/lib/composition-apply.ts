@@ -389,7 +389,7 @@ const loadMembers = async ({
       phase: 'Manifest',
       memberKey: request.ownedMemberKey,
       path: request.ownedMemberPath,
-      message: `Owned member path must be '${expectedOwnedPath}'`,
+      message: `Owned member path '${request.ownedMemberPath}' must be '${expectedOwnedPath}'`,
       recoveryPaths: [],
     })
   }
@@ -974,7 +974,7 @@ const applyComposition = async ({
 
     const rootInput = {
       workspaceRoot: EffectPath.unsafe.absoluteDir(`${request.workspaceRoot}/`),
-      configMemberKeys: lockedMembers.map((member) => member.key),
+      configMemberKeys: members.map((member) => member.key),
       ownedMemberKey: request.ownedMemberKey,
       compositionConfig: request.compositionConfig,
       resolvedBuckExecutable: runtime.buck2Path,
@@ -1292,7 +1292,7 @@ const applyComposition = async ({
       await publishOverlays()
       root = await primitives.publishRoot({
         workspaceRoot: EffectPath.unsafe.absoluteDir(`${request.workspaceRoot}/`),
-        configMemberKeys: lockedMembers.map((member) => member.key),
+        configMemberKeys: members.map((member) => member.key),
         ownedMemberKey: request.ownedMemberKey,
         compositionConfig: request.compositionConfig,
         resolvedBuckExecutable: runtime.buck2Path,
