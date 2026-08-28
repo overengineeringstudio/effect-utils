@@ -476,6 +476,41 @@ describe('sync() against in-memory fake Notion', () => {
     expect(res.appends + res.inserts).toBeGreaterThanOrEqual(1)
   })
 
+  it('drift detection preserves ordinary block order inside a child page', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ChildPage blockKey="outer" title="Outer">
+        <Paragraph blockKey="a">A</Paragraph>
+        <Paragraph blockKey="b">B</Paragraph>
+      </ChildPage>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const outer = fake.childrenOf(ROOT).find((block) => block.type === 'child_page')!
+    const expectedOrder = fake.childrenOf(outer.id).map((block) => block.id)
+    expect(expectedOrder).toHaveLength(2)
+
+    // Simulate another client reordering the two ordinary block siblings.
+    outer.children.reverse()
+    expect(fake.childrenOf(outer.id).map((block) => block.id)).toEqual(
+      [...expectedOrder].toReversed(),
+    )
+
+    const result = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(result.fallbackReason).toBe('cache-drift')
+    const repairedText = fake.childrenOf(outer.id).map((block) => {
+      const richText = (block.payload.rich_text ?? []) as readonly {
+        text?: { content?: string }
+      }[]
+      return richText[0]?.text?.content
+    })
+    expect(repairedText).toEqual(['A', 'B'])
+
+    const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(stable.fallbackReason).toBeUndefined()
+    expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
   it('drift detection: LARGE warm page with 1-block drift → minimal ops (regression: #warm-sync-slow)', async () => {
     // Regression test for: warm sync on 500+ block page hung >5 minutes
     // because any ordered-sequence mismatch triggered a full rebuild

@@ -1333,9 +1333,9 @@ const resolvePendingPages = ({
   })
 
 /**
- * Compare recursive identities. Root and ordinary block children are ordered;
- * child-page content is matched by identity because existing page-scope
- * application can interleave nested pages and blocks in server order.
+ * Compare recursive identities. Root and ordinary block children are ordered.
+ * Child-page content ignores unstable block/page interleaving while preserving
+ * relative order within the block siblings and page siblings.
  */
 const identityTreeDrifted = (
   expected: readonly CacheNode[],
@@ -1359,18 +1359,12 @@ const identityTreeDrifted = (
     }
     return false
   }
-  const liveById = new Map(live.map((node) => [node.blockId, node]))
-  for (const expectedNode of expected) {
-    const liveNode = liveById.get(expectedNode.blockId)
-    if (liveNode === undefined) return true
-    if (
-      identityTreeDrifted(
-        expectedNode.children,
-        liveNode.children,
-        expectedNode.nodeKind !== 'page',
-      )
+  for (const nodeKind of ['block', 'page'] as const) {
+    const expectedOfKind = expected.filter((node) => node.nodeKind === nodeKind)
+    const liveOfKind = live.filter(
+      (node) => (node.type === 'child_page' ? 'page' : 'block') === nodeKind,
     )
-      return true
+    if (identityTreeDrifted(expectedOfKind, liveOfKind)) return true
   }
   return false
 }
