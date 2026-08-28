@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -62,10 +62,7 @@ const discoverPackageSources = ({
       }
       if (entry.isDirectory() === true) {
         walk(relativePath)
-      } else if (
-        entry.isFile() === true &&
-        sourceExtensionSet[path.extname(entry.name)] === true
-      ) {
+      } else if (entry.isFile() === true && sourceExtensionSet[path.extname(entry.name)] === true) {
         sources.push(relativePath)
       }
     }
@@ -120,7 +117,8 @@ const renderMap = ({
 export type Buck2WorkspaceSibling = {
   readonly packageName: string
   readonly packagePath: string
-  readonly distTarget: `${string}//${string}:dist`
+  readonly distTarget?: `${string}//${string}:dist`
+  readonly sourceRoots?: readonly string[]
 }
 
 export type Buck2TypeScriptPackageProjection = {
@@ -147,23 +145,34 @@ export const buck2TypeScriptPackageProjection = ({
   }
   const workspacePaths = readWorkspacePaths()
   const packageSources = discoverPackageSources({ packagePath, sourceRoots })
+  const buckPackagePaths = new Set(
+    workspacePaths.filter((workspace) =>
+      existsSync(path.join(process.cwd(), workspace, 'BUCK.genie.ts')),
+    ),
+  )
   const visibility = ['PUBLIC'] as const
   const runtime = 'effect_utils//:packages/@overeng/buck2-tools/src/buck2-materializer.ts'
   const descriptorModule =
     'effect_utils//:packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts'
   const normalizer = 'effect_utils//:packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts'
 
-  const sourceLabel = (repoRelativePath: string): string =>
-    repoRelativePath.startsWith(`${packagePath}/`) === true
-      ? repoRelativePath.slice(packagePath.length + 1)
-      : `effect_utils//:${repoRelativePath}`
-
-  const workspaceManifestEntries = workspacePaths.map(
-    (workspace): readonly [string, string] => {
-      const manifest = `${workspace}/package.json`
-      return [manifest, sourceLabel(manifest)]
-    },
-  )
+  const sourceLabel = (repoRelativePath: string): string => {
+    if (repoRelativePath.startsWith(`${packagePath}/`) === true) {
+      return repoRelativePath.slice(packagePath.length + 1)
+    }
+    const sourcePackage = path.posix.dirname(repoRelativePath)
+    if (
+      path.posix.basename(repoRelativePath) === 'package.json' &&
+      buckPackagePaths.has(sourcePackage) === true
+    ) {
+      return `effect_utils//${sourcePackage}:package.json`
+    }
+    return `effect_utils//:${repoRelativePath}`
+  }
+  const workspaceManifestEntries = workspacePaths.map((workspace): readonly [string, string] => {
+    const manifest = `${workspace}/package.json`
+    return [manifest, sourceLabel(manifest)]
+  })
   const projectFileEntries: readonly (readonly [string, string])[] =
     projectFile === 'tsconfig.json' ? [] : [[projectFile, projectFile]]
   const packageFileEntries = [
@@ -172,21 +181,58 @@ export const buck2TypeScriptPackageProjection = ({
     ['tsconfig.json', 'tsconfig.json'] as const,
     ...projectFileEntries,
   ].toSorted(([left], [right]) => compareStrings({ left, right }))
-  const patchEntries = patches.map(
-    (patch): readonly [string, string] => [patch, sourceLabel(patch)],
-  )
+  const patchEntries = patches.map((patch): readonly [string, string] => [
+    patch,
+    sourceLabel(patch),
+  ])
+  const workspaceSiblingProjections = workspaceSiblings.map((sibling) => {
+    const hasDist = sibling.distTarget !== undefined
+    const hasSources = sibling.sourceRoots !== undefined
+    if (hasDist === hasSources) {
+      throw new Error(
+        `Workspace sibling ${sibling.packageName} must declare exactly one of distTarget or sourceRoots`,
+      )
+    }
+    const siblingSources =
+      sibling.sourceRoots === undefined
+        ? []
+        : discoverPackageSources({
+            packagePath: sibling.packagePath,
+            sourceRoots: sibling.sourceRoots,
+          })
+    const files = [
+      ['package.json', sourceLabel(`${sibling.packagePath}/package.json`)] as const,
+      ...(sibling.distTarget === undefined ? [] : ([['dist', sibling.distTarget]] as const)),
+      ...siblingSources.map((source): readonly [string, string] => [
+        source,
+        sourceLabel(`${sibling.packagePath}/${source}`),
+      ]),
+    ].toSorted(([left], [right]) => compareStrings({ left, right }))
+    return {
+      packageName: sibling.packageName,
+      packagePath: sibling.packagePath,
+      sourceRoots: sibling.sourceRoots ?? [],
+      files,
+    }
+  })
   const semanticInputs = [
     ...commonSemanticInputs,
     projectionSource,
     `${packagePath}/package.json.genie.ts`,
     `${packagePath}/tsconfig.json.genie.ts`,
-    ...(projectFile === 'tsconfig.json'
-      ? []
-      : [`${packagePath}/${projectFile}.genie.ts`]),
+    ...(projectFile === 'tsconfig.json' ? [] : [`${packagePath}/${projectFile}.genie.ts`]),
     ...sourceRoots.flatMap((sourceRoot) =>
       sourceExtensions.map((extension) => `${packagePath}/${sourceRoot}/**/*${extension}`),
     ),
-    ...workspaceSiblings.map((sibling) => `${sibling.packagePath}/package.json.genie.ts`),
+    ...workspaceSiblingProjections.flatMap((sibling) => [
+      `${sibling.packagePath}/package.json.genie.ts`,
+      ...sibling.sourceRoots.flatMap((sourceRoot) =>
+        sourceExtensions.map(
+          (extension) => `${sibling.packagePath}/${sourceRoot}/**/*${extension}`,
+        ),
+      ),
+    ]),
+    ...[...buckPackagePaths].map((buckPackagePath) => `${buckPackagePath}/BUCK.genie.ts`),
     ...patches,
   ].toSorted((left, right) => compareStrings({ left, right }))
 
@@ -195,6 +241,9 @@ export const buck2TypeScriptPackageProjection = ({
     packagePath,
     packageSources,
     descriptorModule,
+    buckPackagePaths: [...buckPackagePaths].toSorted((left, right) =>
+      compareStrings({ left, right }),
+    ),
     normalizer,
     patches,
     projectFile,
@@ -202,7 +251,7 @@ export const buck2TypeScriptPackageProjection = ({
     sourceRoots,
     visibility,
     workspacePaths,
-    workspaceSiblings,
+    workspaceSiblingProjections,
   }
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-typescript-package-projection',
@@ -211,22 +260,27 @@ export const buck2TypeScriptPackageProjection = ({
   })
 
   const renderWorkspaceSiblings = (): readonly string[] => {
-    if (workspaceSiblings.length === 0) return ['    workspace_siblings = {},']
+    if (workspaceSiblingProjections.length === 0) return ['    workspace_siblings = {},']
     return [
       '    workspace_siblings = {',
-      ...workspaceSiblings
+      ...workspaceSiblingProjections
         .toSorted((left, right) =>
           compareStrings({ left: left.packageName, right: right.packageName }),
         )
-        .flatMap((sibling) => [
-          `        ${starlarkString(sibling.packageName)}: {`,
-          '            "files": {',
-          `                "dist": ${starlarkString(sibling.distTarget)},`,
-          `                "package.json": ${starlarkString(`effect_utils//:${sibling.packagePath}/package.json`)},`,
-          '            },',
-          `            "links": [${starlarkString(sibling.packageName)}],`,
-          '        },',
-        ]),
+        .flatMap((sibling) =>
+          [`        ${starlarkString(sibling.packageName)}: {`, '            "files": {']
+            .concat(
+              sibling.files.map(
+                ([destination, source]) =>
+                  `                ${starlarkString(destination)}: ${starlarkString(source)},`,
+              ),
+            )
+            .concat([
+              '            },',
+              `            "links": [${starlarkString(sibling.packageName)}],`,
+              '        },',
+            ]),
+        ),
       '    },',
     ]
   }
@@ -242,6 +296,12 @@ export const buck2TypeScriptPackageProjection = ({
       '',
       'load("@effect_utils//buck2:materialization.bzl", "package_tree", "pnpm_editor_inputs", "pnpm_node_modules")',
       'load("@effect_utils//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")',
+      '',
+      'export_file(',
+      '    name = "package.json",',
+      '    src = "package.json",',
+      renderBuck2Visibility({ visibility }),
+      ')',
       '',
       'pnpm_node_modules(',
       '    name = "node_modules",',
@@ -278,18 +338,14 @@ export const buck2TypeScriptPackageProjection = ({
       'tsgo_typecheck(',
       '    name = "typecheck",',
       '    package_tree = ":package_tree",',
-      ...(projectFile === 'tsconfig.json'
-        ? []
-        : [`    project = ${starlarkString(projectFile)},`]),
+      ...(projectFile === 'tsconfig.json' ? [] : [`    project = ${starlarkString(projectFile)},`]),
       renderBuck2Visibility({ visibility }),
       ')',
       '',
       'tsgo_emit(',
       '    name = "dist",',
       '    package_tree = ":package_tree",',
-      ...(projectFile === 'tsconfig.json'
-        ? []
-        : [`    project = ${starlarkString(projectFile)},`]),
+      ...(projectFile === 'tsconfig.json' ? [] : [`    project = ${starlarkString(projectFile)},`]),
       renderBuck2Visibility({ visibility }),
       ')',
       '',

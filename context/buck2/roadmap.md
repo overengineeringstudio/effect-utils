@@ -118,17 +118,19 @@ RENAME_EXCHANGE advance.
 - Admission 2 transfers `@overeng/tui-react` typecheck and declaration emit to
   `//packages/@overeng/tui-react:typecheck` and
   `//packages/@overeng/tui-react:dist`. Its package tree consumes tui-core only
-  through `effect_utils//packages/@overeng/tui-core:dist`; all other package
-  dependencies remain in the package-local Buck `node_modules` materialization.
-  Export type conditions and the member dist overlay point at Buck declarations,
-  while runtime export defaults remain at source.
+  through `effect_utils//packages/@overeng/tui-core:dist`; utils and utils-dev
+  enter as explicit content-tracked source siblings, with their required
+  external modules provided by the package-local Buck `node_modules`
+  materialization. Export type conditions and the member dist overlay point at
+  Buck declarations, while runtime export defaults remain at source.
 - Deletion-ledger entry 2 removes tui-react from both root TypeScript producers:
   the `tsconfig.check.json` solution used by `ts:check` and the
-  `tsconfig.emit.json` solution used by `ts:build`. Its Buck-only project
-  config omits workspace project-reference edges so utils and utils-dev resolve
-  from package `node_modules`; the ordinary editor config keeps those references.
-  The editor root install remains transitional until Phase 4 and is deliberately
-  not deleted by this admission.
+  `tsconfig.emit.json` solution used by `ts:build`. The six surviving dependent
+  project-reference edges are deleted, and tui-react's ordinary editor config
+  is write-free; dependents resolve its declarations through package exports.
+  The Buck-only project config resolves its declared workspace inputs from the
+  assembled package tree. The editor root install remains transitional until
+  Phase 4 and is deliberately not deleted by this admission.
 
 ## Phase 4 — dependency-surface authority transfer (gated)
 

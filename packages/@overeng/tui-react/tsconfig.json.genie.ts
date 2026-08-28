@@ -13,6 +13,7 @@ export default tsconfigJson({
     ...packageTsconfigCompilerOptions,
     ...nodeTypes,
     ...reactJsx,
+    noEmit: true,
     lib: domLib,
   },
   include: ['src/**/*', 'test/**/*', 'examples/**/*'],

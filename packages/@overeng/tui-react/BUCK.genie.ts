@@ -13,5 +13,15 @@ export default buck2TypeScriptPackageProjection({
       packagePath: 'packages/@overeng/tui-core',
       distTarget: 'effect_utils//packages/@overeng/tui-core:dist',
     },
+    {
+      packageName: '@overeng/utils',
+      packagePath: 'packages/@overeng/utils',
+      sourceRoots: ['src'],
+    },
+    {
+      packageName: '@overeng/utils-dev',
+      packagePath: 'packages/@overeng/utils-dev',
+      sourceRoots: ['src'],
+    },
   ],
 })

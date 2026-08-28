@@ -4,8 +4,10 @@ import { posix, resolve } from 'node:path'
 /** Schema identifier for the persisted pnpm install descriptor. */
 export const pnpmInstallDescriptorSchema = 'effect-utils/pnpm-install-descriptor/v1' as const
 
-/** Portable placeholder for a materialization-time workspace path. */
-export const pnpmWorkspacePlaceholder = 'file://<WS>'
+/** Portable placeholder for workspace roots in plain directory fields. */
+export const pnpmWorkspacePathPlaceholder = '<WS>'
+/** Portable `file:` reference prefix for materialization-time workspace paths. */
+export const pnpmWorkspacePlaceholder = `file://${pnpmWorkspacePathPlaceholder}`
 
 const dependencyFields = ['dependencies', 'devDependencies', 'optionalDependencies'] as const
 
@@ -231,6 +233,19 @@ export const canonicalizePnpmPrunedLock = ({
       field: `canonical lockfile.packages.${packageKey}`,
     })
     delete packageRecord.peerDependencies
+    const workspaceReferenceStart = packageKey.indexOf(pnpmWorkspacePlaceholder)
+    if (workspaceReferenceStart !== -1) {
+      const resolution = requireRecord({
+        value: packageRecord.resolution,
+        field: `canonical lockfile.packages.${packageKey}.resolution`,
+      })
+      if (resolution.type !== 'directory') {
+        fail(`workspace package ${packageKey} must use a directory resolution`)
+      }
+      resolution.directory = packageKey
+        .slice(workspaceReferenceStart)
+        .replace(pnpmWorkspacePlaceholder, pnpmWorkspacePathPlaceholder)
+    }
   }
 
   const serialized: string = pinnedYaml.stringify({
@@ -560,17 +575,16 @@ export const resolvePnpmInstallArgv = ({
     argument === '<INSTALL_ROOT>' ? installRoot : argument === '<STORE_DIR>' ? storeDir : argument,
   )
 
-/** Rehydrates portable workspace references for the install stage. */
-export const rehydratePnpmWorkspacePlaceholder = ({
-  lockfile,
-  installRoot,
+/** Rehydrates portable workspace references in an install-stage text file. */
+export const rehydratePnpmWorkspaceReferences = ({
+  source,
 }: {
-  readonly lockfile: string
-  readonly installRoot: string
+  readonly source: string
 }): string => {
-  const replacement = `file:${resolve(installRoot)}`
-  const rehydrated = lockfile.replaceAll(pnpmWorkspacePlaceholder, replacement)
-  if (rehydrated.includes(pnpmWorkspacePlaceholder) === true)
-    fail('lockfile retains workspace placeholder')
+  const rehydrated = source
+    .replaceAll(pnpmWorkspacePlaceholder, 'file:..')
+    .replaceAll(pnpmWorkspacePathPlaceholder, '..')
+  if (rehydrated.includes(pnpmWorkspacePathPlaceholder) === true)
+    fail('install-stage file retains workspace placeholder')
   return rehydrated
 }
