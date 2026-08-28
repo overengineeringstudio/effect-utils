@@ -114,6 +114,49 @@ defaults to `--kind cell` (the member) — scripts wanting the workspace pass
 `--kind project`. Teardown is an mr operation (protected mounts need a
 dirs-only unprotect before removal), never a bare `rm -rf`.
 
+## Agent Workflow Contract — Revision 3
+
+```text
+branchy/mr owns <workspace>/
+                    |
+                    +-- repos/<owned>/   edit, commit, run repo tools
+                    +-- repos/<other>/   read-only build input
+                    +-- repos/<ignored>/ reference only; outside Buck
+```
+
+The workspace root is orchestration state, not an authoring checkout. Agents
+follow these rules:
+
+1. Start and resume work through the store-backed workspace; do not create an
+   independent checkout outside the store.
+2. Use `repos/<owned>` as the default cwd and the only source tree mutated by
+   the session.
+3. Run git, devenv, Genie, pnpm, and package-local commands from the owned
+   member. A command that needs the composition root resolves it through mr or
+   `buck2 root --kind project`; it does not infer `../..` in application code.
+4. Treat every non-owned `repos/<member>` as immutable input. Never edit,
+   chmod, replace, branch, or run a producer that writes there.
+5. Treat ignored members as reference-only. They are excluded from Buck cells,
+   capability projection, overlays, and mutation-driven composition work.
+6. To change another member, create or resume that repository's own
+   store-backed branch workspace, commit there, then advance the consumer's
+   lock and re-apply composition. Cross-member work is commit-mediated and
+   upstream-first.
+7. Run Buck from the root, owned member, or a package directory using canonical
+   member labels. Scripts that need project identity use the project root, not
+   the current cell root.
+8. Use mr for apply, advance, recovery, status, and teardown. Never replace
+   protected-mount teardown with `rm -rf` or an in-place copy.
+9. CI creates a job-owned store branch with an explicit worktree mode,
+   synthesizes composition before credentials, runs source-dependent commands
+   from the owned member, and always invokes guarded teardown.
+10. A dirty non-owned mount, a foreign real path, a missing ownership manifest,
+    or an R6 mismatch is a hard stop. Do not repair around the guard.
+11. Handoffs name both the workspace root and owned-member cwd, plus any
+    upstream commit whose lock advance is still pending.
+12. Shared-cache evidence is admissible only from content-real mounts; legacy
+    symlink compositions remain outside the shared cache namespace.
+
 ## Standalone Variant
 
 A single-member build is simply a workspace with no other members mounted:
