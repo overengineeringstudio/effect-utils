@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buck2SemanticFingerprint } from './mod.ts'
+import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 
 describe('buck2SemanticFingerprint', () => {
   it('canonicalizes object key order while preserving array order', () => {
@@ -26,6 +26,21 @@ describe('buck2SemanticFingerprint', () => {
     )
     expect(fingerprint('effect-utils/genie/buck2-materialization', 1)).not.toBe(
       fingerprint('another-generator', 1),
+    )
+  })
+})
+
+describe('renderBuck2Visibility', () => {
+  it('renders visibility forwarded by a generated target', () => {
+    expect(renderBuck2Visibility({ visibility: ['PUBLIC'] })).toBe('    visibility = ["PUBLIC"],')
+    expect(
+      renderBuck2Visibility({ visibility: ['effect_utils//packages/@overeng/tui-core:'] }),
+    ).toBe('    visibility = ["effect_utils//packages/@overeng/tui-core:"],')
+  })
+
+  it('rejects an empty visibility projection', () => {
+    expect(() => renderBuck2Visibility({ visibility: [] })).toThrow(
+      'Buck2 visibility must not be empty',
     )
   })
 })

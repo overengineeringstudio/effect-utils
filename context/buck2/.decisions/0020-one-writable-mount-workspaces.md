@@ -126,3 +126,13 @@ gate shipping the Darwin ADVANCE path, not admission: FSEvents invalidation
 across the exchange needs confirmation in a real login session (FSEvents
 delivers nothing to ssh-spawned processes), and the real-dir-vs-cp -a digest
 equality probe still needs a Mac worktree with a devenv profile.
+
+## Amendment 2
+
+Phase 2 cuts production composition over to this workspace shape. `mr apply` now
+acquires or recovers the branch-attached owned worktree, resolves only immutable
+locked sources, applies capability/mount/overlay state under one update lock, and
+publishes root Buck authority last. The effect-utils member is portable and ships
+without `.buckconfig`; direct member-root Buck invocation is intentionally refused.
+Darwin advance remains separately gated on a verified login-session invalidation
+receipt or explicit runtime admission; fixture proof does not discharge tierA or CI.
