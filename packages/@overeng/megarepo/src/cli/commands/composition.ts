@@ -452,6 +452,36 @@ export const runCompositionApply = ({
         message: 'Composition runtime is not enabled',
       })
     }
+    const ignoredMembers = compositionConfig.ignoredMembers ?? []
+    if (
+      ignoredMembers.some((member, index) => index > 0 && ignoredMembers[index - 1]! >= member) ===
+      true
+    ) {
+      return yield* cutoverFailure({
+        reason: 'InvalidConfiguration',
+        message: 'ignoredMembers must be canonical sorted unique member keys',
+      })
+    }
+    for (const member of ignoredMembers) {
+      if (/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(member) === false) {
+        return yield* cutoverFailure({
+          reason: 'InvalidConfiguration',
+          message: `Ignored member '${member}' is invalid`,
+        })
+      }
+      if (Object.hasOwn(config.members, member) === false) {
+        return yield* cutoverFailure({
+          reason: 'InvalidConfiguration',
+          message: `Ignored member '${member}' is not configured`,
+        })
+      }
+      if (member === compositionConfig.platformHub || member === identity.ownedMemberKey) {
+        return yield* cutoverFailure({
+          reason: 'InvalidConfiguration',
+          message: `Ignored member '${member}' collides with Buck authority`,
+        })
+      }
+    }
     if (Object.hasOwn(config.members, identity.ownedMemberKey) === true) {
       return yield* cutoverFailure({
         reason: 'InvalidConfiguration',
@@ -470,8 +500,13 @@ export const runCompositionApply = ({
         path: lockPath,
       })
     }
+    const composedMembers = Object.fromEntries(
+      Object.entries(config.members).filter(
+        ([member]) => ignoredMembers.includes(member) === false,
+      ),
+    )
     const locked = yield* resolveLockedCompositionMembers({
-      configMembers: config.members,
+      configMembers: composedMembers,
       lockFile: lockOption.value,
       store,
     })

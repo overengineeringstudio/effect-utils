@@ -94,6 +94,9 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
   settings: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 }) {}
 
+const CompositionMemberKey = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u))
+const IgnoredCompositionMembers = Schema.Array(Schema.String)
+
 /** Buck2 composition-root generator configuration. */
 export class CompositionGeneratorConfig extends Schema.Class<CompositionGeneratorConfig>(
   'CompositionGeneratorConfig',
@@ -101,7 +104,9 @@ export class CompositionGeneratorConfig extends Schema.Class<CompositionGenerato
   /** Enable/disable publication (default: false). */
   enabled: Schema.optional(Schema.Boolean),
   /** Member key whose manifest cell provides the shared execution platform. */
-  platformHub: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
+  platformHub: CompositionMemberKey,
+  /** Reference-only legacy members excluded completely from the Buck graph. */
+  ignoredMembers: Schema.optional(IgnoredCompositionMembers),
   /** Fleet-stable Buck output isolation directory (default: megarepo). */
   isolationDir: Schema.optional(
     Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),

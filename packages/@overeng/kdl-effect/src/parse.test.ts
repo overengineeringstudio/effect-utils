@@ -35,6 +35,16 @@ describe('parseKdl', () => {
       expect(result).toEqual({ items: ['hello'] })
     })
 
+    it('normalizes optional arrays nested in Schema classes', () => {
+      class Nested extends Schema.Class<Nested>('Nested')({
+        items: Schema.optional(Schema.Array(Schema.String)),
+      }) {}
+      const Outer = Schema.Struct({ nested: Nested })
+      expect(Schema.decodeUnknownSync(parseKdl(Outer))('nested { items "a" }')).toEqual({
+        nested: { items: ['a'] },
+      })
+    })
+
     it('handles multiple same-name nodes as array', () => {
       const MySchema = Schema.Struct({
         items: Schema.Array(Schema.String),
