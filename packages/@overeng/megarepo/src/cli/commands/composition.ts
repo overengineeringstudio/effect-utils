@@ -462,6 +462,20 @@ export const runCompositionApply = ({
         message: 'ignoredMembers must be canonical sorted unique member keys',
       })
     }
+    if (env['MR_COMPOSITION_PLATFORM'] === 'darwin') {
+      const folded = new Map<string, string>()
+      for (const member of [identity.ownedMemberKey, ...Object.keys(config.members)]) {
+        const key = member.toLowerCase()
+        const existing = folded.get(key)
+        if (existing !== undefined) {
+          return yield* cutoverFailure({
+            reason: 'InvalidConfiguration',
+            message: `Member keys '${existing}' and '${member}' collide on Darwin`,
+          })
+        }
+        folded.set(key, member)
+      }
+    }
     for (const member of ignoredMembers) {
       if (/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(member) === false) {
         return yield* cutoverFailure({
