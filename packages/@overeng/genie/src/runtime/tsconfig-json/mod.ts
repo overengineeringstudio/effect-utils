@@ -261,6 +261,15 @@ export type TSNodeOptions = {
   transpiler?: string
 }
 
+export type TSConfigJsonOptions = {
+  /**
+   * How workspace packages enter this TypeScript project. Normal workspace
+   * configs use project references; hermetic package projections may instead
+   * resolve the same packages from their materialized node_modules tree.
+   */
+  readonly workspaceDependencyResolution?: 'project-references' | 'node-modules'
+}
+
 /** Arguments for generating a tsconfig.json file */
 export type TSConfigArgs = {
   /** Files to include (glob patterns) */
@@ -301,6 +310,7 @@ export type TSConfigArgs = {
  */
 export const tsconfigJson = <const T extends TSConfigArgs>(
   args: Strict<T, TSConfigArgs>,
+  options: TSConfigJsonOptions = {},
 ): GenieOutput<T> => {
   if (args.extends !== undefined) {
     warn(
@@ -314,6 +324,8 @@ export const tsconfigJson = <const T extends TSConfigArgs>(
     data: args,
     stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
     validate: (ctx: GenieContext) =>
-      validateTsconfigReferences({ ctx, references: args.references }),
+      options.workspaceDependencyResolution === 'node-modules'
+        ? []
+        : validateTsconfigReferences({ ctx, references: args.references }),
   }
 }

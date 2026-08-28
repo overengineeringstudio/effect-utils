@@ -1,7 +1,7 @@
 load("@effect_utils//buck2:materialization.bzl", "export_materialization_inputs")
 
-# Exact root-package inputs for tui-core dependency materialization.
-_TUI_CORE_MATERIALIZATION_INPUTS = [
+# Exact root-package inputs shared by admitted TypeScript package materializations.
+_TYPESCRIPT_MATERIALIZATION_INPUTS = [
     "context/effect/socket/package.json",
     "context/opentui/package.json",
     "package.json",
@@ -47,7 +47,7 @@ _TUI_CORE_MATERIALIZATION_INPUTS = [
     "pnpm-workspace.yaml",
 ]
 
-export_materialization_inputs(_TUI_CORE_MATERIALIZATION_INPUTS)
+export_materialization_inputs(_TYPESCRIPT_MATERIALIZATION_INPUTS)
 
 # Hermetic TypeScript actions execute this source with their pinned Bun runtime.
 export_file(

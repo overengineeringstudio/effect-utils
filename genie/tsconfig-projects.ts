@@ -104,7 +104,14 @@ export const rootWorkspaceTsconfigProjects = (() => {
         emitTarget: '//packages/@overeng/tui-core:dist',
       },
     },
-    'packages/@overeng/tui-react': { tsconfig: tuiReactTsconfig },
+    'packages/@overeng/tui-react': {
+      tsconfig: tuiReactTsconfig,
+      buck2Authority: {
+        _tag: 'Buck2TypeScriptAuthority',
+        typecheckTarget: '//packages/@overeng/tui-react:typecheck',
+        emitTarget: '//packages/@overeng/tui-react:dist',
+      },
+    },
     'packages/@overeng/tui-stories': { tsconfig: tuiStoriesTsconfig },
     'packages/@overeng/utils': { tsconfig: utilsTsconfig },
     'packages/@overeng/utils-dev': { tsconfig: utilsDevTsconfig },

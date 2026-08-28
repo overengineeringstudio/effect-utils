@@ -75,10 +75,22 @@ export default packageJson(
     name: '@overeng/tui-react',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry('./src/mod.tsx', { environment: 'node' }),
-      './node': exportEntry('./src/node/mod.ts', { environment: 'node' }),
-      './storybook': exportEntry('./src/storybook/mod.tsx', { environment: 'node' }),
-      './opentui': exportEntry('./src/effect/opentui/mod.tsx', { environment: 'node' }),
+      '.': exportEntry(
+        { types: './dist/src/mod.d.ts', default: './src/mod.tsx' },
+        { environment: 'node' },
+      ),
+      './node': exportEntry(
+        { types: './dist/src/node/mod.d.ts', default: './src/node/mod.ts' },
+        { environment: 'node' },
+      ),
+      './storybook': exportEntry(
+        { types: './dist/src/storybook/mod.d.ts', default: './src/storybook/mod.tsx' },
+        { environment: 'node' },
+      ),
+      './opentui': exportEntry(
+        { types: './dist/src/effect/opentui/mod.d.ts', default: './src/effect/opentui/mod.tsx' },
+        { environment: 'node' },
+      ),
     },
     scripts: {
       storybook: 'storybook dev -p 6006',
