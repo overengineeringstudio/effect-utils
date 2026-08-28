@@ -57,7 +57,7 @@ const trustedCachixStep = {
     name: 'overeng-effect-utils',
     authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
   }),
-  if: "github.event_name != 'pull_request'",
+  if: "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
 } as const
 
 const baseSteps = [
@@ -296,7 +296,7 @@ const nixDiagnosticsSummaryStep = {
 
 const jobTimeoutMinutes = 30
 const normalCiIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
-const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.event_name != 'pull_request' }}`
+const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
 
 const job = ({
   step,
