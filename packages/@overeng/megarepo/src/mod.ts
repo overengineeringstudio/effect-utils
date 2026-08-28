@@ -30,6 +30,8 @@ export * from './lib/workspace-update-lock-schema.ts'
 export * from './lib/workspace-update-lock.ts'
 export * from './lib/composition-capability-resolver-schema.ts'
 export * from './lib/composition-capability-resolver.ts'
+export * from './lib/composition-apply-schema.ts'
+export * from './lib/composition-apply.ts'
 
 // Pure Buck composition-root projection
 export * from './lib/generators/composition-root.ts'
