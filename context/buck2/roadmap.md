@@ -87,10 +87,19 @@ RENAME_EXCHANGE advance.
   probe on a profiled Mac worktree.
 - tierA-scale build validation (fixture-scale digest claims are exact but
   small); root-cause the genrule lookup/upload key-mismatch anomaly.
-- Legacy in-mount write consumers (q16): each consuming repo retires its
-  writers as part of its own Phase-6 workspace adoption; the symlink+no-cache
-  guard stands meanwhile. Pulled forward: dotfiles' bun-from-mount switches
-  to the already-packaged Nix CLI as a standalone quick win.
+- Legacy in-mount write consumers retire per consuming repository during its
+  Phase-6 workspace adoption. Until then, that repository remains on
+  symlink mounts with shared-cache writes disabled.
+
+  | Consumer class                                  | Retirement change                                                                                                   | Admission proof                                                                          |
+  | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+  | CLI executed from another member's source mount | Execute the already-packaged Nix CLI; dotfiles' bun-from-mount path is the first standalone cutover                 | Command succeeds with the source mount protected and unchanged                           |
+  | Dependency task that writes another member      | Move the producer into that member's owned workspace; consume only committed source plus declared artifact overlays | Mutation sentinel remains clean across apply, task execution, and teardown               |
+  | Live cross-workspace branch sharing             | Commit upstream in its owned workspace, advance the consumer lock, then re-apply                                    | No non-owned mount is branch-attached; the lock advance alone changes the consumer input |
+
+  Each consumer owns its deletion-ledger entry and removes the symlink/no-cache
+  exception in the same change that passes its admission proof.
+
 - Cross-member TypeScript consumption: SETTLED as
   [decision 0021](./.decisions/0021-cross-member-types-dist-overlay.md) —
   dist overlay in mounts (cache-pulled, ignore-covered, manifest-declared);
