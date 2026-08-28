@@ -10,13 +10,21 @@ import type { PlatformError } from 'effect/PlatformError'
 
 import { EffectPath } from '@overeng/effect-path'
 
+import {
+  canonicalizeDistOverlayDeclarations,
+  DistOverlayDeclaration,
+  DistOverlayDestination,
+  DistOverlayTarget,
+  R6_CAPABILITIES_DESTINATION,
+  type DistOverlayDeclaration as DistOverlayDeclarationType,
+} from './dist-overlay-schema.ts'
 import { inspectMemberMount } from './member-mount.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 
 /** Canonical R6 manifest wire version. */
 export const R6_MANIFEST_VERSION = 1 as const
 /** Owned cp-a mount metadata wire version. */
-export const OWNED_CP_A_MOUNT_METADATA_VERSION = 1 as const
+export const OWNED_CP_A_MOUNT_METADATA_VERSION = 2 as const
 
 const Sha256 = Schema.String.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/u))
 const CanonicalRelativePath = Schema.String.check(
@@ -110,6 +118,15 @@ export const R6CapabilityManifestIdentity = Schema.Struct({
 })
 export type R6CapabilityManifestIdentity = typeof R6CapabilityManifestIdentity.Type
 
+/** Published identity of one declared overlay subtree. Absence means not yet published. */
+export const R6DistOverlayManifestIdentity = Schema.Struct({
+  target: DistOverlayTarget,
+  destination: DistOverlayDestination,
+  digest: Sha256,
+  count: Schema.Natural,
+}).annotate({ identifier: 'Megarepo.R6DistOverlayManifestIdentity' })
+export type R6DistOverlayManifestIdentity = typeof R6DistOverlayManifestIdentity.Type
+
 /** Strict persisted ownership binding for one published cp-a mount. */
 export const OwnedCpAMountMetadata = Schema.Struct({
   version: Schema.Literal(OWNED_CP_A_MOUNT_METADATA_VERSION),
@@ -118,8 +135,54 @@ export const OwnedCpAMountMetadata = Schema.Struct({
   sourcePathIdentity: Sha256,
   repository: R6ManifestIdentity,
   capabilities: R6CapabilityManifestIdentity,
+  declaredOverlays: Schema.Array(DistOverlayDeclaration),
+  overlays: Schema.Array(R6DistOverlayManifestIdentity),
   publishedPath: Schema.String.check(Schema.isPattern(/^\//u)),
-}).annotate({ identifier: 'Megarepo.OwnedCpAMountMetadata' })
+})
+  .check(
+    Schema.makeFilter((metadata) => {
+      try {
+        const declarations = canonicalizeDistOverlayDeclarations(metadata.declaredOverlays)
+        if (
+          declarations.some(
+            (declaration, index) =>
+              declaration.target !== metadata.declaredOverlays[index]?.target ||
+              declaration.destination !== metadata.declaredOverlays[index]?.destination,
+          ) === true
+        ) {
+          return 'Expected canonical declared overlay order'
+        }
+        const canonicalOverlays = [...metadata.overlays].toSorted((left, right) =>
+          left.destination < right.destination ? -1 : left.destination > right.destination ? 1 : 0,
+        )
+        if (
+          canonicalOverlays.some(
+            (overlay, index) =>
+              overlay.target !== metadata.overlays[index]?.target ||
+              overlay.destination !== metadata.overlays[index]?.destination,
+          ) === true
+        ) {
+          return 'Expected canonical published overlay order'
+        }
+        const seen = new Set<string>()
+        for (const overlay of metadata.overlays) {
+          const declaration = declarations.find(
+            (item) => item.target === overlay.target && item.destination === overlay.destination,
+          )
+          if (declaration === undefined)
+            return `Published overlay is not declared: ${overlay.destination}`
+          if (seen.has(overlay.destination) === true) {
+            return `Duplicate published overlay destination: ${overlay.destination}`
+          }
+          seen.add(overlay.destination)
+        }
+        return undefined
+      } catch (cause) {
+        return cause instanceof Error ? cause.message : 'Invalid overlay metadata'
+      }
+    }),
+  )
+  .annotate({ identifier: 'Megarepo.OwnedCpAMountMetadata' })
 export type OwnedCpAMountMetadata = typeof OwnedCpAMountMetadata.Type
 
 /** A canonical manifest and its deterministic identity. */
@@ -143,11 +206,17 @@ export interface R6ScanHooks {
   }) => Promise<void>
 }
 
-/** Repository and separately excluded capability-tree scans. */
+/** One separately excluded declared overlay subtree scan. */
+export interface R6DistOverlayTreeScan extends R6TreeScan, DistOverlayDeclarationType {
+  readonly present: boolean
+}
+
+/** Repository and separately excluded capability/overlay subtree scans. */
 export interface R6MountScan {
   readonly identity: OwnedCpAMountIdentity
   readonly repository: R6TreeScan
   readonly capabilities: R6TreeScan & { readonly present: boolean }
+  readonly overlays: ReadonlyArray<R6DistOverlayTreeScan>
 }
 
 /** Closed reasons for source or protected-tree rejection. */
@@ -449,12 +518,12 @@ const validateAbsoluteStoreTargetExists = async ({
 const scanTreePromise = async ({
   root,
   policy,
-  excludeCapabilities,
+  excludedSubtrees,
   hooks,
 }: {
   root: string
   policy: ScanPolicy
-  excludeCapabilities: boolean
+  excludedSubtrees: ReadonlySet<string>
   hooks?: R6ScanHooks
 }): Promise<{ readonly scan: R6TreeScan; readonly identity: OwnedCpAMountIdentity }> => {
   const rootInfo = await lstat(root)
@@ -487,7 +556,7 @@ const scanTreePromise = async ({
       const manifestName = normalizeManifestPath(child.name)
       const manifestChild =
         manifestRelative === '' ? manifestName : `${manifestRelative}/${manifestName}`
-      if (excludeCapabilities === true && manifestChild === '.buck2/capabilities') return
+      if (excludedSubtrees.has(manifestChild) === true) return
 
       const childPath = NodePath.join(root, ...actualChild.split('/'))
       const info = await lstat(childPath)
@@ -568,61 +637,120 @@ const emptyTreeScan = (): R6TreeScan => {
   return { manifest, digest: digestR6Manifest(manifest), count: 0 }
 }
 
+const isNodeNotFound = (cause: unknown): boolean =>
+  typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === 'ENOENT'
+
+const scanOptionalExcludedTree = async ({
+  root,
+  policy,
+}: {
+  root: string
+  policy: ScanPolicy
+}): Promise<R6TreeScan & { readonly present: boolean }> => {
+  try {
+    const info = await lstat(root)
+    if (info.isDirectory() === false) {
+      failWalk(
+        scanError({
+          reason: 'InvalidRoot',
+          path: root,
+          message: `Excluded R6 subtree '${root}' is not a directory`,
+        }),
+      )
+    }
+    return {
+      ...(await scanTreePromise({ root, policy, excludedSubtrees: new Set() })).scan,
+      present: true,
+    }
+  } catch (cause) {
+    if (isNodeNotFound(cause) === true) return { ...emptyTreeScan(), present: false }
+    throw cause
+  }
+}
+
 const scanMount = ({
   root,
   policy,
+  declaredOverlays = [],
   hooks,
 }: {
   root: string
   policy: ScanPolicy
+  declaredOverlays?: ReadonlyArray<DistOverlayDeclarationType>
   hooks?: R6ScanHooks
 }) =>
   Effect.tryPromise({
     try: async (): Promise<R6MountScan> => {
       const absoluteRoot = NodePath.resolve(root)
+      let canonicalOverlays: ReadonlyArray<DistOverlayDeclarationType> = []
+      try {
+        canonicalOverlays = canonicalizeDistOverlayDeclarations(declaredOverlays)
+      } catch (cause) {
+        failWalk(
+          scanError({
+            reason: 'PathCollision',
+            path: absoluteRoot,
+            message:
+              cause instanceof Error ? cause.message : 'Invalid declared overlay destinations',
+            cause,
+          }),
+        )
+      }
+      if (policy === 'source') {
+        await Promise.all(
+          canonicalOverlays.map(async (overlay) => {
+            const destinationPath = NodePath.join(absoluteRoot, ...overlay.destination.split('/'))
+            try {
+              await lstat(destinationPath)
+              failWalk(
+                scanError({
+                  reason: 'PathCollision',
+                  path: destinationPath,
+                  message: `Immutable source contains declared overlay destination '${overlay.destination}'`,
+                }),
+              )
+            } catch (cause) {
+              if (isNodeNotFound(cause) === false) throw cause
+            }
+          }),
+        )
+      }
+      const excludedSubtrees = new Set<string>([
+        R6_CAPABILITIES_DESTINATION,
+        ...canonicalOverlays.map((overlay) => overlay.destination),
+      ])
       const repositoryResult = await scanTreePromise({
         root: absoluteRoot,
         policy,
-        excludeCapabilities: true,
+        excludedSubtrees,
         ...(hooks === undefined ? {} : { hooks }),
       })
-      const repository = repositoryResult.scan
-      const capabilityRoot = NodePath.join(absoluteRoot, '.buck2', 'capabilities')
-      let capabilities: R6TreeScan & { readonly present: boolean }
-      try {
-        const capabilityInfo = await lstat(capabilityRoot)
-        if (capabilityInfo.isDirectory() === false) {
-          failWalk(
-            scanError({
-              reason: 'InvalidRoot',
-              path: capabilityRoot,
-              message: `Capability tree '${capabilityRoot}' is not a directory`,
-            }),
-          )
-        }
-        capabilities = {
-          ...(
-            await scanTreePromise({
-              root: capabilityRoot,
-              policy,
-              excludeCapabilities: false,
-            })
-          ).scan,
-          present: true,
-        }
-      } catch (cause) {
-        if (
-          typeof cause === 'object' &&
-          cause !== null &&
-          'code' in cause &&
-          cause.code === 'ENOENT'
-        ) {
-          capabilities = { ...emptyTreeScan(), present: false }
-        } else {
-          throw cause
-        }
+      const capabilities = await scanOptionalExcludedTree({
+        root: NodePath.join(absoluteRoot, ...R6_CAPABILITIES_DESTINATION.split('/')),
+        policy,
+      })
+      const overlays: ReadonlyArray<R6DistOverlayTreeScan> = await Promise.all(
+        canonicalOverlays.map(async (overlay) => {
+          const scan = await scanOptionalExcludedTree({
+            root: NodePath.join(absoluteRoot, ...overlay.destination.split('/')),
+            policy,
+          })
+          return {
+            target: overlay.target,
+            destination: overlay.destination,
+            manifest: scan.manifest,
+            digest: scan.digest,
+            count: scan.count,
+            present: scan.present,
+          }
+        }),
+      )
+      return {
+        identity: repositoryResult.identity,
+        repository: repositoryResult.scan,
+        capabilities,
+        overlays,
       }
-      return { identity: repositoryResult.identity, repository, capabilities }
     },
     catch: (cause): R6ScanError =>
       cause instanceof WalkFailure
@@ -635,25 +763,86 @@ const scanMount = ({
           }),
   })
 
+/** Scan one standalone immutable source tree without reserved subtree exclusions. */
+export const scanR6SourceTree = ({
+  root,
+}: {
+  root: string
+}): Effect.Effect<R6TreeScan, R6ScanError> =>
+  Effect.tryPromise({
+    try: async () =>
+      (
+        await scanTreePromise({
+          root: NodePath.resolve(root),
+          policy: 'source',
+          excludedSubtrees: new Set(),
+        })
+      ).scan,
+    catch: (cause): R6ScanError =>
+      cause instanceof WalkFailure
+        ? cause.scanError
+        : scanError({
+            reason: 'IoFailure',
+            path: NodePath.resolve(root),
+            message: `Failed to scan R6 source tree '${NodePath.resolve(root)}'`,
+            cause,
+          }),
+  })
+
+/** Scan one standalone protected tree without reserved subtree exclusions. */
+export const scanR6ProtectedTree = ({
+  root,
+}: {
+  root: string
+}): Effect.Effect<R6TreeScan, R6ScanError> =>
+  Effect.tryPromise({
+    try: async () =>
+      (
+        await scanTreePromise({
+          root: NodePath.resolve(root),
+          policy: 'protected',
+          excludedSubtrees: new Set(),
+        })
+      ).scan,
+    catch: (cause): R6ScanError =>
+      cause instanceof WalkFailure
+        ? cause.scanError
+        : scanError({
+            reason: 'IoFailure',
+            path: NodePath.resolve(root),
+            message: `Failed to scan R6 protected tree '${NodePath.resolve(root)}'`,
+            cause,
+          }),
+  })
+
 /** Scan an immutable source tree: files 0444/0555 and directories exactly 0755. */
 export const scanR6Source = ({
   root,
+  declaredOverlays = [],
   hooks,
 }: {
   root: string
+  declaredOverlays?: ReadonlyArray<DistOverlayDeclarationType>
   hooks?: R6ScanHooks
 }): Effect.Effect<R6MountScan, R6ScanError> =>
-  scanMount({ root, policy: 'source', ...(hooks === undefined ? {} : { hooks }) })
+  scanMount({ root, policy: 'source', declaredOverlays, ...(hooks === undefined ? {} : { hooks }) })
 
 /** Scan a published protected mount: files 0444/0555 and directories exactly 0555. */
 export const scanR6ProtectedMount = ({
   root,
+  declaredOverlays = [],
   hooks,
 }: {
   root: string
+  declaredOverlays?: ReadonlyArray<DistOverlayDeclarationType>
   hooks?: R6ScanHooks
 }): Effect.Effect<R6MountScan, R6ScanError> =>
-  scanMount({ root, policy: 'protected', ...(hooks === undefined ? {} : { hooks }) })
+  scanMount({
+    root,
+    policy: 'protected',
+    declaredOverlays,
+    ...(hooks === undefined ? {} : { hooks }),
+  })
 
 const canonicalAbsolutePath = (path: string): string => {
   if (NodePath.isAbsolute(path) === false) {
@@ -698,12 +887,14 @@ export const makeOwnedCpAMountMetadata = ({
   lockedCommit,
   sourcePathIdentity,
   publishedPath,
+  declaredOverlays = [],
   scan,
 }: {
   member: string
   lockedCommit: string
   sourcePathIdentity: string
   publishedPath: string
+  declaredOverlays?: ReadonlyArray<DistOverlayDeclarationType>
   scan: R6MountScan
 }): OwnedCpAMountMetadata => ({
   version: OWNED_CP_A_MOUNT_METADATA_VERSION,
@@ -719,6 +910,18 @@ export const makeOwnedCpAMountMetadata = ({
     digest: scan.capabilities.digest,
     count: scan.capabilities.count,
   },
+  declaredOverlays: [...canonicalizeDistOverlayDeclarations(declaredOverlays)],
+  overlays: scan.overlays
+    .filter((overlay) => overlay.present === true)
+    .map((overlay) => ({
+      target: overlay.target,
+      destination: overlay.destination,
+      digest: overlay.digest,
+      count: overlay.count,
+    }))
+    .toSorted((left, right) =>
+      left.destination < right.destination ? -1 : left.destination > right.destination ? 1 : 0,
+    ),
   publishedPath: canonicalAbsolutePath(publishedPath),
 })
 
@@ -913,12 +1116,27 @@ const scanIdentityMatches = ({
 }: {
   metadata: OwnedCpAMountMetadata
   scan: R6MountScan
-}): boolean =>
-  metadata.repository.digest === scan.repository.digest &&
-  metadata.repository.count === scan.repository.count &&
-  metadata.capabilities.present === scan.capabilities.present &&
-  metadata.capabilities.digest === scan.capabilities.digest &&
-  metadata.capabilities.count === scan.capabilities.count
+}): boolean => {
+  const presentOverlays = scan.overlays.filter((overlay) => overlay.present === true)
+  return (
+    metadata.repository.digest === scan.repository.digest &&
+    metadata.repository.count === scan.repository.count &&
+    metadata.capabilities.present === scan.capabilities.present &&
+    metadata.capabilities.digest === scan.capabilities.digest &&
+    metadata.capabilities.count === scan.capabilities.count &&
+    metadata.overlays.length === presentOverlays.length &&
+    metadata.overlays.every((overlay, index) => {
+      const actual = presentOverlays[index]
+      return (
+        actual !== undefined &&
+        overlay.target === actual.target &&
+        overlay.destination === actual.destination &&
+        overlay.digest === actual.digest &&
+        overlay.count === actual.count
+      )
+    })
+  )
+}
 
 /**
  * Refine S0 for either the published path or a swapped-old staging path.
@@ -971,9 +1189,10 @@ export const inspectOwnedCpAMount = ({
       })
     }
 
-    const scanResult = yield* scanR6ProtectedMount({ root: absolutePhysicalPath }).pipe(
-      Effect.result,
-    )
+    const scanResult = yield* scanR6ProtectedMount({
+      root: absolutePhysicalPath,
+      declaredOverlays: metadata.declaredOverlays,
+    }).pipe(Effect.result)
     if (scanResult._tag === 'Failure') {
       return invalidOwned({
         reason: 'MountInvalid',
@@ -999,7 +1218,10 @@ export const inspectOwnedCpAMount = ({
       return invalidOwned({
         reason: 'ManifestMismatch',
         path: absolutePhysicalPath,
-        message: `Owned mount content does not match bound R6 manifests for member '${expected.member}'`,
+        message: `Owned mount content does not match bound R6 manifests for member '${expected.member}': expected repository ${metadata.repository.digest}/${metadata.repository.count}, capabilities ${metadata.capabilities.digest}/${metadata.capabilities.count}/${String(metadata.capabilities.present)}, overlays ${metadata.overlays.map((item) => `${item.destination}:${item.digest}/${item.count}`).join(',')}; observed repository ${scan.repository.digest}/${scan.repository.count}, capabilities ${scan.capabilities.digest}/${scan.capabilities.count}/${String(scan.capabilities.present)}, overlays ${scan.overlays
+          .filter((item) => item.present)
+          .map((item) => `${item.destination}:${item.digest}/${item.count}`)
+          .join(',')}`,
       })
     }
     return { _tag: 'Owned' as const, identity: scan.identity, metadata, scan }

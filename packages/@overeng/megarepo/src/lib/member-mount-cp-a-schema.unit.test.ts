@@ -12,12 +12,14 @@ import {
 } from './member-mount-cp-a-schema.ts'
 
 const metadata = {
-  version: 1 as const,
+  version: 2 as const,
   member: 'dep',
   lockedCommit: 'a'.repeat(40),
   sourcePathIdentity: `sha256:${'b'.repeat(64)}`,
   repository: { digest: `sha256:${'c'.repeat(64)}`, count: 2 },
   capabilities: { present: true, digest: `sha256:${'d'.repeat(64)}`, count: 1 },
+  declaredOverlays: [],
+  overlays: [],
   publishedPath: '/workspace/repos/dep',
 }
 
@@ -38,6 +40,7 @@ describe('cp-a lifecycle schemas', () => {
         member: '../dep',
         sourcePath: '/source',
         capabilitiesPath: '/caps',
+        distOverlays: [],
         lockedCommit: 'short',
         dryRun: false,
         allowVerifiedDarwinAdvance: false,

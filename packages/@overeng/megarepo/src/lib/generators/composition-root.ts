@@ -3,6 +3,15 @@ import * as PosixPath from 'node:path/posix'
 
 import { Schema } from 'effect'
 
+import {
+  canonicalizeDistOverlayDeclarations,
+  DistOverlayDeclaration as BuckMemberDistOverlaySchema,
+  type DistOverlayDeclaration as BuckMemberDistOverlay,
+} from '../dist-overlay-schema.ts'
+
+export { BuckMemberDistOverlaySchema }
+export type { BuckMemberDistOverlay }
+
 /** Tracked member-manifest filename at each member root. */
 export const BUCK_MEMBER_MANIFEST_FILENAME = 'buck2-member.json' as const
 /** Generator ownership manifest path below the synthesized root. */
@@ -27,9 +36,6 @@ const canonicalStringSet = (values: ReadonlyArray<string>): ReadonlyArray<string
   [...new Set(values)].toSorted((left, right) => compareCodeUnits({ left, right }))
 
 const printableAscii = (value: string): boolean => /^[\x20-\x7e]+$/u.test(value)
-
-const hasEmptyOrDotSegment = (value: string): boolean =>
-  value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..') === true
 
 const CellName = Schema.String.check(
   Schema.makeFilter<string>((value) =>
@@ -115,54 +121,6 @@ const CapabilityExecutable = Schema.String.check(
   }),
 ).annotate({ identifier: 'Megarepo.BuckCapabilityExecutable' })
 
-const DistOverlayTarget = Schema.String.check(
-  Schema.makeFilter<string>((value) => {
-    if (
-      printableAscii(value) === false ||
-      /\s/u.test(value) === true ||
-      value.includes('\\') === true
-    ) {
-      return 'Expected a whitespace-free member-relative Buck label'
-    }
-    const match = /^\/\/([^:]+):([^:]+)$/u.exec(value)
-    if (match === null) return 'Expected a member-relative Buck label //<package>:<target>'
-    const buckPackage = match[1]!
-    const target = match[2]!
-    return PosixPath.normalize(buckPackage) !== buckPackage ||
-      PosixPath.normalize(target) !== target ||
-      hasEmptyOrDotSegment(buckPackage) === true ||
-      hasEmptyOrDotSegment(target) === true
-      ? 'Buck overlay labels may not contain empty, dot, or parent segments'
-      : undefined
-  }),
-).annotate({ identifier: 'Megarepo.BuckDistOverlayTarget' })
-
-const DistOverlayDestination = Schema.String.check(
-  Schema.makeFilter<string>((value) => {
-    if (
-      printableAscii(value) === false ||
-      value.startsWith('/') === true ||
-      value.includes('\\') === true ||
-      value.includes(',') === true ||
-      PosixPath.normalize(value) !== value
-    ) {
-      return 'Expected a normalized member-relative POSIX overlay destination'
-    }
-    return value
-      .split('/')
-      .some((segment) => segment === '' || segment === '.' || segment === '..') === true
-      ? 'Overlay destinations may not contain empty, dot, or parent segments'
-      : undefined
-  }),
-).annotate({ identifier: 'Megarepo.BuckDistOverlayDestination' })
-
-/** One Buck-built distribution overlaid into a member mount. */
-export const BuckMemberDistOverlaySchema = Schema.Struct({
-  target: DistOverlayTarget,
-  destination: DistOverlayDestination,
-}).annotate({ identifier: 'Megarepo.BuckMemberDistOverlay' })
-export type BuckMemberDistOverlay = typeof BuckMemberDistOverlaySchema.Type
-
 /** One Nix-resolved executable capability required by a member. */
 export const BuckMemberCapabilitySchema = Schema.Struct({
   toolId: CapabilityToken,
@@ -200,19 +158,12 @@ export const BuckMemberManifestSchema = Schema.Struct({
         }
         tools.add(capability.toolId)
       }
-      const overlayTargets = new Set<string>()
-      const overlayDestinations = new Set<string>()
-      for (const overlay of manifest.distOverlays) {
-        if (overlayTargets.has(overlay.target) === true) {
-          return `Duplicate dist overlay target: ${overlay.target}`
-        }
-        if (overlayDestinations.has(overlay.destination) === true) {
-          return `Duplicate dist overlay destination: ${overlay.destination}`
-        }
-        overlayTargets.add(overlay.target)
-        overlayDestinations.add(overlay.destination)
+      try {
+        canonicalizeDistOverlayDeclarations(manifest.distOverlays)
+        return undefined
+      } catch (cause) {
+        return cause instanceof Error ? cause.message : 'Invalid dist overlay declarations'
       }
-      return undefined
     }),
   )
   .annotate({ identifier: 'Megarepo.BuckMemberManifest' })

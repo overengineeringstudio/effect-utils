@@ -17,6 +17,9 @@ export * from './lib/member-mount.ts'
 export * from './lib/member-mount-r6.ts'
 export * from './lib/member-mount-cp-a-schema.ts'
 export * from './lib/member-mount-cp-a.ts'
+export * from './lib/dist-overlay-schema.ts'
+export * from './lib/dist-overlay-lifecycle-schema.ts'
+export * from './lib/dist-overlay-lifecycle.ts'
 
 // Owned branch-worktree workspace lifecycle
 export * from './lib/owned-worktree-acquisition-schema.ts'
