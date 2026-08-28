@@ -33,7 +33,7 @@ let
     installRuntimeWorkspace = true;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = mkSharedHash "sha256-qxTc4NrFr/Pc3mF24jdxsEQ7vFo6yhQlVw15X6PQsQg=";
+      "." = mkSharedHash "sha256-XetHKuZcNm6AVwQiQg1egapdRB1/G4xDrFQnMwcFVzo=";
     };
     nativeNodePackages = opentuiCoreNative.packages;
     inherit gitRev commitTs dirty;
