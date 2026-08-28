@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
 
 - **CI**: run every devenv, Buck, TypeScript, lint, test, cargo, and Genie lane from a disposable decision-0020 synthesized workspace while retaining the immutable actions checkout for cleanup and checkout-only artifacts; keep pnpm and Nix cache state at stable runner-temporary paths projected into the owned member.
 
+- **CI admission**: move repeated devenv resolution/repair logic into a prepared
+  runtime script and enforce GitHub's 500 kB workflow limit. The generated CI
+  workflow drops from 518,102 to 466,190 bytes, leaving 33,810 bytes below the
+  enforced admission ceiling.
+
 - Retire the dormant Buck closure-compiler and package-evidence regime, including
   its unused Buck rules, Rust tools, Nix capabilities, and projection tests;
   retain the live archive/product bridge and real tui-core TypeScript actions.

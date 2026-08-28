@@ -177,6 +177,13 @@ const resolveDevenvFnScript = readFileSync(
   new URL(['../../../../../../genie/ci-scripts', 'resolve-devenv.sh'].join('/'), import.meta.url),
   'utf8',
 )
+const resolveDevenvCiScript = readFileSync(
+  new URL(
+    ['../../../../../../genie/ci-scripts', 'resolve-devenv-ci.sh'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
@@ -418,8 +425,8 @@ describe('ci workflow pnpm cache defaults', () => {
   })
 
   it('purges nix eval cache from the active XDG cache root during repair', () => {
-    expect(validateNixStoreStepSource).toContain(
-      'rm -rf "${\'${XDG_CACHE_HOME:-$HOME/.cache}\'}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
+    expect(resolveDevenvCiScript).toContain(
+      'rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
     )
   })
 
@@ -561,13 +568,12 @@ printf '%s\\n' "$NIX_OUTPUT"
     expect(resolveDevenvFnScript).toContain(
       '${GITHUB_RUN_ID:-local-$$}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}',
     )
-    expect(validateNixStoreStepSource).toContain('[ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]')
-    expect(validateNixStoreStepSource).not.toContain('readlink -e')
-    expect(validateNixStoreStepSource).toContain(
-      '. ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}',
-    )
+    expect(resolveDevenvCiScript).toContain('[ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]')
+    expect(resolveDevenvCiScript).not.toContain('readlink -e')
+    expect(resolveDevenvCiScript).toContain('. "$script_dir/resolve-devenv.sh"')
+    expect(validateNixStoreStepSource).toContain('resolve-devenv-ci.sh')
     expect(generatedCiWorkflowYamlSource).toContain(
-      ". '${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'",
+      "'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'",
     )
     expect(generatedCiWorkflowYamlSource).not.toContain('resolve_devenv_once()')
   })
@@ -1088,6 +1094,7 @@ describe('effect-utils CI composition workspace', () => {
       [
         '#!/usr/bin/env bash',
         'set -euo pipefail',
+        'export AGENT_POLICY_BYPASS=1',
         'fake_root="$(cd "$(dirname "$0")/.." && pwd)"',
         'printf \'%s|%s|%s|%s\\n\' "$PWD" "$MEGAREPO_STORE" "${RUNNER_OS:-unset}" "$*" >> "$fake_root/../mr.log"',
         'if [ -f "$fake_root/fail" ]; then exit 37; fi',
@@ -1116,6 +1123,7 @@ describe('effect-utils CI composition workspace', () => {
 
     const env = {
       ...process.env,
+      AGENT_POLICY_BYPASS: '1',
       FAKE_MR_LOG: mrLog,
       FAKE_MR_OUT: mrOut,
       FAKE_NIX_LOG: nixLog,
