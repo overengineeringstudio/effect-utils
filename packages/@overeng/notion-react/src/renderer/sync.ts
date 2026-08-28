@@ -1104,9 +1104,10 @@ const retrieveLiveIdentityChildren = (
           : undefined
     } while (startCursor !== undefined)
     if (expectChildren && blocks.length === 0) {
-      return yield* Effect.fail(
-        new NotionSyncError({ reason: 'children-not-yet-visible', cause: parentId }),
-      )
+      return yield* new NotionSyncError({
+        reason: 'children-not-yet-visible',
+        cause: parentId,
+      })
     }
     return blocks
   }).pipe(Effect.retry(childrenSettleSchedule))
@@ -1121,17 +1122,19 @@ const retrieveLiveIdentities: (
   recursive: boolean,
   o11y: RetrieveO11yCtx,
   expectChildren?: boolean,
+  excludedChildId?: string,
 ) => Effect.Effect<readonly LiveIdentityNode[], NotionSyncError, NotionConfig | HttpClient> =
   Effect.fn('notion-react.retrieve-live-identities')(function* (
     parentId: string,
     recursive: boolean,
     o11y: RetrieveO11yCtx,
     expectChildren = false,
+    excludedChildId?: string,
   ) {
     const live = yield* retrieveLiveIdentityChildren(parentId, expectChildren, o11y)
     const identities: LiveIdentityNode[] = []
     for (const block of live) {
-      if (block.in_trash === true) continue
+      if (block.in_trash === true || block.id === excludedChildId) continue
       const ownsChildScope =
         block.type === 'child_page' || RENDERER_OWNED_CHILD_SCOPES[block.type] === true
       const children =
@@ -1660,13 +1663,15 @@ export const sync = (
       (useColdPath && coldBaseline === 'clean')
     if (wantsLiveRetrieve) {
       const recursive = prior !== undefined && !schemaMismatch && !pageIdDrift
-      const observed = yield* retrieveLiveIdentities(opts.pageId, recursive, o11y)
       const holdingParentId =
         typeof opts.reorderSiblings === 'object' ? opts.reorderSiblings.holdingParentId : undefined
-      liveIdentities =
-        holdingParentId === undefined
-          ? observed
-          : observed.filter((node) => node.blockId !== holdingParentId)
+      liveIdentities = yield* retrieveLiveIdentities(
+        opts.pageId,
+        recursive,
+        o11y,
+        false,
+        holdingParentId,
+      )
       // Drift detection only applies to the warm-cache path; the cold path
       // always cleans pre-existing children when `coldBaseline === 'clean'`.
       if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
@@ -2669,13 +2674,15 @@ export const plan = (
         (useColdPath && coldBaseline === 'clean'))
     if (wantsLiveRetrieve) {
       const recursive = prior !== undefined && !schemaMismatch && !pageIdDrift
-      const observed = yield* retrieveLiveIdentities(opts.pageId, recursive, retrieveO11y)
       const holdingParentId =
         typeof opts.reorderSiblings === 'object' ? opts.reorderSiblings.holdingParentId : undefined
-      liveIdentities =
-        holdingParentId === undefined
-          ? observed
-          : observed.filter((node) => node.blockId !== holdingParentId)
+      liveIdentities = yield* retrieveLiveIdentities(
+        opts.pageId,
+        recursive,
+        retrieveO11y,
+        false,
+        holdingParentId,
+      )
       if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
         drifted = identityTreeDrifted(prior.children, liveIdentities)
       }

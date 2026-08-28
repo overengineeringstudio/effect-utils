@@ -3,7 +3,7 @@ import type { HttpClient } from 'effect/unstable/http/HttpClient'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
-import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
+import { NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
@@ -1266,6 +1266,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
         </Page>,
         cache,
       )
+      const [idA, idB] = pageOrderUnderRoot(fake)
       // Pre-create a caller-owned holding parent under ROOT.
       const holdingParent = await runWith(
         fake,
@@ -1279,6 +1280,51 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
           Effect.mapError(
             (cause) => new NotionSyncError({ reason: 'holding-parent-create-failed', cause }),
           ),
+        ),
+      )
+      // The holding page deliberately owns a large recursive subtree. One
+      // descendant is promised-but-empty and another would fail if read:
+      // neither condition belongs to the rendered root's drift boundary.
+      await runWith(
+        fake,
+        NotionBlocks.append({
+          blockId: holdingParent,
+          children: Array.from({ length: 100 }, (_, index) => ({
+            object: 'block' as const,
+            type: 'toggle' as const,
+            toggle: {
+              rich_text: [{ type: 'text' as const, text: { content: `holding-${index}` } }],
+              children: [
+                {
+                  object: 'block' as const,
+                  type: 'paragraph' as const,
+                  paragraph: { rich_text: [] },
+                },
+              ],
+            },
+          })),
+        }).pipe(
+          Effect.mapError(
+            (cause) => new NotionSyncError({ reason: 'holding-subtree-create-failed', cause }),
+          ),
+        ),
+      )
+      const holdingChildren = fake.childrenOf(holdingParent)
+      expect(holdingChildren).toHaveLength(100)
+      fake.delayChildrenVisibility(holdingChildren[0]!.id, 100)
+      const failingDescendantPath = `/v1/blocks/${holdingChildren[1]!.id}/children`
+      fake.failOn((request) =>
+        request.method === 'GET' && request.path === failingDescendantPath
+          ? new FakeNotionResponseError(
+              500,
+              'internal_server_error',
+              'holding subtree must not affect root sync',
+            )
+          : undefined,
+      )
+      const holdingReadPaths = new Set(
+        [holdingParent, ...holdingChildren.map((block) => block.id)].map(
+          (id) => `/v1/blocks/${id}/children`,
         ),
       )
       const before = fake.requests.length
@@ -1295,6 +1341,10 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       const after = fake.requests.slice(before)
       const moves = after.filter((r) => r.method === 'POST' && r.path.endsWith('/move'))
       expect(moves).toHaveLength(4) // 2 pages × 2 roundtrips each
+      expect(pageOrderUnderRoot(fake).filter((id) => id !== holdingParent)).toEqual([idB, idA])
+      expect(
+        after.filter((request) => request.method === 'GET' && holdingReadPaths.has(request.path)),
+      ).toEqual([])
       // Library did NOT create a holding page in this sync (caller supplied).
       const newPages = after.filter((r) => r.method === 'POST' && r.path === '/v1/pages')
       expect(newPages).toHaveLength(0)
