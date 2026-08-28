@@ -1110,7 +1110,12 @@ const retrieveLiveIdentityChildren = (
       })
     }
     return blocks
-  }).pipe(Effect.retry(childrenSettleSchedule))
+  }).pipe(
+    Effect.retry({
+      schedule: childrenSettleSchedule,
+      while: (error) => error.reason === 'children-not-yet-visible',
+    }),
+  )
 
 /**
  * Observe the ordered live identity tree below a page or block. Warm-cache

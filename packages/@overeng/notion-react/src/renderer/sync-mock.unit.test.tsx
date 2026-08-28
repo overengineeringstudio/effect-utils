@@ -440,6 +440,36 @@ describe('sync() against in-memory fake Notion', () => {
     expect(syncEnd).toMatchObject({ opCount: retrieves.length, ok: true })
   })
 
+  it('recursive preflight does not settle-retry permanent retrieve failures', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList blockKey="columns">
+        <Column blockKey="left">
+          <Paragraph>left</Paragraph>
+        </Column>
+        <Column blockKey="right">
+          <Paragraph>right</Paragraph>
+        </Column>
+      </ColumnList>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const columnList = fake.childrenOf(ROOT).find((block) => block.type === 'column_list')!
+    const failedPath = `/v1/blocks/${columnList.id}/children`
+    let attempts = 0
+    fake.failOn((request) => {
+      if (request.method !== 'GET' || request.path !== failedPath) return undefined
+      attempts += 1
+      return new FakeNotionResponseError(403, 'restricted_resource', 'permanent denial')
+    })
+
+    const exit = await Effect.runPromiseExit(
+      sync(tree, { pageId: ROOT, cache }).pipe(Effect.provide(fake.layer)),
+    )
+    expect(exit._tag).toBe('Failure')
+    expect(attempts).toBe(1)
+  })
+
   it('drift detection: out-of-band archive on a tracked block forces cache-drift rebuild', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
@@ -569,7 +599,10 @@ describe('sync() against in-memory fake Notion', () => {
     outer.children.splice(0, outer.children.length, nestedPage.id, blockA!.id, blockB!.id)
     blockB!.archived = true
 
-    const result = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const result = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache, pageLifecycle: 'append-only' }),
+    )
     expect(result.fallbackReason).toBe('cache-drift')
     expect(result.pages).toMatchObject({ creates: 0, archives: 0, moves: 0 })
     expect(result.appends + result.inserts).toBe(1)

@@ -448,6 +448,15 @@ const diffChildren = (
   const cacheByKey = new Map<string, CacheNode>()
   for (const c of cacheChildren) cacheByKey.set(c.key, c)
 
+  // Block/page interleaving can differ in page scopes even when neither
+  // kind's relative order changed. Retain the page-kind LCS independently so
+  // an ordinary-block reorder cannot demote an unchanged page into a move.
+  const cachePages = cacheChildren.filter((node) => node.nodeKind === 'page')
+  const candidatePages = candidateChildren.filter((node) => node.nodeKind === 'page')
+  for (const index of retainedCacheIndices(cachePages, candidatePages)) {
+    retainedKeys.add(cachePages[index]!.key)
+  }
+
   // Demote retained candidates whose type demands full-rebuild on any
   // subtree shape change (e.g. column_list — Notion rejects per-column
   // mutation). Unretaining here flows through the normal insert/append +
