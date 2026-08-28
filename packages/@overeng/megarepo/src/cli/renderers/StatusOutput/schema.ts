@@ -118,6 +118,8 @@ export interface MemberStatus {
   symlinkExists: boolean
   source: string
   isLocal: boolean
+  mountKind?: 'symlink' | 'owned' | 'cp-a' | 'foreign' | undefined
+  writable?: boolean | undefined
   lockInfo?: LockInfo | undefined
   isMegarepo: boolean
   nestedMembers?: readonly MemberStatus[] | undefined
@@ -151,6 +153,8 @@ export const MemberStatus: Schema.Codec<MemberStatus, MemberStatus> = Schema.sus
     symlinkExists: Schema.Boolean,
     source: Schema.String,
     isLocal: Schema.Boolean,
+    mountKind: Schema.optional(Schema.Literals(['symlink', 'owned', 'cp-a', 'foreign'])),
+    writable: Schema.optional(Schema.Boolean),
     lockInfo: Schema.optional(LockInfo),
     isMegarepo: Schema.Boolean,
     nestedMembers: Schema.optional(Schema.Array(MemberStatus)),

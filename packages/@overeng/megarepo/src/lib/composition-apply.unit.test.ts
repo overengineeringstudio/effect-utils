@@ -148,6 +148,10 @@ const fake = ({
     materializeMount: async () => {
       throw new Error('unexpected materialization')
     },
+    listPublishedMemberKeys: async () => [],
+    teardownMount: async () => {
+      throw new Error('unexpected teardown')
+    },
     inspectMountedMember: async () => ({ identity: { dev: 1, ino: 2 }, metadata: metadata() }),
     recoverOverlay: async () => {
       throw new Error('unexpected recovery')

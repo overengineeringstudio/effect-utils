@@ -16,6 +16,8 @@ let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
+  buck2 = import ../../../../nix/buck2.nix { inherit pkgs; };
+  compositionPlatform = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux";
   base = mkPnpmCli {
     name = "megarepo";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
@@ -50,6 +52,11 @@ pkgs.stdenv.mkDerivation {
   installPhase = ''
     mkdir -p $out/bin
     makeWrapper ${base}/bin/mr $out/bin/mr \
+      --set MR_COMPOSITION_CP_BIN ${pkgs.coreutils}/bin/cp \
+      --set MR_COMPOSITION_BUCK2_BIN ${buck2}/bin/buck2 \
+      --set MR_COMPOSITION_BUCK2_PROTOCOL facebook/buck2-cli/2026-08-22 \
+      --set MR_COMPOSITION_SYSTEM ${pkgs.stdenv.hostPlatform.system} \
+      --set MR_COMPOSITION_PLATFORM ${compositionPlatform} \
       --set MR_CAPABILITY_NIX_BIN ${pkgs.nix}/bin/nix \
       --set MR_CAPABILITY_BASH_BIN ${pkgs.bash}/bin/bash \
       --set MR_CAPABILITY_GAWK_BIN ${pkgs.gawk}/bin/gawk \

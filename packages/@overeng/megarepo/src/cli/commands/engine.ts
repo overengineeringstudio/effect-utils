@@ -55,6 +55,7 @@ import {
 } from '../../lib/sync/mod.ts'
 import type { MegarepoSyncTree as MegarepoSyncTreeType } from '../../lib/sync/schema.ts'
 import { Cwd, findMegarepoRoot, outputModeLayer, type OutputModeValue } from '../context.ts'
+import { runCompositionApply } from './composition.ts'
 import {
   NotInMegarepoError,
   LockFileRequiredError,
@@ -158,7 +159,7 @@ export const syncMegarepo = <R = never>({
     visited.add(resolvedRoot)
 
     // Load config
-    const { config } = yield* readMegarepoConfig(megarepoRoot)
+    const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
 
     if (dryRun === false) {
       const membersRoot = getMembersRoot(megarepoRoot)
@@ -166,8 +167,10 @@ export const syncMegarepo = <R = never>({
     }
 
     // Load lock file (optional unless apply)
+    const physicalConfigPath = yield* fs.realPath(configPath)
+    const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? megarepoRoot
     const lockPath = EffectPath.ops.join(
-      megarepoRoot,
+      configOwner,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
     )
     const lockFileOpt = yield* readLockFile(lockPath)
@@ -672,6 +675,20 @@ export const runCommand = ({
     const workspaceName = yield* Git.deriveMegarepoName(root.value)
     const { config } = yield* readMegarepoConfig(root.value)
     const memberNames = Object.keys(config.members)
+    const compositionEnabled = config.generators?.composition?.enabled === true
+
+    if (compositionEnabled === true && appliesWorkspace === true) {
+      if (all === true || onlyMembers !== undefined || skipMembers !== undefined) {
+        return yield* new InvalidOptionsError({
+          message: 'Composition apply owns the complete member set; --all, --only, and --skip are unavailable',
+        })
+      }
+      if (commitMode === true) {
+        return yield* new InvalidOptionsError({
+          message: 'Composition apply requires the owned branch worktree; --worktree-mode commit is unavailable',
+        })
+      }
+    }
 
     const skippedMembers = memberNames.filter((memberName) => {
       if (onlyMembers !== undefined && onlyMembers.length > 0) {
@@ -722,24 +739,55 @@ export const runCommand = ({
     const effectiveMode = applyAfterFetch === true ? 'apply' : mode
 
     const doSync = (progressHandle?: SyncUIHandle) =>
-      syncMegarepo({
-        megarepoRoot: root.value,
-        options: {
-          mode: effectiveMode,
-          dryRun,
-          force,
-          all,
-          only: onlyMembers,
-          skip: skipMembers,
-          gitProtocol,
-          createBranches,
-          ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
-          ...(commitMode === true ? { commitMode: true } : {}),
-          ...(lockSyncMode !== undefined ? { lockSyncMode } : {}),
-        },
-        ...(progressHandle !== undefined ? { progressHandle } : {}),
-        ...(onMissingRef !== undefined ? { onMissingRef } : {}),
-      })
+      effectiveMode === 'apply' && compositionEnabled === true
+        ? runCompositionApply({
+            workspaceRoot: root.value,
+            dryRun,
+            callerCwd: cwd,
+          }).pipe(
+            Effect.map((composition) => {
+              const appliedMembers =
+                composition.composition._tag === 'Applied'
+                  ? composition.composition.members.map((member) => member.memberKey)
+                  : composition.composition.steps
+                      .filter((step) => step._tag === 'Capability')
+                      .map((step) => step.memberKey)
+              return {
+                root: root.value,
+                results: [...new Set(appliedMembers)].map((name) => ({
+                  name,
+                  status: 'applied' as const,
+                  message: dryRun === true ? 'planned composition update' : undefined,
+                })),
+                nestedMegarepos: [],
+                nestedResults: [],
+                lockSyncResults: undefined,
+                defaultCwd: composition.defaultCwd,
+                composition,
+              } satisfies MegarepoSyncResult
+            }),
+            Effect.mapError((cause) =>
+              cause instanceof Error ? cause : new Error(`Composition apply failed: ${String(cause)}`),
+            ),
+          )
+        : syncMegarepo({
+            megarepoRoot: root.value,
+            options: {
+              mode: effectiveMode,
+              dryRun,
+              force,
+              all,
+              only: onlyMembers,
+              skip: skipMembers,
+              gitProtocol,
+              createBranches,
+              ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
+              ...(commitMode === true ? { commitMode: true } : {}),
+              ...(lockSyncMode !== undefined ? { lockSyncMode } : {}),
+            },
+            ...(progressHandle !== undefined ? { progressHandle } : {}),
+            ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+          })
 
     /** Merge fetch errors into apply results so errors from the fetch phase are visible.
      * - Replace apply error results with fetch errors (fetch has the actual git error, apply only knows "not in lock file")
@@ -850,7 +898,11 @@ export const runCommand = ({
         _tag: 'SetState',
         state: {
           _tag: syncErrorItems.length > 0 ? 'Error' : 'Success',
-          workspace: { name: workspaceName, root: root.value },
+          workspace: {
+            name: workspaceName,
+            root: root.value,
+            ...(syncResult.defaultCwd === undefined ? {} : { defaultCwd: syncResult.defaultCwd }),
+          },
           options: syncDisplayOptions,
           members: memberNames,
           activeMembers: [],
@@ -865,6 +917,7 @@ export const runCommand = ({
           syncErrors: syncErrorItems,
           syncErrorCount: syncErrorItems.length,
           preflightIssues: [],
+          ...(syncResult.composition === undefined ? {} : { composition: syncResult.composition }),
         },
       })
     }

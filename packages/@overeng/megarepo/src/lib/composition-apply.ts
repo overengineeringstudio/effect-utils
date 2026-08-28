@@ -1,7 +1,7 @@
 /* eslint-disable no-await-in-loop -- composition publication order is the protocol. */
 
 import { spawn } from 'node:child_process'
-import { lstat, readFile } from 'node:fs/promises'
+import { lstat, readFile, readdir } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -69,6 +69,7 @@ import {
 import {
   materializeCpAMemberMount,
   recoverCpAMemberMount,
+  teardownCpAMemberMount,
   type CpAMemberMountRecoveryRuntime,
   type CpAMemberMountRuntime,
 } from './member-mount-cp-a.ts'
@@ -157,6 +158,11 @@ export interface CompositionApplyPrimitives {
     readonly workspaceRoot: string
     readonly memberKey: string
   }) => Promise<CompositionMountedMemberInspection>
+  readonly listPublishedMemberKeys: (workspaceRoot: string) => Promise<ReadonlyArray<string>>
+  readonly teardownMount: (input: {
+    readonly workspaceRoot: string
+    readonly memberKey: string
+  }) => Promise<CpAMemberMountResult>
   readonly recoverOverlay: (input: {
     readonly request: DistOverlayRecoveryRequest
     readonly runtime: DistOverlayRuntime
@@ -251,6 +257,16 @@ const defaultPrimitives: CompositionApplyPrimitives = {
   }),
   materializeMount: ({ request, runtime }) =>
     runNode(materializeCpAMemberMount({ request, runtime })),
+  listPublishedMemberKeys: async (workspaceRoot) =>
+    readdir(NodePath.join(workspaceRoot, 'repos')).then((entries) =>
+      entries.filter((entry) => entry !== '.mr' && entry.startsWith('.') === false),
+    ),
+  teardownMount: ({ workspaceRoot, memberKey }) =>
+    runNode(
+      teardownCpAMemberMount({
+        request: { workspaceRoot, member: memberKey, dryRun: false },
+      }),
+    ),
   inspectMountedMember: async ({ workspaceRoot, memberKey }) => {
     const publishedPath = NodePath.join(workspaceRoot, 'repos', memberKey)
     const metadata = await runNode(
@@ -880,6 +896,27 @@ const applyComposition = async ({
       }
     }
 
+    if (request.dryRun === false) {
+      const expectedKeys = new Set([request.ownedMemberKey, ...lockedMembers.map((member) => member.key)])
+      const publishedKeys = await primitives.listPublishedMemberKeys(request.workspaceRoot)
+      for (const memberKey of publishedKeys) {
+        if (expectedKeys.has(memberKey) === true) continue
+        try {
+          await primitives.teardownMount({ workspaceRoot: request.workspaceRoot, memberKey })
+        } catch (cause) {
+          throw normalizeFailure({
+            cause,
+            reason: 'MountFailure',
+            phase: 'Mount',
+            memberKey,
+            path: NodePath.join(request.workspaceRoot, 'repos', memberKey),
+            message: `Refusing to remove unverified orphan member '${memberKey}'`,
+            recoveryPaths: [NodePath.join(request.workspaceRoot, 'repos', memberKey)],
+          })
+        }
+      }
+    }
+
     const capabilityResults = new Map<string, ResolveCompositionCapabilitiesResult>()
     for (const member of members) {
       let capabilityResult: ResolveCompositionCapabilitiesResult
@@ -1250,7 +1287,9 @@ const applyComposition = async ({
     const resolutions = new Map(handles.map(({ member, handle }) => [member.key, handle]))
     let root: CompositionRootPublicationResult
     try {
-      let callbackRan = false
+      // Build and publish every declared dist overlay before exposing root Buck authority.
+      // `.buckconfig` remains the final workspace-visible cutover file.
+      await publishOverlays()
       root = await primitives.publishRoot({
         workspaceRoot: EffectPath.unsafe.absoluteDir(`${request.workspaceRoot}/`),
         configMemberKeys: lockedMembers.map((member) => member.key),
@@ -1285,12 +1324,7 @@ const applyComposition = async ({
             await runtime.publisherRuntime.assertCapabilityProjection(input)
           },
         },
-        afterAuthorityPublished: async () => {
-          callbackRan = true
-          await publishOverlays()
-        },
       })
-      if (callbackRan === false) await publishOverlays()
     } catch (cause) {
       if (cause instanceof CompositionApplyError && cause.reason === 'CleanupFailure') throw cause
       if (overlayFailure !== undefined) throw overlayFailure

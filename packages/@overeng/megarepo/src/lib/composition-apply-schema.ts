@@ -11,6 +11,7 @@ import { DistOverlayResult } from './dist-overlay-lifecycle-schema.ts'
 import { DistOverlayDeclaration } from './dist-overlay-schema.ts'
 import { BuckCacheSectionSchema } from './generators/composition-root.ts'
 import { CpAMemberMountResult } from './member-mount-cp-a-schema.ts'
+import type { OwnedWorktreeAcquisitionPlan } from './owned-worktree-acquisition-schema.ts'
 
 const AbsolutePath = Schema.String.check(
   Schema.makeFilter<string>((value) =>
@@ -238,6 +239,15 @@ export const CompositionApplyOutputSchema = Schema.Union([
   CompositionApplyResultSchema,
 ]).annotate({ identifier: 'Megarepo.CompositionApplyOutput' })
 export type CompositionApplyOutput = typeof CompositionApplyOutputSchema.Type
+
+/** CLI-level composition cutover result retaining both lifecycle plans and the owned cwd. */
+export interface CompositionCommandOutput {
+  readonly _tag: 'CompositionDryRun' | 'CompositionApplied'
+  readonly acquisition: OwnedWorktreeAcquisitionPlan
+  readonly composition: CompositionApplyOutput
+  readonly workspaceRoot: string
+  readonly defaultCwd: string
+}
 
 /** Typed orchestration boundary retaining the failing phase, member, and recovery paths. */
 export class CompositionApplyError extends Schema.TaggedError<CompositionApplyError>()(

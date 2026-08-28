@@ -1,3 +1,5 @@
-members {
-    effect "effect-ts/effect#main"
+members {}
+
+generators {
+  composition enabled=#true platformHub="effect-utils" isolationDir="megarepo" {}
 }

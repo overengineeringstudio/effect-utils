@@ -32,6 +32,8 @@ export * from './lib/composition-capability-resolver-schema.ts'
 export * from './lib/composition-capability-resolver.ts'
 export * from './lib/composition-apply-schema.ts'
 export * from './lib/composition-apply.ts'
+export * from './lib/owned-capability-projection.ts'
+export * from './lib/composition-runtime.ts'
 
 // Pure Buck composition-root projection
 export * from './lib/generators/composition-root.ts'

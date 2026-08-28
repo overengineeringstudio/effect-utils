@@ -1038,14 +1038,9 @@ const preflight = ({
         recoveryPaths: [bareRepo, workspaceRoot],
       })
     }
-    const normalizedCwd = normalizedAbsolute(callerCwd)
-    if (isWithin({ parent: workspaceRoot, path: normalizedCwd }) === true) {
-      return yield* error({
-        reason: 'PreflightRefused',
-        path: normalizedCwd,
-        message: `Caller cwd '${normalizedCwd}' is inside worktree '${workspaceRoot}'`,
-      })
-    }
+    // A running shell cannot change cwd during acquisition. Git moves the directory inode while
+    // the command uses captured absolute paths and returns the new owned path as defaultCwd.
+    void callerCwd
 
     const collisions = [paths.tempPath, paths.rootStagePath, paths.ownedWorktree, paths.journalPath]
     for (const collision of collisions) {

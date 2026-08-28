@@ -229,6 +229,10 @@ const fixture = async (options: FixtureOptions = {}) => {
         metadata: mountMetadata({ workspaceRoot, key: mount.member, manifest }),
       }
     },
+    listPublishedMemberKeys: async () => [],
+    teardownMount: async () => {
+      throw new Error('unexpected teardown')
+    },
     inspectMountedMember: async ({ memberKey }) => inspections.get(memberKey)!,
     recoverOverlay: async ({ request: recovery }) => {
       calls.push(`recover:overlay:${recovery.member}:${recovery.target}`)
@@ -434,7 +438,7 @@ describe('composition apply integration', () => {
   })
 
   it.each(['first', 'update', 'nochange'] as const)(
-    'publishes overlays under the update lock for %s root authority',
+    'publishes overlays before the final %s root authority cutover',
     async (rootMode) => {
       const value = await fixture({ rootMode })
       try {
@@ -445,15 +449,13 @@ describe('composition apply integration', () => {
         expect(result.defaultCwd).toBe(value.request.ownedMemberPath)
         const overlayIndex = value.calls.findIndex((call) => call.startsWith('overlay:dep:'))
         const releaseIndex = value.calls.indexOf('lock:release')
-        expect(overlayIndex).toBeGreaterThan(
-          value.calls.indexOf(rootMode === 'nochange' ? 'root:nochange' : 'root:authority'),
+        const rootIndex = value.calls.indexOf(
+          rootMode === 'nochange' ? 'root:nochange' : 'root:authority',
         )
-        expect(releaseIndex).toBeGreaterThan(overlayIndex)
-        if (rootMode !== 'nochange') {
-          expect(value.calls.indexOf('root:commit')).toBeGreaterThan(
-            value.calls.indexOf('cap:owned:release'),
-          )
-        }
+        expect(rootIndex).toBeGreaterThan(overlayIndex)
+        expect(value.calls.indexOf('cap:owned:release')).toBeGreaterThan(overlayIndex)
+        expect(rootIndex).toBeGreaterThan(value.calls.indexOf('cap:owned:release'))
+        expect(releaseIndex).toBeGreaterThan(rootIndex)
       } finally {
         await value.cleanup()
       }
@@ -534,7 +536,7 @@ describe('composition apply integration', () => {
     }
   })
 
-  it('rolls back root publication after overlay failure while retaining source-valid mounts', async () => {
+  it('does not expose root authority after overlay failure and retains source-valid mounts', async () => {
     const value = await fixture({ rootMode: 'overlay-failure' })
     try {
       const result = await Effect.runPromise(
@@ -542,7 +544,7 @@ describe('composition apply integration', () => {
       )
       expect(result._tag).toBe('Failure')
       expect(value.calls).toContain('mount:dep:false')
-      expect(value.calls).toContain('root:rollback')
+      expect(value.calls.some((call) => call.startsWith('root:'))).toBe(false)
       expect(value.calls).toContain('scratch:dep:cleanup')
       expect(value.calls.some((call) => call.includes('rollback-mount'))).toBe(false)
       expect(value.calls.at(-1)).toBe('lock:release')

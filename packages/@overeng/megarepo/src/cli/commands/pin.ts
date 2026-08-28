@@ -35,6 +35,7 @@ import {
   writeLockFile,
 } from '../../lib/lock.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from '../../lib/member-mount.ts'
+import { teardownCpAMemberMount } from '../../lib/member-mount-cp-a.ts'
 import { classifyRef } from '../../lib/ref.ts'
 import { runPreflightChecks } from '../../lib/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
@@ -52,6 +53,7 @@ import {
 } from '../errors.ts'
 import * as Observability from '../observability.ts'
 import { PinApp, PinView } from '../renderers/PinOutput/mod.ts'
+import { runCompositionApply } from './composition.ts'
 
 /**
  * Pin a member to a specific ref.
@@ -97,6 +99,7 @@ export const pinCommand = Cli.Command.make(
           // Load config to verify member exists
           const { config: configRead, path: configPath } = yield* readMegarepoConfig(root.value)
           let config = configRead
+          const compositionEnabled = config.generators?.composition?.enabled === true
 
           if (!(member in config.members)) {
             tui.dispatch({
@@ -111,17 +114,25 @@ export const pinCommand = Cli.Command.make(
           const memberPathNormalized = memberPath.replace(/\/$/, '')
           const memberMount = yield* inspectMemberMount(memberPathNormalized)
           if (memberMount._tag === 'Foreign') {
-            const message = foreignMemberMountMessage({
-              name: member,
-              path: memberPathNormalized,
-              operation: 'pin',
-            })
-            tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
-            return yield* new ForeignMemberMountError({
-              message,
-              member,
-              path: memberPathNormalized,
-            })
+            const verifiedOwnedMount =
+              compositionEnabled === true
+                ? yield* teardownCpAMemberMount({
+                    request: { workspaceRoot: root.value, member, dryRun: true },
+                  }).pipe(Effect.result)
+                : undefined
+            if (verifiedOwnedMount?._tag !== 'Success') {
+              const message = foreignMemberMountMessage({
+                name: member,
+                path: memberPathNormalized,
+                operation: 'pin',
+              })
+              tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
+              return yield* new ForeignMemberMountError({
+                message,
+                member,
+                path: memberPathNormalized,
+              })
+            }
           }
 
           // Check if it's a local path (can't pin local paths)
@@ -151,8 +162,10 @@ export const pinCommand = Cli.Command.make(
           }
 
           // Load or create lock file
+          const physicalConfigPath = yield* fs.realPath(configPath)
+          const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
           const lockPath = EffectPath.ops.join(
-            root.value,
+            configOwner,
             EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
           )
           const lockFileOpt = yield* readLockFile(lockPath)
@@ -316,17 +329,14 @@ export const pinCommand = Cli.Command.make(
                 )
               }
             }
-            // Update the symlink
-            // Ensure repos directory exists
-            const reposDir = EffectPath.ops.parent(memberPath)
-            if (reposDir !== undefined) {
-              yield* fs.makeDirectory(reposDir, { recursive: true })
+            if (compositionEnabled === false) {
+              const reposDir = EffectPath.ops.parent(memberPath)
+              if (reposDir !== undefined) {
+                yield* fs.makeDirectory(reposDir, { recursive: true })
+              }
+              if (currentLink !== null) yield* fs.remove(memberPathNormalized)
+              yield* fs.symlink(worktreePath.replace(/\/$/, ''), memberPathNormalized)
             }
-
-            if (currentLink !== null) {
-              yield* fs.remove(memberPathNormalized)
-            }
-            yield* fs.symlink(worktreePath.replace(/\/$/, ''), memberPathNormalized)
 
             // Update lock file with new ref
             const url = getSourceUrl(source)
@@ -342,6 +352,10 @@ export const pinCommand = Cli.Command.make(
                 }),
               })
               yield* writeLockFile({ lockPath, lockFile })
+            }
+
+            if (compositionEnabled === true) {
+              yield* runCompositionApply({ workspaceRoot: root.value, dryRun: false, callerCwd: cwd })
             }
 
             // Keep the store liveness record fresh after repinning so a
@@ -465,7 +479,7 @@ export const pinCommand = Cli.Command.make(
             refType: 'commit',
           })
 
-          if (worktreeReady === true) {
+          if (worktreeReady === true && compositionEnabled === false) {
             // Update the symlink
             if (
               currentLink !== null &&
@@ -474,6 +488,10 @@ export const pinCommand = Cli.Command.make(
               yield* fs.remove(memberPathNormalized)
               yield* fs.symlink(commitWorktreePath.replace(/\/$/, ''), memberPathNormalized)
             }
+          }
+
+          if (compositionEnabled === true) {
+            yield* runCompositionApply({ workspaceRoot: root.value, dryRun: false, callerCwd: cwd })
           }
 
           // Keep the store liveness record fresh after pinning (the symlink may
@@ -568,7 +586,8 @@ export const unpinCommand = Cli.Command.make(
           const fs = yield* FileSystem.FileSystem
 
           // Load config to verify member exists
-          const { config } = yield* readMegarepoConfig(root.value)
+          const { config, path: configPath } = yield* readMegarepoConfig(root.value)
+          const compositionEnabled = config.generators?.composition?.enabled === true
 
           if (!(member in config.members)) {
             tui.dispatch({
@@ -583,22 +602,32 @@ export const unpinCommand = Cli.Command.make(
           const memberPathNormalized = memberPath.replace(/\/$/, '')
           const memberMount = yield* inspectMemberMount(memberPathNormalized)
           if (memberMount._tag === 'Foreign') {
-            const message = foreignMemberMountMessage({
-              name: member,
-              path: memberPathNormalized,
-              operation: 'unpin',
-            })
-            tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
-            return yield* new ForeignMemberMountError({
-              message,
-              member,
-              path: memberPathNormalized,
-            })
+            const verifiedOwnedMount =
+              compositionEnabled === true
+                ? yield* teardownCpAMemberMount({
+                    request: { workspaceRoot: root.value, member, dryRun: true },
+                  }).pipe(Effect.result)
+                : undefined
+            if (verifiedOwnedMount?._tag !== 'Success') {
+              const message = foreignMemberMountMessage({
+                name: member,
+                path: memberPathNormalized,
+                operation: 'unpin',
+              })
+              tui.dispatch({ _tag: 'SetError', error: 'foreign_member_mount', message })
+              return yield* new ForeignMemberMountError({
+                message,
+                member,
+                path: memberPathNormalized,
+              })
+            }
           }
 
           // Load lock file
+          const physicalConfigPath = yield* fs.realPath(configPath)
+          const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
           const lockPath = EffectPath.ops.join(
-            root.value,
+            configOwner,
             EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
           )
           const lockFileOpt = yield* readLockFile(lockPath)
@@ -639,7 +668,7 @@ export const unpinCommand = Cli.Command.make(
           lockFile = unpinMember({ lockFile, memberName: member })
           yield* writeLockFile({ lockPath, lockFile })
 
-          // Check if it's a remote source and update the symlink back to ref-based path
+          // cp-a mounts advance only through the typed composition apply service.
           const sourceString = config.members[member]
           if (sourceString === undefined) {
             // Member was removed from config but still in lock file - warn user
@@ -650,7 +679,11 @@ export const unpinCommand = Cli.Command.make(
             })
           } else {
             const source = parseSourceString(sourceString)
-            if (source !== undefined && isRemoteSource(source) === true) {
+            if (
+              compositionEnabled === false &&
+              source !== undefined &&
+              isRemoteSource(source) === true
+            ) {
               const store = yield* Store
               // Get the ref-based worktree path (use the locked ref)
               const refWorktreePath = store.getWorktreePath({
@@ -679,6 +712,10 @@ export const unpinCommand = Cli.Command.make(
                 }
               }
             }
+          }
+
+          if (compositionEnabled === true) {
+            yield* runCompositionApply({ workspaceRoot: root.value, dryRun: false, callerCwd: cwd })
           }
 
           tui.dispatch({

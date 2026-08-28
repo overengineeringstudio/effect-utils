@@ -8,6 +8,7 @@ import type { AbsoluteDirPath } from '@overeng/effect-path'
 
 import type { RefMismatch } from '../issues.ts'
 import type { NixLockSyncResult } from '../nix-lock/mod.ts'
+import type { CompositionCommandOutput } from '../composition-apply-schema.ts'
 
 /** Member sync result status */
 export type MemberSyncStatus =
@@ -49,6 +50,10 @@ export interface MegarepoSyncResult {
   readonly nestedResults: ReadonlyArray<MegarepoSyncResult>
   /** Results from lock sync (flake.lock, devenv.lock, nested megarepo.lock in recursive mode) */
   readonly lockSyncResults?: NixLockSyncResult | undefined
+  /** Owned member path a caller should use after an in-place composition migration. */
+  readonly defaultCwd?: string | undefined
+  /** Exact typed composition plan/result for structured callers. */
+  readonly composition?: CompositionCommandOutput | undefined
 }
 
 /** A member sync error with megarepo root context (includes nested megarepos). */
