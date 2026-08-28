@@ -1281,7 +1281,7 @@ describe('effect-utils CI composition workspace', () => {
     expect(typecheck.indexOf('Prepare effect-utils composition')).toBeLessThan(
       typecheck.indexOf('Enable Cachix cache'),
     )
-    expect(typecheck).toContain("if: github.event_name != 'pull_request'")
+    expect(typecheck).toContain("github.ref == 'refs/heads/main'")
     for (const job of [
       'ci-measurements-report',
       'test-integration-notion',
@@ -1290,13 +1290,18 @@ describe('effect-utils CI composition workspace', () => {
     ]) {
       const block =
         generatedCiWorkflowYamlSource.split(`  ${job}:\n`)[1]?.split(/^  [a-z]/m)[0] ?? ''
-      expect(block, job).toContain("github.event_name != 'pull_request'")
+      expect(block, job).toContain("github.ref == 'refs/heads/main'")
     }
     expect(prepareEffectUtilsCompositionScriptSource).toContain('env -i \\')
     expect(prepareEffectUtilsCompositionScriptSource).not.toContain('GITHUB_TOKEN')
     expect(prepareEffectUtilsCompositionScriptSource).toContain(
       "'+refs/heads/main:refs/remotes/origin/main'",
     )
+    const trustedRef = (event: string, ref: string) =>
+      ref === 'refs/heads/main' && (event === 'push' || event === 'workflow_dispatch')
+    expect(trustedRef('workflow_dispatch', 'refs/heads/feature')).toBe(false)
+    expect(trustedRef('workflow_dispatch', 'refs/heads/main')).toBe(true)
+    expect(trustedRef('pull_request', 'refs/heads/main')).toBe(false)
   })
 
   it('keeps cache versions stable across run ids and projects Buck at the canonical member store', () => {
