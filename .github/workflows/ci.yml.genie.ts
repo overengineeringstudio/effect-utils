@@ -6,6 +6,7 @@ import {
   cachixStep,
   checkoutStep,
   prepareCiScriptsStep,
+  prepareEffectUtilsCompositionStep,
   notifyAlignmentJob,
   evictCachedPnpmDepsStep,
   pnpmBuilderContractStep,
@@ -36,8 +37,10 @@ import {
   workflowReportPublisherStep,
   deployPreviewWorkflowReportPathOutputName,
   netlifyDeployStep,
+  nixCacheSetupStep,
   pnpmStateSetupStep,
   validateNixStoreStep,
+  withCiSourceRoot,
   defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
@@ -53,9 +56,11 @@ const baseSteps = [
   checkoutStep(),
   installNixStep(),
   ciMeasurementBaselineCheckoutStep,
-  prepareCiScriptsStep,
+  nixCacheSetupStep,
   cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
+  prepareEffectUtilsCompositionStep,
+  prepareCiScriptsStep,
   preparePinnedDevenvStep,
   pnpmStateSetupStep,
   restorePnpmStateStep(),
@@ -73,7 +78,7 @@ const baseSteps = [
     if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}",
     shell: 'bash',
     run: [
-      'diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"',
+      'diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"',
       'mkdir -p "$diag_dir"',
       'cat > "$diag_dir/synthetic-signature.log" <<\'EOF\'',
       'Failed to convert config.cachix to JSON',
@@ -141,12 +146,14 @@ const liveNetlifyCiToolsE2EStep = {
     NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
     NETLIFY_SITE_ID: '${{ secrets.NETLIFY_SITE_ID }}',
   },
-  run: [
-    'netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"',
-    'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
-    'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
-    'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
-  ].join('\n'),
+  run: withCiSourceRoot(
+    [
+      'netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"',
+      'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
+      'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
+      'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
+    ].join('\n'),
+  ),
 } as const
 
 const liveVercelCiToolsPreflightStep = {
@@ -220,12 +227,14 @@ const liveVercelCiToolsE2EStep = {
     VERCEL_SCOPE: '${{ secrets.VERCEL_SCOPE }}',
     VERCEL_AUTOMATION_BYPASS_SECRET: '${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}',
   },
-  run: [
-    'vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"',
-    'export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"',
-    'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
-    'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts',
-  ].join('\n'),
+  run: withCiSourceRoot(
+    [
+      'vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"',
+      'export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"',
+      'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
+      'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts',
+    ].join('\n'),
+  ),
 } as const
 
 const storybookPreviewBundlePath =
@@ -350,14 +359,16 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
   ],
 })
 
+// Checkout exemption inventory: nix-fod-check is a strict flake/FOD lane. It
+// deliberately runs no devenv task, Buck command, or composition-dependent helper.
 const strictNixJobBaseSteps = [
   checkoutStep(),
   installNixStep(),
   ciMeasurementBaselineCheckoutStep,
-  prepareCiScriptsStep,
+  nixCacheSetupStep,
   cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
-  validateNixStoreStep,
+  prepareCiScriptsStep,
 ] as const
 
 const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsStep>) => ({
@@ -391,15 +402,17 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
 const nativeDepPolicyAuditStep = {
   name: 'Audit native dependency policy',
   shell: 'bash',
-  run: [
-    'set -euo pipefail',
-    'audit=genie/ci-scripts/native-dep-policy-audit.ts',
-    'if command -v bun >/dev/null 2>&1; then',
-    '  bun "$audit"',
-    'else',
-    '  nix run nixpkgs#bun -- "$audit"',
-    'fi',
-  ].join('\n'),
+  run: withCiSourceRoot(
+    [
+      'set -euo pipefail',
+      'audit=genie/ci-scripts/native-dep-policy-audit.ts',
+      'if command -v bun >/dev/null 2>&1; then',
+      '  bun "$audit"',
+      'else',
+      '  nix run nixpkgs#bun -- "$audit"',
+      'fi',
+    ].join('\n'),
+  ),
 } as const
 
 // Core product jobs keyed by the shared Genie CI source of truth.
@@ -463,12 +476,14 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   'pnpm-regression': job({
     step: {
       name: 'pnpm regression suite',
-      run: [
-        'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
-        'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
-        'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
-        'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
-      ].join('\n'),
+      run: withCiSourceRoot(
+        [
+          'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+          'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
+          'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
+          'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
+        ].join('\n'),
+      ),
     },
   }),
   'bundle-smoke': job({
@@ -502,13 +517,15 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     extraSteps: [
       {
         name: 'Fetch baseline history for weaver:diff (SC-R11)',
-        run: [
-          'set -uo pipefail',
-          '# weaver:diff needs the merge-base with origin/main; the default checkout is shallow.',
-          'git fetch --no-tags --prune --unshallow origin 2>/dev/null \\',
-          '  || git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null \\',
-          '  || true',
-        ].join('\n'),
+        run: withCiSourceRoot(
+          [
+            'set -uo pipefail',
+            '# weaver:diff needs the merge-base with origin/main; the default checkout is shallow.',
+            'git fetch --no-tags --prune --unshallow origin 2>/dev/null \\',
+            '  || git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null \\',
+            '  || true',
+          ].join('\n'),
+        ),
       },
     ],
     step: {
@@ -518,8 +535,14 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   }),
 }
 
+// Source-shape/report aggregation intentionally use actions-checkout paths. Producers that
+// execute source commands write artifacts below the synthesized owned member instead.
 const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'
-const nixClosureMeasurementsDir = 'tmp/nix-closure-ci'
+const effectUtilsMemberTmpDir = '${{ env.EFFECT_UTILS_MEMBER_ROOT }}/tmp'
+// Intentional actions-checkout artifact path: devenvPerfJob owns ARTIFACT_DIR at job scope,
+// where neither `env` nor `runner` contexts are available; source commands still run in the member.
+const devenvPerfMeasurementsDir = '${{ github.workspace }}/tmp/devenv-perf-ci'
+const nixClosureMeasurementsDir = `${effectUtilsMemberTmpDir}/nix-closure-ci`
 const ciMeasurementReportDir = 'tmp/ci-measurement-report'
 
 const downloadCurrentMeasurementArtifactStep = ({
@@ -604,6 +627,7 @@ const extraJobs: Record<string, any> = {
         runId: '${{ github.run_id }}',
       }),
       artifactName: 'devenv-perf',
+      artifactDir: devenvPerfMeasurementsDir,
       baselineSeedRuns: [
         [
           ['25959801150', '655', 'df0420cd0397ffc6928d3c6ccc9c23052d6bc255'],
@@ -747,6 +771,7 @@ const extraJobs: Record<string, any> = {
       failureReminderStep,
     ],
   },
+  // Checkout exemption: source-shape measures actions-checkout bytes only; it runs no devenv/Buck.
   'source-shape': {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
@@ -799,6 +824,7 @@ const extraJobs: Record<string, any> = {
       }),
     ],
   },
+  // Checkout exemption: report aggregation uses only Nix-provided tools and downloaded artifacts.
   'ci-measurements-report': {
     name: 'ci/measurements-report',
     if: normalCiIf,
@@ -1049,6 +1075,7 @@ export default ciWorkflow({
     // Keep default-ref/source-policy separate from product checks: downstream
     // validation branches should fail one authority job, not obscure
     // lint/typecheck/test signal.
+    // Checkout exemption: policy scans checkout authority files and never invokes devenv or Buck.
     'default-ref-policy': defaultRefPolicyCheckJob({
       // Keep this tiny policy job on the same Namespace runner class as the
       // rest of CI so source-policy enforcement does not wait on legacy labels.
