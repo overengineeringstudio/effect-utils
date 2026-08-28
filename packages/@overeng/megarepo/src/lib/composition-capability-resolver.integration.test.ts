@@ -1,6 +1,16 @@
 import { execFileSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
-import { lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -92,7 +102,8 @@ const makeFixture = async ({
   const scripts = NodePath.join(memberRoot, 'scripts')
   const nixPath = NodePath.join(root, 'fake-nix')
   const nixLog = NodePath.join(root, 'nix.log')
-  await Promise.all([mkdir(scripts, { recursive: true }), mkdir(scratchRoot)])
+  await Promise.all([mkdir(scripts, { recursive: true }), mkdir(scratchRoot, { mode: 0o700 })])
+  await chmod(scratchRoot, 0o700)
   await writeFile(
     nixPath,
     `#!${shell}\nset -eu\nprintf '%s\\n' "$*" >>"$NIX_LOG"\ncase "\${FAKE_NIX_MODE:-one}" in\n  missing) exit 0 ;;\n  duplicate) printf '%s\\n%s\\n' "$FAKE_NIX_OUTPUT" "$FAKE_NIX_OUTPUT" ;;\n  nonstore) printf '/tmp/not-a-store-output\\n' ;;\n  lock-write-attempt)\n    case " $* " in\n      *" --no-write-lock-file "*) exit 73 ;;\n      *) printf 'mutated\\n' >"$FAKE_MEMBER_ROOT/flake.lock"; exit 74 ;;\n    esac ;;\n  fail) exit 37 ;;\n  *) printf '%s\\n' "$FAKE_NIX_OUTPUT" ;;\nesac\n`,
@@ -117,6 +128,11 @@ const makeFixture = async ({
         FAKE_NIX_OUTPUT: bashOutput,
       },
       nonce: () => 'candidate',
+      createPrivateScratch: async () => {
+        const path = await mkdtemp(NodePath.join(scratchRoot, 'private-'))
+        await chmod(path, 0o700)
+        return { path, cleanup: () => rm(path, { recursive: true, force: true }) }
+      },
     },
   }
 }
@@ -142,7 +158,6 @@ const resolve = (
 ) =>
   resolveCompositionCapabilities({
     memberRoot: fixture.memberRoot,
-    scratchRoot: fixture.scratchRoot,
     system: 'x86_64-linux',
     manifest: manifest(),
     dryRun: false,
@@ -189,6 +204,8 @@ describe('composition capability resolver', () => {
       ])
       expect(result.projectionDigest).toMatch(/^[0-9a-f]{64}$/u)
       expect((await lstat(result.candidateRoot)).mode & 0o777).toBe(0o700)
+      await result.release()
+      expect(await readdir(fixture.scratchRoot)).toEqual([])
     } finally {
       await clean(fixture)
     }
@@ -263,26 +280,8 @@ describe('composition capability resolver', () => {
         }),
       )
       expect(error.reason).toBe('CandidateReplaced')
-      expect(
-        (
-          await lstat(NodePath.join(fixture.scratchRoot, '.megarepo-capabilities-candidate'))
-        ).isSymbolicLink(),
-      ).toBe(true)
+      expect(await readdir(fixture.scratchRoot)).toEqual([])
       expect(await readFile(NodePath.join(outside, 'caller-owned'), 'utf8')).toBe('keep')
-      await expect(readFile(fixture.nixLog, 'utf8')).rejects.toThrow()
-    } finally {
-      await clean(fixture)
-    }
-  })
-
-  it('never removes a pre-existing caller path when the candidate name collides', async () => {
-    const fixture = await makeFixture()
-    try {
-      const collision = NodePath.join(fixture.scratchRoot, '.megarepo-capabilities-candidate')
-      await mkdir(collision)
-      await writeFile(NodePath.join(collision, 'caller-owned'), 'keep')
-      expect((await failure(resolve(fixture))).reason).toBe('InvalidInput')
-      expect(await readFile(NodePath.join(collision, 'caller-owned'), 'utf8')).toBe('keep')
     } finally {
       await clean(fixture)
     }
@@ -401,6 +400,51 @@ describe('composition capability resolver', () => {
     }
   })
 
+  it('creates and releases a default private scratch parent under the OS temp root', async () => {
+    const fixture = await makeFixture()
+    try {
+      const runtime = { ...fixture.runtime }
+      Reflect.deleteProperty(runtime, 'createPrivateScratch')
+      const result = await resolve(fixture, { runtime })
+      if (result._tag !== 'Resolved') throw new Error('unreachable')
+      expect(result.candidateRoot.startsWith(`${realpathSync(tmpdir())}${NodePath.sep}`)).toBe(true)
+      expect((await lstat(NodePath.dirname(result.candidateRoot))).mode & 0o777).toBe(0o700)
+      await result.release()
+      await expect(lstat(result.candidateRoot)).rejects.toThrow()
+    } finally {
+      await clean(fixture)
+    }
+  })
+
+  it.each(['projection', 'candidate'] as const)(
+    'refuses a %s symlink swap immediately before digest without touching outside data',
+    async (target) => {
+      const fixture = await makeFixture()
+      const outside = NodePath.join(fixture.root, `outside-${target}`)
+      try {
+        await mkdir(outside)
+        await writeFile(NodePath.join(outside, 'caller-owned'), 'keep')
+        const error = await failure(
+          resolve(fixture, {
+            runtime: {
+              ...fixture.runtime,
+              beforeProjectionDigest: async ({ candidateRoot, projectionPath }) => {
+                const path = target === 'candidate' ? candidateRoot : projectionPath
+                await rm(path, { recursive: true })
+                await symlink(outside, path, 'dir')
+              },
+            },
+          }),
+        )
+        expect(['CandidateReplaced', 'ProjectionFailure']).toContain(error.reason)
+        expect(await readFile(NodePath.join(outside, 'caller-owned'), 'utf8')).toBe('keep')
+        expect(await readdir(fixture.scratchRoot)).toEqual([])
+      } finally {
+        await clean(fixture)
+      }
+    },
+  )
+
   it('maps an aarch64-darwin Nix plan to the projector aarch64-macos platform', async () => {
     const fixture = await makeFixture()
     try {
@@ -444,6 +488,7 @@ describe('composition capability resolver', () => {
       expect(() =>
         resolvedCompositionCapabilityByToolId({ resolution: firstResult, toolId: 'missing' }),
       ).toThrow(/absent/u)
+      await Promise.all([firstResult.release(), secondResult.release()])
     } finally {
       await Promise.all([clean(first), clean(second)])
     }
