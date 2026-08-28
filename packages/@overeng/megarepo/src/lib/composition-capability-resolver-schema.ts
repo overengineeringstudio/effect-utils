@@ -93,6 +93,7 @@ export class CompositionCapabilityResolutionError extends Schema.TaggedError<Com
       'CommandFailure',
       'InvalidNixOutput',
       'InvalidExecutable',
+      'CandidateReplaced',
       'ProjectionFailure',
     ]),
     message: Schema.String,

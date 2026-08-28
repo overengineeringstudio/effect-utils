@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -95,7 +95,7 @@ const makeFixture = async ({
   await Promise.all([mkdir(scripts, { recursive: true }), mkdir(scratchRoot)])
   await writeFile(
     nixPath,
-    `#!${shell}\nset -eu\nprintf '%s\\n' "$*" >>"$NIX_LOG"\ncase "\${FAKE_NIX_MODE:-one}" in\n  missing) exit 0 ;;\n  duplicate) printf '%s\\n%s\\n' "$FAKE_NIX_OUTPUT" "$FAKE_NIX_OUTPUT" ;;\n  nonstore) printf '/tmp/not-a-store-output\\n' ;;\n  fail) exit 37 ;;\n  *) printf '%s\\n' "$FAKE_NIX_OUTPUT" ;;\nesac\n`,
+    `#!${shell}\nset -eu\nprintf '%s\\n' "$*" >>"$NIX_LOG"\ncase "\${FAKE_NIX_MODE:-one}" in\n  missing) exit 0 ;;\n  duplicate) printf '%s\\n%s\\n' "$FAKE_NIX_OUTPUT" "$FAKE_NIX_OUTPUT" ;;\n  nonstore) printf '/tmp/not-a-store-output\\n' ;;\n  lock-write-attempt)\n    case " $* " in\n      *" --no-write-lock-file "*) exit 73 ;;\n      *) printf 'mutated\\n' >"$FAKE_MEMBER_ROOT/flake.lock"; exit 74 ;;\n    esac ;;\n  fail) exit 37 ;;\n  *) printf '%s\\n' "$FAKE_NIX_OUTPUT" ;;\nesac\n`,
     { mode: 0o755 },
   )
   await writeFile(
@@ -179,8 +179,8 @@ describe('composition capability resolver', () => {
         'z-tool',
       ])
       expect(await readFile(fixture.nixLog, 'utf8')).toBe(
-        `build --no-link --print-out-paths ${fixture.memberRoot}#a-package\n` +
-          `build --no-link --print-out-paths ${fixture.memberRoot}#z-package\n`,
+        `build --no-link --print-out-paths --no-write-lock-file ${fixture.memberRoot}#a-package\n` +
+          `build --no-link --print-out-paths --no-write-lock-file ${fixture.memberRoot}#z-package\n`,
       )
       expect(result.projectorCommand.args.slice(2, 5)).toEqual([
         'x86_64-linux',
@@ -188,6 +188,35 @@ describe('composition capability resolver', () => {
         'test/a/v1',
       ])
       expect(result.projectionDigest).toMatch(/^[0-9a-f]{64}$/u)
+      expect((await lstat(result.candidateRoot)).mode & 0o777).toBe(0o700)
+    } finally {
+      await clean(fixture)
+    }
+  })
+
+  it('passes --no-write-lock-file and fails closed without mutating a member lock', async () => {
+    const fixture = await makeFixture()
+    try {
+      const lockPath = NodePath.join(fixture.memberRoot, 'flake.lock')
+      await writeFile(NodePath.join(fixture.memberRoot, 'flake.nix'), '{ outputs = _: {}; }\n')
+      await writeFile(lockPath, 'original-lock-bytes\n')
+      const error = await failure(
+        resolve(fixture, {
+          runtime: {
+            ...fixture.runtime,
+            env: {
+              ...fixture.runtime.env,
+              FAKE_NIX_MODE: 'lock-write-attempt',
+              FAKE_MEMBER_ROOT: fixture.memberRoot,
+            },
+          },
+        }),
+      )
+      expect(error.reason).toBe('CommandFailure')
+      expect(await readFile(lockPath, 'utf8')).toBe('original-lock-bytes\n')
+      expect(await readFile(fixture.nixLog, 'utf8')).toContain(
+        '--print-out-paths --no-write-lock-file',
+      )
     } finally {
       await clean(fixture)
     }
@@ -211,6 +240,36 @@ describe('composition capability resolver', () => {
       )
       expect(error.reason).toBe('InvalidNixOutput')
       expect(await readdir(fixture.scratchRoot)).toEqual(['caller-sentinel'])
+    } finally {
+      await clean(fixture)
+    }
+  })
+
+  it('refuses a candidate replaced by a symlink and never follows or removes the replacement', async () => {
+    const fixture = await makeFixture()
+    const outside = NodePath.join(fixture.root, 'outside')
+    try {
+      await mkdir(outside)
+      await writeFile(NodePath.join(outside, 'caller-owned'), 'keep')
+      const error = await failure(
+        resolve(fixture, {
+          runtime: {
+            ...fixture.runtime,
+            afterCandidateCreated: async (candidateRoot) => {
+              await rm(candidateRoot, { recursive: true })
+              await symlink(outside, candidateRoot, 'dir')
+            },
+          },
+        }),
+      )
+      expect(error.reason).toBe('CandidateReplaced')
+      expect(
+        (
+          await lstat(NodePath.join(fixture.scratchRoot, '.megarepo-capabilities-candidate'))
+        ).isSymbolicLink(),
+      ).toBe(true)
+      expect(await readFile(NodePath.join(outside, 'caller-owned'), 'utf8')).toBe('keep')
+      await expect(readFile(fixture.nixLog, 'utf8')).rejects.toThrow()
     } finally {
       await clean(fixture)
     }
@@ -329,6 +388,7 @@ describe('composition capability resolver', () => {
         'build',
         '--no-link',
         '--print-out-paths',
+        '--no-write-lock-file',
         `${fixture.memberRoot}#buck2`,
       ])
       expect(result.projectorCommand.args).toContain(
@@ -336,6 +396,17 @@ describe('composition capability resolver', () => {
       )
       expect(await readdir(fixture.scratchRoot)).toEqual([])
       await expect(readFile(fixture.nixLog, 'utf8')).rejects.toThrow()
+    } finally {
+      await clean(fixture)
+    }
+  })
+
+  it('maps an aarch64-darwin Nix plan to the projector aarch64-macos platform', async () => {
+    const fixture = await makeFixture()
+    try {
+      const result = await resolve(fixture, { dryRun: true, system: 'aarch64-darwin' })
+      expect(result.projectorPlatform).toBe('aarch64-macos')
+      expect(result.projectorCommand.args[2]).toBe('aarch64-macos')
     } finally {
       await clean(fixture)
     }
