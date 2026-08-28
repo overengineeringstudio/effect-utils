@@ -743,33 +743,52 @@ export const runCommand = ({
 
     const doSync = (progressHandle?: SyncUIHandle) =>
       effectiveMode === 'apply' && compositionEnabled === true
-        ? runCompositionApply({
-            workspaceRoot: root.value,
-            dryRun,
-            callerCwd: cwd,
-          }).pipe(
-            Effect.map((composition) => {
-              const appliedMembers =
-                composition.composition._tag === 'Applied'
-                  ? composition.composition.members.map((member) => member.memberKey)
-                  : composition.composition.steps
-                      .filter((step) => step._tag === 'Capability')
-                      .map((step) => step.memberKey)
-              return {
-                root: root.value,
-                results: [...new Set(appliedMembers)].map((name) => ({
+        ? Effect.gen(function* () {
+            const ignoredMembers = config.generators?.composition?.ignoredMembers ?? []
+            const legacy =
+              ignoredMembers.length === 0
+                ? undefined
+                : yield* syncMegarepo({
+                    megarepoRoot: root.value,
+                    options: {
+                      mode: 'apply',
+                      dryRun,
+                      force,
+                      all: false,
+                      only: ignoredMembers,
+                      skip: undefined,
+                      gitProtocol,
+                      createBranches,
+                    },
+                  })
+            const composition = yield* runCompositionApply({
+              workspaceRoot: root.value,
+              dryRun,
+              callerCwd: cwd,
+            })
+            const appliedMembers =
+              composition.composition._tag === 'Applied'
+                ? composition.composition.members.map((member) => member.memberKey)
+                : composition.composition.steps
+                    .filter((step) => step._tag === 'Capability')
+                    .map((step) => step.memberKey)
+            return {
+              root: root.value,
+              results: [
+                ...(legacy?.results ?? []),
+                ...[...new Set(appliedMembers)].map((name) => ({
                   name,
                   status: 'applied' as const,
                   message: dryRun === true ? 'planned composition update' : undefined,
                 })),
-                nestedMegarepos: [],
-                nestedResults: [],
-                lockSyncResults: undefined,
-                defaultCwd: composition.defaultCwd,
-                composition,
-              } satisfies MegarepoSyncResult
-            }),
-          )
+              ],
+              nestedMegarepos: [],
+              nestedResults: [],
+              lockSyncResults: undefined,
+              defaultCwd: composition.defaultCwd,
+              composition,
+            } satisfies MegarepoSyncResult
+          })
         : syncMegarepo({
             megarepoRoot: root.value,
             options: {

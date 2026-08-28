@@ -442,7 +442,12 @@ describe('config', () => {
         members: {},
         generators: {
           vscode: { enabled: true, exclude: ['docs'] },
-          composition: { enabled: true, platformHub: 'effect-utils', isolationDir: 'fleet-buck' },
+          composition: {
+            enabled: true,
+            platformHub: 'effect-utils',
+            ignoredMembers: ['effect'],
+            isolationDir: 'fleet-buck',
+          },
         },
       }
       const result = Schema.decodeUnknownSync(MegarepoConfig)(input)
@@ -450,6 +455,7 @@ describe('config', () => {
       expect(result.generators?.vscode?.exclude).toEqual(['docs'])
       expect(result.generators?.composition?.enabled).toBe(true)
       expect(result.generators?.composition?.platformHub).toBe('effect-utils')
+      expect(result.generators?.composition?.ignoredMembers).toEqual(['effect'])
       expect(result.generators?.composition?.isolationDir).toBe('fleet-buck')
     })
 
