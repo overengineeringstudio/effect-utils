@@ -12,7 +12,11 @@ import * as Git from '../../lib/git.ts'
 import { createLockedMember, LockFile } from '../../lib/lock.ts'
 import type { MegarepoStore } from '../../lib/store.ts'
 import { addCommit, initGitRepo } from '../../test-utils/setup.ts'
-import { CompositionCutoverError, resolveLockedCompositionMembers } from './composition.ts'
+import {
+  CompositionCutoverError,
+  readCompositionIgnoredLock,
+  resolveLockedCompositionMembers,
+} from './composition.ts'
 
 interface Fixture {
   readonly sourcePath: AbsoluteDirPath
@@ -137,4 +141,49 @@ describe('composition locked source admission', () => {
       ),
     )
   }
+})
+
+describe('reference-only member lock lookup', () => {
+  const lockBytes = (name: string, commit: string): string =>
+    `${JSON.stringify({
+      version: 1,
+      members: {
+        [name]: {
+          url: `https://github.com/public/${name}`,
+          ref: 'main',
+          commit,
+          pinned: false,
+          lockedAt: '2026-01-01T00:00:00.000Z',
+        },
+      },
+    })}\n`
+
+  it.effect(
+    'prefers the acquired owned-member lock and falls back to the legacy root during dry-run',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const workspaceRoot = yield* fs.makeTempDirectoryScoped()
+        const ownedMemberPath = NodePath.join(workspaceRoot, 'repos', 'owned')
+        yield* fs.makeDirectory(ownedMemberPath, { recursive: true })
+        yield* fs.writeFileString(
+          EffectPath.unsafe.absoluteFile(NodePath.join(workspaceRoot, 'megarepo.lock')),
+          lockBytes('legacy', 'a'.repeat(40)),
+        )
+
+        const legacy = yield* readCompositionIgnoredLock({ workspaceRoot, ownedMemberPath })
+        expect(Option.getOrThrow(legacy).members.legacy?.commit).toBe('a'.repeat(40))
+
+        yield* fs.writeFileString(
+          EffectPath.unsafe.absoluteFile(NodePath.join(ownedMemberPath, 'megarepo.lock')),
+          lockBytes('owned', 'b'.repeat(40)),
+        )
+        const acquired = yield* readCompositionIgnoredLock({ workspaceRoot, ownedMemberPath })
+        expect(Option.getOrThrow(acquired).members.owned?.commit).toBe('b'.repeat(40))
+        expect(Option.getOrThrow(acquired).members.legacy).toBeUndefined()
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
 })
