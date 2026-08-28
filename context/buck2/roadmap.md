@@ -139,9 +139,12 @@ RENAME_EXCHANGE advance.
 - The two-stage canonical prune/install key and normalization gate landed and
   was measured with the Phase-1 tui-core transfer; unrelated manifest churn
   executes only the small prune action.
-- Remaining gate: a real-editor soak on one package and the editor publication
-  mechanism. Until that passes, the root install is transitional and listed in
-  the deletion ledger.
+- The tui-core real-editor soak and scoped publication mechanism pass. The
+  remaining gate is whole-required-consumer coverage: every editor/tool
+  consumer gets a Buck-owned view with staleness checks, real source/dist
+  sibling behavior is exercised, and test/Storybook/Genie/lint package-bin
+  consumers leave the root install. Delete the root install and its task edges
+  only with that final deletion-ledger proof.
 
 ## Phase 5 — Rust and products
 
