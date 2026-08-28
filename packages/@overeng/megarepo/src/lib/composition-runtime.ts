@@ -1,23 +1,26 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { lstat, mkdir, readFile, rm } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
 
 import {
   type CompositionApplyRuntime,
   type CompositionOverlayScratchRuntime,
 } from './composition-apply.ts'
+import { COMPOSITION_CAPABILITY_PROJECTOR_PATH } from './composition-capability-resolver-schema.ts'
 import {
+  compositionCapabilityProjectorEnvironment,
   compositionCapabilityRuntimeFromEnv,
   type CompositionCapabilityRuntime,
 } from './composition-capability-resolver.ts'
-import { COMPOSITION_CAPABILITY_PROJECTOR_PATH } from './composition-capability-resolver-schema.ts'
 import {
   installOwnedCapabilityProjection,
   planOwnedCapabilityProjection,
 } from './owned-capability-projection.ts'
 import { WORKSPACE_UPDATE_LOCK_PATH } from './workspace-update-lock-schema.ts'
 
+/** Nix-wrapper environment contract for composition execution. */
 export const compositionRuntimeEnvironmentNames = {
   cpPath: 'MR_COMPOSITION_CP_BIN',
   mvPath: 'MR_CAPABILITY_MV_BIN',
@@ -70,53 +73,30 @@ const run = ({
     })
   })
 
-const projectorEnvironment = ({
-  runtime,
-  env,
-}: {
-  readonly runtime: CompositionCapabilityRuntime
-  readonly env: Readonly<Record<string, string | undefined>>
-}): NodeJS.ProcessEnv => ({
-  ...env,
-  GAWK_BIN: runtime.gawkPath,
-  AWK_BIN: runtime.awkPath,
-  GREP_BIN: runtime.grepPath,
-  JQ_BIN: runtime.jqPath,
-  MKDIR_BIN: runtime.mkdirPath,
-  RM_BIN: runtime.rmPath,
-  MV_BIN: runtime.mvPath,
-  LN_BIN: runtime.lnPath,
-  READLINK_BIN: runtime.readlinkPath,
-  DIRNAME_BIN: runtime.dirnamePath,
-  BASENAME_BIN: runtime.basenamePath,
-  SHA256_BIN: runtime.sha256Path,
-  SORT_BIN: runtime.sortPath,
-  XARGS_BIN: runtime.xargsPath,
-  FIND_BIN: runtime.findPath,
-  FLOCK_BIN: runtime.flockPath,
-  DIFF_BIN: runtime.diffPath,
-})
-
 const checkProjection = async ({
   memberRoot,
   capabilityRuntime,
-  env,
 }: {
   readonly memberRoot: string
   readonly capabilityRuntime: CompositionCapabilityRuntime
-  readonly env: Readonly<Record<string, string | undefined>>
 }) => {
   const projector = NodePath.join(memberRoot, COMPOSITION_CAPABILITY_PROJECTOR_PATH)
   const info = await lstat(projector)
   if (info.isFile() === false || info.isSymbolicLink() === true) {
     throw new TypeError(`Capability projector is not a tracked regular file: ${projector}`)
   }
-  await run({
-    executable: capabilityRuntime.bashPath,
-    args: [projector, '--check', memberRoot],
-    cwd: memberRoot,
-    env: projectorEnvironment({ runtime: capabilityRuntime, env }),
-  })
+  const privateRoot = await mkdtemp(NodePath.join(tmpdir(), 'megarepo-capability-check-'))
+  await chmod(privateRoot, 0o700)
+  try {
+    await run({
+      executable: capabilityRuntime.bashPath,
+      args: [projector, '--check', memberRoot],
+      cwd: memberRoot,
+      env: compositionCapabilityProjectorEnvironment({ runtime: capabilityRuntime, privateRoot }),
+    })
+  } finally {
+    await rm(privateRoot, { recursive: true, force: true })
+  }
 }
 
 const overlayKey = ({
@@ -140,13 +120,7 @@ const overlayScratchRuntime = (workspaceRoot: string): CompositionOverlayScratch
     if (input.workspaceRoot !== workspaceRoot) {
       throw new TypeError('Overlay scratch workspace does not match its runtime authority')
     }
-    return NodePath.join(
-      workspaceRoot,
-      '.megarepo',
-      'overlay-scratch',
-      overlayKey(input),
-      'output',
-    )
+    return NodePath.join(workspaceRoot, '.megarepo', 'overlay-scratch', overlayKey(input), 'output')
   }
   return {
     planOutputPath: pathFor,
@@ -198,7 +172,7 @@ export const compositionApplyRuntimeFromEnv = ({
   readonly env?: Readonly<Record<string, string | undefined>>
 }): CompositionApplyRuntime => {
   const workspaceRoot = normalizedAbsolute({ value: rawWorkspaceRoot, name: 'workspaceRoot' })
-  const capabilityRuntime = compositionCapabilityRuntimeFromEnv(env)
+  const capabilityRuntime = { ...compositionCapabilityRuntimeFromEnv(env), env }
   const cpPath = normalizedAbsolute({
     value: required({ env, name: compositionRuntimeEnvironmentNames.cpPath }),
     name: compositionRuntimeEnvironmentNames.cpPath,
@@ -227,7 +201,7 @@ export const compositionApplyRuntimeFromEnv = ({
     throw new TypeError(`Pinned composition platform '${platform}' disagrees with '${system}'`)
   }
 
-  const check = (memberRoot: string) => checkProjection({ memberRoot, capabilityRuntime, env })
+  const check = (memberRoot: string) => checkProjection({ memberRoot, capabilityRuntime })
   const nonce = () => randomBytes(16).toString('hex')
   return {
     ownedCapabilityProjection: {

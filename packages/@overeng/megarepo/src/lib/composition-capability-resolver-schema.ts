@@ -90,6 +90,7 @@ export class CompositionCapabilityResolutionError extends Schema.TaggedError<Com
       'InvalidInput',
       'InvalidRuntime',
       'MissingProjector',
+      'InvalidLock',
       'CommandFailure',
       'InvalidNixOutput',
       'InvalidExecutable',

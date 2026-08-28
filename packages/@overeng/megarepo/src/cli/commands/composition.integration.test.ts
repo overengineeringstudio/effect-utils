@@ -1,0 +1,144 @@
+import * as NodePath from 'node:path'
+
+import { NodeServices } from '@effect/platform-node'
+import { describe, it } from '@effect/vitest'
+import { Effect, Option } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import { expect } from 'vitest'
+
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+
+import * as Git from '../../lib/git.ts'
+import { createLockedMember, LockFile } from '../../lib/lock.ts'
+import type { MegarepoStore } from '../../lib/store.ts'
+import { addCommit, initGitRepo } from '../../test-utils/setup.ts'
+import { CompositionCutoverError, resolveLockedCompositionMembers } from './composition.ts'
+
+interface Fixture {
+  readonly sourcePath: AbsoluteDirPath
+  readonly store: MegarepoStore
+  readonly lockFile: LockFile
+}
+
+const makeFixture = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const root = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+  const seed = EffectPath.ops.join(root, EffectPath.unsafe.relativeDir('seed/'))
+  const repoBase = EffectPath.ops.join(
+    root,
+    EffectPath.unsafe.relativeDir('github.com/public/member/'),
+  )
+  const bareRepo = EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('.bare/'))
+  yield* fs.makeDirectory(seed, { recursive: true })
+  yield* initGitRepo(seed)
+  yield* fs.makeDirectory(EffectPath.unsafe.absoluteDir(`${NodePath.join(seed, 'scripts')}/`), {
+    recursive: true,
+  })
+  yield* fs.writeFileString(
+    EffectPath.unsafe.absoluteFile(NodePath.join(seed, '.gitignore')),
+    'ignored.cache\n',
+  )
+  yield* fs.writeFileString(
+    EffectPath.unsafe.absoluteFile(NodePath.join(seed, 'flake.lock')),
+    '{"nodes":{},"root":"root","version":7}\n',
+  )
+  yield* fs.writeFileString(
+    EffectPath.unsafe.absoluteFile(NodePath.join(seed, 'scripts/buck2-capability-project.sh')),
+    '#!/bin/sh\nexit 0\n',
+  )
+  yield* addCommit({ repoPath: seed, message: 'Create locked source' })
+  const commit = yield* Git.getCurrentCommit(seed)
+  yield* fs.makeDirectory(repoBase, { recursive: true })
+  yield* Git.runCommand({ cwd: root, args: ['clone', '--bare', seed, bareRepo] })
+  const sourcePath = EffectPath.ops.join(
+    repoBase,
+    EffectPath.unsafe.relativeDir(`refs/commits/${commit}/`),
+  )
+  yield* fs.makeDirectory(
+    EffectPath.unsafe.absoluteDir(`${NodePath.dirname(sourcePath.replace(/\/$/u, ''))}/`),
+    { recursive: true },
+  )
+  yield* Git.createWorktreeDetached({ repoPath: bareRepo, worktreePath: sourcePath, commit })
+
+  const store: MegarepoStore = {
+    basePath: root,
+    getRepoBasePath: () => repoBase,
+    getBareRepoPath: () => bareRepo,
+    getWorktreePath: () => sourcePath,
+    hasBareRepo: () => Effect.succeed(true),
+    hasWorktree: () => Effect.succeed(true),
+    listRepos: Effect.succeed([]),
+    listWorktrees: () => Effect.succeed([]),
+    getRepoPath: () => repoBase,
+    hasRepo: () => Effect.succeed(true),
+  }
+  const lockFile = new LockFile({
+    version: 1,
+    members: {
+      member: createLockedMember({
+        url: 'https://github.com/public/member',
+        ref: 'main',
+        commit,
+      }),
+    },
+  })
+  return { sourcePath, store, lockFile } satisfies Fixture
+})
+
+const admit = (fixture: Fixture) =>
+  resolveLockedCompositionMembers({
+    configMembers: { member: 'public/member' },
+    lockFile: fixture.lockFile,
+    store: fixture.store,
+  })
+
+describe('composition locked source admission', () => {
+  it.effect(
+    'admits only the canonical registered detached commit worktree',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* makeFixture
+        expect(yield* admit(fixture)).toEqual([
+          {
+            key: 'member',
+            sourcePath: fixture.sourcePath.replace(/\/+$/u, ''),
+            lockedCommit: fixture.lockFile.members.member!.commit,
+          },
+        ])
+        expect(yield* Git.getCurrentBranch(fixture.sourcePath)).toEqual(Option.none())
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  for (const [kind, path] of [
+    ['tracked', 'flake.lock'],
+    ['untracked', 'untracked.txt'],
+    ['ignored', 'ignored.cache'],
+    ['branch-attached', 'branch'],
+  ] as const) {
+    it.effect(
+      `refuses ${kind} source state before composition effects`,
+      Effect.fnUntraced(
+        function* () {
+          const fixture = yield* makeFixture
+          if (kind === 'branch-attached') {
+            yield* Git.runCommand({ cwd: fixture.sourcePath, args: ['checkout', '-b', path] })
+          } else {
+            yield* (yield* FileSystem.FileSystem).writeFileString(
+              EffectPath.unsafe.absoluteFile(NodePath.join(fixture.sourcePath, path)),
+              `${kind}\n`,
+            )
+          }
+          const exit = yield* Effect.flip(admit(fixture))
+          expect(exit).toBeInstanceOf(CompositionCutoverError)
+          expect(exit.reason).toBe('LockedSourceRefused')
+          if (kind === 'ignored') expect(exit.message).toContain('ignored bytes cannot enter R6')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+})
