@@ -548,32 +548,40 @@ const copyTree = ({
 const materializeNodeModules = async (options: MaterializeOptions): Promise<void> => {
   requirePinnedPnpm(options.pnpm)
   const output = resolve(options.output)
-  const stage = `${output}.stage`
+  const stageRoot = `${output}.stage`
+  const installRoot = join(stageRoot, 'package')
   const storeDir = resolve(options.storeDir)
   requireWarmStore({ storeDir, outputParent: dirname(output) })
 
-  rmSync(stage, { recursive: true, force: true })
+  rmSync(stageRoot, { recursive: true, force: true })
   rmSync(output, { recursive: true, force: true })
-  mkdirSync(stage, { recursive: true })
+  mkdirSync(installRoot, { recursive: true })
   try {
-    copyTree({ source: resolve(options.descriptor), destination: stage })
+    copyTree({ source: resolve(options.descriptor), destination: installRoot })
     const [descriptorModule, normalizerModule] = await Promise.all([
       import('./pnpm-install-descriptor.ts'),
       import('./pnpm-deploy-normalizer.ts'),
     ])
-    const descriptor = descriptorModule.readPnpmInstallDescriptor(stage)
-    const lockfilePath = join(stage, 'pnpm-lock.yaml')
-    const rehydratedLockfile: unknown = descriptorModule.rehydratePnpmWorkspacePlaceholder({
-      lockfile: readFileSync(lockfilePath, 'utf8'),
-      installRoot: stage,
-    })
-    if (typeof rehydratedLockfile !== 'string') {
-      throw new Error('buck2 materializer: lockfile rehydrator returned a non-string')
+    const descriptor = descriptorModule.readPnpmInstallDescriptor(installRoot)
+    for (const file of [descriptor.files.lockfile, descriptor.files.packageManifest]) {
+      const filePath = join(installRoot, file)
+      const rehydrated: unknown = descriptorModule.rehydratePnpmWorkspaceReferences({
+        source: readFileSync(filePath, 'utf8'),
+      })
+      if (typeof rehydrated !== 'string') {
+        throw new Error('buck2 materializer: workspace rehydrator returned a non-string')
+      }
+      writeFileSync(filePath, rehydrated)
     }
-    writeFileSync(lockfilePath, rehydratedLockfile)
+    for (const file of descriptor.files.workspacePackageManifests) {
+      const source = join(installRoot, file)
+      const destination = join(stageRoot, file)
+      mkdirSync(dirname(destination), { recursive: true })
+      copyFileTo({ source, destination, writable: true })
+    }
     const installArgv: unknown = descriptorModule.resolvePnpmInstallArgv({
       descriptor,
-      installRoot: stage,
+      installRoot,
       storeDir,
     })
     if (
@@ -583,10 +591,11 @@ const materializeNodeModules = async (options: MaterializeOptions): Promise<void
       throw new Error('buck2 materializer: descriptor resolved a non-string pnpm argv')
     }
     runPnpm({ pnpm: options.pnpm, args: installArgv })
+    rmSync(join(stageRoot, 'packages'), { recursive: true, force: true })
 
     normalizerModule.normalizePnpmDeploy({
-      tree: stage,
-      stagePrefix: stage,
+      tree: installRoot,
+      stagePrefix: installRoot,
       forbiddenPrefixes: [
         storeDir,
         realpathSync(storeDir),
@@ -595,13 +604,13 @@ const materializeNodeModules = async (options: MaterializeOptions): Promise<void
         realpathSync(process.cwd()),
       ],
     })
-    renameSync(join(stage, 'node_modules'), output)
+    renameSync(join(installRoot, 'node_modules'), output)
     assertContainedSymlinks(output)
   } catch (error) {
     rmSync(output, { recursive: true, force: true })
     throw error
   } finally {
-    rmSync(stage, { recursive: true, force: true })
+    rmSync(stageRoot, { recursive: true, force: true })
   }
 }
 

@@ -3,7 +3,10 @@ set -euo pipefail
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
-MATERIALIZER="$ROOT/scripts/tui-core-materialize-dist.sh"
+MATERIALIZER="$ROOT/scripts/typescript-materialize-dist.sh"
+PACKAGE_PATH="packages/@overeng/tui-core"
+TARGET="effect_utils//packages/@overeng/tui-core:dist"
+DECLARATION_ENTRYPOINT="src/mod.d.ts"
 REAL_MV="$(command -v mv)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -20,8 +23,8 @@ run_test() {
 make_repo() {
   repo="$1"
   rm -rf -- "$repo"
-  mkdir -p "$repo/packages/@overeng/tui-core/dist/src" "$repo/bin"
-  printf 'old declarations\n' > "$repo/packages/@overeng/tui-core/dist/src/mod.d.ts"
+  mkdir -p "$repo/$PACKAGE_PATH/dist/src" "$repo/bin"
+  printf 'old declarations\n' > "$repo/$PACKAGE_PATH/dist/$DECLARATION_ENTRYPOINT"
   cat > "$repo/bin/buck2" <<'BUCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -60,7 +63,7 @@ BUCK
 assert_old_dist() {
   repo="$1"
   expected='old declarations'
-  actual="$(cat "$repo/packages/@overeng/tui-core/dist/src/mod.d.ts")"
+  actual="$(cat "$repo/$PACKAGE_PATH/dist/$DECLARATION_ENTRYPOINT")"
   [ "$actual" = "$expected" ] || {
     echo "FAIL: expected old dist to remain, got: $actual" >&2
     return 1
@@ -69,7 +72,7 @@ assert_old_dist() {
 
 assert_no_staging() {
   repo="$1"
-  if compgen -G "$repo/packages/@overeng/tui-core/.dist-buck2.*" >/dev/null; then
+  if compgen -G "$repo/$PACKAGE_PATH/.dist-buck2.*" >/dev/null; then
     echo "FAIL: materializer left a staging directory" >&2
     return 1
   fi
@@ -79,7 +82,7 @@ test_missing_directory() {
   repo="$TEST_ROOT/missing-directory"
   make_repo "$repo"
   if FAKE_BUCK_SCENARIO=missing-directory BUCK2_BIN="$repo/bin/buck2" \
-    bash "$MATERIALIZER" "$repo"; then
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT"; then
     echo "FAIL: missing Buck output directory was accepted" >&2
     return 1
   fi
@@ -91,7 +94,7 @@ test_missing_mod() {
   repo="$TEST_ROOT/missing-mod"
   make_repo "$repo"
   if FAKE_BUCK_SCENARIO=missing-mod BUCK2_BIN="$repo/bin/buck2" \
-    bash "$MATERIALIZER" "$repo"; then
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT"; then
     echo "FAIL: Buck output without src/mod.d.ts was accepted" >&2
     return 1
   fi
@@ -104,17 +107,17 @@ test_replaces_stale_dist() {
   make_repo "$repo"
   FAKE_BUCK_SCENARIO=success NEW_DECLARATIONS='fresh declarations' \
     FAKE_BUCK_LOG="$repo/buck-args" BUCK2_BIN="$repo/bin/buck2" \
-    bash "$MATERIALIZER" "$repo"
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT"
   mapfile -t buck_args < "$repo/buck-args"
   [ "${#buck_args[@]}" -eq 4 ] &&
     [ "${buck_args[0]}" = build ] &&
-    [ "${buck_args[1]}" = '//packages/@overeng/tui-core:dist' ] &&
+    [ "${buck_args[1]}" = "$TARGET" ] &&
     [ "${buck_args[2]}" = --out ] &&
-    [[ "${buck_args[3]}" = "$repo/packages/@overeng/tui-core/.dist-buck2."*/dist ]] || {
+    [[ "${buck_args[3]}" = "$repo/$PACKAGE_PATH/.dist-buck2."*/dist ]] || {
       echo "FAIL: materializer did not invoke the expected Buck build" >&2
       return 1
     }
-  actual="$(cat "$repo/packages/@overeng/tui-core/dist/src/mod.d.ts")"
+  actual="$(cat "$repo/$PACKAGE_PATH/dist/$DECLARATION_ENTRYPOINT")"
   [ "$actual" = 'fresh declarations' ] || {
     echo "FAIL: stale dist was not replaced by fresh bytes" >&2
     return 1
@@ -143,7 +146,7 @@ MV
   chmod +x "$repo/bin/mv"
   if PATH="$repo/bin:$PATH" REAL_MV="$REAL_MV" MV_COUNT_FILE="$repo/mv-count" \
     FAKE_BUCK_SCENARIO=success BUCK2_BIN="$repo/bin/buck2" \
-    bash "$MATERIALIZER" "$repo"; then
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT"; then
     echo "FAIL: post-publish validation failure returned success" >&2
     return 1
   fi

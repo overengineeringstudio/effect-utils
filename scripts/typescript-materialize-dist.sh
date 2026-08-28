@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 1 ]; then
-  echo "usage: $0 REPO_ROOT" >&2
+if [ "$#" -ne 4 ]; then
+  echo "usage: $0 REPO_ROOT PACKAGE_PATH BUCK_TARGET DECLARATION_ENTRYPOINT" >&2
   exit 2
 fi
 
 root="$1"
-package_dir="$root/packages/@overeng/tui-core"
+package_path="$2"
+target="$3"
+declaration_entrypoint="$4"
+package_dir="$root/$package_path"
 dist="$package_dir/dist"
-target="effect_utils//packages/@overeng/tui-core:dist"
 : "${BUCK2_BIN:?BUCK2_BIN must name the Buck2 executable}"
 
 staging_root="$(mktemp -d "$package_dir/.dist-buck2.XXXXXX")"
@@ -32,8 +34,8 @@ validate_dist() {
     echo "$context did not materialize a directory: $candidate" >&2
     return 1
   fi
-  if [ ! -f "$candidate/src/mod.d.ts" ]; then
-    echo "$context is missing src/mod.d.ts: $candidate" >&2
+  if [ ! -f "$candidate/$declaration_entrypoint" ]; then
+    echo "$context is missing $declaration_entrypoint: $candidate" >&2
     return 1
   fi
 }
@@ -53,8 +55,8 @@ else
   mv --no-copy -T "$staging" "$dist"
 fi
 
-if ! validate_dist "$dist" "Published tui-core dist"; then
-  echo "Published tui-core dist failed validation; restoring the previous dist" >&2
+if ! validate_dist "$dist" "Published $package_path dist"; then
+  echo "Published $package_path dist failed validation; restoring the previous dist" >&2
   if [ "$had_dist" = true ]; then
     mv --exchange --no-copy -T "$staging" "$dist"
   else

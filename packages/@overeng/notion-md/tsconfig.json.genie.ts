@@ -22,7 +22,6 @@ export default tsconfigJson({
     { path: '../notion-effect-schema' },
     { path: '../notion-property-write' },
     { path: '../otel-contract' },
-    { path: '../tui-react' },
     { path: '../utils' },
     { path: '../utils-dev' },
   ],

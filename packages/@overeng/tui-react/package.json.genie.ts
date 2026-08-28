@@ -46,6 +46,8 @@ const runtimeDeps = catalog.compose({
     external: {
       ...catalog.pick(
         ...peerDepNames,
+        '@noble/hashes',
+        '@opentelemetry/api',
         '@types/node',
         '@types/react',
         '@types/react-reconciler',

@@ -8,7 +8,7 @@ import {
   pnpmInstallDescriptorSchema,
   pnpmWorkspacePlaceholder,
   preparePnpmInstallDescriptor,
-  rehydratePnpmWorkspacePlaceholder,
+  rehydratePnpmWorkspaceReferences,
   resolvePnpmInstallArgv,
 } from './pnpm-install-descriptor.ts'
 
@@ -49,6 +49,19 @@ describe('canonical pnpm pruned lock', () => {
     expect(canonicalizePnpmPrunedLock({ rawLockfile: canonicalA, stagePrefix: '/fixed/a' })).toBe(
       canonicalA,
     )
+  })
+
+  it('canonicalizes pnpm deploy relative workspace resolutions from the package location', () => {
+    const relativeResolution = fixture('raw-path-a.yaml').replace(
+      'directory: /fixed/a/packages/acme/lib',
+      'directory: ../packages/acme/lib',
+    )
+    expect(
+      canonicalizePnpmPrunedLock({
+        rawLockfile: relativeResolution,
+        stagePrefix: '/fixed/a',
+      }),
+    ).toBe(fixture('canonical.golden.yaml'))
   })
 
   it('removes only packages.*.peerDependencies and retains contextual snapshots and metadata', () => {
@@ -126,11 +139,15 @@ describe('pnpm frozen-install descriptor', () => {
       '--frozen-lockfile',
     ])
     expect(
-      rehydratePnpmWorkspacePlaceholder({
-        lockfile: fixture('canonical.golden.yaml'),
-        installRoot: '/fixed/install',
+      rehydratePnpmWorkspaceReferences({
+        source: fixture('canonical.golden.yaml'),
       }),
-    ).toContain('file:/fixed/install/packages/acme/lib')
+    ).toContain('file:../packages/acme/lib')
+    expect(
+      rehydratePnpmWorkspaceReferences({
+        source: `{"dependencies":{"lib":"${pnpmWorkspacePlaceholder}/packages/acme/lib"}}`,
+      }),
+    ).toContain('file:../packages/acme/lib')
   })
 
   it('fails on unresolved file and patch references', () => {

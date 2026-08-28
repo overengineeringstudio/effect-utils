@@ -50,9 +50,6 @@
   "include": ["src/**/*", "test/**/*", "bin/**/*"],
   "references": [
     {
-      "path": "../tui-react"
-    },
-    {
       "path": "../effect-path"
     },
     {
