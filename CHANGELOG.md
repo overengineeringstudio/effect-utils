@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/megarepo**: cut Buck workspaces over to decision-0020 composition: one acquired writable owned member, immutable verified `cp -a` locked mounts, exact Nix-pinned capabilities, atomic overlays, root-authority-last publication, composition-aware pin/status/orphan/liveness handling, and no bare-member `.buckconfig`.
+
 - Retire the dormant Buck closure-compiler and package-evidence regime, including
   its unused Buck rules, Rust tools, Nix capabilities, and projection tests;
   retain the live archive/product bridge and real tui-core TypeScript actions.
