@@ -181,6 +181,7 @@ export interface PlanCompositionRootPublicationOptions {
   readonly compositionConfig: CompositionGeneratorConfig
   readonly resolvedBuckExecutable: string
   readonly cacheSections?: ReadonlyArray<BuckCacheSection>
+  readonly assertCapabilityProjection: CompositionRootPublicationRuntime['assertCapabilityProjection']
 }
 
 /** Exact content identity shown for each planned old/new file. */
@@ -1367,6 +1368,41 @@ const prepareComposition = async ({
   }
 }
 
+const assertCompositionCapabilities = async ({
+  workspaceRoot,
+  ownedMemberKey,
+  members,
+  assertCapabilityProjection,
+}: {
+  readonly workspaceRoot: AbsoluteDirPath
+  readonly ownedMemberKey: string
+  readonly members: ReadonlyArray<{
+    readonly memberKey: string
+    readonly memberRoot: string
+    readonly manifest: BuckMemberManifest
+  }>
+  readonly assertCapabilityProjection: CompositionRootPublicationRuntime['assertCapabilityProjection']
+}): Promise<void> => {
+  for (const member of members) {
+    try {
+      await assertCapabilityProjection({
+        workspaceRoot,
+        memberKey: member.memberKey,
+        memberRoot: member.memberRoot,
+        manifest: member.manifest,
+        owned: member.memberKey === ownedMemberKey,
+      })
+    } catch (cause) {
+      throw failure({
+        reason: 'CapabilityPrerequisiteFailure',
+        path: member.memberRoot,
+        message: `Capability prerequisite failed for ${member.memberKey}`,
+        cause,
+      })
+    }
+  }
+}
+
 const makeTransaction = ({
   lock,
   output,
@@ -1675,9 +1711,15 @@ export const planCompositionRootPublication = Effect.fn('megarepo/composition-ro
             message: `Composition publisher lock is held by ${lock.lock.owner}`,
           })
         }
-        const { output } = await prepareComposition({
+        const { members, output } = await prepareComposition({
           workspaceRoot: workspaceRoot as AbsoluteDirPath,
           options,
+        })
+        await assertCompositionCapabilities({
+          workspaceRoot: workspaceRoot as AbsoluteDirPath,
+          ownedMemberKey: options.ownedMemberKey,
+          members,
+          assertCapabilityProjection: options.assertCapabilityProjection,
         })
         const snapshots = await validatePublicationState({ workspaceRoot, files: output.files })
         const changed = output.files.filter((file) => {
@@ -1748,24 +1790,12 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
             workspaceRoot: workspaceRoot as AbsoluteDirPath,
             options,
           })
-          for (const member of members) {
-            try {
-              await options.runtime.assertCapabilityProjection({
-                workspaceRoot: workspaceRoot as AbsoluteDirPath,
-                memberKey: member.memberKey,
-                memberRoot: member.memberRoot,
-                manifest: member.manifest,
-                owned: member.memberKey === options.ownedMemberKey,
-              })
-            } catch (cause) {
-              throw failure({
-                reason: 'CapabilityPrerequisiteFailure',
-                path: member.memberRoot,
-                message: `Capability prerequisite failed for ${member.memberKey}`,
-                cause,
-              })
-            }
-          }
+          await assertCompositionCapabilities({
+            workspaceRoot: workspaceRoot as AbsoluteDirPath,
+            ownedMemberKey: options.ownedMemberKey,
+            members,
+            assertCapabilityProjection: options.runtime.assertCapabilityProjection,
+          })
           for (const directory of ['.megarepo/bin', 'none', 'toolchains']) {
             await ensureDirectory(workspaceRoot, directory)
           }

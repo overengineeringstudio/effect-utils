@@ -159,6 +159,8 @@ const optionsFor = ({
 
 const planOptionsFor = (
   input: Parameters<typeof optionsFor>[0],
+  assertCapabilityProjection: CompositionRootPublicationRuntime['assertCapabilityProjection'] = async () =>
+    undefined,
 ): PlanCompositionRootPublicationOptions => {
   const options = optionsFor(input)
   return {
@@ -168,6 +170,7 @@ const planOptionsFor = (
     compositionConfig: options.compositionConfig,
     resolvedBuckExecutable: options.resolvedBuckExecutable,
     ...(options.cacheSections === undefined ? {} : { cacheSections: options.cacheSections }),
+    assertCapabilityProjection,
   }
 }
 
@@ -332,6 +335,32 @@ describe('composition root publisher', () => {
         expect(plan._tag).toBe('Refused')
         if (plan._tag === 'Refused') {
           expect(plan.reason).toBe('ForeignPath')
+          expect(plan.files).toEqual([])
+          expect(plan.configLast).toBe(false)
+        }
+      }),
+    ),
+  )
+
+  it.effect('plans a failed capability prerequisite as typed Refused without mutation', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const checked: string[] = []
+        const before = yield* filesystemSnapshot(fixture.root)
+        const plan = yield* planCompositionRootPublication(
+          planOptionsFor({ fixture }, async ({ memberKey }) => {
+            checked.push(memberKey)
+            if (memberKey === 'beta') throw new Error('capability projection is stale')
+          }),
+        )
+        const after = yield* filesystemSnapshot(fixture.root)
+        expect(after).toEqual(before)
+        expect(checked).toEqual(['alpha', 'beta'])
+        expect(plan._tag).toBe('Refused')
+        if (plan._tag === 'Refused') {
+          expect(plan.reason).toBe('CapabilityPrerequisiteFailure')
+          expect(plan.path).toBe(NodePath.join(fixture.root, 'repos/beta'))
           expect(plan.files).toEqual([])
           expect(plan.configLast).toBe(false)
         }
