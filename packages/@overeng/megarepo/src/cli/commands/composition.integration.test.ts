@@ -14,7 +14,7 @@ import type { MegarepoStore } from '../../lib/store.ts'
 import { addCommit, initGitRepo } from '../../test-utils/setup.ts'
 import {
   CompositionCutoverError,
-  readCompositionIgnoredLock,
+  readCompositionLockFile,
   resolveLockedCompositionMembers,
 } from './composition.ts'
 
@@ -170,15 +170,14 @@ describe('reference-only member lock lookup', () => {
           EffectPath.unsafe.absoluteFile(NodePath.join(workspaceRoot, 'megarepo.lock')),
           lockBytes('legacy', 'a'.repeat(40)),
         )
-
-        const legacy = yield* readCompositionIgnoredLock({ workspaceRoot, ownedMemberPath })
+        const legacy = yield* readCompositionLockFile({ workspaceRoot, ownedMemberPath })
         expect(Option.getOrThrow(legacy).members.legacy?.commit).toBe('a'.repeat(40))
 
         yield* fs.writeFileString(
           EffectPath.unsafe.absoluteFile(NodePath.join(ownedMemberPath, 'megarepo.lock')),
           lockBytes('owned', 'b'.repeat(40)),
         )
-        const acquired = yield* readCompositionIgnoredLock({ workspaceRoot, ownedMemberPath })
+        const acquired = yield* readCompositionLockFile({ workspaceRoot, ownedMemberPath })
         expect(Option.getOrThrow(acquired).members.owned?.commit).toBe('b'.repeat(40))
         expect(Option.getOrThrow(acquired).members.legacy).toBeUndefined()
       },

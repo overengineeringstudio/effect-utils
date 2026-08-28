@@ -34,8 +34,8 @@ import {
   updateLockedMember,
   writeLockFile,
 } from '../../lib/lock.ts'
-import { foreignMemberMountMessage, inspectMemberMount } from '../../lib/member-mount.ts'
 import { teardownCpAMemberMount } from '../../lib/member-mount-cp-a.ts'
+import { foreignMemberMountMessage, inspectMemberMount } from '../../lib/member-mount.ts'
 import { classifyRef } from '../../lib/ref.ts'
 import { runPreflightChecks } from '../../lib/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
@@ -163,7 +163,8 @@ export const pinCommand = Cli.Command.make(
 
           // Load or create lock file
           const physicalConfigPath = yield* fs.realPath(configPath)
-          const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
+          const configOwner =
+            EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
           const lockPath = EffectPath.ops.join(
             configOwner,
             EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -355,7 +356,11 @@ export const pinCommand = Cli.Command.make(
             }
 
             if (compositionEnabled === true) {
-              yield* runCompositionApply({ workspaceRoot: root.value, dryRun: false, callerCwd: cwd })
+              yield* runCompositionApply({
+                workspaceRoot: root.value,
+                dryRun: false,
+                callerCwd: cwd,
+              })
             }
 
             // Keep the store liveness record fresh after repinning so a
@@ -625,7 +630,8 @@ export const unpinCommand = Cli.Command.make(
 
           // Load lock file
           const physicalConfigPath = yield* fs.realPath(configPath)
-          const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
+          const configOwner =
+            EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
           const lockPath = EffectPath.ops.join(
             configOwner,
             EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
