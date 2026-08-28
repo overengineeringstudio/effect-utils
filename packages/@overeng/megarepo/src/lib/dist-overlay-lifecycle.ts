@@ -49,6 +49,16 @@ import {
 
 export { publishDistOverlay, recoverDistOverlay }
 
+/** Durable directory checkpoints for overlay namespace mutations. */
+export type DistOverlayDirectorySyncReason =
+  | 'PublishDestinationParent'
+  | 'PublishStageParent'
+  | 'RollbackDestinationParent'
+  | 'RollbackStageParent'
+  | 'RecoveryDestinationParent'
+  | 'RecoveryStageParent'
+  | 'CleanupStageParent'
+
 /** Required caller-lock assertion plus deterministic lifecycle fault seams. */
 export interface DistOverlayRuntime {
   readonly assertUpdateLockOwned: (input: {
@@ -63,6 +73,12 @@ export interface DistOverlayRuntime {
     readonly stagePath: string
   }) => Promise<void>
   readonly beforeMetadataWrite?: (metadata: OwnedCpAMountMetadata) => Promise<void>
+  /** Test/telemetry seam that must call `sync` unless deliberately injecting failure. */
+  readonly directoryFsync?: (input: {
+    readonly path: string
+    readonly reason: DistOverlayDirectorySyncReason
+    readonly sync: () => Promise<void>
+  }) => Promise<void>
 }
 
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
@@ -287,6 +303,61 @@ const syncDirectory = async (path: string): Promise<void> => {
     await handle.close()
   }
 }
+
+const syncLifecycleDirectory = ({
+  runtime,
+  path,
+  reason,
+}: {
+  runtime: DistOverlayRuntime
+  path: string
+  reason: DistOverlayDirectorySyncReason
+}): Effect.Effect<void, DistOverlayError> =>
+  io({
+    path,
+    message: `Cannot durably sync overlay directory '${path}' after ${reason}`,
+    recoveryPaths: [path],
+    try: () =>
+      runtime.directoryFsync?.({ path, reason, sync: () => syncDirectory(path) }) ??
+      syncDirectory(path),
+  })
+
+const syncOverlayMoveParents = ({
+  runtime,
+  destinationPath,
+  stagePath,
+  kind,
+}: {
+  runtime: DistOverlayRuntime
+  destinationPath: string
+  stagePath: string
+  kind: 'Publish' | 'Rollback' | 'Recovery'
+}): Effect.Effect<void, DistOverlayError> =>
+  Effect.gen(function* () {
+    yield* syncLifecycleDirectory({
+      runtime,
+      path: NodePath.dirname(destinationPath),
+      reason: `${kind}DestinationParent`,
+    })
+    yield* syncLifecycleDirectory({
+      runtime,
+      path: NodePath.dirname(stagePath),
+      reason: `${kind}StageParent`,
+    })
+  })
+
+const syncOverlayStageCleanup = ({
+  runtime,
+  stagePath,
+}: {
+  runtime: DistOverlayRuntime
+  stagePath: string
+}): Effect.Effect<void, DistOverlayError> =>
+  syncLifecycleDirectory({
+    runtime,
+    path: NodePath.dirname(stagePath),
+    reason: 'CleanupStageParent',
+  })
 
 const encodeTransaction = (transaction: DistOverlayTransactionType): string =>
   `${Schema.encodeSync(TransactionJson)(transaction)}
@@ -1207,6 +1278,12 @@ const publishDistOverlay = ({
               })
       }),
     })
+    yield* syncOverlayMoveParents({
+      runtime,
+      destinationPath,
+      stagePath,
+      kind: 'Publish',
+    })
     transaction = yield* persistPhase({
       transactionPath,
       transaction,
@@ -1322,8 +1399,15 @@ const publishDistOverlay = ({
                   recoveryPaths: [destinationPath, stagePath, transactionPath],
                 }),
       })
+      yield* syncOverlayMoveParents({
+        runtime,
+        destinationPath,
+        stagePath,
+        kind: 'Rollback',
+      })
       if (operation !== 'Remove' && candidateIdentity !== undefined) {
         yield* teardownDirectory({ path: stagePath, expectedIdentity: candidateIdentity })
+        yield* syncOverlayStageCleanup({ runtime, stagePath })
       }
       yield* assertOwnedCpAMountIdentity({
         path: mountPath,
@@ -1371,6 +1455,7 @@ const publishDistOverlay = ({
         record: oldOverlay,
       })
       yield* teardownDirectory({ path: stagePath, expectedIdentity: oldIdentity })
+      yield* syncOverlayStageCleanup({ runtime, stagePath })
     }
     yield* removeTransaction(transactionPath)
     return { _tag: 'Published' as const, operation, destinationPath, metadata: metadataAfter }
@@ -1442,9 +1527,40 @@ const recoverDistOverlay = ({
       ),
     )
     yield* assertLock({ runtime, workspaceRoot: request.workspaceRoot, member: request.member })
-    yield* validateCommandPath({ path: request.mvPath, name: 'mv' })
     const transactionPath = distOverlayTransactionPath(request)
     const transaction = yield* readTransaction(transactionPath)
+    const mountPath = NodePath.join(request.workspaceRoot, 'repos', request.member)
+    const destinationPath = NodePath.join(mountPath, ...request.destination.split('/'))
+    const expectedStageRoot = NodePath.join(request.workspaceRoot, 'repos', '.mr', 'overlay-stages')
+    const expectedTransactionRoot = NodePath.join(
+      request.workspaceRoot,
+      'repos',
+      '.mr',
+      'overlay-transactions',
+    )
+    if (
+      NodePath.dirname(transaction.stagePath) !== expectedStageRoot ||
+      NodePath.dirname(transactionPath) !== expectedTransactionRoot ||
+      transaction.destinationPath !== destinationPath ||
+      transaction.member !== request.member ||
+      transaction.target !== request.target ||
+      transaction.destination !== request.destination ||
+      transaction.mountPath !== mountPath ||
+      transaction.previousMetadata.member !== request.member ||
+      transaction.previousMetadata.publishedPath !== mountPath ||
+      transaction.nextMetadata.member !== request.member ||
+      transaction.nextMetadata.publishedPath !== mountPath ||
+      identitiesEqual({ left: transaction.mountIdentity, right: request.expectedMountIdentity }) ===
+        false
+    ) {
+      return yield* failure({
+        reason: 'AmbiguousRecovery',
+        path: transactionPath,
+        message: `Overlay recovery request does not match transaction`,
+        recoveryPaths: [transactionPath],
+      })
+    }
+    yield* validateCommandPath({ path: request.mvPath, name: 'mv' })
     const stageRoot = yield* ensureControlDirectory({
       workspaceRoot: request.workspaceRoot,
       name: 'overlay-stages',
@@ -1455,21 +1571,11 @@ const recoverDistOverlay = ({
       name: 'overlay-transactions',
       create: false,
     })
-    const mountPath = NodePath.join(request.workspaceRoot, 'repos', request.member)
-    if (
-      NodePath.dirname(transaction.stagePath) !== stageRoot ||
-      NodePath.dirname(transactionPath) !== transactionRoot ||
-      transaction.member !== request.member ||
-      transaction.target !== request.target ||
-      transaction.destination !== request.destination ||
-      transaction.mountPath !== mountPath ||
-      identitiesEqual({ left: transaction.mountIdentity, right: request.expectedMountIdentity }) ===
-        false
-    ) {
+    if (stageRoot !== expectedStageRoot || transactionRoot !== expectedTransactionRoot) {
       return yield* failure({
         reason: 'AmbiguousRecovery',
         path: transactionPath,
-        message: `Overlay recovery request does not match transaction`,
+        message: `Overlay recovery control namespace identity mismatch`,
         recoveryPaths: [transactionPath],
       })
     }
@@ -1486,7 +1592,7 @@ const recoverDistOverlay = ({
         }),
       ),
     )
-    yield* assertNoSymlinkParents({ mountPath, destinationPath: transaction.destinationPath })
+    yield* assertNoSymlinkParents({ mountPath, destinationPath: destinationPath })
     const actualMetadata = yield* readOwnedCpAMountMetadata({
       workspaceRoot: request.workspaceRoot,
       member: request.member,
@@ -1509,7 +1615,7 @@ const recoverDistOverlay = ({
           : 'Other'
     const [destinationState, stageState] = yield* Effect.all([
       observedTree({
-        path: transaction.destinationPath,
+        path: destinationPath,
         oldIdentity: transaction.oldIdentity,
         oldOverlay: transaction.oldOverlay,
         newIdentity: transaction.candidateIdentity,
@@ -1523,7 +1629,7 @@ const recoverDistOverlay = ({
         newOverlay: transaction.newOverlay,
       }),
     ])
-    const parent = NodePath.dirname(transaction.destinationPath)
+    const parent = NodePath.dirname(destinationPath)
 
     if (metadataState === 'Previous') {
       if (
@@ -1539,12 +1645,13 @@ const recoverDistOverlay = ({
             path: transaction.stagePath,
             expectedIdentity: transaction.candidateIdentity,
           })
+          yield* syncOverlayStageCleanup({ runtime, stagePath: transaction.stagePath })
         }
         yield* removeTransaction(transactionPath)
         return {
           _tag: 'Recovered' as const,
           action: 'RolledBack' as const,
-          destinationPath: transaction.destinationPath,
+          destinationPath: destinationPath,
         }
       }
       if (
@@ -1554,20 +1661,20 @@ const recoverDistOverlay = ({
       ) {
         yield* moveOverlayDirectories({
           destinationParent: parent,
-          paths: [transaction.destinationPath, transaction.stagePath],
+          paths: [destinationPath, transaction.stagePath],
           effect: runCommand({
             binary: request.mvPath,
-            args: [
-              '-T',
-              '--no-clobber',
-              '--no-copy',
-              transaction.destinationPath,
-              transaction.stagePath,
-            ],
-            path: transaction.destinationPath,
+            args: ['-T', '--no-clobber', '--no-copy', destinationPath, transaction.stagePath],
+            path: destinationPath,
             commandName: 'Recover overlay first publish',
-            recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+            recoveryPaths: [destinationPath, transaction.stagePath, transactionPath],
           }),
+        })
+        yield* syncOverlayMoveParents({
+          runtime,
+          destinationPath: destinationPath,
+          stagePath: transaction.stagePath,
+          kind: 'Recovery',
         })
         if (transaction.candidateIdentity === null)
           return yield* failure({
@@ -1580,6 +1687,7 @@ const recoverDistOverlay = ({
           path: transaction.stagePath,
           expectedIdentity: transaction.candidateIdentity,
         })
+        yield* syncOverlayStageCleanup({ runtime, stagePath: transaction.stagePath })
       } else if (
         transaction.operation === 'Update' &&
         destinationState === 'New' &&
@@ -1587,20 +1695,20 @@ const recoverDistOverlay = ({
       ) {
         yield* moveOverlayDirectories({
           destinationParent: parent,
-          paths: [transaction.destinationPath, transaction.stagePath],
+          paths: [destinationPath, transaction.stagePath],
           effect: runCommand({
             binary: request.mvPath,
-            args: [
-              '-T',
-              '--exchange',
-              '--no-copy',
-              transaction.stagePath,
-              transaction.destinationPath,
-            ],
-            path: transaction.destinationPath,
+            args: ['-T', '--exchange', '--no-copy', transaction.stagePath, destinationPath],
+            path: destinationPath,
             commandName: 'Recover overlay update',
-            recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+            recoveryPaths: [destinationPath, transaction.stagePath, transactionPath],
           }),
+        })
+        yield* syncOverlayMoveParents({
+          runtime,
+          destinationPath: destinationPath,
+          stagePath: transaction.stagePath,
+          kind: 'Recovery',
         })
         if (transaction.candidateIdentity === null)
           return yield* failure({
@@ -1613,6 +1721,7 @@ const recoverDistOverlay = ({
           path: transaction.stagePath,
           expectedIdentity: transaction.candidateIdentity,
         })
+        yield* syncOverlayStageCleanup({ runtime, stagePath: transaction.stagePath })
       } else if (
         transaction.operation === 'Remove' &&
         destinationState === 'Missing' &&
@@ -1620,34 +1729,34 @@ const recoverDistOverlay = ({
       ) {
         yield* moveOverlayDirectories({
           destinationParent: parent,
-          paths: [transaction.destinationPath, transaction.stagePath],
+          paths: [destinationPath, transaction.stagePath],
           effect: runCommand({
             binary: request.mvPath,
-            args: [
-              '-T',
-              '--no-clobber',
-              '--no-copy',
-              transaction.stagePath,
-              transaction.destinationPath,
-            ],
-            path: transaction.destinationPath,
+            args: ['-T', '--no-clobber', '--no-copy', transaction.stagePath, destinationPath],
+            path: destinationPath,
             commandName: 'Recover overlay removal',
-            recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+            recoveryPaths: [destinationPath, transaction.stagePath, transactionPath],
           }),
+        })
+        yield* syncOverlayMoveParents({
+          runtime,
+          destinationPath: destinationPath,
+          stagePath: transaction.stagePath,
+          kind: 'Recovery',
         })
       } else {
         return yield* failure({
           reason: 'AmbiguousRecovery',
           path: transactionPath,
           message: `Observed overlay state is unsafe for rollback`,
-          recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+          recoveryPaths: [destinationPath, transaction.stagePath, transactionPath],
         })
       }
       yield* removeTransaction(transactionPath)
       return {
         _tag: 'Recovered' as const,
         action: 'RolledBack' as const,
-        destinationPath: transaction.destinationPath,
+        destinationPath: destinationPath,
       }
     }
 
@@ -1673,18 +1782,19 @@ const recoverDistOverlay = ({
           recoveryPaths: [transaction.stagePath, transactionPath],
         })
       }
+      yield* syncOverlayStageCleanup({ runtime, stagePath: transaction.stagePath })
       yield* assertRepositoryIdentity({ mountPath, expectedMetadata: transaction.nextMetadata })
       yield* removeTransaction(transactionPath)
       return {
         _tag: 'Recovered' as const,
         action: 'RolledForward' as const,
-        destinationPath: transaction.destinationPath,
+        destinationPath: destinationPath,
       }
     }
     return yield* failure({
       reason: 'AmbiguousRecovery',
       path: transactionPath,
       message: `Metadata and observed overlay identities do not admit safe recovery`,
-      recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+      recoveryPaths: [destinationPath, transaction.stagePath, transactionPath],
     })
   })
