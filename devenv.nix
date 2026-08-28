@@ -470,7 +470,28 @@ in
         smokeTask = "genie:check";
         smokeMode = "single";
         bridgeTask = "genie:check";
-        prerequisiteTasks = [ "pnpm:install" ];
+        # The verifier launches a nested, cache-refreshed task run. Keep it last
+        # so its task-cache refresh cannot race sibling check:all work.
+        prerequisiteTasks = [
+          "bootstrap-closure:check"
+          "buck2:check"
+          "cargo:check"
+          "dependency-materialization:evidence:check"
+          "devenv:trace-audit"
+          "lint:check"
+          "lint:nix"
+          "mr:check"
+          "mr:lock-sync-check"
+          "mr:source-policy-check"
+          "nix:flake:check"
+          "pnpm:install"
+          "test:run"
+          "ts:check:strict"
+          "weaver:check"
+          "weaver:diff"
+          "weaver:version-smoke"
+          "workspace:check"
+        ];
       };
       wireInto = [ "check:all" ];
     })
