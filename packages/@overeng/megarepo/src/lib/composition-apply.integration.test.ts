@@ -75,6 +75,7 @@ interface FixtureOptions {
   readonly lockFailure?: boolean
   readonly allowDarwin?: boolean
   readonly recovery?: boolean
+  readonly releaseFailures?: ReadonlyArray<string>
 }
 
 const fixture = async (options: FixtureOptions = {}) => {
@@ -136,7 +137,7 @@ const fixture = async (options: FixtureOptions = {}) => {
         workspaceRoot,
         lockPath: NodePath.join(workspaceRoot, '.megarepo/workspace-update.lock'),
         ownerPath: NodePath.join(workspaceRoot, '.megarepo/.owner'),
-        owner: { schema: 1, token: 'token', pid: 1 },
+        owner: { schema: 1, token: 'd'.repeat(32), pid: 1 },
         bytes: '{}\n',
         dev: 1,
         ino: 1,
@@ -144,6 +145,7 @@ const fixture = async (options: FixtureOptions = {}) => {
     },
     releaseUpdateLock: async () => {
       calls.push('lock:release')
+      if (options.releaseFailures?.includes('lock') === true) throw new Error('lock release failed')
     },
     resolveCapabilities: async (input) => {
       const resolvedManifest = manifests.get(input.memberRoot)!
@@ -187,6 +189,9 @@ const fixture = async (options: FixtureOptions = {}) => {
         checkCommand: { executable: '/bin/bash', args: ['--check'] },
         release: async () => {
           calls.push(`cap:${key}:release`)
+          if (options.releaseFailures?.includes(key) === true) {
+            throw new Error(`${key} capability release failed`)
+          }
         },
       }
     },
@@ -562,6 +567,83 @@ describe('composition apply integration', () => {
       expect(value.calls.indexOf('recover:overlay:dep://pkg:dist0')).toBeLessThan(
         value.calls.indexOf('cap:dep'),
       )
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('preserves a primary phase failure with one capability cleanup failure', async () => {
+    const value = await fixture({ mountFailure: 'dep', releaseFailures: ['owned'] })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      if (result._tag !== 'Failure') return
+      expect(result.failure).toMatchObject({
+        reason: 'CleanupFailure',
+        primaryFailure: { reason: 'MountFailure', phase: 'Mount' },
+        cleanupFailures: [{ resource: 'CapabilityScratch' }],
+      })
+      expect(result.failure.recoveryPaths).toContain(
+        NodePath.join(value.root, 'capabilities', 'owned', 'candidate'),
+      )
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('aggregates primary, multiple capability cleanups, and lock recovery identity', async () => {
+    const value = await fixture({
+      mountFailure: 'dep',
+      releaseFailures: ['owned', 'dep', 'lock'],
+    })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      if (result._tag !== 'Failure') return
+      expect(result.failure.reason).toBe('CleanupFailure')
+      expect(result.failure.primaryFailure).toMatchObject({
+        reason: 'MountFailure',
+        phase: 'Mount',
+      })
+      expect(result.failure.cleanupFailures).toHaveLength(3)
+      expect(result.failure.updateLockRecovery).toEqual({
+        path: NodePath.join(value.request.workspaceRoot, '.megarepo/workspace-update.lock'),
+        token: 'd'.repeat(32),
+      })
+      expect(result.failure.recoveryPaths).toContain(
+        NodePath.join(value.request.workspaceRoot, '.megarepo/workspace-update.lock'),
+      )
+      expect(result.failure.cause).toBeInstanceOf(AggregateError)
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('fails a successful application when update-lock cleanup fails', async () => {
+    const value = await fixture({
+      members: [{ key: 'dep', overlays: 0 }],
+      releaseFailures: ['lock'],
+    })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      if (result._tag !== 'Failure') return
+      expect(result.failure.reason).toBe('CleanupFailure')
+      expect(result.failure.primaryFailure).toBeUndefined()
+      expect(result.failure.cleanupFailures).toEqual([
+        {
+          resource: 'WorkspaceUpdateLock',
+          path: NodePath.join(value.request.workspaceRoot, '.megarepo/workspace-update.lock'),
+          message: 'Could not release the workspace update lock',
+        },
+      ])
+      expect(result.failure.updateLockRecovery?.token).toBe('d'.repeat(32))
     } finally {
       await value.cleanup()
     }
