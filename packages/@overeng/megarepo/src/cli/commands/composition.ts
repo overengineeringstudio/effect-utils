@@ -1,5 +1,7 @@
+import { execFile as execFileCallback } from 'node:child_process'
 import { readFile as readNodeFile } from 'node:fs/promises'
 import * as NodePath from 'node:path'
+import { promisify } from 'node:util'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
@@ -45,6 +47,7 @@ import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
 import { Store, type MegarepoStore } from '../../lib/store.ts'
 
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
+const execFile = promisify(execFileCallback)
 const OwnedManifestJson = Schema.fromJsonString(OwnedWorktreeRootManifest)
 const AcquisitionJournalJson = Schema.fromJsonString(OwnedWorktreeAcquisitionJournal)
 
@@ -381,6 +384,47 @@ const compositionRequest = ({
     env['MR_COMPOSITION_DARWIN_ADVANCE_VERIFIED'] === '1',
 })
 
+const assertLockedSourceCleanPromise = async ({
+  sourcePath,
+  lockedCommit,
+  gitPath,
+}: {
+  readonly sourcePath: string
+  readonly lockedCommit: string
+  readonly gitPath: string
+}) => {
+  const run = (args: ReadonlyArray<string>) =>
+    execFile(gitPath, ['-C', sourcePath, ...args], { encoding: 'utf8', maxBuffer: 1024 * 1024 })
+  const head = (await run(['rev-parse', 'HEAD'])).stdout.trim()
+  if (head !== lockedCommit)
+    throw cutoverFailure({
+      reason: 'LockedSourceRefused',
+      message: 'Locked source HEAD changed',
+      path: sourcePath,
+    })
+  try {
+    await run(['symbolic-ref', '-q', 'HEAD'])
+    throw cutoverFailure({
+      reason: 'LockedSourceRefused',
+      message: 'Locked source became branch-attached',
+      path: sourcePath,
+    })
+  } catch (cause) {
+    if (cause instanceof CompositionCutoverError) throw cause
+    if ((cause as NodeJS.ErrnoException & { code?: number }).code !== 1) throw cause
+  }
+  const dirty = (await run(['status', '--porcelain=v1', '-z', '--untracked-files=all'])).stdout
+  const ignored = (await run(['ls-files', '--others', '--ignored', '--exclude-standard', '-z']))
+    .stdout
+  if (dirty.length !== 0 || ignored.length !== 0) {
+    throw cutoverFailure({
+      reason: 'LockedSourceRefused',
+      message: 'Locked source changed after admission',
+      path: sourcePath,
+    })
+  }
+}
+
 /** Apply decision-0020 composition or produce its exact acquisition and application plans. */
 export const runCompositionApply = ({
   workspaceRoot,
@@ -458,6 +502,12 @@ export const runCompositionApply = ({
       const runtime = {
         ...runtimeBase,
         primitives: {
+          assertLockedSourceClean: ({ sourcePath, lockedCommit }) =>
+            assertLockedSourceCleanPromise({
+              sourcePath,
+              lockedCommit,
+              gitPath: env['MR_COMPOSITION_GIT_BIN']!,
+            }),
           readManifest: (memberRoot: string) =>
             memberRoot === acquisition.ownedWorktree
               ? readManifestPromise(identity.ownedSourcePath)
@@ -499,10 +549,23 @@ export const runCompositionApply = ({
         ownedMemberPath: context.ownedWorktree,
         synthesized: true,
       }
-      const runtime = compositionApplyRuntimeFromEnv({
+      const runtimeBase = compositionApplyRuntimeFromEnv({
         workspaceRoot: context.workspaceRoot.replace(/\/+$/u, ''),
         env,
       })
+      const gitPath = env['MR_COMPOSITION_GIT_BIN']
+      if (gitPath === undefined)
+        throw cutoverFailure({
+          reason: 'InvalidConfiguration',
+          message: 'Missing MR_COMPOSITION_GIT_BIN',
+        })
+      const runtime = {
+        ...runtimeBase,
+        primitives: {
+          assertLockedSourceClean: ({ sourcePath, lockedCommit }) =>
+            assertLockedSourceCleanPromise({ sourcePath, lockedCommit, gitPath }),
+        },
+      } satisfies typeof runtimeBase
       return compositionApply({
         request: compositionRequest({
           identity: appliedIdentity,
