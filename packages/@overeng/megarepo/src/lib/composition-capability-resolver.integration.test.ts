@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest'
 
 import { CompositionCapabilityResolutionError } from './composition-capability-resolver-schema.ts'
 import {
-  compositionCapabilityProjectorEnvironment,
+  checkCompositionCapabilityProjection,
   resolveCompositionCapabilities,
   resolvedCompositionCapabilityByToolId,
   type CompositionCapabilityRuntime,
@@ -34,27 +34,6 @@ const rawShell = execFileSync('bash', ['-c', 'command -v bash'], { encoding: 'ut
 const shell = realpathSync(rawShell)
 const commandPath = (name: string): string =>
   execFileSync(shell, ['-c', `command -v ${name}`], { encoding: 'utf8' }).trim()
-
-const tools = {
-  bashPath: shell,
-  gawkPath: commandPath('gawk'),
-  awkPath: commandPath('awk'),
-  grepPath: commandPath('grep'),
-  jqPath: commandPath('jq'),
-  mkdirPath: commandPath('mkdir'),
-  rmPath: commandPath('rm'),
-  mvPath: commandPath('mv'),
-  lnPath: commandPath('ln'),
-  readlinkPath: commandPath('readlink'),
-  dirnamePath: commandPath('dirname'),
-  basenamePath: commandPath('basename'),
-  sha256Path: commandPath('sha256sum'),
-  sortPath: commandPath('sort'),
-  xargsPath: commandPath('xargs'),
-  findPath: commandPath('find'),
-  flockPath: commandPath('flock'),
-  diffPath: commandPath('diff'),
-} as const
 
 const bashExecutable = realpathSync(commandPath('bash'))
 const bashOutput = NodePath.dirname(NodePath.dirname(bashExecutable))
@@ -133,7 +112,6 @@ const makeFixture = async ({
     nixOutputPath,
     runtime: {
       nixPath,
-      ...tools,
       env: {
         PATH: '/ambient-path-is-poison',
         GH_TOKEN: 'must-not-leak',
@@ -179,6 +157,24 @@ const resolve = (
   })
 
 describe('composition capability resolver', () => {
+  it.each(['defs.bzl', 'BUCK'] as const)(
+    'trusted check rejects tampered %s bytes',
+    async (name) => {
+      const fixture = await makeFixture()
+      try {
+        const result = await resolve(fixture)
+        if (result._tag !== 'Resolved') throw new Error('unreachable')
+        await writeFile(NodePath.join(result.projectionPath, name), 'tampered\n')
+        await expect(
+          checkCompositionCapabilityProjection({ memberRoot: result.candidateRoot }),
+        ).rejects.toBeInstanceOf(CompositionCapabilityResolutionError)
+        await result.release()
+      } finally {
+        await clean(fixture)
+      }
+    },
+  )
+
   it('uses exact sorted Nix argv and pinned projector tools despite ambient PATH poison', async () => {
     const fixture = await makeFixture()
     try {
@@ -210,11 +206,6 @@ describe('composition capability resolver', () => {
         `build --no-link --print-out-paths --no-write-lock-file --no-update-lock-file ${fixture.memberRoot}#a-package\n` +
           `build --no-link --print-out-paths --no-write-lock-file --no-update-lock-file ${fixture.memberRoot}#z-package\n`,
       )
-      expect(result.projectorCommand.args.slice(2, 5)).toEqual([
-        'x86_64-linux',
-        'a-tool',
-        'test/a/v1',
-      ])
       expect(result.projectionDigest).toMatch(/^[0-9a-f]{64}$/u)
       expect((await lstat(result.candidateRoot)).mode & 0o777).toBe(0o700)
       await result.release()
@@ -224,30 +215,20 @@ describe('composition capability resolver', () => {
     }
   })
 
-  it('passes only private scratch and pinned tools to the projector', async () => {
-    const tracked = await readFile(trackedProjectorPath, 'utf8')
-    const guarded = tracked.replace(
-      '\n',
-      '\n[ -n "${HOME-}" ] && [ "$HOME" = "${TMPDIR-}" ] || exit 90\n' +
-        'for name in GH_TOKEN SSH_AUTH_SOCK HTTPS_PROXY HTTP_PROXY ALL_PROXY; do\n' +
-        '  if [ "${!name+x}" = x ]; then exit 91; fi\n' +
-        'done\n',
-    )
-    const fixture = await makeFixture({ projector: guarded })
+  it('never executes a malicious member projector script', async () => {
+    const fixture = await makeFixture({
+      projector: `#!${shell}\nprintf executed >${NodePath.join('/tmp', 'member-projector-must-not-run')}\nexit 91\n`,
+    })
+    const sentinel = NodePath.join('/tmp', 'member-projector-must-not-run')
+    await rm(sentinel, { force: true })
     try {
-      const projectorEnv = compositionCapabilityProjectorEnvironment({
-        runtime: fixture.runtime,
-        privateRoot: '/private',
-      })
-      expect(projectorEnv).not.toHaveProperty('PATH')
-      expect(projectorEnv).not.toHaveProperty('GH_TOKEN')
-      expect(projectorEnv).not.toHaveProperty('SSH_AUTH_SOCK')
-      expect(projectorEnv).not.toHaveProperty('HTTPS_PROXY')
       const result = await resolve(fixture)
       expect(result._tag).toBe('Resolved')
+      await expect(readFile(sentinel, 'utf8')).rejects.toThrow()
       if (result._tag === 'Resolved') await result.release()
     } finally {
       await clean(fixture)
+      await rm(sentinel, { force: true })
     }
   })
 
@@ -368,50 +349,17 @@ describe('composition capability resolver', () => {
     }
   })
 
-  it('rejects a missing projector and an escaping projector symlink before Nix runs', async () => {
+  it('does not require a member projector file', async () => {
     const fixture = await makeFixture()
     try {
       await rm(NodePath.join(fixture.memberRoot, 'scripts', 'buck2-capability-project.sh'))
-      expect((await failure(resolve(fixture))).reason).toBe('MissingProjector')
-      await symlink(
-        fixture.runtime.bashPath,
-        NodePath.join(fixture.memberRoot, 'scripts', 'buck2-capability-project.sh'),
-      )
-      expect((await failure(resolve(fixture))).reason).toBe('MissingProjector')
-      await expect(readFile(fixture.nixLog, 'utf8')).rejects.toThrow()
+      const result = await resolve(fixture)
+      expect(result._tag).toBe('Resolved')
+      if (result._tag === 'Resolved') await result.release()
     } finally {
       await clean(fixture)
     }
   })
-
-  it.each([
-    ['projector', `#!${shell}\nexit 41\n`],
-    [
-      'check',
-      `#!${shell}\nset -eu\nif [ "\${1-}" = --check ]; then exit 42; fi\nroot="$1"\n"$MKDIR_BIN" -p "$root/.buck2/capabilities/generations/${'a'.repeat(64)}"\nprintf '%s\\n' 'GENERATION = "${'a'.repeat(64)}"' >"$root/.buck2/capabilities/defs.bzl"\n`,
-    ],
-  ] as const)(
-    'cleans the candidate on %s failure without mutating the member',
-    async (_label, projector) => {
-      const fixture = await makeFixture({ projector })
-      try {
-        const before = await readFile(
-          NodePath.join(fixture.memberRoot, 'scripts', 'buck2-capability-project.sh'),
-          'utf8',
-        )
-        expect((await failure(resolve(fixture))).reason).toBe('ProjectionFailure')
-        expect(await readdir(fixture.scratchRoot)).toEqual([])
-        expect(
-          await readFile(
-            NodePath.join(fixture.memberRoot, 'scripts', 'buck2-capability-project.sh'),
-            'utf8',
-          ),
-        ).toBe(before)
-      } finally {
-        await clean(fixture)
-      }
-    },
-  )
 
   it('plans validated exact argv without invoking Nix or projector', async () => {
     const fixture = await makeFixture({ projector: `#!${shell}\nexit 99\n` })
@@ -429,9 +377,6 @@ describe('composition capability resolver', () => {
         '--no-update-lock-file',
         `${fixture.memberRoot}#buck2`,
       ])
-      expect(result.projectorCommand.args).toContain(
-        '/nix/store/00000000000000000000000000000000-planned-buck2/bin/bash',
-      )
       expect(await readdir(fixture.scratchRoot)).toEqual([])
       await expect(readFile(fixture.nixLog, 'utf8')).rejects.toThrow()
     } finally {
@@ -489,7 +434,6 @@ describe('composition capability resolver', () => {
     try {
       const result = await resolve(fixture, { dryRun: true, system: 'aarch64-darwin' })
       expect(result.projectorPlatform).toBe('aarch64-macos')
-      expect(result.projectorCommand.args[2]).toBe('aarch64-macos')
     } finally {
       await clean(fixture)
     }

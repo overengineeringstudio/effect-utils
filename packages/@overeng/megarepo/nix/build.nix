@@ -57,25 +57,9 @@ pkgs.stdenv.mkDerivation {
       --set MR_COMPOSITION_BUCK2_PROTOCOL facebook/buck2-cli/2026-08-22 \
       --set MR_COMPOSITION_SYSTEM ${pkgs.stdenv.hostPlatform.system} \
       --set MR_COMPOSITION_PLATFORM ${compositionPlatform} \
+      --set MR_COMPOSITION_GIT_BIN ${pkgs.git}/bin/git \
       --set MR_CAPABILITY_NIX_BIN ${pkgs.nix}/bin/nix \
-      --set MR_CAPABILITY_BASH_BIN ${pkgs.bash}/bin/bash \
-      --set MR_CAPABILITY_GAWK_BIN ${pkgs.gawk}/bin/gawk \
-      --set MR_CAPABILITY_AWK_BIN ${pkgs.gawk}/bin/awk \
-      --set MR_CAPABILITY_GREP_BIN ${pkgs.gnugrep}/bin/grep \
-      --set MR_CAPABILITY_JQ_BIN ${pkgs.jq}/bin/jq \
-      --set MR_CAPABILITY_MKDIR_BIN ${pkgs.coreutils}/bin/mkdir \
-      --set MR_CAPABILITY_RM_BIN ${pkgs.coreutils}/bin/rm \
-      --set MR_CAPABILITY_MV_BIN ${pkgs.coreutils}/bin/mv \
-      --set MR_CAPABILITY_LN_BIN ${pkgs.coreutils}/bin/ln \
-      --set MR_CAPABILITY_READLINK_BIN ${pkgs.coreutils}/bin/readlink \
-      --set MR_CAPABILITY_DIRNAME_BIN ${pkgs.coreutils}/bin/dirname \
-      --set MR_CAPABILITY_BASENAME_BIN ${pkgs.coreutils}/bin/basename \
-      --set MR_CAPABILITY_SHA256_BIN ${pkgs.coreutils}/bin/sha256sum \
-      --set MR_CAPABILITY_SORT_BIN ${pkgs.coreutils}/bin/sort \
-      --set MR_CAPABILITY_XARGS_BIN ${pkgs.findutils}/bin/xargs \
-      --set MR_CAPABILITY_FIND_BIN ${pkgs.findutils}/bin/find \
-      --set MR_CAPABILITY_FLOCK_BIN ${pkgs.flock}/bin/flock \
-      --set MR_CAPABILITY_DIFF_BIN ${pkgs.diffutils}/bin/diff
+      --set MR_CAPABILITY_MV_BIN ${pkgs.coreutils}/bin/mv
 
     # Generate shell completions
     # TODO: Move this into mkBunCli helper

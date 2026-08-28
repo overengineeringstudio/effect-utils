@@ -4,9 +4,6 @@ import { Schema } from 'effect'
 
 import { BuckMemberCapabilitySchema } from './generators/composition-root.ts'
 
-/** Tracked projector owned by each capability-bearing member. */
-export const COMPOSITION_CAPABILITY_PROJECTOR_PATH = 'scripts/buck2-capability-project.sh' as const
-
 const AbsolutePath = Schema.String.check(
   Schema.makeFilter<string>((value) =>
     value.startsWith('/') === true && PosixPath.normalize(value) === value
@@ -59,10 +56,8 @@ export type ResolvedCompositionCapability = typeof ResolvedCompositionCapability
 export const CompositionCapabilityPlanSchema = Schema.TaggedStruct('Planned', {
   system: CompositionCapabilitySystemSchema,
   projectorPlatform: Schema.Literals(['x86_64-linux', 'aarch64-linux', 'aarch64-macos']),
-  projectorPath: AbsolutePath,
   candidateRoot: AbsolutePath,
   nixCommands: Schema.Array(CompositionCapabilityCommandSchema),
-  projectorCommand: CompositionCapabilityCommandSchema,
 }).annotate({ identifier: 'Megarepo.CompositionCapabilityPlan' })
 export type CompositionCapabilityPlan = typeof CompositionCapabilityPlanSchema.Type
 
@@ -70,15 +65,12 @@ export type CompositionCapabilityPlan = typeof CompositionCapabilityPlanSchema.T
 export const CompositionCapabilityResolutionSchema = Schema.TaggedStruct('Resolved', {
   system: CompositionCapabilitySystemSchema,
   projectorPlatform: Schema.Literals(['x86_64-linux', 'aarch64-linux', 'aarch64-macos']),
-  projectorPath: AbsolutePath,
   candidateRoot: AbsolutePath,
   projectionPath: AbsolutePath,
   projectionDigest: ProjectionDigest,
   capabilities: Schema.Array(ResolvedCompositionCapabilitySchema),
   capabilitiesByToolId: Schema.Record(Schema.String, ResolvedCompositionCapabilitySchema),
   nixCommands: Schema.Array(CompositionCapabilityCommandSchema),
-  projectorCommand: CompositionCapabilityCommandSchema,
-  checkCommand: CompositionCapabilityCommandSchema,
 }).annotate({ identifier: 'Megarepo.CompositionCapabilityResolution' })
 export type CompositionCapabilityResolution = typeof CompositionCapabilityResolutionSchema.Type
 
@@ -89,7 +81,6 @@ export class CompositionCapabilityResolutionError extends Schema.TaggedError<Com
     reason: Schema.Literals([
       'InvalidInput',
       'InvalidRuntime',
-      'MissingProjector',
       'InvalidLock',
       'CommandFailure',
       'InvalidNixOutput',

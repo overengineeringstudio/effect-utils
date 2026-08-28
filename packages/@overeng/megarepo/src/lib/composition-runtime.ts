@@ -1,18 +1,15 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { lstat, mkdir, readFile, rm } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import {
   type CompositionApplyRuntime,
   type CompositionOverlayScratchRuntime,
 } from './composition-apply.ts'
-import { COMPOSITION_CAPABILITY_PROJECTOR_PATH } from './composition-capability-resolver-schema.ts'
 import {
-  compositionCapabilityProjectorEnvironment,
+  checkCompositionCapabilityProjection,
   compositionCapabilityRuntimeFromEnv,
-  type CompositionCapabilityRuntime,
 } from './composition-capability-resolver.ts'
 import {
   installOwnedCapabilityProjection,
@@ -73,31 +70,8 @@ const run = ({
     })
   })
 
-const checkProjection = async ({
-  memberRoot,
-  capabilityRuntime,
-}: {
-  readonly memberRoot: string
-  readonly capabilityRuntime: CompositionCapabilityRuntime
-}) => {
-  const projector = NodePath.join(memberRoot, COMPOSITION_CAPABILITY_PROJECTOR_PATH)
-  const info = await lstat(projector)
-  if (info.isFile() === false || info.isSymbolicLink() === true) {
-    throw new TypeError(`Capability projector is not a tracked regular file: ${projector}`)
-  }
-  const privateRoot = await mkdtemp(NodePath.join(tmpdir(), 'megarepo-capability-check-'))
-  await chmod(privateRoot, 0o700)
-  try {
-    await run({
-      executable: capabilityRuntime.bashPath,
-      args: [projector, '--check', memberRoot],
-      cwd: memberRoot,
-      env: compositionCapabilityProjectorEnvironment({ runtime: capabilityRuntime, privateRoot }),
-    })
-  } finally {
-    await rm(privateRoot, { recursive: true, force: true })
-  }
-}
+const checkProjection = async ({ memberRoot }: { readonly memberRoot: string }) =>
+  checkCompositionCapabilityProjection({ memberRoot })
 
 const overlayKey = ({
   memberKey,
@@ -201,7 +175,7 @@ export const compositionApplyRuntimeFromEnv = ({
     throw new TypeError(`Pinned composition platform '${platform}' disagrees with '${system}'`)
   }
 
-  const check = (memberRoot: string) => checkProjection({ memberRoot, capabilityRuntime })
+  const check = (memberRoot: string) => checkProjection({ memberRoot })
   const nonce = () => randomBytes(16).toString('hex')
   return {
     ownedCapabilityProjection: {
