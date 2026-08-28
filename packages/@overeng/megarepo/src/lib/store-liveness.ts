@@ -24,9 +24,9 @@ import {
   readMegarepoConfig,
 } from './config.ts'
 import { LOCK_FILE_NAME, readLockFile } from './lock.ts'
-import { ownedWorktreeAcquisitionJournalPath } from './owned-worktree-acquisition.ts'
-import { OWNED_WORKTREE_ROOT_MANIFEST } from './owned-worktree-acquisition-schema.ts'
 import * as Observability from './observability.ts'
+import { OWNED_WORKTREE_ROOT_MANIFEST } from './owned-worktree-acquisition-schema.ts'
+import { ownedWorktreeAcquisitionJournalPath } from './owned-worktree-acquisition.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 import type { MegarepoStore } from './store.ts'
 
@@ -151,7 +151,8 @@ export const collectWorkspaceLivePaths = ({
     const { config, path: configPath } = yield* readMegarepoConfig(workspaceRoot)
     const fs = yield* FileSystem.FileSystem
     const physicalConfigPath = yield* fs.realPath(configPath)
-    const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? workspaceRoot
+    const configOwner =
+      EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? workspaceRoot
     const lockPath = EffectPath.ops.join(
       configOwner,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -211,12 +212,14 @@ export const collectWorkspaceLivePaths = ({
         '.megarepo/composition-publication',
         '.megarepo/overlay-scratch',
       ]) {
-        const directory = EffectPath.unsafe.absoluteDir(`${NodePath.join(workspaceRoot, relativeDir)}/`)
-        if (yield* fs.exists(directory)) {
+        const directory = EffectPath.unsafe.absoluteDir(
+          `${NodePath.join(workspaceRoot, relativeDir)}/`,
+        )
+        if ((yield* fs.exists(directory)) === true) {
           paths.add(normalizePath(directory))
-          const entries = yield* fs.readDirectory(directory).pipe(
-            strict === true ? (effect) => effect : Effect.orElseSucceed(() => [] as string[]),
-          )
+          const entries = yield* fs
+            .readDirectory(directory)
+            .pipe(strict === true ? (effect) => effect : Effect.orElseSucceed(() => [] as string[]))
           for (const entry of entries) paths.add(normalizePath(NodePath.join(directory, entry)))
         }
       }

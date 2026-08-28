@@ -48,8 +48,8 @@ import { Store, type MegarepoStore } from '../../lib/store.ts'
 
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
 
-/** Read the reference-only member lock before or after owned-worktree acquisition. */
-export const readCompositionIgnoredLock = ({
+/** Read the authoritative lock before or after owned-worktree acquisition. */
+export const readCompositionLockFile = ({
   workspaceRoot,
   ownedMemberPath,
 }: {

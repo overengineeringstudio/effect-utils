@@ -6,9 +6,9 @@
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
+import type { CompositionCommandOutput } from '../composition-apply-schema.ts'
 import type { RefMismatch } from '../issues.ts'
 import type { NixLockSyncResult } from '../nix-lock/mod.ts'
-import type { CompositionCommandOutput } from '../composition-apply-schema.ts'
 
 /** Member sync result status */
 export type MemberSyncStatus =

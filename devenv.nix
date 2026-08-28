@@ -417,8 +417,12 @@ let
     let
       script = pkgs.writeShellScript "buck2-local-config-hook" ''
         set -euo pipefail
-        root="''${DEVENV_ROOT:-$PWD}"
-        target="$root/.buckconfig.local"
+        member_root="''${DEVENV_ROOT:-$PWD}"
+        workspace_root="$member_root"
+        if [ -f "$member_root/../../.megarepo-owned-worktree.json" ]; then
+          workspace_root="$(cd "$member_root/../.." && pwd -P)"
+        fi
+        target="$workspace_root/.buckconfig.local"
         if [ "''${BUCK2_NO_REMOTE_CACHE:-}" = "1" ]; then
           ${pkgs.coreutils}/bin/rm -f "$target"
         elif ! ${pkgs.diffutils}/bin/cmp -s "$target" ${buck2LocalConfig}; then

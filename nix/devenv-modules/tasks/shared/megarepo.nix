@@ -113,7 +113,8 @@ let
 
   checkWorkspaceMembersScript = ''
     set -o pipefail
-    [ -d ./repos ] || exit 1
+    workspace_root="$(mr root --output json | ${jq} -er '.root')"
+    [ -d "$workspace_root/repos" ] || exit 1
 
     ${loadCheckSkipMembersScript}
 
@@ -122,7 +123,7 @@ let
       if should_skip_member "$member"; then
         continue
       fi
-      if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+      if [ ! -L "$workspace_root/repos/$member" ] && [ ! -d "$workspace_root/repos/$member" ]; then
         exit 1
       fi
     done
@@ -273,8 +274,9 @@ let
           exit 0
         fi
 
-        if [ ! -d ./repos ]; then
-          echo "[devenv] Missing repos/ directory." >&2
+        workspace_root="$(mr root --output json | ${jq} -er '.root')"
+        if [ ! -d "$workspace_root/repos" ]; then
+          echo "[devenv] Missing workspace repos/ directory." >&2
           echo "[devenv] Fix: devenv tasks run mr:setup" >&2
           exit 1
         fi
@@ -288,7 +290,7 @@ let
           if should_skip_member "$member"; then
             continue
           fi
-          if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+          if [ ! -L "$workspace_root/repos/$member" ] && [ ! -d "$workspace_root/repos/$member" ]; then
             missing="$missing $member"
           fi
         done
