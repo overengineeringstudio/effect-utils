@@ -1,7 +1,8 @@
 import { execFile as execFileCallback } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { createReadStream } from 'node:fs'
-import { access, lstat, mkdir, readFile, realpath, rm, stat } from 'node:fs/promises'
+import { constants, createReadStream } from 'node:fs'
+import { access, chmod, lstat, mkdir, mkdtemp, open, realpath, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
 import { promisify } from 'node:util'
 
@@ -51,12 +52,29 @@ export interface CompositionCapabilityRuntime {
   readonly nonce?: () => string
   /** Deterministic interruption seam after private candidate creation and identity capture. */
   readonly afterCandidateCreated?: (candidateRoot: string) => Promise<void>
+  /** Deterministic seam immediately before projection identity capture and digesting. */
+  readonly beforeProjectionDigest?: (input: {
+    readonly candidateRoot: string
+    readonly projectionPath: string
+  }) => Promise<void>
+  /** Test seam. The returned private root and cleanup capability are resolver-owned. */
+  readonly createPrivateScratch?: () => Promise<CompositionCapabilityPrivateScratch>
+}
+
+/** Resolver-owned private scratch capability. Callers may inject creation, never a mutable path. */
+export interface CompositionCapabilityPrivateScratch {
+  readonly path: string
+  readonly cleanup: () => Promise<void>
+}
+
+/** Realized resolution handle. `release` destroys the resolver-owned private scratch tree. */
+export interface CompositionCapabilityResolutionHandle extends CompositionCapabilityResolution {
+  readonly release: () => Promise<void>
 }
 
 /** Strict member, platform, scratch ownership, and pinned runtime resolver input. */
 export interface ResolveCompositionCapabilitiesInput {
   readonly memberRoot: string
-  readonly scratchRoot: string
   readonly system: CompositionCapabilitySystem
   readonly manifest: BuckMemberManifest | unknown
   readonly dryRun: boolean
@@ -66,7 +84,7 @@ export interface ResolveCompositionCapabilitiesInput {
 /** Validated dry-run plan or completed scratch projection. */
 export type ResolveCompositionCapabilitiesResult =
   | CompositionCapabilityPlan
-  | CompositionCapabilityResolution
+  | CompositionCapabilityResolutionHandle
 
 const runtimeEnvironmentNames = {
   nixPath: 'MR_CAPABILITY_NIX_BIN',
@@ -89,7 +107,10 @@ const runtimeEnvironmentNames = {
   flockPath: 'MR_CAPABILITY_FLOCK_BIN',
   diffPath: 'MR_CAPABILITY_DIFF_BIN',
 } as const satisfies Record<
-  keyof Omit<CompositionCapabilityRuntime, 'env' | 'nonce' | 'afterCandidateCreated'>,
+  keyof Omit<
+    CompositionCapabilityRuntime,
+    'env' | 'nonce' | 'afterCandidateCreated' | 'beforeProjectionDigest' | 'createPrivateScratch'
+  >,
   string
 >
 
@@ -263,46 +284,30 @@ const validateRuntime = async (runtime: CompositionCapabilityRuntime): Promise<v
   )
 }
 
-const validateRootsAndProjector = async ({
+const validateMemberAndProjector = async ({
   memberRoot,
-  scratchRoot,
 }: {
   readonly memberRoot: string
-  readonly scratchRoot: string
-}): Promise<{
-  readonly memberRoot: string
-  readonly scratchRoot: string
-  readonly projectorPath: string
-}> => {
+}): Promise<{ readonly memberRoot: string; readonly projectorPath: string }> => {
   assertAbsoluteNormalized({ value: memberRoot, name: 'memberRoot' })
-  assertAbsoluteNormalized({ value: scratchRoot, name: 'scratchRoot' })
   try {
-    const [canonicalMemberRoot, canonicalScratchRoot] = await Promise.all([
-      realpath(memberRoot),
-      realpath(scratchRoot),
-    ])
-    const [memberInfo, scratchInfo] = await Promise.all([
-      stat(canonicalMemberRoot),
-      stat(canonicalScratchRoot),
-    ])
-    if (memberInfo.isDirectory() === false || scratchInfo.isDirectory() === false) {
-      throw new Error('memberRoot and scratchRoot must be directories')
+    const canonicalMemberRoot = await realpath(memberRoot)
+    if ((await stat(canonicalMemberRoot)).isDirectory() === false) {
+      throw new Error('memberRoot must be a directory')
     }
     const declaredProjectorPath = NodePath.join(
       canonicalMemberRoot,
       COMPOSITION_CAPABILITY_PROJECTOR_PATH,
     )
     const projectorInfo = await lstat(declaredProjectorPath)
-    if (projectorInfo.isFile() === false) throw new Error('projector is not a regular tracked file')
+    if (projectorInfo.isFile() === false || projectorInfo.isSymbolicLink() === true) {
+      throw new Error('projector is not a regular tracked file')
+    }
     const projectorPath = await realpath(declaredProjectorPath)
     if (containedBy({ root: canonicalMemberRoot, path: projectorPath }) === false) {
       throw new Error('projector escapes member root')
     }
-    return {
-      memberRoot: canonicalMemberRoot,
-      scratchRoot: canonicalScratchRoot,
-      projectorPath,
-    }
+    return { memberRoot: canonicalMemberRoot, projectorPath }
   } catch (cause) {
     throw new CompositionCapabilityResolutionError({
       reason: 'MissingProjector',
@@ -313,12 +318,17 @@ const validateRootsAndProjector = async ({
   }
 }
 
-interface CandidateRootIdentity {
+interface DirectoryIdentity {
   readonly path: string
   readonly realpath: string
   readonly device: number
   readonly inode: number
+  readonly owner: number
 }
+
+type CandidateRootIdentity = DirectoryIdentity
+
+type PrivateScratchIdentity = DirectoryIdentity
 
 const candidateReplaced = ({ path, cause }: { readonly path: string; readonly cause?: unknown }) =>
   new CompositionCapabilityResolutionError({
@@ -328,12 +338,82 @@ const candidateReplaced = ({ path, cause }: { readonly path: string; readonly ca
     ...(cause === undefined ? {} : { cause }),
   })
 
-const captureCandidateRootIdentity = async ({
+const currentUid = (): number => {
+  const uid = process.getuid?.()
+  if (uid === undefined) {
+    throw new CompositionCapabilityResolutionError({
+      reason: 'InvalidRuntime',
+      message: 'Capability resolution requires a POSIX process uid',
+    })
+  }
+  return uid
+}
+
+const assertSecureParent = async ({
   path,
-  scratchRoot,
+  uid,
 }: {
   readonly path: string
-  readonly scratchRoot: string
+  readonly uid: number
+}) => {
+  const parent = NodePath.dirname(path)
+  const info = await lstat(parent)
+  const sticky = (info.mode & 0o1000) !== 0
+  const ownerPrivate = info.uid === uid && (info.mode & 0o022) === 0
+  if (
+    info.isDirectory() === false ||
+    info.isSymbolicLink() === true ||
+    (sticky === false && ownerPrivate === false)
+  ) {
+    throw new Error(`private scratch parent is neither sticky nor owner-private: ${parent}`)
+  }
+}
+
+const defaultCreatePrivateScratch = async (): Promise<CompositionCapabilityPrivateScratch> => {
+  const uid = currentUid()
+  const tempRoot = await realpath(tmpdir())
+  await assertSecureParent({ path: NodePath.join(tempRoot, 'entry'), uid })
+  const path = await mkdtemp(NodePath.join(tempRoot, 'megarepo-capabilities-'))
+  await chmod(path, 0o700)
+  return { path, cleanup: () => rm(path, { recursive: true, force: true }) }
+}
+
+const capturePrivateScratchIdentity = async (
+  scratch: CompositionCapabilityPrivateScratch,
+): Promise<PrivateScratchIdentity> => {
+  assertAbsoluteNormalized({ value: scratch.path, name: 'private scratch path' })
+  try {
+    const uid = currentUid()
+    const info = await lstat(scratch.path)
+    const canonicalPath = await realpath(scratch.path)
+    await assertSecureParent({ path: scratch.path, uid })
+    if (
+      info.isDirectory() === false ||
+      info.isSymbolicLink() === true ||
+      (info.mode & 0o777) !== 0o700 ||
+      info.uid !== uid ||
+      canonicalPath !== scratch.path
+    ) {
+      throw new Error('private scratch is not a canonical mode-0700 directory owned by this uid')
+    }
+    return {
+      path: scratch.path,
+      realpath: canonicalPath,
+      device: info.dev,
+      inode: info.ino,
+      owner: info.uid,
+    }
+  } catch (cause) {
+    throw candidateReplaced({ path: scratch.path, cause })
+  }
+}
+
+const captureCandidateRootIdentity = async ({
+  path,
+  scratch,
+}: {
+  readonly path: string
+  readonly scratch: PrivateScratchIdentity
 }): Promise<CandidateRootIdentity> => {
   try {
     const info = await lstat(path)
@@ -342,17 +422,24 @@ const captureCandidateRootIdentity = async ({
       info.isDirectory() === false ||
       info.isSymbolicLink() === true ||
       (info.mode & 0o777) !== 0o700 ||
-      containedBy({ root: scratchRoot, path: canonicalPath }) === false
+      info.uid !== scratch.owner ||
+      containedBy({ root: scratch.realpath, path: canonicalPath }) === false
     ) {
       throw new Error('candidate is not a private contained directory')
     }
-    return { path, realpath: canonicalPath, device: info.dev, inode: info.ino }
+    return {
+      path,
+      realpath: canonicalPath,
+      device: info.dev,
+      inode: info.ino,
+      owner: info.uid,
+    }
   } catch (cause) {
     throw candidateReplaced({ path, cause })
   }
 }
 
-const assertCandidateRootIdentity = async (identity: CandidateRootIdentity): Promise<void> => {
+const assertDirectoryIdentity = async (identity: DirectoryIdentity): Promise<void> => {
   try {
     const info = await lstat(identity.path)
     const canonicalPath = await realpath(identity.path)
@@ -362,22 +449,30 @@ const assertCandidateRootIdentity = async (identity: CandidateRootIdentity): Pro
       (info.mode & 0o777) !== 0o700 ||
       info.dev !== identity.device ||
       info.ino !== identity.inode ||
+      info.uid !== identity.owner ||
       canonicalPath !== identity.realpath
     ) {
-      throw new Error('candidate identity no longer matches its captured inode')
+      throw new Error('directory identity no longer matches its captured inode')
     }
   } catch (cause) {
     throw candidateReplaced({ path: identity.path, cause })
   }
 }
 
-const removeOwnedCandidate = async (identity: CandidateRootIdentity): Promise<void> => {
-  try {
-    await assertCandidateRootIdentity(identity)
-  } catch {
-    return
+const makeScratchRelease = ({
+  scratch,
+  identity,
+}: {
+  readonly scratch: CompositionCapabilityPrivateScratch
+  readonly identity: PrivateScratchIdentity
+}): (() => Promise<void>) => {
+  let released = false
+  return async () => {
+    if (released === true) return
+    await assertDirectoryIdentity(identity)
+    await scratch.cleanup()
+    released = true
   }
-  await rm(identity.path, { recursive: true, force: true })
 }
 
 const executableDigest = async (path: string): Promise<`sha256:${string}`> => {
@@ -499,28 +594,134 @@ const projectorEnv = (runtime: CompositionCapabilityRuntime): NodeJS.ProcessEnv 
 const plannedOutput = (capability: BuckMemberCapability): string =>
   `/nix/store/${'0'.repeat(32)}-planned-${capability.toolId}/${capability.executable}`
 
-const projectionDigest = async (projectionPath: string): Promise<string> => {
-  const defs = await readFile(NodePath.join(projectionPath, 'defs.bzl'), 'utf8')
-  const matches = [...defs.matchAll(/^GENERATION = "([0-9a-f]{64})"$/gmu)]
-  if (matches.length !== 1) {
+interface ProjectionIdentity {
+  readonly path: string
+  readonly realpath: string
+  readonly device: number
+  readonly inode: number
+}
+
+const captureProjectionIdentity = async ({
+  projectionPath,
+  candidate,
+}: {
+  readonly projectionPath: string
+  readonly candidate: CandidateRootIdentity
+}): Promise<ProjectionIdentity> => {
+  try {
+    const info = await lstat(projectionPath)
+    const canonicalPath = await realpath(projectionPath)
+    if (
+      info.isDirectory() === false ||
+      info.isSymbolicLink() === true ||
+      containedBy({ root: candidate.realpath, path: canonicalPath }) === false
+    ) {
+      throw new Error('projection is not a real directory contained by the candidate')
+    }
+    return {
+      path: projectionPath,
+      realpath: canonicalPath,
+      device: info.dev,
+      inode: info.ino,
+    }
+  } catch (cause) {
     throw new CompositionCapabilityResolutionError({
       reason: 'ProjectionFailure',
-      message: 'Checked projection does not declare exactly one valid GENERATION',
-      path: NodePath.join(projectionPath, 'defs.bzl'),
+      message: 'Checked projection directory identity is invalid',
+      path: projectionPath,
+      cause,
     })
   }
-  return matches[0]![1]!
+}
+
+const assertProjectionIdentity = async (identity: ProjectionIdentity): Promise<void> => {
+  try {
+    const info = await lstat(identity.path)
+    const canonicalPath = await realpath(identity.path)
+    if (
+      info.isDirectory() === false ||
+      info.isSymbolicLink() === true ||
+      info.dev !== identity.device ||
+      info.ino !== identity.inode ||
+      canonicalPath !== identity.realpath
+    ) {
+      throw new Error('projection identity changed')
+    }
+  } catch (cause) {
+    throw new CompositionCapabilityResolutionError({
+      reason: 'ProjectionFailure',
+      message: 'Checked projection directory was replaced while digesting',
+      path: identity.path,
+      cause,
+    })
+  }
+}
+
+const projectionDigest = async ({
+  projection,
+  candidate,
+}: {
+  readonly projection: ProjectionIdentity
+  readonly candidate: CandidateRootIdentity
+}): Promise<string> => {
+  await assertDirectoryIdentity(candidate)
+  await assertProjectionIdentity(projection)
+  const defsPath = NodePath.join(projection.path, 'defs.bzl')
+  let handle
+  try {
+    const pathInfo = await lstat(defsPath)
+    const canonicalPath = await realpath(defsPath)
+    if (
+      pathInfo.isFile() === false ||
+      pathInfo.isSymbolicLink() === true ||
+      containedBy({ root: projection.realpath, path: canonicalPath }) === false
+    ) {
+      throw new Error('defs.bzl is not a contained regular file')
+    }
+    handle = await open(defsPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const before = await handle.stat()
+    const defs = await handle.readFile({ encoding: 'utf8' })
+    const after = await handle.stat()
+    if (
+      before.isFile() === false ||
+      before.dev !== pathInfo.dev ||
+      before.ino !== pathInfo.ino ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino
+    ) {
+      throw new Error('defs.bzl inode changed while reading')
+    }
+    const matches = [...defs.matchAll(/^GENERATION = "([0-9a-f]{64})"$/gmu)]
+    if (matches.length !== 1) {
+      throw new Error('defs.bzl does not declare exactly one valid GENERATION')
+    }
+    await assertProjectionIdentity(projection)
+    await assertDirectoryIdentity(candidate)
+    return matches[0]![1]!
+  } catch (cause) {
+    throw new CompositionCapabilityResolutionError({
+      reason: 'ProjectionFailure',
+      message: 'Checked projection could not be digested without following links',
+      path: defsPath,
+      cause,
+    })
+  } finally {
+    await handle?.close()
+  }
 }
 
 /**
- * Resolve and project one strict tracked member manifest without ever writing into the member.
- * On failure only this call's candidate below `scratchRoot` is removed.
+ * Resolve and project one strict tracked member manifest without writing into the member.
+ *
+ * The resolver creates and owns a private scratch parent. Other processes running as the same uid
+ * are inside the trust boundary; arbitrary caller-controlled workspace paths are not. A successful
+ * handle retains the projection until `release` is called. Failures release only the captured
+ * private scratch inode.
  */
 export const resolveCompositionCapabilities = async (
   input: ResolveCompositionCapabilitiesInput,
 ): Promise<ResolveCompositionCapabilitiesResult> => {
-  let candidateRoot: string | undefined
-  let candidateIdentity: CandidateRootIdentity | undefined
+  let release: (() => Promise<void>) | undefined
   try {
     const manifest = decodeBuckMemberManifest(input.manifest)
     const system = Schema.decodeUnknownSync(
@@ -528,7 +729,7 @@ export const resolveCompositionCapabilities = async (
       strictParseOptions,
     )(input.system)
     await validateRuntime(input.runtime)
-    const roots = await validateRootsAndProjector(input)
+    const roots = await validateMemberAndProjector(input)
     const capabilities = [...manifest.capabilities].toSorted((left, right) =>
       left.toolId < right.toolId ? -1 : left.toolId > right.toolId ? 1 : 0,
     )
@@ -538,7 +739,11 @@ export const resolveCompositionCapabilities = async (
         message: 'runtime nonce must contain only portable filename characters',
       })
     }
-    candidateRoot = NodePath.join(roots.scratchRoot, `.megarepo-capabilities-${nonce}`)
+    const plannedPrivateRoot = NodePath.join(
+      NodePath.resolve(tmpdir()),
+      `.megarepo-capabilities-planned-${nonce}`,
+    )
+    const plannedCandidateRoot = NodePath.join(plannedPrivateRoot, 'candidate')
     const projectorPlatform = platformFor(system)
     const nixCommands = capabilities.map((capability) =>
       command({
@@ -556,7 +761,7 @@ export const resolveCompositionCapabilities = async (
       executable: input.runtime.bashPath,
       args: [
         roots.projectorPath,
-        candidateRoot,
+        plannedCandidateRoot,
         projectorPlatform,
         ...capabilities.flatMap((capability) => [
           capability.toolId,
@@ -571,21 +776,27 @@ export const resolveCompositionCapabilities = async (
         system,
         projectorPlatform,
         projectorPath: roots.projectorPath,
-        candidateRoot,
+        candidateRoot: plannedCandidateRoot,
         nixCommands,
         projectorCommand: plannedProjectorCommand,
       }
     }
 
-    await mkdir(candidateRoot, { mode: 0o700 })
-    candidateIdentity = await captureCandidateRootIdentity({
-      path: candidateRoot,
-      scratchRoot: roots.scratchRoot,
-    })
-    await input.runtime.afterCandidateCreated?.(candidateRoot)
-    await assertCandidateRootIdentity(candidateIdentity)
     const env: NodeJS.ProcessEnv = { ...process.env, ...input.runtime.env }
     const resolved = await resolveCapabilitiesInOrder({ capabilities, nixCommands, env })
+    const scratch = await (input.runtime.createPrivateScratch ?? defaultCreatePrivateScratch)()
+    const scratchIdentity = await capturePrivateScratchIdentity(scratch)
+    release = makeScratchRelease({ scratch, identity: scratchIdentity })
+    const candidateRoot = NodePath.join(scratchIdentity.path, 'candidate')
+    await mkdir(candidateRoot, { mode: 0o700 })
+    const candidateIdentity = await captureCandidateRootIdentity({
+      path: candidateRoot,
+      scratch: scratchIdentity,
+    })
+    await input.runtime.afterCandidateCreated?.(candidateRoot)
+    await assertDirectoryIdentity(scratchIdentity)
+    await assertDirectoryIdentity(candidateIdentity)
+
     const projectorCommand = command({
       executable: input.runtime.bashPath,
       args: [
@@ -599,26 +810,32 @@ export const resolveCompositionCapabilities = async (
         ]),
       ],
     })
-    await assertCandidateRootIdentity(candidateIdentity)
+    await assertDirectoryIdentity(candidateIdentity)
     await run({
       value: projectorCommand,
       env: projectorEnv(input.runtime),
       reason: 'ProjectionFailure',
     })
-    await assertCandidateRootIdentity(candidateIdentity)
+    await assertDirectoryIdentity(candidateIdentity)
     const checkCommand = command({
       executable: input.runtime.bashPath,
       args: [roots.projectorPath, '--check', candidateRoot],
     })
-    await assertCandidateRootIdentity(candidateIdentity)
+    await assertDirectoryIdentity(candidateIdentity)
     await run({
       value: checkCommand,
       env: projectorEnv(input.runtime),
       reason: 'ProjectionFailure',
     })
-    await assertCandidateRootIdentity(candidateIdentity)
+    await assertDirectoryIdentity(candidateIdentity)
     const projectionPath = NodePath.join(candidateRoot, '.buck2', 'capabilities')
-    const digest = await projectionDigest(projectionPath)
+    await input.runtime.beforeProjectionDigest?.({ candidateRoot, projectionPath })
+    await assertDirectoryIdentity(candidateIdentity)
+    const projection = await captureProjectionIdentity({
+      projectionPath,
+      candidate: candidateIdentity,
+    })
+    const digest = await projectionDigest({ projection, candidate: candidateIdentity })
     return {
       _tag: 'Resolved',
       system,
@@ -634,9 +851,16 @@ export const resolveCompositionCapabilities = async (
       nixCommands,
       projectorCommand,
       checkCommand,
+      release,
     }
   } catch (cause) {
-    if (candidateIdentity !== undefined) await removeOwnedCandidate(candidateIdentity)
+    if (release !== undefined) {
+      try {
+        await release()
+      } catch {
+        // Refuse to invoke an injected cleanup after the captured private root was replaced.
+      }
+    }
     if (cause instanceof CompositionCapabilityResolutionError) throw cause
     throw invalidInput({ message: 'Invalid composition capability resolver input', cause })
   }
@@ -647,7 +871,7 @@ export const resolvedCompositionCapabilityByToolId = ({
   resolution,
   toolId,
 }: {
-  readonly resolution: CompositionCapabilityResolution
+  readonly resolution: CompositionCapabilityResolutionHandle
   readonly toolId: string
 }): ResolvedCompositionCapability => {
   const capability = resolution.capabilitiesByToolId[toolId]
