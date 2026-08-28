@@ -47,6 +47,24 @@ import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
 import { Store, type MegarepoStore } from '../../lib/store.ts'
 
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
+
+/** Read the reference-only member lock before or after owned-worktree acquisition. */
+export const readCompositionIgnoredLock = ({
+  workspaceRoot,
+  ownedMemberPath,
+}: {
+  readonly workspaceRoot: string
+  readonly ownedMemberPath: string
+}) =>
+  Effect.gen(function* () {
+    const ownedLock = yield* readLockFile(
+      EffectPath.unsafe.absoluteFile(NodePath.join(ownedMemberPath, LOCK_FILE_NAME)),
+    )
+    if (Option.isSome(ownedLock) === true) return ownedLock
+    return yield* readLockFile(
+      EffectPath.unsafe.absoluteFile(NodePath.join(workspaceRoot, LOCK_FILE_NAME)),
+    )
+  })
 const execFile = promisify(execFileCallback)
 const OwnedManifestJson = Schema.fromJsonString(OwnedWorktreeRootManifest)
 const AcquisitionJournalJson = Schema.fromJsonString(OwnedWorktreeAcquisitionJournal)
