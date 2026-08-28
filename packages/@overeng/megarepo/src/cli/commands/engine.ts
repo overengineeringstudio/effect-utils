@@ -75,7 +75,7 @@ import type {
   LockSharedSourceUpdate,
   SyncAction,
 } from '../renderers/SyncOutput/schema.ts'
-import { readCompositionIgnoredLock, runCompositionApply } from './composition.ts'
+import { readCompositionLockFile, runCompositionApply } from './composition.ts'
 
 /** Policy for apply-time lock-file rewrites. */
 export type LockSyncMode = 'auto' | 'off' | 'direct' | 'recursive'
@@ -750,7 +750,7 @@ export const runCommand = ({
               callerCwd: cwd,
             })
             const ignoredMembers = config.generators?.composition?.ignoredMembers ?? []
-            const ignoredLock = yield* readCompositionIgnoredLock({
+            const ignoredLock = yield* readCompositionLockFile({
               workspaceRoot: root.value,
               ownedMemberPath: composition.defaultCwd,
             })
