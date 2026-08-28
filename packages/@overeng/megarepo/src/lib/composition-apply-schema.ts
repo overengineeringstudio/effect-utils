@@ -246,6 +246,7 @@ export class CompositionApplyError extends Schema.TaggedError<CompositionApplyEr
     reason: Schema.Literals([
       'InvalidRequest',
       'OwnedMemberCollision',
+      'MemberKeyCollision',
       'PlatformUnsupported',
       'ManifestInvalid',
       'ManifestMountMismatch',
@@ -278,6 +279,25 @@ export class CompositionApplyError extends Schema.TaggedError<CompositionApplyEr
     path: Schema.optional(Schema.String),
     memberKey: Schema.optional(MemberKey),
     recoveryPaths: Schema.Array(Schema.String),
+    primaryFailure: Schema.optional(
+      Schema.Struct({
+        reason: Schema.String,
+        phase: Schema.String,
+        message: Schema.String,
+      }),
+    ),
+    cleanupFailures: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          resource: Schema.Literals(['CapabilityScratch', 'OverlayScratch', 'WorkspaceUpdateLock']),
+          path: Schema.String,
+          message: Schema.String,
+        }),
+      ),
+    ),
+    updateLockRecovery: Schema.optional(
+      Schema.Struct({ path: Schema.String, token: Schema.String }),
+    ),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}

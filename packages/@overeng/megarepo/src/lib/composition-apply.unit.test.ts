@@ -330,6 +330,69 @@ describe('composition apply plan', () => {
     expect(plan.cleanup).toBe('RemoveScratchOnly')
   })
 
+  it('rejects Darwin case-fold collisions before any effects', async () => {
+    const ownedCalls: Array<string> = []
+    const owned = fake({ calls: ownedCalls })
+    const ownedRuntime = {
+      ...owned.runtime,
+      platform: 'darwin' as const,
+      system: 'aarch64-darwin' as const,
+    }
+    const ownedError = await failed(
+      request({
+        ownedMemberKey: 'Foo',
+        ownedMemberPath: '/workspace/repos/Foo',
+        lockedMembers: [{ key: 'foo', sourcePath: '/store/foo', lockedCommit: commit }],
+      }),
+      ownedRuntime,
+    )
+    expect(ownedError.reason).toBe('MemberKeyCollision')
+    expect(ownedCalls).toEqual([])
+
+    const lockedCalls: Array<string> = []
+    const locked = fake({ calls: lockedCalls })
+    const lockedRuntime = {
+      ...locked.runtime,
+      platform: 'darwin' as const,
+      system: 'aarch64-darwin' as const,
+    }
+    const lockedError = await failed(
+      request({
+        lockedMembers: [
+          { key: 'Alpha', sourcePath: '/store/Alpha', lockedCommit: commit },
+          { key: 'alpha', sourcePath: '/store/alpha', lockedCommit: commit },
+        ],
+      }),
+      lockedRuntime,
+    )
+    expect(lockedError.reason).toBe('MemberKeyCollision')
+    expect(lockedCalls).toEqual([])
+  })
+
+  it('keeps Linux member keys byte-sensitive', async () => {
+    const calls: Array<string> = []
+    const manifests = new Map([
+      ['/workspace/repos/owned', manifest({ cell: 'owned', key: 'owned', buck: true })],
+      ['/store/Alpha', manifest({ cell: 'upper', key: 'Alpha' })],
+      ['/store/alpha', manifest({ cell: 'lower', key: 'alpha' })],
+    ])
+    const { runtime } = fake({ calls, manifests })
+    const result = await Effect.runPromise(
+      compositionApply({
+        request: request({
+          lockedMembers: [
+            { key: 'Alpha', sourcePath: '/store/Alpha', lockedCommit: commit },
+            { key: 'alpha', sourcePath: '/store/alpha', lockedCommit: commit },
+          ],
+        }),
+        runtime,
+      }),
+    )
+    expect(result._tag).toBe('DryRun')
+    expect(calls).toContain('mount:Alpha:plan')
+    expect(calls).toContain('mount:alpha:plan')
+  })
+
   it('rejects the owned member in locked members before I/O', async () => {
     const calls: Array<string> = []
     const { runtime } = fake({ calls })

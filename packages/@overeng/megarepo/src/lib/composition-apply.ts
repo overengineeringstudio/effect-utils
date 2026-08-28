@@ -286,6 +286,9 @@ const failure = ({
   path,
   memberKey,
   recoveryPaths = [],
+  primaryFailure,
+  cleanupFailures,
+  updateLockRecovery,
   cause,
 }: Omit<ConstructorParameters<typeof CompositionApplyError>[0], '_tag'>): CompositionApplyError =>
   new CompositionApplyError({
@@ -295,6 +298,9 @@ const failure = ({
     recoveryPaths,
     ...(path === undefined ? {} : { path }),
     ...(memberKey === undefined ? {} : { memberKey }),
+    ...(primaryFailure === undefined ? {} : { primaryFailure }),
+    ...(cleanupFailures === undefined ? {} : { cleanupFailures }),
+    ...(updateLockRecovery === undefined ? {} : { updateLockRecovery }),
     ...(cause === undefined ? {} : { cause }),
   })
 
@@ -648,6 +654,25 @@ const applyComposition = async ({
       recoveryPaths: [],
     })
   }
+  if (runtime.platform === 'darwin') {
+    const foldedKeys = new Map<string, string>([
+      [request.ownedMemberKey.toLowerCase(), request.ownedMemberKey],
+    ])
+    for (const member of request.lockedMembers) {
+      const folded = member.key.toLowerCase()
+      const existing = foldedKeys.get(folded)
+      if (existing !== undefined) {
+        throw failure({
+          reason: 'MemberKeyCollision',
+          phase: 'Input',
+          memberKey: member.key,
+          message: `Member keys '${existing}' and '${member.key}' collide on Darwin`,
+          recoveryPaths: [],
+        })
+      }
+      foldedKeys.set(folded, member.key)
+    }
+  }
   const keys = new Set<string>()
   for (const member of request.lockedMembers) {
     if (keys.has(member.key) === true) {
@@ -671,26 +696,84 @@ const applyComposition = async ({
   }> = []
   let handlesReleased = false
 
-  const releaseHandles = async (): Promise<void> => {
-    if (handlesReleased === true) return
+  interface CleanupIssue {
+    readonly resource: 'CapabilityScratch' | 'OverlayScratch' | 'WorkspaceUpdateLock'
+    readonly path: string
+    readonly message: string
+    readonly cause: unknown
+    readonly updateLockToken?: string
+  }
+
+  const makeCleanupFailure = ({
+    primary,
+    issues,
+  }: {
+    readonly primary?: unknown
+    readonly issues: ReadonlyArray<CleanupIssue>
+  }): CompositionApplyError => {
+    const inherited =
+      primary instanceof CompositionApplyError && primary.reason === 'CleanupFailure'
+        ? primary
+        : undefined
+    const primaryDetail =
+      inherited?.primaryFailure ??
+      (primary instanceof CompositionApplyError
+        ? { reason: primary.reason, phase: primary.phase, message: primary.message }
+        : primary === undefined
+          ? undefined
+          : { reason: 'Unknown', phase: 'Input', message: String(primary) })
+    const cleanupFailures = [
+      ...(inherited?.cleanupFailures ?? []),
+      ...issues.map(({ resource, path, message }) => ({ resource, path, message })),
+    ]
+    const updateLockIssue = issues.find((issue) => issue.resource === 'WorkspaceUpdateLock')
+    const causes = [
+      ...(primary === undefined ? [] : [primary]),
+      ...issues.map((issue) => issue.cause),
+    ]
+    return failure({
+      reason: 'CleanupFailure',
+      phase: 'Cleanup',
+      message: `Could not release ${cleanupFailures.length} composition resource${cleanupFailures.length === 1 ? '' : 's'}${primary === undefined ? '' : ' after a primary phase failure'}`,
+      recoveryPaths: [
+        ...new Set([
+          ...(inherited?.recoveryPaths ?? []),
+          ...cleanupFailures.map(({ path }) => path),
+        ]),
+      ],
+      ...(primaryDetail === undefined ? {} : { primaryFailure: primaryDetail }),
+      cleanupFailures,
+      ...(updateLockIssue?.updateLockToken === undefined
+        ? inherited?.updateLockRecovery === undefined
+          ? {}
+          : { updateLockRecovery: inherited.updateLockRecovery }
+        : {
+            updateLockRecovery: {
+              path: updateLockIssue.path,
+              token: updateLockIssue.updateLockToken,
+            },
+          }),
+      cause: causes.length === 1 ? causes[0] : new AggregateError(causes),
+    })
+  }
+
+  const releaseHandles = async (): Promise<ReadonlyArray<CleanupIssue>> => {
+    if (handlesReleased === true) return []
     handlesReleased = true
-    const errors: Array<unknown> = []
+    const issues: Array<CleanupIssue> = []
     for (const entry of handles.toReversed()) {
       try {
         await entry.handle.release()
       } catch (cause) {
-        errors.push(cause)
+        issues.push({
+          resource: 'CapabilityScratch',
+          path: entry.handle.candidateRoot,
+          message: `Could not release capability scratch for '${entry.member.key}'`,
+          cause,
+        })
       }
     }
-    if (errors.length > 0) {
-      throw failure({
-        reason: 'CleanupFailure',
-        phase: 'Cleanup',
-        message: 'Could not release every capability resolver scratch allocation',
-        recoveryPaths: handles.map(({ handle }) => handle.candidateRoot),
-        cause: errors.length === 1 ? errors[0] : new AggregateError(errors),
-      })
-    }
+    return issues
   }
 
   const execute = async (): Promise<CompositionApplyOutput> => {
@@ -1105,19 +1188,17 @@ const applyComposition = async ({
             try {
               await scratch.cleanup()
             } catch (cause) {
-              if (operationFailure === undefined) {
-                operationFailure = failure({
-                  reason: 'CleanupFailure',
-                  phase: 'Cleanup',
-                  memberKey: member.key,
-                  path: scratch.outputPath,
-                  message: `Could not clean overlay scratch for '${declaration.target}'`,
-                  recoveryPaths: [scratch.outputPath],
-                  cause,
-                })
-              } else {
-                operationFailure = new AggregateError([operationFailure, cause])
-              }
+              operationFailure = makeCleanupFailure({
+                ...(operationFailure === undefined ? {} : { primary: operationFailure }),
+                issues: [
+                  {
+                    resource: 'OverlayScratch',
+                    path: scratch.outputPath,
+                    message: `Could not clean overlay scratch for '${declaration.target}'`,
+                    cause,
+                  },
+                ],
+              })
             }
             if (operationFailure !== undefined) {
               throw normalizeFailure({
@@ -1155,10 +1236,15 @@ const applyComposition = async ({
           message: 'Could not complete composition overlays',
           recoveryPaths: [],
         })
-        throw overlayFailure
-      } finally {
-        await releaseHandles()
       }
+      const cleanupIssues = await releaseHandles()
+      if (cleanupIssues.length > 0) {
+        throw makeCleanupFailure({
+          ...(overlayFailure === undefined ? {} : { primary: overlayFailure }),
+          issues: cleanupIssues,
+        })
+      }
+      if (overlayFailure !== undefined) throw overlayFailure
     }
 
     const resolutions = new Map(handles.map(({ member, handle }) => [member.key, handle]))
@@ -1206,6 +1292,7 @@ const applyComposition = async ({
       })
       if (callbackRan === false) await publishOverlays()
     } catch (cause) {
+      if (cause instanceof CompositionApplyError && cause.reason === 'CleanupFailure') throw cause
       if (overlayFailure !== undefined) throw overlayFailure
       throw normalizeFailure({
         cause,
@@ -1250,32 +1337,27 @@ const applyComposition = async ({
   } catch (cause) {
     primaryFailure = cause
   }
-  const cleanupErrors: Array<unknown> = []
-  if (handlesReleased === false) {
-    try {
-      await releaseHandles()
-    } catch (cause) {
-      cleanupErrors.push(cause)
-    }
-  }
+  const cleanupIssues: Array<CleanupIssue> = [...(await releaseHandles())]
   if (held !== undefined) {
     try {
       await primitives.releaseUpdateLock({ held, runtime: runtime.updateLockRuntime })
     } catch (cause) {
-      cleanupErrors.push(cause)
+      cleanupIssues.push({
+        resource: 'WorkspaceUpdateLock',
+        path: held.lockPath,
+        message: 'Could not release the workspace update lock',
+        cause,
+        updateLockToken: held.owner.token,
+      })
     }
   }
-  if (primaryFailure !== undefined) throw primaryFailure
-  if (cleanupErrors.length > 0) {
-    throw normalizeFailure({
-      cause: cleanupErrors.length === 1 ? cleanupErrors[0] : new AggregateError(cleanupErrors),
-      reason: 'CleanupFailure',
-      phase: 'Cleanup',
-      path: request.workspaceRoot,
-      message: 'Composition cleanup did not release every owned resource',
-      recoveryPaths: [],
+  if (cleanupIssues.length > 0) {
+    throw makeCleanupFailure({
+      ...(primaryFailure === undefined ? {} : { primary: primaryFailure }),
+      issues: cleanupIssues,
     })
   }
+  if (primaryFailure !== undefined) throw primaryFailure
   if (output === undefined) {
     throw failure({
       reason: 'InvalidRequest',
