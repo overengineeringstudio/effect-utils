@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
-import { Heading2, Paragraph, Toggle } from '../components/blocks.ts'
+import { ChildPage, Heading2, Paragraph, Toggle } from '../components/blocks.ts'
 import { h } from '../components/h.ts'
 import {
   buildCandidateTree,
@@ -462,5 +462,74 @@ describe('sync-diff', () => {
       // child paragraph with its parent.
       expect(tallyDiff(ops)).toEqual({ appends: 0, updates: 0, inserts: 0, removes: 1 })
     })
+  })
+
+  it('retains page-kind order independently only inside child-page scopes', () => {
+    const rootWarm = buildCandidateTree(
+      <>
+        <Paragraph blockKey="a">A</Paragraph>
+        <ChildPage blockKey="p" title="P" />
+      </>,
+      ROOT,
+    )
+    rootWarm.children[0]!.blockId = 'block-a'
+    rootWarm.children[1]!.blockId = 'page-p'
+    const rootCache = candidateToCache(rootWarm, CACHE_SCHEMA_VERSION)
+    const rootSwapped = buildCandidateTree(
+      <>
+        <ChildPage blockKey="p" title="P" />
+        <Paragraph blockKey="a">A</Paragraph>
+      </>,
+      ROOT,
+    )
+    expect(diff(rootCache, rootSwapped)).toContainEqual({
+      kind: 'movePage',
+      pageId: 'page-p',
+      parent: { pageId: ROOT },
+    })
+
+    const blockWarm = buildCandidateTree(
+      <Toggle blockKey="outer" title="Outer">
+        <Paragraph blockKey="a">A</Paragraph>
+        <ChildPage blockKey="p" title="P" />
+      </Toggle>,
+      ROOT,
+    )
+    blockWarm.children[0]!.blockId = 'block-outer'
+    blockWarm.children[0]!.children[0]!.blockId = 'block-a'
+    blockWarm.children[0]!.children[1]!.blockId = 'page-p'
+    const blockCache = candidateToCache(blockWarm, CACHE_SCHEMA_VERSION)
+    const blockSwapped = buildCandidateTree(
+      <Toggle blockKey="outer" title="Outer">
+        <ChildPage blockKey="p" title="P" />
+        <Paragraph blockKey="a">A</Paragraph>
+      </Toggle>,
+      ROOT,
+    )
+    expect(diff(blockCache, blockSwapped)).toContainEqual({
+      kind: 'movePage',
+      pageId: 'page-p',
+      parent: { pageId: 'block-outer' },
+    })
+
+    const nestedWarm = buildCandidateTree(
+      <ChildPage blockKey="outer" title="Outer">
+        <Paragraph blockKey="a">A</Paragraph>
+        <ChildPage blockKey="p" title="P" />
+      </ChildPage>,
+      ROOT,
+    )
+    nestedWarm.children[0]!.blockId = 'page-outer'
+    nestedWarm.children[0]!.children[0]!.blockId = 'block-a'
+    nestedWarm.children[0]!.children[1]!.blockId = 'page-p'
+    const nestedCache = candidateToCache(nestedWarm, CACHE_SCHEMA_VERSION)
+    const nestedSwapped = buildCandidateTree(
+      <ChildPage blockKey="outer" title="Outer">
+        <ChildPage blockKey="p" title="P" />
+        <Paragraph blockKey="a">A</Paragraph>
+      </ChildPage>,
+      ROOT,
+    )
+    expect(diff(nestedCache, nestedSwapped)).toEqual([])
   })
 })

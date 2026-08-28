@@ -258,7 +258,9 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   `SyncEnd.opCount`. Unambiguously keyed child pages moved out of band between
   renderer-owned parents retain their durable page ID, key, and subtree instead
   of being archived and recreated; destination-scope key collisions take the
-  safe rebuild fallback instead of producing an invalid cache. The persisted
+  safe rebuild fallback instead of producing an invalid cache. Independent
+  page-order retention is likewise limited to child-page scopes; root and
+  ordinary-block child scopes keep full mixed-kind ordering. The persisted
   `CacheTree` exactly reflects the identities left live and an immediate
   identical sync emits zero mutations.
 - **Nix prepared dependencies**: normalize ordinary, non-injected local

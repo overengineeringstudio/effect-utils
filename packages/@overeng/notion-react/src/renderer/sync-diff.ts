@@ -430,6 +430,8 @@ interface DiffCtx {
    * `tmp/notion-618/options-ordering.md` experiment 9.
    */
   readonly reorderSiblings: boolean
+  /** The current parent is a child page whose block/page interleaving is non-authoritative. */
+  readonly independentPageOrder: boolean
 }
 
 const diffChildren = (
@@ -448,13 +450,15 @@ const diffChildren = (
   const cacheByKey = new Map<string, CacheNode>()
   for (const c of cacheChildren) cacheByKey.set(c.key, c)
 
-  // Block/page interleaving can differ in page scopes even when neither
-  // kind's relative order changed. Retain the page-kind LCS independently so
-  // an ordinary-block reorder cannot demote an unchanged page into a move.
-  const cachePages = cacheChildren.filter((node) => node.nodeKind === 'page')
-  const candidatePages = candidateChildren.filter((node) => node.nodeKind === 'page')
-  for (const index of retainedCacheIndices(cachePages, candidatePages)) {
-    retainedKeys.add(cachePages[index]!.key)
+  // Block/page interleaving can differ inside child pages even when neither
+  // kind's relative order changed. Only those scopes retain the page-kind LCS
+  // independently; root and ordinary-block child scopes remain fully ordered.
+  if (ctx.independentPageOrder) {
+    const cachePages = cacheChildren.filter((node) => node.nodeKind === 'page')
+    const candidatePages = candidateChildren.filter((node) => node.nodeKind === 'page')
+    for (const index of retainedCacheIndices(cachePages, candidatePages)) {
+      retainedKeys.add(cachePages[index]!.key)
+    }
   }
 
   // Demote retained candidates whose type demands full-rebuild on any
@@ -564,7 +568,11 @@ const diffChildren = (
         // (keeping blockKey namespaces isolated per R26). Nested page
         // descendants emit their own createPage/updatePage/… ops which the
         // driver routes in the same pass.
-        const subCtx: DiffCtx = { ...ctx, scopePageId: prior.blockId }
+        const subCtx: DiffCtx = {
+          ...ctx,
+          scopePageId: prior.blockId,
+          independentPageOrder: true,
+        }
         diffChildren(prior.blockId, prior.children, cand.children, ops, subCtx)
         prevRef = prior.blockId
         continue
@@ -597,7 +605,11 @@ const diffChildren = (
         // tmp ids and `candidateToCache` later throws `unresolved blockId`;
         // edits inside the moved page would also be silently skipped in the
         // same sync. Mirrors the retained-page branch above.
-        const moveSubCtx: DiffCtx = { ...ctx, scopePageId: moveSource.blockId }
+        const moveSubCtx: DiffCtx = {
+          ...ctx,
+          scopePageId: moveSource.blockId,
+          independentPageOrder: true,
+        }
         diffChildren(moveSource.blockId, moveSource.children, cand.children, ops, moveSubCtx)
         prevRef = moveSource.blockId
       } else {
@@ -684,7 +696,10 @@ const diffChildren = (
     if (d.kind === 'new-subtree') {
       emitAppendsForNew(d.parent, d.children, ops, ctx)
     } else {
-      diffChildren(d.blockId, d.cache, d.candidate, ops, ctx)
+      diffChildren(d.blockId, d.cache, d.candidate, ops, {
+        ...ctx,
+        independentPageOrder: false,
+      })
     }
   }
 
@@ -1016,6 +1031,7 @@ export const diff = (
     claimedMoves: new Set<string>(),
     preClaimedMoves,
     reorderSiblings: opts?.reorderSiblings ?? false,
+    independentPageOrder: false,
   }
   diffChildren(candidate.rootId, cache.children, candidate.children, ops, ctx)
   return ops
