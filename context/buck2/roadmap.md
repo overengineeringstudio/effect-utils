@@ -115,6 +115,21 @@ RENAME_EXCHANGE advance.
   devenv/pnpm build-path consumers deleted per admission.
 - Workspace-sibling live links (symlink-back) are part of the standard rule.
 
+- Admission 2 transfers `@overeng/tui-react` typecheck and declaration emit to
+  `//packages/@overeng/tui-react:typecheck` and
+  `//packages/@overeng/tui-react:dist`. Its package tree consumes tui-core only
+  through `effect_utils//packages/@overeng/tui-core:dist`; all other package
+  dependencies remain in the package-local Buck `node_modules` materialization.
+  Export type conditions and the member dist overlay point at Buck declarations,
+  while runtime export defaults remain at source.
+- Deletion-ledger entry 2 removes tui-react from both root TypeScript producers:
+  the `tsconfig.check.json` solution used by `ts:check` and the
+  `tsconfig.emit.json` solution used by `ts:build`. Its Buck-only project
+  config omits workspace project-reference edges so utils and utils-dev resolve
+  from package `node_modules`; the ordinary editor config keeps those references.
+  The editor root install remains transitional until Phase 4 and is deliberately
+  not deleted by this admission.
+
 ## Phase 4 — dependency-surface authority transfer (gated)
 
 - End-state per [decision 0015](./.decisions/0015-buck-owned-dependency-surface.md):

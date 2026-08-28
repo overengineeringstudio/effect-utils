@@ -32,6 +32,10 @@ const manifestProjection = {
       target: '//packages/@overeng/tui-core:dist',
       destination: 'packages/@overeng/tui-core/dist',
     },
+    {
+      target: '//packages/@overeng/tui-react:dist',
+      destination: 'packages/@overeng/tui-react/dist',
+    },
   ],
   capabilities: [
     {
