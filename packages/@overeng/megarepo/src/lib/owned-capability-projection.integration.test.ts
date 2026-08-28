@@ -1,0 +1,85 @@
+import { mkdtemp, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import * as NodePath from 'node:path'
+
+import { describe, it } from '@effect/vitest'
+import { expect } from 'vitest'
+
+import { compositionApplyRuntimeFromEnv } from './composition-runtime.ts'
+import { installOwnedCapabilityProjection } from './owned-capability-projection.ts'
+
+const coreutilsPath = async (name: 'cp' | 'mv') => {
+  const linked = await readlink(`/run/current-system/sw/bin/${name}`)
+  return NodePath.resolve('/run/current-system/sw/bin', linked)
+}
+
+const writeProjection = async ({ root, generation }: { readonly root: string; readonly generation: string }) => {
+  await mkdir(NodePath.join(root, 'generations', generation), { recursive: true })
+  await writeFile(NodePath.join(root, 'defs.bzl'), `GENERATION = "${generation}"
+`)
+}
+
+describe('owned capability projection', () => {
+  it('publishes atomically, advances, and is idempotent', async () => {
+    const fixture = await mkdtemp(NodePath.join(tmpdir(), 'owned-capability-'))
+    try {
+      const owned = NodePath.join(fixture, 'owned')
+      const first = NodePath.join(fixture, 'first')
+      const second = NodePath.join(fixture, 'second')
+      await mkdir(owned)
+      await writeFile(NodePath.join(owned, '.git'), 'gitdir: fixture\n')
+      const firstGeneration = 'a'.repeat(64)
+      const secondGeneration = 'b'.repeat(64)
+      await writeProjection({ root: first, generation: firstGeneration })
+      await writeProjection({ root: second, generation: secondGeneration })
+      const runtime = {
+        cpPath: await coreutilsPath('cp'),
+        mvPath: await coreutilsPath('mv'),
+        nonce: (() => {
+          let value = 0
+          return () => `fixture-${value++}`
+        })(),
+      }
+
+      const published = await installOwnedCapabilityProjection({
+        memberKey: 'owned',
+        ownedMemberPath: owned,
+        projectionPath: first,
+        projectionDigest: firstGeneration,
+        runtime,
+      })
+      expect(published.changed).toBe(true)
+      const repeated = await installOwnedCapabilityProjection({
+        memberKey: 'owned',
+        ownedMemberPath: owned,
+        projectionPath: first,
+        projectionDigest: firstGeneration,
+        runtime,
+      })
+      expect(repeated.changed).toBe(false)
+      const advanced = await installOwnedCapabilityProjection({
+        memberKey: 'owned',
+        ownedMemberPath: owned,
+        projectionPath: second,
+        projectionDigest: secondGeneration,
+        runtime,
+      })
+      expect(advanced.changed).toBe(true)
+      expect(await readFile(NodePath.join(owned, '.buck2/capabilities/defs.bzl'), 'utf8')).toBe(
+        `GENERATION = "${secondGeneration}"
+`,
+      )
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+
+  it('fails closed when the Nix wrapper environment is incomplete', () => {
+    expect(() =>
+      compositionApplyRuntimeFromEnv({
+        workspaceRoot: '/workspace',
+        env: {},
+      }),
+    ).toThrow(/MR_CAPABILITY_NIX_BIN/u)
+  })
+})

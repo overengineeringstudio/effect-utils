@@ -340,16 +340,15 @@ describe('owned worktree acquisition', () => {
     }).pipe(withNode),
   )
 
-  it.effect('refuses a caller cwd at or below the moving worktree', () =>
+  it.effect('migrates while the caller cwd remains below the moving worktree', () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture()
-      const failure = yield* acquire(fixture, {
+      const beforeStatus = yield* status(fixture.workspaceRoot)
+      const acquired = yield* acquire(fixture, {
         callerCwd: NodePath.join(fixture.workspaceRoot, 'nested'),
-      }).pipe(Effect.flip)
-      expect(failure.reason).toBe('PreflightRefused')
-      expect(yield* git(fixture.workspaceRoot, 'rev-parse', '--show-toplevel')).toBe(
-        fixture.workspaceRoot,
-      )
+      })
+      expect(acquired.defaultCwd).toBe(`${NodePath.join(fixture.workspaceRoot, 'repos', 'owner')}/`)
+      expect(yield* status(acquired.ownedWorktree)).toBe(beforeStatus)
     }).pipe(withNode),
   )
 

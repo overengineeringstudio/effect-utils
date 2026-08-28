@@ -8,6 +8,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import * as NodePath from 'node:path'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
@@ -23,6 +24,8 @@ import {
   readMegarepoConfig,
 } from './config.ts'
 import { LOCK_FILE_NAME, readLockFile } from './lock.ts'
+import { ownedWorktreeAcquisitionJournalPath } from './owned-worktree-acquisition.ts'
+import { OWNED_WORKTREE_ROOT_MANIFEST } from './owned-worktree-acquisition-schema.ts'
 import * as Observability from './observability.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 import type { MegarepoStore } from './store.ts'
@@ -145,16 +148,18 @@ export const collectWorkspaceLivePaths = ({
   Effect.gen(function* () {
     const paths = yield* collectWorkspaceSymlinkTargets({ workspaceRoot, store, strict })
 
+    const { config, path: configPath } = yield* readMegarepoConfig(workspaceRoot)
+    const fs = yield* FileSystem.FileSystem
+    const physicalConfigPath = yield* fs.realPath(configPath)
+    const configOwner = EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? workspaceRoot
     const lockPath = EffectPath.ops.join(
-      workspaceRoot,
+      configOwner,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
     )
     const lockFileOpt = yield* readLockFile(lockPath)
     const lockFile = Option.getOrUndefined(lockFileOpt)
 
     if (lockFile !== undefined) {
-      const { config } = yield* readMegarepoConfig(workspaceRoot)
-
       for (const [name, sourceString] of Object.entries(config.members)) {
         const source = parseSourceString(sourceString)
         if (source === undefined || isRemoteSource(source) === false) continue
@@ -179,6 +184,41 @@ export const collectWorkspaceLivePaths = ({
             }),
           ),
         )
+      }
+    }
+
+    if (config.generators?.composition?.enabled === true) {
+      // The branch-attached worktree moves below the synthesized root; keep both the namespace
+      // root and its writable member registration live. The platform hub is the implicit owned
+      // member in decision-0020 configurations.
+      for (const path of [
+        workspaceRoot,
+        NodePath.join(workspaceRoot, 'repos', config.generators.composition.platformHub),
+        NodePath.join(workspaceRoot, OWNED_WORKTREE_ROOT_MANIFEST),
+        ownedWorktreeAcquisitionJournalPath(workspaceRoot),
+        NodePath.join(workspaceRoot, '.megarepo'),
+        NodePath.join(workspaceRoot, 'repos', '.mr'),
+      ]) {
+        paths.add(normalizePath(path))
+      }
+
+      // Durable mount/overlay metadata and in-flight transactions are liveness roots too: losing
+      // the commit worktrees they describe would make forward recovery impossible.
+      for (const relativeDir of [
+        'repos/.mr/mounts',
+        'repos/.mr/transactions',
+        'repos/.mr/overlay-transactions',
+        '.megarepo/composition-publication',
+        '.megarepo/overlay-scratch',
+      ]) {
+        const directory = EffectPath.unsafe.absoluteDir(`${NodePath.join(workspaceRoot, relativeDir)}/`)
+        if (yield* fs.exists(directory)) {
+          paths.add(normalizePath(directory))
+          const entries = yield* fs.readDirectory(directory).pipe(
+            strict === true ? (effect) => effect : Effect.orElseSucceed(() => [] as string[]),
+          )
+          for (const entry of entries) paths.add(normalizePath(NodePath.join(directory, entry)))
+        }
       }
     }
 

@@ -156,6 +156,7 @@ export const SyncState = Schema.Struct({
   workspace: Schema.Struct({
     name: Schema.String,
     root: Schema.String,
+    defaultCwd: Schema.optional(Schema.String),
   }),
 
   /** Sync options/flags */
@@ -199,6 +200,9 @@ export const SyncState = Schema.Struct({
 
   /** Pre-flight hygiene issues (populated when _tag === 'PreflightFailed') */
   preflightIssues: Schema.Array(PreflightIssue),
+
+  /** Typed decision-0020 acquisition/application plan or result. */
+  composition: Schema.optional(Schema.Unknown),
 })
 
 /** Inferred type for sync command state including workspace, options, phase, and results. */
