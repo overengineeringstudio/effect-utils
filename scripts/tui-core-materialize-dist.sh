@@ -9,7 +9,7 @@ fi
 root="$1"
 package_dir="$root/packages/@overeng/tui-core"
 dist="$package_dir/dist"
-target="//packages/@overeng/tui-core:dist"
+target="effect_utils//packages/@overeng/tui-core:dist"
 : "${BUCK2_BIN:?BUCK2_BIN must name the Buck2 executable}"
 
 staging_root="$(mktemp -d "$package_dir/.dist-buck2.XXXXXX")"
@@ -38,8 +38,9 @@ validate_dist() {
   fi
 }
 
+workspace_root="$(cd "$root/../.." && pwd -P)"
 (
-  cd "$root"
+  cd "$workspace_root"
   "$BUCK2_BIN" build "$target" --out "$staging"
 )
 validate_dist "$staging" "Buck target $target"

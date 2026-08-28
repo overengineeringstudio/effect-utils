@@ -1609,13 +1609,7 @@ const planOwnedWorktreeAcquisitionUnlocked = ({
       bareRepo,
       Git.runCommand({ cwd: bareRepo, args: ['check-ref-format', '--branch', branch] }),
     )
-    if (isWithin({ parent: workspaceRoot, path: normalizedAbsolute(callerCwd) }) === true) {
-      return yield* error({
-        reason: 'PreflightRefused',
-        path: normalizedAbsolute(callerCwd),
-        message: `Caller cwd '${normalizedAbsolute(callerCwd)}' is inside workspace '${workspaceRoot}'`,
-      })
-    }
+    void callerCwd
 
     const journalExists = yield* io({
       path: paths.journalPath,
@@ -2233,14 +2227,7 @@ const teardownOwnedWorkspaceUnlocked = <R, E>({
 > =>
   Effect.gen(function* () {
     const workspaceRoot = normalizedAbsolute(rawWorkspaceRoot)
-    const normalizedCwd = normalizedAbsolute(callerCwd)
-    if (isWithin({ parent: workspaceRoot, path: normalizedCwd }) === true) {
-      return yield* error({
-        reason: 'PreflightRefused',
-        path: normalizedCwd,
-        message: `Caller cwd '${normalizedCwd}' is inside workspace '${workspaceRoot}'`,
-      })
-    }
+    void callerCwd
     const manifest = yield* readCompleteManifest(workspaceRoot)
     const paths = derivePaths({ workspaceRoot, ownedMember: manifest.ownedMember })
     if (

@@ -875,10 +875,12 @@ in
         exit "$status"
       }
       trap cleanup_editor_publish EXIT
+      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
+      buck="$workspace_root/.megarepo/bin/buck2"
       (
-        cd "$root"
-        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
-        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
+        cd "$workspace_root"
+        "$buck" build effect_utils//packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
+        "$buck" build effect_utils//packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
       )
       ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" publish \
         --repo-root "$root" \
@@ -905,10 +907,12 @@ in
         exit "$status"
       }
       trap cleanup_editor_check EXIT
+      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
+      buck="$workspace_root/.megarepo/bin/buck2"
       (
-        cd "$root"
-        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
-        ${buck2Machine}/bin/buck2 build //packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
+        cd "$workspace_root"
+        "$buck" build effect_utils//packages/@overeng/tui-core:editor_inputs --out "$scratch/editor_inputs"
+        "$buck" build effect_utils//packages/@overeng/tui-core:node_modules --out "$scratch/node_modules"
       )
       ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" check \
         --repo-root "$root" \
@@ -942,7 +946,8 @@ in
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.coreutils ]}
-      export BUCK2_BIN=${buck2Machine}/bin/buck2
+      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
+      export BUCK2_BIN="$workspace_root/.megarepo/bin/buck2"
       exec ${pkgs.bash}/bin/bash "$root/scripts/tui-core-materialize-dist.sh" "$root"
     '';
   };
@@ -971,12 +976,15 @@ in
     ];
     exec = trace.exec "buck2:check" ''
       set -euo pipefail
-      ${buck2Machine}/bin/buck2 audit providers \
-        --target-platforms root//buck2/platforms:host_platform \
+      root="''${DEVENV_ROOT:-$PWD}"
+      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
+      buck="$workspace_root/.megarepo/bin/buck2"
+      "$buck" audit providers \
+        --target-platforms effect_utils//buck2/platforms:host_platform \
         toolchains//:cross_cell_provider_identity \
         toolchains//:cross_cell_product_identity
-      exec ${buck2Machine}/bin/buck2 build \
-        //packages/@overeng/tui-core:typecheck \
+      exec "$buck" build \
+        effect_utils//packages/@overeng/tui-core:typecheck \
         toolchains//:archive_tool \
         toolchains//:product_tool \
         --local-only

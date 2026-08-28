@@ -1,7 +1,7 @@
 """Configured Rust and TypeScript toolchains realized by pinned Nix inputs."""
 
 load(
-    "@root//buck2/platforms:defs.bzl",
+    "@effect_utils//buck2/platforms:defs.bzl",
     "ProductPlatformInfo",
     "host_execution_constraints",
     "native_execution_constraints",
