@@ -13,17 +13,19 @@ import * as NodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, type Scope } from 'effect'
+import { Effect, Schema, type Scope } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import {
+  DistOverlayTransaction,
   distOverlayTransactionPath,
   type DistOverlayPublishRequest,
 } from './dist-overlay-lifecycle-schema.ts'
 import {
   publishDistOverlay,
   recoverDistOverlay,
+  type DistOverlayDirectorySyncReason,
   type DistOverlayRuntime,
 } from './dist-overlay-lifecycle.ts'
 import {
@@ -174,6 +176,17 @@ const runtime = (options: Partial<DistOverlayRuntime> = {}): DistOverlayRuntime 
   assertUpdateLockOwned: async () => undefined,
   nonce: () => 'test',
   ...options,
+})
+
+const TransactionJson = Schema.fromJsonString(DistOverlayTransaction, { space: 2 })
+
+const fsyncRecorder = (
+  reasons: Array<DistOverlayDirectorySyncReason>,
+): Partial<DistOverlayRuntime> => ({
+  directoryFsync: async ({ reason, sync }) => {
+    reasons.push(reason)
+    await sync()
+  },
 })
 
 const recover = (fixture: Fixture, options: Partial<DistOverlayRuntime> = {}) =>
@@ -487,6 +500,207 @@ describe('dist overlay lifecycle', () => {
       const recovery = yield* recover(fixture).pipe(Effect.result)
       expect(recovery._tag).toBe('Failure')
       if (recovery._tag === 'Failure') expect(recovery.failure.reason).toBe('AmbiguousRecovery')
+    }, withNode),
+  )
+
+  it.effect(
+    'rejects a forged outside recovery destination before observing or mutating it',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      const interrupted = yield* publishDistOverlay({
+        request: requestFor({ fixture }),
+        runtime: runtime({
+          afterPhase: async (phase) => {
+            if (phase === 'CandidateValidated') throw new Error('fault')
+          },
+        }),
+      }).pipe(Effect.result)
+      expect(interrupted._tag).toBe('Failure')
+      const transactionPath = distOverlayTransactionPath({
+        workspaceRoot: fixture.workspaceRoot,
+        member: fixture.member,
+        destination: 'dir/dist',
+      })
+      const transaction = yield* Schema.decodeUnknownEffect(TransactionJson)(
+        yield* Effect.promise(() => readFile(transactionPath, 'utf8')),
+      )
+      const outsidePath = NodePath.join(fixture.workspaceRoot, 'forged-outside')
+      const forgedTransaction = yield* Schema.encodeEffect(TransactionJson)({
+        ...transaction,
+        destinationPath: outsidePath,
+      })
+      yield* Effect.promise(async () => {
+        await chmod(transaction.stagePath, 0o755)
+        await rename(transaction.stagePath, outsidePath)
+        await chmod(outsidePath, 0o555)
+        await writeFile(
+          transactionPath,
+          `${forgedTransaction}
+`,
+        )
+      })
+      const before = yield* Effect.promise(() => lstat(outsidePath))
+      const recovery = yield* recover(fixture).pipe(Effect.result)
+      expect(recovery._tag).toBe('Failure')
+      if (recovery._tag === 'Failure') expect(recovery.failure.reason).toBe('AmbiguousRecovery')
+      const after = yield* Effect.promise(() => lstat(outsidePath))
+      expect({ dev: after.dev, ino: after.ino, mode: after.mode & 0o777 }).toEqual({
+        dev: before.dev,
+        ino: before.ino,
+        mode: 0o555,
+      })
+      expect(
+        yield* Effect.promise(() => readFile(NodePath.join(outsidePath, 'bundle.js'), 'utf8')),
+      ).toBe('A\n')
+    }, withNode),
+  )
+
+  it.effect(
+    'fsyncs both move parents before phase advance and the stage parent after cleanup',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      const publishReasons: Array<DistOverlayDirectorySyncReason> = []
+      const first = yield* publishDistOverlay({
+        request: requestFor({ fixture }),
+        runtime: runtime(fsyncRecorder(publishReasons)),
+      })
+      expect(publishReasons).toEqual(['PublishDestinationParent', 'PublishStageParent'])
+      if (first._tag !== 'Published') return
+
+      const updateReasons: Array<DistOverlayDirectorySyncReason> = []
+      const update = yield* publishDistOverlay({
+        request: requestFor({ fixture, metadata: first.metadata, artifactPath: fixture.artifactB }),
+        runtime: runtime(fsyncRecorder(updateReasons)),
+      })
+      expect(updateReasons).toEqual([
+        'PublishDestinationParent',
+        'PublishStageParent',
+        'CleanupStageParent',
+      ])
+      if (update._tag !== 'Published') return
+
+      const rollbackFixture = yield* makeFixture()
+      const rollbackReasons: Array<DistOverlayDirectorySyncReason> = []
+      yield* publishDistOverlay({
+        request: requestFor({ fixture: rollbackFixture }),
+        runtime: runtime({
+          ...fsyncRecorder(rollbackReasons),
+          beforeMetadataWrite: async () => {
+            throw new Error('metadata-fault')
+          },
+        }),
+      }).pipe(Effect.result)
+      expect(rollbackReasons).toEqual([
+        'PublishDestinationParent',
+        'PublishStageParent',
+        'RollbackDestinationParent',
+        'RollbackStageParent',
+        'CleanupStageParent',
+      ])
+
+      const recoveryFixture = yield* makeFixture()
+      yield* publishDistOverlay({
+        request: requestFor({ fixture: recoveryFixture }),
+        runtime: runtime({
+          afterPhase: async (phase) => {
+            if (phase === 'Published') throw new Error('publish-fault')
+          },
+        }),
+      }).pipe(Effect.result)
+      const recoveryReasons: Array<DistOverlayDirectorySyncReason> = []
+      const recovered = yield* recover(recoveryFixture, fsyncRecorder(recoveryReasons))
+      expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledBack' })
+      expect(recoveryReasons).toEqual([
+        'RecoveryDestinationParent',
+        'RecoveryStageParent',
+        'CleanupStageParent',
+      ])
+    }, withNode),
+  )
+
+  it.effect(
+    'retains recoverable transactions when publish, rollback, recovery, or cleanup fsync fails',
+    Effect.fnUntraced(function* () {
+      const publishFixture = yield* makeFixture()
+      const publishFailure = yield* publishDistOverlay({
+        request: requestFor({ fixture: publishFixture }),
+        runtime: runtime({
+          directoryFsync: async ({ reason, sync }) => {
+            if (reason === 'PublishStageParent') throw new Error('fsync-fault')
+            await sync()
+          },
+        }),
+      }).pipe(Effect.result)
+      expect(publishFailure._tag).toBe('Failure')
+      expect(yield* recover(publishFixture)).toMatchObject({
+        _tag: 'Recovered',
+        action: 'RolledBack',
+      })
+
+      const rollbackFixture = yield* makeFixture()
+      const rollbackFailure = yield* publishDistOverlay({
+        request: requestFor({ fixture: rollbackFixture }),
+        runtime: runtime({
+          beforeMetadataWrite: async () => {
+            throw new Error('metadata-fault')
+          },
+          directoryFsync: async ({ reason, sync }) => {
+            if (reason === 'RollbackStageParent') throw new Error('fsync-fault')
+            await sync()
+          },
+        }),
+      }).pipe(Effect.result)
+      expect(rollbackFailure._tag).toBe('Failure')
+      expect(yield* recover(rollbackFixture)).toMatchObject({
+        _tag: 'Recovered',
+        action: 'RolledBack',
+      })
+
+      const recoveryFixture = yield* makeFixture()
+      yield* publishDistOverlay({
+        request: requestFor({ fixture: recoveryFixture }),
+        runtime: runtime({
+          afterPhase: async (phase) => {
+            if (phase === 'Published') throw new Error('publish-fault')
+          },
+        }),
+      }).pipe(Effect.result)
+      const recoveryFailure = yield* recover(recoveryFixture, {
+        directoryFsync: async ({ reason, sync }) => {
+          if (reason === 'RecoveryStageParent') throw new Error('fsync-fault')
+          await sync()
+        },
+      }).pipe(Effect.result)
+      expect(recoveryFailure._tag).toBe('Failure')
+      expect(yield* recover(recoveryFixture)).toMatchObject({
+        _tag: 'Recovered',
+        action: 'RolledBack',
+      })
+
+      const cleanupFixture = yield* makeFixture()
+      const cleanupFirst = yield* publishDistOverlay({
+        request: requestFor({ fixture: cleanupFixture }),
+        runtime: runtime(),
+      })
+      if (cleanupFirst._tag !== 'Published') return
+      const cleanupFailure = yield* publishDistOverlay({
+        request: requestFor({
+          fixture: cleanupFixture,
+          metadata: cleanupFirst.metadata,
+          artifactPath: cleanupFixture.artifactB,
+        }),
+        runtime: runtime({
+          directoryFsync: async ({ reason, sync }) => {
+            if (reason === 'CleanupStageParent') throw new Error('fsync-fault')
+            await sync()
+          },
+        }),
+      }).pipe(Effect.result)
+      expect(cleanupFailure._tag).toBe('Failure')
+      expect(yield* recover(cleanupFixture)).toMatchObject({
+        _tag: 'Recovered',
+        action: 'RolledForward',
+      })
     }, withNode),
   )
 
