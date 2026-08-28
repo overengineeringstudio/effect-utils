@@ -83,6 +83,7 @@ let
                 devenv --verbose tasks run "$1" \
                   --mode "$2" \
                   --no-tui \
+                  --refresh-task-cache \
                   --trace-to "otlp-grpc:''${OTELITE_GRPC_ENDPOINT}" \
                   2>"$3/devenv-verbose.log" || {
                     status=$?
