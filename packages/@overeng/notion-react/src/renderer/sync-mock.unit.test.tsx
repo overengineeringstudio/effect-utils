@@ -3,7 +3,7 @@ import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
 import { Fragment, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
-import type { NotionConfig } from '@overeng/notion-effect-client'
+import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
@@ -505,6 +505,74 @@ describe('sync() against in-memory fake Notion', () => {
       return richText[0]?.text?.content
     })
     expect(repairedText).toEqual(['A', 'B'])
+
+    const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(stable.fallbackReason).toBeUndefined()
+    expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
+  it('propagates a nested caller holding-page exclusion through recursive reads', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ChildPage blockKey="outer" title="Outer">
+        <Paragraph blockKey="body">Body</Paragraph>
+      </ChildPage>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const outer = fake.childrenOf(ROOT).find((block) => block.type === 'child_page')!
+    const holdingParentId = await runWith(
+      fake,
+      NotionPages.create({
+        parent: { type: 'page_id', page_id: outer.id },
+        properties: {
+          title: { title: [{ type: 'text', text: { content: 'nested-holding' } }] },
+        },
+      }).pipe(Effect.map((page) => page.id)),
+    )
+    const holdingReadPath = `/v1/blocks/${holdingParentId}/children`
+    fake.failOn((request) =>
+      request.method === 'GET' && request.path === holdingReadPath
+        ? new FakeNotionResponseError(500, 'internal_server_error', 'must not read holding page')
+        : undefined,
+    )
+
+    const before = fake.requests.length
+    const result = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache, reorderSiblings: { holdingParentId } }),
+    )
+    expect(result.fallbackReason).toBeUndefined()
+    expect(result).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+    expect(fake.requests.slice(before).some((request) => request.path === holdingReadPath)).toBe(
+      false,
+    )
+    expect(fake.pages.get(holdingParentId)?.in_trash).toBe(false)
+  })
+
+  it('keeps tolerated block/page interleaving out of a nested drift base', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ChildPage blockKey="outer" title="Outer">
+        <Paragraph blockKey="a">A</Paragraph>
+        <ChildPage blockKey="nested" title="Nested" />
+        <Paragraph blockKey="b">B</Paragraph>
+      </ChildPage>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const outer = fake.childrenOf(ROOT).find((block) => block.type === 'child_page')!
+    const children = fake.childrenOf(outer.id)
+    const nestedPage = children.find((block) => block.type === 'child_page')!
+    const [blockA, blockB] = children.filter((block) => block.type === 'paragraph')
+    expect([blockA, blockB]).not.toContain(undefined)
+    outer.children.splice(0, outer.children.length, nestedPage.id, blockA!.id, blockB!.id)
+    blockB!.archived = true
+
+    const result = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(result.fallbackReason).toBe('cache-drift')
+    expect(result.pages).toMatchObject({ creates: 0, archives: 0, moves: 0 })
+    expect(result.appends + result.inserts).toBe(1)
 
     const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(stable.fallbackReason).toBeUndefined()

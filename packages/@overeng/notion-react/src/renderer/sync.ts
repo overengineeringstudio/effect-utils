@@ -1139,7 +1139,13 @@ const retrieveLiveIdentities: (
         block.type === 'child_page' || RENDERER_OWNED_CHILD_SCOPES[block.type] === true
       const children =
         recursive && ownsChildScope && (block.has_children === true || block.type === 'child_page')
-          ? yield* retrieveLiveIdentities(block.id, true, o11y, block.has_children === true)
+          ? yield* retrieveLiveIdentities(
+              block.id,
+              true,
+              o11y,
+              block.has_children === true,
+              excludedChildId,
+            )
           : []
       identities.push({ blockId: block.id, type: block.type, children })
     }
@@ -1157,14 +1163,19 @@ const retrieveLiveIdentities: (
 const mergeLiveIdentityBase = (
   liveNodes: readonly LiveIdentityNode[],
   priorNodes: readonly CacheNode[],
+  preserveKindInterleaving = false,
 ): readonly CacheNode[] => {
   const priorByBlockId = new Map(priorNodes.map((node) => [node.blockId, node]))
-  return liveNodes.map((liveNode) => {
+  const merged = liveNodes.map((liveNode): CacheNode => {
     const priorNode = priorByBlockId.get(liveNode.blockId)
     if (priorNode !== undefined) {
       return {
         ...priorNode,
-        children: mergeLiveIdentityBase(liveNode.children, priorNode.children),
+        children: mergeLiveIdentityBase(
+          liveNode.children,
+          priorNode.children,
+          priorNode.nodeKind === 'page',
+        ),
       }
     }
     return {
@@ -1176,6 +1187,28 @@ const mergeLiveIdentityBase = (
       nodeKind: liveNode.type === 'child_page' ? 'page' : 'block',
     }
   })
+  if (!preserveKindInterleaving) return merged
+
+  const retainedBlocks = merged.filter(
+    (node) => !node.key.startsWith('drift:') && node.nodeKind === 'block',
+  )
+  const retainedPages = merged.filter(
+    (node) => !node.key.startsWith('drift:') && node.nodeKind === 'page',
+  )
+  const ordered: CacheNode[] = []
+  let blockIndex = 0
+  let pageIndex = 0
+  for (const priorNode of priorNodes) {
+    const node =
+      priorNode.nodeKind === 'page' ? retainedPages[pageIndex++] : retainedBlocks[blockIndex++]
+    if (node !== undefined) ordered.push(node)
+  }
+  ordered.push(
+    ...retainedBlocks.slice(blockIndex),
+    ...retainedPages.slice(pageIndex),
+    ...merged.filter((node) => node.key.startsWith('drift:')),
+  )
+  return ordered
 }
 
 const driftedBase = (
