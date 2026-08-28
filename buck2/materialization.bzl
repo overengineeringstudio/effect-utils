@@ -41,6 +41,8 @@ def _pnpm_node_modules_impl(ctx):
     )
     runtime_entry = runtime.project("buck2-materializer.ts")
     descriptor = ctx.actions.declare_output("pnpm_install_descriptor", dir = True)
+    # `runtime_entry` is a projection from a copied directory; keep the authored
+    # modules as explicit hidden inputs so implementation edits always move the action key.
     prune_args = cmd_args([
         toolchain.bun,
         runtime_entry,
@@ -59,7 +61,7 @@ def _pnpm_node_modules_impl(ctx):
         ctx.attrs.lockfile,
         "--workspace-manifest",
         ctx.attrs.workspace_manifest,
-    ])
+    ], hidden = [ctx.attrs.runtime, ctx.attrs.descriptor_module, ctx.attrs.normalizer])
     _add_mapped_sources(prune_args, "--package-manifest", ctx.attrs.workspace_package_manifests)
     _add_mapped_sources(prune_args, "--patch", ctx.attrs.patches)
     ctx.actions.run(
@@ -83,7 +85,7 @@ def _pnpm_node_modules_impl(ctx):
         toolchain.pnpm,
         "--store-dir",
         toolchain.store_dir,
-    ])
+    ], hidden = [ctx.attrs.runtime, ctx.attrs.descriptor_module, ctx.attrs.normalizer])
     ctx.actions.run(
         install_args,
         category = "pnpm_node_modules",

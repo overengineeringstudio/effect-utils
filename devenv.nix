@@ -399,6 +399,14 @@ let
     "packages/@overeng/tui-react/examples/**/*.tsx"
     "packages/@overeng/tui-react/examples/**/*.cts"
     "packages/@overeng/tui-react/examples/**/*.mts"
+    "packages/@overeng/utils/src/**/*.ts"
+    "packages/@overeng/utils/src/**/*.tsx"
+    "packages/@overeng/utils/src/**/*.cts"
+    "packages/@overeng/utils/src/**/*.mts"
+    "packages/@overeng/utils-dev/src/**/*.ts"
+    "packages/@overeng/utils-dev/src/**/*.tsx"
+    "packages/@overeng/utils-dev/src/**/*.cts"
+    "packages/@overeng/utils-dev/src/**/*.mts"
     "pnpm-lock.yaml"
     "pnpm-workspace.yaml"
   ];
@@ -955,27 +963,31 @@ in
     '';
   };
 
-  tasks."buck2:tui-core:materialize-dist" = {
-    description = "Atomically materialize Buck-owned tui-core declarations for TypeScript checks";
+  tasks."buck2:typescript:materialize-dist" = {
+    description = "Atomically materialize all Buck-owned TypeScript declarations";
     after = [ "genie:run" ];
-    exec = trace.exec "buck2:tui-core:materialize-dist" ''
+    exec = trace.exec "buck2:typescript:materialize-dist" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.coreutils ]}
       workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
       export BUCK2_BIN="$workspace_root/.megarepo/bin/buck2"
-      exec ${pkgs.bash}/bin/bash "$root/scripts/tui-core-materialize-dist.sh" "$root"
+      materializer="$root/scripts/typescript-materialize-dist.sh"
+      ${pkgs.bash}/bin/bash "$materializer" "$root" \
+        packages/@overeng/tui-core effect_utils//packages/@overeng/tui-core:dist src/mod.d.ts
+      ${pkgs.bash}/bin/bash "$materializer" "$root" \
+        packages/@overeng/tui-react effect_utils//packages/@overeng/tui-react:dist src/mod.d.ts
     '';
   };
 
-  tasks."ts:check".after = [ "buck2:tui-core:materialize-dist" ];
+  tasks."ts:check".after = [ "buck2:typescript:materialize-dist" ];
 
   tasks."buck2:task-guards:check" = {
-    description = "Check tui-core publication failure paths and evaluated task ordering";
+    description = "Check TypeScript publication failure paths and evaluated task ordering";
     exec = trace.exec "buck2:task-guards:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      ${pkgs.bash}/bin/bash "$root/nix/devenv-modules/tasks/shared/tests/tui-core-materialize-dist.test.sh"
+      ${pkgs.bash}/bin/bash "$root/nix/devenv-modules/tasks/shared/tests/typescript-materialize-dist.test.sh"
       DEVENV_TASKS_JSON="$root/.devenv/gc/task-config-devenv-config-task-config" \
         NODE_BIN=${pkgs.nodejs}/bin/node exec ${pkgs.bash}/bin/bash \
         "$root/nix/devenv-modules/tasks/shared/tests/devenv-task-graph.test.sh"
@@ -1001,6 +1013,7 @@ in
         toolchains//:cross_cell_product_identity
       exec "$buck" build \
         effect_utils//packages/@overeng/tui-core:typecheck \
+        effect_utils//packages/@overeng/tui-react:typecheck \
         toolchains//:archive_tool \
         toolchains//:product_tool \
         --local-only

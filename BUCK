@@ -38,14 +38,22 @@ _TYPESCRIPT_MATERIALIZATION_INPUTS = [
     "packages/@overeng/pty-effect/package.json",
     "packages/@overeng/react-inspector/package.json",
     "packages/@overeng/restate-effect/package.json",
-    "packages/@overeng/tui-react/package.json",
     "packages/@overeng/tui-stories/package.json",
     "packages/@overeng/utils-dev/package.json",
     "packages/@overeng/utils/package.json",
     "packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
-]
+] + glob([
+    "packages/@overeng/utils/src/**/*.cts",
+    "packages/@overeng/utils/src/**/*.mts",
+    "packages/@overeng/utils/src/**/*.ts",
+    "packages/@overeng/utils/src/**/*.tsx",
+    "packages/@overeng/utils-dev/src/**/*.cts",
+    "packages/@overeng/utils-dev/src/**/*.mts",
+    "packages/@overeng/utils-dev/src/**/*.ts",
+    "packages/@overeng/utils-dev/src/**/*.tsx",
+])
 
 export_materialization_inputs(_TYPESCRIPT_MATERIALIZATION_INPUTS)
 

@@ -11,7 +11,7 @@ packages:
       react: 
         optional: true
     resolution: 
-      directory: file://<WS>/packages/acme/lib
+      directory: "<WS>/packages/acme/lib"
       type: directory
   react@19.0.0: 
     resolution: 

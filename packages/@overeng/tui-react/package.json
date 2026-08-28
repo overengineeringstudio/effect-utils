@@ -58,6 +58,8 @@
     "@effect/atom-react": "4.0.0-rc.111",
     "@effect/platform-node": "4.0.0-rc.111",
     "@effect/vitest": "4.0.0-rc.111",
+    "@noble/hashes": "2.2.0",
+    "@opentelemetry/api": "1.9.1",
     "@opentui/core": "0.4.1",
     "@opentui/react": "0.4.1",
     "@overeng/utils-dev": "workspace:^",

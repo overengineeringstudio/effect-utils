@@ -107,7 +107,7 @@ for (const name of [
   'ts:check:strict',
   'check:quick',
   'buck2:check',
-  'buck2:tui-core:materialize-dist',
+  'buck2:typescript:materialize-dist',
   'buck2:tui-core:publish-editor',
   'buck2:tui-core:check-editor',
 ])
@@ -130,7 +130,7 @@ try {
   ok({ condition: false, name: 'evaluated task graph is acyclic', detail: error.message })
 }
 
-const materializer = 'buck2:tui-core:materialize-dist'
+const materializer = 'buck2:typescript:materialize-dist'
 for (const name of ['ts:check', 'ts:check:strict', 'check:quick']) {
   ok({
     condition: reaches({ start: name, target: materializer }),
@@ -149,7 +149,9 @@ const taskSource = (name) => {
 const materializerSource = taskSource(materializer)
 ok({
   condition:
-    materializerSource.includes('tui-core-materialize-dist.sh') === true &&
+    materializerSource.includes('typescript-materialize-dist.sh') === true &&
+    materializerSource.includes('effect_utils//packages/@overeng/tui-core:dist') === true &&
+    materializerSource.includes('effect_utils//packages/@overeng/tui-react:dist') === true &&
     materializerSource.includes('BUCK2_BIN=') === true,
   name: 'materializer dispatches the tested Buck publication helper',
 })
