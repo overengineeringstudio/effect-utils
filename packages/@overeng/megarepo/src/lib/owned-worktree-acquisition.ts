@@ -776,7 +776,20 @@ const statusSnapshot = (worktree: string) =>
       cwd: worktree,
       args: ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching'],
     }),
-  ).pipe(Effect.map((bytes) => Buffer.from(bytes, 'utf8').toString('base64')))
+  ).pipe(
+    Effect.map((bytes) =>
+      Buffer.from(
+        bytes
+          .split('\0')
+          .filter((entry) => {
+            const path = entry.slice(3)
+            return path !== '.buck2/' && path.startsWith('.buck2/') === false
+          })
+          .join('\0'),
+        'utf8',
+      ).toString('base64'),
+    ),
+  )
 
 const currentIdentity = (worktree: string) =>
   Effect.gen(function* () {

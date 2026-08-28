@@ -37,6 +37,7 @@ import {
 } from '../../lib/owned-worktree-acquisition.ts'
 import {
   OWNED_WORKTREE_ROOT_MANIFEST,
+  OwnedWorktreeAcquisitionJournal,
   OwnedWorktreeRootManifest,
 } from '../../lib/owned-worktree-acquisition-schema.ts'
 import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
@@ -44,6 +45,7 @@ import { Store, type MegarepoStore } from '../../lib/store.ts'
 
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
 const OwnedManifestJson = Schema.fromJsonString(OwnedWorktreeRootManifest)
+const AcquisitionJournalJson = Schema.fromJsonString(OwnedWorktreeAcquisitionJournal)
 
 interface OwnedIdentity {
   readonly workspaceRoot: AbsoluteDirPath
@@ -140,6 +142,31 @@ const loadOwnedIdentity = ({
     if (yield* fs.exists(managedManifestPath)) {
       return yield* readOwnedIdentity({ workspaceRoot, fs })
     }
+    const journalPath = EffectPath.unsafe.absoluteFile(
+      ownedWorktreeAcquisitionJournalPath(workspaceRoot),
+    )
+    if (yield* fs.exists(journalPath)) {
+      const journal = yield* fs.readFileString(journalPath).pipe(
+        Effect.flatMap((bytes) =>
+          Schema.decodeUnknownEffect(AcquisitionJournalJson, strictParseOptions)(bytes),
+        ),
+      )
+      const ownedMemberPath = getMemberPath({
+        megarepoRoot: workspaceRoot,
+        name: journal.ownedMember,
+      })
+      const installed = yield* fs.exists(ownedMemberPath)
+      const temporary = EffectPath.unsafe.absoluteDir(`${journal.tempPath}/`)
+      return {
+        workspaceRoot,
+        ownedMemberKey: journal.ownedMember,
+        ownedSourcePath: installed === true ? ownedMemberPath : temporary,
+        ownedMemberPath,
+        bareRepo: journal.bareRepo,
+        branch: journal.branchRef.slice('refs/heads/'.length),
+        synthesized: false,
+      } satisfies OwnedIdentity
+    }
     const manifest = yield* readManifest({ fs, memberRoot: workspaceRoot })
     return yield* deriveLegacyIdentity({ workspaceRoot, manifest })
   })
@@ -188,7 +215,7 @@ const lockedMembers = ({
           new TypeError(`Immutable source '${sourcePath}' is not at locked commit '${locked.commit}'`),
         )
       }
-      values.push({ key, sourcePath: sourcePath.replace(/\/$/u, ''), lockedCommit: locked.commit })
+      values.push({ key, sourcePath: sourcePath.replace(/\/+$/u, ''), lockedCommit: locked.commit })
     }
     return values
   })
@@ -206,9 +233,9 @@ const compositionRequest = ({
   readonly dryRun: boolean
   readonly env: Readonly<Record<string, string | undefined>>
 }): CompositionApplyRequest => ({
-  workspaceRoot: identity.workspaceRoot.replace(/\/$/u, ''),
+  workspaceRoot: identity.workspaceRoot.replace(/\/+$/u, ''),
   ownedMemberKey: identity.ownedMemberKey,
-  ownedMemberPath: identity.ownedMemberPath.replace(/\/$/u, ''),
+  ownedMemberPath: identity.ownedMemberPath.replace(/\/+$/u, ''),
   compositionConfig,
   cacheSections: [],
   lockedMembers: locked,
@@ -270,7 +297,7 @@ export const runCompositionApply = ({
 
     if (dryRun === true) {
       const runtimeBase = compositionApplyRuntimeFromEnv({
-        workspaceRoot: identity.workspaceRoot.replace(/\/$/u, ''),
+        workspaceRoot: identity.workspaceRoot.replace(/\/+$/u, ''),
         env,
       })
       const plannedIdentity = {
@@ -289,7 +316,7 @@ export const runCompositionApply = ({
               ...input,
               memberRoot:
                 input.memberRoot === acquisition.ownedWorktree
-                  ? identity.ownedSourcePath.replace(/\/$/u, '')
+                  ? identity.ownedSourcePath.replace(/\/+$/u, '')
                   : input.memberRoot,
             }),
         },
@@ -322,7 +349,7 @@ export const runCompositionApply = ({
         synthesized: true,
       }
       const runtime = compositionApplyRuntimeFromEnv({
-        workspaceRoot: context.workspaceRoot.replace(/\/$/u, ''),
+        workspaceRoot: context.workspaceRoot.replace(/\/+$/u, ''),
         env,
       })
       return compositionApply({
