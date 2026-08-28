@@ -888,8 +888,12 @@ in
                 log_prep_phase "archive" "duration=''${archiveDuration}s mode=tar-stream-tree"
                 log_prep_event "archive" "$archiveDuration" "mode=tar-stream-tree"
                 prepDuration=$(timer_elapsed "$prepStartedAt")
-                log_prep_phase "complete" "duration=''${prepDuration}s declared_output_hash=${pnpmDepsHash}"
-                log_prep_event "complete" "$prepDuration" "declared_output_hash=${pnpmDepsHash}"
+                # Keep the declared hash exclusively in the fixed-output metadata.
+                # Feeding it into the builder script makes otherwise-identical
+                # materializations have different builders and obscures whether a
+                # mismatch came from staged inputs or from the expected hash.
+                log_prep_phase "complete" "duration=''${prepDuration}s"
+                log_prep_event "complete" "$prepDuration" "kind=prepared-workspace"
 
                 runHook postInstall
       '';

@@ -239,6 +239,11 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-external-install-roots"
 
+  echo "Build: declared expected hash stays out of the prepared-deps builder"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-declared-hash-isolation"
+
   echo "Build: downstream pure-eval derived-workspace-root regression (composed repos/effect-utils path)"
   nix build --no-link --no-write-lock-file \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \

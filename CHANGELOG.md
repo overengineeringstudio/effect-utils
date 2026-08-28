@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **nix/workspace-tools**: keep declared pnpm fixed-output hashes exclusively in
+  derivation metadata instead of interpolating them into the prepared-deps
+  builder, and verify that changing only the expected hash leaves the staged
+  source, derivation name, and install program identical.
 - **@overeng/utils, @overeng/genie, @overeng/notion-md**: apply the watch-recursion
   design study for effect@4.0.0-rc.111 (recursion is opt-in again). New
   `watchScoped` helper in `@overeng/utils/node` wraps `FileSystem.watch` with an

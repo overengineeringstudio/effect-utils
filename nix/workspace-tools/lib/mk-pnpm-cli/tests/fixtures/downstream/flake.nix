@@ -57,6 +57,25 @@
           };
           smokeTestArgs = [ ];
         };
+        pureEvalAlternateHashFixture = mkPnpmCli {
+          name = "mk-pnpm-cli-pure-eval-fixture";
+          binaryName = "mk-pnpm-cli-pure-eval-fixture";
+          entry = "app/src/mod.ts";
+          packageDir = "app";
+          workspaceRoot = ./fixture-workspace;
+          workspaceSources = {
+            "repos/effect-utils" = effectUtilsSource;
+          };
+          depsBuilds = {
+            "." = {
+              hash = "sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=";
+            };
+            "repos/effect-utils" = {
+              hash = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+            };
+          };
+          smokeTestArgs = [ ];
+        };
         pureEvalDerivedWorkspaceFixture = mkPnpmCli {
           name = "mk-pnpm-cli-pure-eval-derived-workspace-fixture";
           binaryName = "mk-pnpm-cli-pure-eval-derived-workspace-fixture";
@@ -135,6 +154,20 @@
           fi
           printf '%s' "$actual" > "$out"
         '';
+        checks.pure-eval-declared-hash-isolation =
+          let
+            baseline = pureEvalFixture.passthru.depsBuildsByInstallRoot.root;
+            alternate = pureEvalAlternateHashFixture.passthru.depsBuildsByInstallRoot.root;
+          in
+          assert baseline.outputHash != alternate.outputHash;
+          assert baseline.src == alternate.src;
+          assert baseline.pname == alternate.pname;
+          assert baseline.installPhase == alternate.installPhase;
+          assert !(lib.hasInfix baseline.outputHash baseline.installPhase);
+          assert !(lib.hasInfix alternate.outputHash alternate.installPhase);
+          pkgs.runCommand "mk-pnpm-cli-declared-hash-isolation" { } ''
+            touch "$out"
+          '';
         checks.pure-eval-deps-build-metadata =
           pkgs.runCommand "mk-pnpm-cli-pure-eval-deps-build-metadata" { }
             ''
