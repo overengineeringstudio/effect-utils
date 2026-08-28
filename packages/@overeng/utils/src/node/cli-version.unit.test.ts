@@ -218,11 +218,15 @@ Vitest.describe('argvRequestsJsonStdout', () => {
     expect(argvRequestsJsonStdout(['-o', 'json'])).toBe(true)
     expect(argvRequestsJsonStdout(['-o=ndjson'])).toBe(true)
     expect(argvRequestsJsonStdout(['md', 'status', '--json', 'page.nmd'])).toBe(true)
+    expect(argvRequestsJsonStdout(['schema', 'generate', '--output-mode', 'json'])).toBe(true)
+    expect(argvRequestsJsonStdout(['schema', 'generate', '--output-mode=ndjson'])).toBe(true)
   })
 
   Vitest.it('leaves human invocations unguarded', () => {
     expect(argvRequestsJsonStdout([])).toBe(false)
     expect(argvRequestsJsonStdout(['--output', 'auto'])).toBe(false)
+    expect(argvRequestsJsonStdout(['schema', 'generate', '--output-mode', 'text'])).toBe(false)
+    expect(argvRequestsJsonStdout(['schema', 'generate', '--output', 'schema.json'])).toBe(false)
     expect(argvRequestsJsonStdout(['env', '--output', 'tty'])).toBe(false)
     expect(argvRequestsJsonStdout(['--output'])).toBe(false)
     expect(argvRequestsJsonStdout(['--jsonify'])).toBe(false)

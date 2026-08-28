@@ -71,16 +71,18 @@ export class CliVersion extends Context.Service<CliVersion, CliVersionInfo>()('C
 
 /**
  * Whether an argv requests machine-readable stdout — `--output json|ndjson`
- * (`=`-attached or as the following token, `-o` alias included) or a `--json`
- * boolean. Such invocations must keep diagnostics off stdout (cli-C guard);
- * `auto` output resolving to JSON when piped is deliberately not guessed here.
+ * (`=`-attached or as the following token, `-o` alias included), the schema
+ * command's `--output-mode json|ndjson` (where `--output` names the output
+ * file), or a `--json` boolean. Such invocations must keep diagnostics off
+ * stdout (cli-C guard); `auto` output resolving to JSON when piped is
+ * deliberately not guessed here.
  */
 export const argvRequestsJsonStdout = (args: ReadonlyArray<string>): boolean => {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
     if (arg === undefined) continue
     if (arg === '--json') return true
-    const match = /^(?:--output|-o)(?:=(.*))?$/.exec(arg)
+    const match = /^(?:--output|-o|--output-mode)(?:=(.*))?$/.exec(arg)
     if (match === null) continue
     const value = match[1] ?? args[index + 1]
     if (value === 'json' || value === 'ndjson') return true
