@@ -182,6 +182,14 @@ describe('buck2 member manifest', () => {
         { target: '//pkg:two', destination: 'dist/item' },
       ],
     ],
+    [
+      'overlapping destinations',
+      [
+        { target: '//pkg:one', destination: 'dist' },
+        { target: '//pkg:two', destination: 'dist/item' },
+      ],
+    ],
+    ['capability collision', [{ target: '//pkg:item', destination: '.buck2' }]],
   ])('rejects dist overlays with %s', (_name, distOverlays) => {
     const valid = manifest({ cell: 'alpha' })
     const candidate =

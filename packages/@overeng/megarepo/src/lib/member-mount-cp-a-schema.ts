@@ -3,6 +3,7 @@ import * as NodePath from 'node:path'
 
 import { Schema } from 'effect'
 
+import { DistOverlayDeclaration } from './dist-overlay-schema.ts'
 import { OwnedCpAMountMetadata, R6ManifestValidationError } from './member-mount-r6.ts'
 
 /** Canonical transaction wire version. */
@@ -30,6 +31,7 @@ export const CpAMemberMountRequest = Schema.Struct({
   member: MemberName,
   sourcePath: AbsolutePath,
   capabilitiesPath: AbsolutePath,
+  distOverlays: Schema.Array(DistOverlayDeclaration),
   lockedCommit: LockedCommit,
   dryRun: Schema.Boolean,
   allowVerifiedDarwinAdvance: Schema.Boolean,

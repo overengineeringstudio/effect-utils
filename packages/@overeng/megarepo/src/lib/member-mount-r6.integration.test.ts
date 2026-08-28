@@ -308,6 +308,57 @@ describe('R6 source and protected scans', () => {
   )
 
   it.effect(
+    'excludes only declared overlay subtrees while binding protected content separately',
+    Effect.fnUntraced(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* makeFixture('protected')
+      const declaredOverlays = [{ target: '//pkg:dist', destination: 'dir/dist' }] as const
+      const before = yield* scanR6ProtectedMount({ root, declaredOverlays })
+      expect(before.overlays).toHaveLength(1)
+      expect(before.overlays[0]?.present).toBe(false)
+
+      yield* changeProtectedDirectory(
+        NodePath.join(root, 'dir'),
+        Effect.gen(function* () {
+          const destination = NodePath.join(root, 'dir', 'dist')
+          yield* fs.makeDirectory(destination)
+          yield* fs.writeFileString(NodePath.join(destination, 'bundle.js'), 'one\n')
+          yield* fs.chmod(NodePath.join(destination, 'bundle.js'), 0o444)
+          yield* fs.chmod(destination, 0o555)
+        }),
+      )
+      const published = yield* scanR6ProtectedMount({ root, declaredOverlays })
+      expect(published.repository).toEqual(before.repository)
+      expect(published.overlays[0]?.present).toBe(true)
+      expect(published.overlays[0]?.count).toBe(1)
+      expect(
+        published.repository.manifest.entries.some((entry) => entry.path.startsWith('dir/dist')),
+      ).toBe(false)
+
+      yield* rewriteProtectedFile({
+        path: NodePath.join(root, 'dir', 'dist', 'bundle.js'),
+        content: 'two\n',
+      })
+      const changed = yield* scanR6ProtectedMount({ root, declaredOverlays })
+      expect(changed.repository).toEqual(before.repository)
+      expect(changed.overlays[0]?.digest).not.toBe(published.overlays[0]?.digest)
+    }, withNode),
+  )
+
+  it.effect(
+    'requires immutable source trees to omit every declared overlay destination',
+    Effect.fnUntraced(function* () {
+      const root = yield* makeFixture('source')
+      const result = yield* scanR6Source({
+        root,
+        declaredOverlays: [{ target: '//pkg:dist', destination: 'dir' }],
+      }).pipe(Effect.result)
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') expect(result.failure.reason).toBe('PathCollision')
+    }, withNode),
+  )
+
+  it.effect(
     'distinguishes a missing capability tree from a present empty tree',
     Effect.fnUntraced(function* () {
       const fs = yield* FileSystem.FileSystem
