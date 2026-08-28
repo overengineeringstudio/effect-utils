@@ -5,6 +5,8 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
+  readlink,
   rename,
   rm,
   stat,
@@ -22,10 +24,12 @@ import { expect } from 'vitest'
 
 import { CompositionGeneratorConfig, EffectPath } from '../config.ts'
 import {
+  planCompositionRootPublication,
   publishCompositionRoot,
   teardownCompositionRoot,
   type CompositionRootPublicationError,
   type CompositionRootPublicationRuntime,
+  type PlanCompositionRootPublicationOptions,
   type PublishCompositionRootOptions,
 } from './composition-root-publisher.ts'
 import {
@@ -153,6 +157,73 @@ const optionsFor = ({
   ...(afterAuthorityPublished === undefined ? {} : { afterAuthorityPublished }),
 })
 
+const planOptionsFor = (
+  input: Parameters<typeof optionsFor>[0],
+): PlanCompositionRootPublicationOptions => {
+  const options = optionsFor(input)
+  return {
+    workspaceRoot: options.workspaceRoot,
+    configMemberKeys: options.configMemberKeys,
+    ownedMemberKey: options.ownedMemberKey,
+    compositionConfig: options.compositionConfig,
+    resolvedBuckExecutable: options.resolvedBuckExecutable,
+    ...(options.cacheSections === undefined ? {} : { cacheSections: options.cacheSections }),
+  }
+}
+
+interface FilesystemSnapshotEntry {
+  readonly path: string
+  readonly kind: 'directory' | 'file' | 'symlink'
+  readonly mode: number
+  readonly mtimeMs: number
+  readonly ino: number
+  readonly bytes?: string
+  readonly target?: string
+}
+
+const filesystemSnapshot = (root: string): Effect.Effect<ReadonlyArray<FilesystemSnapshotEntry>> =>
+  Effect.promise(async () => {
+    const entries: FilesystemSnapshotEntry[] = []
+    const visit = async (path: string): Promise<void> => {
+      const info = await lstat(path)
+      const relativePath = NodePath.relative(root, path) || '.'
+      if (info.isSymbolicLink() === true) {
+        entries.push({
+          path: relativePath,
+          kind: 'symlink',
+          mode: info.mode & 0o777,
+          mtimeMs: info.mtimeMs,
+          ino: info.ino,
+          target: await readlink(path),
+        })
+        return
+      }
+      if (info.isDirectory() === true) {
+        entries.push({
+          path: relativePath,
+          kind: 'directory',
+          mode: info.mode & 0o777,
+          mtimeMs: info.mtimeMs,
+          ino: info.ino,
+        })
+        for (const child of (await readdir(path)).toSorted()) {
+          await visit(NodePath.join(path, child))
+        }
+        return
+      }
+      entries.push({
+        path: relativePath,
+        kind: 'file',
+        mode: info.mode & 0o777,
+        mtimeMs: info.mtimeMs,
+        ino: info.ino,
+        bytes: (await readFile(path)).toString('base64'),
+      })
+    }
+    await visit(root)
+    return entries
+  })
+
 const readGenerated = (fixture: Fixture, relativePath: string): Effect.Effect<Buffer> =>
   Effect.promise(() => readFile(NodePath.join(fixture.root, relativePath)))
 
@@ -186,6 +257,116 @@ const failureReason = <A>(
   )
 
 describe('composition root publisher', () => {
+  it.effect('plans first-create bytes without mutating the filesystem', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const before = yield* filesystemSnapshot(fixture.root)
+        const plan = yield* planCompositionRootPublication(planOptionsFor({ fixture }))
+        const after = yield* filesystemSnapshot(fixture.root)
+        expect(after).toEqual(before)
+        expect(plan._tag).toBe('Create')
+        expect(plan.configLast).toBe(true)
+        expect(plan.files.map((file) => file.path)).toEqual(generatedPaths)
+        expect(plan.files.every((file) => file.old === undefined)).toBe(true)
+        expect(plan.files.every((file) => /^sha256:[0-9a-f]{64}$/u.test(file.new.sha256))).toBe(
+          true,
+        )
+      }),
+    ),
+  )
+
+  it.effect('plans an idempotent repeat as NoChange without touching bytes or mtimes', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* publishCompositionRoot(optionsFor({ fixture, lockToken: 'plan-repeat-publish' }))
+        const before = yield* filesystemSnapshot(fixture.root)
+        const plan = yield* planCompositionRootPublication(planOptionsFor({ fixture }))
+        const after = yield* filesystemSnapshot(fixture.root)
+        expect(after).toEqual(before)
+        expect(plan).toEqual({ _tag: 'NoChange', files: [], configLast: true })
+      }),
+    ),
+  )
+
+  it.effect('plans updates with ordered old/new identities and config last without mutation', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, cacheValue: 'old:1234', lockToken: 'plan-update-publish' }),
+        )
+        const before = yield* filesystemSnapshot(fixture.root)
+        const plan = yield* planCompositionRootPublication(
+          planOptionsFor({ fixture, cacheValue: 'new:5678' }),
+        )
+        const after = yield* filesystemSnapshot(fixture.root)
+        expect(after).toEqual(before)
+        expect(plan._tag).toBe('Update')
+        expect(plan.configLast).toBe(true)
+        expect(plan.files.at(-1)?.path).toBe('.buckconfig')
+        expect(plan.files.map((file) => file.path)).toEqual([
+          COMPOSITION_GENERATION_MANIFEST_PATH,
+          '.buckconfig',
+        ])
+        for (const file of plan.files) {
+          expect(file.old).toBeDefined()
+          expect(file.old?.sha256).not.toBe(file.new.sha256)
+          expect([0o644, 0o755]).toContain(file.new.mode)
+        }
+      }),
+    ),
+  )
+
+  it.effect('plans foreign ownership as Refused without repairing or mutating it', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* publishCompositionRoot(optionsFor({ fixture, lockToken: 'plan-foreign-publish' }))
+        yield* Effect.promise(() => writeFile(NodePath.join(fixture.root, 'BUCK'), 'foreign\n'))
+        const before = yield* filesystemSnapshot(fixture.root)
+        const plan = yield* planCompositionRootPublication(planOptionsFor({ fixture }))
+        const after = yield* filesystemSnapshot(fixture.root)
+        expect(after).toEqual(before)
+        expect(plan._tag).toBe('Refused')
+        if (plan._tag === 'Refused') {
+          expect(plan.reason).toBe('ForeignPath')
+          expect(plan.files).toEqual([])
+          expect(plan.configLast).toBe(false)
+        }
+      }),
+    ),
+  )
+
+  it.effect('plans an in-flight transaction as recovery-required without taking its lock', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              lockToken: 'plan-transaction-token',
+              publicationRuntime: runtime({
+                simulateProcessFaultAfterCandidate: (path) => path === '.buckconfig',
+              }),
+            }),
+          ),
+        )
+        const before = yield* filesystemSnapshot(fixture.root)
+        const plan = yield* planCompositionRootPublication(planOptionsFor({ fixture }))
+        const after = yield* filesystemSnapshot(fixture.root)
+        expect(after).toEqual(before)
+        expect(plan._tag).toBe('Refused')
+        if (plan._tag === 'Refused') {
+          expect(plan.reason).toBe('RecoveryRequired')
+          expect(plan.message).toContain('plan-transaction-token')
+        }
+      }),
+    ),
+  )
+
   it.effect('publishes the pure plan with .buckconfig as the final authority', () =>
     Effect.scoped(
       Effect.gen(function* () {

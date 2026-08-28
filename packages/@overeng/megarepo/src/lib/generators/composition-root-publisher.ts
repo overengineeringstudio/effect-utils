@@ -173,6 +173,60 @@ export interface PublishCompositionRootOptions {
   readonly afterAuthorityPublished?: () => Promise<void>
 }
 
+/** Read-only composition-root planning inputs. */
+export interface PlanCompositionRootPublicationOptions {
+  readonly workspaceRoot: AbsoluteDirPath
+  readonly configMemberKeys: ReadonlyArray<string>
+  readonly ownedMemberKey: string
+  readonly compositionConfig: CompositionGeneratorConfig
+  readonly resolvedBuckExecutable: string
+  readonly cacheSections?: ReadonlyArray<BuckCacheSection>
+}
+
+/** Exact content identity shown for each planned old/new file. */
+export interface CompositionRootPlannedFileIdentity {
+  readonly mode: 0o644 | 0o755
+  readonly sha256: string
+}
+
+/** One ordered file transition; `.buckconfig` is last whenever publication is required. */
+export interface CompositionRootPlannedFile {
+  readonly path: string
+  readonly old: CompositionRootPlannedFileIdentity | undefined
+  readonly new: CompositionRootPlannedFileIdentity
+}
+
+/** Stable refusal reasons returned as dry-run data rather than Effect failures. */
+export type CompositionRootPublicationPlanRefusalReason =
+  | CompositionRootPublicationError['reason']
+  | 'RecoveryRequired'
+
+/** Pure read-side publication decision. Refusals are data so dry-run callers can render them. */
+export type CompositionRootPublicationPlan =
+  | {
+      readonly _tag: 'Create'
+      readonly files: ReadonlyArray<CompositionRootPlannedFile>
+      readonly configLast: true
+    }
+  | {
+      readonly _tag: 'NoChange'
+      readonly files: readonly []
+      readonly configLast: true
+    }
+  | {
+      readonly _tag: 'Update'
+      readonly files: ReadonlyArray<CompositionRootPlannedFile>
+      readonly configLast: true
+    }
+  | {
+      readonly _tag: 'Refused'
+      readonly reason: CompositionRootPublicationPlanRefusalReason
+      readonly path: string
+      readonly message: string
+      readonly files: readonly []
+      readonly configLast: false
+    }
+
 /** Observable result of an idempotent composition publication. */
 export interface CompositionRootPublicationResult {
   readonly changedPaths: ReadonlyArray<string>
@@ -1255,6 +1309,64 @@ const loadMembers = async ({
   return members
 }
 
+type CompositionPreparationOptions = Pick<
+  PlanCompositionRootPublicationOptions,
+  | 'configMemberKeys'
+  | 'ownedMemberKey'
+  | 'compositionConfig'
+  | 'resolvedBuckExecutable'
+  | 'cacheSections'
+>
+
+const prepareComposition = async ({
+  workspaceRoot,
+  options,
+}: {
+  readonly workspaceRoot: AbsoluteDirPath
+  readonly options: CompositionPreparationOptions
+}): Promise<{
+  readonly members: ReadonlyArray<{
+    readonly memberKey: string
+    readonly memberRoot: string
+    readonly manifest: BuckMemberManifest
+  }>
+  readonly output: ReturnType<typeof generateCompositionRoot>
+}> => {
+  const members = await loadMembers({
+    workspaceRoot,
+    configMemberKeys: options.configMemberKeys,
+    ownedMemberKey: options.ownedMemberKey,
+  })
+  const hub = members.find((member) => member.memberKey === options.compositionConfig.platformHub)
+  if (hub === undefined) {
+    throw failure({
+      reason: 'InvalidInput',
+      path: workspaceRoot,
+      message: `Platform hub is not configured: ${options.compositionConfig.platformHub}`,
+    })
+  }
+  try {
+    return {
+      members,
+      output: generateCompositionRoot({
+        schemaVersion: COMPOSITION_ROOT_SCHEMA_VERSION,
+        members: members.map(({ memberKey, manifest }) => ({ memberKey, manifest })),
+        platformHubCell: hub.manifest.cell,
+        isolationDir: options.compositionConfig.isolationDir,
+        cacheSections: options.cacheSections,
+        resolvedBuckExecutable: options.resolvedBuckExecutable,
+      }),
+    }
+  } catch (cause) {
+    throw failure({
+      reason: 'InvalidInput',
+      path: workspaceRoot,
+      message: 'Composition member and generator inputs are inconsistent',
+      cause,
+    })
+  }
+}
+
 const makeTransaction = ({
   lock,
   output,
@@ -1520,6 +1632,104 @@ const commitTransaction = async ({
   return changed
 }
 
+const refusedPlan = ({
+  reason,
+  path,
+  message,
+}: {
+  readonly reason: CompositionRootPublicationPlanRefusalReason
+  readonly path: string
+  readonly message: string
+}): Extract<CompositionRootPublicationPlan, { readonly _tag: 'Refused' }> => ({
+  _tag: 'Refused',
+  reason,
+  path,
+  message,
+  files: [],
+  configLast: false,
+})
+
+/**
+ * Read-only dry-run for composition publication. It shares strict preparation and ownership
+ * validation with publication but creates no lock, candidate, directory, file, or callback effect.
+ */
+export const planCompositionRootPublication = Effect.fn('megarepo/composition-root/plan')(
+  (options: PlanCompositionRootPublicationOptions) =>
+    Effect.promise(async (): Promise<CompositionRootPublicationPlan> => {
+      const workspaceRoot = NodePath.resolve(options.workspaceRoot)
+      try {
+        await validateWorkspaceRoot(workspaceRoot)
+        const transaction = await readTransactionMaybe(workspaceRoot)
+        if (transaction !== undefined) {
+          return refusedPlan({
+            reason: 'RecoveryRequired',
+            path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
+            message: `Composition publication recovery is required for token ${transaction.transaction.lockToken}`,
+          })
+        }
+        const lock = await readLock(workspaceRoot)
+        if (lock !== undefined) {
+          return refusedPlan({
+            reason: 'LockHeld',
+            path: finalPathFor(workspaceRoot, LOCK_PATH),
+            message: `Composition publisher lock is held by ${lock.lock.owner}`,
+          })
+        }
+        const { output } = await prepareComposition({
+          workspaceRoot: workspaceRoot as AbsoluteDirPath,
+          options,
+        })
+        const snapshots = await validatePublicationState({ workspaceRoot, files: output.files })
+        const changed = output.files.filter((file) => {
+          const snapshot = snapshots.get(file.path)
+          return snapshot === undefined || snapshotMatchesFile(snapshot, file) === false
+        })
+        if (changed.length === 0) return { _tag: 'NoChange', files: [], configLast: true }
+        const config = output.files.find((file) => file.path === '.buckconfig')!
+        if (changed.some((file) => file.path === '.buckconfig') === false) changed.push(config)
+        const ordered = [
+          ...changed
+            .filter((file) => file.path !== '.buckconfig')
+            .toSorted((left, right) =>
+              left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+            ),
+          config,
+        ]
+        const files = ordered.map((file): CompositionRootPlannedFile => {
+          const previous = snapshots.get(file.path)
+          return {
+            path: file.path,
+            old:
+              previous === undefined
+                ? undefined
+                : {
+                    mode: previous.mode as 0o644 | 0o755,
+                    sha256: previous.sha256,
+                  },
+            new: { mode: file.mode, sha256: sha256(file.bytes) },
+          }
+        })
+        return {
+          _tag:
+            snapshots.get(COMPOSITION_GENERATION_MANIFEST_PATH) === undefined ? 'Create' : 'Update',
+          files,
+          configLast: true,
+        }
+      } catch (cause) {
+        const error = normalizeFailure({
+          cause,
+          path: workspaceRoot,
+          message: 'Could not plan Buck2 composition-root publication',
+        })
+        return refusedPlan({
+          reason: error.reason,
+          path: error.path,
+          message: error.message,
+        })
+      }
+    }),
+)
+
 /**
  * Publish a serialized, rollback-capable Buck2 composition root. This primitive performs only
  * filesystem publication; it invokes no Git, Nix, mount, or command operation.
@@ -1534,39 +1744,10 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
         const acquired = await acquireLock({ workspaceRoot, options: options.lock })
         let leaveForRecovery = false
         try {
-          const members = await loadMembers({
+          const { members, output } = await prepareComposition({
             workspaceRoot: workspaceRoot as AbsoluteDirPath,
-            configMemberKeys: options.configMemberKeys,
-            ownedMemberKey: options.ownedMemberKey,
+            options,
           })
-          const hub = members.find(
-            (member) => member.memberKey === options.compositionConfig.platformHub,
-          )
-          if (hub === undefined) {
-            throw failure({
-              reason: 'InvalidInput',
-              path: workspaceRoot,
-              message: `Platform hub is not configured: ${options.compositionConfig.platformHub}`,
-            })
-          }
-          let output: ReturnType<typeof generateCompositionRoot>
-          try {
-            output = generateCompositionRoot({
-              schemaVersion: COMPOSITION_ROOT_SCHEMA_VERSION,
-              members: members.map(({ memberKey, manifest }) => ({ memberKey, manifest })),
-              platformHubCell: hub.manifest.cell,
-              isolationDir: options.compositionConfig.isolationDir,
-              cacheSections: options.cacheSections,
-              resolvedBuckExecutable: options.resolvedBuckExecutable,
-            })
-          } catch (cause) {
-            throw failure({
-              reason: 'InvalidInput',
-              path: workspaceRoot,
-              message: 'Composition member and generator inputs are inconsistent',
-              cause,
-            })
-          }
           for (const member of members) {
             try {
               await options.runtime.assertCapabilityProjection({
