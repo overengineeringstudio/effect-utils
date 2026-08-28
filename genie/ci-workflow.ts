@@ -178,6 +178,7 @@ export {
   cachixCliBuildStep,
   cachixStep,
   checkoutStep,
+  cleanupEffectUtilsCompositionStep,
   ciDiagnosticsArtifactStep,
   ciDiagnosticsSetupStep,
   captureRunnerPressureStep,

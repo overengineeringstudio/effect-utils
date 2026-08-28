@@ -5,6 +5,7 @@ import {
   cachixCliBuildStep,
   cachixStep,
   checkoutStep,
+  cleanupEffectUtilsCompositionStep,
   prepareCiScriptsStep,
   prepareEffectUtilsCompositionStep,
   notifyAlignmentJob,
@@ -21,7 +22,6 @@ import {
   ciMeasurementBaselineWorkflowDispatchInputs,
   ciMeasurementNotBaselineBackfillPredicate,
   ciMeasurementSubjectEnv,
-  ciMeasurementsCommentPermissions,
   ciMeasurementsArtifactStep,
   compareCiMeasurementsStep,
   defaultNixClosureMeasurementBuckets,
@@ -52,14 +52,21 @@ import {
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
 
+const trustedCachixStep = {
+  ...cachixStep({
+    name: 'overeng-effect-utils',
+    authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+  }),
+  if: "github.event_name != 'pull_request'",
+} as const
+
 const baseSteps = [
   checkoutStep(),
   installNixStep(),
   ciMeasurementBaselineCheckoutStep,
-  nixCacheSetupStep,
-  cachixCliBuildStep,
-  cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   prepareEffectUtilsCompositionStep,
+  cachixCliBuildStep,
+  trustedCachixStep,
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
   pnpmStateSetupStep,
@@ -178,9 +185,6 @@ const liveVercelCiToolsPreflightStep = {
 
 const liveVercelCiToolsIf = "steps.live-vercel-preflight.outputs.run == 'true'"
 
-const liveDeployCiToolsIf =
-  "steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'"
-
 const andLiveVercelCiToolsIf = (condition: string) => {
   const trimmed = condition.trim()
   const unwrapped =
@@ -196,23 +200,6 @@ const onlyWhenLiveVercelCiTools = <Step extends Record<string, unknown>>(step: S
     typeof step.if === 'string' && step.if.length > 0
       ? andLiveVercelCiToolsIf(step.if)
       : liveVercelCiToolsIf,
-})
-
-const andLiveDeployCiToolsIf = (condition: string) => {
-  const trimmed = condition.trim()
-  const unwrapped =
-    trimmed.startsWith('${{') === true && trimmed.endsWith('}}') === true
-      ? trimmed.slice(3, -2).trim()
-      : trimmed
-  return `(${unwrapped}) && (${liveDeployCiToolsIf})`
-}
-
-const onlyWhenLiveDeployCiTools = <Step extends Record<string, unknown>>(step: Step) => ({
-  ...step,
-  if:
-    typeof step.if === 'string' && step.if.length > 0
-      ? andLiveDeployCiToolsIf(step.if)
-      : liveDeployCiToolsIf,
 })
 
 const liveVercelCiToolsE2EStep = {
@@ -248,17 +235,19 @@ const storybookPreviewSummaryPath =
 const verifyOtelShellEntryStep = {
   name: 'Verify mutation-free shell entry',
   shell: 'bash' as const,
-  run: [
-    runDevenvTasksBefore('otel:test'),
-    'command -v script >/dev/null 2>&1',
-    'tmp_log="$(mktemp)"',
-    'before="$(git status --porcelain=v1)"',
-    `printf 'command -v buck2\nexit\n' | script -qefc '"${'${DEVENV_BIN:?DEVENV_BIN not set}'}" shell --no-reload' "$tmp_log"`,
-    'grep -q \'/bin/buck2\' "$tmp_log"',
-    '! grep -q \'\\[otel\\] Using\' "$tmp_log"',
-    'test "$(git status --porcelain=v1)" = "$before"',
-    'rm -f "$tmp_log"',
-  ].join('\n'),
+  run: withCiSourceRoot(
+    [
+      runDevenvTasksBefore('otel:test'),
+      'command -v script >/dev/null 2>&1',
+      'tmp_log="$(mktemp)"',
+      'before="$(git status --porcelain=v1)"',
+      `printf 'command -v buck2\nexit\n' | script -qefc '"${'${DEVENV_BIN:?DEVENV_BIN not set}'}" shell --no-reload' "$tmp_log"`,
+      'grep -q \'/bin/buck2\' "$tmp_log"',
+      '! grep -q \'\\[otel\\] Using\' "$tmp_log"',
+      'test "$(git status --porcelain=v1)" = "$before"',
+      'rm -f "$tmp_log"',
+    ].join('\n'),
+  ),
 } as const
 
 /**
@@ -307,6 +296,7 @@ const nixDiagnosticsSummaryStep = {
 
 const jobTimeoutMinutes = 30
 const normalCiIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
+const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.event_name != 'pull_request' }}`
 
 const job = ({
   step,
@@ -367,7 +357,7 @@ const strictNixJobBaseSteps = [
   ciMeasurementBaselineCheckoutStep,
   nixCacheSetupStep,
   cachixCliBuildStep,
-  cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
+  cachixStep({ name: 'overeng-effect-utils' }),
   prepareCiScriptsStep,
 ] as const
 
@@ -727,7 +717,7 @@ const extraJobs: Record<string, any> = {
           command: ['$DEVENV_BIN', 'tasks', 'run', 'genie:check'],
         },
       ],
-      permissions: ciMeasurementsCommentPermissions,
+      permissions: { actions: 'read', contents: 'read' },
       compare: false,
       prComment: {
         enabled: false,
@@ -746,7 +736,7 @@ const extraJobs: Record<string, any> = {
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
-    permissions: ciMeasurementsCommentPermissions,
+    permissions: { actions: 'read', contents: 'read' },
     env: ciMeasurementSubjectEnv,
     steps: [
       ...baseSteps,
@@ -779,7 +769,7 @@ const extraJobs: Record<string, any> = {
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
-    permissions: ciMeasurementsCommentPermissions,
+    permissions: { actions: 'read', contents: 'read' },
     env: ciMeasurementSubjectEnv,
     steps: [
       checkoutStep(),
@@ -827,7 +817,7 @@ const extraJobs: Record<string, any> = {
   // Checkout exemption: report aggregation uses only Nix-provided tools and downloaded artifacts.
   'ci-measurements-report': {
     name: 'ci/measurements-report',
-    if: normalCiIf,
+    if: trustedSecretCiIf,
     needs: ['devenv-perf', 'nix-closure-sizes', 'source-shape'],
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
@@ -835,7 +825,7 @@ const extraJobs: Record<string, any> = {
     }),
     'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
-    permissions: ciMeasurementsCommentPermissions,
+    permissions: { actions: 'read', contents: 'read' },
     env: ciMeasurementSubjectEnv,
     steps: [
       checkoutStep(),
@@ -899,28 +889,28 @@ const extraJobs: Record<string, any> = {
   },
   /** Integration tests for Notion API (requires package-specific Notion token secrets) */
   'test-integration-notion': {
-    if: normalCiIf,
+    if: trustedSecretCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
     'timeout-minutes': 90,
     defaults: bashShellDefaults,
-    env: {
-      ...standardCIEnv,
-      NOTION_API_TOKEN: '${{ secrets.NOTION_API_TOKEN }}',
-      NOTION_TEST_PARENT_PAGE_ID: '${{ secrets.NOTION_TEST_PARENT_PAGE_ID }}',
-      NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID:
-        '${{ secrets.NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID || secrets.NOTION_TEST_PARENT_PAGE_ID }}',
-      NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID:
-        '${{ secrets.NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID }}',
-      NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID:
-        "${{ github.event_name == 'workflow_dispatch' && (inputs.run_datasource_sync_demo == true || inputs.run_datasource_sync_demo == 'true') && secrets.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID || '' }}",
-    },
+    env: standardCIEnv,
     steps: [
       ...baseSteps,
       {
         name: 'Notion integration tests',
+        env: {
+          NOTION_API_TOKEN: '${{ secrets.NOTION_API_TOKEN }}',
+          NOTION_TEST_PARENT_PAGE_ID: '${{ secrets.NOTION_TEST_PARENT_PAGE_ID }}',
+          NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID:
+            '${{ secrets.NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID || secrets.NOTION_TEST_PARENT_PAGE_ID }}',
+          NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID:
+            '${{ secrets.NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID }}',
+          NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID:
+            "${{ github.event_name == 'workflow_dispatch' && (inputs.run_datasource_sync_demo == true || inputs.run_datasource_sync_demo == 'true') && secrets.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID || '' }}",
+        },
         run: runDevenvTasksBefore('test:notion-integration'),
       },
       savePnpmStateStep(),
@@ -964,7 +954,7 @@ const extraJobs: Record<string, any> = {
     ],
   },
   'test-live-deploy-ci-tools': {
-    if: normalCiIf,
+    if: trustedSecretCiIf,
     concurrency: {
       group:
         'test-live-deploy-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
@@ -978,40 +968,36 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     env: standardCIEnv,
     steps: [
+      ...baseSteps,
       liveNetlifyCiToolsPreflightStep,
       liveVercelCiToolsPreflightStep,
-      ...baseSteps.map(onlyWhenLiveDeployCiTools),
       onlyWhenLiveNetlifyCiTools(liveNetlifyCiToolsE2EStep),
       onlyWhenLiveVercelCiTools(liveVercelCiToolsE2EStep),
-      onlyWhenLiveDeployCiTools(savePnpmStateStep()),
-      onlyWhenLiveDeployCiTools(nixDiagnosticsSummaryStep),
-      onlyWhenLiveDeployCiTools(nixDiagnosticsArtifactStep()),
-      onlyWhenLiveDeployCiTools(failureReminderStep),
+      savePnpmStateStep(),
+      nixDiagnosticsSummaryStep,
+      nixDiagnosticsArtifactStep(),
+      failureReminderStep,
     ],
   },
 }
 
 const deployJobs: Record<string, any> = {
   'deploy-storybooks': {
-    if: normalCiIf,
+    if: trustedSecretCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
     'timeout-minutes': jobTimeoutMinutes,
     // No `needs` — run in parallel with other jobs for faster feedback
-    permissions: {
-      contents: 'read',
-      'pull-requests': 'write',
-    },
+    permissions: { contents: 'read' },
     defaults: bashShellDefaults,
     env: {
       ...standardCIEnv,
-      NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
     },
     steps: [
       ...baseSteps,
-      netlifyDeployStep(),
+      { ...netlifyDeployStep(), env: { NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}' } },
       workflowReportCollectorStep({
         workflowReportFlakeRef,
         bundleId: 'storybook-preview',
@@ -1046,6 +1032,23 @@ const deployJobs: Record<string, any> = {
   },
 } as const
 
+const withEffectUtilsCompositionCleanup = (jobMap: Record<string, any>) =>
+  Object.fromEntries(
+    Object.entries(jobMap).map(([name, ciJob]) => {
+      const steps = ciJob.steps as readonly any[] | undefined
+      return [
+        name,
+        steps?.some((step) => step.name === prepareEffectUtilsCompositionStep.name) === true
+          ? {
+              ...ciJob,
+              steps: [...steps, cleanupEffectUtilsCompositionStep],
+            }
+          : ciJob,
+      ]
+    }),
+  )
+
+// oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   name: 'CI',
   on: {
@@ -1071,7 +1074,8 @@ export default ciWorkflow({
       },
     },
   },
-  jobs: {
+  permissions: { contents: 'read' },
+  jobs: withEffectUtilsCompositionCleanup({
     // Keep default-ref/source-policy separate from product checks: downstream
     // validation branches should fail one authority job, not obscure
     // lint/typecheck/test signal.
@@ -1099,5 +1103,5 @@ export default ciWorkflow({
         ],
       }),
     },
-  },
+  }),
 } satisfies GitHubWorkflowArgs)
