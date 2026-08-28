@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+
 - **@overeng/utils, @overeng/genie, @overeng/notion-md**: apply the watch-recursion
   design study for effect@4.0.0-rc.111 (recursion is opt-in again). New
   `watchScoped` helper in `@overeng/utils/node` wraps `FileSystem.watch` with an
@@ -133,6 +134,7 @@ All notable changes to this project will be documented in this file.
   `NotionThrottleShape`) instead of the tag name.
 
 ### Added
+
 - **@overeng/utils-dev**: add a shared `normalizeCliOutput` helper at the
   `./cli-contract` export for CLI contract baselines. Each masking policy
   (ANSI, log timestamps, checkout root, local-source suffix) is an explicit
@@ -247,6 +249,20 @@ violations }` (the offending `DiffOp[]`); block ops and page content
 
 ### Fixed
 
+- **@overeng/notion-react**: verify warm-cache block identities recursively
+  through renderer-owned nested blocks and child-page scopes. A stale nested
+  cache now reconciles untracked live descendants instead of appending
+  duplicates, while opaque synced-block children remain untouched. Promised
+  but transiently empty child lists retry and fail closed on exhaustion;
+  recursive and retry requests are reflected exactly in retrieve metrics and
+  `SyncEnd.opCount`. Unambiguously keyed child pages moved out of band between
+  renderer-owned parents retain their durable page ID, key, and subtree instead
+  of being archived and recreated; destination-scope key collisions take the
+  safe rebuild fallback instead of producing an invalid cache. Independent
+  page-order retention is likewise limited to child-page scopes; root and
+  ordinary-block child scopes keep full mixed-kind ordering. The persisted
+  `CacheTree` exactly reflects the identities left live and an immediate
+  identical sync emits zero mutations.
 - **Nix prepared dependencies**: normalize ordinary, non-injected local
   `file:` packages through pnpm's exact package-map locator before removing
   transient Source Input aliases. Restored CLI workspaces now resolve the

@@ -499,33 +499,80 @@ Third-party backends (SQLite, Redis, …) implement `NotionCache` directly
 
 ## Fallback decision table (R16)
 
-| Trigger                                             | Behaviour                                                      | `fallbackReason`     |
-| --------------------------------------------------- | -------------------------------------------------------------- | -------------------- |
-| No cache file                                       | Cold diff against empty tree                                   | `"cold-cache"`       |
-| `FsCache` persisted schema mismatch                 | `FsCache.load` returns `undefined`; sync runs cold diff        | `"cold-cache"`       |
-| Prior tree `schemaVersion !== CACHE_SCHEMA_VERSION` | Abort stale-tree diff from backends that return old trees      | `"schema-mismatch"`  |
-| Cache `rootId !== opts.pageId`                      | Cold diff against empty tree                                   | `"page-id-drift"`    |
-| `NotionBlocks.update` returns 404/archived          | Emit structural rebuild of that subtree                        | `"block-missing"`    |
-| Cached page id → `pages.retrieve` 404               | Drop cached subtree, recreate if JSX has it, else no-op        | `"page-missing"`     |
-| Cached page id is archived on server                | Treat as removed; if JSX still has `<ChildPage>`, create fresh | `"page-archived"`    |
-| Post-create inline retrieval or later work fails    | Preserve identity checkpoint; retry adopts live inline ids     | n/a (original error) |
-| Diff produces malformed op-plan (invariant break)   | Abort; propagate `NotionSyncError`                             | n/a (error)          |
+| Trigger                                             | Behaviour                                                                   | `fallbackReason`     |
+| --------------------------------------------------- | --------------------------------------------------------------------------- | -------------------- |
+| No cache file                                       | Cold diff; `'clean'` first represents live roots as removable ghosts        | `"cold-cache"`       |
+| `FsCache` persisted schema mismatch                 | `FsCache.load` returns `undefined`; sync runs the no-cache path             | `"cold-cache"`       |
+| Prior tree `schemaVersion !== CACHE_SCHEMA_VERSION` | Diff against the prior identity-bearing tree without recursive preflight    | `"schema-mismatch"`  |
+| Cache `rootId !== opts.pageId`                      | Use the no-cache path for the requested page                                | `"page-id-drift"`    |
+| Warm recursive identity tree differs from cache     | Diff against `driftedBase(live, prior)` at every observed owned scope       | `"cache-drift"`      |
+| Promised-nonempty children stay empty after retries | Abort before drift classification or mutation; preserve the prior cache     | n/a (typed error)    |
+| Opaque block reports inherited children             | Stop traversal at the opaque block; inherited content is not renderer-owned | n/a                  |
+| `NotionBlocks.update` returns 404/archived          | Emit structural rebuild of that subtree                                     | `"block-missing"`    |
+| Cached page id → `pages.retrieve` 404               | Drop cached subtree, recreate if JSX has it, else no-op                     | `"page-missing"`     |
+| Cached page id is archived on server                | Treat as removed; if JSX still has `<ChildPage>`, create fresh              | `"page-archived"`    |
+| Post-create inline retrieval or later work fails    | Preserve identity checkpoint; retry adopts live inline ids                  | n/a (original error) |
+| Diff produces malformed op-plan (invariant break)   | Abort; propagate `NotionSyncError`                                          | n/a (error)          |
 
-v0.1 implements `cold-cache`, `schema-mismatch`, and `page-id-drift`
-(via a pre-flight `NotionBlocks.retrieve(cache.rootId)`). `block-missing`
-is a v0.2 addition — under v0.1, a 404 on a cache-referenced block
-propagates as a `NotionSyncError`. Callers receive the reason on the
-`SyncResult`.
+`block-missing` remains a later apply-time refinement; a 404 on a
+cache-referenced block currently propagates as `NotionSyncError`. Every
+implemented fallback reason is returned on `SyncResult`.
+
+## Recursive identity preflight (R04, R16, R18, R38, T14)
+
+```text
+children list (root)
+  → renderer-owned block/page scopes
+      → identityTreeDrifted(prior, live)
+          ├─ equal   → diff(prior, candidate)
+          └─ drifted → diff(driftedBase(live, prior), candidate)
+                         → strip drift ghosts before every checkpoint
+```
+
+`sync()` and live `plan()` share `retrieveLiveIdentities`,
+`identityTreeDrifted`, `driftedBase`, and `selectDiffBase`.
+`retrieveLiveIdentities` builds an ordered tree of `{ blockId, type,
+children }`. Root and ordinary block children compare in server order.
+Children under a `child_page` scope compare by block id because page-scoped
+application may interleave block and page work.
+Traversal uses a positive ownership boundary. It descends through the
+renderer-owned child-bearing wire types (paragraph, toggleable headings, list
+items, to-do, toggle, quote, callout, table, column-list, and column) when the
+response reports children, and always opens a `child_page` scope. It does not
+descend through opaque passthrough wire types such as `synced_block`,
+`template`, `link_preview`, `child_database`, or `breadcrumb`. In particular,
+a `<SyncedBlock>` may report `has_children: true` for content inherited from
+its synchronization source; those descendants are source-owned and must never
+become removals or cache entries in this renderer's tree.
+
+Each children-list pagination page is one physical request. If a parent
+response promised `has_children: true` but the complete child list is empty,
+the whole list is retried on the bounded settle schedule (500 ms exponential
+backoff at factor 1.5, up to four retries). Exhaustion fails closed with
+`NotionSyncError { reason: 'children-not-yet-visible' }`; neither
+`identityTreeDrifted` nor `diff` runs against the ambiguous empty observation.
+
+When identities drift, `driftedBase` recursively indexes prior siblings by
+`blockId`. A still-live node keeps all known cache metadata (`key`, hashes,
+node kind, page metadata, and pending state) while its children are merged by
+the same rule. An untracked live node becomes an in-memory **drift ghost**:
+it carries the live block id/type but a synthetic `drift:<blockId>` key and
+empty hash, so the ordinary diff can reconcile or remove it. Drift ghosts are
+stripped recursively when initializing the working cache and before every
+checkpoint; only identities confirmed by successful operations can repopulate
+the persisted and returned `CacheTree`.
+
+Telemetry is accounted at the physical-request boundary. Every pagination
+page and every settle retry increments `opCount` once and emits its own
+`OpIssued` followed by `OpSucceeded` or `OpFailed`, all with kind
+`'retrieve'`. `SyncMetrics.actualOps.retrieve`, aggregate OER, and
+`SyncEnd.opCount` therefore include the full recursive read volume rather than
+one synthetic count for the tree walk.
 
 ## plan() — read-only companion (R37–R38)
 
-`sync()`'s pre-flight is factored into shared module-level helpers —
-`resolvePendingPages` (pending-marker adoption), `topLevelDrifted`
-(shallow drift detection), `selectDiffBase` (cold/warm/drift base
-selection incl. the fallback decision table above), and
-`rootPageUpdateOpFor` (the root title/icon/cover `updatePage` that
-`sync()` applies _outside_ its internal diff). `plan()` composes the
-same helpers with `diff()` and returns without applying:
+`plan()` composes the same preflight helpers with `diff()` and
+`rootPageUpdateOpFor` and returns without applying:
 
 ```ts
 interface SyncPlan {
@@ -537,28 +584,23 @@ interface SyncPlan {
 }
 ```
 
-Including the root `updatePage` in `ops` is load-bearing: without it
-the empty-plan fixpoint oracle would miss root metadata drift (an icon
-change plans as exactly one `pages.update`, matching what `sync()`
-applies).
+Including the root `updatePage` in `ops` is load-bearing: without it the
+empty-plan fixpoint oracle would miss root metadata drift.
 
-Staleness (R38, T11):
+Staleness (R38, T11, T14):
 
-- **`'live'` (default):** mirrors sync's shallow pre-flight — one
-  top-level children GET plus in-memory pending-marker adoption (never
-  persisted; plan() writes nothing). Detects out-of-band appends as
-  `fallbackReason: 'cache-drift'`. The plan can still go stale before a
-  later `sync()` (T11) — sync recomputes, so the applied result cannot.
-- **`'cache-only'`:** a pure function of cache + JSX, zero requests.
-  Blind to anything only the server knows: out-of-band drift, the
-  cold-`'clean'` baseline sweep (needs the live child list to plan its
-  removes), and pending-marker resolution.
+- **`'live'` (default):** performs the recursive renderer-owned identity
+  preflight above plus in-memory pending-marker adoption (never persisted by
+  `plan()`). It detects nested and child-page drift and reports
+  `fallbackReason: 'cache-drift'`. It remains an observation without snapshot
+  isolation; `sync()` recomputes before applying.
+- **`'cache-only'`:** is a pure function of cache + JSX and issues zero
+  requests. It is blind to server-only state at every depth, the
+  cold-`'clean'` baseline sweep, and pending-marker resolution.
 
-`onEvent` reuses the `SyncEvent` union for the read-only prefix: the
-`'live'` GET emits `OpIssued`/`OpSucceeded`/`OpFailed` with kind
-`'retrieve'`, and the computed plan emits one `PlanComputed`. No
-`SyncStart`/`SyncEnd`/`CacheOutcome` — plan probes must not skew
-cache-efficiency or sync-duration metrics aggregated across real syncs.
+Live plan requests emit the same per-request retrieve events as sync, followed
+by one `PlanComputed`. Plan emits no `SyncStart`, `SyncEnd`, or `CacheOutcome`,
+so plan probes do not skew sync-duration or cache-efficiency aggregates.
 
 ## Readback oracle (R39–R40)
 

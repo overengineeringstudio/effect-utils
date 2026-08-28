@@ -3,7 +3,7 @@ import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
 import { Fragment, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
-import type { NotionConfig } from '@overeng/notion-effect-client'
+import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
@@ -16,6 +16,7 @@ import {
   Paragraph,
   Table,
   TableRow,
+  SyncedBlock,
 } from '../components/blocks.ts'
 import { h } from '../components/h.ts'
 import {
@@ -26,6 +27,7 @@ import {
   type FakeRequest,
 } from '../test/mock-client.ts'
 import type { SyncEvent } from './sync-events.ts'
+import type { SyncMetrics } from './sync-metrics.ts'
 import { sync } from './sync.ts'
 
 /**
@@ -146,7 +148,7 @@ describe('sync() against in-memory fake Notion', () => {
     }
   })
 
-  it('same-tree resync → {0,0,0,0}, no fallback, only the drift-check GET', async () => {
+  it('same-tree resync → {0,0,0,0}, no fallback, recursive drift reads only', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
@@ -155,9 +157,11 @@ describe('sync() against in-memory fake Notion', () => {
     const res = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(res.fallbackReason).toBeUndefined()
-    // Pre-flight drift check (#105) issues exactly one GET; no mutating ops.
+    // Recursive pre-flight drift detection reads every nested identity scope
+    // and emits no mutations.
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(newReqs.length).toBeGreaterThan(0)
+    expect(newReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('body change → exactly one PATCH to the nested paragraph', async () => {
@@ -185,9 +189,10 @@ describe('sync() against in-memory fake Notion', () => {
       }),
     )
     expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
-    // Pre-flight drift GET + one PATCH for the body change.
+    // Recursive pre-flight reads followed by the one PATCH for the body change.
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET', 'PATCH'])
+    expect(newReqs.at(-1)?.method).toBe('PATCH')
+    expect(newReqs.slice(0, -1).every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('append session → 2 new-block ops (toggle + nested paragraph)', async () => {
@@ -311,7 +316,8 @@ describe('sync() against in-memory fake Notion', () => {
     )
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const rerunReqs = fake.requests.slice(before)
-    expect(rerunReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(rerunReqs.length).toBeGreaterThan(0)
+    expect(rerunReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('delete session → one DELETE', async () => {
@@ -352,9 +358,116 @@ describe('sync() against in-memory fake Notion', () => {
       expect(r).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       expect(r.fallbackReason).toBeUndefined()
     }
-    // Exactly one drift-check GET per hot-cache resync, no mutations.
+    // Recursive identity reads only; no mutations across hot-cache resyncs.
     const methods = fake.requests.slice(after).map((r) => r.method)
-    expect(methods).toEqual(['GET', 'GET', 'GET'])
+    expect(methods.length).toBeGreaterThan(3)
+    expect(methods.every((method) => method === 'GET')).toBe(true)
+  })
+
+  it('warm sync treats inherited synced-block children as opaque', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <>
+        <SyncedBlock content={{ synced_from: { block_id: 'source-block' } }} />
+        <Paragraph>renderer-owned sibling</Paragraph>
+      </>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const synced = fake.childrenOf(ROOT).find((block) => block.type === 'synced_block')!
+    const inherited = fake.childrenOf(ROOT).find((block) => block.type === 'paragraph')!
+
+    // Notion exposes source-owned synchronized content through the synced
+    // block's children listing. It is not part of this renderer's CacheTree.
+    synced.children.push(inherited.id)
+    const before = fake.requests.length
+    const result = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+
+    expect(result).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(result.fallbackReason).toBeUndefined()
+    expect(inherited.archived).toBe(false)
+    expect(fake.requests.slice(before).filter((request) => request.method !== 'GET')).toEqual([])
+  })
+
+  it('recursive preflight retries promised-empty children and accounts for every request', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList blockKey="columns">
+        <Column blockKey="left">
+          <Paragraph>left</Paragraph>
+        </Column>
+        <Column blockKey="right">
+          <Paragraph>right</Paragraph>
+        </Column>
+      </ColumnList>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const columnList = fake.childrenOf(ROOT).find((block) => block.type === 'column_list')!
+    fake.delayChildrenVisibility(columnList.id, 1)
+
+    const events: SyncEvent[] = []
+    let metrics: SyncMetrics | undefined
+    const before = fake.requests.length
+    const result = await runWith(
+      fake,
+      sync(tree, {
+        pageId: ROOT,
+        cache,
+        onEvent: (event) => events.push(event),
+        onMetrics: (value) => {
+          metrics = value
+        },
+      }),
+    )
+    const requests = fake.requests.slice(before)
+    const retrieves = requests.filter((request) => request.method === 'GET')
+    const issuedRetrieves = events.filter(
+      (event) => event._tag === 'OpIssued' && event.kind === 'retrieve',
+    )
+    const successfulRetrieves = events.filter(
+      (event) => event._tag === 'OpSucceeded' && event.kind === 'retrieve',
+    )
+    const syncEnd = events.find((event) => event._tag === 'SyncEnd')
+
+    expect(result).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(result.fallbackReason).toBeUndefined()
+    expect(requests.every((request) => request.method === 'GET')).toBe(true)
+    expect(retrieves).toHaveLength(5)
+    expect(issuedRetrieves).toHaveLength(retrieves.length)
+    expect(successfulRetrieves).toHaveLength(retrieves.length)
+    expect(metrics?.actualOps.retrieve).toBe(retrieves.length)
+    expect(syncEnd).toMatchObject({ opCount: retrieves.length, ok: true })
+  })
+
+  it('recursive preflight does not settle-retry permanent retrieve failures', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList blockKey="columns">
+        <Column blockKey="left">
+          <Paragraph>left</Paragraph>
+        </Column>
+        <Column blockKey="right">
+          <Paragraph>right</Paragraph>
+        </Column>
+      </ColumnList>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const columnList = fake.childrenOf(ROOT).find((block) => block.type === 'column_list')!
+    const failedPath = `/v1/blocks/${columnList.id}/children`
+    let attempts = 0
+    fake.failOn((request) => {
+      if (request.method !== 'GET' || request.path !== failedPath) return undefined
+      attempts += 1
+      return new FakeNotionResponseError(403, 'restricted_resource', 'permanent denial')
+    })
+
+    const exit = await Effect.runPromiseExit(
+      sync(tree, { pageId: ROOT, cache }).pipe(Effect.provide(fake.layer)),
+    )
+    expect(exit._tag).toBe('Failure')
+    expect(attempts).toBe(1)
   })
 
   it('drift detection: out-of-band archive on a tracked block forces cache-drift rebuild', async () => {
@@ -391,6 +504,198 @@ describe('sync() against in-memory fake Notion', () => {
     expect(res).toMatchObject({ updates: 0 })
     expect(res.appends + res.inserts).toBeLessThanOrEqual(2)
     expect(res.appends + res.inserts).toBeGreaterThanOrEqual(1)
+  })
+
+  it('drift detection preserves ordinary block order inside a child page', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ChildPage blockKey="outer" title="Outer">
+        <Paragraph blockKey="a">A</Paragraph>
+        <Paragraph blockKey="b">B</Paragraph>
+      </ChildPage>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const outer = fake.childrenOf(ROOT).find((block) => block.type === 'child_page')!
+    const expectedOrder = fake.childrenOf(outer.id).map((block) => block.id)
+    expect(expectedOrder).toHaveLength(2)
+
+    // Simulate another client reordering the two ordinary block siblings.
+    outer.children.reverse()
+    expect(fake.childrenOf(outer.id).map((block) => block.id)).toEqual(
+      [...expectedOrder].toReversed(),
+    )
+
+    const result = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(result.fallbackReason).toBe('cache-drift')
+    const repairedText = fake.childrenOf(outer.id).map((block) => {
+      const richText = (block.payload.rich_text ?? []) as readonly {
+        text?: { content?: string }
+      }[]
+      return richText[0]?.text?.content
+    })
+    expect(repairedText).toEqual(['A', 'B'])
+
+    const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(stable.fallbackReason).toBeUndefined()
+    expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
+  it('drift detection preserves a keyed child page moved between owned parents', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <>
+        <ChildPage blockKey="parent-a" title="Parent A">
+          <ChildPage blockKey="moved" title="Moved">
+            <Paragraph blockKey="body">Body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+        <ChildPage blockKey="parent-b" title="Parent B" />
+      </>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const [parentA, parentB] = fake.childrenOf(ROOT)
+    const moved = fake.childrenOf(parentA!.id).find((block) => block.type === 'child_page')!
+
+    // Another client reparents the tracked page while this renderer still
+    // owns both possible parents. Drift recovery must find the cached page by
+    // its durable ID across the whole tree, then move that same page back.
+    await runWith(
+      fake,
+      NotionPages.move({
+        pageId: moved.id,
+        parent: { type: 'page_id', page_id: parentB!.id },
+      }),
+    )
+
+    const repaired = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(repaired.fallbackReason).toBe('cache-drift')
+    expect(repaired.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 1, reorders: 0 })
+    expect(repaired).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+    expect(fake.childrenOf(parentA!.id).some((block) => block.id === moved.id)).toBe(true)
+    const persisted = await Effect.runPromise(cache.load)
+    expect(
+      persisted && flattenCache(persisted).find((node) => node.blockId === moved.id)?.key,
+    ).toBe('k:moved')
+
+    const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(stable.fallbackReason).toBeUndefined()
+    expect(stable.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
+  it('drift detection rebuilds pages whose recovered keys collide at one parent', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <>
+        <ChildPage blockKey="parent-a" title="Parent A">
+          <ChildPage blockKey="shared" title="Page A">
+            <Paragraph blockKey="body">A</Paragraph>
+          </ChildPage>
+        </ChildPage>
+        <ChildPage blockKey="parent-b" title="Parent B">
+          <ChildPage blockKey="shared" title="Page B">
+            <Paragraph blockKey="body">B</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const [parentA, parentB] = fake.childrenOf(ROOT)
+    const moved = fake.childrenOf(parentA!.id)[0]!
+
+    // The same key is valid in separate scopes. Once an out-of-band move puts
+    // both pages under one live parent, neither identity can safely claim that
+    // key there; the ambiguous pair must take the existing rebuild fallback.
+    await runWith(
+      fake,
+      NotionPages.move({
+        pageId: moved.id,
+        parent: { type: 'page_id', page_id: parentB!.id },
+      }),
+    )
+
+    const repaired = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(repaired.fallbackReason).toBe('cache-drift')
+    expect(repaired.pages).toEqual({ creates: 2, updates: 0, archives: 2, moves: 0, reorders: 0 })
+
+    const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(stable.fallbackReason).toBeUndefined()
+    expect(stable.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
+  it('propagates a nested caller holding-page exclusion through recursive reads', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ChildPage blockKey="outer" title="Outer">
+        <Paragraph blockKey="body">Body</Paragraph>
+      </ChildPage>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const outer = fake.childrenOf(ROOT).find((block) => block.type === 'child_page')!
+    const holdingParentId = await runWith(
+      fake,
+      NotionPages.create({
+        parent: { type: 'page_id', page_id: outer.id },
+        properties: {
+          title: { title: [{ type: 'text', text: { content: 'nested-holding' } }] },
+        },
+      }).pipe(Effect.map((page) => page.id)),
+    )
+    const holdingReadPath = `/v1/blocks/${holdingParentId}/children`
+    fake.failOn((request) =>
+      request.method === 'GET' && request.path === holdingReadPath
+        ? new FakeNotionResponseError(500, 'internal_server_error', 'must not read holding page')
+        : undefined,
+    )
+
+    const before = fake.requests.length
+    const result = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache, reorderSiblings: { holdingParentId } }),
+    )
+    expect(result.fallbackReason).toBeUndefined()
+    expect(result).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+    expect(fake.requests.slice(before).some((request) => request.path === holdingReadPath)).toBe(
+      false,
+    )
+    expect(fake.pages.get(holdingParentId)?.in_trash).toBe(false)
+  })
+
+  it('keeps tolerated block/page interleaving out of a nested drift base', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ChildPage blockKey="outer" title="Outer">
+        <Paragraph blockKey="a">A</Paragraph>
+        <ChildPage blockKey="nested" title="Nested" />
+        <Paragraph blockKey="b">B</Paragraph>
+      </ChildPage>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const outer = fake.childrenOf(ROOT).find((block) => block.type === 'child_page')!
+    const children = fake.childrenOf(outer.id)
+    const nestedPage = children.find((block) => block.type === 'child_page')!
+    const [blockA, blockB] = children.filter((block) => block.type === 'paragraph')
+    expect([blockA, blockB]).not.toContain(undefined)
+    outer.children.splice(0, outer.children.length, nestedPage.id, blockA!.id, blockB!.id)
+    blockB!.archived = true
+
+    const result = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache, pageLifecycle: 'append-only' }),
+    )
+    expect(result.fallbackReason).toBe('cache-drift')
+    expect(result.pages).toMatchObject({ creates: 0, archives: 0, moves: 0 })
+    expect(result.appends + result.inserts).toBe(1)
+
+    const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(stable.fallbackReason).toBeUndefined()
+    expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
   })
 
   it('drift detection: LARGE warm page with 1-block drift → minimal ops (regression: #warm-sync-slow)', async () => {
@@ -505,7 +810,8 @@ describe('sync() against in-memory fake Notion', () => {
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(newReqs.length).toBeGreaterThan(0)
+    expect(newReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   // Warm-sync regression: any structural change inside a retained
@@ -641,7 +947,8 @@ describe('sync() against in-memory fake Notion', () => {
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(newReqs.length).toBeGreaterThan(0)
+    expect(newReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('mixed atomic nesting: ColumnList with a table inside a column', async () => {
@@ -782,7 +1089,8 @@ describe('sync() against in-memory fake Notion', () => {
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
-    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+    expect(newReqs.length).toBeGreaterThan(0)
+    expect(newReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('nested atomic overflow (table with 150 rows inside column_list > column) — throws clearly', async () => {
@@ -829,8 +1137,9 @@ describe('sync() against in-memory fake Notion', () => {
     const warm = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
     expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     const warmReqs = fake.requests.slice(before)
-    // Only the drift-check GET; no PATCH / DELETE / POST.
-    expect(warmReqs.map((r) => r.method)).toEqual(['GET'])
+    // Recursive drift verification performs reads only.
+    expect(warmReqs.length).toBeGreaterThan(0)
+    expect(warmReqs.every((request) => request.method === 'GET')).toBe(true)
   })
 
   it('cold-cache: persisted cache has zero ghost entries', async () => {
