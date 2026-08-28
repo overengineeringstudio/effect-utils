@@ -11,6 +11,7 @@ import {
   linuxX64Runner,
   shellSingleQuote,
   standardCIEnv,
+  withCiSourceRoot,
 } from './shared.ts'
 
 export type CiMeasurementDescriptor = {
@@ -1182,10 +1183,12 @@ export const devenvPerfBenchmarkStep = (
   ({
     name: 'Benchmark devenv surfaces',
     shell: 'bash',
-    run: renderDevenvPerfScript({
-      taskProbes: opts?.taskProbes ?? [],
-      probes: opts?.probes ?? [],
-    }),
+    run: withCiSourceRoot(
+      renderDevenvPerfScript({
+        taskProbes: opts?.taskProbes ?? [],
+        probes: opts?.probes ?? [],
+      }),
+    ),
   }) as const
 
 const ciMeasurementBaselineSeedRunsJson = (opts: GitHubPreviousArtifactStepOptions) =>
@@ -1527,7 +1530,7 @@ export const nixClosureMeasurementStep = (opts: NixClosureMeasurementStepOptions
       ARTIFACT_DIR: artifactDir,
       RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
     },
-    run: String.raw`set -euo pipefail
+    run: withCiSourceRoot(String.raw`set -euo pipefail
 
 mkdir -p "$ARTIFACT_DIR"
 installable=${shellSingleQuote(opts.installable)}
@@ -1676,7 +1679,7 @@ jq -n \
   ' >"$artifact_file"
 
 cat "$artifact_file"
-`,
+`),
   } as const
 }
 

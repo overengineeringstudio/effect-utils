@@ -40,7 +40,7 @@ pnpm_materializer_toolchain(
         "aarch64-linux": "/nix/store/vg4amiiw9cjni2dpaaalvv6w74ljsb1h-pnpm-11.8.0/bin/pnpm",
         "x86_64-linux": "/nix/store/djqhycbimp9m29kkih601r9byjipr53l-pnpm-11.8.0/bin/pnpm",
     },
-    store_dir = ".devenv/pnpm-store-pure-v1",
+    store_dir = "repos/effect-utils/.devenv/pnpm-store-pure-v1",
     visibility = ["PUBLIC"],
 )
 

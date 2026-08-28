@@ -106,6 +106,7 @@ for (const name of [
   'ts:check',
   'ts:check:strict',
   'check:quick',
+  'buck2:check',
   'buck2:tui-core:materialize-dist',
   'buck2:tui-core:publish-editor',
   'buck2:tui-core:check-editor',
@@ -162,5 +163,20 @@ for (const name of ['buck2:tui-core:publish-editor', 'buck2:tui-core:check-edito
   ok({ condition: /buck2[^\n]*\bkill\b/.test(task) === false, name: `${name} has no daemon kill` })
   ok({ condition: task.includes('buck-out') === false, name: `${name} has no buck-out cleanup` })
 }
+
+const buckCheckSource = taskSource('buck2:check')
+ok({
+  condition:
+    buckCheckSource.includes('realpath "$root/../.."') === true &&
+    buckCheckSource.includes('$workspace_root/.megarepo/bin/buck2') === true,
+  name: 'buck2:check resolves the composition root wrapper from the owned member',
+})
+const buckToolchainSource = readFileSync(`${root}/toolchains/BUCK`, 'utf8')
+ok({
+  condition:
+    buckToolchainSource.includes('store_dir = "repos/effect-utils/.devenv/pnpm-store-pure-v1"') ===
+    true,
+  name: 'Buck pnpm materializer store is composition-root relative',
+})
 
 console.log(`1..${testCount}`)
