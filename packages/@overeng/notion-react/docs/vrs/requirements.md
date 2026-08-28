@@ -45,8 +45,7 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   `NotionConfig` + `HttpClient` in their runtime.
 - **A03 React 19 + react-reconciler:** Rendering uses `react@19` and
   `react-reconciler` as the host-config target. The library pins both
-  versions and manages upgrades explicitly per
-  [react-derisk-report](../../../../../context/pixeltrail/notion-page-sync/react-derisk-report.md).
+  versions and manages upgrades explicitly as scheduled compatibility work.
 - **A04 Single-writer page region:** The portion of the page reconciled by
   this library is treated as solely owned by the renderer. Human edits
   inside that region may be overwritten.
@@ -128,6 +127,12 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   (rejected by R40) or refusing every tree containing an upload. Like
   T11/T12, an adoption has no snapshot isolation — it is advisory for
   the observed window, and the next `sync()` recomputes from scratch.
+- **T14 Recursive warm preflight reads:** Live warm-cache preflight may issue
+  one children-list request per renderer-owned nested block or child-page
+  scope, plus pagination and bounded settle retries. The additional reads are
+  accepted because shallow observation can duplicate nested appends and
+  persist poisoned checkpoints after interrupted syncs; telemetry must account
+  for every request exactly.
 
 ## Requirements
 
@@ -150,8 +155,11 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
 
 ### Must sync op-minimally
 
-- **R04 Idempotent resync:** Re-rendering the identical JSX tree against
-  the same cache must emit zero Notion API mutations.
+- **R04 Idempotent resync:** After every successful sync, the returned and
+  persisted `CacheTree` must contain every identity created or adopted at every
+  renderer-owned depth and child-page scope. Re-rendering the identical JSX
+  tree against that cache must emit zero Notion API mutations immediately,
+  without requiring a repair sync.
 - **R05 Single-prop change → single update:** A change to exactly one
   block's projected payload must produce exactly one `update` op.
 - **R06 Single sibling insert/remove → single op:** A single sibling
@@ -293,11 +301,12 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   oracle: immediately after a successful `sync()` of the same element,
   `plan()` must return zero ops.
 - **R38 Plan staleness is explicit:** The default `'live'` staleness
-  mirrors sync's shallow pre-flight with read-only calls and detects
-  out-of-band top-level drift; `'cache-only'` issues zero requests and
-  is a pure function of cache + JSX. The blind spots of `'cache-only'`
-  (out-of-band drift, cold-`'clean'` baseline removes, pending-marker
-  resolution) must be documented, not silently approximated.
+  recursively observes identity through renderer-owned nested block scopes and
+  child-page scopes and detects out-of-band drift at every observed depth;
+  opaque provider-owned scopes are traversal boundaries. `'cache-only'` issues
+  zero requests and is a pure function of cache + JSX. Its blind spots
+  (out-of-band drift at every depth, cold-`'clean'` baseline removes, and
+  pending-marker resolution) must be documented, not silently approximated.
 
 ### Must verify server state against intent
 
