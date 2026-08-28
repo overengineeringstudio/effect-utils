@@ -1,6 +1,6 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { RunnerProfile } from '../ci.ts'
-import { applyMegarepoLockStep, cacheableMegarepoStore } from './megarepo.ts'
+import { applyMegarepoLockStep } from './megarepo.ts'
 import {
   bashShellDefaults,
   cachixHostsFromBinaryCaches,
@@ -112,7 +112,7 @@ export const namespaceRunner = ({
 /** Checkout repository via actions/checkout@v6 */
 export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: string }) => ({
   uses: 'actions/checkout@v6' as const,
-  ...(opts !== undefined && Object.keys(opts).length > 0 ? { with: opts } : {}),
+  with: { 'persist-credentials': false, ...opts },
 })
 
 /**
@@ -124,8 +124,14 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
  */
 export const prepareEffectUtilsCompositionStep = {
   name: 'Prepare effect-utils composition',
-  env: { MEGAREPO_STORE: cacheableMegarepoStore },
   run: '"$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"',
+} as const
+
+/** Always remove the per-job synthesized workspace, worktree registration, and store. */
+export const cleanupEffectUtilsCompositionStep = {
+  name: 'Cleanup effect-utils composition',
+  if: 'always()',
+  run: '"$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"',
 } as const
 
 export const prepareCiScriptsStep = {

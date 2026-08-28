@@ -3,6 +3,9 @@
 
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -45,6 +48,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -433,6 +438,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -448,11 +455,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -464,10 +468,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -642,7 +643,7 @@ jobs:
       - name: Verify mutation-free shell entry
         shell: bash
         run: |
-          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run otel:test' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test'
           command -v script >/dev/null 2>&1
           tmp_log="$(mktemp)"
@@ -716,6 +717,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-typecheck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -733,6 +737,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -748,11 +754,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -764,10 +767,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1001,6 +1001,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-lint"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1021,6 +1024,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1036,11 +1041,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -1052,10 +1054,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1289,6 +1288,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-${{ strategy.job-index }}"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1306,6 +1308,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1321,11 +1325,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -1337,10 +1338,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1574,6 +1572,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-megarepo-cold-gc"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1594,6 +1595,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1609,11 +1612,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -1625,10 +1625,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -1862,6 +1859,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-check-${{ strategy.job-index }}"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1882,6 +1882,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1912,7 +1914,6 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2009,6 +2010,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -2024,11 +2027,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -2040,10 +2040,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2328,6 +2325,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-builder-contract"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2345,6 +2345,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -2360,11 +2362,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -2376,10 +2375,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2615,6 +2611,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-regression"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2632,6 +2631,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -2647,11 +2648,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -2663,10 +2661,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2900,6 +2895,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bundle-smoke"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2917,6 +2915,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -2932,11 +2932,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -2948,10 +2945,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -3185,6 +3179,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-buck2"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3202,6 +3199,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -3217,11 +3216,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -3233,10 +3229,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -3470,6 +3463,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-cargo"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3487,6 +3483,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -3502,11 +3500,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -3518,10 +3513,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -3762,6 +3754,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-weaver"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3779,6 +3774,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -3794,11 +3791,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -3810,10 +3804,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -4047,6 +4038,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bootstrap-cold-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -4055,9 +4049,7 @@ jobs:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     permissions:
       actions: read
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: read
     defaults:
       run:
         shell: bash
@@ -4074,6 +4066,8 @@ jobs:
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -4089,11 +4083,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -4105,10 +4096,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -4927,6 +4915,9 @@ jobs:
             !${{ github.workspace }}/tmp/devenv-perf-ci/baseline/**
           if-no-files-found: error
           retention-days: 7
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     timeout-minutes: 30
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-devenv-perf"
@@ -4941,9 +4932,7 @@ jobs:
         shell: bash
     permissions:
       actions: read
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: read
     env:
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
@@ -4951,6 +4940,8 @@ jobs:
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -4966,11 +4957,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -4982,10 +4970,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -5693,6 +5678,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-closure-sizes"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -5705,9 +5693,7 @@ jobs:
         shell: bash
     permissions:
       actions: read
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: read
     env:
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
@@ -5715,6 +5701,8 @@ jobs:
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
         uses: actions/checkout@v6
@@ -5952,7 +5940,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   ci-measurements-report:
     name: ci/measurements-report
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'pull_request' }}
     needs: [devenv-perf, nix-closure-sizes, source-shape]
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
@@ -5962,9 +5950,7 @@ jobs:
         shell: bash
     permissions:
       actions: read
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: read
     env:
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
@@ -5972,6 +5958,8 @@ jobs:
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -8467,7 +8455,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-ci-measurements-report"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   test-integration-notion:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'pull_request' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 90
@@ -8478,13 +8466,10 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
-      NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
-      NOTION_TEST_PARENT_PAGE_ID: ${{ secrets.NOTION_TEST_PARENT_PAGE_ID }}
-      NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID: ${{ secrets.NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID || secrets.NOTION_TEST_PARENT_PAGE_ID }}
-      NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID: ${{ secrets.NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID }}
-      NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_datasource_sync_demo == true || inputs.run_datasource_sync_demo == 'true') && secrets.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID || '' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -8500,11 +8485,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -8516,10 +8498,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -8692,6 +8671,12 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Notion integration tests
+        env:
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+          NOTION_TEST_PARENT_PAGE_ID: ${{ secrets.NOTION_TEST_PARENT_PAGE_ID }}
+          NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID: ${{ secrets.NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID || secrets.NOTION_TEST_PARENT_PAGE_ID }}
+          NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID: ${{ secrets.NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID }}
+          NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_datasource_sync_demo == true || inputs.run_datasource_sync_demo == 'true') && secrets.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID || '' }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:notion-integration' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration'
@@ -8753,6 +8738,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-integration-notion"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -8773,6 +8761,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -8788,11 +8778,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -8804,10 +8791,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -9041,8 +9025,11 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
   test-live-deploy-ci-tools:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'pull_request' }}
     concurrency:
       group: 'test-live-deploy-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
       cancel-in-progress: true
@@ -9057,36 +9044,9 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - id: live-netlify-preflight
-        name: Check live Netlify ci-tools E2E secrets
-        shell: bash
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        run: |
-          if [ -z "${NETLIFY_AUTH_TOKEN:-}" ] || [ -z "${NETLIFY_SITE_ID:-}" ]; then
-            echo "::notice::Skipping live Netlify ci-tools E2E because NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is unavailable"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "run=true" >> "$GITHUB_OUTPUT"
-      - id: live-vercel-preflight
-        name: Check live Vercel ci-tools E2E secrets
-        shell: bash
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
-        run: |
-          if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ] || [ -z "${VERCEL_SCOPE:-}" ]; then
-            echo "::notice::Skipping live Vercel ci-tools E2E because VERCEL_TOKEN, VERCEL_PROJECT_ID, VERCEL_ORG_ID, or VERCEL_SCOPE is unavailable"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "run=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v6
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -9097,36 +9057,25 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Checkout CI measurement baseline ref
-        if: (github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true')
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -9142,7 +9091,6 @@ jobs:
           cp -R "$scripts_src/." "$scripts_dst/"
           rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Use pinned devenv from lock
         run: |
           cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -9153,7 +9101,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Isolate pnpm state
         shell: bash
         run: |
@@ -9174,7 +9121,6 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - id: restore-pnpm-state
         name: Restore pnpm state
         uses: actions/cache/restore@v4
@@ -9183,7 +9129,6 @@ jobs:
             ${{ runner.temp }}/composition-state/pnpm-home
             ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
           key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Resolve devenv
         run: |
           cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
@@ -9242,7 +9187,6 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
@@ -9290,9 +9234,8 @@ jobs:
             fi
           fi
           rm -f "$entriesJson"
-        if: steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true'
       - name: Force diagnostics failure (debug)
-        if: (github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true')) && (steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true')
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
         run: |
           diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"
@@ -9304,6 +9247,34 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
+      - id: live-netlify-preflight
+        name: Check live Netlify ci-tools E2E secrets
+        shell: bash
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "${NETLIFY_AUTH_TOKEN:-}" ] || [ -z "${NETLIFY_SITE_ID:-}" ]; then
+            echo "::notice::Skipping live Netlify ci-tools E2E because NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is unavailable"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+      - id: live-vercel-preflight
+        name: Check live Vercel ci-tools E2E secrets
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
+        run: |
+          if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ] || [ -z "${VERCEL_SCOPE:-}" ]; then
+            echo "::notice::Skipping live Vercel ci-tools E2E because VERCEL_TOKEN, VERCEL_PROJECT_ID, VERCEL_ORG_ID, or VERCEL_SCOPE is unavailable"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
       - name: Live Netlify ci-tools E2E
         shell: bash
         env:
@@ -9333,7 +9304,7 @@ jobs:
           DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts
         if: steps.live-vercel-preflight.outputs.run == 'true'
       - name: Save pnpm state
-        if: (success() && steps.restore-pnpm-state.outputs.cache-hit != 'true') && (steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true')
+        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
@@ -9341,7 +9312,7 @@ jobs:
             ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
           key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
-        if: (failure()) && (steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true')
+        if: failure()
         shell: bash
         run: |
           diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
@@ -9377,7 +9348,7 @@ jobs:
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Upload Nix diagnostics artifact
-        if: (failure() && env.NIX_STORE_DIAGNOSTICS_DIR != '') && (steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true')
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
         uses: actions/upload-artifact@v4
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
@@ -9385,19 +9356,21 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Failure note
-        if: (failure()) && (steps.live-netlify-preflight.outputs.run == 'true' || steps.live-vercel-preflight.outputs.run == 'true')
+        if: failure()
         shell: bash
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
   deploy-storybooks:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'pull_request' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
     defaults:
       run:
         shell: bash
@@ -9405,9 +9378,10 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
-      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -9423,11 +9397,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
-      - name: Isolate nix cache
-        shell: bash
-        run: |
-          mkdir -p "${{ runner.temp }}/composition-state/nix-cache/nix"
-          echo "XDG_CACHE_HOME=${{ runner.temp }}/composition-state/nix-cache" >> "$GITHUB_ENV"
+      - name: Prepare effect-utils composition
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         run: |
@@ -9439,10 +9410,7 @@ jobs:
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Prepare effect-utils composition
-        env:
-          MEGAREPO_STORE: '${{ runner.temp }}/megarepo-store'
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        if: github.event_name != 'pull_request'
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -9639,6 +9607,8 @@ jobs:
           if [ "$deploy_ran" = "1" ]; then
             echo "workflow_report_path=$workflow_report_path" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
       - name: Collect workflow report bundle
         shell: bash
         env:
@@ -9746,6 +9716,9 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Cleanup effect-utils composition
+        if: always()
+        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-deploy-storybooks"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}

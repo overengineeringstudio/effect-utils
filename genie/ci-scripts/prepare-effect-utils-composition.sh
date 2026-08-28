@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 checkout_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"
+export XDG_CACHE_HOME="${RUNNER_TEMP:?RUNNER_TEMP not set}/composition-state/nix-cache"
+mkdir -p "$XDG_CACHE_HOME"
+printf 'XDG_CACHE_HOME=%s\n' "$XDG_CACHE_HOME" >> "$GITHUB_ENV"
 source_sha="$(git -C "$checkout_root" rev-parse --verify HEAD)"
 case "$source_sha" in
   ''|*[!0-9a-f]*) echo "::error::checkout HEAD is not an exact lowercase Git object id: $source_sha" >&2; exit 1 ;;
@@ -17,7 +20,7 @@ fi
 branch_seed="ci-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}"
 branch_name="$(printf '%s' "$branch_seed" | tr -c 'A-Za-z0-9_-' '_')"
 branch_ref="refs/heads/$branch_name"
-store_root="${MEGAREPO_STORE:?MEGAREPO_STORE not set}"
+store_root="${MEGAREPO_STORE:-${RUNNER_TEMP:?}/megarepo-store/${GITHUB_RUN_ID:-local}/${GITHUB_RUN_ATTEMPT:-0}/${GITHUB_JOB:-job}}"
 repo_root="$store_root/github.com/overengineeringstudio/effect-utils"
 bare_repo="$repo_root/.bare"
 workspace_root="$repo_root/$branch_ref"
@@ -29,16 +32,18 @@ elif [ "$(git --git-dir="$bare_repo" rev-parse --is-bare-repository)" != true ];
   echo "::error::canonical megarepo store path is not a bare Git repository: $bare_repo" >&2
   exit 1
 fi
-origin_url="$(git -C "$checkout_root" remote get-url origin 2>/dev/null || true)"
-if [ -n "$origin_url" ]; then
-  if git --git-dir="$bare_repo" remote get-url origin >/dev/null 2>&1; then
-    git --git-dir="$bare_repo" remote set-url origin "$origin_url"
-  else
-    git --git-dir="$bare_repo" remote add origin "$origin_url"
-  fi
+origin_url="${EFFECT_UTILS_CI_ORIGIN_URL:-https://github.com/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}.git}"
+if git --git-dir="$bare_repo" remote get-url origin >/dev/null 2>&1; then
+  git --git-dir="$bare_repo" remote set-url origin "$origin_url"
+else
+  git --git-dir="$bare_repo" remote add origin "$origin_url"
 fi
 
-git --git-dir="$bare_repo" fetch --no-tags "$checkout_root" "$source_sha"
+# Preserve the full main history required by merge-base consumers and fetch the
+# exact checked-out commit from the public origin, never from a shallow checkout.
+git --git-dir="$bare_repo" fetch --no-tags --prune origin \
+  '+refs/heads/main:refs/remotes/origin/main' \
+  "$source_sha"
 if git --git-dir="$bare_repo" show-ref --verify --quiet "$branch_ref"; then
   existing_sha="$(git --git-dir="$bare_repo" rev-parse "$branch_ref^{commit}")"
   if [ "$existing_sha" != "$source_sha" ]; then
@@ -62,7 +67,15 @@ fi
 workspace_parent="$(dirname "$workspace_root")"
 (
   cd "$workspace_parent"
-  MEGAREPO_STORE="$store_root" "$mr_bin" --cwd "$workspace_root" apply --worktree-mode tracking --lock-sync off --output ci
+  env -i \
+    HOME="$HOME" \
+    TMPDIR="${TMPDIR:-/tmp}" \
+    XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}" \
+    PATH="$PATH" \
+    NIX_CONFIG='accept-flake-config = true' \
+    MEGAREPO_STORE="$store_root" \
+    CI=true \
+    "$mr_bin" --cwd "$workspace_root" apply --worktree-mode tracking --lock-sync off --output ci
 )
 
 if git -C "$workspace_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

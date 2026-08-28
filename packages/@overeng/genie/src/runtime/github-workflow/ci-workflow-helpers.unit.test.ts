@@ -78,6 +78,13 @@ const prepareEffectUtilsCompositionScriptSource = readFileSync(
   ),
   'utf8',
 )
+const cleanupEffectUtilsCompositionScriptSource = readFileSync(
+  new URL(
+    ['../../../../../../genie/ci-scripts', 'cleanup-effect-utils-composition.sh'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 const netlifyTaskModuleSource = readFileSync(
   new URL(
     ['../../../../../../nix/devenv-modules/tasks/shared', 'netlify.nix'].join('/'),
@@ -1050,8 +1057,19 @@ describe('effect-utils CI composition workspace', () => {
       join(checkout, 'genie/ci-scripts/prepare-effect-utils-composition.sh'),
       prepareEffectUtilsCompositionScriptSource,
     )
+    writeFileSync(
+      join(checkout, 'genie/ci-scripts/cleanup-effect-utils-composition.sh'),
+      cleanupEffectUtilsCompositionScriptSource,
+    )
     chmodSync(join(checkout, 'genie/ci-scripts/prepare-effect-utils-composition.sh'), 0o755)
-    git(checkout, 'add', 'README', 'genie/ci-scripts/prepare-effect-utils-composition.sh')
+    chmodSync(join(checkout, 'genie/ci-scripts/cleanup-effect-utils-composition.sh'), 0o755)
+    git(
+      checkout,
+      'add',
+      'README',
+      'genie/ci-scripts/prepare-effect-utils-composition.sh',
+      'genie/ci-scripts/cleanup-effect-utils-composition.sh',
+    )
     git(checkout, 'commit', '-m', 'fixture')
     const sha = git(checkout, 'rev-parse', 'HEAD')
 
@@ -1070,8 +1088,9 @@ describe('effect-utils CI composition workspace', () => {
       [
         '#!/usr/bin/env bash',
         'set -euo pipefail',
-        'printf \'%s|%s|%s|%s\\n\' "$PWD" "$MEGAREPO_STORE" "$RUNNER_OS" "$*" >> "$FAKE_MR_LOG"',
-        'if [ "${FAKE_MR_FAIL:-0}" = 1 ]; then exit 37; fi',
+        'fake_root="$(cd "$(dirname "$0")/.." && pwd)"',
+        'printf \'%s|%s|%s|%s\\n\' "$PWD" "$MEGAREPO_STORE" "${RUNNER_OS:-unset}" "$*" >> "$fake_root/../mr.log"',
+        'if [ -f "$fake_root/fail" ]; then exit 37; fi',
         'workspace=',
         'while [ "$#" -gt 0 ]; do',
         '  if [ "$1" = --cwd ]; then workspace="$2"; shift 2; else shift; fi',
@@ -1105,23 +1124,40 @@ describe('effect-utils CI composition workspace', () => {
       GITHUB_RUN_ATTEMPT: '2',
       GITHUB_RUN_ID: '100',
       GITHUB_WORKSPACE: checkout,
-      MEGAREPO_STORE: join(runnerTemp, 'megarepo-store'),
+      MEGAREPO_STORE: join(runnerTemp, 'megarepo-store/100/2/unit_job'),
+      EFFECT_UTILS_CI_ORIGIN_URL: checkout,
       PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
       RUNNER_OS: platform,
       RUNNER_TEMP: runnerTemp,
     }
-    return { checkout, env, envFile, mrLog, nixLog, root, runnerTemp, sha }
+    return { checkout, env, envFile, mrLog, mrOut, nixLog, root, runnerTemp, sha }
   }
 
   const runComposition = async (
     fixture: ReturnType<typeof makeFixture>,
     overrides: NodeJS.ProcessEnv = {},
   ) => {
+    if (overrides.FAKE_MR_FAIL === '1') writeFileSync(join(fixture.mrOut, 'fail'), '')
     const { prepareEffectUtilsCompositionStep } = await import(
       // oxlint-disable-next-line import/no-dynamic-require
       new URL('../../../../../../genie/ci-workflow/setup.ts', import.meta.url).href
     )
     return spawnSync('bash', ['-c', prepareEffectUtilsCompositionStep.run], {
+      cwd: fixture.root,
+      encoding: 'utf8',
+      env: { ...fixture.env, ...overrides },
+    })
+  }
+
+  const cleanupComposition = async (
+    fixture: ReturnType<typeof makeFixture>,
+    overrides: NodeJS.ProcessEnv = {},
+  ) => {
+    const { cleanupEffectUtilsCompositionStep } = await import(
+      // oxlint-disable-next-line import/no-dynamic-require
+      new URL('../../../../../../genie/ci-workflow/setup.ts', import.meta.url).href
+    )
+    return spawnSync('bash', ['-c', cleanupEffectUtilsCompositionStep.run], {
       cwd: fixture.root,
       encoding: 'utf8',
       env: { ...fixture.env, ...overrides },
@@ -1138,7 +1174,7 @@ describe('effect-utils CI composition workspace', () => {
         const branch = 'ci-100-2-unit_job'
         const workspace = join(
           fixture.runnerTemp,
-          'megarepo-store/github.com/overengineeringstudio/effect-utils/refs/heads',
+          'megarepo-store/100/2/unit_job/github.com/overengineeringstudio/effect-utils/refs/heads',
           branch,
         )
         const member = join(workspace, 'repos/effect-utils')
@@ -1146,6 +1182,7 @@ describe('effect-utils CI composition workspace', () => {
         expect(git(fixture.checkout, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('')
         expect(git(member, 'rev-parse', 'HEAD')).toBe(fixture.sha)
         expect(git(member, 'symbolic-ref', 'HEAD')).toBe(`refs/heads/${branch}`)
+        expect(git(member, 'merge-base', 'refs/remotes/origin/main', 'HEAD')).toBe(fixture.sha)
         expect(
           spawnSync('git', ['-C', workspace, 'rev-parse', '--is-inside-work-tree']).status,
         ).not.toBe(0)
@@ -1153,7 +1190,7 @@ describe('effect-utils CI composition workspace', () => {
           `${fixture.checkout}|build --no-link --print-out-paths .#megarepo\n`,
         )
         expect(readFileSync(fixture.mrLog, 'utf8')).toContain(
-          `${dirname(workspace)}|${join(fixture.runnerTemp, 'megarepo-store')}|${platform}|--cwd ${workspace} apply --worktree-mode tracking --lock-sync off --output ci`,
+          `${dirname(workspace)}|${join(fixture.runnerTemp, 'megarepo-store/100/2/unit_job')}|unset|--cwd ${workspace} apply --worktree-mode tracking --lock-sync off --output ci`,
         )
         expect(readFileSync(fixture.envFile, 'utf8')).toContain(
           `EFFECT_UTILS_MEMBER_ROOT=${member}\n`,
@@ -1165,16 +1202,26 @@ describe('effect-utils CI composition workspace', () => {
 
         const secondEnv = join(fixture.root, 'github-env-second')
         writeFileSync(secondEnv, '')
+        const secondStore = join(fixture.runnerTemp, 'megarepo-store/100/2/other-job')
         const second = await runComposition(fixture, {
           GITHUB_ENV: secondEnv,
           GITHUB_JOB: 'other-job',
+          MEGAREPO_STORE: secondStore,
         })
         expect(second.status, second.stderr).toBe(0)
         const secondMember = join(
           fixture.runnerTemp,
-          'megarepo-store/github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-other-job/repos/effect-utils',
+          'megarepo-store/100/2/other-job/github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-other-job/repos/effect-utils',
         )
         expect(git(secondMember, 'rev-parse', 'HEAD')).toBe(fixture.sha)
+        const secondCleanup = await cleanupComposition(fixture, {
+          GITHUB_JOB: 'other-job',
+          MEGAREPO_STORE: secondStore,
+        })
+        expect(secondCleanup.status, secondCleanup.stderr).toBe(0)
+        const cleanup = await cleanupComposition(fixture)
+        expect(cleanup.status, cleanup.stderr).toBe(0)
+        await expect(cleanupComposition(fixture)).resolves.toMatchObject({ status: 0 })
       } finally {
         rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
       }
@@ -1187,7 +1234,7 @@ describe('effect-utils CI composition workspace', () => {
     try {
       const result = await runComposition(fixture, { FAKE_MR_FAIL: '1' })
       expect(result.status).toBe(37)
-      expect(readFileSync(fixture.envFile, 'utf8')).toBe('')
+      expect(readFileSync(fixture.envFile, 'utf8')).not.toContain('EFFECT_UTILS_MEMBER_ROOT')
       expect(git(fixture.checkout, 'rev-parse', 'HEAD')).toBe(fixture.sha)
       expect(git(fixture.checkout, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('')
     } finally {
@@ -1222,8 +1269,34 @@ describe('effect-utils CI composition workspace', () => {
       const compositionIndex = block.indexOf('Prepare effect-utils composition')
       expect(compositionIndex, name).toBeGreaterThanOrEqual(0)
       expect(compositionIndex, name).toBeLessThan(taskIndex)
+      expect(block.indexOf('Cleanup effect-utils composition'), name).toBeGreaterThan(taskIndex)
     }
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^\s+(?:buck2|\.\/[^ ]*buck2)\s/m)
+  })
+
+  it('keeps pull-request source execution credentialless and read-only', () => {
+    expect(ciWorkflowSource).toContain("'persist-credentials': false")
+    expect(generatedCiWorkflowYamlSource).toContain('permissions:\n  contents: read')
+    const typecheck = generatedCiWorkflowYamlSource.split('  typecheck:\n')[1] ?? ''
+    expect(typecheck.indexOf('Prepare effect-utils composition')).toBeLessThan(
+      typecheck.indexOf('Enable Cachix cache'),
+    )
+    expect(typecheck).toContain("if: github.event_name != 'pull_request'")
+    for (const job of [
+      'ci-measurements-report',
+      'test-integration-notion',
+      'test-live-deploy-ci-tools',
+      'deploy-storybooks',
+    ]) {
+      const block =
+        generatedCiWorkflowYamlSource.split(`  ${job}:\n`)[1]?.split(/^  [a-z]/m)[0] ?? ''
+      expect(block, job).toContain("github.event_name != 'pull_request'")
+    }
+    expect(prepareEffectUtilsCompositionScriptSource).toContain('env -i \\')
+    expect(prepareEffectUtilsCompositionScriptSource).not.toContain('GITHUB_TOKEN')
+    expect(prepareEffectUtilsCompositionScriptSource).toContain(
+      "'+refs/heads/main:refs/remotes/origin/main'",
+    )
   })
 
   it('keeps cache versions stable across run ids and projects Buck at the canonical member store', () => {
