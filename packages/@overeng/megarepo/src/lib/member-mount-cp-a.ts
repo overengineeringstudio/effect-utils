@@ -253,12 +253,27 @@ const metadataScanMatches = ({
 }: {
   metadata: OwnedCpAMountMetadata
   scan: R6MountScan
-}): boolean =>
-  metadata.repository.digest === scan.repository.digest &&
-  metadata.repository.count === scan.repository.count &&
-  metadata.capabilities.present === scan.capabilities.present &&
-  metadata.capabilities.digest === scan.capabilities.digest &&
-  metadata.capabilities.count === scan.capabilities.count
+}): boolean => {
+  const presentOverlays = scan.overlays.filter((overlay) => overlay.present === true)
+  return (
+    metadata.repository.digest === scan.repository.digest &&
+    metadata.repository.count === scan.repository.count &&
+    metadata.capabilities.present === scan.capabilities.present &&
+    metadata.capabilities.digest === scan.capabilities.digest &&
+    metadata.capabilities.count === scan.capabilities.count &&
+    metadata.overlays.length === presentOverlays.length &&
+    metadata.overlays.every((overlay, index) => {
+      const actual = presentOverlays[index]
+      return (
+        actual !== undefined &&
+        overlay.target === actual.target &&
+        overlay.destination === actual.destination &&
+        overlay.digest === actual.digest &&
+        overlay.count === actual.count
+      )
+    })
+  )
+}
 
 const metadataEqual = ({
   left,
@@ -276,7 +291,27 @@ const metadataEqual = ({
   left.repository.count === right.repository.count &&
   left.capabilities.present === right.capabilities.present &&
   left.capabilities.digest === right.capabilities.digest &&
-  left.capabilities.count === right.capabilities.count
+  left.capabilities.count === right.capabilities.count &&
+  left.declaredOverlays.length === right.declaredOverlays.length &&
+  left.declaredOverlays.every((overlay, index) => {
+    const other = right.declaredOverlays[index]
+    return (
+      other !== undefined &&
+      overlay.target === other.target &&
+      overlay.destination === other.destination
+    )
+  }) &&
+  left.overlays.length === right.overlays.length &&
+  left.overlays.every((overlay, index) => {
+    const other = right.overlays[index]
+    return (
+      other !== undefined &&
+      overlay.target === other.target &&
+      overlay.destination === other.destination &&
+      overlay.digest === other.digest &&
+      overlay.count === other.count
+    )
+  })
 
 interface SourceEntrySnapshot {
   readonly path: string
@@ -750,15 +785,17 @@ const assertStagePostcondition = ({
   capabilitiesPath,
   sourceScan,
   capabilitiesScan,
+  declaredOverlays,
 }: {
   stagePath: string
   sourcePath: string
   capabilitiesPath: string
   sourceScan: R6MountScan
   capabilitiesScan: R6MountScan
+  declaredOverlays: CpAMemberMountRequest['distOverlays']
 }): Effect.Effect<R6MountScan, CpAMemberMountError> =>
   Effect.gen(function* () {
-    const stageScan = yield* scanR6ProtectedMount({ root: stagePath }).pipe(
+    const stageScan = yield* scanR6ProtectedMount({ root: stagePath, declaredOverlays }).pipe(
       Effect.mapError((cause) =>
         error({
           reason: 'StageInvalid',
@@ -799,13 +836,15 @@ const assertSourceUnchanged = ({
   sourcePath,
   beforeScan,
   beforeSnapshot,
+  declaredOverlays = [],
 }: {
   sourcePath: string
   beforeScan: R6MountScan
   beforeSnapshot: SourceSnapshot
+  declaredOverlays?: CpAMemberMountRequest['distOverlays']
 }): Effect.Effect<void, CpAMemberMountError> =>
   Effect.gen(function* () {
-    const afterScan = yield* scanR6Source({ root: sourcePath }).pipe(
+    const afterScan = yield* scanR6Source({ root: sourcePath, declaredOverlays }).pipe(
       Effect.mapError((cause) =>
         error({
           reason: 'SourceChanged',
@@ -973,7 +1012,10 @@ const assertStoredOwnedTree = ({
       ),
     )
     if (allowPartial === true) return
-    const result = yield* scanR6ProtectedMount({ root: path }).pipe(Effect.result)
+    const result = yield* scanR6ProtectedMount({
+      root: path,
+      declaredOverlays: expected.metadata.declaredOverlays,
+    }).pipe(Effect.result)
     if (
       result._tag === 'Failure' ||
       metadataScanMatches({ metadata: expected.metadata, scan: result.success }) === false
@@ -1094,7 +1136,10 @@ export const materializeCpAMemberMount = ({
       })
     }
 
-    const sourceScan = yield* scanR6Source({ root: request.sourcePath }).pipe(
+    const sourceScan = yield* scanR6Source({
+      root: request.sourcePath,
+      declaredOverlays: request.distOverlays,
+    }).pipe(
       Effect.mapError((cause) =>
         error({
           reason: 'SourceInvalid',
@@ -1138,12 +1183,14 @@ export const materializeCpAMemberMount = ({
       identity: sourceScan.identity,
       repository: sourceScan.repository,
       capabilities: { ...capabilitiesScan.repository, present: true },
+      overlays: sourceScan.overlays,
     }
     const newMetadata = makeOwnedCpAMountMetadata({
       member: request.member,
       lockedCommit: request.lockedCommit,
       sourcePathIdentity,
       publishedPath: destinationPath,
+      declaredOverlays: request.distOverlays,
       scan: plannedScan,
     })
     const operation: CpAMemberMountOperation =
@@ -1283,11 +1330,13 @@ export const materializeCpAMemberMount = ({
         capabilitiesPath: request.capabilitiesPath,
         sourceScan,
         capabilitiesScan,
+        declaredOverlays: request.distOverlays,
       })
       yield* assertSourceUnchanged({
         sourcePath: request.sourcePath,
         beforeScan: sourceScan,
         beforeSnapshot: sourceBefore,
+        declaredOverlays: request.distOverlays,
       })
       yield* assertSourceUnchanged({
         sourcePath: request.capabilitiesPath,
@@ -1486,7 +1535,10 @@ const observeTransactionPath = ({
       identitiesEqual({ left: actual, right: candidateIdentity }) === true &&
       info.isDirectory() === true
     ) {
-      const scan = yield* scanR6ProtectedMount({ root: path }).pipe(Effect.result)
+      const scan = yield* scanR6ProtectedMount({
+        root: path,
+        declaredOverlays: transaction.newIdentity.metadata.declaredOverlays,
+      }).pipe(Effect.result)
       return scan._tag === 'Success' &&
         metadataScanMatches({ metadata: transaction.newIdentity.metadata, scan: scan.success }) ===
           true
@@ -1507,7 +1559,10 @@ const observeTransactionPath = ({
       return target === old.target ? { _tag: 'Old' as const } : { _tag: 'Other' as const }
     }
     if (info.isDirectory() === false) return { _tag: 'Other' as const }
-    const scan = yield* scanR6ProtectedMount({ root: path }).pipe(Effect.result)
+    const scan = yield* scanR6ProtectedMount({
+      root: path,
+      declaredOverlays: old.metadata.declaredOverlays,
+    }).pipe(Effect.result)
     return scan._tag === 'Success' &&
       metadataScanMatches({ metadata: old.metadata, scan: scan.success }) === true
       ? { _tag: 'Old' as const }

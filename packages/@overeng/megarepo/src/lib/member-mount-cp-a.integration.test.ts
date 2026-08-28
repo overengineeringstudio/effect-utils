@@ -135,17 +135,20 @@ const requestFor = ({
   lockedCommit,
   dryRun = false,
   allowVerifiedDarwinAdvance = false,
+  distOverlays = [],
 }: {
   fixture: Fixture
   sourcePath: string
   lockedCommit: string
   dryRun?: boolean
   allowVerifiedDarwinAdvance?: boolean
+  distOverlays?: CpAMemberMountRequest['distOverlays']
 }): CpAMemberMountRequest => ({
   workspaceRoot: fixture.workspaceRoot,
   member: fixture.member,
   sourcePath,
   capabilitiesPath: fixture.capabilities,
+  distOverlays,
   lockedCommit,
   dryRun,
   allowVerifiedDarwinAdvance,
@@ -212,6 +215,33 @@ const stagePath = (fixture: Fixture): string =>
   NodePath.join(NodePath.dirname(fixture.destinationPath), '.mr-stage-v1-646570-test')
 
 describe('cp-a member mount lifecycle', () => {
+  it.effect(
+    'initializes declared overlays as strictly unpublished metadata without changing cp-a content',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      const declaredOverlays = [{ target: '//pkg:dist', destination: 'dir/dist' }] as const
+      const result = yield* materializeCpAMemberMount({
+        request: requestFor({
+          fixture,
+          sourcePath: fixture.sourceA,
+          lockedCommit: 'a'.repeat(40),
+          distOverlays: declaredOverlays,
+        }),
+        runtime: runtimeFor(fixture),
+      })
+      expect(result._tag).toBe('Published')
+      const metadata = yield* readOwnedCpAMountMetadata({
+        workspaceRoot: fixture.workspaceRoot,
+        member: fixture.member,
+        publishedPath: fixture.destinationPath,
+      })
+      expect(metadata.version).toBe(2)
+      expect(metadata.declaredOverlays).toEqual(declaredOverlays)
+      expect(metadata.overlays).toEqual([])
+      expect(yield* pathExists(NodePath.join(fixture.destinationPath, 'dir', 'dist'))).toBe(false)
+    }, withNode),
+  )
+
   it.effect(
     'first-publishes independent protected inodes, literal symlinks, and replaced capabilities without touching source',
     Effect.fnUntraced(function* () {

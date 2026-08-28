@@ -103,14 +103,34 @@ describe('member-mount R6 symlink admission', () => {
 
 describe('owned cp-a metadata schema and path', () => {
   const metadata = {
-    version: 1 as const,
+    version: 2 as const,
     member: 'team/repo',
     lockedCommit: 'a'.repeat(40),
     sourcePathIdentity: hash('b'),
     repository: { digest: hash('c'), count: 3 },
     capabilities: { present: true, digest: hash('d'), count: 1 },
+    declaredOverlays: [],
+    overlays: [],
     publishedPath: '/workspace/repos/team/repo',
   }
+
+  it('distinguishes declared-but-unpublished overlays and rejects undeclared published identities', () => {
+    const decode = Schema.decodeUnknownSync(OwnedCpAMountMetadata, {
+      errors: 'all',
+      onExcessProperty: 'error',
+    })
+    const declared = {
+      ...metadata,
+      declaredOverlays: [{ target: '//pkg:dist', destination: 'dist' }],
+    }
+    expect(decode(declared).overlays).toEqual([])
+    expect(() =>
+      decode({
+        ...metadata,
+        overlays: [{ target: '//pkg:dist', destination: 'dist', digest: hash('e'), count: 1 }],
+      }),
+    ).toThrow(/not declared/u)
+  })
 
   it('strict decoding rejects unknown metadata fields', () => {
     expect(() =>
