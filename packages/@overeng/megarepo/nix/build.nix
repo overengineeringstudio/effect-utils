@@ -67,7 +67,7 @@ pkgs.stdenv.mkDerivation {
       --set MR_CAPABILITY_SORT_BIN ${pkgs.coreutils}/bin/sort \
       --set MR_CAPABILITY_XARGS_BIN ${pkgs.findutils}/bin/xargs \
       --set MR_CAPABILITY_FIND_BIN ${pkgs.findutils}/bin/find \
-      --set MR_CAPABILITY_FLOCK_BIN ${pkgs.util-linux}/bin/flock \
+      --set MR_CAPABILITY_FLOCK_BIN ${pkgs.flock}/bin/flock \
       --set MR_CAPABILITY_DIFF_BIN ${pkgs.diffutils}/bin/diff
 
     # Generate shell completions

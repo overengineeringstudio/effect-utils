@@ -49,6 +49,8 @@ export interface CompositionCapabilityRuntime {
   readonly diffPath: string
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly nonce?: () => string
+  /** Deterministic interruption seam after private candidate creation and identity capture. */
+  readonly afterCandidateCreated?: (candidateRoot: string) => Promise<void>
 }
 
 /** Strict member, platform, scratch ownership, and pinned runtime resolver input. */
@@ -86,7 +88,10 @@ const runtimeEnvironmentNames = {
   findPath: 'MR_CAPABILITY_FIND_BIN',
   flockPath: 'MR_CAPABILITY_FLOCK_BIN',
   diffPath: 'MR_CAPABILITY_DIFF_BIN',
-} as const satisfies Record<keyof Omit<CompositionCapabilityRuntime, 'env' | 'nonce'>, string>
+} as const satisfies Record<
+  keyof Omit<CompositionCapabilityRuntime, 'env' | 'nonce' | 'afterCandidateCreated'>,
+  string
+>
 
 type RuntimePathKey = keyof typeof runtimeEnvironmentNames
 
@@ -308,6 +313,73 @@ const validateRootsAndProjector = async ({
   }
 }
 
+interface CandidateRootIdentity {
+  readonly path: string
+  readonly realpath: string
+  readonly device: number
+  readonly inode: number
+}
+
+const candidateReplaced = ({ path, cause }: { readonly path: string; readonly cause?: unknown }) =>
+  new CompositionCapabilityResolutionError({
+    reason: 'CandidateReplaced',
+    message: `Capability projection candidate ownership changed at '${path}'`,
+    path,
+    ...(cause === undefined ? {} : { cause }),
+  })
+
+const captureCandidateRootIdentity = async ({
+  path,
+  scratchRoot,
+}: {
+  readonly path: string
+  readonly scratchRoot: string
+}): Promise<CandidateRootIdentity> => {
+  try {
+    const info = await lstat(path)
+    const canonicalPath = await realpath(path)
+    if (
+      info.isDirectory() === false ||
+      info.isSymbolicLink() === true ||
+      (info.mode & 0o777) !== 0o700 ||
+      containedBy({ root: scratchRoot, path: canonicalPath }) === false
+    ) {
+      throw new Error('candidate is not a private contained directory')
+    }
+    return { path, realpath: canonicalPath, device: info.dev, inode: info.ino }
+  } catch (cause) {
+    throw candidateReplaced({ path, cause })
+  }
+}
+
+const assertCandidateRootIdentity = async (identity: CandidateRootIdentity): Promise<void> => {
+  try {
+    const info = await lstat(identity.path)
+    const canonicalPath = await realpath(identity.path)
+    if (
+      info.isDirectory() === false ||
+      info.isSymbolicLink() === true ||
+      (info.mode & 0o777) !== 0o700 ||
+      info.dev !== identity.device ||
+      info.ino !== identity.inode ||
+      canonicalPath !== identity.realpath
+    ) {
+      throw new Error('candidate identity no longer matches its captured inode')
+    }
+  } catch (cause) {
+    throw candidateReplaced({ path: identity.path, cause })
+  }
+}
+
+const removeOwnedCandidate = async (identity: CandidateRootIdentity): Promise<void> => {
+  try {
+    await assertCandidateRootIdentity(identity)
+  } catch {
+    return
+  }
+  await rm(identity.path, { recursive: true, force: true })
+}
+
 const executableDigest = async (path: string): Promise<`sha256:${string}`> => {
   const hash = createHash('sha256')
   await new Promise<void>((resolve, reject) => {
@@ -448,7 +520,7 @@ export const resolveCompositionCapabilities = async (
   input: ResolveCompositionCapabilitiesInput,
 ): Promise<ResolveCompositionCapabilitiesResult> => {
   let candidateRoot: string | undefined
-  let candidateOwned = false
+  let candidateIdentity: CandidateRootIdentity | undefined
   try {
     const manifest = decodeBuckMemberManifest(input.manifest)
     const system = Schema.decodeUnknownSync(
@@ -475,6 +547,7 @@ export const resolveCompositionCapabilities = async (
           'build',
           '--no-link',
           '--print-out-paths',
+          '--no-write-lock-file',
           `${roots.memberRoot}#${capability.flakePackage}`,
         ],
       }),
@@ -504,8 +577,13 @@ export const resolveCompositionCapabilities = async (
       }
     }
 
-    await mkdir(candidateRoot)
-    candidateOwned = true
+    await mkdir(candidateRoot, { mode: 0o700 })
+    candidateIdentity = await captureCandidateRootIdentity({
+      path: candidateRoot,
+      scratchRoot: roots.scratchRoot,
+    })
+    await input.runtime.afterCandidateCreated?.(candidateRoot)
+    await assertCandidateRootIdentity(candidateIdentity)
     const env: NodeJS.ProcessEnv = { ...process.env, ...input.runtime.env }
     const resolved = await resolveCapabilitiesInOrder({ capabilities, nixCommands, env })
     const projectorCommand = command({
@@ -521,20 +599,24 @@ export const resolveCompositionCapabilities = async (
         ]),
       ],
     })
+    await assertCandidateRootIdentity(candidateIdentity)
     await run({
       value: projectorCommand,
       env: projectorEnv(input.runtime),
       reason: 'ProjectionFailure',
     })
+    await assertCandidateRootIdentity(candidateIdentity)
     const checkCommand = command({
       executable: input.runtime.bashPath,
       args: [roots.projectorPath, '--check', candidateRoot],
     })
+    await assertCandidateRootIdentity(candidateIdentity)
     await run({
       value: checkCommand,
       env: projectorEnv(input.runtime),
       reason: 'ProjectionFailure',
     })
+    await assertCandidateRootIdentity(candidateIdentity)
     const projectionPath = NodePath.join(candidateRoot, '.buck2', 'capabilities')
     const digest = await projectionDigest(projectionPath)
     return {
@@ -554,9 +636,7 @@ export const resolveCompositionCapabilities = async (
       checkCommand,
     }
   } catch (cause) {
-    if (candidateOwned === true && candidateRoot !== undefined) {
-      await rm(candidateRoot, { recursive: true, force: true })
-    }
+    if (candidateIdentity !== undefined) await removeOwnedCandidate(candidateIdentity)
     if (cause instanceof CompositionCapabilityResolutionError) throw cause
     throw invalidInput({ message: 'Invalid composition capability resolver input', cause })
   }
