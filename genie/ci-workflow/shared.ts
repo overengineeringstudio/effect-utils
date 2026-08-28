@@ -315,65 +315,49 @@ export const withAppendedNixConfig = ({
 
 export const dollar = '$'
 
-/**
- * Workspace-local pnpm hot mutable home state, stable across jobs and runners.
- *
- * `PNPM_HOME` must stay workspace-relative because the pnpm 11 + GVS links embed
- * absolute paths and those need to stay valid for relocatable artifacts like
- * `vercel deploy --prebuilt`.
- */
-export const workspaceLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
+/** Stable runner scratch shared by one job's synthesized composition and mutable tool state. */
+export const ciCompositionStateRoot = '${{ runner.temp }}/composition-state'
 
-/**
- * Workspace-local pnpm auxiliary mutable store content.
- *
- * Kept workspace-relative (not `runner.temp/<job>`) so the store is stable
- * across every job and runner in a run: one cache version per
- * `(os, arch, lockfile)` key instead of a per-job archive that every job
- * re-derives and re-saves. The per-job archive is what drove concurrent
- * multi-GB saves and a downstream self-hosted consumer's CI runner disk
- * exhaustion. The writable virtual topology remains under the workspace's
- * `node_modules/.pnpm`; the store carries content and auxiliary metadata.
- */
-export const workspaceLocalPnpmStore = '${{ github.workspace }}/.devenv/pnpm-store-pure-v1'
+/** Stable pnpm home restored independently of the disposable synthesized workspace path. */
+export const ciPnpmHome = `${ciCompositionStateRoot}/pnpm-home`
 
-/**
- * Canonical workspace-local pnpm CI state surface on self-hosted runners.
- */
-export const workspaceLocalPnpmStatePaths = [workspaceLocalPnpmHome, workspaceLocalPnpmStore].join(
-  '\n',
-)
+/** Stable pnpm content store projected into the owned member through a relative workspace symlink. */
+export const ciPnpmStore = `${ciCompositionStateRoot}/pnpm-store-pure-v1`
+
+/** Canonical stable pnpm state surface used by both cache restore and save. */
+export const ciPnpmStatePaths = [ciPnpmHome, ciPnpmStore].join('\n')
 
 /** Job-local CI diagnostics directory used for runner pressure snapshots and install logs. */
-export const jobLocalCiDiagnosticsDir = '${{ runner.temp }}/ci-diagnostics/${{ github.job }}'
+export const jobLocalCiDiagnosticsDir = `${ciCompositionStateRoot}/diagnostics/${'${{ github.job }}'}`
 
-/** Workspace-local cache root for mutable Nix client cache content on CI runners. */
-export const workspaceLocalNixCacheRoot = '${{ github.workspace }}/.ci-cache'
+/** Stable mutable Nix client cache root, independent of CI run and workspace identity. */
+export const ciNixCacheRoot = `${ciCompositionStateRoot}/nix-cache`
 
 /** Default Nix cache path restored/saved by the shared CI cache helpers. */
-export const workspaceLocalNixCachePath = `${workspaceLocalNixCacheRoot}/nix`
+export const ciNixCachePath = `${ciNixCacheRoot}/nix`
 
 /**
- * Fall back to the standard CI pnpm paths when a workflow has not exported
- * them via `pnpmStateSetupStep` yet. This keeps `runDevenvTasksBefore` safe for
- * downstream callers while effect-utils centralizes the preferred setup step.
+ * Enter the source checkout selected for this shell step. Effect-utils CI exports
+ * the synthesized owned member; downstream workflows fall back to checkout.
  */
-export const withCiPnpmState = (command: string) =>
-  `PNPM_HOME="\${PNPM_HOME:-${workspaceLocalPnpmHome}}" PNPM_STORE_DIR="\${PNPM_STORE_DIR:-${workspaceLocalPnpmStore}}" PNPM_CONFIG_STORE_DIR="\${PNPM_CONFIG_STORE_DIR:-${workspaceLocalPnpmStore}}" ${command}`
+export const ciSourceRoot = 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}"'
+
+/** Run one source-dependent shell command from the canonical CI source root. */
+export const withCiSourceRoot = (command: string) => `${ciSourceRoot} && ${command}`
 
 export const runDevenvTasksBeforeWithOptions = (
   opts: NixConfigOptions,
   ...args: [string, ...string[]]
 ) =>
-  withAppendedNixConfig({
-    command: withCiPnpmState(
-      `DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${devenvBinRef} tasks run ${args.join(' ')}`,
-    ),
-    opts,
-  })
+  withCiSourceRoot(
+    withAppendedNixConfig({
+      command: `DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${devenvBinRef} tasks run ${args.join(' ')}`,
+      opts,
+    }),
+  )
 
 export const defaultCiRuntimeScriptsDir = 'genie/ci-scripts'
-export const preparedCiRuntimeScriptsDir = '${{ github.workspace }}/.genie-ci-runtime'
+export const preparedCiRuntimeScriptsDir = `${ciCompositionStateRoot}/ci-runtime`
 export const prepareJobLocalRustState = `. "${preparedCiRuntimeScriptsDir}/prepare-job-local-rust-state.sh"`
 
 export type GcRaceRetryOptions = {

@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
@@ -71,6 +71,13 @@ const nixGcRaceRetryScriptSource = readFileSync(
   ),
   'utf8',
 )
+const prepareEffectUtilsCompositionScriptSource = readFileSync(
+  new URL(
+    ['../../../../../../genie/ci-scripts', 'prepare-effect-utils-composition.sh'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 const netlifyTaskModuleSource = readFileSync(
   new URL(
     ['../../../../../../nix/devenv-modules/tasks/shared', 'netlify.nix'].join('/'),
@@ -90,6 +97,10 @@ const workflowReportTaskModuleSource = readFileSync(
     ['../../../../../../nix/devenv-modules/tasks/shared', 'workflow-report-module.nix'].join('/'),
     import.meta.url,
   ),
+  'utf8',
+)
+const buckToolchainsSource = readFileSync(
+  new URL(['../../../../../../toolchains', 'BUCK'].join('/'), import.meta.url),
   'utf8',
 )
 
@@ -198,7 +209,7 @@ describe('ci workflow retry helpers', () => {
   it('emits compact calls to the checked-in retry helper script', () => {
     expect(ciWorkflowSource).toContain("defaultCiRuntimeScriptsDir = 'genie/ci-scripts'")
     expect(ciWorkflowSource).toContain(
-      "preparedCiRuntimeScriptsDir = '${{ github.workspace }}/.genie-ci-runtime'",
+      'preparedCiRuntimeScriptsDir = `${ciCompositionStateRoot}/ci-runtime`',
     )
     expect(ciWorkflowSource).toContain('prepareCiScriptsStep')
     expect(ciWorkflowSource).toContain('rm -f "$scripts_dst"/*.genie.ts')
@@ -229,7 +240,7 @@ describe('ci workflow retry helpers', () => {
 
     for (const jobBlock of jobBlocks) {
       const helperIndex = jobBlock.indexOf(
-        '${{ github.workspace }}/.genie-ci-runtime/run-with-nix-gc-race-retry.sh',
+        '${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh',
       )
       if (helperIndex < 0) continue
 
@@ -274,25 +285,22 @@ describe('ci workflow reporting helpers', () => {
 })
 
 describe('ci workflow pnpm cache defaults', () => {
-  it('keeps the shared pnpm home workspace-relative', () => {
+  it('keeps pnpm home stable under runner composition state', () => {
     expect(ciWorkflowSource).toContain(
-      "export const workspaceLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'",
+      'export const ciPnpmHome = `${ciCompositionStateRoot}/pnpm-home`',
     )
   })
 
   it('defaults the pnpm state helpers to restoring both home and auxiliary store state', () => {
     expect(ciWorkflowSource).toContain(
-      'export const workspaceLocalPnpmStatePaths = [workspaceLocalPnpmHome, workspaceLocalPnpmStore].join(',
+      'export const ciPnpmStatePaths = [ciPnpmHome, ciPnpmStore].join(',
     )
-    expect(ciWorkflowSource).toContain('const path = opts?.path ?? workspaceLocalPnpmStatePaths')
+    expect(ciWorkflowSource).toContain('const path = opts?.path ?? ciPnpmStatePaths')
   })
 
   it('exports PNPM_CONFIG_STORE_DIR alongside pnpm store state', () => {
     expect(ciWorkflowSource).toContain(
-      '`echo "PNPM_CONFIG_STORE_DIR=${workspaceLocalPnpmStore}" >> "$GITHUB_ENV"`',
-    )
-    expect(ciWorkflowSource).toContain(
-      'PNPM_CONFIG_STORE_DIR="\\${PNPM_CONFIG_STORE_DIR:-${workspaceLocalPnpmStore}}"',
+      '`echo "PNPM_CONFIG_STORE_DIR=${ciPnpmStore}" >> "$GITHUB_ENV"`',
     )
   })
 
@@ -323,15 +331,33 @@ describe('ci workflow pnpm cache defaults', () => {
     )
   })
 
-  it('defaults the pnpm store to a workspace-relative path stable across jobs', () => {
+  it('uses identical stable restore/save paths for pnpm and Nix caches', async () => {
+    const { restoreNixCacheStep, restorePnpmStateStep, saveNixCacheStep, savePnpmStateStep } =
+      await import(
+        // oxlint-disable-next-line import/no-dynamic-require
+        new URL('../../../../../../genie/ci-workflow/setup.ts', import.meta.url).href
+      )
+    const pnpmRestore = restorePnpmStateStep()
+    const pnpmSave = savePnpmStateStep()
+    const nixRestore = restoreNixCacheStep()
+    const nixSave = saveNixCacheStep()
+    expect(pnpmRestore.with.path).toBe(pnpmSave.with.path)
+    expect(nixRestore.with.path).toBe(nixSave.with.path)
+    expect(pnpmRestore.with.path).not.toContain('github.run_id')
+    expect(nixRestore.with.path).not.toContain('github.run_id')
+  })
+
+  it('defaults the pnpm store to a runner-stable path projected into the member', () => {
     expect(ciWorkflowSource).toContain(
-      "export const workspaceLocalPnpmStore = '${{ github.workspace }}/.devenv/pnpm-store-pure-v1'",
+      'export const ciPnpmStore = `${ciCompositionStateRoot}/pnpm-store-pure-v1`',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
-      '${{ github.workspace }}/.devenv/pnpm-store-pure-v1',
+      '${{ runner.temp }}/composition-state/pnpm-store-pure-v1',
     )
     expect(generatedCiWorkflowYamlSource).not.toContain('${{ github.workspace }}/.pnpm-store')
-    expect(ciWorkflowSource).not.toContain('runner.temp }}/pnpm-store')
+    expect(ciWorkflowSource).toContain(
+      "ciCompositionStateRoot = '${{ runner.temp }}/composition-state'",
+    )
   })
 
   it('exposes a callable single-publisher primitive and delegates the composer to it', () => {
@@ -534,7 +560,7 @@ printf '%s\\n' "$NIX_OUTPUT"
       '. ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
-      ". '${{ github.workspace }}/.genie-ci-runtime/resolve-devenv.sh'",
+      ". '${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'",
     )
     expect(generatedCiWorkflowYamlSource).not.toContain('resolve_devenv_once()')
   })
@@ -989,5 +1015,229 @@ describe('ci workflow devenv perf helpers', () => {
       'nix path-info --recursive --closure-size --json "$out_path"',
     )
     expect(ciWorkflowSource).toContain('nix.closure.serialized_nar_size')
+  })
+})
+
+describe('effect-utils CI composition workspace', () => {
+  const git = (cwd: string, ...args: string[]) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+    if (result.status !== 0) {
+      throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`)
+    }
+    return result.stdout.trim()
+  }
+
+  const makeFixture = (platform: 'Linux' | 'macOS') => {
+    const root = mkdtempSync(join(tmpdir(), 'effect-utils-ci-composition-'))
+    const checkout = join(root, 'checkout with spaces')
+    const runnerTemp = join(root, `runner ${platform}`)
+    const fakeBin = join(root, 'fake-bin')
+    const mrOut = join(root, 'mr-out')
+    const envFile = join(root, 'github-env')
+    const nixLog = join(root, 'nix.log')
+    const mrLog = join(root, 'mr.log')
+    mkdirSync(checkout)
+    mkdirSync(runnerTemp)
+    mkdirSync(fakeBin)
+    mkdirSync(join(mrOut, 'bin'), { recursive: true })
+    writeFileSync(envFile, '')
+    git(checkout, 'init', '--initial-branch=main')
+    git(checkout, 'config', 'user.email', 'ci-fixture@example.invalid')
+    git(checkout, 'config', 'user.name', 'CI Fixture')
+    writeFileSync(join(checkout, 'README'), 'fixture\n')
+    mkdirSync(join(checkout, 'genie/ci-scripts'), { recursive: true })
+    writeFileSync(
+      join(checkout, 'genie/ci-scripts/prepare-effect-utils-composition.sh'),
+      prepareEffectUtilsCompositionScriptSource,
+    )
+    chmodSync(join(checkout, 'genie/ci-scripts/prepare-effect-utils-composition.sh'), 0o755)
+    git(checkout, 'add', 'README', 'genie/ci-scripts/prepare-effect-utils-composition.sh')
+    git(checkout, 'commit', '-m', 'fixture')
+    const sha = git(checkout, 'rev-parse', 'HEAD')
+
+    writeFileSync(
+      join(fakeBin, 'nix'),
+      [
+        '#!/usr/bin/env bash',
+        'set -euo pipefail',
+        'printf \'%s|%s\\n\' "$PWD" "$*" >> "$FAKE_NIX_LOG"',
+        'if [ "$*" != "build --no-link --print-out-paths .#megarepo" ]; then exit 64; fi',
+        'printf \'%s\\n\' "$FAKE_MR_OUT"',
+      ].join('\n'),
+    )
+    writeFileSync(
+      join(mrOut, 'bin', 'mr'),
+      [
+        '#!/usr/bin/env bash',
+        'set -euo pipefail',
+        'printf \'%s|%s|%s|%s\\n\' "$PWD" "$MEGAREPO_STORE" "$RUNNER_OS" "$*" >> "$FAKE_MR_LOG"',
+        'if [ "${FAKE_MR_FAIL:-0}" = 1 ]; then exit 37; fi',
+        'workspace=',
+        'while [ "$#" -gt 0 ]; do',
+        '  if [ "$1" = --cwd ]; then workspace="$2"; shift 2; else shift; fi',
+        'done',
+        'test -n "$workspace"',
+        'if git -C "$workspace/repos/effect-utils" rev-parse --is-inside-work-tree >/dev/null 2>&1; then exit 0; fi',
+        'bare="$MEGAREPO_STORE/github.com/overengineeringstudio/effect-utils/.bare"',
+        'staged="$workspace.owned"',
+        'git --git-dir="$bare" worktree move "$workspace" "$staged"',
+        'mkdir -p "$workspace/repos" "$workspace/.megarepo/bin"',
+        'git --git-dir="$bare" worktree move "$staged" "$workspace/repos/effect-utils"',
+        'printf \'{}\\n\' > "$workspace/.megarepo-owned-worktree.json"',
+        'printf \'{}\\n\' > "$workspace/.megarepo/composition-generation.json"',
+        'printf \'[cells]\\n\' > "$workspace/.buckconfig"',
+        'printf \'#!/usr/bin/env bash\\nexit 0\\n\' > "$workspace/.megarepo/bin/buck2"',
+        'chmod +x "$workspace/.megarepo/bin/buck2"',
+        'mkdir -p "$MEGAREPO_STORE/reference-effect"',
+        'ln -s "$MEGAREPO_STORE/reference-effect" "$workspace/repos/effect"',
+      ].join('\n'),
+    )
+    chmodSync(join(fakeBin, 'nix'), 0o755)
+    chmodSync(join(mrOut, 'bin', 'mr'), 0o755)
+
+    const env = {
+      ...process.env,
+      FAKE_MR_LOG: mrLog,
+      FAKE_MR_OUT: mrOut,
+      FAKE_NIX_LOG: nixLog,
+      GITHUB_ENV: envFile,
+      GITHUB_JOB: 'unit/job',
+      GITHUB_RUN_ATTEMPT: '2',
+      GITHUB_RUN_ID: '100',
+      GITHUB_WORKSPACE: checkout,
+      MEGAREPO_STORE: join(runnerTemp, 'megarepo-store'),
+      PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
+      RUNNER_OS: platform,
+      RUNNER_TEMP: runnerTemp,
+    }
+    return { checkout, env, envFile, mrLog, nixLog, root, runnerTemp, sha }
+  }
+
+  const runComposition = async (
+    fixture: ReturnType<typeof makeFixture>,
+    overrides: NodeJS.ProcessEnv = {},
+  ) => {
+    const { prepareEffectUtilsCompositionStep } = await import(
+      // oxlint-disable-next-line import/no-dynamic-require
+      new URL('../../../../../../genie/ci-workflow/setup.ts', import.meta.url).href
+    )
+    return spawnSync('bash', ['-c', prepareEffectUtilsCompositionStep.run], {
+      cwd: fixture.root,
+      encoding: 'utf8',
+      env: { ...fixture.env, ...overrides },
+    })
+  }
+
+  it.each(['Linux', 'macOS'] as const)(
+    'keeps checkout immutable and synthesizes the exact owned member on %s',
+    async (platform) => {
+      const fixture = makeFixture(platform)
+      try {
+        const first = await runComposition(fixture)
+        expect(first.status, first.stderr).toBe(0)
+        const branch = 'ci-100-2-unit_job'
+        const workspace = join(
+          fixture.runnerTemp,
+          'megarepo-store/github.com/overengineeringstudio/effect-utils/refs/heads',
+          branch,
+        )
+        const member = join(workspace, 'repos/effect-utils')
+        expect(git(fixture.checkout, 'rev-parse', 'HEAD')).toBe(fixture.sha)
+        expect(git(fixture.checkout, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('')
+        expect(git(member, 'rev-parse', 'HEAD')).toBe(fixture.sha)
+        expect(git(member, 'symbolic-ref', 'HEAD')).toBe(`refs/heads/${branch}`)
+        expect(
+          spawnSync('git', ['-C', workspace, 'rev-parse', '--is-inside-work-tree']).status,
+        ).not.toBe(0)
+        expect(readFileSync(fixture.nixLog, 'utf8')).toBe(
+          `${fixture.checkout}|build --no-link --print-out-paths .#megarepo\n`,
+        )
+        expect(readFileSync(fixture.mrLog, 'utf8')).toContain(
+          `${dirname(workspace)}|${join(fixture.runnerTemp, 'megarepo-store')}|${platform}|--cwd ${workspace} apply --worktree-mode tracking --lock-sync off --output ci`,
+        )
+        expect(readFileSync(fixture.envFile, 'utf8')).toContain(
+          `EFFECT_UTILS_MEMBER_ROOT=${member}\n`,
+        )
+
+        const repeated = await runComposition(fixture)
+        expect(repeated.status, repeated.stderr).toBe(0)
+        expect(git(member, 'rev-parse', 'HEAD')).toBe(fixture.sha)
+
+        const secondEnv = join(fixture.root, 'github-env-second')
+        writeFileSync(secondEnv, '')
+        const second = await runComposition(fixture, {
+          GITHUB_ENV: secondEnv,
+          GITHUB_JOB: 'other-job',
+        })
+        expect(second.status, second.stderr).toBe(0)
+        const secondMember = join(
+          fixture.runnerTemp,
+          'megarepo-store/github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-other-job/repos/effect-utils',
+        )
+        expect(git(secondMember, 'rev-parse', 'HEAD')).toBe(fixture.sha)
+      } finally {
+        rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
+      }
+    },
+    20_000,
+  )
+
+  it('stops before exports when composition apply fails', async () => {
+    const fixture = makeFixture('Linux')
+    try {
+      const result = await runComposition(fixture, { FAKE_MR_FAIL: '1' })
+      expect(result.status).toBe(37)
+      expect(readFileSync(fixture.envFile, 'utf8')).toBe('')
+      expect(git(fixture.checkout, 'rev-parse', 'HEAD')).toBe(fixture.sha)
+      expect(git(fixture.checkout, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('')
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
+    }
+  }, 20_000)
+
+  it('orders every migrated job after composition and keeps the checkout exemptions explicit', () => {
+    const jobsYaml = generatedCiWorkflowYamlSource.split('\njobs:\n')[1] ?? ''
+    const blocks = new Map(
+      Array.from(
+        jobsYaml.matchAll(/^  ([a-zA-Z0-9_-]+):\n([\s\S]*?)(?=^  [a-zA-Z0-9_-]+:\n|$(?![\s\S]))/gm),
+        ([, name, body]) => [name!, body!] as const,
+      ),
+    )
+    const exemptions = new Set([
+      'default-ref-policy',
+      'nix-fod-check',
+      'source-shape',
+      'ci-measurements-report',
+      'notify-alignment',
+    ])
+    expect(
+      [...blocks.keys()].filter(
+        (name) => blocks.get(name)?.includes('Prepare effect-utils composition') !== true,
+      ),
+    ).toEqual([...exemptions])
+    for (const [name, block] of blocks) {
+      const taskIndex = block.indexOf('tasks run ')
+      if (taskIndex < 0) continue
+      expect(exemptions.has(name), name).toBe(false)
+      const compositionIndex = block.indexOf('Prepare effect-utils composition')
+      expect(compositionIndex, name).toBeGreaterThanOrEqual(0)
+      expect(compositionIndex, name).toBeLessThan(taskIndex)
+    }
+    expect(generatedCiWorkflowYamlSource).not.toMatch(/^\s+(?:buck2|\.\/[^ ]*buck2)\s/m)
+  })
+
+  it('keeps cache versions stable across run ids and projects Buck at the canonical member store', () => {
+    expect(generatedCiWorkflowYamlSource).toContain(
+      '${{ runner.temp }}/composition-state/pnpm-store-pure-v1',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      '${{ runner.temp }}/composition-state/nix-cache',
+    )
+    expect(generatedCiWorkflowYamlSource).not.toContain(
+      '${{ runner.temp }}/composition-state/${{ github.run_id }}',
+    )
+    expect(buckToolchainsSource).toContain(
+      'store_dir = "repos/effect-utils/.devenv/pnpm-store-pure-v1"',
+    )
   })
 })

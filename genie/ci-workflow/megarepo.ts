@@ -9,9 +9,8 @@ export const jobLocalMegarepoStore =
  *
  * GitHub derives an `actions/cache` *version* from the cache `path`, so a run-scoped path
  * (like {@link jobLocalMegarepoStore}) yields a new version every run and restores **never hit**;
- * each job also writes a duplicate. A stable path — mirroring the pnpm-state cache's
- * `${{ github.workspace }}` path — keeps the version stable across runs, so restores hit and
- * GitHub's reserve dedups the concurrent saves. Safe: GitHub runs one job per (ephemeral) runner,
+ * each job also writes a duplicate. This stable runner-temp path keeps the version stable across
+ * runs, so restores hit and GitHub's reserve dedups the concurrent saves. Safe: GitHub runs one job per (ephemeral) runner,
  * so `runner.temp` is already per-job; a persistent runner's sequential jobs just reuse the warm
  * store. Opt in via `applyMegarepoLockStep({ cacheableStore: true })`.
  */

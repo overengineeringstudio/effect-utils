@@ -1,6 +1,6 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { RunnerProfile } from '../ci.ts'
-import { applyMegarepoLockStep } from './megarepo.ts'
+import { applyMegarepoLockStep, cacheableMegarepoStore } from './megarepo.ts'
 import {
   bashShellDefaults,
   cachixHostsFromBinaryCaches,
@@ -14,11 +14,13 @@ import {
   standardCIEnv,
   withGcRaceRetry,
   preparedCiRuntimeScriptsDir,
-  workspaceLocalNixCachePath,
-  workspaceLocalNixCacheRoot,
-  workspaceLocalPnpmHome,
-  workspaceLocalPnpmStatePaths,
-  workspaceLocalPnpmStore,
+  ciNixCachePath,
+  ciNixCacheRoot,
+  ciCompositionStateRoot,
+  ciPnpmHome,
+  ciPnpmStatePaths,
+  ciPnpmStore,
+  withCiSourceRoot,
   type NixBinaryCache,
 } from './shared.ts'
 
@@ -77,15 +79,17 @@ export const evictCachedPnpmDepsStep = ({
 }) => ({
   name,
   shell: 'bash',
-  run: withEachPnpmDepsDrvShellLines({
-    flakeRef,
-    bodyLines: [
-      '    while IFS= read -r outPath; do',
-      '      [ -n "$outPath" ] || continue',
-      ...evictOutPathShellLines,
-      '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    ],
-  }).join('\n'),
+  run: withCiSourceRoot(
+    withEachPnpmDepsDrvShellLines({
+      flakeRef,
+      bodyLines: [
+        '    while IFS= read -r outPath; do',
+        '      [ -n "$outPath" ] || continue',
+        ...evictOutPathShellLines,
+        '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
+      ],
+    }).join('\n'),
+  ),
 })
 
 /**
@@ -111,23 +115,38 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
   ...(opts !== undefined && Object.keys(opts).length > 0 ? { with: opts } : {}),
 })
 
+/**
+ * Synthesize the disposable decision-0020 workspace used by effect-utils CI.
+ *
+ * The actions checkout remains untouched for action cleanup and artifact paths.
+ * Every source-dependent command after this step runs from the branch-attached
+ * owned member at `repos/effect-utils`.
+ */
+export const prepareEffectUtilsCompositionStep = {
+  name: 'Prepare effect-utils composition',
+  env: { MEGAREPO_STORE: cacheableMegarepoStore },
+  run: '"$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"',
+} as const
+
 export const prepareCiScriptsStep = {
   name: 'Prepare CI helper scripts',
   shell: 'bash',
-  run: [
-    'set -euo pipefail',
-    `scripts_src=${shellSingleQuote(defaultCiRuntimeScriptsDir)}`,
-    `scripts_dst=${shellSingleQuote(preparedCiRuntimeScriptsDir)}`,
-    'if [ ! -d "$scripts_src" ]; then',
-    '  echo "::error::CI helper script directory is missing: $scripts_src"',
-    '  exit 1',
-    'fi',
-    'rm -rf "$scripts_dst"',
-    'mkdir -p "$scripts_dst"',
-    'cp -R "$scripts_src/." "$scripts_dst/"',
-    'rm -f "$scripts_dst"/*.genie.ts',
-    'chmod +x "$scripts_dst"/*.sh',
-  ].join('\n'),
+  run: withCiSourceRoot(
+    [
+      'set -euo pipefail',
+      `scripts_src=${shellSingleQuote(defaultCiRuntimeScriptsDir)}`,
+      `scripts_dst=${shellSingleQuote(preparedCiRuntimeScriptsDir)}`,
+      'if [ ! -d "$scripts_src" ]; then',
+      '  echo "::error::CI helper script directory is missing: $scripts_src"',
+      '  exit 1',
+      'fi',
+      'rm -rf "$scripts_dst"',
+      'mkdir -p "$scripts_dst"',
+      'cp -R "$scripts_src/." "$scripts_dst/"',
+      'rm -f "$scripts_dst"/*.genie.ts',
+      'chmod +x "$scripts_dst"/*.sh',
+    ].join('\n'),
+  ),
 } as const
 
 /** Mint a GitHub App installation token for downstream private-repo fetches. */
@@ -344,9 +363,9 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
 export const preparePinnedDevenvStepFor = (lockFile = 'devenv.lock') =>
   ({
     name: 'Use pinned devenv from lock',
-    run: `${resolveDevenvRevScriptFor(lockFile)}
+    run: withCiSourceRoot(`${resolveDevenvRevScriptFor(lockFile)}
 echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
-echo "Pinned devenv rev: $DEVENV_REV"`,
+echo "Pinned devenv rev: $DEVENV_REV"`),
     shell: 'bash',
   }) as const
 
@@ -360,11 +379,27 @@ export const preparePinnedDevenvStep = preparePinnedDevenvStepFor()
 export const pnpmStateSetupStep = {
   name: 'Isolate pnpm state',
   shell: 'bash',
-  run: [
-    `echo "PNPM_STORE_DIR=${workspaceLocalPnpmStore}" >> "$GITHUB_ENV"`,
-    `echo "PNPM_CONFIG_STORE_DIR=${workspaceLocalPnpmStore}" >> "$GITHUB_ENV"`,
-    `echo "PNPM_HOME=${workspaceLocalPnpmHome}" >> "$GITHUB_ENV"`,
-  ].join('\n'),
+  run: withCiSourceRoot(
+    [
+      'set -euo pipefail',
+      `mkdir -p "${ciPnpmStore}" "${ciPnpmHome}" .devenv`,
+      'member_store=.devenv/pnpm-store-pure-v1',
+      'if [ -L "$member_store" ]; then',
+      `  if [ "$(readlink "$member_store")" != "${ciPnpmStore}" ]; then`,
+      '    echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2',
+      '    exit 1',
+      '  fi',
+      'elif [ -e "$member_store" ]; then',
+      '  echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2',
+      '  exit 1',
+      'else',
+      `  ln -s "${ciPnpmStore}" "$member_store"`,
+      'fi',
+      `echo "PNPM_STORE_DIR=${ciPnpmStore}" >> "$GITHUB_ENV"`,
+      `echo "PNPM_CONFIG_STORE_DIR=${ciPnpmStore}" >> "$GITHUB_ENV"`,
+      `echo "PNPM_HOME=${ciPnpmHome}" >> "$GITHUB_ENV"`,
+    ].join('\n'),
+  ),
 } as const
 
 /**
@@ -375,8 +410,8 @@ export const nixCacheSetupStep = {
   name: 'Isolate nix cache',
   shell: 'bash',
   run: [
-    `mkdir -p "${workspaceLocalNixCachePath}"`,
-    `echo "XDG_CACHE_HOME=${workspaceLocalNixCacheRoot}" >> "$GITHUB_ENV"`,
+    `mkdir -p "${ciNixCachePath}"`,
+    `echo "XDG_CACHE_HOME=${ciNixCacheRoot}" >> "$GITHUB_ENV"`,
   ].join('\n'),
 } as const
 
@@ -534,7 +569,7 @@ export const restoreNixCacheStep = (opts?: {
   hashFilesExpression?: string
 }) => {
   const keyPrefix = opts?.keyPrefix ?? 'nix-cache-v1'
-  const path = opts?.path ?? workspaceLocalNixCachePath
+  const path = opts?.path ?? ciNixCachePath
   const hashFilesExpression =
     opts?.hashFilesExpression ?? "${{ hashFiles('devenv.lock', 'flake.lock', 'megarepo.lock') }}"
 
@@ -558,7 +593,7 @@ export const restoreNixCacheStep = (opts?: {
  */
 export const saveNixCacheStep = (opts?: { restoreStepId?: string; path?: string }) => {
   const restoreStepId = opts?.restoreStepId ?? 'restore-nix-cache'
-  const path = opts?.path ?? workspaceLocalNixCachePath
+  const path = opts?.path ?? ciNixCachePath
 
   return {
     name: 'Save nix cache',
@@ -610,7 +645,7 @@ export const restorePnpmStateStep = (opts?: {
 }) => {
   const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix
   const hashFilesExpression = opts?.hashFilesExpression ?? defaultPnpmStateHashFilesExpression
-  const path = opts?.path ?? workspaceLocalPnpmStatePaths
+  const path = opts?.path ?? ciPnpmStatePaths
 
   return {
     id: opts?.stepId ?? 'restore-pnpm-state',
@@ -640,7 +675,7 @@ export const savePnpmStateStep = (opts?: {
   const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix
   const hashFilesExpression = opts?.hashFilesExpression ?? defaultPnpmStateHashFilesExpression
   const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-state'
-  const path = opts?.path ?? workspaceLocalPnpmStatePaths
+  const path = opts?.path ?? ciPnpmStatePaths
 
   return {
     name: 'Save pnpm state',
@@ -879,7 +914,7 @@ export const validateColdPnpmDepsStep = ({
       'done',
     ].join('\n')
 
-    return withGcRaceRetry({ command, label: name })
+    return withCiSourceRoot(withGcRaceRetry({ command, label: name }))
   })(),
 })
 
@@ -895,23 +930,25 @@ export const coldFreshNixBuildStep = ({
 }) => ({
   name,
   shell: 'bash',
-  run: [
-    'set -euo pipefail',
-    ...withEachPnpmDepsDrvShellLines({
-      flakeRef,
-      bodyLines: [
-        '    installable="${drv}^*"',
-        '    echo "cold-building pnpm deps: ${attrName:-$drv}"',
-        '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org" || true',
-        '    while IFS= read -r outPath; do',
-        '      [ -n "$outPath" ] || continue',
-        ...evictOutPathShellLines,
-        '    done < <(nix path-info "$installable" 2>/dev/null || true)',
-        '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
-      ],
-    }),
-    `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
-  ].join('\n'),
+  run: withCiSourceRoot(
+    [
+      'set -euo pipefail',
+      ...withEachPnpmDepsDrvShellLines({
+        flakeRef,
+        bodyLines: [
+          '    installable="${drv}^*"',
+          '    echo "cold-building pnpm deps: ${attrName:-$drv}"',
+          '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org" || true',
+          '    while IFS= read -r outPath; do',
+          '      [ -n "$outPath" ] || continue',
+          ...evictOutPathShellLines,
+          '    done < <(nix path-info "$installable" 2>/dev/null || true)',
+          '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
+        ],
+      }),
+      `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
+    ].join('\n'),
+  ),
 })
 
 /**
@@ -930,50 +967,52 @@ export const pnpmBuilderContractStep = ({
 }) => ({
   name,
   shell: 'bash',
-  run: [
-    'set -euo pipefail',
-    `builder=${shellSingleQuote(builderFile)}`,
-    `policy=${shellSingleQuote(policyFile)}`,
-    'if [ ! -f "$builder" ]; then',
-    '  echo "::error::missing pnpm deps builder: $builder"',
-    '  exit 1',
-    'fi',
-    'if [ ! -f "$policy" ]; then',
-    '  echo "::error::missing pnpm install policy: $policy"',
-    '  exit 1',
-    'fi',
-    'for required in \\',
-    "  'store-dir=%s' \\",
-    "  'frozenLockfile ? true' \\",
-    "  'pnpm install --frozen-lockfile --ignore-scripts'; do",
-    '  if ! grep -Fq -- "$required" "$builder"; then',
-    '    echo "::error::missing required pnpm builder contract fragment: $required"',
-    '    exit 1',
-    '  fi',
-    'done',
-    'for required in \\',
-    "  'side-effects-cache=false' \\",
-    "  'verify-store-integrity=true' \\",
-    "  'package-import-method=${packageImportMethod}' \\",
-    "  'pm-on-fail=ignore' \\",
-    "  'strict-store-pkg-content-check=true' \\",
-    "  'child-concurrency=1' \\",
-    "  'network-concurrency=4'; do",
-    '  if ! grep -Fq -- "$required" "$policy"; then',
-    '    echo "::error::missing required pnpm policy contract fragment: $required"',
-    '    exit 1',
-    '  fi',
-    'done',
-    'for forbidden in \\',
-    "  'package-import-method=hardlink' \\",
-    "  'lockfile-only' \\",
-    "  'pnpm add pnpm@'; do",
-    '  if grep -Fq -- "$forbidden" "$builder" "$policy"; then',
-    '    echo "::error::forbidden pnpm builder contract fragment present: $forbidden"',
-    '    exit 1',
-    '  fi',
-    'done',
-  ].join('\n'),
+  run: withCiSourceRoot(
+    [
+      'set -euo pipefail',
+      `builder=${shellSingleQuote(builderFile)}`,
+      `policy=${shellSingleQuote(policyFile)}`,
+      'if [ ! -f "$builder" ]; then',
+      '  echo "::error::missing pnpm deps builder: $builder"',
+      '  exit 1',
+      'fi',
+      'if [ ! -f "$policy" ]; then',
+      '  echo "::error::missing pnpm install policy: $policy"',
+      '  exit 1',
+      'fi',
+      'for required in \\',
+      "  'store-dir=%s' \\",
+      "  'frozenLockfile ? true' \\",
+      "  'pnpm install --frozen-lockfile --ignore-scripts'; do",
+      '  if ! grep -Fq -- "$required" "$builder"; then',
+      '    echo "::error::missing required pnpm builder contract fragment: $required"',
+      '    exit 1',
+      '  fi',
+      'done',
+      'for required in \\',
+      "  'side-effects-cache=false' \\",
+      "  'verify-store-integrity=true' \\",
+      "  'package-import-method=${packageImportMethod}' \\",
+      "  'pm-on-fail=ignore' \\",
+      "  'strict-store-pkg-content-check=true' \\",
+      "  'child-concurrency=1' \\",
+      "  'network-concurrency=4'; do",
+      '  if ! grep -Fq -- "$required" "$policy"; then',
+      '    echo "::error::missing required pnpm policy contract fragment: $required"',
+      '    exit 1',
+      '  fi',
+      'done',
+      'for forbidden in \\',
+      "  'package-import-method=hardlink' \\",
+      "  'lockfile-only' \\",
+      "  'pnpm add pnpm@'; do",
+      '  if grep -Fq -- "$forbidden" "$builder" "$policy"; then',
+      '    echo "::error::forbidden pnpm builder contract fragment present: $forbidden"',
+      '    exit 1',
+      '  fi',
+      'done',
+    ].join('\n'),
+  ),
 })
 
 /**
@@ -992,12 +1031,12 @@ export const pnpmBuilderContractStep = ({
 export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>
   ({
     name: 'Resolve devenv',
-    run: `${resolveDevenvRevScriptFor(lockFile)}
+    run: withCiSourceRoot(`${resolveDevenvRevScriptFor(lockFile)}
 
 . ${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)}
 
 # Temporary: capture diagnostics dir for #272 root-cause analysis.
-DIAG_ROOT="${'${RUNNER_TEMP:-/tmp}'}/nix-store-diagnostics-${'${GITHUB_JOB:-job}'}-${'${RUNNER_OS:-unknown}'}-${'${GITHUB_RUN_ATTEMPT:-0}'}"
+DIAG_ROOT="${ciCompositionStateRoot}/nix-store-diagnostics/${'${GITHUB_JOB:-job}'}-${'${RUNNER_OS:-unknown}'}-${'${GITHUB_RUN_ATTEMPT:-0}'}"
 mkdir -p "$DIAG_ROOT"
 echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
 
@@ -1042,7 +1081,7 @@ fi
 echo "DEVENV_GC_ROOT=$DEVENV_GC_ROOT" >> "$GITHUB_ENV"
 
 echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-"$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"`,
+"$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"`),
     shell: 'bash',
   }) as const
 
