@@ -1185,10 +1185,15 @@ const mergeLiveIdentityBase = (
   preserveKindInterleaving = false,
 ): readonly CacheNode[] => {
   const priorByBlockId = new Map(priorNodes.map((node) => [node.blockId, node]))
-  const merged = liveNodes.map((liveNode): CacheNode => {
-    const priorNode =
-      priorByBlockId.get(liveNode.blockId) ??
-      (liveNode.type === 'child_page' ? priorPageByBlockId.get(liveNode.blockId) : undefined)
+  const globallyRecoveredPageIds = new Set<string>()
+  const mergedWithRecoveredPages = liveNodes.map((liveNode): CacheNode => {
+    const localPriorNode = priorByBlockId.get(liveNode.blockId)
+    const globalPriorPage =
+      liveNode.type === 'child_page' ? priorPageByBlockId.get(liveNode.blockId) : undefined
+    const priorNode = localPriorNode ?? globalPriorPage
+    if (localPriorNode === undefined && globalPriorPage !== undefined) {
+      globallyRecoveredPageIds.add(liveNode.blockId)
+    }
     if (priorNode !== undefined) {
       return {
         ...priorNode,
@@ -1207,6 +1212,34 @@ const mergeLiveIdentityBase = (
       hash: '',
       children: mergeLiveIdentityBase(liveNode.children, [], priorPageByBlockId),
       nodeKind: liveNode.type === 'child_page' ? 'page' : 'block',
+    }
+  })
+
+  // A blockKey is only unique within its original parent. If global recovery
+  // relocates a page beside another page with the same key, retaining either
+  // key would make the sibling cache invalid or let the global move index pick
+  // the wrong identity. Demote every member of the colliding set to a ghost so
+  // the existing ambiguous-key policy safely rebuilds them all.
+  const pageCountByKey = new Map<string, number>()
+  for (const node of mergedWithRecoveredPages) {
+    if (node.nodeKind !== 'page' || node.key.startsWith('drift:')) continue
+    pageCountByKey.set(node.key, (pageCountByKey.get(node.key) ?? 0) + 1)
+  }
+  const collidedRecoveredKeys = new Set<string>()
+  for (const node of mergedWithRecoveredPages) {
+    if (globallyRecoveredPageIds.has(node.blockId) && (pageCountByKey.get(node.key) ?? 0) > 1) {
+      collidedRecoveredKeys.add(node.key)
+    }
+  }
+  const merged = mergedWithRecoveredPages.map((node): CacheNode => {
+    if (node.nodeKind !== 'page' || !collidedRecoveredKeys.has(node.key)) return node
+    return {
+      key: `drift:${node.blockId}`,
+      blockId: node.blockId,
+      type: node.type,
+      hash: '',
+      children: node.children,
+      nodeKind: 'page',
     }
   })
   if (!preserveKindInterleaving) return merged

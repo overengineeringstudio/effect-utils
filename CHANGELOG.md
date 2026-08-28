@@ -255,10 +255,12 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   duplicates, while opaque synced-block children remain untouched. Promised
   but transiently empty child lists retry and fail closed on exhaustion;
   recursive and retry requests are reflected exactly in retrieve metrics and
-  `SyncEnd.opCount`. Cached child pages moved out of band between renderer-owned
-  parents retain their durable page ID, key, and subtree instead of being
-  archived and recreated. The persisted `CacheTree` exactly reflects the
-  identities left live and an immediate identical sync emits zero mutations.
+  `SyncEnd.opCount`. Unambiguously keyed child pages moved out of band between
+  renderer-owned parents retain their durable page ID, key, and subtree instead
+  of being archived and recreated; destination-scope key collisions take the
+  safe rebuild fallback instead of producing an invalid cache. The persisted
+  `CacheTree` exactly reflects the identities left live and an immediate
+  identical sync emits zero mutations.
 - **Nix prepared dependencies**: normalize ordinary, non-injected local
   `file:` packages through pnpm's exact package-map locator before removing
   transient Source Input aliases. Restored CLI workspaces now resolve the

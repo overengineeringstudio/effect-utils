@@ -585,6 +585,48 @@ describe('sync() against in-memory fake Notion', () => {
     expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
   })
 
+  it('drift detection rebuilds pages whose recovered keys collide at one parent', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <>
+        <ChildPage blockKey="parent-a" title="Parent A">
+          <ChildPage blockKey="shared" title="Page A">
+            <Paragraph blockKey="body">A</Paragraph>
+          </ChildPage>
+        </ChildPage>
+        <ChildPage blockKey="parent-b" title="Parent B">
+          <ChildPage blockKey="shared" title="Page B">
+            <Paragraph blockKey="body">B</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </>
+    )
+    await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    const [parentA, parentB] = fake.childrenOf(ROOT)
+    const moved = fake.childrenOf(parentA!.id)[0]!
+
+    // The same key is valid in separate scopes. Once an out-of-band move puts
+    // both pages under one live parent, neither identity can safely claim that
+    // key there; the ambiguous pair must take the existing rebuild fallback.
+    await runWith(
+      fake,
+      NotionPages.move({
+        pageId: moved.id,
+        parent: { type: 'page_id', page_id: parentB!.id },
+      }),
+    )
+
+    const repaired = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(repaired.fallbackReason).toBe('cache-drift')
+    expect(repaired.pages).toEqual({ creates: 2, updates: 0, archives: 2, moves: 0, reorders: 0 })
+
+    const stable = await runWith(fake, sync(tree, { pageId: ROOT, cache }))
+    expect(stable.fallbackReason).toBeUndefined()
+    expect(stable.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect(stable).toMatchObject({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
   it('propagates a nested caller holding-page exclusion through recursive reads', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
