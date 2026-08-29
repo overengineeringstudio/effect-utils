@@ -117,3 +117,19 @@ invariants named in its own document:
   no repository-private paths, labels, fleet names, endpoints, or secrets, so a
   second consumer can extract them without rework. Extraction mechanics are
   decided when that consumer adopts, not before.
+
+### Must reduce global complexity measurably
+
+- **BUCK-R15 Net complexity accounting:** The adoption reduces global build
+  complexity; growth in one place is justified only by larger deletion
+  elsewhere. Every phase reconciliation records a net ledger of build-machinery
+  lines added versus legacy lines deleted (excluding VRS documents, tests, and
+  lockfiles) together with the amortization rationale across consuming
+  repositories. A phase that increases the net ledger without a recorded
+  rationale is a regression, not progress.
+- **BUCK-R16 Benchmark evidence:** Efficiency claims are measured, never
+  asserted. Each admission records warm no-op time, fresh-context time with a
+  warm shared cache, cache hit rate for unchanged targets, and CI wall-clock
+  delta against the pre-admission baseline. A regression against the BUCK-R07
+  budgets or the recorded baseline blocks further widening until it is fixed or
+  explicitly accepted in a decision record.

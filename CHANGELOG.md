@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **VRS (buck2)**: ratify BUCK-R15 (net complexity accounting) and BUCK-R16
+  (benchmark evidence): every phase reconciles a build-machinery deletion
+  ledger with amortization rationale, and every admission records warm/cold
+  timings, cache hit rate, and CI wall-clock deltas as widening gates.
+
 - **@overeng/tui-react**: transfer root typecheck and declaration emit authority
   to reusable Buck package targets, consuming tui-core through its Buck `dist`
   boundary, publishing declaration overlays and export type conditions from
