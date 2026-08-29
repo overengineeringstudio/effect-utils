@@ -1,4 +1,3 @@
-// Secondary members
 members {
-  effect "effect-ts/effect"
+    effect "effect-ts/effect#main"
 }

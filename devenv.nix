@@ -698,12 +698,12 @@ in
     "dependency-materialization:evidence:check"
   ];
 
-  # `test:run` executes after its package-task dependencies, so the Effect 4
-  # gate sees the complete managed-test summary directory in CI.
+  # `test:run` executes after its package-task dependencies, so the
+  # baseline-collection gate sees the complete managed-test summary directory in CI.
   tasks."test:run".exec = lib.mkForce (
     trace.exec "test:run" ''
       set -euo pipefail
-      ${pkgs.bun}/bin/bun context/effect-4/check-baseline-test-collection.ts \
+      ${pkgs.bun}/bin/bun packages/@overeng/utils-dev/check-baseline-test-collection.ts \
         --task-registry ${baselineTestTaskRegistry}
     ''
   );

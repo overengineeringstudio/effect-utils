@@ -54,6 +54,19 @@ describe('tui-stories CLI contract baselines (status/signal invariant, prose own
       'invalid width',
       ['render', 'Story', '--path', 'packages/@overeng/tui-stories', '--width', 'nope'],
     ],
+    [
+      'invalid width with json output (stdout guard)',
+      [
+        'render',
+        'Story',
+        '--path',
+        'packages/@overeng/tui-stories',
+        '--width',
+        'nope',
+        '--output',
+        'json',
+      ],
+    ],
   ] as const)('%s', (_name, args) => {
     expect(runCli(...args)).toMatchSnapshot()
   })

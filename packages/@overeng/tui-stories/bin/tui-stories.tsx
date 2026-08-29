@@ -1,12 +1,17 @@
 #!/usr/bin/env bun
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import * as Cli from 'effect/unstable/cli'
 
 import { runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
-import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
+import {
+  CliVersion,
+  handlerConsoleLayer,
+  jsonStdoutGuardLayer,
+  resolveCliVersion,
+} from '@overeng/utils/node/cli-version'
 
 import { tuiStoriesCommand } from '../src/cli/mod.ts'
 
@@ -17,12 +22,21 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-Cli.Command.runWith(tuiStoriesCommand, { version })(
-  rewriteHelpSubcommand(process.argv.slice(2)),
+const args = rewriteHelpSubcommand(process.argv.slice(2))
+
+Cli.Command.runWith(Cli.Command.provide(tuiStoriesCommand, handlerConsoleLayer), { version })(
+  args,
 ).pipe(
   Effect.scoped,
-  CliVersion.enrichErrors,
-  Effect.provideService(CliVersion, { name: 'tui-stories', version }),
-  Effect.provide(NodeServices.layer),
+  Effect.provide(
+    Layer.mergeAll(
+      Layer.provide(
+        CliVersion.formatterLayer,
+        Layer.succeed(CliVersion, { name: 'tui-stories', version }),
+      ),
+      jsonStdoutGuardLayer(args),
+      NodeServices.layer,
+    ),
+  ),
   runTuiMain(NodeRuntime),
 )

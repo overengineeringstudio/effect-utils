@@ -8,11 +8,15 @@ import {
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/agent-session-ingest' }),
+  dependencies: {
+    workspace: [utilsPkg],
+  },
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
@@ -29,6 +33,10 @@ const workspaceDeps = catalog.compose({
   peerDependencies: {
     external: catalog.pick(...peerDepNames),
   },
+  // `@overeng/utils` is a runtime workspace dep that carries peer dependencies
+  // (the @effect/* cluster + @playwright/test). `mode: 'install'` makes genie
+  // install those inherited peers explicitly so a standalone consumer resolves.
+  mode: 'install',
 })
 
 export default packageJson(

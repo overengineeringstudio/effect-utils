@@ -418,7 +418,7 @@ export const useRenderConfig = (): RenderConfig => {
 // =============================================================================
 // Legacy Context (for migration)
 // =============================================================================
-// ANSI Utilities
+// ANSI Utilities — canonical implementation lives in @overeng/tui-core.
 // =============================================================================
 
 /**
@@ -432,11 +432,7 @@ export const useRenderConfig = (): RenderConfig => {
  * stripAnsi('\x1b[32mHello\x1b[0m') // => 'Hello'
  * ```
  */
-export const stripAnsi = (str: string): string => {
-  // eslint-disable-next-line no-control-regex
-  const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07/g
-  return str.replace(ansiRegex, '')
-}
+export { stripAnsi } from '@overeng/tui-core'
 
 // =============================================================================
 // Layers

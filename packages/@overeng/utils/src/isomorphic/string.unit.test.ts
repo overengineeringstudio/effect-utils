@@ -1,8 +1,9 @@
+import { Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { formatReasonMessage } from './string.ts'
+import { formatReasonMessage, nonEmptyTrimmedString } from './string.ts'
 
 Vitest.describe('formatReasonMessage', () => {
   /* The cause segment is space-separated like the other parts, so it reads
@@ -68,5 +69,27 @@ Vitest.describe('formatReasonMessage', () => {
 
   Vitest.it('omits the cause segment when cause is undefined', () => {
     expect(formatReasonMessage({ reason: 'Timeout', method: 'waitFor' })).toBe('Timeout (waitFor)')
+  })
+})
+
+Vitest.describe('nonEmptyTrimmedString', () => {
+  Vitest.it('accepts a non-empty trimmed string', () => {
+    expect(Schema.is(nonEmptyTrimmedString)('session-1')).toBe(true)
+  })
+
+  Vitest.it('rejects empty and whitespace-only strings', () => {
+    expect(Schema.is(nonEmptyTrimmedString)('')).toBe(false)
+    expect(Schema.is(nonEmptyTrimmedString)(' ')).toBe(false)
+    expect(Schema.is(nonEmptyTrimmedString)('\t\n')).toBe(false)
+  })
+
+  Vitest.it('rejects strings with leading or trailing whitespace', () => {
+    expect(Schema.is(nonEmptyTrimmedString)(' x')).toBe(false)
+    expect(Schema.is(nonEmptyTrimmedString)('x ')).toBe(false)
+    expect(Schema.is(nonEmptyTrimmedString)('a b')).toBe(true)
+  })
+
+  Vitest.it('rejects non-strings', () => {
+    expect(Schema.is(nonEmptyTrimmedString)(123)).toBe(false)
   })
 })

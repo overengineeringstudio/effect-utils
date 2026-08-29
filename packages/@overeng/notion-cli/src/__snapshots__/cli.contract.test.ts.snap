@@ -38,7 +38,7 @@ exports[`notion-cli CLI contract baselines (status/signal invariant, prose owner
   "status": 1,
   "stderr": "
 ERROR
-  Invalid value for flag --concurrency: "nope". Expected a string representing a finite number
+  Invalid value for flag --concurrency: "nope". Expected a string representing a finite number (notion 0.1.0)
 ",
   "stdout": "DESCRIPTION
   Read-only: report the live in-sync decision per file in git-porcelain words (never mutates)
@@ -66,13 +66,47 @@ GLOBAL FLAGS
 }
 `;
 
+exports[`notion-cli CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > invalid integer with json output (stdout guard) 1`] = `
+{
+  "signal": null,
+  "status": 1,
+  "stderr": "DESCRIPTION
+  Read-only: report the live in-sync decision per file in git-porcelain words (never mutates)
+
+USAGE
+  notion md status [flags] <path...>
+
+ARGUMENTS
+  path... string    Local .nmd file or directory (a directory means everything under it)
+
+FLAGS
+  --recursive, -r          Discover existing .nmd files recursively under a directory target
+  --concurrency integer    Maximum number of .nmd files to reconcile concurrently
+  --json                   Emit machine-readable JSON instead of git-porcelain text
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+ERROR
+  Invalid value for flag --concurrency: "nope". Expected a string representing a finite number (notion 0.1.0)
+[time] ERROR (#73): ~effect/cli/CliError/ShowHelp: Help requested
+    at <anonymous> (<repo>/node_modules/.pnpm/effect@4.0.0-rc.111/node_modules/effect/dist/unstable/cli/Command.js:1077:34)
+",
+  "stdout": "",
+}
+`;
+
 exports[`notion-cli CLI contract baselines (status/signal invariant, prose owner-rebaselinable) > missing required database id 1`] = `
 {
   "signal": null,
   "status": 1,
   "stderr": "
 ERROR
-  Missing required argument: database-id
+  Missing required argument: database-id (notion 0.1.0)
 ",
   "stdout": "DESCRIPTION
   Display information about a Notion database
@@ -131,7 +165,7 @@ exports[`notion-cli CLI contract baselines (status/signal invariant, prose owner
   "signal": null,
   "status": 0,
   "stderr": "",
-  "stdout": "0.1.0
+  "stdout": "notion v0.1.0
 ",
 }
 `;

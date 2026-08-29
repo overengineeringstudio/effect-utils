@@ -1,14 +1,8 @@
-import { Clock, Context, Duration, Effect, Layer } from 'effect'
+import { Context, Duration, Effect, Layer } from 'effect'
 import * as RateLimiter from 'effect/unstable/persistence/RateLimiter'
 
 import { NotionRateLimitMetricBridges } from './metrics.ts'
 import { annotateNotionRateLimitWaitSpan } from './otel.ts'
-
-const isRateLimiterError = (error: unknown): error is RateLimiter.RateLimiterError =>
-  typeof error === 'object' &&
-  error !== null &&
-  '_tag' in error &&
-  error._tag === 'RateLimiterError'
 
 /** Options for the optional global Notion request throttle. */
 export interface NotionThrottleOptions {
@@ -49,52 +43,51 @@ export const NotionThrottleLive = (options: NotionThrottleOptions): Layer.Layer<
   Layer.effect(
     NotionThrottle,
     Effect.gen(function* () {
-      const withLimiter = yield* RateLimiter.makeWithRateLimiter
+      const limiter = yield* RateLimiter.RateLimiter
       const burst = options.burst ?? 1
-      /**
-       * Behavior-preserving wait instrumentation (decision 0017 Half 2, #775):
-       * the limiter still wraps `effect` exactly as before (token accounting and
-       * pacing untouched), but we measure the time blocked acquiring the token —
-       * the genuinely-new rate-limit signal that nothing else captures. `before`
-       * is read OUTSIDE the gate; the inner clock read runs the instant the token
-       * is granted, so `waitMs` is exactly the queue wait. Both reads are
-       * per-invocation locals in the caller's fiber, so concurrent requests each
-       * measure their own wait. The clock used is the Effect `Clock`, so the
-       * measurement stays deterministic under TestClock.
-       */
       return {
         apply: <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
           Effect.gen(function* () {
-            const before = yield* Clock.currentTimeMillis
-            /* `onExceeded: 'delay'` delays instead of failing, so the limiter's
-             * `RateLimiterError` channel is statically unreachable here; a
-             * store failure surfaces as a defect rather than being swallowed. */
-            const throttled: Effect.Effect<A, E | RateLimiter.RateLimiterError, R> = withLimiter({
-              key: '@overeng/notion-effect-client/throttle',
-              limit: burst,
-              window: Duration.millis(burst * Math.ceil(1000 / options.requestsPerSecond)),
-              algorithm: options.algorithm ?? 'token-bucket',
-              onExceeded: 'delay',
-            })(
-              Effect.gen(function* () {
-                const waitMs = (yield* Clock.currentTimeMillis) - before
-                yield* annotateNotionRateLimitWaitSpan(waitMs)
-                yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({
-                  labels: {},
-                  value: waitMs,
-                })
-                return yield* effect
-              }),
-            )
-            /* `onExceeded: 'delay'` delays instead of failing, so the limiter's
-             * `RateLimiterError` channel is statically unreachable here; a
-             * store failure surfaces as a defect rather than being swallowed. */
-            return yield* Effect.catch(throttled, (error) => {
-              if (isRateLimiterError(error) === true) {
-                return Effect.die(error)
-              }
-              return Effect.fail(error)
+            /* `onExceeded: 'delay'` paces instead of failing: `RateLimiter.make`
+             * only constructs `RateLimitExceeded` failures under
+             * `onExceeded: 'fail'` (every failure branch in `consume` is
+             * guarded by that check), so the only residual failure is a
+             * `RateLimitStoreError` from the backing store — surfaced as a
+             * defect via `orDie` rather than swallowed. */
+            const { delay } = yield* limiter
+              .consume({
+                key: '@overeng/notion-effect-client/throttle',
+                limit: burst,
+                window: Duration.millis(burst * Math.ceil(1000 / options.requestsPerSecond)),
+                algorithm: options.algorithm ?? 'token-bucket',
+                onExceeded: 'delay',
+              })
+              .pipe(Effect.orDie)
+            /* The limiter reports the exact pacing delay it will impose
+             * (`ConsumeResult.delay`; zero when the token is granted
+             * immediately), which is precisely the queue wait the
+             * wait-span/metrics signals describe — no double-Clock
+             * measurement needed. */
+            const waitMs = Duration.toMillis(delay)
+            /* Record only after the pacing delay has actually elapsed: an
+             * interrupted waiter must not contribute a completed-wait sample
+             * (the pre-flip instrumentation sampled after token acquisition
+             * for the same reason). A zero delay completes trivially, so the
+             * immediately-granted request still records its 0 ms sample. */
+            const recordWait = Effect.gen(function* () {
+              yield* annotateNotionRateLimitWaitSpan(waitMs)
+              yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({
+                labels: {},
+                value: waitMs,
+              })
             })
+            if (Duration.isZero(delay) === true) {
+              yield* recordWait
+              return yield* effect
+            }
+            yield* Effect.sleep(delay)
+            yield* recordWait
+            return yield* effect
           }),
       }
     }),

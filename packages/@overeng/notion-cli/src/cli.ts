@@ -2,13 +2,18 @@
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Cause, Effect, type Exit, Layer, Option, Schema } from 'effect'
-import { Command } from 'effect/unstable/cli'
+import { CliOutput, Command } from 'effect/unstable/cli'
 
 import { editorExitCode } from '@overeng/notion-md'
 import { ServiceIdentity } from '@overeng/otel-contract'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
-import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
+import {
+  CliVersion,
+  handlerConsoleLayer,
+  jsonStdoutGuardLayer,
+  resolveCliVersion,
+} from '@overeng/utils/node/cli-version'
 import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
 export { runNotionCliMain }
@@ -99,12 +104,18 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
       import('./commands/db/mod.ts'),
       import('./commands/schema/mod.ts'),
     ])
-  const command = makeNotionRootCommand({
-    schemaCommand,
-    dbCommand,
-    notionMdDispatchCommand,
-    notionEditAliasCommand,
-  })
+  const command = Command.provide(
+    makeNotionRootCommand({
+      schemaCommand,
+      dbCommand,
+      notionMdDispatchCommand,
+      notionEditAliasCommand,
+    }),
+    // JSON stdout guard (cli-C): restore the ambient console for the handler
+    // phase so payload writes reach stdout while parse-phase diagnostics stay
+    // off it for `--output json|ndjson` / `--json` invocations.
+    handlerConsoleLayer,
+  )
   const cli = Command.runWith(command, {
     version,
   })
@@ -128,10 +139,13 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
           },
         })
       }),
-      CliVersion.enrichErrors,
-      Effect.provideService(CliVersion, { name: 'notion', version }),
       Effect.provide(
         Layer.mergeAll(
+          Layer.provide(
+            CliVersion.formatterLayer,
+            Layer.succeed(CliVersion, { name: 'notion', version }),
+          ),
+          jsonStdoutGuardLayer(argv),
           NodeServices.layer,
           CurrentWorkingDirectory.live,
           withTelemetry({ identity, shape: 'cli', endpoint }),
@@ -153,7 +167,9 @@ const runNotionCliMain = async ({
   readonly argv?: ReadonlyArray<string>
 } = {}) => {
   if (isRootVersionArgv(argv) === true) {
-    process.stdout.write(`${version}\n`)
+    // Byte-identical to the upstream GlobalFlag.Version render (`notion v…`),
+    // kept as a fast path so `notion --version` skips importing the command trees.
+    process.stdout.write(`${CliOutput.defaultFormatter().formatVersion('notion', version)}\n`)
     return
   }
 

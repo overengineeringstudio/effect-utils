@@ -460,8 +460,7 @@ const watchErrorJson = (error: unknown): Record<string, unknown> => {
  * Deepest directory that contains every given absolute directory.
  *
  * Collapses the N parent-directory watchers of a batch watch into one
- * recursive watcher rooted at the common ancestor
- * (context/effect-4/watch-recursion-experiments.md §3.4): the resolved-path
+ * recursive watcher rooted at the common ancestor: the resolved-path
  * Set filter is depth-independent, so extra events from sibling subtrees are
  * rejected and the existing debounce/coalesce machinery absorbs the volume.
  */

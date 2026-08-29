@@ -11,7 +11,6 @@ import {
   defineCatalog,
   definePackageJson,
   effectUtilsWorkspacePatches,
-  utilsPatches,
 } from './external.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
 
@@ -110,13 +109,6 @@ export const workspaceMember = ({
     pnpmPackageClosure,
   }) as const
 
-/**
- * Patched dependencies for `@overeng/utils`.
- * Re-exported from `external.ts` (single source of truth) so downstream
- * projections via `createPnpmPatchedDependencies` and internal workspaces
- * cannot drift.
- */
-export { utilsPatches }
 
 /**
  * Common pnpm workspace data for effect-utils workspaces.

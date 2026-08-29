@@ -546,32 +546,10 @@ export const createEffectUtilsRefs = (basePath: string) =>
 // Patch Postinstall Helpers
 // =============================================================================
 
-/**
- * Patched dependencies owned by `@overeng/utils`.
- *
- * Single source of truth for all effect-utils patches. Used both internally
- * (as `utilsPatches` via re-export from `internal.ts`) and projected into
- * downstream consumers via `createPnpmPatchedDependencies` / `patchPostinstall`.
- *
- * See context/workarounds/bun-patched-dependencies.md for details on why
- * we use postinstall scripts instead of bun's patchedDependencies.
- */
-export const utilsPatches = definePatchedDependencies({
-  location: 'packages/@overeng/utils',
-  patches: {
-    /* The v3 `@effect/platform@0.96.2` http.client span header allowlist patch
-       was retired with the Effect 4 cohort flip: v4 moved HttpClient tracing
-       into core (`effect/unstable/http`). Re-express the allowlist against the
-       v4 core module before re-enabling (see context/effect-4/
-       platform-patch-analysis.md). */
-  },
-})
-
 /** Repo-local patches that should not be projected into downstream consumers. */
 export const effectUtilsWorkspacePatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
   patches: {
-    ...utilsPatches,
     /* @myobie/pty@0.10.0 (via @overeng/pty-effect) does a default import
        `import xtermSerialize from "@xterm/addon-serialize"`, but
        @xterm/addon-serialize@0.14.0 shipped a proper ESM build whose only
@@ -582,8 +560,12 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
   },
 })
 
-/** Repo-root-relative registry used by downstream projection helpers. */
-const patches: PatchesRegistry = { ...utilsPatches }
+/**
+ * Repo-root-relative registry used by downstream projection helpers
+ * (patchPostinstall / pnpmPatchedDependencies / createPnpmPatchedDependencies).
+ * Empty since the Effect 4 cohort flip: projected patches would be listed here.
+ */
+const patches: PatchesRegistry = {}
 
 /**
  * Parse a patch specifier into package name and version.

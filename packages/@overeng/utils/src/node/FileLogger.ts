@@ -2,7 +2,17 @@ import * as fs from 'node:fs'
 import path from 'node:path'
 import util from 'node:util'
 
-import { Cause, Effect, Inspectable, Logger, References, Redactable, type LogLevel } from 'effect'
+import { NodeFileSystem } from '@effect/platform-node'
+import {
+  Cause,
+  Effect,
+  Inspectable,
+  Layer,
+  Logger,
+  References,
+  Redactable,
+  type LogLevel,
+} from 'effect'
 import * as EffectArray from 'effect/Array'
 
 /**
@@ -45,21 +55,27 @@ export interface MakeFileLoggerOptions {
 export const makeFileLogger = ({ logFilePath, threadName, colors }: MakeFileLoggerOptions) =>
   Logger.layer([
     Effect.gen(function* () {
+      // `Logger.toFile` opens via the platform `FileSystem` service and does not
+      // create parent directories; keep the previous create-on-demand behavior.
       yield* Effect.sync(() => fs.mkdirSync(path.dirname(logFilePath), { recursive: true }))
 
-      const logFile = yield* Effect.acquireRelease(
-        Effect.sync(() => fs.openSync(logFilePath, 'a', 0o666)),
-        (fd) => Effect.sync(() => fs.closeSync(fd)),
-      )
-
-      return prettyLoggerTty({
+      const pretty = prettyLoggerTty({
         colors: colors ?? false,
         stderr: false,
         formatDate: (date) => `${defaultDateFormat(date)} ${threadName ?? ''}`,
-        onLog: (str) => fs.writeSync(logFile, str),
       })
+      // `Logger.toFile` joins batched entries with "\n" plus a trailing "\n",
+      // while `prettyLoggerTty` already terminates every entry with "\n". Trim
+      // the trailing newline per entry so the on-disk bytes stay identical to
+      // the previous write-per-entry sink.
+      const entry = Logger.make<unknown, string>((options) => {
+        const out = pretty.log(options)
+        return out.endsWith('\n') === true ? out.slice(0, -1) : out
+      })
+
+      return yield* Logger.toFile(entry, logFilePath, { flag: 'a', mode: 0o666 })
     }),
-  ])
+  ]).pipe(Layer.provide(NodeFileSystem.layer))
 
 const withColor = (text: string, ...colors: readonly string[]) => {
   let out = ''

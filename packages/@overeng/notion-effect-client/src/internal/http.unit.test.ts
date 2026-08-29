@@ -1,5 +1,7 @@
-import { Effect, Fiber, Option, Redacted, Result, Schema, Tracer } from 'effect'
+import { Effect, Fiber, Layer, Option, Redacted, Result, Schema, Tracer } from 'effect'
 import { adjust as testClockAdjust } from 'effect/testing/TestClock'
+import { HttpClient, make as makeHttpClient } from 'effect/unstable/http/HttpClient'
+import { EncodeError, HttpClientError, TransportError } from 'effect/unstable/http/HttpClientError'
 import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest'
 import { expect } from 'vitest'
 
@@ -11,8 +13,10 @@ import { createTestLayer, type MockResponse, sampleResponses } from '../test/tes
 import {
   buildRequest,
   get,
+  notionTracerHeaderFilter,
   NotionHttpTelemetry,
   notionHttpRouteInfo,
+  NotionTracerHeaderFilterLive,
   parseRateLimitHeaders,
   post,
   type NotionHttpTelemetryEvent,
@@ -681,5 +685,170 @@ Vitest.describe('NotionApiError.isRetryable', () => {
       })
       expect(error.isRetryable).toBe(false)
     }),
+  )
+})
+
+Vitest.describe('HttpClient.TracerHeaderFilter span-header allowlist', () => {
+  const TestSchema = Schema.Struct({
+    object: Schema.Literal('database'),
+    id: Schema.String,
+  })
+
+  /** A noisy response: allowlisted (x-request-id), non-allowlisted (x-noise),
+   * and default-redacted (set-cookie) headers. */
+  const noisyResponse = () => ({
+    status: 200,
+    body: sampleResponses.database,
+    headers: {
+      'x-request-id': 'req-filter-1',
+      'x-noise': 'noise',
+      'set-cookie': 'a=b',
+    },
+  })
+
+  Vitest.it.effect('by default every header name becomes a span attribute (values redacted)', () =>
+    Effect.gen(function* () {
+      const trace = makeRecordingTracer()
+      yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+        Effect.withTracer(trace.tracer),
+      )
+
+      // The built-in client span (default SpanNameGenerator) carries ALL header
+      // names as attributes, redacting only default-redacted values.
+      const span = trace.spans.find((candidate) => candidate.name === 'http.client GET')
+      expect(span).toBeDefined()
+      expect(span?.attributes['http.request.header.authorization']).toBe('<redacted>')
+      expect(span?.attributes['http.request.header.notion-version']).toBeDefined()
+      expect(span?.attributes['http.response.header.x-noise']).toBe('noise')
+      expect(span?.attributes['http.response.header.set-cookie']).toBe('<redacted>')
+      expect(span?.attributes['http.response.header.x-request-id']).toBe('req-filter-1')
+    }).pipe(Effect.provide(createTestLayer(noisyResponse))),
+  )
+
+  Vitest.it.effect('NotionTracerHeaderFilterLive keeps only allowlisted header attributes', () =>
+    Effect.gen(function* () {
+      const trace = makeRecordingTracer()
+      yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+        Effect.withTracer(trace.tracer),
+      )
+
+      const span = trace.spans.find((candidate) => candidate.name === 'http.client GET')
+      expect(span).toBeDefined()
+      const headerKeys = Object.keys(span?.attributes ?? {})
+        .filter(
+          (key) =>
+            key.startsWith('http.request.header.') || key.startsWith('http.response.header.'),
+        )
+        .sort()
+      // Exactly the v3-patch allowlist survives on both phases; redacted
+      // (authorization/set-cookie) and noisy names are ABSENT, and injected
+      // trace-propagation headers never appear (added after the header loop).
+      expect(headerKeys).toEqual([
+        'http.request.header.content-type',
+        'http.response.header.content-type',
+        'http.response.header.x-request-id',
+      ])
+      // Non-header client-span attributes are untouched by the filter.
+      expect(span?.attributes['http.request.method']).toBe('GET')
+      expect(span?.attributes['http.response.status_code']).toBe(200)
+    }).pipe(
+      Effect.provide(Layer.mergeAll(createTestLayer(noisyResponse), NotionTracerHeaderFilterLive)),
+    ),
+  )
+
+  Vitest.it.effect(
+    'notionTracerHeaderFilter admits the seven allowlisted names case-insensitively',
+    () =>
+      Effect.sync(() => {
+        const allowed = [
+          'content-type',
+          'content-length',
+          'date',
+          'x-request-id',
+          'x-notion-request-id',
+          'retry-after',
+          'x-ratelimit-remaining',
+        ]
+        for (const name of allowed) {
+          expect(notionTracerHeaderFilter(name.toUpperCase(), 'request')).toBe(true)
+          expect(notionTracerHeaderFilter(name, 'response')).toBe(true)
+        }
+        expect(notionTracerHeaderFilter('authorization', 'request')).toBe(false)
+        expect(notionTracerHeaderFilter('traceparent', 'request')).toBe(false)
+        expect(notionTracerHeaderFilter('x-noise', 'response')).toBe(false)
+      }),
+  )
+})
+
+Vitest.describe('mapHttpClientError reason discrimination', () => {
+  const TestSchema = Schema.Struct({
+    object: Schema.Literal('database'),
+    id: Schema.String,
+  })
+
+  const retryConfig = {
+    authToken: Redacted.make('test-token'),
+    retryEnabled: true,
+    maxRetries: 3,
+    retryBaseDelay: 1000,
+  } as const
+
+  Vitest.it.effect(
+    'maps transport failures to retryable status-0 service_unavailable with the verbatim reason message',
+    () =>
+      Effect.gen(function* () {
+        let calls = 0
+        const client = makeHttpClient((request) => {
+          calls += 1
+          return Effect.fail(new HttpClientError({ reason: new TransportError({ request }) }))
+        })
+
+        const fiber = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+          Effect.provideService(NotionConfig, retryConfig),
+          Effect.provideService(HttpClient, client),
+          Effect.result,
+          Effect.forkChild,
+        )
+        yield* testClockAdjust('10 seconds')
+        const result = yield* Fiber.join(fiber)
+
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result) === true) {
+          const error = result.failure
+          expect(error).toBeInstanceOf(NotionApiError)
+          expect(error.status).toBe(0)
+          expect(error.code).toBe('service_unavailable')
+          expect(error.isRetryable).toBe(true)
+          expect(error.message).toBe(`Transport error (GET ${NOTION_API_BASE_URL}/databases/123)`)
+        }
+        // Retryable: initial attempt + 3 retries.
+        expect(calls).toBe(4)
+      }),
+  )
+
+  Vitest.it.effect(
+    'maps encode failures to non-retryable invalid_request and stops after the first attempt',
+    () =>
+      Effect.gen(function* () {
+        let calls = 0
+        const client = makeHttpClient((request) => {
+          calls += 1
+          return Effect.fail(new HttpClientError({ reason: new EncodeError({ request }) }))
+        })
+
+        const result = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+          Effect.provideService(NotionConfig, retryConfig),
+          Effect.provideService(HttpClient, client),
+          Effect.flip,
+        )
+
+        expect(result).toBeInstanceOf(NotionApiError)
+        expect(result.status).toBe(0)
+        expect(result.code).toBe('invalid_request')
+        expect(result.isRetryable).toBe(false)
+        expect(result.message).toBe(`Encode error (GET ${NOTION_API_BASE_URL}/databases/123)`)
+        // Non-retryable: the retry schedule stops immediately.
+        expect(calls).toBe(1)
+      }),
   )
 })

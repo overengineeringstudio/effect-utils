@@ -7,7 +7,12 @@ import * as Cli from 'effect/unstable/cli'
 import { ServiceIdentity } from '@overeng/otel-contract'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
-import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
+import {
+  CliVersion,
+  handlerConsoleLayer,
+  jsonStdoutGuardLayer,
+  resolveCliVersion,
+} from '@overeng/utils/node/cli-version'
 import { makeOtelCliLayer, otelEndpointFromConfig } from '@overeng/utils/node/otel'
 
 import { mrCommand } from '../src/cli/mod.ts'
@@ -68,13 +73,23 @@ const program = Effect.gen(function* () {
     metricsExportInterval: 1000,
   })
 
-  yield* Cli.Command.runWith(mrCommand, { version })(
-    rewriteHelpSubcommand(process.argv.slice(2)),
+  const args = rewriteHelpSubcommand(process.argv.slice(2))
+
+  yield* Cli.Command.runWith(Cli.Command.provide(mrCommand, handlerConsoleLayer), { version })(
+    args,
   ).pipe(
     Effect.scoped,
-    CliVersion.enrichErrors,
-    Effect.provideService(CliVersion, { name: 'mr', version }),
-    Effect.provide(Layer.mergeAll(NodeServices.layer, otelLayer)),
+    Effect.provide(
+      Layer.mergeAll(
+        Layer.provide(
+          CliVersion.formatterLayer,
+          Layer.succeed(CliVersion, { name: 'mr', version }),
+        ),
+        jsonStdoutGuardLayer(args),
+        NodeServices.layer,
+        otelLayer,
+      ),
+    ),
   )
 })
 
