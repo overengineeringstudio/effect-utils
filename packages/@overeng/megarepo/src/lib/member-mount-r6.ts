@@ -580,7 +580,9 @@ const scanTreePromise = async ({
         entries.push({ path: manifestChild, kind: 'symlink', mode: null, payload: target })
       } else if (info.isDirectory() === true) {
         validateMode({ policy, kind: 'directory', mode: info.mode, path: childPath })
-        entries.push({ path: manifestChild, kind: 'directory', mode: 0o555, payload: null })
+        if (manifestChild !== '.buck2' || excludedSubtrees.has('.buck2/capabilities') === false) {
+          entries.push({ path: manifestChild, kind: 'directory', mode: 0o555, payload: null })
+        }
         await visit({ actualRelative: actualChild, manifestRelative: manifestChild })
       } else if (info.isFile() === true) {
         const mode = validateMode({ policy, kind: 'file', mode: info.mode, path: childPath })
