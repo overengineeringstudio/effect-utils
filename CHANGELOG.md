@@ -50,7 +50,14 @@ All notable changes to this project will be documented in this file.
   Buck output, and deleting tui-react from the root TypeScript check/emit
   producers while preserving source runtime exports and the transitional editor
   root install.
-- **@overeng/megarepo**: cut Buck workspaces over to decision-0020 composition: one acquired writable owned member, canonical clean detached locked sources, immutable verified `cp -a` mounts, secret-free Nix execution and trusted mr-owned TypeScript capability projection, lockfile-preserving exact Nix capabilities, inode-checked owned projection publication, atomic overlays, root-authority-last publication, composition-aware pin/status/orphan/liveness handling, reference-only ignored legacy members, and no bare-member `.buckconfig`.
+
+- **@overeng/megarepo**: cut Buck workspaces over to decision-0020 composition: one acquired writable owned member, canonical clean detached locked sources, immutable verified `cp -a` mounts, secret-free Nix execution and trusted mr-owned TypeScript capability projection, lockfile-preserving exact Nix capabilities, inode-checked owned projection publication, atomic overlays, fresh-root bootstrap plus root-authority-last updates, composition-aware pin/status/orphan/liveness handling, reference-only ignored legacy members, and no bare-member `.buckconfig`.
+
+- **@overeng/megarepo**: make the first real read-only-member composition
+  satisfy its R6 and Buck bootstrap contracts: publish fresh root authority
+  before its first dist overlay, normalize resolved capability projections to
+  immutable source modes with cleanup-safe release, and keep the synthetic
+  `.buck2/capabilities` container outside repository identity.
 - **CI**: run every devenv, Buck, TypeScript, lint, test, cargo, and Genie lane from a disposable decision-0020 synthesized workspace while retaining the immutable actions checkout for cleanup and checkout-only artifacts; keep pnpm and Nix cache state at stable runner-temporary paths projected into the owned member.
 - **CI admission**: move repeated devenv resolution/repair logic into a prepared
   runtime script and enforce GitHub's 500 kB workflow limit. The generated CI

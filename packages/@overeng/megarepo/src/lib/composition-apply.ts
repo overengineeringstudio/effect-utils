@@ -1316,46 +1316,52 @@ const applyComposition = async ({
     }
 
     const resolutions = new Map(handles.map(({ member, handle }) => [member.key, handle]))
+    const rootPublicationOptions = {
+      workspaceRoot: EffectPath.unsafe.absoluteDir(`${request.workspaceRoot}/`),
+      configMemberKeys: members.map((member) => member.key),
+      ownedMemberKey: request.ownedMemberKey,
+      compositionConfig: request.compositionConfig,
+      resolvedBuckExecutable: runtime.buck2Path,
+      cacheSections: request.cacheSections,
+      lock: runtime.publisherLock,
+      runtime: {
+        ...runtime.publisherRuntime,
+        assertCapabilityProjection: async (input) => {
+          const resolution = resolutions.get(input.memberKey)
+          const loaded = members.find((member) => member.key === input.memberKey)
+          const expectedRoot = NodePath.join(request.workspaceRoot, 'repos', input.memberKey)
+          if (
+            resolution === undefined ||
+            loaded === undefined ||
+            input.memberRoot !== expectedRoot ||
+            input.owned !== loaded.owned ||
+            encodeBuckMemberManifestJson(input.manifest) !==
+              encodeBuckMemberManifestJson(loaded.manifest)
+          ) {
+            throw failure({
+              reason: 'CapabilityFailure',
+              phase: 'Capability',
+              memberKey: input.memberKey,
+              path: input.memberRoot,
+              message: `Publisher requested a mismatched capability projection for '${input.memberKey}'`,
+              recoveryPaths: [],
+            })
+          }
+          await runtime.publisherRuntime.assertCapabilityProjection(input)
+        },
+      },
+    } satisfies PublishCompositionRootOptions
+
     let root: CompositionRootPublicationResult
     try {
-      // Build and publish every declared dist overlay before exposing root Buck authority.
-      // `.buckconfig` remains the final workspace-visible cutover file.
-      await publishOverlays()
-      root = await primitives.publishRoot({
-        workspaceRoot: EffectPath.unsafe.absoluteDir(`${request.workspaceRoot}/`),
-        configMemberKeys: members.map((member) => member.key),
-        ownedMemberKey: request.ownedMemberKey,
-        compositionConfig: request.compositionConfig,
-        resolvedBuckExecutable: runtime.buck2Path,
-        cacheSections: request.cacheSections,
-        lock: runtime.publisherLock,
-        runtime: {
-          ...runtime.publisherRuntime,
-          assertCapabilityProjection: async (input) => {
-            const resolution = resolutions.get(input.memberKey)
-            const loaded = members.find((member) => member.key === input.memberKey)
-            const expectedRoot = NodePath.join(request.workspaceRoot, 'repos', input.memberKey)
-            if (
-              resolution === undefined ||
-              loaded === undefined ||
-              input.memberRoot !== expectedRoot ||
-              input.owned !== loaded.owned ||
-              encodeBuckMemberManifestJson(input.manifest) !==
-                encodeBuckMemberManifestJson(loaded.manifest)
-            ) {
-              throw failure({
-                reason: 'CapabilityFailure',
-                phase: 'Capability',
-                memberKey: input.memberKey,
-                path: input.memberRoot,
-                message: `Publisher requested a mismatched capability projection for '${input.memberKey}'`,
-                recoveryPaths: [],
-              })
-            }
-            await runtime.publisherRuntime.assertCapabilityProjection(input)
-          },
-        },
-      })
+      const rootPlan = await primitives.planRoot(rootInput)
+      if (rootPlan._tag === 'Create') {
+        root = await primitives.publishRoot(rootPublicationOptions)
+        await publishOverlays()
+      } else {
+        await publishOverlays()
+        root = await primitives.publishRoot(rootPublicationOptions)
+      }
     } catch (cause) {
       if (cause instanceof CompositionApplyError && cause.reason === 'CleanupFailure') throw cause
       if (overlayFailure !== undefined) throw overlayFailure

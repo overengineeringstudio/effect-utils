@@ -817,6 +817,9 @@ const assertStagePostcondition = ({
         reason: 'StageInvalid',
         path: stagePath,
         message: `Cp-a candidate R6 postcondition does not match source and capability identities`,
+        cause: new Error(
+          `repository ${sourceScan.repository.digest}:${sourceScan.repository.count} != ${stageScan.repository.digest}:${stageScan.repository.count}; capabilities ${capabilitiesScan.repository.digest}:${capabilitiesScan.repository.count} != ${stageScan.capabilities.digest}:${stageScan.capabilities.count}`,
+        ),
       })
     }
     yield* assertIndependentFileInodes({

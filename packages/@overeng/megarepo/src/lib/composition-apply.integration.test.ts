@@ -275,7 +275,12 @@ const fixture = async (options: FixtureOptions = {}) => {
         'CleanupScratch',
       ],
     }),
-    planRoot: async () => ({ _tag: 'NoChange', files: [], configLast: true }),
+    planRoot: async () =>
+      options.rootMode === 'first'
+        ? { _tag: 'Create', files: [], configLast: true }
+        : options.rootMode === 'update'
+          ? { _tag: 'Update', files: [], configLast: true }
+          : { _tag: 'NoChange', files: [], configLast: true },
     publishRoot: async (input) => {
       calls.push(`root:start:${input.configMemberKeys.join(',')}`)
       for (const [path, manifest] of manifests) {
@@ -418,7 +423,7 @@ describe('composition apply integration', () => {
   })
 
   it.each(['first', 'update', 'nochange'] as const)(
-    'publishes overlays before the final %s root authority cutover',
+    'bootstraps first root authority before overlays and preserves final cutover for %s',
     async (rootMode) => {
       const value = await fixture({ rootMode })
       try {
@@ -432,9 +437,15 @@ describe('composition apply integration', () => {
         const rootIndex = value.calls.indexOf(
           rootMode === 'nochange' ? 'root:nochange' : 'root:authority',
         )
-        expect(rootIndex).toBeGreaterThan(overlayIndex)
+        if (rootMode === 'first') {
+          expect(rootIndex).toBeLessThan(overlayIndex)
+        } else {
+          expect(rootIndex).toBeGreaterThan(overlayIndex)
+        }
         expect(value.calls.indexOf('cap:owned:release')).toBeGreaterThan(overlayIndex)
-        expect(rootIndex).toBeGreaterThan(value.calls.indexOf('cap:owned:release'))
+        if (rootMode !== 'first') {
+          expect(rootIndex).toBeGreaterThan(value.calls.indexOf('cap:owned:release'))
+        }
         expect(releaseIndex).toBeGreaterThan(rootIndex)
       } finally {
         await value.cleanup()

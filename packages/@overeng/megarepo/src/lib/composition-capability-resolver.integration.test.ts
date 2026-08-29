@@ -164,7 +164,9 @@ describe('composition capability resolver', () => {
       try {
         const result = await resolve(fixture)
         if (result._tag !== 'Resolved') throw new Error('unreachable')
-        await writeFile(NodePath.join(result.projectionPath, name), 'tampered\n')
+        const path = NodePath.join(result.projectionPath, name)
+        await chmod(path, 0o644)
+        await writeFile(path, 'tampered\n')
         await expect(
           checkCompositionCapabilityProjection({ memberRoot: result.candidateRoot }),
         ).rejects.toBeInstanceOf(CompositionCapabilityResolutionError)

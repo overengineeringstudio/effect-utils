@@ -477,6 +477,27 @@ const assertDirectoryIdentity = async (identity: DirectoryIdentity): Promise<voi
   }
 }
 
+const makeDirectoriesOwnerWritable = async (path: string): Promise<void> => {
+  const info = await lstat(path)
+  if (info.isDirectory() === false || info.isSymbolicLink() === true) return
+  await chmod(path, 0o700)
+  await Promise.all(
+    (await readdir(path)).map((child) => makeDirectoriesOwnerWritable(NodePath.join(path, child))),
+  )
+}
+
+const normalizeR6SourceModes = async (path: string): Promise<void> => {
+  const info = await lstat(path)
+  if (info.isDirectory() === true) {
+    await Promise.all(
+      (await readdir(path)).map((child) => normalizeR6SourceModes(NodePath.join(path, child))),
+    )
+    await chmod(path, 0o755)
+  } else if (info.isFile() === true) {
+    await chmod(path, (info.mode & 0o111) === 0 ? 0o444 : 0o555)
+  }
+}
+
 const makeScratchRelease = ({
   scratch,
   identity,
@@ -488,6 +509,7 @@ const makeScratchRelease = ({
   return async () => {
     if (released === true) return
     await assertDirectoryIdentity(identity)
+    await makeDirectoriesOwnerWritable(identity.path)
     await scratch.cleanup()
     released = true
   }
@@ -997,6 +1019,7 @@ const resolveCompositionCapabilitiesInternal = async (
       candidate: candidateIdentity,
     })
     const digest = await projectionDigest({ projection, candidate: candidateIdentity })
+    await normalizeR6SourceModes(projectionPath)
     await assertRegularFileIdentity(roots.lock)
     return {
       _tag: 'Resolved',
