@@ -69,17 +69,24 @@ export const NotionThrottleLive = (options: NotionThrottleOptions): Layer.Layer<
              * wait-span/metrics signals describe — no double-Clock
              * measurement needed. */
             const waitMs = Duration.toMillis(delay)
-            if (Duration.isZero(delay) === true) return yield* effect
             /* Record only after the pacing delay has actually elapsed: an
              * interrupted waiter must not contribute a completed-wait sample
              * (the pre-flip instrumentation sampled after token acquisition
-             * for the same reason). */
-            yield* Effect.sleep(delay)
-            yield* annotateNotionRateLimitWaitSpan(waitMs)
-            yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({
-              labels: {},
-              value: waitMs,
+             * for the same reason). A zero delay completes trivially, so the
+             * immediately-granted request still records its 0 ms sample. */
+            const recordWait = Effect.gen(function* () {
+              yield* annotateNotionRateLimitWaitSpan(waitMs)
+              yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({
+                labels: {},
+                value: waitMs,
+              })
             })
+            if (Duration.isZero(delay) === true) {
+              yield* recordWait
+              return yield* effect
+            }
+            yield* Effect.sleep(delay)
+            yield* recordWait
             return yield* effect
           }),
       }
