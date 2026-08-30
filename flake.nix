@@ -68,6 +68,9 @@
         };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
+        buck2-rust-vendor = pkgs.rustPlatform.importCargoLock {
+          lockFile = rootPath + "/rust/Cargo.lock";
+        };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -189,7 +192,12 @@
           cliPackages
           // providerCliPackages
           // {
-            inherit buck2 otelite otel-scrape;
+            inherit
+              buck2
+              buck2-rust-vendor
+              otelite
+              otel-scrape
+              ;
             buck2-archive-tool = buck2-stage0-tools.archive-tool;
             buck2-product = buck2-stage0-tools.product;
             cli-build-stamp = cliBuildStamp.package;

@@ -40,6 +40,10 @@ All notable changes to this project will be documented in this file.
   ` (name version)` stamps. A JSON-stdout guard (incl. the schema command's
   `--output-mode`) keeps validation help off stdout for JSON/NDJSON modes;
   `resolveCliBuildIdentity` is unchanged.
+- **Buck2 Rust graph**: generate one strict Reindeer dependency graph from the
+  authoritative five-member Cargo workspace and expose a lock-derived Nix
+  vendor projection so Buck actions consume local crate sources without
+  network access.
 - **VRS (buck2)**: ratify BUCK-R15 (net complexity accounting) and BUCK-R16
   (benchmark evidence): every phase reconciles a build-machinery deletion
   ledger with amortization rationale, and every admission records warm/cold
