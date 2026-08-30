@@ -67,3 +67,20 @@ re-verified by building their crates before the graph is admitted.
 - The Reindeer pin (2026.05.04.00 via nixpkgs) demonstrably supports
   `vendor = false`; an upstream 2026-07 change may affect that mode and gates
   future Reindeer bumps on re-verification.
+
+## Amendment 1
+
+The eight-fixup re-verification required by the Decision is complete
+([subsumption probe](../01-semantic-graph/.experiments/2026-08-30-nonvendored-fixup-subsumption.md)):
+the generated BUCK is byte-identical with the keys deleted and the full
+third-party tree builds green non-vendored. The keys are deleted at the flip,
+and the flip adds a lint rejecting `omit_srcs` and `extra_srcs` in a
+non-vendored tree, since `unresolved_fixup_error` does not fire on
+matched-but-discarded globs. Two further refinements from the cross-check:
+the vendored shape's per-commit store-path churn and its symlink
+over-invalidation share one root cause (`self.outPath` over-capture in the
+vendor derivation), so the composition blocker — evaluation-time failure of
+the whole third-party package on a locked member, with the `licenses`-pattern
+escape closed — is the load-bearing evidence for this decision, not the churn;
+and the 126 `licenses` attributes are dropped by non-vendored Reindeer
+(upstream limitation), accepted as a cost.
