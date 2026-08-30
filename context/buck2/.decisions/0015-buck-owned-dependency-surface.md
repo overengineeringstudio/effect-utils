@@ -115,3 +115,16 @@ apply literally to the admitted tuple instead of exempting materialization.
 Workspace live-source links remain an editor-realization concern outside the
 cacheable contained tree. This amendment does not weaken DEPS-R02 link
 containment or accelerate the Phase-4 editor-surface cutover.
+
+## Amendment 3
+
+Superseded in mechanism by
+[decision 0022](./0022-lockfile-derived-declared-closure.md) on 2026-08-30. The
+authority claim stands — Buck owns dependency materialization end to end and
+manifests plus the lockfile are the only hand-authored inputs — but the
+pnpm-in-action mechanism (deploy prune, frozen install against an ambient
+store, deploy normalizer, install descriptor) is retired in favor of a
+lockfile-derived declared closure. Amendment 1's cutover gate items (1) and (2)
+are moot under the new mechanism; item (3), the real-editor soak, stands. The
+Consequences line requiring an explicit same-filesystem `--store-dir` no longer
+applies: there is no ambient store.

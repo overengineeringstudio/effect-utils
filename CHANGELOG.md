@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **VRS (buck2)**: ratify decision 0022 — dependency materialization becomes a
+  lockfile-derived declared closure (per-package fetch/extract targets,
+  per-importer assembly, no ambient store, no install step); decision 0015
+  superseded in mechanism; DEPS-A02/T01/R02/R04/R07/R08 re-tensed; roadmap
+  gains Phase 2b; three 2026-08-30 experiment records and open questions added.
+
 - **Buck2 Rust graph**: generate one strict Reindeer dependency graph from the
   authoritative five-member Cargo workspace and expose a lock-derived Nix
   vendor projection so Buck actions consume local crate sources without
