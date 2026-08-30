@@ -45,6 +45,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -435,6 +436,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -679,6 +681,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -911,6 +914,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -1140,6 +1144,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -1372,6 +1377,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -1604,6 +1610,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -1732,6 +1739,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -2012,6 +2020,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -2243,6 +2252,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -2472,6 +2482,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -2701,6 +2712,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -2930,6 +2942,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -3166,6 +3179,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -3396,6 +3410,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
       ARTIFACT_DIR: '${{ github.workspace }}/tmp/devenv-perf-ci'
       OTEL_SERVICE_NAME: devenv-perf-ci
@@ -7695,6 +7710,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -7933,6 +7949,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -8162,6 +8179,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
@@ -8442,6 +8460,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6

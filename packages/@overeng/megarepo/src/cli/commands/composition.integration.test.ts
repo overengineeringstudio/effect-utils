@@ -14,6 +14,7 @@ import type { MegarepoStore } from '../../lib/store.ts'
 import { addCommit, initGitRepo } from '../../test-utils/setup.ts'
 import {
   CompositionCutoverError,
+  compositionCacheSections,
   readCompositionLockFile,
   resolveLockedCompositionMembers,
 } from './composition.ts'
@@ -83,6 +84,25 @@ const makeFixture = Effect.gen(function* () {
     },
   })
   return { sourcePath, store, lockFile } satisfies Fixture
+})
+
+describe('compositionCacheSections', () => {
+  it('disables remote cache execution before the first overlay when requested', () => {
+    expect(compositionCacheSections({ BUCK2_NO_REMOTE_CACHE: '1' })).toEqual([
+      {
+        section: 'buck2',
+        entries: [
+          { key: 'remote_cache_enabled', value: 'false' },
+          { key: 'allow_cache_uploads', value: 'false' },
+        ],
+      },
+    ])
+  })
+
+  it('preserves the hard-fail shared-cache default', () => {
+    expect(compositionCacheSections({})).toEqual([])
+    expect(compositionCacheSections({ BUCK2_NO_REMOTE_CACHE: '0' })).toEqual([])
+  })
 })
 
 const admit = (fixture: Fixture) =>

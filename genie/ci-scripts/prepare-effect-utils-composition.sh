@@ -75,6 +75,7 @@ workspace_parent="$(dirname "$workspace_root")"
     NIX_CONFIG='accept-flake-config = true' \
     MEGAREPO_STORE="$store_root" \
     CI=true \
+    BUCK2_NO_REMOTE_CACHE="${BUCK2_NO_REMOTE_CACHE:-}" \
     "$mr_bin" --cwd "$workspace_root" apply --worktree-mode tracking --lock-sync off --output ci
 )
 

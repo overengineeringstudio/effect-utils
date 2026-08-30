@@ -377,6 +377,22 @@ export const resolveLockedCompositionMembers = ({
     return values
   }).pipe(Effect.mapError(preserveCutoverError))
 
+/** Derive root cache policy before the first composition overlay can execute. */
+export const compositionCacheSections = (
+  env: Readonly<Record<string, string | undefined>>,
+): CompositionApplyRequest['cacheSections'] =>
+  env['BUCK2_NO_REMOTE_CACHE'] === '1'
+    ? [
+        {
+          section: 'buck2',
+          entries: [
+            { key: 'remote_cache_enabled', value: 'false' },
+            { key: 'allow_cache_uploads', value: 'false' },
+          ],
+        },
+      ]
+    : []
+
 const compositionRequest = ({
   identity,
   compositionConfig,
@@ -394,7 +410,7 @@ const compositionRequest = ({
   ownedMemberKey: identity.ownedMemberKey,
   ownedMemberPath: identity.ownedMemberPath.replace(/\/+$/u, ''),
   compositionConfig,
-  cacheSections: [],
+  cacheSections: compositionCacheSections(env),
   lockedMembers: locked,
   dryRun,
   allowVerifiedDarwinAdvance:
