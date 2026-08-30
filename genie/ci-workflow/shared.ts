@@ -45,6 +45,7 @@ export const bashShellDefaults = {
 export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
+  BUCK2_NO_REMOTE_CACHE: '1',
   GITHUB_TOKEN: '${{ github.token }}',
 } as const
 

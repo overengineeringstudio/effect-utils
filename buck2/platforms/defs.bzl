@@ -37,6 +37,12 @@ product_platform = rule(
     },
 )
 
+def _remote_cache_enabled():
+    return read_root_config("buck2", "remote_cache_enabled", "true") == "true"
+
+def _allow_cache_uploads():
+    return read_root_config("buck2", "allow_cache_uploads", "true") == "true"
+
 def _native_execution_platform_impl(ctx):
     constraints = {}
     for dep in ctx.attrs.constraint_values:
@@ -49,8 +55,8 @@ def _native_execution_platform_impl(ctx):
         executor_config = CommandExecutorConfig(
             local_enabled = True,
             remote_enabled = False,
-            remote_cache_enabled = True,
-            allow_cache_uploads = True,
+            remote_cache_enabled = _remote_cache_enabled(),
+            allow_cache_uploads = _allow_cache_uploads(),
             use_windows_path_separators = False,
         ),
     )

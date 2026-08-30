@@ -58,6 +58,11 @@ All notable changes to this project will be documented in this file.
   before its first dist overlay, normalize resolved capability projections to
   immutable source modes with cleanup-safe release, and keep the synthetic
   `.buck2/capabilities` container outside repository identity.
+
+- **Buck2 cache policy**: materialize `BUCK2_NO_REMOTE_CACHE=1` into the
+  synthesized root before its first overlay action, make execution platforms
+  consume that root policy, and preserve the toggle through the CI composition
+  environment boundary.
 - **CI**: run every devenv, Buck, TypeScript, lint, test, cargo, and Genie lane from a disposable decision-0020 synthesized workspace while retaining the immutable actions checkout for cleanup and checkout-only artifacts; keep pnpm and Nix cache state at stable runner-temporary paths projected into the owned member.
 - **CI admission**: move repeated devenv resolution/repair logic into a prepared
   runtime script and enforce GitHub's 500 kB workflow limit. The generated CI
