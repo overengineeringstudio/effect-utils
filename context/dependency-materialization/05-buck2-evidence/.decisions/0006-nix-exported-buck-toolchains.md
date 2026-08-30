@@ -59,3 +59,15 @@ execution disabled.
   suitable remote platform is proven.
 - Toolchain, normalization ABI, and execution-image changes are distinct
   observable invalidation dimensions.
+
+## Amendment 1
+
+Narrowed by buck2 decisions
+[0014](../../../buck2/.decisions/0014-composed-workspace-cells.md) and
+[0023](../../../buck2/.decisions/0023-buck-fetched-rust-crates.md)
+(2026-08-30): admitted toolchains reference `/nix/store` executables directly
+with remote-cache reads and uploads enabled, because store paths are
+content-addressed and fleet-identical, and cross-machine digest equality was
+proven at the decision-0014 gate. The evidence-only restriction in this
+decision applied to the pre-cell bootstrap shape and no longer constrains
+admitted targets.
