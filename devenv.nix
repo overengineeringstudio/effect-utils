@@ -100,6 +100,12 @@ let
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
   buck2ExecutionPlatform = buck2Machine.executionPlatform;
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
+  buck2RustToolchainCapability =
+    import ./nix/workspace-tools/lib/buck2-rust-toolchain-capability.nix
+      {
+        pkgs = flakePkgs;
+        nixpkgsRevision = repoFlake.inputs.nixpkgs.rev;
+      };
   buck2CapabilityProjectionTools = [
     pkgs.bash
     pkgs.coreutils
@@ -145,12 +151,27 @@ let
     set -euo pipefail
     export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
     ${buck2CapabilityGateBinExports}
+    ${buck2RustToolchainCapability.preflight}
     exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh \
       "''${DEVENV_ROOT:-$PWD}" ${lib.escapeShellArg buck2ExecutionPlatform} \
       archive-tool effect-utils/buck2-archive-tool/v1 ${
         buck2Stage0Definition."archive-tool"
       }/bin/buck2-archive-tool \
-      product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product
+      product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product \
+      rust-compiler effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-compiler} \
+      rust-rustdoc effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-rustdoc} \
+      rust-clippy-driver effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-clippy-driver} \
+      rust-c-compiler effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-c-compiler} \
+      rust-cxx-compiler effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-cxx-compiler} \
+      rust-linker effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-linker} \
+      rust-archiver effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-archiver} \
+      rust-dwp effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-dwp} \
+      rust-nm effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-nm} \
+      rust-objcopy effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-objcopy} \
+      rust-objdump effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-objdump} \
+      rust-ranlib effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-ranlib} \
+      rust-strip effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-strip} \
+      rust-shell effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-shell}
   '';
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -674,6 +695,7 @@ in
     pkgs.cargo
     pkgs.rustc
     pkgs.clippy
+    pkgs.reindeer
     pkgs.rustfmt
     pkgs.rust-analyzer
   ];
@@ -878,6 +900,61 @@ in
     '';
   };
 
+  tasks."buck2:rust-deps:materialize" = {
+    description = "Project the Cargo.lock-derived Rust vendor tree for Reindeer and Buck";
+    exec = trace.exec "buck2:rust-deps:materialize" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      vendor="$root/rust/third-party/vendor"
+      expected=${repoFlake.packages.${currentSystem}.buck2-rust-vendor}
+      if [ -e "$vendor" ] && [ ! -L "$vendor" ]; then
+        echo "refusing to replace non-symlink Rust vendor path: $vendor" >&2
+        exit 1
+      fi
+      current=""
+      if [ -L "$vendor" ]; then
+        current="$(${pkgs.coreutils}/bin/readlink -f "$vendor")"
+      fi
+      if [ "$current" != "$expected" ]; then
+        candidate="$vendor.next.$$"
+        trap '${pkgs.coreutils}/bin/rm -f "$candidate"' EXIT
+        ${pkgs.coreutils}/bin/ln -s "$expected" "$candidate"
+        ${pkgs.coreutils}/bin/mv -Tf "$candidate" "$vendor"
+      fi
+      test "$(${pkgs.coreutils}/bin/readlink -f "$vendor")" = "$expected"
+    '';
+  };
+
+  tasks."buck2:rust-deps:generate" = {
+    description = "Regenerate the strict Reindeer graph from the Cargo workspace";
+    after = [ "buck2:rust-deps:materialize" ];
+    exec = trace.exec "buck2:rust-deps:generate" ''
+      set -euo pipefail
+      exec ${pkgs.reindeer}/bin/reindeer \
+        --cargo-path ${pkgs.cargo}/bin/cargo \
+        --rustc-path ${pkgs.rustc}/bin/rustc \
+        --config rust/reindeer.toml buckify
+    '';
+  };
+
+  tasks."buck2:rust-deps:check" = {
+    description = "Verify the strict Reindeer graph matches Cargo inputs";
+    after = [ "buck2:rust-deps:materialize" ];
+    exec = trace.exec "buck2:rust-deps:check" ''
+      set -euo pipefail
+      candidate="$(${pkgs.coreutils}/bin/mktemp)"
+      trap '${pkgs.coreutils}/bin/rm -f "$candidate"' EXIT
+      ${pkgs.reindeer}/bin/reindeer \
+        --cargo-path ${pkgs.cargo}/bin/cargo \
+        --rustc-path ${pkgs.rustc}/bin/rustc \
+        --config rust/reindeer.toml buckify --stdout >"$candidate"
+      ${pkgs.diffutils}/bin/cmp rust/third-party/BUCK "$candidate" || {
+        echo "buck2:rust-deps:check: generated Reindeer graph is stale" >&2
+        exit 1
+      }
+    '';
+  };
+
   tasks."dependency-materialization:evidence:check" = {
     description = "Validate committed dependency-materialization benchmark and host-capability evidence";
     exec = trace.exec "dependency-materialization:evidence:check" ''
@@ -1034,6 +1111,7 @@ in
       "buck2:capabilities:test"
       "buck2:nix-bridge:check"
       "buck2:task-guards:check"
+      "buck2:rust-deps:check"
     ];
     exec = trace.exec "buck2:check" ''
       set -euo pipefail

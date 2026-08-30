@@ -17,11 +17,11 @@ execution-platform = true
 
 [platform.linux-arm64]
 target = "aarch64-unknown-linux-gnu"
-execution-platform = false
+execution-platform = true
 
 [platform.macos-arm64]
 target = "aarch64-apple-darwin"
-execution-platform = false
+execution-platform = true
 
 [cargo]
 

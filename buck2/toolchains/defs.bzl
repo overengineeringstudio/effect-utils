@@ -2,6 +2,7 @@
 
 load(
     "@effect_utils//buck2/platforms:defs.bzl",
+    "admitted_rust_target_triple",
     "ProductPlatformInfo",
     "host_execution_constraints",
     "native_execution_constraints",
@@ -18,6 +19,7 @@ ConfiguredRustToolchainInfo = provider(fields = {
     "target_platform_architecture": str,
     "target_platform_os": str,
     "target_platform_runtime_contract": str,
+    "target_platform_label": str,
     "target_triple": provider_field(str),
 })
 
@@ -25,21 +27,16 @@ def host_rust_target_triple():
     """Returns the Rust target triple for the admitted native host."""
     host = host_info()
     if host.os.is_linux and host.arch.is_x86_64:
-        return "x86_64-unknown-linux-gnu"
+        return admitted_rust_target_triple("linux", "x86_64", "glibc", "elf-dynamic/v1")
     if host.os.is_linux and host.arch.is_aarch64:
-        return "aarch64-unknown-linux-gnu"
+        return admitted_rust_target_triple("linux", "aarch64", "glibc", "elf-dynamic/v1")
     if host.os.is_macos and host.arch.is_aarch64:
-        return "aarch64-apple-darwin"
+        return admitted_rust_target_triple("darwin", "aarch64", "darwin", "mach-o-dynamic/v1")
     fail("configured Rust toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
 
 def _configured_rust_toolchain_impl(ctx):
     platform = ctx.attrs.target_platform[ProductPlatformInfo]
-    expected_triple = {
-        "linux:x86_64:glibc": "x86_64-unknown-linux-gnu",
-        "linux:aarch64:glibc": "aarch64-unknown-linux-gnu",
-        "darwin:aarch64:darwin": "aarch64-apple-darwin",
-    }.get("{}:{}:{}".format(platform.os, platform.architecture, platform.abi))
-    if expected_triple == None or ctx.attrs.target_triple != expected_triple:
+    if ctx.attrs.target_triple != platform.rust_target_triple:
         fail("configured Rust target triple does not match the product platform")
     if not ctx.attrs.identity:
         fail("configured Rust toolchain identity must not be empty")
@@ -54,6 +51,7 @@ def _configured_rust_toolchain_impl(ctx):
             target_platform_abi = platform.abi,
             target_platform_architecture = platform.architecture,
             target_platform_os = platform.os,
+            target_platform_label = str(ctx.attrs.target_platform.label.raw_target()),
             target_platform_runtime_contract = platform.runtime_contract,
             target_triple = ctx.attrs.target_triple,
         ),

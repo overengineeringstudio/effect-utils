@@ -48,11 +48,11 @@ irrelevant: no package manager runs at build time.
 
 ## Options
 
-| Option                                | Tradeoff                                                                                              | Outcome  |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------- |
-| Lockfile-derived declared closure     | ~550–700 lines at parity vs ~1,900 deleted; no ambient store; structural bounded fan-out; sidecar    | Accepted |
-| Ambient store, repaired               | ~150–250 lines; ratifies ~8,600 lines and nine state locations; mutable store stays                   | Rejected |
-| Workspace-rooted single artifact      | ~400 lines; violates DEPS-R07; 36-consumer cascade per lockfile commit; no hardlinks on cache hit     | Rejected |
+| Option                            | Tradeoff                                                                                          | Outcome  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- | -------- |
+| Lockfile-derived declared closure | ~550–700 lines at parity vs ~1,900 deleted; no ambient store; structural bounded fan-out; sidecar | Accepted |
+| Ambient store, repaired           | ~150–250 lines; ratifies ~8,600 lines and nine state locations; mutable store stays               | Rejected |
+| Workspace-rooted single artifact  | ~400 lines; violates DEPS-R07; 36-consumer cascade per lockfile commit; no hardlinks on cache hit | Rejected |
 
 ## Decision
 

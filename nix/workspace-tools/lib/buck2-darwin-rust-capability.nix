@@ -23,7 +23,7 @@ let
     "sdk-${builtins.baseNameOf (toString sdk)}"
     "deployment-${deploymentTarget}"
   ];
-  compiler = pkgs.writeShellScript "buck2-rustc-darwin" ''
+  compiler = pkgs.writeShellScriptBin "rustc" ''
     set -euo pipefail
     export DEVELOPER_DIR=/forbidden-no-xcode
     export SDKROOT=${lib.escapeShellArg sdk.sdkroot}

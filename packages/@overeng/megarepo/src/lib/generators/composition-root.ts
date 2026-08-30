@@ -507,8 +507,18 @@ const ROOT_PROJECT_IGNORES = [
   '.buck2/capabilities.candidate.*',
 ] as const
 
-const TOOLCHAINS_BUCK =
-  'load("@prelude//toolchains:demo.bzl", "system_demo_toolchains")\n\nsystem_demo_toolchains()\n'
+const renderToolchainsBuck = (
+  input: NormalizedCompositionRootInput,
+): string => `load("@workspace//.buck2/capabilities:defs.bzl", "CAPABILITIES", "GENERATION")
+load("@${input.platformHubCell}//buck2/platforms:defs.bzl", "host_platform_label")
+load("@${input.platformHubCell}//buck2/rust:demo_toolchains.bzl", "configured_demo_toolchains")
+
+configured_demo_toolchains(
+    capabilities = CAPABILITIES,
+    generation = GENERATION,
+    target_platform = host_platform_label(),
+)
+`
 
 const utf8 = (value: string): Uint8Array => textEncoder.encode(value)
 const sha256 = (bytes: Uint8Array): string =>
@@ -662,7 +672,11 @@ export const generateCompositionRoot = (rawInput: CompositionRootInput): Composi
     generatedFile({ path: '.buckroot', mode: 0o644, content: '' }),
     generatedFile({ path: 'BUCK', mode: 0o644, content: '' }),
     generatedFile({ path: 'none/BUCK', mode: 0o644, content: '' }),
-    generatedFile({ path: 'toolchains/BUCK', mode: 0o644, content: TOOLCHAINS_BUCK }),
+    generatedFile({
+      path: 'toolchains/BUCK',
+      mode: 0o644,
+      content: renderToolchainsBuck(input),
+    }),
     generatedFile({
       path: '.megarepo/bin/buck2',
       mode: 0o755,

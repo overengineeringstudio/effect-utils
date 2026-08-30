@@ -68,6 +68,12 @@
         };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
+        buck2-rust-toolchain-capability =
+          import ./nix/workspace-tools/lib/buck2-rust-toolchain-capability.nix
+            {
+              inherit pkgs;
+              nixpkgsRevision = nixpkgs.rev;
+            };
         buck2-rust-vendor = pkgs.rustPlatform.importCargoLock {
           lockFile = rootPath + "/rust/Cargo.lock";
         };
@@ -200,6 +206,20 @@
               ;
             buck2-archive-tool = buck2-stage0-tools.archive-tool;
             buck2-product = buck2-stage0-tools.product;
+            buck2-rust-compiler = buck2-rust-toolchain-capability.packages.rust-compiler;
+            buck2-rust-rustdoc = buck2-rust-toolchain-capability.packages.rust-rustdoc;
+            buck2-rust-clippy-driver = buck2-rust-toolchain-capability.packages.rust-clippy-driver;
+            buck2-rust-c-compiler = buck2-rust-toolchain-capability.packages.rust-c-compiler;
+            buck2-rust-cxx-compiler = buck2-rust-toolchain-capability.packages.rust-cxx-compiler;
+            buck2-rust-linker = buck2-rust-toolchain-capability.packages.rust-linker;
+            buck2-rust-archiver = buck2-rust-toolchain-capability.packages.rust-archiver;
+            buck2-rust-dwp = buck2-rust-toolchain-capability.packages.rust-dwp;
+            buck2-rust-nm = buck2-rust-toolchain-capability.packages.rust-nm;
+            buck2-rust-objcopy = buck2-rust-toolchain-capability.packages.rust-objcopy;
+            buck2-rust-objdump = buck2-rust-toolchain-capability.packages.rust-objdump;
+            buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
+            buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
+            buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;

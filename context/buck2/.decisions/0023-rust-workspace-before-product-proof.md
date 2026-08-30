@@ -14,11 +14,11 @@ Johannes resolved three structured questions on 2026-08-30: admit compile rules 
 
 ## Options
 
-| Decision | Selected | Alternative rejected |
-| --- | --- | --- |
-| Compilation scope | All five workspace members before product proof | One otel-scrape vertical canary |
-| Product order | OTelite, then otel-scrape | OTel-scrape, then otelite |
-| Removal boundary | Retained parity checkpoint, then focused removal | Delete producers in the admission scope |
+| Decision          | Selected                                         | Alternative rejected                    |
+| ----------------- | ------------------------------------------------ | --------------------------------------- |
+| Compilation scope | All five workspace members before product proof  | One otel-scrape vertical canary         |
+| Product order     | OTelite, then otel-scrape                        | OTel-scrape, then otelite               |
+| Removal boundary  | Retained parity checkpoint, then focused removal | Delete producers in the admission scope |
 
 ## Decision
 
