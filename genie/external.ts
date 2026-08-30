@@ -335,6 +335,8 @@ export const catalog = defineCatalog({
   // Build tools
   // npm TypeScript is kept for JS compiler API consumers; ts:check uses Nix-managed tsgo.
   typescript: '6.0.3',
+  '@pnpm/lockfile.fs': '1100.1.6',
+  '@pnpm/lockfile.pruner': '1100.0.11',
   '@playwright/test': '1.61.0',
   vite: '8.0.16',
   vitest: '4.1.9',
