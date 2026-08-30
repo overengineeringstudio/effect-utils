@@ -52,3 +52,13 @@ products are the intended long-term Nix input after portability admission.
   whole-repository source filtering.
 - Coarse Nix invalidation is visible and benchmarked; it does not weaken Buck's
   closure-local identity or trigger a second resolver implementation.
+
+## Amendment 1
+
+Complete-lock vendoring is retired by
+[decision 0023](./0023-buck-fetched-rust-crates.md) (2026-08-30): third-party
+sources are Buck-fetched `http_archive` targets pinned by `Cargo.lock`
+checksums, so no vendor artifact exists to lose package-local identity. The
+original retirement trigger (portability admission) is superseded by the
+composition evidence that a vendored source directory cannot enter a locked
+member at all.

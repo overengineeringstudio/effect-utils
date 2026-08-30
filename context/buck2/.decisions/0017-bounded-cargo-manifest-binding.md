@@ -73,3 +73,12 @@ and the root lock as the only request and resolution authorities.
 
 This chooses earlier selected-topology breadth over a parallel derived lock.
 The generated graph is a projection, not a second dependency authority.
+
+## Amendment 2 — Buck-Fetched Third-Party Sources (2026-08-30)
+
+Amendment 1's "remain network-free during Buck execution" is narrowed by
+[decision 0023](./0023-buck-fetched-rust-crates.md): network access exists only
+in hash-pinned `http_archive` fetch actions emitted by non-vendored Reindeer;
+compile and buildscript actions remain offline. Selection authority is
+unchanged — Cargo manifests and the root lock remain the only request and
+resolution authorities, and the strict unresolved-fixup gate stands.

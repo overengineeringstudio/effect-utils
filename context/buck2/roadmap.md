@@ -173,6 +173,13 @@ RENAME_EXCHANGE advance.
   support crates. Admit deterministic Cargo operations first, then emit and
   independently import real otelite/otel-scrape BuildProducts before deleting
   Cargo/Nix source producers.
+- Third-party sources are Buck-fetched per
+  [decision 0023](./.decisions/0023-buck-fetched-rust-crates.md): Reindeer
+  `vendor = false`, hash-pinned `http_archive` from the authoritative lock;
+  `buck2-rust-vendor`, the vendor symlink task, and
+  `rust/third-party/.cargo/config.toml` are deleted in the same change; the
+  buckify gate pins a cargo home and asserts a byte-unchanged lock; the eight
+  vendored-mode fixups are re-verified by building their crates.
 - Eight repository pnpm-deps FODs remain: ci-tools, Genie, mr, notion-cli,
   notion-md, npm-release, oxc-config, and tui-stories. Each disappears only
   after its real Buck product passes the independent Nix bridge (BUCK-R10).
