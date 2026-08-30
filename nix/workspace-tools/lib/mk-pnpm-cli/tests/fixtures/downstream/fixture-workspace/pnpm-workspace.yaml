@@ -1,6 +1,9 @@
 packages:
   - app
 
+patchedDependencies:
+  target-direct@1.0.0: patches/target-direct.patch
+
 overrides:
   '@overeng/utils': file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils
 

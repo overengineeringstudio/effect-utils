@@ -1,0 +1,14 @@
+{
+  "name": "@overeng/pnpm-lock-projector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@pnpm/lockfile.fs": "1100.1.6",
+    "@pnpm/lockfile.pruner": "1100.0.11"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  }
+}

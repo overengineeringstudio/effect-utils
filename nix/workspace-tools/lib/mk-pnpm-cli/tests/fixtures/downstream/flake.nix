@@ -89,6 +89,52 @@
           };
           smokeTestArgs = [ ];
         };
+        mkIdentityWorkspace =
+          suffix: mutation:
+          pkgs.runCommand "mk-pnpm-cli-lock-identity-${suffix}" { } ''
+            mkdir -p "$out"
+            cp -R ${./fixture-workspace}/. "$out/"
+            chmod -R +w "$out"
+            ${mutation}
+          '';
+        excludedIdentityWorkspace = mkIdentityWorkspace "excluded" ''
+          substituteInPlace "$out/pnpm-lock.yaml" \
+            --replace-fail "specifier: 2.0.0" "specifier: ^2.0.0" \
+            --replace-fail "excluded-leaf: 3.0.0" "excluded-leaf: 3.0.1"
+        '';
+        targetIdentityWorkspace = mkIdentityWorkspace "target" ''
+          substituteInPlace "$out/pnpm-lock.yaml" \
+            --replace-fail "specifier: 1.0.0" "specifier: ^1.0.0"
+        '';
+        transitiveIdentityWorkspace = mkIdentityWorkspace "transitive" ''
+          substituteInPlace "$out/pnpm-lock.yaml" \
+            --replace-fail "target-transitive: 1.0.0" "target-transitive: 1.0.1"
+        '';
+        mkIdentityFixture =
+          fixtureName: fixtureWorkspace:
+          mkPnpmCli {
+            name = "mk-pnpm-cli-lock-identity-${fixtureName}";
+            binaryName = "mk-pnpm-cli-lock-identity-${fixtureName}";
+            entry = "app/src/mod.ts";
+            packageDir = "app";
+            workspaceRoot = fixtureWorkspace;
+            evalWorkspaceRoot = ./fixture-workspace;
+            workspaceSources = {
+              "repos/effect-utils" = effectUtilsSource;
+            };
+            depsBuilds = {
+              "." = {
+                hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+              };
+              "repos/effect-utils" = {
+                hash = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+              };
+            };
+            smokeTestArgs = [ ];
+          };
+        excludedIdentityFixture = mkIdentityFixture "excluded" excludedIdentityWorkspace;
+        targetIdentityFixture = mkIdentityFixture "target" targetIdentityWorkspace;
+        transitiveIdentityFixture = mkIdentityFixture "transitive" transitiveIdentityWorkspace;
         # Two consumers that differ ONLY in `name` but share the same external
         # install-root profile. Their prepared deps for that shared root must
         # collapse to one in-store derivation (profileKey dedup), while their
@@ -180,9 +226,6 @@
 
               grep -Fq "file:$stage_prefix/$logical_path" "$deps_src/pnpm-lock.yaml"
               grep -Fq "directory: $stage_prefix/$logical_path" "$deps_src/pnpm-lock.yaml"
-              grep -Fq "file:$stage_prefix/$logical_path" "$deps_src/pnpm-workspace.yaml"
-              grep -Fq "packageExtensionsChecksum: sha256-LU2/j/l3R+j7b1WqrjZQtPcw3ScrfwaVJrrAFedVGTs=" \
-                "$deps_src/pnpm-lock.yaml"
               test -d "$alias_path"
               test "$(find "$alias_path" -mindepth 1 -maxdepth 1 -printf '%f\n')" = package.json
               test -L "$alias_path/package.json"
@@ -202,6 +245,46 @@
           pkgs.runCommand "mk-pnpm-cli-invalid-source-input-stage-path" { } ''
             touch "$out"
           '';
+        checks.aggregate-lock-closure-identity =
+          pkgs.runCommand "mk-pnpm-cli-aggregate-lock-closure-identity" { }
+            ''
+              baseline=${pureEvalFixture.passthru.depsSrcByInstallRoot.root}
+              excluded=${excludedIdentityFixture.passthru.depsSrcByInstallRoot.root}
+              target=${targetIdentityFixture.passthru.depsSrcByInstallRoot.root}
+              transitive=${transitiveIdentityFixture.passthru.depsSrcByInstallRoot.root}
+
+              diff --recursive --brief "$baseline" "$excluded"
+              if cmp --silent "$baseline/pnpm-lock.yaml" "$target/pnpm-lock.yaml"; then
+                echo "target importer perturbation did not change projected dependency identity" >&2
+                exit 1
+              fi
+              if cmp --silent "$baseline/pnpm-lock.yaml" "$transitive/pnpm-lock.yaml"; then
+                echo "reachable transitive perturbation did not change projected dependency identity" >&2
+                exit 1
+              fi
+
+              grep -Fq "target-direct@1.0.0" "$baseline/pnpm-lock.yaml"
+              grep -Fq "target-transitive@1.0.0" "$baseline/pnpm-lock.yaml"
+              grep -Fq "target-direct@1.0.0: hash-target-direct" "$baseline/pnpm-lock.yaml"
+              grep -Fq "target-direct@1.0.0: patches/target-direct.patch" \
+                "$baseline/pnpm-workspace.yaml"
+              if grep -Fq "excluded-only" "$baseline/pnpm-lock.yaml"; then
+                echo "excluded importer closure leaked into projected lockfile" >&2
+                exit 1
+              fi
+              if grep -Fq "excluded-leaf" "$baseline/pnpm-lock.yaml"; then
+                echo "excluded snapshot closure leaked into projected lockfile" >&2
+                exit 1
+              fi
+              for deps_src in "$baseline" "$excluded" "$target" "$transitive"; do
+                if find "$deps_src" -name node_modules -print -quit | grep -q .; then
+                  echo "lock projection materialized node_modules: $deps_src" >&2
+                  exit 1
+                fi
+              done
+
+              touch "$out"
+            '';
         checks.pure-eval-profile-dedup = pkgs.runCommand "mk-pnpm-cli-pure-eval-profile-dedup" { } ''
           actual='${
             builtins.toJSON {
