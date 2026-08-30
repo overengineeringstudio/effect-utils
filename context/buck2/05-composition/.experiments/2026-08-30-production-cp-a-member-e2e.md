@@ -16,7 +16,7 @@ The run uncovered three production-only gaps hidden by prior fixtures and the ow
 2. Resolved capability projections used writable file modes, so the real cp-a runtime rejected them as non-R6 input. Projection files now use 0444/0555 modes, directories use source-mode 0755, and release restores owner-writable directories before cleanup.
 3. Repository identity included the synthetic `.buck2` capability namespace container, adding one entry to the mounted repository identity. R6 repository scans now omit that container while continuing to scan non-capability siblings.
 
-After these fixes, production dry-run passed, owned acquisition completed through real cp-a source/capability validation, and the real overlay Buck build started. It then failed after 46 seconds at `remote_action_cache` with `No engine address`: the CI/off-tailnet `BUCK2_NO_REMOTE_CACHE=1` toggle is a devenv shell-entry action, but composition executes the first overlay before any shell entry can materialize or remove root-local cache configuration.
+After these fixes, production dry-run passed, owned acquisition completed through real cp-a source/capability validation, and the real overlay Buck build started. It then failed after 46 seconds at `remote_action_cache` with `No engine address`: the CI/off-tailnet `BUCK2_NO_REMOTE_CACHE=1` toggle was a devenv shell-entry action, but composition executed the first overlay before any shell entry could materialize or remove root-local cache configuration. Follow-up commit `6e1fa8b61` now materializes the toggle in generated root authority and makes the execution platform consume it. The same production harness reached local execution without a remote-cache attempt, proving the lifecycle fix. The local action then exposed the next boundary: a locked member cannot provide pnpm's writable SQLite store through its immutable R6 mount. A Nix-store-backed projection was present and warm, but pnpm correctly failed with `attempt to write a readonly database`.
 
 ## Result
 
@@ -25,14 +25,14 @@ After these fixes, production dry-run passed, owned acquisition completed throug
 - Real capability projection R6 validation: PASS.
 - Real cp-a candidate repository/capability identity postcondition: PASS.
 - Fresh-root Buck bootstrap reached the real `effect_utils//packages/@overeng/tui-core:dist` overlay build: PASS.
-- Complete target build: BLOCKED by the first-composition cache-toggle lifecycle gap.
+- Complete target build: BLOCKED by writable dependency-state projection for a cache-off locked member, or by a cache-enabled production run that supplies the shared endpoint before composition.
 
 Focused regression suites pass: composition apply (14), capability resolver (20), R6 scanner plus cp-a lifecycle (50).
 
 ## Conclusion
 
-The real cp-a path is no longer only fixture-proven: production acquisition reaches a real effect-utils Buck action through a read-only member. The Phase-2 production-gate item remains open because the action did not complete. The next fix must make off-tailnet cache policy available before the first overlay action without weakening the hard-fail cache contract or adding a second Buck authority path.
+The real cp-a path is no longer only fixture-proven: production acquisition reaches a real effect-utils Buck action through a read-only member. Generated cache-off policy is now effective before that action and preserves the default hard-fail shared-cache path. The Phase-2 production-gate item remains open because the action did not complete. The remaining production run needs either the normal shared-cache hit path with its client configuration present before composition or an explicit writable dependency-state projection for local execution; placing mutable pnpm state inside R6 is not permitted.
 
 ## VRS Impact
 
-No requirement or decision changes. The evidence narrows the remaining Phase-2 gate to cache-policy lifecycle ordering. Decision 0020's cp-a mechanism and R6 identity model remain intact.
+No requirement or decision changes. The evidence closes cache-policy lifecycle ordering and narrows the remaining Phase-2 gate to dependency-state availability for the real action. Decision 0020's cp-a mechanism and R6 identity model remain intact.
