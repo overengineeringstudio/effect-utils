@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
   notion-datasource-sync, ci-tools, and notion-effect-client;
   content-address stays dependency-free to avoid a utils ->
   otel-contract -> content-address -> utils cycle.
+- **@overeng/notion-effect-client, @overeng/notion-effect-schema,
+  @overeng/notion-cli**: response-only page and database APIs now accept
+  `Schema.Decoder`; generated schemas import the package's re-exported `Schema`
+  namespace and use the explicit Effect 4 async decode/encode helpers.
 - **@overeng/notion-effect-client**: the request throttle reads
   `RateLimiter.ConsumeResult.delay` directly (the double-Clock measurement and
   the `isRateLimiterError` catch-to-die workaround are gone; e2e wait assertions

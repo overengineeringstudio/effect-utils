@@ -146,8 +146,7 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test-db
 
-        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
-        import { Schema } from 'effect'
+        import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -176,7 +175,7 @@ describe('codegen', () => {
         /**
          * Decode properties from unknown data (returns Effect).
          */
-        export const decodeTestDatabasePropertiesEffect = Schema.decodeUnknown(TestDatabasePageProperties)
+        export const decodeTestDatabasePropertiesEffect = Schema.decodeUnknownEffect(TestDatabasePageProperties)
         "
       `)
     })
@@ -206,8 +205,7 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test-db
 
-        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
-        import { Schema } from 'effect'
+        import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -233,7 +231,7 @@ describe('codegen', () => {
         /**
          * Decode properties from unknown data (returns Effect).
          */
-        export const decodeTestDatabasePropertiesEffect = Schema.decodeUnknown(TestDatabasePageProperties)
+        export const decodeTestDatabasePropertiesEffect = Schema.decodeUnknownEffect(TestDatabasePageProperties)
         "
       `)
     })
@@ -261,8 +259,7 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test
 
-        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
-        import { Schema } from 'effect'
+        import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -290,7 +287,7 @@ describe('codegen', () => {
         /**
          * Decode properties from unknown data (returns Effect).
          */
-        export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)
+        export const decodeTestPropertiesEffect = Schema.decodeUnknownEffect(TestPageProperties)
         "
       `)
     })
@@ -325,8 +322,7 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { transforms: { Status: raw, Tags: raw, Website: asString } }
 
-        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
-        import { Schema } from 'effect'
+        import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -354,7 +350,7 @@ describe('codegen', () => {
         /**
          * Decode properties from unknown data (returns Effect).
          */
-        export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)
+        export const decodeTestPropertiesEffect = Schema.decodeUnknownEffect(TestPageProperties)
         "
       `)
     })
@@ -429,8 +425,7 @@ describe('codegen', () => {
         // ID: test-db-id
         // URL: https://notion.so/test
 
-        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
-        import { Schema } from 'effect'
+        import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -457,7 +452,7 @@ describe('codegen', () => {
         /**
          * Decode properties from unknown data (returns Effect).
          */
-        export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)
+        export const decodeTestPropertiesEffect = Schema.decodeUnknownEffect(TestPageProperties)
         "
       `)
     })
@@ -684,8 +679,7 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { includeWrite: true }
 
-        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
-        import { Schema } from 'effect'
+        import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -713,7 +707,7 @@ describe('codegen', () => {
         /**
          * Decode properties from unknown data (returns Effect).
          */
-        export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)
+        export const decodeTestPropertiesEffect = Schema.decodeUnknownEffect(TestPageProperties)
 
         // -----------------------------------------------------------------------------
         // Write Schema
@@ -741,7 +735,7 @@ describe('codegen', () => {
         /**
          * Decode write data from simple types (returns Effect).
          */
-        export const decodeTestWriteEffect = Schema.decodeUnknown(TestPageWrite)
+        export const decodeTestWriteEffect = Schema.decodeUnknownEffect(TestPageWrite)
 
         /**
          * Encode write data back to simple types (throws on failure).
@@ -751,7 +745,7 @@ describe('codegen', () => {
         /**
          * Encode write data back to simple types (returns Effect).
          */
-        export const encodeTestWriteEffect = Schema.encode(TestPageWrite)
+        export const encodeTestWriteEffect = Schema.encodeEffect(TestPageWrite)
         "
       `)
     })
@@ -804,8 +798,7 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { typedOptions: true }
 
-        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
-        import { Schema } from 'effect'
+        import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Typed Options
@@ -849,7 +842,7 @@ describe('codegen', () => {
         /**
          * Decode properties from unknown data (returns Effect).
          */
-        export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)
+        export const decodeTestPropertiesEffect = Schema.decodeUnknownEffect(TestPageProperties)
         "
       `)
     })
@@ -924,8 +917,7 @@ describe('codegen', () => {
         // URL: https://notion.so/test
         // @config { name: MyCustomName, includeWrite: true, typedOptions: true, includeApi: true, transforms: { Status: asOption, Priority: asName } }
 
-        import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'
-        import { Schema } from 'effect'
+        import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'
 
         // -----------------------------------------------------------------------------
         // Read Schema
@@ -951,7 +943,7 @@ describe('codegen', () => {
         /**
          * Decode properties from unknown data (returns Effect).
          */
-        export const decodeTestPropertiesEffect = Schema.decodeUnknown(TestPageProperties)
+        export const decodeTestPropertiesEffect = Schema.decodeUnknownEffect(TestPageProperties)
 
         // -----------------------------------------------------------------------------
         // Write Schema
@@ -978,7 +970,7 @@ describe('codegen', () => {
         /**
          * Decode write data from simple types (returns Effect).
          */
-        export const decodeTestWriteEffect = Schema.decodeUnknown(TestPageWrite)
+        export const decodeTestWriteEffect = Schema.decodeUnknownEffect(TestPageWrite)
 
         /**
          * Encode write data back to simple types (throws on failure).
@@ -988,7 +980,7 @@ describe('codegen', () => {
         /**
          * Encode write data back to simple types (returns Effect).
          */
-        export const encodeTestWriteEffect = Schema.encode(TestPageWrite)
+        export const encodeTestWriteEffect = Schema.encodeEffect(TestPageWrite)
         "
       `)
     })

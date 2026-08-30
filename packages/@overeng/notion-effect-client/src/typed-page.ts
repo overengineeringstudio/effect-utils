@@ -44,9 +44,9 @@ export class PageDecodeError extends Schema.TaggedError<PageDecodeError>()('Page
  *
  * @returns Typed page with decoded properties
  */
-export const decodePage = Effect.fnUntraced(function* <TProperties, I, R>(opts: {
+export const decodePage = Effect.fnUntraced(function* <TProperties, R>(opts: {
   page: Page
-  schema: Schema.Codec<TProperties, I, R>
+  schema: Schema.Decoder<TProperties, R>
 }) {
   const { page, schema } = opts
   const decode = Schema.decodeUnknownEffect(schema)
@@ -78,8 +78,8 @@ export const decodePage = Effect.fnUntraced(function* <TProperties, I, R>(opts: 
  *
  * Fails fast on first decode error.
  */
-export const decodePages = <TProperties, I, R>(opts: {
+export const decodePages = <TProperties, R>(opts: {
   pages: readonly Page[]
-  schema: Schema.Codec<TProperties, I, R>
+  schema: Schema.Decoder<TProperties, R>
 }): Effect.Effect<readonly TypedPage<TProperties>[], PageDecodeError, R> =>
   Effect.forEach(opts.pages, (page) => decodePage({ page, schema: opts.schema }))

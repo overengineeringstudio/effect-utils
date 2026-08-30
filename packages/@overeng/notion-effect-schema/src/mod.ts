@@ -6,6 +6,7 @@
  */
 
 import type { Schema } from 'effect'
+export { Schema } from 'effect'
 
 import { Required, asName, asNames, asNullable } from './common.ts'
 import {

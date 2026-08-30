@@ -101,14 +101,11 @@ describe('integration', () => {
     const code = generateSchemaCode({ dbInfo, schemaName: 'TestDatabase' })
 
     // Verify it's valid TypeScript (basic smoke test)
-    expect(code).toContain("import { Schema } from 'effect'")
+    expect(code).toContain(
+      "import { NotionSchema, notionPropertyMeta, Schema } from '@overeng/notion-effect-schema'",
+    )
     expect(code).toContain('export const TestDatabasePageProperties')
     expect(code).toContain('export type TestDatabasePageProperties')
-
-    // Verify imports are correct
-    expect(code).toContain(
-      "import { NotionSchema, notionPropertyMeta } from '@overeng/notion-effect-schema'",
-    )
 
     // Verify usage is correct
     expect(code).toContain('Name: NotionSchema.title.annotate({ [notionPropertyMeta]')

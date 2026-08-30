@@ -790,8 +790,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
     `// URL: ${dbInfo.url}`,
     ...(configComment !== '' ? [configComment] : []),
     ``,
-    `import { NotionSchema${schemaMeta === true ? ', notionPropertyMeta' : ''} } from '@overeng/notion-effect-schema'`,
-    `import { Schema } from 'effect'`,
+    `import { NotionSchema${schemaMeta === true ? ', notionPropertyMeta' : ''}, Schema } from '@overeng/notion-effect-schema'`,
   ]
 
   // Add typed options definitions
@@ -839,7 +838,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   lines.push(` * Decode properties from unknown data (returns Effect).`)
   lines.push(` */`)
   lines.push(
-    `export const decode${pascalName}PropertiesEffect = Schema.decodeUnknown(${pascalName}PageProperties)`,
+    `export const decode${pascalName}PropertiesEffect = Schema.decodeUnknownEffect(${pascalName}PageProperties)`,
   )
 
   // Write schema (if enabled)
@@ -875,7 +874,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
     lines.push(` * Decode write data from simple types (returns Effect).`)
     lines.push(` */`)
     lines.push(
-      `export const decode${pascalName}WriteEffect = Schema.decodeUnknown(${pascalName}PageWrite)`,
+      `export const decode${pascalName}WriteEffect = Schema.decodeUnknownEffect(${pascalName}PageWrite)`,
     )
     lines.push(``)
     lines.push(`/**`)
@@ -887,7 +886,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
     lines.push(` * Encode write data back to simple types (returns Effect).`)
     lines.push(` */`)
     lines.push(
-      `export const encode${pascalName}WriteEffect = Schema.encode(${pascalName}PageWrite)`,
+      `export const encode${pascalName}WriteEffect = Schema.encodeEffect(${pascalName}PageWrite)`,
     )
   }
 
