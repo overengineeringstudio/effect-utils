@@ -53,9 +53,9 @@ export interface RetrievePageOptions extends RetrievePageOptionsBase {
 }
 
 /** Options for retrieving a page with schema-based decoding */
-export interface RetrievePageWithSchemaOptions<TProperties, I, R> extends RetrievePageOptionsBase {
-  /** Schema to decode page properties */
-  readonly schema: Schema.Codec<TProperties, I, R>
+export interface RetrievePageWithSchemaOptions<TProperties, R> extends RetrievePageOptionsBase {
+  /** Decoder for page properties */
+  readonly schema: Schema.Decoder<TProperties, R>
 }
 
 /** Options for creating a page */
@@ -204,16 +204,16 @@ export interface MovePageOptions {
 export function retrieve(
   opts: RetrievePageOptions,
 ): Effect.Effect<Page, NotionApiError, NotionConfig | HttpClient>
-export function retrieve<TProperties, I, R>(
-  opts: RetrievePageWithSchemaOptions<TProperties, I, R>,
+export function retrieve<TProperties, R>(
+  opts: RetrievePageWithSchemaOptions<TProperties, R>,
 ): Effect.Effect<
   TypedPage<TProperties>,
   NotionApiError | PageDecodeError,
   NotionConfig | HttpClient | R
 >
 // oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
-export function retrieve<TProperties, I, R>(
-  opts: RetrievePageOptions | RetrievePageWithSchemaOptions<TProperties, I, R>,
+export function retrieve<TProperties, R>(
+  opts: RetrievePageOptions | RetrievePageWithSchemaOptions<TProperties, R>,
 ): Effect.Effect<
   Page | TypedPage<TProperties>,
   NotionApiError | PageDecodeError,

@@ -61,13 +61,9 @@ export interface QueryDatabaseOptions extends QueryDatabaseOptionsBase {
 }
 
 /** Options for querying a database with schema-based decoding */
-export interface QueryDatabaseWithSchemaOptions<
-  TProperties,
-  I,
-  R,
-> extends QueryDatabaseOptionsBase {
-  /** Schema to decode page properties */
-  readonly schema: Schema.Codec<TProperties, I, R>
+export interface QueryDatabaseWithSchemaOptions<TProperties, R> extends QueryDatabaseOptionsBase {
+  /** Decoder for page properties */
+  readonly schema: Schema.Decoder<TProperties, R>
 }
 
 /** Options for retrieving a database */
@@ -337,16 +333,16 @@ const queryRaw = (
 export function query(
   opts: QueryDatabaseOptions,
 ): Effect.Effect<PaginatedResult<Page>, NotionApiError, NotionConfig | HttpClient>
-export function query<TProperties, I, R>(
-  opts: QueryDatabaseWithSchemaOptions<TProperties, I, R>,
+export function query<TProperties, R>(
+  opts: QueryDatabaseWithSchemaOptions<TProperties, R>,
 ): Effect.Effect<
   TypedPaginatedResult<TProperties>,
   NotionApiError | PageDecodeError,
   NotionConfig | HttpClient | R
 >
 // oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
-export function query<TProperties, I, R>(
-  opts: QueryDatabaseOptions | QueryDatabaseWithSchemaOptions<TProperties, I, R>,
+export function query<TProperties, R>(
+  opts: QueryDatabaseOptions | QueryDatabaseWithSchemaOptions<TProperties, R>,
 ): Effect.Effect<
   PaginatedResult<Page> | TypedPaginatedResult<TProperties>,
   NotionApiError | PageDecodeError,
@@ -398,18 +394,18 @@ export function query<TProperties, I, R>(
 export function queryStream(
   opts: Omit<QueryDatabaseOptions, 'startCursor'>,
 ): Stream.Stream<Page, NotionApiError, NotionConfig | HttpClient>
-export function queryStream<TProperties, I, R>(
-  opts: Omit<QueryDatabaseWithSchemaOptions<TProperties, I, R>, 'startCursor'>,
+export function queryStream<TProperties, R>(
+  opts: Omit<QueryDatabaseWithSchemaOptions<TProperties, R>, 'startCursor'>,
 ): Stream.Stream<
   TypedPage<TProperties>,
   NotionApiError | PageDecodeError,
   NotionConfig | HttpClient | R
 >
 // oxlint-disable-next-line overeng/jsdoc-require-exports -- JSDoc is on first overload signature
-export function queryStream<TProperties, I, R>(
+export function queryStream<TProperties, R>(
   opts:
     | Omit<QueryDatabaseOptions, 'startCursor'>
-    | Omit<QueryDatabaseWithSchemaOptions<TProperties, I, R>, 'startCursor'>,
+    | Omit<QueryDatabaseWithSchemaOptions<TProperties, R>, 'startCursor'>,
 ): Stream.Stream<
   Page | TypedPage<TProperties>,
   NotionApiError | PageDecodeError,
