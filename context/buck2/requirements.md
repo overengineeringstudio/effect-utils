@@ -99,7 +99,9 @@ invariants named in its own document:
   to end, including the editor surface. Manifest and lockfile state is the only
   hand-authored dependency input; a stale materialized surface fails loudly
   before it can produce a wrong result
-  ([decision 0015](./.decisions/0015-buck-owned-dependency-surface.md)).
+  ([decision 0015](./.decisions/0015-buck-owned-dependency-surface.md) for
+  authority; [decision 0022](./.decisions/0022-lockfile-derived-declared-closure.md)
+  for mechanism).
 
 ### Must be observable and provable at the right moments
 

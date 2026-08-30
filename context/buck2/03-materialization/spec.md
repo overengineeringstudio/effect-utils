@@ -19,115 +19,52 @@ view, and the staleness gate.
 ## Materialization Action
 
 ```text
-Stage 1: prune descriptor
-  broad manifest skeleton
-    root package.json + full pnpm-lock.yaml + pnpm-workspace.yaml
-    + all workspace package.json files + declared patches
-  -> fixed output-derived stage
-  -> pinned pnpm 11.8.0 deploy --offline --frozen-lockfile
-  -> read <deploy>/node_modules/.pnpm/lock.yaml; discard deployed tree
-  -> canonical lock + replay files + install-descriptor.json
+translate (genie, freshness-gated)
+  pnpm-lock.yaml (+ pnpm-workspace.yaml, patches)
+  -> per package version: fetch target (url, sha256 from generated sidecar)
+                          extract target (tarball -> package tree artifact)
+  -> per importer:        node_modules assembly target
+  -> platform constraints on optional/platform packages (select())
 
-Stage 2: frozen install
-  Stage-1 descriptor TREE + pinned Bun/pnpm + materializer/normalizer
-  -> copy descriptor TREE to a distinct fixed output-derived stage
-  -> rehydrate file://<WS> to that install stage
-  -> pinned pnpm 11.8.0 install --offline --frozen-lockfile
-  -> existing deploy-tree normalization and symlink containment
-  -> public PnpmNodeModulesInfo / node_modules output
+fetch     download_file, remote-cacheable, network only here (DEPS-R08)
+extract   tar -> package tree, remote-cacheable
+assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/<name>
+          hardlinks from extract artifacts, relative symlinks for edges,
+          workspace: edges as relative links, .bin entries as symlinks
+          local_only (DEPS-T01); public node_modules output
 ```
 
-Both actions remain internal to the public `pnpm_node_modules` rule. Its label,
-default output, and existing provider fields remain compatible; the provider also
-exposes the Stage-1 tree as `editor_inputs`. Stage 2 does
-not receive the full lockfile, workspace manifest, root manifest, all workspace
-package manifests, or the full patch map directly. Its only dependency-data
-bridge is the content digest of Stage 1's descriptor TREE; tool/runtime inputs
-and the pinned toolchain remain explicit. Therefore broad irrelevant manifest
-churn can rerun only `pnpm_pruned_lock` when the descriptor bytes are unchanged
-(DEPS-R07).
+No package manager executes inside Buck actions. pnpm is the developer-time
+resolver that writes `pnpm-lock.yaml`; the generated sha256 sidecar is derived
+from the lockfile's sha512 integrity values and verified against them at
+generation, so it cannot disagree with the lockfile except by staleness, which
+the freshness gate rejects. The lockfile's peer-suffixed snapshot keys map
+directly to virtual-store entries; peer resolution is not re-derived.
 
-Stage 1 uses the pinned Bun runtime's built-in YAML parser and stringifier. The
-canonicalizer recursively sorts mapping keys and fixes indentation at two
-spaces. It replaces every fixed staging-root occurrence in mapping keys and
-scalar values with the literal `file://<WS>`, removes only
-`packages.<package-key>.peerDependencies`, and retains `snapshots`, resolved
-peer suffixes, and `peerDependenciesMeta`. Malformed top-level `importers`,
-`packages`, or `snapshots`, replacement key collisions, and residual stage
-prefixes fail closed.
+Invalidation is structural (DEPS-R07): a changed package version re-runs its
+fetch and extract and the assemblies of importers whose closure contains it;
+unrelated importers are untouched. A change that leaves an importer's closure
+byte-identical re-runs nothing for it.
 
-The descriptor TREE has this exact repository-owned schema:
+Lifecycle scripts are not executed (ratified policy: builds disallowed;
+`requiresBuild` is empty in the lockfile). A package that would require a
+build fails admission until a declared mechanism exists. `patchedDependencies`
+apply during extraction as declared inputs. Optional platform packages are
+filtered by cpu/os constraints so foreign-platform entries are neither fetched
+nor linked.
 
-```text
-pnpm_install_descriptor/
-  install-descriptor.json
-  pnpm-lock.yaml
-  package.json
-  pnpm-workspace.yaml
-  <repo-relative workspace package>/package.json  # only reachable file: records
-  <repo-relative patch path>                      # only lock-required mappings
-```
+The assembled tree is relocatable (no absolute paths) but hardlinks share inodes
+with extract artifacts; Buck resets output modes, so read-only protection is
+applied on the published editor view, not inside `buck-out`. The retired
+deploy-based two-stage action and its normalizer are recorded in
+[the retained experiment](./.experiments/2026-08-26-two-stage-prune-install.md)
+and superseded by
+[the closure prototype](./.experiments/2026-08-30-declared-closure-prototype.md).
 
-```json
-{
-  "schema": "effect-utils/pnpm-install-descriptor/v1",
-  "packageName": "<target package name>",
-  "files": {
-    "lockfile": "pnpm-lock.yaml",
-    "packageManifest": "package.json",
-    "workspaceManifest": "pnpm-workspace.yaml",
-    "workspacePackageManifests": ["<sorted repo-relative paths>"],
-    "patches": ["<sorted repo-relative paths>"]
-  },
-  "installArgv": [
-    "--dir",
-    "<INSTALL_ROOT>",
-    "--store-dir",
-    "<STORE_DIR>",
-    "install",
-    "--prod=false",
-    "--ignore-scripts",
-    "--offline",
-    "--frozen-lockfile"
-  ]
-}
-```
-
-The replay `package.json` preserves target metadata but derives dependency
-sections from canonical `importers['.']` specifiers; this is necessary because
-pnpm deploy can contextualize a specifier. The replay workspace contains only
-`packages: []`, the lock's `autoInstallPeers` and
-`excludeLinksFromLockfile` settings when present, `ignoreScripts: true`, and
-patch mappings required by the pruned lock. Every `file:` reference must map to
-a staged workspace manifest and every pruned patch hash must map through the
-workspace policy to a declared patch path; otherwise Stage 1 fails. Source
-files are never descriptor inputs.
-
-Stage 2 invokes exactly the descriptor argv after replacing the two
-placeholders. Its warm store supplies only lock-integrity-addressed bytes. An
-empty store fails with `ERR_PNPM_NO_OFFLINE_TARBALL`; no network fallback is
-permitted (DEPS-R08). It then removes JSON `.modules.yaml` fields `prunedAt`
-and `storeDir`; deletes `node_modules/.pnpm/lock.yaml`, the root lockfile, and
-`.pnpm-workspace-state-v1.json`; rewrites every recursive `.bin` shim relative
-to its own `$basedir`; prunes dangling links; and rejects retained stage,
-store, worktree, output, or escaping symlink references (DEPS-R02).
-
-`pnpm deploy` remains required only in Stage 1 because it is the sole mode that
-emits pnpm's authoritative pruned install lock. The deploy-root lockfile is not
-pruned, and mini-workspace `--lockfile-only` re-resolution resolves different
-versions. The two-stage replay is byte-keyed by the canonical pruned result,
-not by that broad derivation. On the current Linux platform, frozen replay
-omits 131 foreign-platform optional tree entries that deploy over-materializes;
-this is the only permitted one-way output difference (DEPS-T01). See
-[the retained experiment](./.experiments/2026-08-26-two-stage-prune-install.md).
-
-The containment rule deliberately does not permit a workspace link whose
-resolved destination is the live worktree. Such a link necessarily escapes the
-relocatable action output. The package-tree API can project declared workspace
-files into the output and link to that contained projection, but that is not
-DEPS-R03 live-source behavior; the editor-surface realization therefore still
-needs a boundary outside the cacheable package tree that satisfies DEPS-R03
-without weakening DEPS-R02.
+The package-tree API projects declared workspace files into the output for
+cacheable consumers; the editor-surface realization provides DEPS-R03
+live-source links outside the cacheable package tree without weakening
+DEPS-R02.
 
 ## Editor Surface
 
@@ -222,8 +159,7 @@ builds nor mutates snapshots (DEPS-R06).
 
 ## Relationship to Exact Closure Materialization
 
-The retired package-evidence regime has no retained closure compiler. The
-current deploy-based action owns the declared-input boundary directly. A future
-per-package fetch-and-verify tier must introduce its closure implementation
-with a live consumer and pass the Buck admission contract rather than reviving
-unused evidence infrastructure.
+The declared closure above is the per-package fetch-and-verify tier that the
+retired package-evidence regime anticipated. It is introduced with live
+consumers (the admitted packages) under the Buck admission contract; no
+evidence infrastructure from the retired regime is revived.

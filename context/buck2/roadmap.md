@@ -109,6 +109,24 @@ RENAME_EXCHANGE advance.
 - Standalone-vs-composed and writable-vs-mount key stability hold per
   decisions 0014/0020; CI moves to the workspace shape.
 
+## Phase 2b — declared dependency closure
+
+- End-state per [decision 0022](./.decisions/0022-lockfile-derived-declared-closure.md):
+  genie translates `pnpm-lock.yaml` into per-package fetch/extract targets and
+  per-importer assembly targets; no ambient store, no install step, no deploy
+  normalizer, no install descriptor.
+- Built behind the two admitted packages (tui-core, tui-react) and landed with
+  the Phase-2 cutover PR so the superseded provider never reaches `main`
+  (q3, 2026-08-30). Deletion-ledger entry: `pnpm-deploy-normalizer.ts`,
+  `pnpm-install-descriptor.ts`, `buck2-materializer.ts`, most of
+  `materialization.bzl`, the ambient store warm lane, and the CI store cache
+  lane.
+- Closes the Phase-2 locked-member gate: there is no store to be read-only.
+- Gates: sha256 sidecar generated and freshness-gated; cpu/os `select()`
+  filtering; fresh-context budget (BUCK-R07) re-measured against the slower
+  cold bootstrap; benchmark record per BUCK-R16.
+- CI starts with registry downloads per run; caching is refined later (q4).
+
 ## Phase 3 — TypeScript surface widening
 
 - Remaining TS package checks/builds admitted in value order; per-package
@@ -137,11 +155,11 @@ RENAME_EXCHANGE advance.
 
 ## Phase 4 — dependency-surface authority transfer (gated)
 
-- End-state per [decision 0015](./.decisions/0015-buck-owned-dependency-surface.md):
-  Buck owns the editor surface; no hand-run `pnpm install`.
-- The two-stage canonical prune/install key and normalization gate landed and
-  was measured with the Phase-1 tui-core transfer; unrelated manifest churn
-  executes only the small prune action.
+- End-state per [decision 0015](./.decisions/0015-buck-owned-dependency-surface.md)
+  (authority) and [decision 0022](./.decisions/0022-lockfile-derived-declared-closure.md)
+  (mechanism): Buck owns the editor surface; no hand-run `pnpm install`.
+- The prune/install keying gate of decision 0015 Amendment 1 is retired: bounded
+  fan-out is structural under the declared closure.
 - The tui-core real-editor soak and scoped publication mechanism pass. The
   remaining gate is whole-required-consumer coverage: every editor/tool
   consumer gets a Buck-owned view with staleness checks, real source/dist
@@ -174,5 +192,10 @@ RENAME_EXCHANGE advance.
 - OCI product distribution durability machinery: parked per
   [decision 0013](./.decisions/0013-shared-cache-foundation.md) partial
   supersession of decision 0008.
-- pnpm store consolidation on dev3 (one shared store per filesystem) — disk
-  work, orthogonal to Buck authority but required for BUCK-R08 economics.
+- pnpm store consolidation on dev3 — moot under decision 0022 (no ambient
+  store); the developer-time pnpm store is not a Buck concern.
+- pnpm 12: revisit when it is the `latest` dist-tag and packaged in nixpkgs;
+  under decision 0022 pnpm runs only at developer resolution time.
+- Bun as installer: revisit only if a released Bun emits per-package
+  self-contained trees and nixpkgs carries it; disqualified today on a silent
+  `patchedDependencies` drop. Under decision 0022 the fetcher is irrelevant.
