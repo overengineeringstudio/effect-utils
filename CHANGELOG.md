@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **VRS (buck2)**: ratify decision 0023 — Rust third-party sources become
+  Buck-fetched `http_archive` targets via non-vendored Reindeer (sha256 from
+  `Cargo.lock`); decisions 0017/0019 amended; two 2026-08-30 experiment
+  records added; roadmap Phase 5 updated.
+
 - **VRS (buck2)**: ratify decision 0022 — dependency materialization becomes a
   lockfile-derived declared closure (per-package fetch/extract targets,
   per-importer assembly, no ambient store, no install step); decision 0015
