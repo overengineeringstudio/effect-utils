@@ -54,3 +54,22 @@ questions have retained parity and invalidation evidence.
   spec amendment and evidence, without moving the binding boundary.
 - Unsupported manifest forms produce a structured unsupported-semantics result
   rather than a conservative guess.
+
+## Amendment 1 — Whole-Workspace Selected Topology (2026-08-30)
+
+The strict Phase-5 Reindeer baseline proved that changing the virtual
+workspace's member set requires Cargo to rewrite `Cargo.lock`; the authoritative
+workspace lock cannot serve a members-only projection byte-for-byte. A derived
+scoped lock would add a second generated lock identity, schema, and freshness
+contract before the first product could build.
+
+Use the authoritative five-member `rust/Cargo.toml` and `rust/Cargo.lock`
+directly to generate one strict Reindeer selected-third-party graph. Product
+admission remains incremental: `otel-scrape` is the first first-party product,
+but its graph may reuse the already-selected dependencies needed by the other
+workspace members. Reindeer generation must fail on every unresolved build
+script, remain network-free during Buck execution, and retain Cargo manifests
+and the root lock as the only request and resolution authorities.
+
+This chooses earlier selected-topology breadth over a parallel derived lock.
+The generated graph is a projection, not a second dependency authority.
