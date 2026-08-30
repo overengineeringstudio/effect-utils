@@ -32,6 +32,7 @@ let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs pnpm; };
   dependencyProfile = import ./dependency-materialization-profile.nix { inherit lib; };
+  lockfileProjector = import ./mk-pnpm-cli/lockfile-projector { inherit pkgs; };
   # Closure-completeness guardrail (#807). Partially applied with the shared
   # native-optional-families detector source; each install root gets a check
   # derivation exposed via passthru.nativeBindingClosureChecks.<attrName>.
@@ -1158,10 +1159,8 @@ let
       ]
     );
 
-  # The aggregate root owns the top-level lockfile plus any workspace members
-  # not delegated to nested install roots. It still stages external install-root
-  # manifests so the aggregate lockfile can resolve linked workspace packages
-  # against the exact member set that will exist in the final composed build.
+  # Restrict the shared lock to the target importer's reachable dependency
+  # graph before it becomes fixed-output derivation input.
   rootDepsSrc = pkgs.runCommand "${name}-pnpm-deps-src" { } (
     ''
       set -euo pipefail
@@ -1180,6 +1179,12 @@ let
     }
     + builtins.concatStringsSep "\n" (map stageExternalInstallRootManifestOnlyCmd externalInstallRoots)
     + stageRootSourceInputManifestAliasesCmd
+    + ''
+      ${pkgs.nodejs}/bin/node \
+        ${lockfileProjector}/lib/pnpm-lock-projector/project-lockfile.mjs \
+        "$out" \
+        ${lib.escapeShellArgs (lib.unique ([ packageDir ] ++ aggregateOwnedWorkspaceClosureDirs))}
+    ''
   );
 
   # Each external install root gets its own manifest-only derivation and its

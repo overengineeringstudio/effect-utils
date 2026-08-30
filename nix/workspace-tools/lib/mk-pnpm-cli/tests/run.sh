@@ -249,6 +249,11 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.prepared-source-input-manifest-aliases"
 
+  echo "Check: aggregate lock projection tracks only the target dependency closure"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.aggregate-lock-closure-identity"
+
   echo "Check: non-canonical source-input stage paths fail evaluation"
   nix build --no-link --no-write-lock-file \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \

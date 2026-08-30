@@ -9,6 +9,9 @@ overrides:
 
 packageExtensionsChecksum: sha256-LU2/j/l3R+j7b1WqrjZQtPcw3ScrfwaVJrrAFedVGTs=
 
+patchedDependencies:
+  target-direct@1.0.0: hash-target-direct
+
 importers:
   .: {}
   app:
@@ -16,12 +19,40 @@ importers:
       '@overeng/utils':
         specifier: file:../.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils
         version: '@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils'
+      target-direct:
+        specifier: 1.0.0
+        version: 1.0.0(patch_hash=hash-target-direct)
+  excluded:
+    dependencies:
+      excluded-only:
+        specifier: 2.0.0
+        version: 2.0.0
 
 packages:
-
   '@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils':
     resolution: {directory: .devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils, type: directory}
+  excluded-leaf@3.0.0:
+    resolution: {integrity: sha512-excluded-leaf-300}
+  excluded-leaf@3.0.1:
+    resolution: {integrity: sha512-excluded-leaf-301}
+  excluded-only@2.0.0:
+    resolution: {integrity: sha512-excluded-only}
+  target-direct@1.0.0:
+    resolution: {integrity: sha512-target-direct}
+  target-transitive@1.0.0:
+    resolution: {integrity: sha512-target-transitive-100}
+  target-transitive@1.0.1:
+    resolution: {integrity: sha512-target-transitive-101}
 
 snapshots:
-
   '@overeng/utils@file:.devenv/pnpm-source-inputs/current/repos/effect-utils/packages/@overeng/utils': {}
+  excluded-leaf@3.0.0: {}
+  excluded-leaf@3.0.1: {}
+  excluded-only@2.0.0:
+    dependencies:
+      excluded-leaf: 3.0.0
+  target-direct@1.0.0(patch_hash=hash-target-direct):
+    dependencies:
+      target-transitive: 1.0.0
+  target-transitive@1.0.0: {}
+  target-transitive@1.0.1: {}
