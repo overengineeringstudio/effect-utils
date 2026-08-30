@@ -275,9 +275,17 @@ describe('composition root goldens', () => {
     expect(output.get('.buckroot')?.bytes).toHaveLength(0)
     expect(output.get('BUCK')?.bytes).toHaveLength(0)
     expect(output.get('none/BUCK')?.bytes).toHaveLength(0)
-    expect(text(output.get('toolchains/BUCK')!)).toBe(
-      'load("@prelude//toolchains:demo.bzl", "system_demo_toolchains")\n\nsystem_demo_toolchains()\n',
-    )
+    expect(text(output.get('toolchains/BUCK')!))
+      .toBe(`load("@workspace//.buck2/capabilities:defs.bzl", "CAPABILITIES", "GENERATION")
+load("@alpha//buck2/platforms:defs.bzl", "host_platform_label")
+load("@alpha//buck2/rust:demo_toolchains.bzl", "configured_demo_toolchains")
+
+configured_demo_toolchains(
+    capabilities = CAPABILITIES,
+    generation = GENERATION,
+    target_platform = host_platform_label(),
+)
+`)
   })
 
   it('generates the exact two-member cell and detector shape', () => {
@@ -343,7 +351,7 @@ describe('composition root goldens', () => {
       '  buck = none',
     ])
     expect(config).not.toMatch(/^\s+root\s*=/mu)
-    expect(text(output.get('toolchains/BUCK')!)).toContain('system_demo_toolchains()')
+    expect(text(output.get('toolchains/BUCK')!)).toContain('configured_demo_toolchains(')
   })
 })
 

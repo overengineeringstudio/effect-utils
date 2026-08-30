@@ -48,9 +48,11 @@ The workspace cell is a pure synthesized shell (decision 0020 abolished the
 root-repo-at-`.` special case): every repository, including the one under
 development, is a member cell at `repos/<name>`.
 
-plus `toolchains/BUCK` containing `system_demo_toolchains()` (an EMPTY
-toolchains cell breaks prelude rule resolution), empty `none/BUCK`, one
-`.buckroot` at the root, and the cache client section (04). The detector spec
+plus `toolchains/BUCK` containing `configured_demo_toolchains(...)`, which
+preserves Prelude's unrelated demo toolchains while replacing Rust and C/C++
+with exact host capability providers (an empty toolchains cell breaks Prelude
+rule resolution), empty `none/BUCK`, one `.buckroot` at the root, and the cache
+client section (04). The detector spec
 lists every cell explicitly (COMP-R04). The hub cell for platforms is
 effect-utils; its real package is `buck2/platforms` with
 `host_platform` / `host_execution_platform` targets (COMP-R05).

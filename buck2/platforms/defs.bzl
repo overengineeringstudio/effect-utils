@@ -7,9 +7,30 @@ ProductPlatformInfo = provider(fields = {
     "architecture": str,
     "os": str,
     "runtime_contract": str,
+    "rust_target_triple": str,
 })
 
+def admitted_rust_target_triple(os, architecture, abi, runtime_contract):
+    triple = {
+        "darwin:aarch64:darwin:mach-o-dynamic/v1": "aarch64-apple-darwin",
+        "linux:aarch64:glibc:elf-dynamic/v1": "aarch64-unknown-linux-gnu",
+        "linux:x86_64:glibc:elf-dynamic/v1": "x86_64-unknown-linux-gnu",
+    }.get("{}:{}:{}:{}".format(os, architecture, abi, runtime_contract))
+    if triple == None:
+        fail("platform fields do not identify an admitted native Rust pair")
+    return triple
+
+
+
 def _product_platform_impl(ctx):
+    expected_triple = admitted_rust_target_triple(
+        ctx.attrs.os,
+        ctx.attrs.architecture,
+        ctx.attrs.abi,
+        ctx.attrs.runtime_contract,
+    )
+    if ctx.attrs.rust_target_triple != expected_triple:
+        fail("product platform Rust target triple does not match its native platform fields")
     constraints = {}
     for dep in ctx.attrs.constraint_values:
         value = dep[ConstraintValueInfo]
@@ -22,6 +43,7 @@ def _product_platform_impl(ctx):
             abi = ctx.attrs.abi,
             architecture = ctx.attrs.architecture,
             os = ctx.attrs.os,
+            rust_target_triple = ctx.attrs.rust_target_triple,
             runtime_contract = ctx.attrs.runtime_contract,
         ),
     ]
@@ -32,6 +54,7 @@ product_platform = rule(
         "abi": attrs.string(),
         "architecture": attrs.string(),
         "os": attrs.string(),
+        "rust_target_triple": attrs.string(),
         "runtime_contract": attrs.string(),
         "constraint_values": attrs.list(attrs.dep(providers = [ConstraintValueInfo])),
     },

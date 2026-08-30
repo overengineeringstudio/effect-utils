@@ -34,6 +34,7 @@ product_platform(
     os = "linux",
     architecture = "x86_64",
     abi = "glibc",
+    rust_target_triple = "x86_64-unknown-linux-gnu",
     runtime_contract = "elf-dynamic/v1",
     constraint_values = [
         "prelude//abi/constraints:gnu",
@@ -48,6 +49,7 @@ product_platform(
     os = "linux",
     architecture = "aarch64",
     abi = "glibc",
+    rust_target_triple = "aarch64-unknown-linux-gnu",
     runtime_contract = "elf-dynamic/v1",
     constraint_values = [
         "prelude//abi/constraints:gnu",
@@ -62,6 +64,7 @@ product_platform(
     os = "darwin",
     architecture = "aarch64",
     abi = "darwin",
+    rust_target_triple = "aarch64-apple-darwin",
     runtime_contract = "mach-o-dynamic/v1",
     constraint_values = [
         "prelude//cpu/constraints:arm64",
