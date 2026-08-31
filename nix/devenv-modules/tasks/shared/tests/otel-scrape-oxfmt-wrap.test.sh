@@ -25,6 +25,7 @@ fail() {
   echo "FAIL: $1" >&2
   exit 1
 }
+test_bash="${BASH_BIN:-$BASH}"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
@@ -175,10 +176,12 @@ oxfmt_args_a="$tmpdir/oxfmt-args-a.txt"
     OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318" \
     OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" \
     OTEL_SCRAPE_SUMMARY_DIR="$tmpdir/summaries" \
+    OTEL_SPAN_BIN="$tmpdir/stubbin/otel-span" \
+    OTEL_SCRAPE_BIN="$tmpdir/stubbin/otel-scrape" \
     OTEL_SCRAPE_LOG="$scrape_log" \
     OTEL_SCRAPE_CHILD0="$scrape_child0" \
     TEST_OXFMT_ARGS="$oxfmt_args_a" \
-    bash "$format_exec"
+    "$test_bash" "$format_exec"
 )
 
 [ -s "$scrape_log" ] || fail "case A: otel-scrape was not invoked (empty/missing argv log — oxfmt ran bare)"
@@ -211,10 +214,12 @@ oxfmt_args_b="$tmpdir/oxfmt-args-b.txt"
     HOME="$tmpdir" \
     OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318" \
     OTEL_SCRAPE_SUMMARY_DIR="$tmpdir/summaries" \
+    OTEL_SPAN_BIN="$tmpdir/stubbin/otel-span" \
+    OTEL_SCRAPE_BIN="$tmpdir/stubbin/otel-scrape" \
     OTEL_SCRAPE_LOG="$scrape_log_b" \
     OTEL_SCRAPE_CHILD0="$tmpdir/scrape-child0-b.log" \
     TEST_OXFMT_ARGS="$oxfmt_args_b" \
-    bash "$format_exec"
+    "$test_bash" "$format_exec"
 )
 
 [ ! -e "$scrape_log_b" ] \
@@ -245,13 +250,15 @@ run_format_gate_active() {
       OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318" \
       OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" \
       OTEL_SCRAPE_SUMMARY_DIR="$tmpdir/summaries" \
+      OTEL_SPAN_BIN="$tmpdir/stubbin/otel-span" \
+      OTEL_SCRAPE_BIN="$tmpdir/stubbin/otel-scrape" \
       OTEL_SCRAPE_LOG="$tmpdir/scrape-argv-c.log" \
       OTEL_SCRAPE_CHILD0="$tmpdir/scrape-child0-c.log" \
       TEST_OXFMT_ARGS="$oxfmt_args" \
       TEST_OXFMT_EXIT="$1" \
       TEST_OXFMT_STDERR="$2" \
       TEST_SCRAPE_EXTRA_STDERR="$3" \
-      bash "$format_exec"
+      "$test_bash" "$format_exec"
   )
 }
 

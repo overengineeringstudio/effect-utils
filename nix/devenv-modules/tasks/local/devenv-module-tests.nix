@@ -16,7 +16,7 @@ let
       [ -f "$testFile" ] || continue
       found=true
       echo "Running $testFile"
-      bash "$testFile"
+      BASH_BIN=${pkgs.bashNonInteractive}/bin/bash ${pkgs.bashNonInteractive}/bin/bash "$testFile"
     done
 
     if [ "$found" != true ]; then

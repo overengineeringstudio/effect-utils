@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/tui-core/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:f7ba6116845ca92c6cf257ac623e0f5eae795f044545687cbbf6de91008b6696
+# Semantic fingerprint: sha256:7e0810c5195ad0d9d41a1f80c0cfee371c7a23dbbefbd8fbb92c52b727a5cd49
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -23,6 +23,7 @@ export_materialization_inputs([
     "src/renderer.ts",
     "src/symbols.ts",
     "src/terminal.ts",
+    "test/ansi.test.ts",
     "test/renderer.test.ts",
 ])
 
@@ -48,6 +49,7 @@ package_tree(
         "src/renderer.ts": "src/renderer.ts",
         "src/symbols.ts": "src/symbols.ts",
         "src/terminal.ts": "src/terminal.ts",
+        "test/ansi.test.ts": "test/ansi.test.ts",
         "test/renderer.test.ts": "test/renderer.test.ts",
         "tsconfig.json": "tsconfig.json",
     },

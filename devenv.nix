@@ -6,7 +6,7 @@
   ...
 }:
 let
-  repoFlake = builtins.getFlake (toString ./.);
+  repoFlake = builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
@@ -1077,7 +1077,12 @@ in
     exec = trace.exec "buck2:typescript:materialize-dist" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      export PATH=${lib.makeBinPath [ pkgs.coreutils ]}
+      export PATH=${
+        lib.makeBinPath [
+          pkgs.coreutils
+          pkgs.watchman
+        ]
+      }
       if [ -f "$root/../../.megarepo-owned-worktree.json" ]; then
         export TYPESCRIPT_DIST_MODE=publish
         export WORKSPACE_ROOT="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
@@ -1121,6 +1126,12 @@ in
     exec = trace.exec "buck2:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      export PATH=${
+        lib.makeBinPath [
+          pkgs.coreutils
+          pkgs.watchman
+        ]
+      }
       workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
       buck="$workspace_root/.megarepo/bin/buck2"
       "$buck" audit providers \

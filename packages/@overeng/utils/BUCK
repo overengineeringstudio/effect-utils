@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d64579ae7944bbd501195a3c5f31631ec70e4b9e3142c1a2b7561b3e77da9a4a
+# Semantic fingerprint: sha256:c89afcab9baf69d93511c68ceb46212c111ec651624f352993b0da1fa74734a8
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -24,6 +24,7 @@ export_materialization_inputs([
     "src/browser/__tests__/fixtures/test-worker.ts",
     "src/browser/__tests__/vite.config.ts",
     "src/browser/base64.ts",
+    "src/browser/base64.unit.test.ts",
     "src/browser/browser-detect.ts",
     "src/browser/mod.ts",
     "src/browser/opfs.ts",
@@ -60,6 +61,7 @@ export_materialization_inputs([
     "src/node/ActiveHandlesDebugger.ts",
     "src/node/ActiveHandlesDebugger.unit.test.ts",
     "src/node/FileLogger.ts",
+    "src/node/FileLogger.unit.test.ts",
     "src/node/cli-help-rewrite.ts",
     "src/node/cli-help-rewrite.unit.test.ts",
     "src/node/cli-version.ts",
@@ -125,6 +127,7 @@ package_tree(
         "src/browser/__tests__/fixtures/test-worker.ts": "src/browser/__tests__/fixtures/test-worker.ts",
         "src/browser/__tests__/vite.config.ts": "src/browser/__tests__/vite.config.ts",
         "src/browser/base64.ts": "src/browser/base64.ts",
+        "src/browser/base64.unit.test.ts": "src/browser/base64.unit.test.ts",
         "src/browser/browser-detect.ts": "src/browser/browser-detect.ts",
         "src/browser/mod.ts": "src/browser/mod.ts",
         "src/browser/opfs.ts": "src/browser/opfs.ts",
@@ -161,6 +164,7 @@ package_tree(
         "src/node/ActiveHandlesDebugger.ts": "src/node/ActiveHandlesDebugger.ts",
         "src/node/ActiveHandlesDebugger.unit.test.ts": "src/node/ActiveHandlesDebugger.unit.test.ts",
         "src/node/FileLogger.ts": "src/node/FileLogger.ts",
+        "src/node/FileLogger.unit.test.ts": "src/node/FileLogger.unit.test.ts",
         "src/node/cli-help-rewrite.ts": "src/node/cli-help-rewrite.ts",
         "src/node/cli-help-rewrite.unit.test.ts": "src/node/cli-help-rewrite.unit.test.ts",
         "src/node/cli-version.ts": "src/node/cli-version.ts",

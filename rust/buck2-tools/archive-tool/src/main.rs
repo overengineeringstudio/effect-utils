@@ -59,12 +59,9 @@ fn normalize_symlink_target(parent: &Path, target: &Path) -> ToolResult<PathBuf>
             format!("archive symlink target is absolute: {}", target.display()),
         ));
     }
-    let target_text = target.to_str().ok_or_else(|| {
-        fail(
-            "BUCK2_ARCHIVE_LINK",
-            "archive symlink target is not UTF-8",
-        )
-    })?;
+    let target_text = target
+        .to_str()
+        .ok_or_else(|| fail("BUCK2_ARCHIVE_LINK", "archive symlink target is not UTF-8"))?;
     if target_text.contains('\\') || target_text.bytes().any(|byte| byte < 32 || byte == 127) {
         return Err(fail(
             "BUCK2_ARCHIVE_LINK",
@@ -80,14 +77,20 @@ fn normalize_symlink_target(parent: &Path, target: &Path) -> ToolResult<PathBuf>
                 if !normalized.pop() {
                     return Err(fail(
                         "BUCK2_ARCHIVE_LINK",
-                        format!("archive symlink target escapes package root: {}", target.display()),
+                        format!(
+                            "archive symlink target escapes package root: {}",
+                            target.display()
+                        ),
                     ));
                 }
             }
             Component::Prefix(_) | Component::RootDir => {
                 return Err(fail(
                     "BUCK2_ARCHIVE_LINK",
-                    format!("archive symlink target is not portable: {}", target.display()),
+                    format!(
+                        "archive symlink target is not portable: {}",
+                        target.display()
+                    ),
                 ));
             }
         }
@@ -164,7 +167,10 @@ fn extract_prefixed_archive(
         {
             return Err(fail(
                 "BUCK2_ARCHIVE_PATH",
-                format!("{archive_kind} entry path is not normalized: {}", path.display()),
+                format!(
+                    "{archive_kind} entry path is not normalized: {}",
+                    path.display()
+                ),
             ));
         }
         let relative_text = relative.to_str().ok_or_else(|| {
@@ -193,7 +199,11 @@ fn extract_prefixed_archive(
                         format!("could not read {archive_kind} entry mode: {error}"),
                     )
                 })?;
-                let expected_mode = if archive_mode & 0o111 == 0 { 0o644 } else { 0o755 };
+                let expected_mode = if archive_mode & 0o111 == 0 {
+                    0o644
+                } else {
+                    0o755
+                };
                 let metadata = fs::symlink_metadata(&destination).map_err(|error| {
                     fail(
                         "BUCK2_ARCHIVE_DUPLICATE",
@@ -219,12 +229,16 @@ fn extract_prefixed_archive(
                     while remaining > 0 {
                         let length = usize::try_from(remaining.min(archive_bytes.len() as u64))
                             .expect("bounded duplicate comparison length");
-                        entry.read_exact(&mut archive_bytes[..length]).map_err(|error| {
-                            fail(
-                                "BUCK2_ARCHIVE_DUPLICATE",
-                                format!("could not read duplicate {archive_kind} entry: {error}"),
-                            )
-                        })?;
+                        entry
+                            .read_exact(&mut archive_bytes[..length])
+                            .map_err(|error| {
+                                fail(
+                                    "BUCK2_ARCHIVE_DUPLICATE",
+                                    format!(
+                                        "could not read duplicate {archive_kind} entry: {error}"
+                                    ),
+                                )
+                            })?;
                         existing
                             .read_exact(&mut existing_bytes[..length])
                             .map_err(|error| {
@@ -259,7 +273,10 @@ fn extract_prefixed_archive(
             if !identical {
                 return Err(fail(
                     "BUCK2_ARCHIVE_DUPLICATE",
-                    format!("conflicting duplicate {archive_kind} entry: {}", relative.display()),
+                    format!(
+                        "conflicting duplicate {archive_kind} entry: {}",
+                        relative.display()
+                    ),
                 ));
             }
             continue;
@@ -282,7 +299,12 @@ fn extract_prefixed_archive(
                 )
             })?;
             fs::set_permissions(&destination, fs::Permissions::from_mode(0o755)).map_err(
-                |error| fail("BUCK2_ARCHIVE_OUTPUT", format!("could not set directory mode: {error}")),
+                |error| {
+                    fail(
+                        "BUCK2_ARCHIVE_OUTPUT",
+                        format!("could not set directory mode: {error}"),
+                    )
+                },
             )?;
         } else if kind.is_file() {
             let archive_mode = entry.header().mode().map_err(|error| {
@@ -291,7 +313,11 @@ fn extract_prefixed_archive(
                     format!("could not read {archive_kind} entry mode: {error}"),
                 )
             })?;
-            let mode = if archive_mode & 0o111 == 0 { 0o644 } else { 0o755 };
+            let mode = if archive_mode & 0o111 == 0 {
+                0o644
+            } else {
+                0o755
+            };
             let mut output = OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -309,7 +335,12 @@ fn extract_prefixed_archive(
                 )
             })?;
             fs::set_permissions(&destination, fs::Permissions::from_mode(mode)).map_err(
-                |error| fail("BUCK2_ARCHIVE_OUTPUT", format!("could not set file mode: {error}")),
+                |error| {
+                    fail(
+                        "BUCK2_ARCHIVE_OUTPUT",
+                        format!("could not set file mode: {error}"),
+                    )
+                },
             )?;
         } else if allow_symlinks && kind.is_symlink() {
             let target = entry.link_name().map_err(|error| {
@@ -335,7 +366,10 @@ fn extract_prefixed_archive(
         } else {
             return Err(fail(
                 "BUCK2_ARCHIVE_ENTRY_TYPE",
-                format!("unsupported {archive_kind} entry type at {}", path.display()),
+                format!(
+                    "unsupported {archive_kind} entry type at {}",
+                    path.display()
+                ),
             ));
         }
         extracted += 1;
@@ -363,7 +397,10 @@ fn extract_prefixed_archive(
         if !target.starts_with(&canonical_out) {
             return Err(fail(
                 "BUCK2_ARCHIVE_LINK",
-                format!("archive symlink resolves outside package root: {}", link.display()),
+                format!(
+                    "archive symlink resolves outside package root: {}",
+                    link.display()
+                ),
             ));
         }
     }
@@ -371,13 +408,7 @@ fn extract_prefixed_archive(
 }
 
 fn extract_crate(args: &ExtractCrateArgs) -> ToolResult<()> {
-    extract_prefixed_archive(
-        &args.archive,
-        &args.out,
-        &args.strip_prefix,
-        "crate",
-        false,
-    )
+    extract_prefixed_archive(&args.archive, &args.out, &args.strip_prefix, "crate", false)
 }
 
 fn parse_patch_range(value: &str) -> ToolResult<(usize, usize)> {
@@ -386,13 +417,26 @@ fn parse_patch_range(value: &str) -> ToolResult<(usize, usize)> {
         .next()
         .ok_or_else(|| fail("BUCK2_ARCHIVE_PATCH", "patch range is empty"))?
         .parse::<usize>()
-        .map_err(|error| fail("BUCK2_ARCHIVE_PATCH", format!("invalid patch range: {error}")))?;
+        .map_err(|error| {
+            fail(
+                "BUCK2_ARCHIVE_PATCH",
+                format!("invalid patch range: {error}"),
+            )
+        })?;
     let count = parts
         .next()
         .map_or(Ok(1_usize), |value| value.parse::<usize>())
-        .map_err(|error| fail("BUCK2_ARCHIVE_PATCH", format!("invalid patch count: {error}")))?;
+        .map_err(|error| {
+            fail(
+                "BUCK2_ARCHIVE_PATCH",
+                format!("invalid patch count: {error}"),
+            )
+        })?;
     if parts.next().is_some() {
-        return Err(fail("BUCK2_ARCHIVE_PATCH", "patch range has too many fields"));
+        return Err(fail(
+            "BUCK2_ARCHIVE_PATCH",
+            "patch range has too many fields",
+        ));
     }
     Ok((start, count))
 }
@@ -404,9 +448,12 @@ fn parse_hunk_header(value: &str) -> ToolResult<(usize, usize, usize)> {
     let (old, value) = value
         .split_once(" +")
         .ok_or_else(|| fail("BUCK2_ARCHIVE_PATCH", "invalid unified-diff hunk ranges"))?;
-    let (new, _) = value
-        .split_once(" @@")
-        .ok_or_else(|| fail("BUCK2_ARCHIVE_PATCH", "invalid unified-diff hunk terminator"))?;
+    let (new, _) = value.split_once(" @@").ok_or_else(|| {
+        fail(
+            "BUCK2_ARCHIVE_PATCH",
+            "invalid unified-diff hunk terminator",
+        )
+    })?;
     let (old_start, old_count) = parse_patch_range(old)?;
     let (_, new_count) = parse_patch_range(new)?;
     Ok((old_start, old_count, new_count))
@@ -418,7 +465,12 @@ fn patch_path(value: &str) -> ToolResult<PathBuf> {
         .next()
         .unwrap_or(value)
         .strip_prefix("b/")
-        .ok_or_else(|| fail("BUCK2_ARCHIVE_PATCH", "patched path must have the b/ prefix"))?;
+        .ok_or_else(|| {
+            fail(
+                "BUCK2_ARCHIVE_PATCH",
+                "patched path must have the b/ prefix",
+            )
+        })?;
     let value = normalized_relative(value, "patched path")?;
     Ok(PathBuf::from(value))
 }
@@ -439,7 +491,10 @@ fn apply_file_hunks(
         let (old_start, old_count, new_count) = parse_hunk_header(lines[index].trim_end())?;
         let hunk_start = old_start.saturating_sub(1);
         if hunk_start < source_index || hunk_start > source_lines.len() {
-            return Err(fail("BUCK2_ARCHIVE_PATCH", "patch hunk is out of order or out of range"));
+            return Err(fail(
+                "BUCK2_ARCHIVE_PATCH",
+                "patch hunk is out of order or out of range",
+            ));
         }
         for line in &source_lines[source_index..hunk_start] {
             output.push_str(line);
@@ -473,12 +528,18 @@ fn apply_file_hunks(
             }
             if marker == Some(b' ') || marker == Some(b'-') {
                 let source = source_lines.get(source_index).ok_or_else(|| {
-                    fail("BUCK2_ARCHIVE_PATCH", "patch hunk consumes past end of file")
+                    fail(
+                        "BUCK2_ARCHIVE_PATCH",
+                        "patch hunk consumes past end of file",
+                    )
                 })?;
                 if *source != body {
                     return Err(fail(
                         "BUCK2_ARCHIVE_PATCH",
-                        format!("patch context does not match at source line {}", source_index + 1),
+                        format!(
+                            "patch context does not match at source line {}",
+                            source_index + 1
+                        ),
                     ));
                 }
                 source_index += 1;
@@ -507,7 +568,10 @@ fn apply_patch(root: &Path, patch_path_value: &Path) -> ToolResult<()> {
     let patch = fs::read_to_string(patch_path_value).map_err(|error| {
         fail(
             "BUCK2_ARCHIVE_PATCH",
-            format!("could not read patch {}: {error}", patch_path_value.display()),
+            format!(
+                "could not read patch {}: {error}",
+                patch_path_value.display()
+            ),
         )
     })?;
     let lines = patch.split_inclusive('\n').collect::<Vec<_>>();
@@ -540,13 +604,19 @@ fn apply_patch(root: &Path, patch_path_value: &Path) -> ToolResult<()> {
             .ok_or_else(|| fail("BUCK2_ARCHIVE_PATCH", "invalid old patch path"))?;
         let new_path = patch_path(lines[index + 1].trim_end().trim_start_matches("+++ "))?;
         if Path::new(old_path) != new_path {
-            return Err(fail("BUCK2_ARCHIVE_PATCH", "patch renames are not supported"));
+            return Err(fail(
+                "BUCK2_ARCHIVE_PATCH",
+                "patch renames are not supported",
+            ));
         }
         let destination = root.join(&new_path);
         let metadata = fs::symlink_metadata(&destination).map_err(|error| {
             fail(
                 "BUCK2_ARCHIVE_PATCH",
-                format!("patched file does not exist: {}: {error}", new_path.display()),
+                format!(
+                    "patched file does not exist: {}: {error}",
+                    new_path.display()
+                ),
             )
         })?;
         if !metadata.file_type().is_file() {
@@ -558,7 +628,10 @@ fn apply_patch(root: &Path, patch_path_value: &Path) -> ToolResult<()> {
         let original = fs::read_to_string(&destination).map_err(|error| {
             fail(
                 "BUCK2_ARCHIVE_PATCH",
-                format!("could not read patched file {}: {error}", new_path.display()),
+                format!(
+                    "could not read patched file {}: {error}",
+                    new_path.display()
+                ),
             )
         })?;
         let (patched, next) = apply_file_hunks(&original, &lines, index + 2)?;
@@ -571,14 +644,20 @@ fn apply_patch(root: &Path, patch_path_value: &Path) -> ToolResult<()> {
         fs::write(&destination, patched).map_err(|error| {
             fail(
                 "BUCK2_ARCHIVE_PATCH",
-                format!("could not write patched file {}: {error}", new_path.display()),
+                format!(
+                    "could not write patched file {}: {error}",
+                    new_path.display()
+                ),
             )
         })?;
         index = next;
         files += 1;
     }
     if files == 0 {
-        return Err(fail("BUCK2_ARCHIVE_PATCH", "patch contains no file modifications"));
+        return Err(fail(
+            "BUCK2_ARCHIVE_PATCH",
+            "patch contains no file modifications",
+        ));
     }
     Ok(())
 }
@@ -688,7 +767,11 @@ mod tests {
         file_header.set_size(4);
         file_header.set_cksum();
         builder
-            .append_data(&mut file_header, "deep-eql/lib/value.txt", b"old\n".as_slice())
+            .append_data(
+                &mut file_header,
+                "deep-eql/lib/value.txt",
+                b"old\n".as_slice(),
+            )
             .unwrap();
         let mut duplicate_header = Header::new_gnu();
         duplicate_header.set_entry_type(EntryType::Regular);
@@ -711,7 +794,13 @@ mod tests {
         builder
             .append_data(&mut link_header, "deep-eql/bin/value", io::empty())
             .unwrap();
-        builder.into_inner().unwrap().finish().unwrap().flush().unwrap();
+        builder
+            .into_inner()
+            .unwrap()
+            .finish()
+            .unwrap()
+            .flush()
+            .unwrap();
 
         let patch = tempfile::NamedTempFile::new().unwrap();
         fs::write(
@@ -728,7 +817,10 @@ mod tests {
             strip_prefix: "deep-eql".into(),
         })
         .unwrap();
-        assert_eq!(fs::read_to_string(output.join("lib/value.txt")).unwrap(), "new\n");
+        assert_eq!(
+            fs::read_to_string(output.join("lib/value.txt")).unwrap(),
+            "new\n"
+        );
         assert_eq!(
             fs::read_link(output.join("bin/value")).unwrap(),
             PathBuf::from("../lib/value.txt")
@@ -749,7 +841,13 @@ mod tests {
         header.as_mut_bytes()[8..10].copy_from_slice(b"..");
         header.set_cksum();
         builder.append(&header, contents.as_slice()).unwrap();
-        builder.into_inner().unwrap().finish().unwrap().flush().unwrap();
+        builder
+            .into_inner()
+            .unwrap()
+            .finish()
+            .unwrap()
+            .flush()
+            .unwrap();
 
         let output_parent = tempfile::tempdir().unwrap();
         let error = extract_npm(&ExtractNpmArgs {
@@ -777,7 +875,13 @@ mod tests {
         builder
             .append_data(&mut header, "package/bin/escape", io::empty())
             .unwrap();
-        builder.into_inner().unwrap().finish().unwrap().flush().unwrap();
+        builder
+            .into_inner()
+            .unwrap()
+            .finish()
+            .unwrap()
+            .flush()
+            .unwrap();
         let output_parent = tempfile::tempdir().unwrap();
         let error = extract_npm(&ExtractNpmArgs {
             archive: file.path().to_owned(),

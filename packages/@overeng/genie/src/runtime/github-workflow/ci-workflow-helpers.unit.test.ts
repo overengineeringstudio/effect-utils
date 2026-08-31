@@ -107,7 +107,7 @@ const workflowReportTaskModuleSource = readFileSync(
   'utf8',
 )
 const buckToolchainsSource = readFileSync(
-  new URL(['../../../../../../toolchains', 'BUCK'].join('/'), import.meta.url),
+  new URL(['../../../../../../buck2/toolchains', 'BUCK'].join('/'), import.meta.url),
   'utf8',
 )
 
@@ -361,11 +361,11 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(nixRestore.with.path).not.toContain('github.run_id')
   })
 
-  it('defaults the pnpm store to a runner-stable path projected into the member', () => {
+  it('keeps the pnpm store definition stable without caching it in CI', () => {
     expect(ciWorkflowSource).toContain(
       'export const ciPnpmStore = `${ciCompositionStateRoot}/pnpm-store-pure-v1`',
     )
-    expect(generatedCiWorkflowYamlSource).toContain(
+    expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/pnpm-store-pure-v1',
     )
     expect(generatedCiWorkflowYamlSource).not.toContain('${{ github.workspace }}/.pnpm-store')
@@ -1055,8 +1055,18 @@ describe('effect-utils CI composition workspace', () => {
     mkdirSync(join(mrOut, 'bin'), { recursive: true })
     writeFileSync(envFile, '')
     git(checkout, 'init', '--initial-branch=main')
-    git(checkout, 'config', 'user.email', 'ci-fixture@example.invalid')
-    git(checkout, 'config', 'user.name', 'CI Fixture')
+    const configuredIdentity = (field: 'user.email' | 'user.name', fallback: string) =>
+      spawnSync('git', ['config', field], {
+        cwd: checkout,
+        encoding: 'utf8',
+      }).stdout.trim() || fallback
+    git(
+      checkout,
+      'config',
+      'user.email',
+      configuredIdentity('user.email', 'ci-fixture@example.invalid'),
+    )
+    git(checkout, 'config', 'user.name', configuredIdentity('user.name', 'CI Fixture'))
     writeFileSync(join(checkout, 'README'), 'fixture\n')
     mkdirSync(join(checkout, 'genie/ci-scripts'), { recursive: true })
     writeFileSync(
@@ -1312,8 +1322,8 @@ describe('effect-utils CI composition workspace', () => {
     expect(trustedRef('pull_request', 'refs/heads/main')).toBe(false)
   })
 
-  it('keeps cache versions stable across run ids and projects Buck at the canonical member store', () => {
-    expect(generatedCiWorkflowYamlSource).toContain(
+  it('keeps the Nix cache stable without projecting an ambient pnpm store', () => {
+    expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/pnpm-store-pure-v1',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
@@ -1322,8 +1332,6 @@ describe('effect-utils CI composition workspace', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/${{ github.run_id }}',
     )
-    expect(buckToolchainsSource).toContain(
-      'store_dir = "repos/effect-utils/.devenv/pnpm-store-pure-v1"',
-    )
+    expect(buckToolchainsSource).not.toContain('store_dir =')
   })
 })

@@ -26,13 +26,14 @@ fail() {
   exit 1
 }
 
+test_bash="${BASH_BIN:-$BASH}"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 echo "Running otel-instr gating test..."
-
-# Stub binaries so `command -v otel-scrape` / `command -v otel-span` succeed in
-# every case; the arrays must then be governed purely by the env triggers.
+# Use exact fixture paths so shell startup behavior cannot replace the test's
+# hermetic binaries through PATH initialization. The arrays must then be
+# governed only by the environment triggers under test.
 stubbin="$tmpdir/stubbin"
 mkdir -p "$stubbin"
 for tool in otel-scrape otel-span; do
@@ -100,6 +101,8 @@ base_env=(
   "PATH=$stubbin:$PATH"
   "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318"
   "OTEL_SCRAPE_SUMMARY_DIR=$tmpdir/summaries"
+  "OTEL_SPAN_BIN=$stubbin/otel-span"
+  "OTEL_SCRAPE_BIN=$stubbin/otel-scrape"
 )
 
 assert_bare() {
@@ -115,27 +118,26 @@ assert_bare() {
 # --- (a) NO wrap: delivery available but NO traceparent (the gating-unification fix) ---
 # `env -i` starts from an empty environment, so no traceparent is present.
 out="$(env -i "${base_env[@]}" HOME="$tmpdir" \
-  bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
+  "$test_bash" -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
 assert_bare "oxlint/no-trace-context" "$out"
 
 # --- (a) NO wrap: OTEL_SCRAPE_ENABLED=0 ---
 out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" OTEL_SCRAPE_ENABLED=0 \
-  bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
+  "$test_bash" -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
 assert_bare "oxlint/instrumentation-disabled" "$out"
 
 # --- (a) NO wrap: otel-scrape absent (override to a nonexistent bin) ---
 out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" OTEL_SCRAPE_BIN="$tmpdir/no-such-otel-scrape" \
-  bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
+  "$test_bash" -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}"' _ "$oxlint_prelude")"
 assert_bare "oxlint/scrape-absent" "$out"
 
 # --- (b) WRAP: binaries present + valid trace context + instrumentation enabled ---
 out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" \
-  bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\nINSTR=%s\nFLAGS=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}" "${_otel_instr[*]-}" "${_otel_instr_flags[*]-}"' _ "$oxlint_prelude")"
+  "$test_bash" -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\nINSTR=%s\nFLAGS=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}" "${_otel_instr[*]-}" "${_otel_instr_flags[*]-}"' _ "$oxlint_prelude")"
 ic="$(printf '%s\n' "$out" | sed -n 's/^INSTR_COUNT=//p')"
 [ "$ic" -gt 0 ] || fail "oxlint/active: expected non-empty _otel_instr (otel-scrape wrap), got count=$ic"
-# The array stores the bin NAME (otel-scrape), resolved via PATH at exec time.
-printf '%s\n' "$out" | grep -q "^INSTR=otel-scrape " \
-  || fail "oxlint/active: _otel_instr should start with the otel-scrape wrapper (bin name resolved via PATH)"
+printf '%s\n' "$out" | grep -q "^INSTR=$stubbin/otel-scrape " \
+  || fail "oxlint/active: _otel_instr should start with the exact fixture otel-scrape wrapper"
 printf '%s\n' "$out" | grep -q -- "--adapter oxlint" \
   || fail "oxlint/active: _otel_instr should pass --adapter oxlint"
 printf '%s\n' "$out" | grep -q "^FLAGS=--format=json$" \
@@ -143,7 +145,7 @@ printf '%s\n' "$out" | grep -q "^FLAGS=--format=json$" \
 
 # --- (b') vitest adapter: wraps when active, but injects NO --format=json child flag ---
 out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" \
-  bash -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\nINSTR=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}" "${_otel_instr[*]-}"' _ "$vitest_prelude")"
+  "$test_bash" -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\nINSTR=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}" "${_otel_instr[*]-}"' _ "$vitest_prelude")"
 ic="$(printf '%s\n' "$out" | sed -n 's/^INSTR_COUNT=//p')"
 fc="$(printf '%s\n' "$out" | sed -n 's/^FLAGS_COUNT=//p')"
 [ "$ic" -gt 0 ] || fail "vitest/active: expected non-empty _otel_instr, got count=$ic"

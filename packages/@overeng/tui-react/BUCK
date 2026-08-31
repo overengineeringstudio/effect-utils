@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/tui-react/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:5943677cd8bd4e8f12d1b4e97b8a05faa56904588261ddc21e1fcee441927ba3
+# Semantic fingerprint: sha256:784e842bcb7e4095cff4217a96a3edf0bcdc7d58d7066d8f8a4a02d6587628a0
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/examples/**/*.cts, packages/@overeng/tui-react/examples/**/*.mts, packages/@overeng/tui-react/examples/**/*.ts, packages/@overeng/tui-react/examples/**/*.tsx, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-react/src/**/*.cts, packages/@overeng/tui-react/src/**/*.mts, packages/@overeng/tui-react/src/**/*.ts, packages/@overeng/tui-react/src/**/*.tsx, packages/@overeng/tui-react/test/**/*.cts, packages/@overeng/tui-react/test/**/*.mts, packages/@overeng/tui-react/test/**/*.ts, packages/@overeng/tui-react/test/**/*.tsx, packages/@overeng/tui-react/tsconfig.buck.json.genie.ts, packages/@overeng/tui-react/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-dev/src/**/*.cts, packages/@overeng/utils-dev/src/**/*.mts, packages/@overeng/utils-dev/src/**/*.ts, packages/@overeng/utils-dev/src/**/*.tsx, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx
 # Regenerate: devenv tasks run genie:run
 
@@ -258,6 +258,7 @@ package_tree(
                 "src/browser/__tests__/fixtures/test-worker.ts": "//packages/@overeng/utils:src/browser/__tests__/fixtures/test-worker.ts",
                 "src/browser/__tests__/vite.config.ts": "//packages/@overeng/utils:src/browser/__tests__/vite.config.ts",
                 "src/browser/base64.ts": "//packages/@overeng/utils:src/browser/base64.ts",
+                "src/browser/base64.unit.test.ts": "//packages/@overeng/utils:src/browser/base64.unit.test.ts",
                 "src/browser/browser-detect.ts": "//packages/@overeng/utils:src/browser/browser-detect.ts",
                 "src/browser/mod.ts": "//packages/@overeng/utils:src/browser/mod.ts",
                 "src/browser/opfs.ts": "//packages/@overeng/utils:src/browser/opfs.ts",
@@ -294,6 +295,7 @@ package_tree(
                 "src/node/ActiveHandlesDebugger.ts": "//packages/@overeng/utils:src/node/ActiveHandlesDebugger.ts",
                 "src/node/ActiveHandlesDebugger.unit.test.ts": "//packages/@overeng/utils:src/node/ActiveHandlesDebugger.unit.test.ts",
                 "src/node/FileLogger.ts": "//packages/@overeng/utils:src/node/FileLogger.ts",
+                "src/node/FileLogger.unit.test.ts": "//packages/@overeng/utils:src/node/FileLogger.unit.test.ts",
                 "src/node/cli-help-rewrite.ts": "//packages/@overeng/utils:src/node/cli-help-rewrite.ts",
                 "src/node/cli-help-rewrite.unit.test.ts": "//packages/@overeng/utils:src/node/cli-help-rewrite.unit.test.ts",
                 "src/node/cli-version.ts": "//packages/@overeng/utils:src/node/cli-version.ts",
