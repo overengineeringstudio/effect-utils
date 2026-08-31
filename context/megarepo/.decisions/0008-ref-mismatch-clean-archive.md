@@ -40,11 +40,11 @@ This record predates the current decision-record shape and did not enumerate
 options. The table below is reconstructed from alternatives named in the
 record's own text.
 
-| Option                                              | Tradeoff                                                                      | Outcome  |
-| --------------------------------------------------- | -------------------------------------------------------------------------------- | -------- |
-| Distinct clean-archive path (this record)           | Reclaims clean drift; a second archival path with its own gates                  | Accepted |
-| Keep every `ref_mismatch` worktree (prior default)  | No new risk; a large cold class stays unreclaimable                              | Rejected |
-| Reuse the `store fix` repair inside gc              | Reuses existing machinery; mutates branch identity to make deletion possible     | Rejected |
+| Option                                             | Tradeoff                                                                     | Outcome  |
+| -------------------------------------------------- | ---------------------------------------------------------------------------- | -------- |
+| Distinct clean-archive path (this record)          | Reclaims clean drift; a second archival path with its own gates              | Accepted |
+| Keep every `ref_mismatch` worktree (prior default) | No new risk; a large cold class stays unreclaimable                          | Rejected |
+| Reuse the `store fix` repair inside gc             | Reuses existing machinery; mutates branch identity to make deletion possible | Rejected |
 
 ## Decision
 

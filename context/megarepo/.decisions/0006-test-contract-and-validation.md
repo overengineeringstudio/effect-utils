@@ -31,11 +31,11 @@ This record predates the current decision-record shape and did not enumerate
 options. The table below is reconstructed from alternatives implied by the
 record's own framing.
 
-| Option                                            | Tradeoff                                                                     | Outcome  |
-| ------------------------------------------------- | ------------------------------------------------------------------------------ | -------- |
-| Inject only `now` and `PrStateResolver` (this record) | Deterministic gates over real git and a real store; two seams to maintain   | Accepted |
-| Mock git, filesystem, and store as well           | Fast and fully deterministic; stops testing the layer that can lose work      | Rejected |
-| Let tests reach the real `gh` and wall clock      | No seams at all; results depend on network, host identity, and time of run    | Rejected |
+| Option                                                | Tradeoff                                                                   | Outcome  |
+| ----------------------------------------------------- | -------------------------------------------------------------------------- | -------- |
+| Inject only `now` and `PrStateResolver` (this record) | Deterministic gates over real git and a real store; two seams to maintain  | Accepted |
+| Mock git, filesystem, and store as well               | Fast and fully deterministic; stops testing the layer that can lose work   | Rejected |
+| Let tests reach the real `gh` and wall clock          | No seams at all; results depend on network, host identity, and time of run | Rejected |
 
 ## Decision
 

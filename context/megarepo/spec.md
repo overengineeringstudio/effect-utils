@@ -187,10 +187,10 @@ The mount mechanism is `cp -a` from the immutable store, advanced by stage plus
 git-worktree regeneration, symlinks) are disqualified there on demonstrated
 evidence and are not re-argued here. Two layers implement it:
 
-| Layer                 | Owns                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------- |
-| R6 identity           | canonical tree scan, protected-tree verification, persisted mount manifest — content only |
-| cp-a mount mechanism  | copy, capability placement, protection, atomic advance, teardown, recovery                 |
+| Layer                | Owns                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| R6 identity          | canonical tree scan, protected-tree verification, persisted mount manifest — content only |
+| cp-a mount mechanism | copy, capability placement, protection, atomic advance, teardown, recovery                |
 
 R6 defines _what a mount is_, independent of how it got there; the cp-a layer
 is the only mechanism that currently produces one. The separation is
@@ -232,18 +232,18 @@ invalidate through an excluded path.
 
 ## CLI Surface
 
-| Command                       | Responsibility | Contract                                                                       |
-| ----------------------------- | -------------- | ------------------------------------------------------------------------------ |
-| `mr init` / `mr add`          | arrangement    | create `megarepo.kdl`; add a member declaration                                |
-| `mr fetch --apply`            | arrangement    | fetch remotes, advance unpinned members, then update the lock                  |
-| `mr lock`                     | arrangement    | record current workspace commits into the lock; never touches remotes         |
-| `mr apply`                    | ownership      | lock → workspace, exactly; never modifies the lock                             |
-| `mr status` / `mr ls`         | both           | report intent vs lock vs workspace drift; read-only                            |
-| `mr pin`                      | arrangement    | freeze a member against `mr fetch --apply`                                     |
-| `mr store gc` / `status` / `fix` | arrangement | reclaim, report, and repair store worktrees                                    |
-| `mr composition`              | ownership      | inspect and drive composition workspace state                                  |
-| `mr exec`                     | both           | run a command across members                                                   |
-| `mr check`                    | both           | validate config, lock, and workspace consistency                               |
+| Command                          | Responsibility | Contract                                                              |
+| -------------------------------- | -------------- | --------------------------------------------------------------------- |
+| `mr init` / `mr add`             | arrangement    | create `megarepo.kdl`; add a member declaration                       |
+| `mr fetch --apply`               | arrangement    | fetch remotes, advance unpinned members, then update the lock         |
+| `mr lock`                        | arrangement    | record current workspace commits into the lock; never touches remotes |
+| `mr apply`                       | ownership      | lock → workspace, exactly; never modifies the lock                    |
+| `mr status` / `mr ls`            | both           | report intent vs lock vs workspace drift; read-only                   |
+| `mr pin`                         | arrangement    | freeze a member against `mr fetch --apply`                            |
+| `mr store gc` / `status` / `fix` | arrangement    | reclaim, report, and repair store worktrees                           |
+| `mr composition`                 | ownership      | inspect and drive composition workspace state                         |
+| `mr exec`                        | both           | run a command across members                                          |
+| `mr check`                       | both           | validate config, lock, and workspace consistency                      |
 
 Filtering (`--only` / `--skip`, mutually exclusive) applies to bulk
 arrangement commands; generators skip members that were not synced rather than

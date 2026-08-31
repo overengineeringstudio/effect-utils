@@ -37,12 +37,12 @@ This record predates the current decision-record shape and did not enumerate
 options. The table below is reconstructed from alternatives named in the
 record's own text; it adds no analysis the record did not already carry.
 
-| Option                                         | Tradeoff                                                                        | Outcome  |
-| ---------------------------------------------- | --------------------------------------------------------------------------------- | -------- |
-| Layered gates + archive-then-reap (this record) | Default gc reclaims the dominant accumulation; six gates and a ledger to maintain | Accepted |
-| Keep protecting every named branch (prior default) | Zero work; the class that actually grows stays unreclaimable outside `--all`   | Rejected |
-| Reclaim on staleness alone                     | One signal, much simpler; deletes unpushed work — the lossless floor is independent | Rejected |
-| Widen scope to artifact pruning                | More disk reclaimed per run; a different risk surface, named out of scope here    | Rejected |
+| Option                                             | Tradeoff                                                                            | Outcome  |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------- | -------- |
+| Layered gates + archive-then-reap (this record)    | Default gc reclaims the dominant accumulation; six gates and a ledger to maintain   | Accepted |
+| Keep protecting every named branch (prior default) | Zero work; the class that actually grows stays unreclaimable outside `--all`        | Rejected |
+| Reclaim on staleness alone                         | One signal, much simpler; deletes unpushed work — the lossless floor is independent | Rejected |
+| Widen scope to artifact pruning                    | More disk reclaimed per run; a different risk surface, named out of scope here      | Rejected |
 
 ## Decision
 

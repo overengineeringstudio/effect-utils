@@ -37,12 +37,12 @@ guard elsewhere closes it.
 
 ## Options
 
-| Option                                            | Tradeoff                                                                            | Outcome  |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------ | -------- |
-| Error on drifted commit worktrees (this decision) | Restores the Lock → Workspace contract; commit worktrees only, branch worktrees free | Accepted |
+| Option                                            | Tradeoff                                                                                   | Outcome  |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------- |
+| Error on drifted commit worktrees (this decision) | Restores the Lock → Workspace contract; commit worktrees only, branch worktrees free       | Accepted |
 | Fail on any drifted worktree, branch or commit    | Simpler rule; breaks co-development, where a branch worktree ahead of the lock is intended | Rejected |
-| Force-switch the worktree to the locked revision  | Restores the postcondition with no new error path; silently discards uncommitted work | Rejected |
-| Detect the drift in each downstream consumer      | No mr change; special-cases one consumer and leaves every other exposed              | Rejected |
+| Force-switch the worktree to the locked revision  | Restores the postcondition with no new error path; silently discards uncommitted work      | Rejected |
+| Detect the drift in each downstream consumer      | No mr change; special-cases one consumer and leaves every other exposed                    | Rejected |
 
 ## Decision
 

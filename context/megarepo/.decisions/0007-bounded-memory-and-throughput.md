@@ -32,11 +32,11 @@ This record predates the current decision-record shape and did not enumerate
 options. The table below is reconstructed from the failure modes the record
 names.
 
-| Option                                        | Tradeoff                                                                 | Outcome  |
-| --------------------------------------------- | -------------------------------------------------------------------------- | -------- |
+| Option                                                                         | Tradeoff                                                                          | Outcome  |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- | -------- |
 | Stream, discard per repo, bound concurrency at the measured knee (this record) | Bounded RSS at any store size; needs telemetry to keep the operating point honest | Accepted |
-| Materialize git output and result arrays      | Simplest code; degrades exactly when the store is big enough to need gc    | Rejected |
-| Unbounded repo concurrency                    | Best wall time on a small store; trades the memory bound for IO contention | Rejected |
+| Materialize git output and result arrays                                       | Simplest code; degrades exactly when the store is big enough to need gc           | Rejected |
+| Unbounded repo concurrency                                                     | Best wall time on a small store; trades the memory bound for IO contention        | Rejected |
 
 ## Decision
 
