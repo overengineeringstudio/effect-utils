@@ -1,21 +1,21 @@
 import * as stylex from '@stylexjs/stylex'
+import { colors } from 'tailwind-stylex/tokens.stylex'
 
 /**
  * Semantic design tokens for effect-schema-form-aria.
  *
- * Components consume only these semantic names — never raw colors or sizes.
- * Raw scales (spacing, radii, fontSizes) come from tailwind-stylex; re-anchoring
- * these defaults onto named scale steps is a follow-up design decision that
- * must not require component changes.
+ * Components consume semantic names rather than palette steps. Defaults use
+ * named design-system scale values so unconstrained raw colors are not the
+ * easiest path.
  */
 export const tokens = stylex.defineVars({
-  ink: '#1a1a1a',
-  'subtle-ink': '#6b7280',
-  'muted-ink': '#9ca3af',
-  border: '#e5e7eb',
-  input: '#ffffff',
-  surface: '#f9fafb',
-  'surface-raised': '#f3f4f6',
-  primary: '#3b82f6',
-  accent: '#3b82f6',
+  ink: colors.neutral900,
+  'subtle-ink': colors.gray500,
+  'muted-ink': colors.gray400,
+  border: colors.gray200,
+  input: colors.white,
+  surface: colors.gray50,
+  'surface-raised': colors.gray100,
+  primary: colors.blue500,
+  accent: colors.blue500,
 })

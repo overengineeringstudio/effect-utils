@@ -163,7 +163,7 @@ import { tokens } from '@overeng/effect-schema-form-aria'
 import '@overeng/effect-schema-form-aria/styles.css'
 ```
 
-The default semantic color values intentionally match the previous Tailwind implementation.
+The default semantic colors are anchored to named Tailwind-compatible palette steps. This intentionally changes some rendered colors from the previous Tailwind implementation while keeping palette choices behind the semantic `tokens` contract.
 
 ## Custom Renderers
 

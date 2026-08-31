@@ -73,6 +73,11 @@ All notable changes to this project will be documented in this file.
   publication build emits that reset and compiled component rules together.
   Byte-identical markup baselines were regenerated with hashed StyleX class names.
 
+- **@overeng/effect-schema-form-aria**: anchor semantic color defaults to named
+  Tailwind-compatible palette steps (`neutral900`, the gray scale, and
+  `blue500`) instead of raw hex values. This intentionally updates rendered
+  colors while leaving component token usage unchanged.
+
 - **@overeng/effect-rpc-tanstack**: client request-id policy — `layerClient`
   now validates outgoing RPC request ids at the client boundary. Non-empty
   strings and non-negative, finite numbers/bigints are accepted (v4 interop);
