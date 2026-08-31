@@ -48,14 +48,12 @@ The workspace cell is a pure synthesized shell (decision 0020 abolished the
 root-repo-at-`.` special case): every repository, including the one under
 development, is a member cell at `repos/<name>`.
 
-plus `toolchains/BUCK` containing `configured_demo_toolchains(...)`, which
-preserves Prelude's unrelated demo toolchains while replacing Rust and C/C++
-with exact host capability providers (an empty toolchains cell breaks Prelude
-rule resolution), empty `none/BUCK`, one `.buckroot` at the root, and the cache
-client section (04). The detector spec
-lists every cell explicitly (COMP-R04). The hub cell for platforms is
-effect-utils; its real package is `buck2/platforms` with
-`host_platform` / `host_execution_platform` targets (COMP-R05).
+The root carries no synthetic toolchains or `none` cell. Prelude's conventional
+`toolchains//` spelling is a compatibility alias to the live hub cell; the hub's
+real `buck2/toolchains` package owns the exact host capability providers. The
+detector spec lists every cell explicitly (COMP-R04). The hub cell for platforms
+is effect-utils; its real package is `buck2/platforms` with `host_platform` /
+`host_execution_platform` targets (COMP-R05).
 
 **Never emit `root = <root-repo>` in `[cell_aliases]`:** root-declared aliases
 are visible in every cell, so the alias silently retargets a member's `root//`
@@ -66,15 +64,26 @@ labels (member-local labels instead).
 
 ## Generator
 
-The generator is an mr library generator (beside the vscode and
-nix-lock generators), consuming per composition: the member set with resolved
-mount paths, the platform-hub member, and the isolation dir; and per member
-(from a genie-projected member manifest read out of the mount): canonical cell
-name, canonical mount path, `[project] ignore` contributions (rewritten
-root-relative and unioned). `--isolation-dir` is CLI-only and cannot be pinned
-by buckconfig, so mr also owns the invocation wrapper that fixes it
-(COMP-R07); an unwrapped `buck2` call relies on the default and is consistent
-by accident only.
+The generator is an mr library generator (beside the vscode and nix-lock
+generators), consuming per composition: the member set with resolved mount
+paths, the platform-hub member, and the isolation dir; and per member (from a
+genie-projected member manifest read out of the mount): canonical cell name,
+canonical mount path, `[project] ignore` contributions (rewritten root-relative
+and unioned), executable capabilities, and toolchain requirements.
+
+Toolchain instances and their Nix pins have one authority: the platform hub.
+The hub manifest declares each available `ToolchainAuthority`; a consumer that
+uses one declares the corresponding `ToolchainRequirement`. A consumer cannot
+name an instance, package, executable, or pin in that requirement. Composition
+resolves every requirement to the hub before generating or publishing root
+bytes and refuses an unknown requirement, duplicate authority or requirement,
+non-hub authority, or a member-owned executable capability that attempts to
+override the required toolchain. This is an explicit shared-pin contract, not
+silent inheritance.
+
+`--isolation-dir` is CLI-only and cannot be pinned by buckconfig, so mr also
+owns the invocation wrapper that fixes it (COMP-R07); an unwrapped `buck2` call
+relies on the default and is consistent by accident only.
 
 Member repositories ship no `.buckconfig` project root of their own: deleting
 effect-utils' `.buckconfig` is part of landing the generator, so the
@@ -174,8 +183,11 @@ identity.
 
 - The root cell's own name does not enter member action identity; member mount
   path, member cell name, platform label, and isolation dir do.
-- A symlinked member mount is not a failure — it is a silent digest split
-  (COMP-R10). Real directories are load-bearing, not stylistic.
+- A symlinked member mount is not a digest split: Buck2 hashes the target path
+  string but not the member content behind it. Edits therefore do not
+  invalidate actions, and one key can serve stale artifacts (COMP-R10).
+  Shared-cache writes are forbidden for this shape; real directories are
+  load-bearing, not stylistic.
 - Presence of additional members or targets does not perturb an unrelated
   member's digests.
 - Watchman is declared at the composition root and drives cross-cell

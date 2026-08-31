@@ -8,6 +8,7 @@ import {
   mkdir,
   open,
   readFile,
+  readdir,
   rename,
   rmdir,
   unlink,
@@ -37,7 +38,11 @@ const LOCK_PATH = '.megarepo/composition-publisher.lock.json' as const
 const TRANSACTION_PATH = '.megarepo/composition-publication.json' as const
 const COMMITTED_TRANSACTION_PATH = '.megarepo/composition-publication.committed.json' as const
 const TRANSACTION_ROOT = '.megarepo/composition-publication' as const
-const OWNED_DIRECTORIES = ['.megarepo/bin', '.megarepo', 'none', 'toolchains'] as const
+const OWNED_DIRECTORIES = ['.megarepo/bin', '.megarepo'] as const
+const OBSOLETE_GENERATED_DIRECTORIES: Readonly<Record<string, true>> = {
+  none: true,
+  toolchains: true,
+}
 const memberKeyPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u
 const lockTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u
 
@@ -50,6 +55,7 @@ const LockOwner = Schema.String.check(
 )
 const LockToken = Schema.String.check(Schema.isPattern(lockTokenPattern))
 const Sha256 = Schema.String.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/u))
+const FilesystemIdentity = Schema.String.check(Schema.isPattern(/^[0-9]+$/u))
 
 /** Durable exclusive publisher lock identity. Recovery requires the exact recorded token. */
 export const CompositionPublisherLockSchema = Schema.Struct({
@@ -78,6 +84,18 @@ const TransactionFileSchema = Schema.Struct({
 })
 type TransactionFile = typeof TransactionFileSchema.Type
 
+const ObsoleteTransactionFileSchema = Schema.Struct({
+  path: GeneratedCompositionFileSchema.fields.path,
+  backupPath: GeneratedCompositionFileSchema.fields.path,
+  parentDev: FilesystemIdentity,
+  parentIno: FilesystemIdentity,
+  previous: Schema.TaggedStruct('File', {
+    mode: GeneratedCompositionFileSchema.fields.mode,
+    sha256: Sha256,
+  }),
+})
+type ObsoleteTransactionFile = typeof ObsoleteTransactionFileSchema.Type
+
 /** Candidate/backup ownership manifest for one serialized publication attempt. */
 export const CompositionPublicationTransactionSchema = Schema.Struct({
   schemaVersion: Schema.Literal(COMPOSITION_ROOT_SCHEMA_VERSION),
@@ -85,6 +103,9 @@ export const CompositionPublicationTransactionSchema = Schema.Struct({
   lockToken: LockToken,
   phase: Schema.Literals(['AuthorityPending', 'AuthorityCommitted']),
   files: Schema.Array(TransactionFileSchema),
+  obsoleteFiles: Schema.Array(ObsoleteTransactionFileSchema).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
 })
   .check(
     Schema.makeFilter((transaction) => {
@@ -92,6 +113,16 @@ export const CompositionPublicationTransactionSchema = Schema.Struct({
       for (const file of transaction.files) {
         if (previousPath !== undefined && previousPath >= file.path) {
           return 'Transaction files must be uniquely byte-sorted by final path'
+        }
+        previousPath = file.path
+      }
+      previousPath = undefined
+      for (const file of transaction.obsoleteFiles) {
+        if (previousPath !== undefined && previousPath >= file.path) {
+          return 'Transaction obsolete files must be uniquely byte-sorted by final path'
+        }
+        if (transaction.files.some((candidate) => candidate.path === file.path) === true) {
+          return `Transaction path may not be both desired and obsolete: ${file.path}`
         }
         previousPath = file.path
       }
@@ -190,11 +221,11 @@ export interface CompositionRootPlannedFileIdentity {
   readonly sha256: string
 }
 
-/** One ordered file transition; `.buckconfig` is last whenever publication is required. */
+/** One ordered file transition; `new` is absent for owned removal and `.buckconfig` is last. */
 export interface CompositionRootPlannedFile {
   readonly path: string
   readonly old: CompositionRootPlannedFileIdentity | undefined
-  readonly new: CompositionRootPlannedFileIdentity
+  readonly new: CompositionRootPlannedFileIdentity | undefined
 }
 
 /** Stable refusal reasons returned as dry-run data rather than Effect failures. */
@@ -257,6 +288,10 @@ type FileSnapshot = {
   readonly mode: number
   readonly bytes: Uint8Array
   readonly sha256: string
+}
+type DirectoryIdentity = {
+  readonly dev: bigint
+  readonly ino: bigint
 }
 
 class SimulatedProcessFault {
@@ -326,6 +361,60 @@ const lstatMaybe = async (path: string) => {
   } catch (cause) {
     if (isErrno(cause, 'ENOENT') === true) return undefined
     throw cause
+  }
+}
+
+const containedDirectoryIdentity = async ({
+  workspaceRoot,
+  relativeDirectory,
+}: {
+  readonly workspaceRoot: string
+  readonly relativeDirectory: string
+}): Promise<DirectoryIdentity> => {
+  const components = relativeDirectory === '.' ? [] : relativeDirectory.split('/')
+  let path = workspaceRoot
+  let identity: DirectoryIdentity | undefined
+  for (const component of ['', ...components]) {
+    if (component !== '') path = NodePath.join(path, component)
+    let info
+    try {
+      info = await lstat(path, { bigint: true })
+    } catch (cause) {
+      throw normalizeFailure({
+        cause,
+        path,
+        reason: 'ForeignPath',
+        message: `Obsolete generated parent is unavailable: ${path}`,
+      })
+    }
+    if (info.isDirectory() === false) {
+      throw failure({
+        reason: 'ForeignPath',
+        path,
+        message: `Obsolete generated parent is not a real directory: ${path}`,
+      })
+    }
+    identity = { dev: info.dev, ino: info.ino }
+  }
+  return identity!
+}
+
+const assertObsoleteParentIdentity = async ({
+  workspaceRoot,
+  file,
+}: {
+  readonly workspaceRoot: string
+  readonly file: ObsoleteTransactionFile
+}): Promise<void> => {
+  const relativeDirectory = NodePath.posix.dirname(file.path)
+  const identity = await containedDirectoryIdentity({ workspaceRoot, relativeDirectory })
+  if (identity.dev.toString() !== file.parentDev || identity.ino.toString() !== file.parentIno) {
+    const path = finalPathFor(workspaceRoot, relativeDirectory)
+    throw failure({
+      reason: 'ForeignPath',
+      path,
+      message: `Obsolete generated parent identity changed: ${path}`,
+    })
   }
 }
 
@@ -608,6 +697,16 @@ const validateTransactionShape = ({
       })
     }
   }
+  for (const file of transaction.obsoleteFiles) {
+    const expected = transactionPaths({ token: transaction.lockToken, path: file.path })
+    if (file.backupPath !== expected.backupPath) {
+      throw failure({
+        reason: 'RecoveryRefused',
+        path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
+        message: `Obsolete transaction path ownership disagrees for ${file.path}`,
+      })
+    }
+  }
 }
 
 interface PublicationTransactionRecord {
@@ -748,6 +847,26 @@ const verifyOwnedArtifact = async ({
   return snapshot
 }
 
+const verifyObsoleteBackup = async ({
+  workspaceRoot,
+  file,
+}: {
+  readonly workspaceRoot: string
+  readonly file: ObsoleteTransactionFile
+}): Promise<FileSnapshot | undefined> => {
+  const path = finalPathFor(workspaceRoot, file.backupPath)
+  const snapshot = await snapshotMaybe(path)
+  if (snapshot === undefined) return undefined
+  if (snapshotMatchesPrevious(snapshot, file.previous) === false) {
+    throw failure({
+      reason: 'ForeignPath',
+      path,
+      message: `Obsolete backup no longer matches its ownership manifest: ${path}`,
+    })
+  }
+  return snapshot
+}
+
 const cleanupTransactionForward = async ({
   workspaceRoot,
   transaction,
@@ -781,6 +900,39 @@ const cleanupTransactionForward = async ({
       await removeExact({ path: finalPathFor(workspaceRoot, file.backupPath), expected: backup })
     }
   }
+  for (const file of transaction.obsoleteFiles) {
+    const backup = await verifyObsoleteBackup({ workspaceRoot, file })
+    if (backup !== undefined) {
+      await removeExact({ path: finalPathFor(workspaceRoot, file.backupPath), expected: backup })
+    }
+  }
+  const obsoleteDirectories = [
+    ...new Set(
+      transaction.obsoleteFiles
+        .map((file) => NodePath.posix.dirname(file.path))
+        .filter((path) => OBSOLETE_GENERATED_DIRECTORIES[path] === true),
+    ),
+  ].toSorted()
+  for (const relativePath of obsoleteDirectories) {
+    const path = finalPathFor(workspaceRoot, relativePath)
+    if ((await lstatMaybe(path)) === undefined) continue
+    const owner = transaction.obsoleteFiles.find(
+      (file) => NodePath.posix.dirname(file.path) === relativePath,
+    )!
+    await assertObsoleteParentIdentity({ workspaceRoot, file: owner })
+    try {
+      await rmdir(path)
+      await syncDirectory(NodePath.dirname(path))
+    } catch (cause) {
+      if (isErrno(cause, 'ENOENT') === true) continue
+      throw failure({
+        reason: 'ForeignPath',
+        path,
+        message: `Obsolete generated directory is no longer empty: ${path}`,
+        cause,
+      })
+    }
+  }
   if (pendingRecord !== undefined) {
     await removeExact({
       path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
@@ -812,6 +964,12 @@ const finalMatchesTransaction = async ({
     if (snapshot === undefined || snapshotMatchesTransaction(snapshot, file) === false) return false
   }
   const manifestPath = finalPathFor(workspaceRoot, COMPOSITION_GENERATION_MANIFEST_PATH)
+  for (const file of transaction.obsoleteFiles) {
+    const parentPath = finalPathFor(workspaceRoot, NodePath.posix.dirname(file.path))
+    if ((await lstatMaybe(parentPath)) === undefined) continue
+    await assertObsoleteParentIdentity({ workspaceRoot, file })
+    if ((await snapshotMaybe(finalPathFor(workspaceRoot, file.path))) !== undefined) return false
+  }
   const manifestSnapshot = await snapshotMaybe(manifestPath)
   if (manifestSnapshot === undefined || manifestSnapshot.mode !== 0o644) return false
   let manifest: CompositionGenerationManifest
@@ -900,6 +1058,47 @@ const restoreTransactionFile = async ({
   }
 }
 
+const restoreObsoleteTransactionFile = async ({
+  workspaceRoot,
+  file,
+}: {
+  readonly workspaceRoot: string
+  readonly file: ObsoleteTransactionFile
+}): Promise<void> => {
+  await assertObsoleteParentIdentity({ workspaceRoot, file })
+  const finalPath = finalPathFor(workspaceRoot, file.path)
+  const live = await snapshotMaybe(finalPath)
+  const backup = await verifyObsoleteBackup({ workspaceRoot, file })
+  if (backup === undefined) {
+    if (live === undefined || snapshotMatchesPrevious(live, file.previous) === false) {
+      throw failure({
+        reason: 'RecoveryRefused',
+        path: finalPath,
+        message: `Obsolete file and owned backup are both unavailable: ${finalPath}`,
+      })
+    }
+    return
+  }
+  if (live !== undefined) {
+    throw failure({
+      reason: 'ForeignPath',
+      path: finalPath,
+      message: `Refusing recreated obsolete path during rollback: ${finalPath}`,
+    })
+  }
+  await assertObsoleteParentIdentity({ workspaceRoot, file })
+  await rename(finalPathFor(workspaceRoot, file.backupPath), finalPath)
+  await syncDirectory(NodePath.dirname(finalPath))
+  const restored = await snapshotMaybe(finalPath)
+  if (restored === undefined || snapshotMatchesPrevious(restored, file.previous) === false) {
+    throw failure({
+      reason: 'RecoveryRefused',
+      path: finalPath,
+      message: `Restored obsolete backup failed ownership validation: ${finalPath}`,
+    })
+  }
+}
+
 const rollbackTransaction = async ({
   workspaceRoot,
   transactionRecord,
@@ -914,6 +1113,9 @@ const rollbackTransaction = async ({
   const nonConfig = transactionRecord.transaction.files.filter(
     (file) => file.path !== '.buckconfig',
   )
+  for (const file of transactionRecord.transaction.obsoleteFiles.toReversed()) {
+    await restoreObsoleteTransactionFile({ workspaceRoot, file })
+  }
   for (const file of nonConfig.toReversed()) await restoreTransactionFile({ workspaceRoot, file })
   // Authority is restored only after every non-config path is back in its previous state.
   await restoreTransactionFile({ workspaceRoot, file: config })
@@ -1180,13 +1382,84 @@ const assertManifestShape = ({
   }
 }
 
+interface ObsoleteGeneratedFile {
+  readonly path: string
+  readonly snapshot: FileSnapshot
+  readonly parentIdentity: DirectoryIdentity
+}
+
+interface PublicationValidationState {
+  readonly snapshots: ReadonlyMap<string, FileSnapshot | undefined>
+  readonly obsoleteFiles: ReadonlyArray<ObsoleteGeneratedFile>
+}
+
+const validateObsoleteGeneratedDirectories = async ({
+  workspaceRoot,
+  obsoleteFiles,
+}: {
+  readonly workspaceRoot: string
+  readonly obsoleteFiles: ReadonlyArray<ObsoleteGeneratedFile>
+}): Promise<void> => {
+  const expectedByDirectory = new Map<
+    string,
+    { readonly entries: Set<string>; readonly identity: DirectoryIdentity }
+  >()
+  for (const file of obsoleteFiles) {
+    const directory = NodePath.posix.dirname(file.path)
+    if (OBSOLETE_GENERATED_DIRECTORIES[directory] !== true) continue
+    const expected = expectedByDirectory.get(directory) ?? {
+      entries: new Set<string>(),
+      identity: file.parentIdentity,
+    }
+    if (
+      expected.identity.dev !== file.parentIdentity.dev ||
+      expected.identity.ino !== file.parentIdentity.ino
+    ) {
+      throw failure({
+        reason: 'ForeignPath',
+        path: finalPathFor(workspaceRoot, directory),
+        message: `Obsolete generated files disagree on parent identity: ${directory}`,
+      })
+    }
+    expected.entries.add(NodePath.posix.basename(file.path))
+    expectedByDirectory.set(directory, expected)
+  }
+  for (const [relativeDirectory, expected] of expectedByDirectory) {
+    const directory = finalPathFor(workspaceRoot, relativeDirectory)
+    const before = await containedDirectoryIdentity({ workspaceRoot, relativeDirectory })
+    if (before.dev !== expected.identity.dev || before.ino !== expected.identity.ino) {
+      throw failure({
+        reason: 'ForeignPath',
+        path: directory,
+        message: `Obsolete generated parent identity changed: ${directory}`,
+      })
+    }
+    const entries = await readdir(directory, { withFileTypes: true })
+    const after = await containedDirectoryIdentity({ workspaceRoot, relativeDirectory })
+    if (
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      entries.length !== expected.entries.size ||
+      entries.some(
+        (entry) => entry.isFile() === false || expected.entries.has(entry.name) === false,
+      ) === true
+    ) {
+      throw failure({
+        reason: 'ForeignPath',
+        path: directory,
+        message: `Obsolete generated directory contains unowned entries: ${directory}`,
+      })
+    }
+  }
+}
+
 const validatePublicationState = async ({
   workspaceRoot,
   files,
 }: {
   readonly workspaceRoot: string
   readonly files: ReadonlyArray<GeneratedCompositionFile>
-}): Promise<ReadonlyMap<string, FileSnapshot | undefined>> => {
+}): Promise<PublicationValidationState> => {
   const manifestPath = finalPathFor(workspaceRoot, COMPOSITION_GENERATION_MANIFEST_PATH)
   const manifestSnapshot = await snapshotMaybe(manifestPath)
   let manifest: CompositionGenerationManifest | undefined
@@ -1199,11 +1472,16 @@ const validatePublicationState = async ({
       })
     }
     manifest = decodeGenerationManifest({ snapshot: manifestSnapshot, path: manifestPath })
-    assertManifestShape({
-      manifest,
-      expectedPaths: expectedGeneratedPaths(files),
-      path: manifestPath,
-    })
+    const manifestPaths = new Set(manifest.files.map((file) => file.path))
+    for (const expectedPath of expectedGeneratedPaths(files)) {
+      if (manifestPaths.has(expectedPath) === false) {
+        throw failure({
+          reason: 'InvalidGenerationManifest',
+          path: manifestPath,
+          message: `Generation manifest does not own required path ${expectedPath}: ${manifestPath}`,
+        })
+      }
+    }
   }
   const configPath = finalPathFor(workspaceRoot, '.buckconfig')
   if (manifest === undefined && (await snapshotMaybe(configPath)) !== undefined) {
@@ -1213,20 +1491,23 @@ const validatePublicationState = async ({
       message: 'Refusing existing .buckconfig without a valid generation manifest',
     })
   }
-  const snapshots = new Map<string, FileSnapshot | undefined>()
-  for (const file of files) {
-    const path = finalPathFor(workspaceRoot, file.path)
-    const snapshot =
-      file.path === COMPOSITION_GENERATION_MANIFEST_PATH
-        ? manifestSnapshot
-        : await snapshotMaybe(path)
-    snapshots.set(file.path, snapshot)
-    if (file.path === COMPOSITION_GENERATION_MANIFEST_PATH) continue
-    const record = manifest?.files.find((candidate) => candidate.path === file.path)
-    if (manifest !== undefined) {
+
+  const desiredPaths = new Set(expectedGeneratedPaths(files))
+  const obsoleteFiles: ObsoleteGeneratedFile[] = []
+  if (manifest !== undefined) {
+    for (const record of manifest.files) {
+      const obsolete = desiredPaths.has(record.path) === false
+      const parentIdentity =
+        obsolete === true
+          ? await containedDirectoryIdentity({
+              workspaceRoot,
+              relativeDirectory: NodePath.posix.dirname(record.path),
+            })
+          : undefined
+      const path = finalPathFor(workspaceRoot, record.path)
+      const snapshot = await snapshotMaybe(path)
       if (
         snapshot === undefined ||
-        record === undefined ||
         snapshot.mode !== record.mode ||
         snapshot.sha256 !== record.sha256
       ) {
@@ -1236,7 +1517,25 @@ const validatePublicationState = async ({
           message: `Generated file no longer matches its ownership manifest: ${path}`,
         })
       }
-    } else if (snapshot !== undefined && snapshotMatchesFile(snapshot, file) === false) {
+      if (obsolete === true)
+        obsoleteFiles.push({ path: record.path, snapshot, parentIdentity: parentIdentity! })
+    }
+  }
+  await validateObsoleteGeneratedDirectories({ workspaceRoot, obsoleteFiles })
+
+  const snapshots = new Map<string, FileSnapshot | undefined>()
+  for (const file of files) {
+    const path = finalPathFor(workspaceRoot, file.path)
+    const snapshot =
+      file.path === COMPOSITION_GENERATION_MANIFEST_PATH
+        ? manifestSnapshot
+        : await snapshotMaybe(path)
+    snapshots.set(file.path, snapshot)
+    if (
+      manifest === undefined &&
+      snapshot !== undefined &&
+      snapshotMatchesFile(snapshot, file) === false
+    ) {
       throw failure({
         reason: 'ForeignPath',
         path,
@@ -1244,7 +1543,7 @@ const validatePublicationState = async ({
       })
     }
   }
-  return snapshots
+  return { snapshots, obsoleteFiles }
 }
 
 const loadMembers = async ({
@@ -1290,6 +1589,16 @@ const loadMembers = async ({
         path: memberRoot,
         message: `Member root is missing or not a directory: ${memberRoot}`,
       })
+    }
+    for (const forbiddenRootFile of ['.buckconfig', '.buckroot']) {
+      const forbiddenPath = NodePath.join(memberRoot, forbiddenRootFile)
+      if ((await lstatMaybe(forbiddenPath)) !== undefined) {
+        throw failure({
+          reason: 'InvalidMemberManifest',
+          path: forbiddenPath,
+          message: `Member root must not carry ${forbiddenRootFile}: ${memberRoot}`,
+        })
+      }
     }
     const manifestPath = NodePath.join(memberRoot, BUCK_MEMBER_MANIFEST_FILENAME)
     try {
@@ -1409,22 +1718,22 @@ const assertCompositionCapabilities = async ({
 const makeTransaction = ({
   lock,
   output,
-  snapshots,
+  state,
 }: {
   readonly lock: CompositionPublisherLock
   readonly output: ReadonlyArray<GeneratedCompositionFile>
-  readonly snapshots: ReadonlyMap<string, FileSnapshot | undefined>
+  readonly state: PublicationValidationState
 }): CompositionPublicationTransaction | undefined => {
   const changed = output.filter((file) => {
-    const snapshot = snapshots.get(file.path)
+    const snapshot = state.snapshots.get(file.path)
     return snapshot === undefined || snapshotMatchesFile(snapshot, file) === false
   })
-  if (changed.length === 0) return undefined
+  if (changed.length === 0 && state.obsoleteFiles.length === 0) return undefined
   const config = output.find((file) => file.path === '.buckconfig')!
   if (changed.some((file) => file.path === '.buckconfig') === false) changed.push(config)
   const files = changed
     .map((file): TransactionFile => {
-      const snapshot = snapshots.get(file.path)
+      const snapshot = state.snapshots.get(file.path)
       const paths = transactionPaths({ token: lock.token, path: file.path })
       return {
         path: file.path,
@@ -1439,6 +1748,21 @@ const makeTransaction = ({
       }
     })
     .toSorted((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+  const obsoleteFiles = state.obsoleteFiles
+    .map(
+      (file): ObsoleteTransactionFile => ({
+        path: file.path,
+        backupPath: transactionPaths({ token: lock.token, path: file.path }).backupPath,
+        parentDev: file.parentIdentity.dev.toString(),
+        parentIno: file.parentIdentity.ino.toString(),
+        previous: {
+          _tag: 'File',
+          mode: file.snapshot.mode as 0o644 | 0o755,
+          sha256: file.snapshot.sha256,
+        },
+      }),
+    )
+    .toSorted((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
   return Schema.decodeUnknownSync(
     CompositionPublicationTransactionSchema,
     strictParseOptions,
@@ -1448,6 +1772,7 @@ const makeTransaction = ({
     lockToken: lock.token,
     phase: 'AuthorityPending',
     files,
+    obsoleteFiles,
   })
 }
 
@@ -1529,11 +1854,14 @@ const movePreviousToBackup = async ({
   workspaceRoot,
   file,
   expected,
+  assertParent,
 }: {
   readonly workspaceRoot: string
-  readonly file: TransactionFile
+  readonly file: Pick<TransactionFile, 'path' | 'backupPath'>
   readonly expected: FileSnapshot | undefined
+  readonly assertParent?: () => Promise<void>
 }): Promise<void> => {
+  await assertParent?.()
   const finalPath = finalPathFor(workspaceRoot, file.path)
   await assertIdentity({ path: finalPath, expected })
   if (expected === undefined) return
@@ -1545,6 +1873,7 @@ const movePreviousToBackup = async ({
       message: `Backup path is occupied: ${backupPath}`,
     })
   }
+  await assertParent?.()
   await rename(finalPath, backupPath)
   await syncDirectory(NodePath.dirname(finalPath))
   await syncDirectory(NodePath.dirname(backupPath))
@@ -1606,9 +1935,11 @@ const installCandidate = async ({
 const assertDesiredRoot = async ({
   workspaceRoot,
   output,
+  obsoleteFiles,
 }: {
   readonly workspaceRoot: string
   readonly output: ReadonlyArray<GeneratedCompositionFile>
+  readonly obsoleteFiles: ReadonlyArray<ObsoleteTransactionFile>
 }): Promise<void> => {
   for (const file of output) {
     if (file.path === '.buckconfig') continue
@@ -1622,19 +1953,30 @@ const assertDesiredRoot = async ({
       })
     }
   }
+  for (const file of obsoleteFiles) {
+    await assertObsoleteParentIdentity({ workspaceRoot, file })
+    const path = finalPathFor(workspaceRoot, file.path)
+    if ((await snapshotMaybe(path)) !== undefined) {
+      throw failure({
+        reason: 'ForeignPath',
+        path,
+        message: `Obsolete generated path remains before .buckconfig authority: ${path}`,
+      })
+    }
+  }
 }
 
 const commitTransaction = async ({
   workspaceRoot,
   transaction,
-  snapshots,
+  state,
   staged,
   output,
   runtime,
 }: {
   readonly workspaceRoot: string
   readonly transaction: CompositionPublicationTransaction
-  readonly snapshots: ReadonlyMap<string, FileSnapshot | undefined>
+  readonly state: PublicationValidationState
   readonly staged: ReadonlyMap<string, FileSnapshot>
   readonly output: ReadonlyArray<GeneratedCompositionFile>
   readonly runtime: CompositionRootPublicationRuntime
@@ -1644,12 +1986,16 @@ const commitTransaction = async ({
   await movePreviousToBackup({
     workspaceRoot,
     file: config,
-    expected: snapshots.get(config.path),
+    expected: state.snapshots.get(config.path),
   })
   const changed: string[] = []
   for (const file of transaction.files.filter((candidate) => candidate.path !== '.buckconfig')) {
     await runtime.beforeInstallFile?.(file.path)
-    await movePreviousToBackup({ workspaceRoot, file, expected: snapshots.get(file.path) })
+    await movePreviousToBackup({
+      workspaceRoot,
+      file,
+      expected: state.snapshots.get(file.path),
+    })
     await installCandidate({ workspaceRoot, file, candidateIdentity: staged.get(file.path)! })
     await runtime.afterPublishedFile?.(file.path)
     if (runtime.simulateProcessFaultAfterPublishedFile?.(file.path) === true) {
@@ -1657,7 +2003,22 @@ const commitTransaction = async ({
     }
     changed.push(file.path)
   }
-  await assertDesiredRoot({ workspaceRoot, output })
+  for (const file of transaction.obsoleteFiles) {
+    await runtime.beforeInstallFile?.(file.path)
+    const previous = state.obsoleteFiles.find((candidate) => candidate.path === file.path)!
+    await movePreviousToBackup({
+      workspaceRoot,
+      file,
+      expected: previous.snapshot,
+      assertParent: () => assertObsoleteParentIdentity({ workspaceRoot, file }),
+    })
+    await runtime.afterPublishedFile?.(file.path)
+    if (runtime.simulateProcessFaultAfterPublishedFile?.(file.path) === true) {
+      throw new SimulatedProcessFault(file.path)
+    }
+    changed.push(file.path)
+  }
+  await assertDesiredRoot({ workspaceRoot, output, obsoleteFiles: transaction.obsoleteFiles })
   await installCandidate({
     workspaceRoot,
     file: config,
@@ -1724,40 +2085,60 @@ export const planCompositionRootPublication = Effect.fn('megarepo/composition-ro
           members,
           assertCapabilityProjection: options.assertCapabilityProjection,
         })
-        const snapshots = await validatePublicationState({ workspaceRoot, files: output.files })
+        const state = await validatePublicationState({ workspaceRoot, files: output.files })
         const changed = output.files.filter((file) => {
-          const snapshot = snapshots.get(file.path)
+          const snapshot = state.snapshots.get(file.path)
           return snapshot === undefined || snapshotMatchesFile(snapshot, file) === false
         })
-        if (changed.length === 0) return { _tag: 'NoChange', files: [], configLast: true }
+        if (changed.length === 0 && state.obsoleteFiles.length === 0) {
+          return { _tag: 'NoChange', files: [], configLast: true }
+        }
         const config = output.files.find((file) => file.path === '.buckconfig')!
-        if (changed.some((file) => file.path === '.buckconfig') === false) changed.push(config)
-        const ordered = [
-          ...changed
-            .filter((file) => file.path !== '.buckconfig')
-            .toSorted((left, right) =>
-              left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
-            ),
-          config,
-        ]
-        const files = ordered.map((file): CompositionRootPlannedFile => {
-          const previous = snapshots.get(file.path)
-          return {
+        const desiredPlans = changed
+          .filter((file) => file.path !== '.buckconfig')
+          .toSorted((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+          .map((file): CompositionRootPlannedFile => {
+            const previous = state.snapshots.get(file.path)
+            return {
+              path: file.path,
+              old:
+                previous === undefined
+                  ? undefined
+                  : {
+                      mode: previous.mode as 0o644 | 0o755,
+                      sha256: previous.sha256,
+                    },
+              new: { mode: file.mode, sha256: sha256(file.bytes) },
+            }
+          })
+        const obsoletePlans = state.obsoleteFiles.map(
+          (file): CompositionRootPlannedFile => ({
             path: file.path,
-            old:
-              previous === undefined
-                ? undefined
-                : {
-                    mode: previous.mode as 0o644 | 0o755,
-                    sha256: previous.sha256,
-                  },
-            new: { mode: file.mode, sha256: sha256(file.bytes) },
-          }
-        })
+            old: {
+              mode: file.snapshot.mode as 0o644 | 0o755,
+              sha256: file.snapshot.sha256,
+            },
+            new: undefined,
+          }),
+        )
+        const previousConfig = state.snapshots.get(config.path)
+        const configPlan: CompositionRootPlannedFile = {
+          path: config.path,
+          old:
+            previousConfig === undefined
+              ? undefined
+              : {
+                  mode: previousConfig.mode as 0o644 | 0o755,
+                  sha256: previousConfig.sha256,
+                },
+          new: { mode: config.mode, sha256: sha256(config.bytes) },
+        }
         return {
           _tag:
-            snapshots.get(COMPOSITION_GENERATION_MANIFEST_PATH) === undefined ? 'Create' : 'Update',
-          files,
+            state.snapshots.get(COMPOSITION_GENERATION_MANIFEST_PATH) === undefined
+              ? 'Create'
+              : 'Update',
+          files: [...desiredPlans, ...obsoletePlans, configPlan],
           configLast: true,
         }
       } catch (cause) {
@@ -1799,14 +2180,12 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
             members,
             assertCapabilityProjection: options.runtime.assertCapabilityProjection,
           })
-          for (const directory of ['.megarepo/bin', 'none', 'toolchains']) {
-            await ensureDirectory(workspaceRoot, directory)
-          }
-          const snapshots = await validatePublicationState({ workspaceRoot, files: output.files })
+          await ensureDirectory(workspaceRoot, '.megarepo/bin')
+          const state = await validatePublicationState({ workspaceRoot, files: output.files })
           const transaction = makeTransaction({
             lock: acquired.lock,
             output: output.files,
-            snapshots,
+            state,
           })
           if (transaction === undefined) {
             return {
@@ -1827,7 +2206,7 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
             const changedPaths = await commitTransaction({
               workspaceRoot,
               transaction,
-              snapshots,
+              state,
               staged,
               output: output.files,
               runtime: options.runtime,
@@ -1928,14 +2307,7 @@ const validateTeardownState = async ({
     })
   }
   const manifest = decodeGenerationManifest({ snapshot: manifestSnapshot, path: manifestPath })
-  const canonical = [
-    '.buckconfig',
-    '.buckroot',
-    '.megarepo/bin/buck2',
-    'BUCK',
-    'none/BUCK',
-    'toolchains/BUCK',
-  ].toSorted()
+  const canonical = ['.buckconfig', '.buckroot', '.megarepo/bin/buck2', 'BUCK'].toSorted()
   assertManifestShape({ manifest, expectedPaths: canonical, path: manifestPath })
   const files = new Map<string, FileSnapshot>()
   for (const record of manifest.files) {

@@ -87,6 +87,10 @@ RENAME_EXCHANGE advance.
   probe on a profiled Mac worktree.
 - tierA-scale build validation (fixture-scale digest claims are exact but
   small); root-cause the genrule lookup/upload key-mismatch anomaly.
+- Production composition cutover: DONE 2026-08-28 on Linux x86_64. A fresh
+  decision-0020 workspace built the real five-action tui-core tuple with 100%
+  shared-cache hits and no local execution
+  ([evidence](./05-composition/.experiments/2026-08-28-production-composition-cutover.md)).
 - Legacy in-mount write consumers retire per consuming repository during its
   Phase-6 workspace adoption. Until then, that repository remains on
   symlink mounts with shared-cache writes disabled.
@@ -104,6 +108,11 @@ RENAME_EXCHANGE advance.
   [decision 0021](./.decisions/0021-cross-member-types-dist-overlay.md) —
   dist overlay in mounts (cache-pulled, ignore-covered, manifest-declared);
   source aliasing across members retires when the overlay lands.
+- Decision-0021 deletion ledger: the overlay landing retired cross-member
+  source aliasing as an admitted consumption mechanism. It deleted no
+  effect-utils producer because the surviving aliases are consumer-owned;
+  each consumer deletes its alias configuration with its Phase-6 admission,
+  as required by the ledger at lines 94–101.
 - Agent workflow contract rev 3 (authoring surface = the owned member;
   `repos/<other>` is a read-only build input); skill updates in dotfiles.
 - Standalone-vs-composed and writable-vs-mount key stability hold per

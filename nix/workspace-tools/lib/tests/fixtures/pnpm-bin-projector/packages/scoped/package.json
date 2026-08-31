@@ -1,0 +1,4 @@
+{
+  "name": "@fixture/scoped-tool",
+  "bin": "cli.js"
+}

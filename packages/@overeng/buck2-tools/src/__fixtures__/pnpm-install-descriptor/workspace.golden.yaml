@@ -1,7 +1,0 @@
-autoInstallPeers: true
-excludeLinksFromLockfile: false
-ignoreScripts: true
-packages: 
-  []
-patchedDependencies: 
-  patched@1.0.0: patches/p.patch

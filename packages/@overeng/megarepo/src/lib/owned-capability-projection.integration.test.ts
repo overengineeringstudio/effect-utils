@@ -1,27 +1,13 @@
-import {
-  mkdtemp,
-  mkdir,
-  readFile,
-  readdir,
-  readlink,
-  rename,
-  rm,
-  symlink,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
 
 import { describe, it } from '@effect/vitest'
 import { expect } from 'vitest'
 
+import { resolvePinnedCoreutils } from '../test-utils/coreutils.ts'
 import { compositionApplyRuntimeFromEnv } from './composition-runtime.ts'
 import { installOwnedCapabilityProjection } from './owned-capability-projection.ts'
-
-const coreutilsPath = async (name: 'cp' | 'mv') => {
-  const linked = await readlink(`/run/current-system/sw/bin/${name}`)
-  return NodePath.resolve('/run/current-system/sw/bin', linked)
-}
 
 const writeProjection = async ({
   root,
@@ -52,8 +38,7 @@ describe('owned capability projection', () => {
       await writeProjection({ root: first, generation: firstGeneration })
       await writeProjection({ root: second, generation: secondGeneration })
       const runtime = {
-        cpPath: await coreutilsPath('cp'),
-        mvPath: await coreutilsPath('mv'),
+        ...(await resolvePinnedCoreutils()),
         nonce: (() => {
           let value = 0
           return () => `fixture-${value++}`
@@ -107,6 +92,7 @@ describe('owned capability projection', () => {
         await writeProjection({ root: projection, generation })
         if (kind === 'symlink') await symlink(outside, NodePath.join(owned, '.buck2'))
         else await writeFile(NodePath.join(owned, '.buck2'), 'not a directory\n')
+        const coreutils = await resolvePinnedCoreutils()
 
         await expect(
           installOwnedCapabilityProjection({
@@ -115,8 +101,7 @@ describe('owned capability projection', () => {
             projectionPath: projection,
             projectionDigest: generation,
             runtime: {
-              cpPath: await coreutilsPath('cp'),
-              mvPath: await coreutilsPath('mv'),
+              ...coreutils,
               nonce: () => 'parent-kind',
             },
           }),
@@ -147,6 +132,7 @@ describe('owned capability projection', () => {
           await rename(parent, `${parent}.captured`)
           await symlink(outside, parent)
         }
+        const coreutils = await resolvePinnedCoreutils()
 
         await expect(
           installOwnedCapabilityProjection({
@@ -155,8 +141,7 @@ describe('owned capability projection', () => {
             projectionPath: projection,
             projectionDigest: generation,
             runtime: {
-              cpPath: await coreutilsPath('cp'),
-              mvPath: await coreutilsPath('mv'),
+              ...coreutils,
               nonce: () => `race-${phase}`,
               ...(phase === 'copy'
                 ? { beforeCopy: replaceParent }

@@ -24,6 +24,12 @@ import { promisify } from 'node:util'
 import { Schema } from 'effect'
 
 import {
+  decodeBuckMemberManifest,
+  type BuckMemberCapability,
+  type BuckMemberManifest,
+} from '@overeng/megarepo/buck2-manifest'
+
+import {
   CompositionCapabilityResolutionError,
   CompositionCapabilitySystemSchema,
   type CompositionCapabilityCommand,
@@ -32,11 +38,6 @@ import {
   type CompositionCapabilitySystem,
   type ResolvedCompositionCapability,
 } from './composition-capability-resolver-schema.ts'
-import {
-  decodeBuckMemberManifest,
-  type BuckMemberCapability,
-  type BuckMemberManifest,
-} from './generators/composition-root.ts'
 
 const execFile = promisify(execFileCallback)
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
@@ -946,9 +947,11 @@ const resolveCompositionCapabilitiesInternal = async (
     )(input.system)
     await validateRuntime(input.runtime)
     const roots = await validateMember(input)
-    const capabilities = [...manifest.capabilities].toSorted((left, right) =>
-      left.toolId < right.toolId ? -1 : left.toolId > right.toolId ? 1 : 0,
-    )
+    const capabilities = manifest.capabilities
+      .filter((capability): capability is BuckMemberCapability => 'toolId' in capability)
+      .toSorted((left, right) =>
+        left.toolId < right.toolId ? -1 : left.toolId > right.toolId ? 1 : 0,
+      )
     const nonce = (input.runtime.nonce ?? randomUUID)()
     if (/^[A-Za-z0-9._-]+$/u.test(nonce) === false) {
       throw invalidInput({
@@ -970,7 +973,7 @@ const resolveCompositionCapabilitiesInternal = async (
           '--print-out-paths',
           '--no-write-lock-file',
           '--no-update-lock-file',
-          `${roots.memberRoot}#${capability.flakePackage}`,
+          `${roots.memberRoot}#${capability.flakePackage}^out`,
         ],
       }),
     )

@@ -30,7 +30,7 @@
   "capabilities": [
     {
       "toolId": "archive-tool",
-      "protocol": "effect-utils/buck2-archive-tool/v1",
+      "protocol": "effect-utils/buck2-archive-tool/v2",
       "flakePackage": "buck2-archive-tool",
       "executable": "bin/buck2-archive-tool"
     },
@@ -129,6 +129,18 @@
       "protocol": "effect-utils/buck2-rust-tool/v1",
       "flakePackage": "buck2-rust-strip",
       "executable": "bin/strip"
+    },
+    {
+      "_tag": "ToolchainAuthority",
+      "toolchain": "bun"
+    },
+    {
+      "_tag": "ToolchainAuthority",
+      "toolchain": "pnpm"
+    },
+    {
+      "_tag": "ToolchainAuthority",
+      "toolchain": "tsgo"
     }
   ]
 }

@@ -40,6 +40,20 @@ All notable changes to this project will be documented in this file.
   ` (name version)` stamps. A JSON-stdout guard (incl. the schema command's
   `--output-mode`) keeps validation help off stdout for JSON/NDJSON modes;
   `resolveCliBuildIdentity` is unchanged.
+- **Buck2 dependency closure**: generate a lockfile-derived, platform-filtered
+  pnpm graph with hash-pinned fetch, safe extraction, patched-package support,
+  and relocatable importer assembly; move tui-core and tui-react to the new
+  provider and delete the ambient-store deploy, normalization, descriptor, and
+  CI cache lanes.
+- **Buck2 composition**: remove generated stub cells, move toolchains under
+  `buck2/`, make hub labels cell-relative, add fail-closed member-root and
+  shared-hub-pin guards, and transactionally prune obsolete generated files.
+- **Buck2 editor views**: enforce whole-workspace authority, content-settled
+  atomic publication, read-only snapshots with external caches, and bounded
+  rollback-safe snapshot retention.
+- **Buck2 tooling**: add the `buck-owned-files/v1` census, remove the final
+  Prelude CPython registration, and export the stable
+  `@overeng/megarepo/buck2-manifest` facade.
 - **VRS (buck2)**: ratify decision 0023 — Rust third-party sources become
   Buck-fetched `http_archive` targets via non-vendored Reindeer (sha256 from
   `Cargo.lock`); decisions 0017/0019 amended; two 2026-08-30 experiment
@@ -55,10 +69,11 @@ All notable changes to this project will be documented in this file.
   Nix capabilities, and prove real `otelite` then `otel-scrape` BuildProducts
   through independent fail-closed Nix imports. Cargo and source-building Nix
   producers remain available until a later authority-transfer change.
-- **Buck2 Rust graph**: generate one strict Reindeer dependency graph from the
-  authoritative five-member Cargo workspace and expose a lock-derived Nix
-  vendor projection so Buck actions consume local crate sources without
-  network access.
+
+- **Buck2 Rust graph**: generate one strict non-vendored Reindeer dependency
+  graph from the authoritative five-member Cargo workspace, fetch 126
+  hash-pinned crate archives directly through Buck, and delete the Nix vendor
+  projection and vendored-only fixups.
 - **VRS (buck2)**: ratify BUCK-R15 (net complexity accounting) and BUCK-R16
   (benchmark evidence): every phase reconciles a build-machinery deletion
   ledger with amortization rationale, and every admission records warm/cold

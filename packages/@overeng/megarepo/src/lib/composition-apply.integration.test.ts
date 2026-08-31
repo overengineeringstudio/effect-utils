@@ -6,6 +6,8 @@ import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 
+import type { BuckMemberCapability, BuckMemberManifest } from '@overeng/megarepo/buck2-manifest'
+
 import { type CompositionApplyRequest } from './composition-apply-schema.ts'
 import {
   buildCompositionDistOverlay,
@@ -15,7 +17,6 @@ import {
   type CompositionApplyRuntime,
 } from './composition-apply.ts'
 import { CompositionGeneratorConfig, EffectPath } from './config.ts'
-import type { BuckMemberManifest } from './generators/composition-root.ts'
 import type { OwnedCpAMountMetadata } from './member-mount-r6.ts'
 
 const digest = `sha256:${'b'.repeat(64)}`
@@ -155,6 +156,25 @@ const fixture = async (options: FixtureOptions = {}) => {
       if (options.capabilityFailure === key) throw new Error('capability failed')
       const executablePath =
         key === 'owned' ? '/nix/store/buck/bin/buck2' : `/nix/store/${key}/bin/tool`
+      const executableCapability =
+        key === 'owned'
+          ? resolvedManifest.capabilities.find(
+              (capability): capability is BuckMemberCapability =>
+                'toolId' in capability && capability.toolId === 'buck2',
+            )
+          : undefined
+      if (key === 'owned' && executableCapability === undefined) {
+        throw new Error('owned member fixture must declare the buck2 executable capability')
+      }
+      const resolvedCapability =
+        executableCapability === undefined
+          ? undefined
+          : {
+              capability: executableCapability,
+              nixOutputPath: '/nix/store/buck',
+              executablePath,
+              executableDigest: digest,
+            }
       return {
         _tag: 'Resolved',
         system: input.system,
@@ -162,28 +182,8 @@ const fixture = async (options: FixtureOptions = {}) => {
         candidateRoot: NodePath.join(root, 'capabilities', key, 'candidate'),
         projectionPath: NodePath.join(root, 'capabilities', key, 'candidate/.buck2/capabilities'),
         projectionDigest: 'c'.repeat(64),
-        capabilities:
-          key === 'owned'
-            ? [
-                {
-                  capability: resolvedManifest.capabilities[0]!,
-                  nixOutputPath: '/nix/store/buck',
-                  executablePath,
-                  executableDigest: digest,
-                },
-              ]
-            : [],
-        capabilitiesByToolId:
-          key === 'owned'
-            ? {
-                buck2: {
-                  capability: resolvedManifest.capabilities[0]!,
-                  nixOutputPath: '/nix/store/buck',
-                  executablePath,
-                  executableDigest: digest,
-                },
-              }
-            : {},
+        capabilities: resolvedCapability === undefined ? [] : [resolvedCapability],
+        capabilitiesByToolId: resolvedCapability === undefined ? {} : { buck2: resolvedCapability },
         nixCommands: [],
         release: async () => {
           calls.push(`cap:${key}:release`)

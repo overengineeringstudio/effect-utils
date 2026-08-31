@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { decodeBuckMemberManifest, type BuckMemberManifest } from '@overeng/megarepo/buck2-manifest'
+
 import { CompositionCapabilityResolutionError } from './composition-capability-resolver-schema.ts'
 import {
   checkCompositionCapabilityProjection,
@@ -24,7 +26,6 @@ import {
   resolvedCompositionCapabilityByToolId,
   type CompositionCapabilityRuntime,
 } from './composition-capability-resolver.ts'
-import { decodeBuckMemberManifest, type BuckMemberManifest } from './generators/composition-root.ts'
 
 const trackedProjectorPath = fileURLToPath(
   new URL('../../../../../scripts/buck2-capability-project.sh', import.meta.url),
@@ -205,8 +206,8 @@ describe('composition capability resolver', () => {
         'z-tool',
       ])
       expect(await readFile(fixture.nixLog, 'utf8')).toBe(
-        `build --no-link --print-out-paths --no-write-lock-file --no-update-lock-file ${fixture.memberRoot}#a-package\n` +
-          `build --no-link --print-out-paths --no-write-lock-file --no-update-lock-file ${fixture.memberRoot}#z-package\n`,
+        `build --no-link --print-out-paths --no-write-lock-file --no-update-lock-file ${fixture.memberRoot}#a-package^out\n` +
+          `build --no-link --print-out-paths --no-write-lock-file --no-update-lock-file ${fixture.memberRoot}#z-package^out\n`,
       )
       expect(result.projectionDigest).toMatch(/^[0-9a-f]{64}$/u)
       expect((await lstat(result.candidateRoot)).mode & 0o777).toBe(0o700)
@@ -377,7 +378,7 @@ describe('composition capability resolver', () => {
         '--print-out-paths',
         '--no-write-lock-file',
         '--no-update-lock-file',
-        `${fixture.memberRoot}#buck2`,
+        `${fixture.memberRoot}#buck2^out`,
       ])
       expect(await readdir(fixture.scratchRoot)).toEqual([])
       await expect(readFile(fixture.nixLog, 'utf8')).rejects.toThrow()
@@ -436,6 +437,37 @@ describe('composition capability resolver', () => {
     try {
       const result = await resolve(fixture, { dryRun: true, system: 'aarch64-darwin' })
       expect(result.projectorPlatform).toBe('aarch64-macos')
+    } finally {
+      await clean(fixture)
+    }
+  })
+
+  it('resolves only member-owned executables and never treats toolchain metadata as Nix pins', async () => {
+    const fixture = await makeFixture()
+    try {
+      const result = await resolve(fixture, {
+        dryRun: true,
+        manifest: manifest({
+          capabilities: [
+            {
+              _tag: 'ToolchainAuthority',
+              toolchain: 'bun',
+            },
+            {
+              _tag: 'ToolchainRequirement',
+              toolchain: 'tsgo',
+            },
+            {
+              toolId: 'buck2',
+              protocol: 'facebook/buck2-cli/test',
+              flakePackage: 'buck2',
+              executable: 'bin/bash',
+            },
+          ],
+        }),
+      })
+      expect(result.nixCommands).toHaveLength(1)
+      expect(result.nixCommands[0]?.args.at(-1)).toBe(`${fixture.memberRoot}#buck2^out`)
     } finally {
       await clean(fixture)
     }

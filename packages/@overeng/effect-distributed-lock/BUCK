@@ -1,0 +1,67 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/effect-distributed-lock/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:8dafe948ad27d256f750a20bcb61253fa7080a7e81f8bc43c01d794d23aa77a4
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/src/**/*.cts, packages/@overeng/effect-distributed-lock/src/**/*.mts, packages/@overeng/effect-distributed-lock/src/**/*.ts, packages/@overeng/effect-distributed-lock/src/**/*.tsx, packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/Backing.ts",
+    "src/DistributedSemaphore.ts",
+    "src/Errors.ts",
+    "src/distributed-semaphore.test.ts",
+    "src/mod.ts",
+])
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:importer_packages_overeng_effect_distributed_lock_f36a75b36a62",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_tree(
+    name = "package_tree",
+    node_modules = ":node_modules",
+    files = {
+        "package.json": "package.json",
+        "src/Backing.ts": "src/Backing.ts",
+        "src/DistributedSemaphore.ts": "src/DistributedSemaphore.ts",
+        "src/Errors.ts": "src/Errors.ts",
+        "src/distributed-semaphore.test.ts": "src/distributed-semaphore.test.ts",
+        "src/mod.ts": "src/mod.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    runtime = "//:packages/@overeng/buck2-tools/src/package-tree.ts",
+    workspace_siblings = {},
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)

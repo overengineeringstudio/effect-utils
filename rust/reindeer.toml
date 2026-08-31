@@ -2,14 +2,12 @@
 # cea8779ac53be18b5293159ef065d8b83662bccd.
 manifest_path = "Cargo.toml"
 third_party_dir = "third-party"
+vendor = false
 precise_srcs = true
 license_patterns = ["LICENSE*", "COPYING*", "UNLICENSE*"]
 include_top_level = false
 unresolved_fixup_error = true
 
-[vendor]
-gitignore_checksum_exclude = [".gitignore"]
-checksum_exclude = []
 
 [platform.linux-x86_64]
 target = "x86_64-unknown-linux-gnu"

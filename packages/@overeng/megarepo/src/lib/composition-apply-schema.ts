@@ -89,7 +89,7 @@ export type CompositionOverlayPublicationPlan = typeof CompositionOverlayPublica
 const RootPlannedFileSchema = Schema.Struct({
   path: Schema.String,
   old: Schema.optional(Schema.Struct({ mode: Schema.Finite, sha256: Schema.String })),
-  new: Schema.Struct({ mode: Schema.Finite, sha256: Schema.String }),
+  new: Schema.optional(Schema.Struct({ mode: Schema.Finite, sha256: Schema.String })),
 })
 
 const RootPublicationPlanSchema = Schema.Union([

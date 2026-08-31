@@ -15,7 +15,6 @@ import {
   rmSync,
   statSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
@@ -23,6 +22,10 @@ import process from 'node:process'
 
 /** Versioned identity of the persisted scoped editor-view record. */
 export const editorViewSchema = 'effect-utils/editor-view/v1' as const
+/** Versioned contract proving that every required workspace package is Buck-owned. */
+export const workspaceDependencyAuthoritySchema =
+  'effect-utils/workspace-dependency-authority/v1' as const
+const snapshotRetentionSchema = 'effect-utils/editor-view-retention/v1' as const
 const treeDigestSchema = 'effect-utils/tree-digest/v1' as const
 const fingerprintPattern = /^[0-9a-f]{64}$/
 const currentName = 'tui-core'
@@ -31,6 +34,9 @@ const scopedCell = 'tui-core'
 const scopedTarget = '//packages/@overeng/tui-core:editor_inputs'
 const firstHopTarget = '../../.editor-view/tui-core/node_modules'
 const lockSchema = 'effect-utils/editor-view-lock/v1' as const
+const authorityRecordFields = ['ownedPackages', 'requiredPackages', 'schema'] as const
+const retentionRecordFields = ['schema', 'snapshots'] as const
+const snapshotNamePattern = /^tui-core-([0-9a-f]{64})$/
 const editorViewRecordFields = [
   'cell',
   'editorInputsFingerprint',
@@ -54,6 +60,17 @@ export type EditorViewRecord = {
   readonly snapshot: string
   readonly nodeModulesTreeDigest: string
 }
+/** Explicit whole-workspace dependency ownership assertion consumed by publication. */
+export type WorkspaceDependencyAuthority = {
+  readonly schema: typeof workspaceDependencyAuthoritySchema
+  readonly requiredPackages: readonly string[]
+  readonly ownedPackages: readonly string[]
+}
+
+type SnapshotRetentionRecord = {
+  readonly schema: typeof snapshotRetentionSchema
+  readonly snapshots: readonly string[]
+}
 
 /** Explicit paths, identity, and immutable publication tools for the scoped tui-core view. */
 export type EditorViewOptions = {
@@ -65,6 +82,9 @@ export type EditorViewOptions = {
   readonly nodeModules: string
   readonly cp: string
   readonly mv: string
+  readonly workspaceAuthority: string
+  readonly consumerCache: string
+  readonly snapshotRetention: number
 }
 
 type ViewPaths = {
@@ -75,6 +95,8 @@ type ViewPaths = {
   readonly legacyDir: string
   readonly current: string
   readonly firstHop: string
+  readonly consumerCache: string
+  readonly retentionRecord: string
 }
 
 type CheckContext = {
@@ -251,6 +273,7 @@ export const canonicalTreeFingerprint = async (tree: string): Promise<string> =>
 
 const isRecord = (value: unknown): value is JsonRecord =>
   value !== null && Array.isArray(value) === false && typeof value === 'object'
+const isUnknownArray = (value: unknown): value is readonly unknown[] => Array.isArray(value)
 
 const readRecord = (path: string): EditorViewRecord => {
   let value: unknown
@@ -308,6 +331,120 @@ const requirePortablePackage = (value: string): string => {
     fail(`package must be a normalized repository-relative path: ${value}`)
   return value
 }
+const requireSortedUniquePackages = ({
+  value,
+  field,
+}: {
+  value: unknown
+  field: string
+}): readonly string[] => {
+  const entries =
+    isUnknownArray(value) === true ? value : fail(`${field} must be an array of package paths`)
+  const packages: string[] = []
+  for (const entry of entries) {
+    const packagePath =
+      typeof entry === 'string' ? entry : fail(`${field} must be an array of package paths`)
+    packages.push(requirePortablePackage(packagePath))
+  }
+  const sorted = packages.toSorted((left, right) => compareBytes({ left, right }))
+  if (
+    new Set(packages).size !== packages.length ||
+    JSON.stringify(packages) !== JSON.stringify(sorted)
+  )
+    fail(`${field} must be byte-sorted with no duplicates`)
+  return packages
+}
+const requireSnapshotNames = ({
+  value,
+  path,
+}: {
+  value: unknown
+  path: string
+}): readonly string[] => {
+  const entries =
+    isUnknownArray(value) === true
+      ? value
+      : fail(`snapshot retention record does not conform to ${snapshotRetentionSchema}: ${path}`)
+  const snapshots: string[] = []
+  for (const entry of entries) {
+    const snapshot =
+      typeof entry === 'string' && snapshotNamePattern.test(entry) === true
+        ? entry
+        : fail(`snapshot retention record does not conform to ${snapshotRetentionSchema}: ${path}`)
+    snapshots.push(snapshot)
+  }
+  if (new Set(snapshots).size !== snapshots.length)
+    fail(`snapshot retention record does not conform to ${snapshotRetentionSchema}: ${path}`)
+  return snapshots
+}
+
+/** Validate exact Buck ownership of the declared whole workspace. */
+export const validateWorkspaceDependencyAuthority = ({
+  path,
+  repoRoot,
+  packageName,
+}: {
+  path: string
+  repoRoot: string
+  packageName: string
+}): WorkspaceDependencyAuthority => {
+  const authorityPath = resolve(repoRoot, path)
+  if (isWithin({ root: repoRoot, candidate: authorityPath }) === false)
+    fail(`workspace authority manifest escapes repository: ${authorityPath}`)
+  const status = lstatSync(authorityPath)
+  if (status.isFile() === false || status.isSymbolicLink() === true)
+    fail(`workspace authority manifest must be a regular file: ${authorityPath}`)
+  let value: unknown
+  try {
+    value = JSON.parse(readFileSync(authorityPath, 'utf8'))
+  } catch (error) {
+    return fail(
+      `invalid workspace authority manifest ${authorityPath}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  const authority =
+    isRecord(value) === true ? value : fail(`workspace authority manifest must be a JSON object`)
+  if (
+    JSON.stringify(
+      Object.keys(authority).toSorted((left, right) => compareBytes({ left, right })),
+    ) !== JSON.stringify(authorityRecordFields)
+  )
+    fail(`workspace authority manifest has unknown or missing fields: ${authorityPath}`)
+  if (authority.schema !== workspaceDependencyAuthoritySchema)
+    fail(`workspace authority manifest does not conform to ${workspaceDependencyAuthoritySchema}`)
+  const requiredPackages = requireSortedUniquePackages({
+    value: authority.requiredPackages,
+    field: 'requiredPackages',
+  })
+  const ownedPackages = requireSortedUniquePackages({
+    value: authority.ownedPackages,
+    field: 'ownedPackages',
+  })
+  const required = new Set(requiredPackages)
+  const owned = new Set(ownedPackages)
+  const missing = requiredPackages.filter((entry) => owned.has(entry) === false)
+  const extra = ownedPackages.filter((entry) => required.has(entry) === false)
+  if (missing.length > 0 || extra.length > 0)
+    fail(
+      `whole-workspace dependency authority mismatch: missing=${JSON.stringify(missing)} extra=${JSON.stringify(extra)}`,
+    )
+  if (owned.has(packageName) === false)
+    fail(`published package is absent from whole-workspace dependency authority: ${packageName}`)
+  for (const entry of requiredPackages) {
+    const packageDir = resolve(repoRoot, entry)
+    requireDirectory({ path: packageDir, field: `authority package ${entry}` })
+    if (realpathSync(packageDir) !== packageDir)
+      fail(`authority package path must not contain symbolic links: ${packageDir}`)
+    const manifest = join(packageDir, 'package.json')
+    if (lstatSync(manifest).isFile() === false)
+      fail(`authority package manifest is not a regular file: ${manifest}`)
+  }
+  return {
+    schema: workspaceDependencyAuthoritySchema,
+    requiredPackages,
+    ownedPackages,
+  }
+}
 
 const isWithin = ({ root, candidate }: { root: string; candidate: string }): boolean => {
   const pathFromRoot = relative(root, candidate)
@@ -322,6 +459,12 @@ const isWithin = ({ root, candidate }: { root: string; candidate: string }): boo
 const makePaths = (options: EditorViewOptions): ViewPaths => {
   if (options.package !== scopedPackage)
     fail(`package must be the scoped editor package ${scopedPackage}`)
+  if (
+    Number.isSafeInteger(options.snapshotRetention) === false ||
+    options.snapshotRetention < 2 ||
+    options.snapshotRetention > 32
+  )
+    fail(`snapshot retention must be an integer from 2 through 32`)
   const repoRoot = realpathSync(options.repoRoot)
   requireDirectory({ path: repoRoot, field: 'repository root' })
   const packagePath = requirePortablePackage(options.package)
@@ -334,6 +477,15 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
   const editorRoot = resolve(packageDir, '..', '..', '.editor-view')
   if (isWithin({ root: repoRoot, candidate: editorRoot }) === false)
     fail(`editor root escapes repository: ${editorRoot}`)
+  const consumerCache = resolve(repoRoot, options.consumerCache)
+  if (
+    isWithin({ root: repoRoot, candidate: consumerCache }) === false ||
+    isWithin({ root: editorRoot, candidate: consumerCache }) === true ||
+    isWithin({ root: packageDir, candidate: consumerCache }) === true
+  )
+    fail(
+      `consumer cache must be inside the repository and outside package and snapshot views: ${consumerCache}`,
+    )
   return {
     repoRoot,
     packageDir,
@@ -342,6 +494,8 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
     legacyDir: join(editorRoot, '.legacy'),
     current: join(editorRoot, currentName),
     firstHop: join(packageDir, 'node_modules'),
+    consumerCache,
+    retentionRecord: join(editorRoot, '.retention.json'),
   }
 }
 
@@ -487,6 +641,202 @@ const hardenSnapshot = (snapshotDir: string): void => {
   chmodSync(join(snapshotDir, 'editor-view.json'), 0o444)
   visit(snapshotDir)
 }
+const requireReadOnlySnapshot = (snapshotDir: string): void => {
+  const visit = (directory: string): void => {
+    const status = lstatSync(directory)
+    if (status.isDirectory() === false || status.isSymbolicLink() === true)
+      fail(`snapshot directory must be a real directory: ${directory}`)
+    if ((status.mode & 0o222) !== 0) fail(`snapshot directory is writable: ${directory}`)
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name)
+      if (lstatSync(path).isDirectory() === true) visit(path)
+    }
+  }
+  const recordPath = join(snapshotDir, 'editor-view.json')
+  const recordStatus = lstatSync(recordPath)
+  if (recordStatus.isFile() === false || (recordStatus.mode & 0o222) !== 0)
+    fail(`snapshot record must be a read-only regular file: ${recordPath}`)
+  visit(snapshotDir)
+}
+
+const ensureConsumerCache = (paths: ViewPaths): void => {
+  mkdirSync(paths.consumerCache, { recursive: true })
+  requireDirectory({ path: paths.consumerCache, field: 'consumer cache' })
+  if (realpathSync(paths.consumerCache) !== paths.consumerCache)
+    fail(`consumer cache path must not contain symbolic links: ${paths.consumerCache}`)
+  if ((statSync(paths.consumerCache).mode & 0o222) === 0)
+    fail(`consumer cache must remain writable outside immutable views: ${paths.consumerCache}`)
+}
+
+const readSnapshotRetention = (path: string): SnapshotRetentionRecord => {
+  if (pathExists(path) === false) return { schema: snapshotRetentionSchema, snapshots: [] }
+  let value: unknown
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8'))
+  } catch (error) {
+    return fail(
+      `invalid snapshot retention record ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  const record =
+    isRecord(value) === true
+      ? value
+      : fail(`snapshot retention record does not conform to ${snapshotRetentionSchema}: ${path}`)
+  if (
+    JSON.stringify(Object.keys(record).toSorted((left, right) => compareBytes({ left, right }))) !==
+      JSON.stringify(retentionRecordFields) ||
+    record.schema !== snapshotRetentionSchema
+  )
+    fail(`snapshot retention record does not conform to ${snapshotRetentionSchema}: ${path}`)
+  const snapshots = requireSnapshotNames({ value: record.snapshots, path })
+  return { schema: snapshotRetentionSchema, snapshots }
+}
+
+const writeSnapshotRetention = ({
+  paths,
+  snapshots,
+  token,
+}: {
+  paths: ViewPaths
+  snapshots: readonly string[]
+  token: string
+}): void => {
+  const candidate = join(paths.editorRoot, `.retention.candidate-${token}`)
+  try {
+    writeFileSync(
+      candidate,
+      `${JSON.stringify({ schema: snapshotRetentionSchema, snapshots }, undefined, 2)}\n`,
+      { flag: 'wx' },
+    )
+    renameSync(candidate, paths.retentionRecord)
+  } finally {
+    if (pathExists(candidate) === true) rmSync(candidate)
+  }
+}
+
+const listOwnedSnapshots = ({
+  paths,
+  options,
+}: {
+  paths: ViewPaths
+  options: EditorViewOptions
+}): readonly string[] => {
+  const snapshots: string[] = []
+  for (const name of readdirSync(paths.storeDir).toSorted((left, right) =>
+    compareBytes({ left, right }),
+  )) {
+    if (name.startsWith('.candidate-') === true) continue
+    const fingerprint =
+      snapshotNamePattern.exec(name)?.[1] ??
+      fail(`snapshot store contains an ambiguously owned entry: ${join(paths.storeDir, name)}`)
+    const snapshotDir = join(paths.storeDir, name)
+    requireDirectory({ path: snapshotDir, field: 'retained snapshot' })
+    const record = readRecord(join(snapshotDir, 'editor-view.json'))
+    const expected = expectedRecord({
+      options,
+      fingerprint,
+      nodeModulesTreeDigest: record.nodeModulesTreeDigest,
+    })
+    if (recordsEqual({ left: record, right: expected }) === false)
+      fail(`retained snapshot ownership mismatch: ${snapshotDir}`)
+    requireReadOnlySnapshot(snapshotDir)
+    snapshots.push(name)
+  }
+  return snapshots
+}
+
+const prepareSnapshotRetention = ({
+  paths,
+  options,
+  current,
+  token,
+}: {
+  paths: ViewPaths
+  options: EditorViewOptions
+  current: string
+  token: string
+}): readonly string[] => {
+  const discovered = listOwnedSnapshots({ paths, options })
+  const discoveredSet = new Set(discovered)
+  const recorded = readSnapshotRetention(paths.retentionRecord).snapshots
+  const ordered = [
+    current,
+    ...recorded.filter((name) => name !== current && discoveredSet.has(name)),
+    ...discovered.filter((name) => name !== current && recorded.includes(name) === false),
+  ]
+  writeSnapshotRetention({ paths, snapshots: ordered, token })
+  return ordered
+}
+
+const makeSnapshotDirectoriesWritable = (snapshotDir: string): void => {
+  const visit = (directory: string): void => {
+    chmodSync(directory, (statSync(directory).mode & 0o777) | 0o700)
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name)
+      if (lstatSync(path).isDirectory() === true) visit(path)
+    }
+  }
+  chmodSync(join(snapshotDir, 'editor-view.json'), 0o600)
+  visit(snapshotDir)
+}
+
+const renameReadOnlySnapshot = ({
+  source,
+  destination,
+}: {
+  source: string
+  destination: string
+}): void => {
+  const sourceMode = statSync(source).mode & 0o777
+  chmodSync(source, sourceMode | 0o200)
+  try {
+    renameSync(source, destination)
+  } catch (error) {
+    chmodSync(source, sourceMode)
+    throw error
+  }
+}
+
+const garbageCollectSnapshots = ({
+  paths,
+  options,
+  ordered,
+  current,
+  token,
+}: {
+  paths: ViewPaths
+  options: EditorViewOptions
+  ordered: readonly string[]
+  current: string
+  token: string
+}): void => {
+  const keep = ordered.slice(0, options.snapshotRetention)
+  if (keep.includes(current) === false) fail(`snapshot retention would delete current: ${current}`)
+  const pointer = readlinkSync(paths.current)
+  if (pointer !== `.store/${current}`)
+    fail(`current pointer changed during snapshot retention: ${pointer}`)
+  const keepSet = new Set(keep)
+  for (const name of ordered.filter((entry) => keepSet.has(entry) === false)) {
+    if (name === current || name.startsWith('.candidate-') === true)
+      fail(`snapshot retention refused protected entry: ${name}`)
+    const snapshotDir = join(paths.storeDir, name)
+    if (pathExists(snapshotDir) === false) continue
+    const garbage = join(paths.editorRoot, `.gc-${token}-${name}`)
+    renameReadOnlySnapshot({ source: snapshotDir, destination: garbage })
+    try {
+      makeSnapshotDirectoriesWritable(garbage)
+      rmSync(garbage, { recursive: true })
+    } catch (error) {
+      if (pathExists(garbage) === true) {
+        hardenSnapshot(garbage)
+        renameReadOnlySnapshot({ source: garbage, destination: snapshotDir })
+        hardenSnapshot(snapshotDir)
+      }
+      throw error
+    }
+  }
+  writeSnapshotRetention({ paths, snapshots: keep, token })
+}
 
 type LockOwner = {
   readonly schema: typeof lockSchema
@@ -598,6 +948,7 @@ const validateSnapshot = async ({
     fail(
       `existing snapshot digest mismatch: expected=${admittedDigest} recorded=${record.nodeModulesTreeDigest} actual=${digest}`,
     )
+  requireReadOnlySnapshot(snapshotDir)
 }
 
 const publishCurrentPointer = ({
@@ -688,23 +1039,39 @@ const adoptFirstHop = ({
   }
 }
 
-const signalEditorResolution = (paths: ViewPaths): void => {
+const signalEditorResolution = ({ paths, token }: { paths: ViewPaths; token: string }): void => {
   const packageManifest = join(paths.packageDir, 'package.json')
   const status = lstatSync(packageManifest)
-  if (status.isFile() === false)
+  if (status.isFile() === false || status.isSymbolicLink() === true)
     fail(`editor resolution signal is not a regular package manifest: ${packageManifest}`)
-  const now = new Date()
-  utimesSync(packageManifest, now, now)
+  const content = readFileSync(packageManifest)
+  const candidate = join(paths.packageDir, `.package.json.editor-settle-${token}`)
+  try {
+    writeFileSync(candidate, content, { flag: 'wx', mode: status.mode & 0o777 })
+    if (readFileSync(candidate).equals(content) === false)
+      fail(`editor resolution settle candidate content mismatch: ${candidate}`)
+    renameSync(candidate, packageManifest)
+    if (readFileSync(packageManifest).equals(content) === false)
+      fail(`editor resolution settle changed package manifest content: ${packageManifest}`)
+  } finally {
+    if (pathExists(candidate) === true) rmSync(candidate)
+  }
 }
 
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
 export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
   requireScopedRecordIdentity(options)
   const paths = makePaths(options)
+  validateWorkspaceDependencyAuthority({
+    path: options.workspaceAuthority,
+    repoRoot: paths.repoRoot,
+    packageName: options.package,
+  })
   requireDirectory({ path: options.editorInputs, field: 'editor_inputs' })
   requireDirectory({ path: options.nodeModules, field: 'admitted node_modules' })
   requireImmutableTool({ tool: options.cp, label: 'cp -al' })
   requireImmutableTool({ tool: options.mv, label: 'mv --exchange' })
+  ensureConsumerCache(paths)
   ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
   ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
   if (statSync(options.nodeModules).dev !== statSync(paths.storeDir).dev)
@@ -713,6 +1080,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     editorRoot: paths.editorRoot,
     recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
   })
+  const token = tokenSafe(lock.token)
   let candidate: string | undefined
   try {
     const fingerprint = await canonicalTreeFingerprint(options.editorInputs)
@@ -726,7 +1094,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         admittedDigest: nodeModulesTreeDigest,
       })
     } else {
-      candidate = join(paths.storeDir, `.candidate-${tokenSafe(lock.token)}`)
+      candidate = join(paths.storeDir, `.candidate-${token}`)
       mkdirSync(candidate)
       const candidateNodeModules = join(candidate, 'node_modules')
       mkdirSync(candidateNodeModules)
@@ -749,10 +1117,25 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       candidate = undefined
     }
     hardenSnapshot(snapshotDir)
-    publishCurrentPointer({ paths, fingerprint, token: tokenSafe(lock.token) })
-    adoptFirstHop({ paths, mv: options.mv, token: tokenSafe(lock.token) })
-    signalEditorResolution(paths)
+    requireReadOnlySnapshot(snapshotDir)
+    const snapshotName = `${currentName}-${fingerprint}`
+    const retention = prepareSnapshotRetention({
+      paths,
+      options,
+      current: snapshotName,
+      token,
+    })
+    publishCurrentPointer({ paths, fingerprint, token })
+    adoptFirstHop({ paths, mv: options.mv, token })
+    signalEditorResolution({ paths, token })
     await checkEditorView(options)
+    garbageCollectSnapshots({
+      paths,
+      options,
+      ordered: retention,
+      current: snapshotName,
+      token,
+    })
     return record
   } finally {
     if (candidate !== undefined && pathExists(candidate) === true)
@@ -777,6 +1160,11 @@ const inferRecordedFingerprint = (current: string): string => {
 export const checkEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
   requireScopedRecordIdentity(options)
   const paths = makePaths(options)
+  validateWorkspaceDependencyAuthority({
+    path: options.workspaceAuthority,
+    repoRoot: paths.repoRoot,
+    packageName: options.package,
+  })
   requireDirectory({ path: options.editorInputs, field: 'editor_inputs' })
   requireDirectory({ path: options.nodeModules, field: 'admitted node_modules' })
   const currentFingerprint = await canonicalTreeFingerprint(options.editorInputs)
@@ -784,6 +1172,12 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
   try {
     requireDirectory({ path: paths.editorRoot, field: 'editor root' })
     requireDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
+    requireDirectory({ path: paths.consumerCache, field: 'consumer cache' })
+    if (
+      realpathSync(paths.consumerCache) !== paths.consumerCache ||
+      (statSync(paths.consumerCache).mode & 0o222) === 0
+    )
+      fail(`consumer cache must be a writable real directory: ${paths.consumerCache}`)
   } catch (error) {
     return failCheck({ message: error instanceof Error ? error.message : String(error), context })
   }
@@ -848,6 +1242,14 @@ export const checkEditorView = async (options: EditorViewOptions): Promise<Edito
       message: `snapshot node_modules digest mismatch: recorded=${record.nodeModulesTreeDigest} snapshot=${snapshotDigest}`,
       context,
     })
+  try {
+    requireReadOnlySnapshot(snapshotDir)
+  } catch (error) {
+    return failCheck({
+      message: `snapshot immutability violation: ${error instanceof Error ? error.message : String(error)}`,
+      context,
+    })
+  }
   let firstHopStatus
   try {
     firstHopStatus = lstatSync(paths.firstHop)
@@ -910,12 +1312,18 @@ const parseCli = (args: readonly string[]): ParsedCli => {
           '--node-modules',
           '--cp',
           '--mv',
+          '--workspace-authority',
+          '--consumer-cache',
+          '--snapshot-retention',
         ],
   )
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option for ${command}: ${flag}`)
   const get = (flag: string): string => values.get(flag) ?? fail(`missing required option ${flag}`)
   const getUnlessRecovering = (flag: string): string => (recover === true ? '' : get(flag))
+  const snapshotRetention = recover === true ? 2 : Number(get('--snapshot-retention'))
+  if (Number.isSafeInteger(snapshotRetention) === false)
+    fail(`snapshot retention must be an integer`)
   const options: EditorViewOptions = {
     repoRoot: get('--repo-root'),
     package: get('--package'),
@@ -925,6 +1333,10 @@ const parseCli = (args: readonly string[]): ParsedCli => {
     nodeModules: getUnlessRecovering('--node-modules'),
     cp: getUnlessRecovering('--cp'),
     mv: getUnlessRecovering('--mv'),
+    workspaceAuthority: getUnlessRecovering('--workspace-authority'),
+    consumerCache:
+      recover === true ? '.devenv/vite-cache/tui-core' : getUnlessRecovering('--consumer-cache'),
+    snapshotRetention,
   }
   return { command, options, token: recover === true ? get('--token') : undefined }
 }

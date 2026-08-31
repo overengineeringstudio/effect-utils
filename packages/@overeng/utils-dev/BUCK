@@ -1,0 +1,105 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/utils-dev/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:de94775f11b0392dbba18b48e9f731cfce3f32a503e26f78f66d623a770307ce
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-dev/src/**/*.cts, packages/@overeng/utils-dev/src/**/*.mts, packages/@overeng/utils-dev/src/**/*.ts, packages/@overeng/utils-dev/src/**/*.tsx, packages/@overeng/utils-dev/tsconfig.json.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/cli-contract.test.ts",
+    "src/cli-contract.ts",
+    "src/node-vitest/Vitest.ts",
+    "src/node-vitest/global.ts",
+    "src/node-vitest/mod.ts",
+    "src/node-vitest/otel-vitest-flush.test.ts",
+    "src/node-vitest/setup-fast-check.ts",
+    "src/otelite/Otelite.test.ts",
+    "src/otelite/Otelite.ts",
+    "src/otelite/diagnostics.ts",
+    "src/otelite/emitter.ts",
+    "src/otelite/errors.ts",
+    "src/otelite/mod.ts",
+    "src/otelite/otel.ts",
+    "src/otelite/otlp-url.ts",
+    "src/otelite/schema.ts",
+    "src/otelite/signal-expect.test.ts",
+    "src/otelite/signal-expect.ts",
+    "src/otelite/test-harness.test.ts",
+    "src/otelite/test-harness.ts",
+    "src/otelite/trace-expect.test.ts",
+    "src/otelite/trace-expect.ts",
+    "src/otelite/vitest-bridge.test.ts",
+    "src/otelite/vitest-bridge.ts",
+])
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:importer_packages_overeng_utils_dev_8614cc76469c",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_tree(
+    name = "package_tree",
+    node_modules = ":node_modules",
+    files = {
+        "package.json": "package.json",
+        "src/cli-contract.test.ts": "src/cli-contract.test.ts",
+        "src/cli-contract.ts": "src/cli-contract.ts",
+        "src/node-vitest/Vitest.ts": "src/node-vitest/Vitest.ts",
+        "src/node-vitest/global.ts": "src/node-vitest/global.ts",
+        "src/node-vitest/mod.ts": "src/node-vitest/mod.ts",
+        "src/node-vitest/otel-vitest-flush.test.ts": "src/node-vitest/otel-vitest-flush.test.ts",
+        "src/node-vitest/setup-fast-check.ts": "src/node-vitest/setup-fast-check.ts",
+        "src/otelite/Otelite.test.ts": "src/otelite/Otelite.test.ts",
+        "src/otelite/Otelite.ts": "src/otelite/Otelite.ts",
+        "src/otelite/diagnostics.ts": "src/otelite/diagnostics.ts",
+        "src/otelite/emitter.ts": "src/otelite/emitter.ts",
+        "src/otelite/errors.ts": "src/otelite/errors.ts",
+        "src/otelite/mod.ts": "src/otelite/mod.ts",
+        "src/otelite/otel.ts": "src/otelite/otel.ts",
+        "src/otelite/otlp-url.ts": "src/otelite/otlp-url.ts",
+        "src/otelite/schema.ts": "src/otelite/schema.ts",
+        "src/otelite/signal-expect.test.ts": "src/otelite/signal-expect.test.ts",
+        "src/otelite/signal-expect.ts": "src/otelite/signal-expect.ts",
+        "src/otelite/test-harness.test.ts": "src/otelite/test-harness.test.ts",
+        "src/otelite/test-harness.ts": "src/otelite/test-harness.ts",
+        "src/otelite/trace-expect.test.ts": "src/otelite/trace-expect.test.ts",
+        "src/otelite/trace-expect.ts": "src/otelite/trace-expect.ts",
+        "src/otelite/vitest-bridge.test.ts": "src/otelite/vitest-bridge.test.ts",
+        "src/otelite/vitest-bridge.ts": "src/otelite/vitest-bridge.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    runtime = "//:packages/@overeng/buck2-tools/src/package-tree.ts",
+    workspace_siblings = {},
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)

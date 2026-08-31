@@ -1,3 +1,10 @@
+/**
+ * Manifest and content-identity layer for member mounts.
+ *
+ * R6 defines canonical tree scans, protected-tree verification, and persisted mount identity. It
+ * does not copy or publish directories; concrete mount mechanisms such as the cp-a layer consume
+ * these identities and enforce them across their own lifecycle.
+ */
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -390,7 +397,7 @@ const fileSha256 = (path: string): Promise<string> =>
     stream.on('end', () => resolve(`sha256:${hash.digest('hex')}`))
   })
 
-type ScanPolicy = 'source' | 'protected'
+type ScanPolicy = 'artifact' | 'source' | 'protected'
 
 const expectedModeMessage = ({
   policy,
@@ -399,8 +406,9 @@ const expectedModeMessage = ({
   policy: ScanPolicy
   kind: 'file' | 'directory'
 }): string => {
-  if (kind === 'directory') return policy === 'source' ? '0755' : '0555'
-  return '0444 or 0555'
+  if (kind === 'directory')
+    return policy === 'artifact' ? '0555 or 0755' : policy === 'protected' ? '0555' : '0755'
+  return policy === 'artifact' ? '0444, 0555, 0644, or 0755' : '0444 or 0555'
 }
 
 const validateMode = ({
@@ -417,8 +425,15 @@ const validateMode = ({
   const permissions = mode & 0o7777
   const valid =
     kind === 'directory'
-      ? permissions === (policy === 'source' ? 0o755 : 0o555)
-      : permissions === 0o444 || permissions === 0o555
+      ? policy === 'artifact'
+        ? permissions === 0o555 || permissions === 0o755
+        : permissions === (policy === 'protected' ? 0o555 : 0o755)
+      : policy === 'artifact'
+        ? permissions === 0o444 ||
+          permissions === 0o555 ||
+          permissions === 0o644 ||
+          permissions === 0o755
+        : permissions === 0o444 || permissions === 0o555
   if (valid === false) {
     failWalk(
       scanError({
@@ -428,7 +443,9 @@ const validateMode = ({
       }),
     )
   }
-  return kind === 'directory' ? 0o555 : (permissions as 0o444 | 0o555)
+  if (kind === 'directory') return 0o555
+  if (policy === 'artifact') return permissions === 0o755 ? 0o555 : 0o444
+  return permissions as 0o444 | 0o555
 }
 
 /** COMP-R08 link admission. Relative targets may contain `..` only while staying in-root. */
@@ -761,6 +778,32 @@ const scanMount = ({
             reason: 'IoFailure',
             path: NodePath.resolve(root),
             message: `Failed to scan R6 tree '${NodePath.resolve(root)}'`,
+            cause,
+          }),
+  })
+
+/** Scan one writable Buck artifact and normalize its regular modes into R6 identity. */
+export const scanR6BuildArtifactTree = ({
+  root,
+}: {
+  root: string
+}): Effect.Effect<R6TreeScan, R6ScanError> =>
+  Effect.tryPromise({
+    try: async () =>
+      (
+        await scanTreePromise({
+          root: NodePath.resolve(root),
+          policy: 'artifact',
+          excludedSubtrees: new Set(),
+        })
+      ).scan,
+    catch: (cause): R6ScanError =>
+      cause instanceof WalkFailure
+        ? cause.scanError
+        : scanError({
+            reason: 'IoFailure',
+            path: NodePath.resolve(root),
+            message: `Failed to scan R6 build artifact tree '${NodePath.resolve(root)}'`,
             cause,
           }),
   })

@@ -1,65 +1,22 @@
-load("@effect_utils//buck2:materialization.bzl", "export_materialization_inputs")
+load("//buck2:materialization.bzl", "export_materialization_inputs")
 
-# Exact root-package inputs shared by admitted TypeScript package materializations.
-_TYPESCRIPT_MATERIALIZATION_INPUTS = [
-    "context/effect/socket/package.json",
-    "context/opentui/package.json",
-    "package.json",
-    "packages/@overeng/agent-session-ingest/package.json",
-    "packages/@overeng/buck2-tools/package.json",
-    "packages/@overeng/buck2-tools/src/buck2-materializer.ts",
-    "packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts",
-    "packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts",
-    "packages/@overeng/ci-tools/package.json",
-    "packages/@overeng/content-address/package.json",
-    "packages/@overeng/effect-ai-claude-cli/package.json",
-    "packages/@overeng/effect-distributed-lock/package.json",
-    "packages/@overeng/effect-path/package.json",
-    "packages/@overeng/effect-react/package.json",
-    "packages/@overeng/effect-rpc-tanstack/examples/basic/package.json",
-    "packages/@overeng/effect-rpc-tanstack/package.json",
-    "packages/@overeng/effect-schema-form-aria/package.json",
-    "packages/@overeng/effect-schema-form/package.json",
-    "packages/@overeng/genie/package.json",
-    "packages/@overeng/kdl-effect/package.json",
-    "packages/@overeng/kdl/package.json",
-    "packages/@overeng/megarepo/package.json",
-    "packages/@overeng/notion-cli/package.json",
-    "packages/@overeng/notion-core/package.json",
-    "packages/@overeng/notion-datasource-sync/package.json",
-    "packages/@overeng/notion-effect-client/package.json",
-    "packages/@overeng/notion-effect-schema/package.json",
-    "packages/@overeng/notion-md/package.json",
-    "packages/@overeng/notion-property-write/package.json",
-    "packages/@overeng/notion-react/package.json",
-    "packages/@overeng/npm-release/package.json",
-    "packages/@overeng/otel-contract/package.json",
-    "packages/@overeng/oxc-config/package.json",
-    "packages/@overeng/pty-effect/package.json",
-    "packages/@overeng/react-inspector/package.json",
-    "packages/@overeng/restate-effect/package.json",
-    "packages/@overeng/tui-stories/package.json",
-    "packages/@overeng/utils-dev/package.json",
-    "packages/@overeng/utils/package.json",
-    "packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch",
-    "pnpm-lock.yaml",
-    "pnpm-workspace.yaml",
-] + glob([
-    "packages/@overeng/utils/src/**/*.cts",
-    "packages/@overeng/utils/src/**/*.mts",
-    "packages/@overeng/utils/src/**/*.ts",
-    "packages/@overeng/utils/src/**/*.tsx",
-    "packages/@overeng/utils-dev/src/**/*.cts",
-    "packages/@overeng/utils-dev/src/**/*.mts",
-    "packages/@overeng/utils-dev/src/**/*.ts",
-    "packages/@overeng/utils-dev/src/**/*.tsx",
-])
+# Exact root-package inputs consumed by admitted TypeScript package trees.
+_TYPESCRIPT_PACKAGE_INPUTS = [
+    "packages/@overeng/buck2-tools/src/package-tree.ts",
+]
 
-export_materialization_inputs(_TYPESCRIPT_MATERIALIZATION_INPUTS)
+export_materialization_inputs(_TYPESCRIPT_PACKAGE_INPUTS)
 
 # Hermetic TypeScript actions execute this source with their pinned Bun runtime.
 export_file(
     name = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
     src = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+    visibility = ["PUBLIC"],
+)
+
+# Stateless completeness gate: Git supplies candidates and Buck remains the sole owner matcher.
+export_file(
+    name = "packages/@overeng/buck2-tools/src/owned-files.ts",
+    src = "packages/@overeng/buck2-tools/src/owned-files.ts",
     visibility = ["PUBLIC"],
 )

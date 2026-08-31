@@ -9,10 +9,7 @@ BUCK-R05 and BUCK-R14. Architecture:
 ## Assumptions
 
 - **COMP-A01 Megarepo ownership:** Megarepo owns member materialization and
-  the store-liveness accounting derived from it. (Its original form — "members
-  are materialized as real directories" — was falsified on 2026-08-26: mr
-  materializes absolute symlinks today; see COMP-R10 and
-  [.experiments/2026-08-26-composition-root-real-repos.md](./.experiments/2026-08-26-composition-root-real-repos.md).)
+  the store-liveness accounting derived from it.
 - **COMP-A02 Identity mechanics:** Source paths render project-relative in
   action command lines, and outputs render under
   `buck-out/<isolation>/…/<cell>/<config-hash>/…`; mount path, cell name,
@@ -78,15 +75,13 @@ BUCK-R05 and BUCK-R14. Architecture:
   Projected member targets declare cross-cell visibility — a member target
   without it is unreachable from consumers.
 - **COMP-R10 Content-real materialization:** mr materializes member mounts in
-  a COMP-R08-satisfying shape. Today's absolute-symlink materialization is not
-  a degraded cache mode but an incorrect build input: Buck2 is blind to member
-  content behind it, so a symlink-mounted composition must never write to a
-  shared cache. Until content-real materialization lands, member cells and
-  cache upload must not be combined; store-liveness accounting moves with the
-  mount shape. The settled mechanism is a `cp -a` copy from the immutable
-  store advanced by stage + RENAME_EXCHANGE under the six-point regeneration
-  contract; hardlink farms and in-place git-worktree regeneration are
-  disqualified with demonstrated failures
+  a COMP-R08-satisfying shape through a `cp -a` copy from the immutable store,
+  advanced by stage + RENAME_EXCHANGE under the six-point regeneration
+  contract. Hardlink farms and in-place git-worktree regeneration are
+  disqualified with demonstrated failures. Legacy consumers that still use
+  absolute-symlink mounts must never write to the shared cache because Buck2
+  is blind to member content behind the symlink; store-liveness accounting
+  moves with the mount shape
   ([.experiments/2026-08-27-readonly-mount-e2e.md](./.experiments/2026-08-27-readonly-mount-e2e.md)).
 - **COMP-R11 One writable mount per workspace:** A workspace has exactly one
   writable member — the branch-attached git worktree of the repo it exists to

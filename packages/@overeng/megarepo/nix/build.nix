@@ -59,7 +59,8 @@ pkgs.stdenv.mkDerivation {
       --set MR_COMPOSITION_PLATFORM ${compositionPlatform} \
       --set MR_COMPOSITION_GIT_BIN ${pkgs.git}/bin/git \
       --set MR_CAPABILITY_NIX_BIN ${pkgs.nix}/bin/nix \
-      --set MR_CAPABILITY_MV_BIN ${pkgs.coreutils}/bin/mv
+      --set MR_CAPABILITY_MV_BIN ${pkgs.coreutils}/bin/mv \
+      --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.watchman ]}
 
     # Generate shell completions
     # TODO: Move this into mkBunCli helper

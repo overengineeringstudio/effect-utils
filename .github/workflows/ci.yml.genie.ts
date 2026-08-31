@@ -14,8 +14,6 @@ import {
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
-  restorePnpmStateStep,
-  savePnpmStateStep,
   standardCIEnv,
   ciWorkflow,
   ciMeasurementBaselineCheckoutStep,
@@ -38,7 +36,6 @@ import {
   deployPreviewWorkflowReportPathOutputName,
   netlifyDeployStep,
   nixCacheSetupStep,
-  pnpmStateSetupStep,
   validateNixStoreStep,
   withCiSourceRoot,
   defaultRefPolicyCheckJob,
@@ -69,8 +66,6 @@ const baseSteps = [
   trustedCachixStep,
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
-  pnpmStateSetupStep,
-  restorePnpmStateStep(),
   validateNixStoreStep,
   evictCachedPnpmDepsStep({
     flakeRef: '.#oxlint-npm',
@@ -317,7 +312,6 @@ const job = ({
     ...baseSteps,
     ...extraSteps,
     step,
-    savePnpmStateStep(),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -342,7 +336,6 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
   steps: [
     ...baseSteps,
     step,
-    savePnpmStateStep(),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -601,7 +594,7 @@ const extraJobs: Record<string, any> = {
   // bootstrap:cold-proof (R32) — the empirical authority for the bootstrap-safe import-closure
   // contract (issue #884). In a fresh, no-node_modules tree of the committed source it runs the
   // self-contained nix genie (`.#genie`, a cachix cache hit here) with `--phase bootstrap`, then
-  // `pnpm install --frozen-lockfile` (resolving against the restored pnpm store), asserting both
+  // `pnpm install --frozen-lockfile` against the registry, asserting both
   // succeed. This exercises the exact pre-install path; `bootstrap-closure:check` (in `check:all`) is
   // the static fast-feedback pre-check. Separate lane because it is heavier than the product checks.
   'bootstrap-cold-proof': job({
@@ -755,7 +748,6 @@ const extraJobs: Record<string, any> = {
           maxHistory: 20,
         },
       }),
-      savePnpmStateStep(),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,
@@ -913,7 +905,6 @@ const extraJobs: Record<string, any> = {
         },
         run: runDevenvTasksBefore('test:notion-integration'),
       },
-      savePnpmStateStep(),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,
@@ -947,7 +938,6 @@ const extraJobs: Record<string, any> = {
         name: 'Restate integration tests',
         run: runDevenvTasksBefore('test:restate-integration'),
       },
-      savePnpmStateStep(),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,
@@ -973,7 +963,6 @@ const extraJobs: Record<string, any> = {
       liveVercelCiToolsPreflightStep,
       onlyWhenLiveNetlifyCiTools(liveNetlifyCiToolsE2EStep),
       onlyWhenLiveVercelCiTools(liveVercelCiToolsE2EStep),
-      savePnpmStateStep(),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,
@@ -1024,7 +1013,6 @@ const deployJobs: Record<string, any> = {
         summaryPath: storybookPreviewSummaryPath,
         stateId: 'storybook-preview',
       }),
-      savePnpmStateStep(),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,

@@ -2,7 +2,7 @@ import * as PosixPath from 'node:path/posix'
 
 import { Schema } from 'effect'
 
-import { BuckMemberCapabilitySchema } from './generators/composition-root.ts'
+import { BuckMemberCapabilitySchema } from '@overeng/megarepo/buck2-manifest'
 
 const AbsolutePath = Schema.String.check(
   Schema.makeFilter<string>((value) =>

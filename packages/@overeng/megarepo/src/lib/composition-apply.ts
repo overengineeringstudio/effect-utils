@@ -9,6 +9,14 @@ import { Effect, Schema } from 'effect'
 import type * as FileSystem from 'effect/FileSystem'
 
 import {
+  BUCK_MEMBER_MANIFEST_FILENAME,
+  buckMemberCapabilityByToolId,
+  decodeBuckMemberManifestJson,
+  encodeBuckMemberManifestJson,
+  type BuckMemberManifest,
+} from '@overeng/megarepo/buck2-manifest'
+
+import {
   CompositionApplyError,
   CompositionApplyRequestSchema,
   type CompositionApplyMemberResult,
@@ -54,11 +62,7 @@ import {
 } from './generators/composition-root-publisher.ts'
 import {
   DEFAULT_BUCK_ISOLATION_DIR,
-  BUCK_MEMBER_MANIFEST_FILENAME,
-  buckMemberCapabilityByToolId,
-  decodeBuckMemberManifestJson,
-  encodeBuckMemberManifestJson,
-  type BuckMemberManifest,
+  resolveCompositionToolchainRequirements,
 } from './generators/composition-root.ts'
 import {
   cpAMemberMountTransactionPath,
@@ -829,6 +833,36 @@ const applyComposition = async ({
 
     const members = await loadMembers({ request, primitives })
     validateMembers({ request, runtime, members })
+    const platformHub = members.find(
+      (member) => member.key === request.compositionConfig.platformHub,
+    )
+    if (platformHub === undefined) {
+      throw failure({
+        reason: 'InvalidRequest',
+        phase: 'Manifest',
+        memberKey: request.compositionConfig.platformHub,
+        message: 'Platform hub is not a composition member',
+        recoveryPaths: [],
+      })
+    }
+    try {
+      resolveCompositionToolchainRequirements({
+        members: members.map((member) => ({
+          memberKey: member.key,
+          manifest: member.manifest,
+        })),
+        platformHubCell: platformHub.manifest.cell,
+      })
+    } catch (cause) {
+      throw normalizeFailure({
+        cause,
+        reason: 'InvalidRequest',
+        phase: 'Manifest',
+        memberKey: request.compositionConfig.platformHub,
+        message: 'Member toolchain requirements conflict with the platform hub authority',
+        recoveryPaths: [],
+      })
+    }
     const lockedMembers = members.filter((member) => member.owned === false)
     const recoveryResults: Array<CompositionApplyRecoveryResult> = []
 

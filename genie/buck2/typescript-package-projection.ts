@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -17,14 +17,13 @@ const sourceExtensionSet: Readonly<Record<string, true>> = {
   '.tsx': true,
 }
 const commonSemanticInputs = [
+  'buck2/dependencies/BUCK.genie.ts',
+  'buck2/dependencies/pnpm-lock.sha256.json.genie.ts',
   'genie/buck2/mod.ts',
+  'genie/buck2/typescript-admissions.ts',
   'genie/buck2/typescript-package-projection.ts',
   'package.json.genie.ts',
-  'packages/@overeng/buck2-tools/src/buck2-materializer.ts',
-  'packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts',
-  'packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts',
-  'pnpm-lock.yaml',
-  'pnpm-workspace.yaml',
+  'packages/@overeng/buck2-tools/src/package-tree.ts',
 ] as const
 
 const compareStrings = ({ left, right }: { left: string; right: string }): number =>
@@ -78,26 +77,6 @@ const discoverPackageSources = ({
   return sources.toSorted((left, right) => compareStrings({ left, right }))
 }
 
-const readWorkspacePaths = (): readonly string[] => {
-  const rootManifestPath = path.join(process.cwd(), 'package.json')
-  const rootManifestValue: unknown = JSON.parse(readFileSync(rootManifestPath, 'utf8'))
-  if (
-    rootManifestValue === null ||
-    Array.isArray(rootManifestValue) === true ||
-    typeof rootManifestValue !== 'object'
-  ) {
-    throw new Error('Root package.json must contain an object')
-  }
-  const workspacesValue = Reflect.get(rootManifestValue, 'workspaces')
-  if (
-    Array.isArray(workspacesValue) === false ||
-    workspacesValue.some((workspace) => typeof workspace !== 'string') === true
-  ) {
-    throw new Error('Root package.json must declare an explicit string workspaces list')
-  }
-  return workspacesValue.toSorted((left, right) => compareStrings({ left, right }))
-}
-
 const starlarkString = (value: string): string => JSON.stringify(value)
 
 const renderMap = ({
@@ -122,57 +101,47 @@ export type Buck2WorkspaceSibling = {
 }
 
 export type Buck2TypeScriptPackageProjection = {
+  readonly dependencyImporter: `//buck2/dependencies:importer_${string}`
   readonly packageName: string
   readonly packagePath: string
   readonly projectionSource: string
   readonly projectFile?: string
   readonly sourceRoots: readonly string[]
-  readonly patches: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
 }
 
 export const buck2TypeScriptPackageProjection = ({
+  dependencyImporter,
   packageName,
   packagePath,
   projectionSource,
   projectFile = 'tsconfig.json',
   sourceRoots,
-  patches,
   workspaceSiblings = [],
 }: Buck2TypeScriptPackageProjection): GenieOutput<unknown> => {
   if (safeSourceSegment(projectFile) === false) {
     throw new Error(`Unsafe package project file: ${projectFile}`)
   }
-  const workspacePaths = readWorkspacePaths()
   const packageSources = discoverPackageSources({ packagePath, sourceRoots })
   const buckPackagePaths = new Set(
-    workspacePaths.filter((workspace) =>
-      existsSync(path.join(process.cwd(), workspace, 'BUCK.genie.ts')),
+    [packagePath, ...workspaceSiblings.map((sibling) => sibling.packagePath)].filter((candidate) =>
+      existsSync(path.join(process.cwd(), candidate, 'BUCK.genie.ts')),
     ),
   )
   const visibility = ['PUBLIC'] as const
-  const runtime = 'effect_utils//:packages/@overeng/buck2-tools/src/buck2-materializer.ts'
-  const descriptorModule =
-    'effect_utils//:packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts'
-  const normalizer = 'effect_utils//:packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts'
-
+  const packageTreeRuntime = '//:packages/@overeng/buck2-tools/src/package-tree.ts'
   const sourceLabel = (repoRelativePath: string): string => {
     if (repoRelativePath.startsWith(`${packagePath}/`) === true) {
       return repoRelativePath.slice(packagePath.length + 1)
     }
-    const sourcePackage = path.posix.dirname(repoRelativePath)
-    if (
-      path.posix.basename(repoRelativePath) === 'package.json' &&
-      buckPackagePaths.has(sourcePackage) === true
-    ) {
-      return `effect_utils//${sourcePackage}:package.json`
+    const sourcePackage = [...buckPackagePaths]
+      .filter((candidate) => repoRelativePath.startsWith(`${candidate}/`) === true)
+      .toSorted((left, right) => right.length - left.length || compareStrings({ left, right }))[0]
+    if (sourcePackage !== undefined) {
+      return `//${sourcePackage}:${repoRelativePath.slice(sourcePackage.length + 1)}`
     }
-    return `effect_utils//:${repoRelativePath}`
+    return `//:${repoRelativePath}`
   }
-  const workspaceManifestEntries = workspacePaths.map((workspace): readonly [string, string] => {
-    const manifest = `${workspace}/package.json`
-    return [manifest, sourceLabel(manifest)]
-  })
   const projectFileEntries: readonly (readonly [string, string])[] =
     projectFile === 'tsconfig.json' ? [] : [[projectFile, projectFile]]
   const packageFileEntries = [
@@ -181,10 +150,6 @@ export const buck2TypeScriptPackageProjection = ({
     ['tsconfig.json', 'tsconfig.json'] as const,
     ...projectFileEntries,
   ].toSorted(([left], [right]) => compareStrings({ left, right }))
-  const patchEntries = patches.map((patch): readonly [string, string] => [
-    patch,
-    sourceLabel(patch),
-  ])
   const workspaceSiblingProjections = workspaceSiblings.map((sibling) => {
     const hasDist = sibling.distTarget !== undefined
     const hasSources = sibling.sourceRoots !== undefined
@@ -233,24 +198,20 @@ export const buck2TypeScriptPackageProjection = ({
       ),
     ]),
     ...[...buckPackagePaths].map((buckPackagePath) => `${buckPackagePath}/BUCK.genie.ts`),
-    ...patches,
   ].toSorted((left, right) => compareStrings({ left, right }))
 
   const data = {
-    packageName,
-    packagePath,
-    packageSources,
-    descriptorModule,
     buckPackagePaths: [...buckPackagePaths].toSorted((left, right) =>
       compareStrings({ left, right }),
     ),
-    normalizer,
-    patches,
+    dependencyImporter,
+    packageName,
+    packagePath,
+    packageSources,
+    packageTreeRuntime,
     projectFile,
-    runtime,
     sourceRoots,
     visibility,
-    workspacePaths,
     workspaceSiblingProjections,
   }
   const fingerprint = buck2SemanticFingerprint({
@@ -294,8 +255,8 @@ export const buck2TypeScriptPackageProjection = ({
       `# Semantic inputs: ${semanticInputs.join(', ')}`,
       `# Regenerate: ${regenerationCommand}`,
       '',
-      'load("@effect_utils//buck2:materialization.bzl", "package_tree", "pnpm_editor_inputs", "pnpm_node_modules")',
-      'load("@effect_utils//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")',
+      'load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")',
+      'load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")',
       '',
       'export_file(',
       '    name = "package.json",',
@@ -303,26 +264,19 @@ export const buck2TypeScriptPackageProjection = ({
       renderBuck2Visibility({ visibility }),
       ')',
       '',
-      'pnpm_node_modules(',
+      'export_materialization_inputs([',
+      ...packageSources.map((source) => `    ${starlarkString(source)},`),
+      '])',
+      '',
+      'alias(',
       '    name = "node_modules",',
-      `    package_name = ${starlarkString(packageName)},`,
-      '    root_package_json = "effect_utils//:package.json",',
-      '    lockfile = "effect_utils//:pnpm-lock.yaml",',
-      '    workspace_manifest = "effect_utils//:pnpm-workspace.yaml",',
-      ...renderMap({
-        name: 'workspace_package_manifests',
-        entries: workspaceManifestEntries,
-      }),
-      ...renderMap({ name: 'patches', entries: patchEntries }),
-      `    runtime = ${starlarkString(runtime)},`,
-      `    descriptor_module = ${starlarkString(descriptorModule)},`,
-      `    normalizer = ${starlarkString(normalizer)},`,
+      `    actual = ${starlarkString(dependencyImporter)},`,
       renderBuck2Visibility({ visibility }),
       ')',
       '',
-      'pnpm_editor_inputs(',
+      'alias(',
       '    name = "editor_inputs",',
-      '    node_modules = ":node_modules",',
+      '    actual = ":node_modules",',
       renderBuck2Visibility({ visibility }),
       ')',
       '',
@@ -330,7 +284,7 @@ export const buck2TypeScriptPackageProjection = ({
       '    name = "package_tree",',
       '    node_modules = ":node_modules",',
       ...renderMap({ name: 'files', entries: packageFileEntries }),
-      `    runtime = ${starlarkString(runtime)},`,
+      `    runtime = ${starlarkString(packageTreeRuntime)},`,
       ...renderWorkspaceSiblings(),
       renderBuck2Visibility({ visibility }),
       ')',

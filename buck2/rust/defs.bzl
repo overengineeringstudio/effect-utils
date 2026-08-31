@@ -1,8 +1,8 @@
 """Thin Prelude rust_binary to ProductExecutableInfo adapter."""
 
-load("@effect_utils//buck2/platforms:defs.bzl", "ProductPlatformInfo", "product_platform_constraints")
-load("@effect_utils//buck2/provenance:defs.bzl", "product_executable_info")
-load("@effect_utils//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo")
+load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "product_platform_constraints")
+load("//buck2/provenance:defs.bzl", "product_executable_info")
+load("//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo")
 
 
 def _single_binary_output(dep):
@@ -53,7 +53,7 @@ _rust_product_executable = rule(
         "recipe": attrs.string(),
         "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
         "_rust_toolchain": attrs.default_only(attrs.toolchain_dep(
-            default = "toolchains//:rust",
+            default = "//buck2/toolchains:rust",
             providers = [ConfiguredRustToolchainInfo],
         )),
     },

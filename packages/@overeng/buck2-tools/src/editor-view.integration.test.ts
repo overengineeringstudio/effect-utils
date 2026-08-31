@@ -9,7 +9,6 @@ import {
   rmSync,
   statSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -42,6 +41,8 @@ type Fixture = {
   readonly editorInputs: string
   readonly nodeModules: string
   readonly options: EditorViewOptions
+  readonly workspaceAuthority: string
+  readonly consumerCache: string
 }
 
 const makeFixture = (): Fixture => {
@@ -50,6 +51,8 @@ const makeFixture = (): Fixture => {
   const editorRoot = join(root, 'packages', '.editor-view')
   const editorInputs = join(root, 'inputs', 'editor_inputs')
   const nodeModules = join(root, 'inputs', 'node_modules')
+  const workspaceAuthority = join(root, 'workspace-authority.json')
+  const consumerCache = join(root, '.devenv', 'vite-cache', 'tui-core')
   mkdirSync(join(packageDir, 'node_modules'), { recursive: true })
   writeFileSync(join(packageDir, 'package.json'), '{}\n')
   writeFileSync(join(packageDir, 'node_modules', 'legacy-root-install'), 'retained')
@@ -61,6 +64,14 @@ const makeFixture = (): Fixture => {
     'export default 1\n',
   )
   symlinkSync('.pnpm/dep@1/node_modules/dep', join(nodeModules, 'dep'))
+  writeFileSync(
+    workspaceAuthority,
+    `${JSON.stringify({
+      schema: 'effect-utils/workspace-dependency-authority/v1',
+      requiredPackages: ['packages/@overeng/tui-core'],
+      ownedPackages: ['packages/@overeng/tui-core'],
+    })}\n`,
+  )
   const options: EditorViewOptions = {
     repoRoot: root,
     package: 'packages/@overeng/tui-core',
@@ -69,9 +80,21 @@ const makeFixture = (): Fixture => {
     editorInputs,
     nodeModules,
     cp,
+    workspaceAuthority,
+    consumerCache,
+    snapshotRetention: 2,
     mv,
   }
-  return { root, packageDir, editorRoot, editorInputs, nodeModules, options }
+  return {
+    root,
+    packageDir,
+    editorRoot,
+    editorInputs,
+    nodeModules,
+    workspaceAuthority,
+    consumerCache,
+    options,
+  }
 }
 const makeWritable = (path: string): void => {
   const status = lstatSync(path)
@@ -125,10 +148,12 @@ describe('editor view publisher', () => {
     const fixture = makeFixture()
     try {
       const packageManifest = join(fixture.packageDir, 'package.json')
-      utimesSync(packageManifest, new Date(0), new Date(0))
-      const signalBefore = statSync(packageManifest).mtimeMs
+      const manifestContent = readFileSync(packageManifest)
+      const manifestIdentity = statSync(packageManifest, { bigint: true }).ino
       const record = await publishEditorView(fixture.options)
-      expect(statSync(packageManifest).mtimeMs).toBeGreaterThan(signalBefore)
+      expect(readFileSync(packageManifest)).toEqual(manifestContent)
+      expect(statSync(packageManifest, { bigint: true }).ino).not.toBe(manifestIdentity)
+      expect(statSync(fixture.consumerCache).mode & 0o200).not.toBe(0)
       expect(readlinkSync(join(fixture.packageDir, 'node_modules'))).toBe(
         '../../.editor-view/tui-core/node_modules',
       )
@@ -158,6 +183,9 @@ describe('editor view publisher', () => {
       expect(statSync(join(fixture.editorRoot, record.snapshot, 'node_modules')).mode & 0o222).toBe(
         0,
       )
+      expect(
+        statSync(join(fixture.editorRoot, record.snapshot, 'node_modules', '.pnpm')).mode & 0o222,
+      ).toBe(0)
       expect(statSync(recordPath(fixture)).mode & 0o222).toBe(0)
       const snapshotStatus = statSync(snapshotFile, { bigint: true })
       expect([snapshotStatus.dev, snapshotStatus.ino]).toEqual([
@@ -182,7 +210,7 @@ describe('editor view publisher', () => {
     }
   })
 
-  it('atomically flips old to new while retaining every published snapshot', async () => {
+  it('atomically flips old to new while retaining the bounded rollback snapshot', async () => {
     const fixture = makeFixture()
     try {
       const oldRecord = await publishEditorView(fixture.options)
@@ -230,6 +258,101 @@ describe('editor view publisher', () => {
           name.startsWith('tui-core-'),
         ),
       ).toHaveLength(2)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+  it('keeps the current and previous snapshots while preserving in-flight candidates', async () => {
+    const fixture = makeFixture()
+    try {
+      const oldest = await publishEditorView(fixture.options)
+      const inFlight = join(fixture.editorRoot, '.store', '.candidate-in-flight')
+      mkdirSync(inFlight)
+      for (const revision of [2, 3]) {
+        writeFileSync(
+          join(fixture.editorInputs, 'install-descriptor.json'),
+          `${JSON.stringify({ revision })}\n`,
+        )
+        const nodeModules = join(fixture.root, 'inputs', `node_modules-v${revision}`)
+        mkdirSync(join(nodeModules, 'dep'), { recursive: true })
+        writeFileSync(join(nodeModules, 'dep', 'index.js'), `export default ${revision}\n`)
+        await publishEditorView({ ...fixture.options, nodeModules })
+      }
+      const snapshots = readdirSync(join(fixture.editorRoot, '.store')).filter((name) =>
+        name.startsWith('tui-core-'),
+      )
+      expect(snapshots).toHaveLength(2)
+      expect(snapshots).toContain(currentTarget(fixture).replace('.store/', ''))
+      expect(snapshots).not.toContain(`tui-core-${oldest.editorInputsFingerprint}`)
+      expect(statSync(inFlight).isDirectory()).toBe(true)
+      const retention = JSON.parse(
+        readFileSync(join(fixture.editorRoot, '.retention.json'), 'utf8'),
+      ) as { snapshots: readonly string[] }
+      expect(retention.snapshots).toHaveLength(2)
+      expect(retention.snapshots[0]).toBe(currentTarget(fixture).replace('.store/', ''))
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('fails closed on incomplete whole-workspace authority and cache paths inside the package', async () => {
+    const fixture = makeFixture()
+    try {
+      writeFileSync(
+        fixture.workspaceAuthority,
+        `${JSON.stringify({
+          schema: 'effect-utils/workspace-dependency-authority/v1',
+          requiredPackages: ['packages/@overeng/tui-core', 'packages/@overeng/tui-react'],
+          ownedPackages: ['packages/@overeng/buck2-tools', 'packages/@overeng/tui-core'],
+        })}\n`,
+      )
+      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+        'missing=["packages/@overeng/tui-react"] extra=["packages/@overeng/buck2-tools"]',
+      )
+      expect(() => lstatSync(fixture.editorRoot)).toThrow()
+
+      writeFileSync(
+        fixture.workspaceAuthority,
+        `${JSON.stringify({
+          schema: 'effect-utils/workspace-dependency-authority/v1',
+          requiredPackages: ['packages/@overeng/tui-core'],
+          ownedPackages: ['packages/@overeng/tui-core'],
+        })}\n`,
+      )
+      await expect(
+        publishEditorView({
+          ...fixture.options,
+          consumerCache: join(fixture.packageDir, '.vite'),
+        }),
+      ).rejects.toThrow('consumer cache must be inside the repository and outside package')
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('detects a writable published snapshot even when its content digest is unchanged', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      chmodSync(join(fixture.editorRoot, currentTarget(fixture)), 0o700)
+      await expect(checkEditorView(fixture.options)).rejects.toThrow(
+        'snapshot immutability violation',
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('refuses garbage collection when snapshot ownership is ambiguous', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      const current = currentTarget(fixture)
+      mkdirSync(join(fixture.editorRoot, '.store', 'unowned'))
+      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+        'snapshot store contains an ambiguously owned entry',
+      )
+      expect(currentTarget(fixture)).toBe(current)
     } finally {
       cleanup(fixture)
     }

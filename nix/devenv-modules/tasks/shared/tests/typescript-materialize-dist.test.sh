@@ -7,6 +7,8 @@ MATERIALIZER="$ROOT/scripts/typescript-materialize-dist.sh"
 PACKAGE_PATH="packages/@overeng/tui-core"
 TARGET="effect_utils//packages/@overeng/tui-core:dist"
 DECLARATION_ENTRYPOINT="src/mod.d.ts"
+PROJECT="tsconfig.json"
+DIFF_BIN="$(command -v diff)"
 REAL_MV="$(command -v mv)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -81,8 +83,9 @@ assert_no_staging() {
 test_missing_directory() {
   repo="$TEST_ROOT/missing-directory"
   make_repo "$repo"
-  if FAKE_BUCK_SCENARIO=missing-directory BUCK2_BIN="$repo/bin/buck2" \
-    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT"; then
+  if FAKE_BUCK_SCENARIO=missing-directory TYPESCRIPT_DIST_MODE=publish \
+    WORKSPACE_ROOT="$repo" BUCK2_BIN="$repo/bin/buck2" \
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT" "$PROJECT"; then
     echo "FAIL: missing Buck output directory was accepted" >&2
     return 1
   fi
@@ -93,8 +96,9 @@ test_missing_directory() {
 test_missing_mod() {
   repo="$TEST_ROOT/missing-mod"
   make_repo "$repo"
-  if FAKE_BUCK_SCENARIO=missing-mod BUCK2_BIN="$repo/bin/buck2" \
-    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT"; then
+  if FAKE_BUCK_SCENARIO=missing-mod TYPESCRIPT_DIST_MODE=publish \
+    WORKSPACE_ROOT="$repo" BUCK2_BIN="$repo/bin/buck2" \
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT" "$PROJECT"; then
     echo "FAIL: Buck output without src/mod.d.ts was accepted" >&2
     return 1
   fi
@@ -106,8 +110,9 @@ test_replaces_stale_dist() {
   repo="$TEST_ROOT/replaces-stale"
   make_repo "$repo"
   FAKE_BUCK_SCENARIO=success NEW_DECLARATIONS='fresh declarations' \
-    FAKE_BUCK_LOG="$repo/buck-args" BUCK2_BIN="$repo/bin/buck2" \
-    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT"
+    FAKE_BUCK_LOG="$repo/buck-args" TYPESCRIPT_DIST_MODE=publish \
+    WORKSPACE_ROOT="$repo" BUCK2_BIN="$repo/bin/buck2" \
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT" "$PROJECT"
   mapfile -t buck_args < "$repo/buck-args"
   [ "${#buck_args[@]}" -eq 4 ] &&
     [ "${buck_args[0]}" = build ] &&
@@ -145,9 +150,55 @@ fi
 MV
   chmod +x "$repo/bin/mv"
   if PATH="$repo/bin:$PATH" REAL_MV="$REAL_MV" MV_COUNT_FILE="$repo/mv-count" \
-    FAKE_BUCK_SCENARIO=success BUCK2_BIN="$repo/bin/buck2" \
-    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT"; then
+    FAKE_BUCK_SCENARIO=success TYPESCRIPT_DIST_MODE=publish \
+    WORKSPACE_ROOT="$repo" BUCK2_BIN="$repo/bin/buck2" \
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT" "$PROJECT"; then
     echo "FAIL: post-publish validation failure returned success" >&2
+    return 1
+  fi
+  assert_old_dist "$repo"
+  assert_no_staging "$repo"
+}
+
+make_freshness_tools() {
+  repo="$1"
+  cat > "$repo/bin/tsgo" <<'TSGO'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--outDir" ]; then
+    out="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "$out/src"
+printf '%s\n' "${FAKE_EMIT_DECLARATIONS:?}" > "$out/src/mod.d.ts"
+TSGO
+  chmod +x "$repo/bin/tsgo"
+}
+
+test_standalone_freshness_passes() {
+  repo="$TEST_ROOT/standalone-fresh"
+  make_repo "$repo"
+  make_freshness_tools "$repo"
+  FAKE_EMIT_DECLARATIONS='old declarations' TYPESCRIPT_DIST_MODE=check \
+    TSGO_BIN="$repo/bin/tsgo" DIFF_BIN="$DIFF_BIN" \
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT" "$PROJECT"
+  assert_old_dist "$repo"
+  assert_no_staging "$repo"
+}
+
+test_standalone_staleness_fails() {
+  repo="$TEST_ROOT/standalone-stale"
+  make_repo "$repo"
+  make_freshness_tools "$repo"
+  if FAKE_EMIT_DECLARATIONS='fresh declarations' TYPESCRIPT_DIST_MODE=check \
+    TSGO_BIN="$repo/bin/tsgo" DIFF_BIN="$DIFF_BIN" \
+    bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT" "$PROJECT"; then
+    echo "FAIL: stale standalone declarations were accepted" >&2
     return 1
   fi
   assert_old_dist "$repo"
@@ -158,5 +209,7 @@ run_test 'missing Buck directory fails and preserves old dist' test_missing_dire
 run_test 'missing src/mod.d.ts fails and preserves old dist' test_missing_mod
 run_test 'stale dist is atomically replaced by fresh bytes' test_replaces_stale_dist
 run_test 'post-publish validation failure is nonzero and restores old dist' test_post_publish_validation_failure
+run_test 'standalone fresh declarations pass without publication' test_standalone_freshness_passes
+run_test 'standalone stale declarations fail without mutation' test_standalone_staleness_fails
 
 echo "1..$test_count"

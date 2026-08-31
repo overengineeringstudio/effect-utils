@@ -5,7 +5,7 @@ import {
   decodeBuckMemberManifestJson,
   encodeBuckMemberManifestJson,
   type BuckMemberManifest,
-} from './packages/@overeng/megarepo/src/lib/generators/composition-root.ts'
+} from './packages/@overeng/megarepo/src/buck2-manifest.ts'
 
 const buckMemberSchemaVersion = COMPOSITION_ROOT_SCHEMA_VERSION
 
@@ -39,8 +39,20 @@ const manifestProjection = {
   ],
   capabilities: [
     {
+      _tag: 'ToolchainAuthority',
+      toolchain: 'bun',
+    },
+    {
+      _tag: 'ToolchainAuthority',
+      toolchain: 'pnpm',
+    },
+    {
+      _tag: 'ToolchainAuthority',
+      toolchain: 'tsgo',
+    },
+    {
       toolId: 'archive-tool',
-      protocol: 'effect-utils/buck2-archive-tool/v1',
+      protocol: 'effect-utils/buck2-archive-tool/v2',
       flakePackage: 'buck2-archive-tool',
       executable: 'bin/buck2-archive-tool',
     },

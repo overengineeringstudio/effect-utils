@@ -1,6 +1,6 @@
 """Language-neutral provenance propagated by executable producers."""
 
-load("@effect_utils//buck2/platforms:defs.bzl", "ProductPlatformInfo")
+load("//buck2/platforms:defs.bzl", "ProductPlatformInfo")
 
 BuildProvenanceInfo = provider(fields = {
     "artifact": Artifact,

@@ -7,7 +7,7 @@
  * - commitDrift field
  */
 
-import { chmod, lstat, readdir, readlink } from 'node:fs/promises'
+import { chmod, lstat, readdir } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -27,6 +27,7 @@ import {
   OwnedWorktreeRootManifest,
 } from '../lib/owned-worktree-acquisition-schema.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
+import { resolvePinnedCoreutils } from '../test-utils/coreutils.ts'
 import {
   addCommit,
   createRepo,
@@ -628,13 +629,7 @@ describe('mr status --output json', () => {
               chmod(NodePath.join(capabilities, 'defs.bzl'), 0o444),
             ]),
           )
-          const pinned = (name: 'cp' | 'mv') =>
-            Effect.promise(async () =>
-              NodePath.resolve(
-                '/run/current-system/sw/bin',
-                await readlink(`/run/current-system/sw/bin/${name}`),
-              ),
-            )
+          const { cpPath, mvPath } = yield* Effect.promise(() => resolvePinnedCoreutils())
           yield* materializeCpAMemberMount({
             request: {
               workspaceRoot: workspacePath.replace(/\/$/u, ''),
@@ -647,8 +642,8 @@ describe('mr status --output json', () => {
               allowVerifiedDarwinAdvance: false,
             },
             runtime: {
-              cpPath: yield* pinned('cp'),
-              mvPath: yield* pinned('mv'),
+              cpPath,
+              mvPath,
               platform: 'linux',
               nonce: () => 'status-converged',
               capabilityCheck: async () => {},

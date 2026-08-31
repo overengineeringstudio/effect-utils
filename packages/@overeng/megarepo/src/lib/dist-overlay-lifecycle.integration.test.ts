@@ -3,7 +3,6 @@ import {
   lstat,
   mkdir,
   readFile,
-  readlink,
   readdir,
   rename,
   symlink,
@@ -17,6 +16,7 @@ import { Effect, Schema, type Scope } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
+import { resolvePinnedCoreutils } from '../test-utils/coreutils.ts'
 import {
   DistOverlayTransaction,
   distOverlayTransactionPath,
@@ -38,12 +38,6 @@ import {
 const withNode = <A, E>(
   effect: Effect.Effect<A, E, FileSystem.FileSystem | Scope.Scope>,
 ): Effect.Effect<A, E> => effect.pipe(Effect.provide(NodeServices.layer), Effect.scoped)
-
-const coreutilsPath = (name: 'cp' | 'mv'): Effect.Effect<string> =>
-  Effect.promise(async () => {
-    const linked = await readlink(`/run/current-system/sw/bin/${name}`)
-    return NodePath.resolve('/run/current-system/sw/bin', linked)
-  })
 
 const makeWritable = async (root: string): Promise<void> => {
   const visit = async (path: string): Promise<void> => {
@@ -131,6 +125,7 @@ const makeFixture = ({ withSymlinkParent = false }: { withSymlinkParent?: boolea
     })
     yield* writeOwnedCpAMountMetadata({ workspaceRoot, metadata })
     const mountInfo = yield* Effect.promise(() => lstat(mountPath))
+    const { cpPath, mvPath } = yield* Effect.promise(() => resolvePinnedCoreutils())
     return {
       workspaceRoot,
       member,
@@ -140,8 +135,8 @@ const makeFixture = ({ withSymlinkParent = false }: { withSymlinkParent?: boolea
       artifactA,
       artifactB,
       artifactC,
-      cpPath: yield* coreutilsPath('cp'),
-      mvPath: yield* coreutilsPath('mv'),
+      cpPath,
+      mvPath,
     } satisfies Fixture
   })
 

@@ -4,14 +4,14 @@
 # Projection source: packages/@overeng/otelite/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:b540522b813d4ae64130edab8dd923dbc58e18962d6047ab63f1da9eba0d822b
+# Semantic fingerprint: sha256:9ebac3409331ba89087bc80204067dae41038b92415d07fc0ba4d911dba5a504
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/BUCK.genie.ts, packages/@overeng/otelite/Cargo.toml, packages/@overeng/otelite/src/**/*.rs, packages/@overeng/otelite/tests/**/*.rs, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
-load("@effect_utils//buck2/products:defs.bzl", "build_product")
-load("@effect_utils//buck2/platforms:defs.bzl", "host_platform_label")
-load("@effect_utils//buck2/rust:defs.bzl", "rust_product_executable")
+load("//buck2/products:defs.bzl", "build_product")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
+load("//buck2/rust:defs.bzl", "rust_product_executable")
 native.rust_library(
     name = "lib",
     crate = "otelite",
@@ -33,19 +33,19 @@ native.rust_library(
         "src/sink.rs",
     ],
     deps = [
-        "effect_utils//rust/third-party:axum",
-        "effect_utils//rust/third-party:opentelemetry-proto",
-        "effect_utils//rust/third-party:prost",
-        "effect_utils//rust/third-party:serde",
-        "effect_utils//rust/third-party:serde_json",
-        "effect_utils//rust/third-party:tokio",
-        "effect_utils//rust/third-party:tonic",
+        "//rust/third-party:axum",
+        "//rust/third-party:opentelemetry-proto",
+        "//rust/third-party:prost",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:tokio",
+        "//rust/third-party:tonic",
     ] + select({
         "prelude//os/constraints:linux": [
-            "effect_utils//rust/third-party:libc",
+            "//rust/third-party:libc",
         ],
         "prelude//os/constraints:macos": [
-            "effect_utils//rust/third-party:libc",
+            "//rust/third-party:libc",
         ],
         "DEFAULT": [],
     }),
@@ -67,20 +67,20 @@ native.rust_binary(
         "src/main.rs",
     ],
     deps = [
+        "//rust/third-party:axum",
+        "//rust/third-party:opentelemetry-proto",
+        "//rust/third-party:prost",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:tokio",
+        "//rust/third-party:tonic",
         ":lib",
-        "effect_utils//rust/third-party:axum",
-        "effect_utils//rust/third-party:opentelemetry-proto",
-        "effect_utils//rust/third-party:prost",
-        "effect_utils//rust/third-party:serde",
-        "effect_utils//rust/third-party:serde_json",
-        "effect_utils//rust/third-party:tokio",
-        "effect_utils//rust/third-party:tonic",
     ] + select({
         "prelude//os/constraints:linux": [
-            "effect_utils//rust/third-party:libc",
+            "//rust/third-party:libc",
         ],
         "prelude//os/constraints:macos": [
-            "effect_utils//rust/third-party:libc",
+            "//rust/third-party:libc",
         ],
         "DEFAULT": [],
     }),

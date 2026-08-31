@@ -1,10 +1,12 @@
 # Composition Open Questions
 
-## DQ1: Do consuming members share the hub's toolchain instance pins?
+## Resolved 2026-08-30: consumers share the hub's toolchain pins
 
-- Blocks: the per-member adoption contract for the second consumer (Phase 6).
-- Resolution signal: a consumer with a demonstrated need for a different
-  Bun/pnpm/tsgo pin than the hub's.
-- Blocker: no second consumer has adopted yet.
-- Lean: share hub pins by default; parameterize through the member manifest
-  `capabilities` only when a consumer proves a need (assumed 2026-08-30).
+The platform hub is the sole authority for Bun, pnpm, tsgo, and subsequent
+toolchain instances. Member manifests declare typed toolchain requirements but
+cannot select an instance or repeat Nix package, executable, or pin identity.
+Composition resolves each requirement to the hub and fails before publication
+on unknown or duplicate kinds, a non-hub authority declaration, or an attempted
+member-owned override. A different consumer pin now requires an explicit
+architecture change backed by a demonstrated incompatibility; it is not an
+implicit per-member escape hatch.

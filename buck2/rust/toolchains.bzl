@@ -1,14 +1,14 @@
 """Exact Nix-capability-backed Prelude Rust and C/C++ toolchains."""
 
 load(
-    "@effect_utils//buck2/platforms:defs.bzl",
+    "//buck2/platforms:defs.bzl",
     "ProductPlatformInfo",
     "admitted_rust_target_triple",
     "native_execution_constraints",
     "product_platform_constraints",
 )
 load(
-    "@effect_utils//buck2/toolchains:defs.bzl",
+    "//buck2/toolchains:defs.bzl",
     "ConfiguredRustToolchainInfo",
     "host_rust_target_triple",
 )
@@ -274,7 +274,7 @@ def _compile_env(metadata, target_triple):
 
 
 def native_rust_toolchains(capabilities, generation, target_platform):
-    """Declares conventional `toolchains//:rust` and `:cxx` for the native pair."""
+    """Declares conventional `//buck2/toolchains:rust` and `:cxx` for the native pair."""
     capability_platform = _host_capability_platform()
     metadata = {}
     for tool_id in _TOOL_IDS:

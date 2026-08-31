@@ -18,6 +18,7 @@ import {
   encodeCompositionRootInput,
   encodeCompositionRootOutput,
   generateCompositionRoot,
+  resolveCompositionToolchainRequirements,
   type BuckMemberManifest,
   type CompositionRootInput,
   type GeneratedCompositionFile,
@@ -35,6 +36,16 @@ const capability = (toolId: string) => ({
   protocol: 'native-executable/v1',
   flakePackage: `${toolId}-package`,
   executable: `bin/${toolId}`,
+})
+
+const toolchainAuthority = (toolchain: string) => ({
+  _tag: 'ToolchainAuthority' as const,
+  toolchain,
+})
+
+const toolchainRequirement = (toolchain: string) => ({
+  _tag: 'ToolchainRequirement' as const,
+  toolchain,
 })
 
 const manifest = ({
@@ -102,7 +113,9 @@ describe('buck2 member manifest', () => {
       { target: '//pkg:item.x', destination: 'dist/item.x' },
       { target: '//pkg:item_x', destination: 'dist/item_x' },
     ])
-    expect(decoded.capabilities.map((item) => item.toolId)).toEqual(['alpha', 'zeta'])
+    expect(
+      decoded.capabilities.filter((item) => 'toolId' in item).map((item) => item.toolId),
+    ).toEqual(['alpha', 'zeta'])
     expect(buckMemberCapabilityByToolId({ manifest: decoded, toolId: 'alpha' })).toEqual(
       capability('alpha'),
     )
@@ -208,6 +221,94 @@ describe('buck2 member manifest', () => {
   })
 })
 
+describe('shared hub toolchain authority', () => {
+  const hub = {
+    memberKey: 'hub',
+    manifest: manifest({
+      cell: 'hub',
+      capabilities: [
+        toolchainAuthority('bun'),
+        toolchainAuthority('pnpm'),
+        toolchainAuthority('tsgo'),
+      ],
+    }),
+  } as const
+
+  it('resolves an explicit consumer requirement to the sole hub authority', () => {
+    expect(
+      resolveCompositionToolchainRequirements({
+        platformHubCell: 'hub',
+        members: [
+          {
+            memberKey: 'consumer',
+            manifest: manifest({
+              cell: 'consumer',
+              capabilities: [toolchainRequirement('tsgo'), toolchainRequirement('bun')],
+            }),
+          },
+          hub,
+        ],
+      }),
+    ).toEqual([
+      {
+        memberKey: 'consumer',
+        memberCell: 'consumer',
+        toolchain: 'bun',
+        authorityMemberKey: 'hub',
+        authorityCell: 'hub',
+      },
+      {
+        memberKey: 'consumer',
+        memberCell: 'consumer',
+        toolchain: 'tsgo',
+        authorityMemberKey: 'hub',
+        authorityCell: 'hub',
+      },
+    ])
+  })
+
+  it.each([
+    [
+      'an unknown toolchain',
+      manifest({ cell: 'consumer', capabilities: [toolchainRequirement('unknown')] }),
+    ],
+    [
+      'consumer toolchain authority',
+      manifest({ cell: 'consumer', capabilities: [toolchainAuthority('bun')] }),
+    ],
+    [
+      'a member-owned capability overriding the required hub toolchain',
+      manifest({
+        cell: 'consumer',
+        capabilities: [toolchainRequirement('bun'), capability('bun')],
+      }),
+    ],
+  ])('rejects %s before root generation', (_name, consumerManifest) => {
+    expect(() =>
+      generateCompositionRoot(
+        input({
+          platformHubCell: 'hub',
+          members: [{ memberKey: 'consumer', manifest: consumerManifest }, hub],
+        }),
+      ),
+    ).toThrow()
+  })
+
+  it.each([
+    ['duplicate hub authority', [toolchainAuthority('bun'), toolchainAuthority('bun')]],
+    ['duplicate member requirement', [toolchainRequirement('bun'), toolchainRequirement('bun')]],
+    ['consumer-selected instance', [{ ...toolchainRequirement('bun'), instance: 'bun-1.3.13' }]],
+    ['consumer pin override', [{ ...toolchainRequirement('bun'), flakePackage: 'bun-next' }]],
+  ])('manifest decoding rejects %s', (_name, capabilities) => {
+    expect(() =>
+      decodeBuckMemberManifest({
+        ...manifest({ cell: 'consumer' }),
+        capabilities,
+      }),
+    ).toThrow()
+  })
+})
+
 describe('composition root goldens', () => {
   it('generates the exact single-member root', () => {
     const output = filesByPath(
@@ -240,17 +341,13 @@ describe('composition root goldens', () => {
     expect(text(output.get('.buckconfig')!)).toBe(`[cells]
   workspace = .
   prelude = prelude
-  toolchains = toolchains
-  none = none
   alpha = repos/alpha
 
 [cell_aliases]
   config = prelude
   ovr_config = prelude
-  fbcode = none
-  fbsource = none
-  fbcode_macros = none
-  buck = none
+  fbsource = prelude
+  toolchains = alpha
 
 [external_cells]
   prelude = bundled
@@ -262,6 +359,7 @@ describe('composition root goldens', () => {
   execution_platforms = alpha//buck2/platforms:host_execution_platform
 
 [buck2]
+  file_watcher = watchman
   default_allow_cache_upload = true
   digest_algorithms = SHA256
 
@@ -274,18 +372,6 @@ describe('composition root goldens', () => {
 `)
     expect(output.get('.buckroot')?.bytes).toHaveLength(0)
     expect(output.get('BUCK')?.bytes).toHaveLength(0)
-    expect(output.get('none/BUCK')?.bytes).toHaveLength(0)
-    expect(text(output.get('toolchains/BUCK')!))
-      .toBe(`load("@workspace//.buck2/capabilities:defs.bzl", "CAPABILITIES", "GENERATION")
-load("@alpha//buck2/platforms:defs.bzl", "host_platform_label")
-load("@alpha//buck2/rust:demo_toolchains.bzl", "configured_demo_toolchains")
-
-configured_demo_toolchains(
-    capabilities = CAPABILITIES,
-    generation = GENERATION,
-    target_platform = host_platform_label(),
-)
-`)
   })
 
   it('generates the exact two-member cell and detector shape', () => {
@@ -310,18 +396,14 @@ configured_demo_toolchains(
     expect(config).toBe(`[cells]
   workspace = .
   prelude = prelude
-  toolchains = toolchains
-  none = none
   alpha = repos/alpha
   beta = repos/beta-source
 
 [cell_aliases]
   config = prelude
   ovr_config = prelude
-  fbcode = none
-  fbsource = none
-  fbcode_macros = none
-  buck = none
+  fbsource = prelude
+  toolchains = alpha
 
 [external_cells]
   prelude = bundled
@@ -333,25 +415,24 @@ configured_demo_toolchains(
 [build]
   execution_platforms = alpha//buck2/platforms:host_execution_platform
 
+[buck2]
+  file_watcher = watchman
+
 [project]
   ignore = **/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,repos/.staging-*,repos/beta-source/generated,target,tmp
 `)
   })
 
-  it('emits only the six canonical aliases and the required toolchains declaration', () => {
+  it('emits the Prelude compatibility aliases without dead stub cells, aliases, or files', () => {
     const output = filesByPath(input({ members: [alphaMember] }))
     const config = text(output.get('.buckconfig')!)
-    const aliasSection = config.match(/\[cell_aliases\]\n([\s\S]*?)\n\n\[external_cells\]/u)?.[1]
-    expect(aliasSection?.split('\n')).toEqual([
-      '  config = prelude',
-      '  ovr_config = prelude',
-      '  fbcode = none',
-      '  fbsource = none',
-      '  fbcode_macros = none',
-      '  buck = none',
-    ])
-    expect(config).not.toMatch(/^\s+root\s*=/mu)
-    expect(text(output.get('toolchains/BUCK')!)).toContain('configured_demo_toolchains(')
+    const cellsSection = config.match(/\[cells\]\n([\s\S]*?)\n\n\[cell_aliases\]/u)?.[1]
+    expect(cellsSection).not.toMatch(/^\s+(?:toolchains|none)\s*=/mu)
+    expect(config).toContain('  toolchains = alpha')
+    expect(config).toContain('  fbsource = prelude')
+    expect(config).not.toMatch(/^\s+(?:fbcode|fbcode_macros|buck|none)\s*=/mu)
+    expect(output.has('none/BUCK')).toBe(false)
+    expect(output.has('toolchains/BUCK')).toBe(false)
   })
 })
 
@@ -454,11 +535,11 @@ describe('composition determinism and detector coverage', () => {
 
     expect(normalized.members.map((member) => member.manifest.cell)).toEqual(['a-b', 'a_b'])
     expect(normalized.members[0]?.manifest.projectIgnore).toEqual(['item-x', 'item.x', 'item_x'])
-    expect(normalized.members[0]?.manifest.capabilities.map((item) => item.toolId)).toEqual([
-      'tool-x',
-      'tool.x',
-      'tool_x',
-    ])
+    expect(
+      normalized.members[0]?.manifest.capabilities
+        .filter((item) => 'toolId' in item)
+        .map((item) => item.toolId),
+    ).toEqual(['tool-x', 'tool.x', 'tool_x'])
     expect(normalized.cacheSections.map((section) => section.section)).toEqual([
       'cache-x',
       'cache.x',
@@ -497,7 +578,7 @@ describe('composition determinism and detector coverage', () => {
       fc.uniqueArray(
         fc
           .stringMatching(/^[a-z][a-z0-9_]{0,7}$/u)
-          .filter((cell) => !['workspace', 'prelude', 'toolchains', 'none'].includes(cell)),
+          .filter((cell) => !['workspace', 'prelude', 'toolchains'].includes(cell)),
         { minLength: 1, maxLength: 12 },
       ),
     ],
@@ -557,8 +638,6 @@ describe('generation manifest and output schema', () => {
       '.megarepo/bin/buck2',
       '.megarepo/composition-generation.json',
       'BUCK',
-      'none/BUCK',
-      'toolchains/BUCK',
       '.buckconfig',
     ])
     const manifestFile = output.files.find(
@@ -705,6 +784,18 @@ describe('composition input failures', () => {
               { key: 'digest_algorithms', value: 'SHA256' },
               { key: 'digest_algorithms', value: 'SHA1' },
             ],
+          },
+        ],
+      }),
+    ],
+    [
+      'generator-owned Buck watcher',
+      input({
+        members: [alphaMember],
+        cacheSections: [
+          {
+            section: 'buck2',
+            entries: [{ key: 'file_watcher', value: 'notify' }],
           },
         ],
       }),

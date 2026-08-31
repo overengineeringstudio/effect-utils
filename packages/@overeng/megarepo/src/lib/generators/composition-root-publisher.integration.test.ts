@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   chmod,
   lstat,
@@ -46,8 +47,6 @@ const generatedPaths = [
   '.megarepo/bin/buck2',
   COMPOSITION_GENERATION_MANIFEST_PATH,
   'BUCK',
-  'none/BUCK',
-  'toolchains/BUCK',
   '.buckconfig',
 ] as const
 
@@ -259,6 +258,35 @@ const failureReason = <A>(
     ),
   )
 
+const addLegacyGeneratedStubs = async (fixture: Fixture): Promise<void> => {
+  const legacyFiles = [
+    { path: 'none/BUCK', bytes: Buffer.from('') },
+    { path: 'toolchains/BUCK', bytes: Buffer.from('legacy toolchain projection\n') },
+  ] as const
+  for (const file of legacyFiles) {
+    const path = NodePath.join(fixture.root, file.path)
+    await mkdir(NodePath.dirname(path), { recursive: true })
+    await writeFile(path, file.bytes)
+    await chmod(path, 0o644)
+  }
+  const manifestPath = NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+    schemaVersion: 1
+    files: Array<{ path: string; mode: number; sha256: string }>
+  }
+  manifest.files.push(
+    ...legacyFiles.map((file) => ({
+      path: file.path,
+      mode: 0o644,
+      sha256: `sha256:${createHash('sha256').update(file.bytes).digest('hex')}`,
+    })),
+  )
+  manifest.files.sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+  )
+  await writeFile(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
+}
+
 describe('composition root publisher', () => {
   it.effect('plans first-create bytes without mutating the filesystem', () =>
     Effect.scoped(
@@ -272,9 +300,11 @@ describe('composition root publisher', () => {
         expect(plan.configLast).toBe(true)
         expect(plan.files.map((file) => file.path)).toEqual(generatedPaths)
         expect(plan.files.every((file) => file.old === undefined)).toBe(true)
-        expect(plan.files.every((file) => /^sha256:[0-9a-f]{64}$/u.test(file.new.sha256))).toBe(
-          true,
-        )
+        expect(
+          plan.files.every(
+            (file) => file.new !== undefined && /^sha256:[0-9a-f]{64}$/u.test(file.new.sha256),
+          ),
+        ).toBe(true)
       }),
     ),
   )
@@ -315,8 +345,9 @@ describe('composition root publisher', () => {
         ])
         for (const file of plan.files) {
           expect(file.old).toBeDefined()
-          expect(file.old?.sha256).not.toBe(file.new.sha256)
-          expect([0o644, 0o755]).toContain(file.new.mode)
+          expect(file.new).toBeDefined()
+          expect(file.old?.sha256).not.toBe(file.new?.sha256)
+          expect([0o644, 0o755]).toContain(file.new?.mode)
         }
       }),
     ),
@@ -668,6 +699,165 @@ describe('composition root publisher', () => {
             publishCompositionRoot(optionsFor({ fixture: invalid, memberKeys: ['alpha'] })),
           )).reason,
         ).toBe('InvalidMemberManifest')
+      }),
+    ),
+  )
+
+  it.effect('fails closed when a member carries Buck root authority files', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        for (const rootFile of ['.buckconfig', '.buckroot']) {
+          const fixture = yield* makeFixture({ members: ['alpha'] })
+          yield* Effect.promise(() =>
+            writeFile(NodePath.join(fixture.root, 'repos/alpha', rootFile), ''),
+          )
+          const plan = yield* planCompositionRootPublication(
+            planOptionsFor({ fixture, memberKeys: ['alpha'] }),
+          )
+          expect(plan._tag).toBe('Refused')
+          if (plan._tag === 'Refused') {
+            expect(plan.reason).toBe('InvalidMemberManifest')
+            expect(plan.path).toBe(NodePath.join(fixture.root, 'repos/alpha', rootFile))
+          }
+        }
+      }),
+    ),
+  )
+
+  it.effect('transactionally removes prior manifest-owned files absent from the new plan', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, memberKeys: ['alpha'], lockToken: 'legacy-seed-token' }),
+        )
+        yield* Effect.promise(() => addLegacyGeneratedStubs(fixture))
+
+        const plan = yield* planCompositionRootPublication(
+          planOptionsFor({ fixture, memberKeys: ['alpha'] }),
+        )
+        expect(plan._tag).toBe('Update')
+        if (plan._tag !== 'Update') return
+        expect(plan.files.find((file) => file.path === 'none/BUCK')?.new).toBeUndefined()
+        expect(plan.files.find((file) => file.path === 'toolchains/BUCK')?.new).toBeUndefined()
+        expect(plan.files.at(-1)?.path).toBe('.buckconfig')
+
+        const result = yield* publishCompositionRoot(
+          optionsFor({
+            fixture,
+            memberKeys: ['alpha'],
+            lockToken: 'legacy-remove-token',
+          }),
+        )
+        expect(result.changedPaths).toContain('none/BUCK')
+        expect(result.changedPaths).toContain('toolchains/BUCK')
+        expect(yield* exists(NodePath.join(fixture.root, 'none'))).toBe(false)
+        expect(yield* exists(NodePath.join(fixture.root, 'toolchains'))).toBe(false)
+        const manifest = (yield* readGenerated(
+          fixture,
+          COMPOSITION_GENERATION_MANIFEST_PATH,
+        )).toString()
+        expect(manifest).not.toContain('none/BUCK')
+        expect(manifest).not.toContain('toolchains/BUCK')
+      }),
+    ),
+  )
+
+  it.effect('rolls back obsolete-file removals before restoring root authority', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, memberKeys: ['alpha'], lockToken: 'rollback-seed-token' }),
+        )
+        yield* Effect.promise(() => addLegacyGeneratedStubs(fixture))
+        const oldConfig = yield* readGenerated(fixture, '.buckconfig')
+        const oldManifest = yield* readGenerated(fixture, COMPOSITION_GENERATION_MANIFEST_PATH)
+
+        const error = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              memberKeys: ['alpha'],
+              lockToken: 'obsolete-rollback-token',
+              publicationRuntime: runtime({
+                afterPublishedFile: async (path) => {
+                  if (path === 'none/BUCK') throw new Error('stop after obsolete removal')
+                },
+              }),
+            }),
+          ),
+        )
+        expect(error.reason).toBe('IoFailure')
+        expect(yield* exists(NodePath.join(fixture.root, 'none/BUCK'))).toBe(true)
+        expect(yield* exists(NodePath.join(fixture.root, 'toolchains/BUCK'))).toBe(true)
+        expect(yield* readGenerated(fixture, '.buckconfig')).toEqual(oldConfig)
+        expect(yield* readGenerated(fixture, COMPOSITION_GENERATION_MANIFEST_PATH)).toEqual(
+          oldManifest,
+        )
+      }),
+    ),
+  )
+
+  it.effect('rejects unowned entries beside obsolete manifest-owned files', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, memberKeys: ['alpha'], lockToken: 'foreign-seed-token' }),
+        )
+        yield* Effect.promise(async () => {
+          await addLegacyGeneratedStubs(fixture)
+          await writeFile(NodePath.join(fixture.root, 'toolchains/foreign'), 'foreign\n')
+        })
+
+        const plan = yield* planCompositionRootPublication(
+          planOptionsFor({ fixture, memberKeys: ['alpha'] }),
+        )
+        expect(plan._tag).toBe('Refused')
+        if (plan._tag === 'Refused') {
+          expect(plan.reason).toBe('ForeignPath')
+          expect(plan.path).toBe(NodePath.join(fixture.root, 'toolchains'))
+        }
+        expect(yield* exists(NodePath.join(fixture.root, 'toolchains/BUCK'))).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect('rejects a symlinked obsolete parent without touching its external target', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        const outside = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(NodePath.join(tmpdir(), 'megarepo-obsolete-outside-'))),
+          (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+        )
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, memberKeys: ['alpha'], lockToken: 'symlink-seed-token' }),
+        )
+        yield* Effect.promise(async () => {
+          await addLegacyGeneratedStubs(fixture)
+          await rename(
+            NodePath.join(fixture.root, 'toolchains'),
+            NodePath.join(outside, 'toolchains'),
+          )
+          await symlink(
+            NodePath.join(outside, 'toolchains'),
+            NodePath.join(fixture.root, 'toolchains'),
+          )
+        })
+
+        const plan = yield* planCompositionRootPublication(
+          planOptionsFor({ fixture, memberKeys: ['alpha'] }),
+        )
+        expect(plan._tag).toBe('Refused')
+        if (plan._tag === 'Refused') {
+          expect(plan.reason).toBe('ForeignPath')
+          expect(plan.path).toBe(NodePath.join(fixture.root, 'toolchains'))
+        }
+        expect(
+          yield* Effect.promise(() => readFile(NodePath.join(outside, 'toolchains/BUCK'), 'utf8')),
+        ).toBe('legacy toolchain projection\n')
       }),
     ),
   )
@@ -1286,9 +1476,7 @@ describe('composition root publisher', () => {
       Effect.gen(function* () {
         const fixture = yield* makeFixture({ members: ['alpha'] })
         yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
-        yield* Effect.promise(() =>
-          writeFile(NodePath.join(fixture.root, 'toolchains/BUCK'), 'foreign\n'),
-        )
+        yield* Effect.promise(() => writeFile(NodePath.join(fixture.root, 'BUCK'), 'foreign\n'))
         const error = yield* failureReason(
           teardownCompositionRoot({
             workspaceRoot: fixture.workspaceRoot,
@@ -1297,7 +1485,7 @@ describe('composition root publisher', () => {
         )
         expect(error.reason).toBe('ForeignPath')
         expect(yield* exists(NodePath.join(fixture.root, '.buckconfig'))).toBe(true)
-        expect((yield* readGenerated(fixture, 'toolchains/BUCK')).toString()).toBe('foreign\n')
+        expect((yield* readGenerated(fixture, 'BUCK')).toString()).toBe('foreign\n')
       }),
     ),
   )

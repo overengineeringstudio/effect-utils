@@ -17,7 +17,9 @@ import {
   makeOwnedCpAMountMetadata,
   ownedCpAMountMetadataPath,
   readOwnedCpAMountMetadata,
+  scanR6BuildArtifactTree,
   scanR6ProtectedMount,
+  scanR6ProtectedTree,
   scanR6Source,
   writeOwnedCpAMountMetadata,
   type OwnedCpAMountExpectedIdentity,
@@ -62,7 +64,7 @@ const setTreeModes = ({
   policy,
 }: {
   root: string
-  policy: 'source' | 'protected'
+  policy: 'artifact' | 'source' | 'protected'
 }): Effect.Effect<void> =>
   Effect.promise(async () => {
     const visit = async (path: string): Promise<void> => {
@@ -70,10 +72,19 @@ const setTreeModes = ({
       if (info.isSymbolicLink() === true) return
       if (info.isDirectory() === true) {
         for (const child of await readdir(path)) await visit(NodePath.join(path, child))
-        await chmod(path, policy === 'source' ? 0o755 : 0o555)
+        await chmod(path, policy === 'protected' ? 0o555 : 0o755)
       } else if (info.isFile() === true) {
         const executable = (info.mode & 0o111) !== 0
-        await chmod(path, executable === true ? 0o555 : 0o444)
+        await chmod(
+          path,
+          policy === 'artifact'
+            ? executable === true
+              ? 0o755
+              : 0o644
+            : executable === true
+              ? 0o555
+              : 0o444,
+        )
       }
     }
     await visit(root)
@@ -95,7 +106,7 @@ const setTreeWritable = (root: string): Effect.Effect<void> =>
   })
 
 const makeFixture = (
-  policy: 'source' | 'protected',
+  policy: 'artifact' | 'source' | 'protected',
   options?: { capabilities?: boolean },
 ): Effect.Effect<string, PlatformError, FileSystem.FileSystem | Scope.Scope> =>
   Effect.gen(function* () {
@@ -214,6 +225,18 @@ describe('R6 source and protected scans', () => {
 
       expect(sourceScan.repository).toEqual(mountScan.repository)
       expect(sourceScan.capabilities).toEqual(mountScan.capabilities)
+    }, withNode),
+  )
+
+  it.effect(
+    'normalizes writable Buck artifact modes into the protected R6 identity',
+    Effect.fnUntraced(function* () {
+      const artifact = yield* makeFixture('artifact')
+      const protectedTree = yield* makeFixture('protected')
+
+      expect(yield* scanR6BuildArtifactTree({ root: artifact })).toEqual(
+        yield* scanR6ProtectedTree({ root: protectedTree }),
+      )
     }, withNode),
   )
 

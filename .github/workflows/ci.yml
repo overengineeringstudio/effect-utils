@@ -496,34 +496,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -606,14 +578,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run ts:check:strict' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check:strict'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -741,34 +705,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -836,14 +772,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -974,34 +902,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -1069,14 +969,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:run' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1204,34 +1096,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -1299,14 +1163,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1437,34 +1293,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -1532,14 +1360,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run nix:check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1799,34 +1619,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -1945,14 +1737,6 @@ jobs:
               exit 1
             fi
           done
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2080,34 +1864,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -2177,14 +1933,6 @@ jobs:
           bash genie/ci-scripts/ci-measurement-comparison.test.sh
           bash genie/ci-scripts/native-dep-policy-audit.test.sh
           bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2312,34 +2060,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -2407,14 +2127,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run bundle:smoke' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bundle:smoke'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2542,34 +2254,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -2637,14 +2321,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:check'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2772,34 +2448,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -2867,14 +2515,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run cargo:check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run cargo:check'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -3002,34 +2642,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -3104,14 +2716,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run weaver:check weaver:diff weaver:live-check' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run weaver:check weaver:diff weaver:live-check'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -3239,34 +2843,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -3334,14 +2910,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -3477,34 +3045,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -4296,34 +3836,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -4865,14 +4377,6 @@ jobs:
             !${{ env.EFFECT_UTILS_MEMBER_ROOT }}/tmp/nix-closure-ci/baseline/**
           if-no-files-found: error
           retention-days: 14
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -7770,34 +7274,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -7871,14 +7347,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:notion-integration' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -8009,34 +7477,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -8104,14 +7544,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:restate-integration' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:restate-integration'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -8239,34 +7671,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -8386,14 +7790,6 @@ jobs:
           DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install
           DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts
         if: steps.live-vercel-preflight.outputs.run == 'true'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -8520,34 +7916,6 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
-      - name: Isolate pnpm state
-        shell: bash
-        run: |
-          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
-          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
-          member_store=.devenv/pnpm-store-pure-v1
-          if [ -L "$member_store" ]; then
-            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
-              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
-              exit 1
-            fi
-          elif [ -e "$member_store" ]; then
-            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
-            exit 1
-          else
-            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
-          fi
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
-          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
-      - id: restore-pnpm-state
-        name: Restore pnpm state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
         shell: bash
@@ -8687,14 +8055,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:publish --show-output' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:publish --show-output'
-      - name: Save pnpm state
-        if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ runner.temp }}/composition-state/pnpm-home
-            ${{ runner.temp }}/composition-state/pnpm-store-pure-v1
-          key: "pnpm-state-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash

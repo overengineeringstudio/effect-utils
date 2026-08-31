@@ -8,6 +8,11 @@ import * as FileSystem from 'effect/FileSystem'
 import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import {
+  BUCK_MEMBER_MANIFEST_FILENAME,
+  decodeBuckMemberManifestJson,
+  type BuckMemberManifest,
+} from '@overeng/megarepo/buck2-manifest'
 
 import type {
   CompositionApplyOutput,
@@ -24,11 +29,6 @@ import {
   readMegarepoConfig,
   type CompositionGeneratorConfig,
 } from '../../lib/config.ts'
-import {
-  BUCK_MEMBER_MANIFEST_FILENAME,
-  decodeBuckMemberManifestJson,
-  type BuckMemberManifest,
-} from '../../lib/generators/composition-root.ts'
 import * as Git from '../../lib/git.ts'
 import { LOCK_FILE_NAME, readLockFile, type LockFile } from '../../lib/lock.ts'
 import {

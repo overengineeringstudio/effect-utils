@@ -2,6 +2,8 @@ import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
+import type { BuckMemberManifest } from '@overeng/megarepo/buck2-manifest'
+
 import {
   CompositionApplyRequestSchema,
   type CompositionApplyError,
@@ -14,7 +16,6 @@ import {
   type CompositionApplyRuntime,
 } from './composition-apply.ts'
 import { CompositionGeneratorConfig } from './config.ts'
-import type { BuckMemberManifest } from './generators/composition-root.ts'
 import type { OwnedCpAMountMetadata } from './member-mount-r6.ts'
 
 const digest = `sha256:${'a'.repeat(64)}`

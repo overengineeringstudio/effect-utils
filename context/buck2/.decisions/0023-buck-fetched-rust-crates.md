@@ -36,10 +36,10 @@ established:
 
 ## Options
 
-| Option                        | Tradeoff                                                                                     | Outcome  |
-| ----------------------------- | -------------------------------------------------------------------------------------------- | -------- |
-| Buck-fetched crates           | One supply mechanism; composition works from tracked files; buckify gate needs network       | Accepted |
-| Nix vendor + new mr projection | Zero-maintenance hashes and offline buckify retained; second mechanism, new projection type  | Rejected |
+| Option                         | Tradeoff                                                                                    | Outcome  |
+| ------------------------------ | ------------------------------------------------------------------------------------------- | -------- |
+| Buck-fetched crates            | One supply mechanism; composition works from tracked files; buckify gate needs network      | Accepted |
+| Nix vendor + new mr projection | Zero-maintenance hashes and offline buckify retained; second mechanism, new projection type | Rejected |
 
 ## Decision
 

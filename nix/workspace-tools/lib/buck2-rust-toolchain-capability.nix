@@ -21,7 +21,7 @@ let
       }
     else
       null;
-  packages = {
+  upstreamPackages = {
     rust-compiler = if darwinCapability != null then darwinCapability.compiler else pkgs.rustc;
     rust-rustdoc = pkgs.rustc;
     rust-clippy-driver = pkgs.clippy;
@@ -53,6 +53,12 @@ let
     rust-strip = "strip";
     rust-shell = "bash";
   };
+  packages = lib.mapAttrs (
+    name: package:
+    pkgs.writeShellScriptBin executableNames.${name} ''
+      exec ${lib.escapeShellArg "${package}/bin/${executableNames.${name}}"} "$@"
+    ''
+  ) upstreamPackages;
   tools = lib.mapAttrs (name: package: "${package}/bin/${executableNames.${name}}") packages;
   identity = lib.concatStringsSep ";" (
     [

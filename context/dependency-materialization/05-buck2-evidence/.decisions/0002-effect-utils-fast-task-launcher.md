@@ -1,9 +1,6 @@
 # 0002 Effect Utils Fast Task Launcher
 
-Status: superseded for the long-term architecture
-
-The launcher remains transitional while the direct-Buck native-evidence
-baseline in [`context/buck2`](../../../../buck2/spec.md) is proved.
+Status: superseded by Buck decision 0011
 
 ## Context
 
@@ -90,3 +87,16 @@ owner and makes a downstream system repository an early consumer:
 This result may be revisited if a prototype proves the launcher intrinsically
 requires consumer-private fleet or activation semantics, or if the portable
 effect-utils core proves to be a trivial pass-through with no reusable contract.
+
+## Amendment 3: Direct Buck Supersedes the Launcher
+
+Buck decision
+[0011](../../../buck2/.decisions/0011-direct-native-evidence-observation.md)
+accepted direct Buck invocation with caller-owned tracing and native build
+reports/event logs, then removed the interposed launcher and its custom receipt.
+That decision closes the transitional period described above: the launcher is
+not awaiting another proof and is not an eligible compatibility layer.
+
+The context, measurements, placement comparison, and original choice remain
+the evidence trail for why the launcher was considered. They no longer define
+the active execution boundary.

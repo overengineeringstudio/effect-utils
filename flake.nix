@@ -74,9 +74,6 @@
               inherit pkgs;
               nixpkgsRevision = nixpkgs.rev;
             };
-        buck2-rust-vendor = pkgs.rustPlatform.importCargoLock {
-          lockFile = rootPath + "/rust/Cargo.lock";
-        };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -200,7 +197,6 @@
           // {
             inherit
               buck2
-              buck2-rust-vendor
               otelite
               otel-scrape
               ;

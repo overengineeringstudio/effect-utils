@@ -37,9 +37,9 @@ import {
   encodeOwnedCpAMountMetadata,
   inspectOwnedCpAMount,
   readOwnedCpAMountMetadata,
+  scanR6BuildArtifactTree,
   scanR6ProtectedMount,
   scanR6ProtectedTree,
-  scanR6SourceTree,
   writeOwnedCpAMountMetadata,
   type OwnedCpAMountIdentity,
   type OwnedCpAMountMetadata,
@@ -466,14 +466,19 @@ const protectTree = (root: string): Effect.Effect<void, DistOverlayError> =>
     message: `Cannot protect overlay candidate '${root}'`,
     reason: 'ArtifactInvalid',
     try: async () => {
-      const visit = async (directory: string): Promise<void> => {
-        const children = await readdir(directory, { withFileTypes: true })
-        await Promise.all(
-          children
-            .filter((entry) => entry.isDirectory() === true)
-            .map((entry) => visit(NodePath.join(directory, entry.name))),
-        )
-        await chmod(directory, 0o555)
+      const visit = async (path: string): Promise<void> => {
+        const info = await lstat(path)
+        if (info.isSymbolicLink() === true) return
+        if (info.isDirectory() === true) {
+          await Promise.all((await readdir(path)).map((child) => visit(NodePath.join(path, child))))
+          await chmod(path, 0o555)
+          return
+        }
+        if (info.isFile() === true) {
+          await chmod(path, (info.mode & 0o111) === 0 ? 0o444 : 0o555)
+          return
+        }
+        throw new Error(`Unsupported filesystem entry in overlay candidate '${path}'`)
       }
       await visit(root)
     },
@@ -987,7 +992,7 @@ const publishDistOverlay = ({
     let artifactScan: R6TreeScan | undefined
     let newOverlay: R6DistOverlayManifestIdentity | undefined
     if (request.artifactPath !== null) {
-      artifactScan = yield* scanR6SourceTree({ root: request.artifactPath }).pipe(
+      artifactScan = yield* scanR6BuildArtifactTree({ root: request.artifactPath }).pipe(
         Effect.mapError((cause) =>
           failure({
             reason: 'ArtifactInvalid',
@@ -1153,7 +1158,7 @@ const publishDistOverlay = ({
         destinationRoot: stagePath,
         scan,
       })
-      const artifactAfter = yield* scanR6SourceTree({ root: artifactPath }).pipe(
+      const artifactAfter = yield* scanR6BuildArtifactTree({ root: artifactPath }).pipe(
         Effect.mapError((cause) =>
           failure({
             reason: 'ArtifactInvalid',
@@ -1480,25 +1485,25 @@ const observedTree = ({
     if (info.isDirectory() === false) return 'Other' as const
     const actualIdentity = identity(info)
     const protectedScan = yield* scanR6ProtectedTree({ root: path }).pipe(Effect.result)
-    const sourceScan =
+    const normalizedScan =
       protectedScan._tag === 'Success'
         ? protectedScan
-        : yield* scanR6SourceTree({ root: path }).pipe(Effect.result)
-    if (sourceScan._tag === 'Failure') return 'Other' as const
+        : yield* scanR6BuildArtifactTree({ root: path }).pipe(Effect.result)
+    if (normalizedScan._tag === 'Failure') return 'Other' as const
     if (
       oldIdentity !== null &&
       oldOverlay !== null &&
       identitiesEqual({ left: actualIdentity, right: oldIdentity }) === true &&
-      sourceScan.success.digest === oldOverlay.digest &&
-      sourceScan.success.count === oldOverlay.count
+      normalizedScan.success.digest === oldOverlay.digest &&
+      normalizedScan.success.count === oldOverlay.count
     )
       return 'Old' as const
     if (
       newIdentity !== null &&
       newOverlay !== null &&
       identitiesEqual({ left: actualIdentity, right: newIdentity }) === true &&
-      sourceScan.success.digest === newOverlay.digest &&
-      sourceScan.success.count === newOverlay.count
+      normalizedScan.success.digest === newOverlay.digest &&
+      normalizedScan.success.count === newOverlay.count
     )
       return 'New' as const
     return 'Other' as const

@@ -7,5 +7,4 @@
 # above-listed licenses.
 
 buildscript.run = true
-precise_srcs = false
 cargo_env = ["CARGO_PKG_VERSION_PATCH"]

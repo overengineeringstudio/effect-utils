@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const root = process.argv[2]
 if (root === undefined) {
@@ -155,6 +155,15 @@ ok({
     materializerSource.includes('BUCK2_BIN=') === true,
   name: 'materializer dispatches the tested Buck publication helper',
 })
+ok({
+  condition:
+    materializerSource.includes('.megarepo-owned-worktree.json') === true &&
+    materializerSource.includes('TYPESCRIPT_DIST_MODE=publish') === true &&
+    materializerSource.includes('TYPESCRIPT_DIST_MODE=check') === true &&
+    materializerSource.includes('TSGO_BIN=') === true &&
+    materializerSource.includes('DIFF_BIN=') === true,
+  name: 'materializer publishes from a composition root and checks freshness standalone',
+})
 
 for (const name of ['buck2:tui-core:publish-editor', 'buck2:tui-core:check-editor']) {
   const task = taskSource(name)
@@ -173,12 +182,16 @@ ok({
     buckCheckSource.includes('$workspace_root/.megarepo/bin/buck2') === true,
   name: 'buck2:check resolves the composition root wrapper from the owned member',
 })
-const buckToolchainSource = readFileSync(`${root}/toolchains/BUCK`, 'utf8')
+const buckToolchainSource = readFileSync(`${root}/buck2/toolchains/BUCK`, 'utf8')
 ok({
   condition:
-    buckToolchainSource.includes('store_dir = "repos/effect-utils/.devenv/pnpm-store-pure-v1"') ===
-    true,
-  name: 'Buck pnpm materializer store is composition-root relative',
+    buckToolchainSource.includes('bun_toolchain(') === true &&
+    buckToolchainSource.includes('name = "archive_tool"') === true,
+  name: 'Buck toolchains live in the buck2/toolchains package',
+})
+ok({
+  condition: existsSync(`${root}/toolchains`) === false,
+  name: 'no legacy top-level toolchains directory remains',
 })
 
 console.log(`1..${testCount}`)

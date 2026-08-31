@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { constants } from 'node:fs'
+import { constants, watch } from 'node:fs'
 import {
   chmod,
   lstat,
@@ -21,6 +21,7 @@ import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import { expect } from 'vitest'
 
+import { resolvePinnedCoreutils } from '../test-utils/coreutils.ts'
 import {
   cpAMemberMountDestinationPath,
   cpAMemberMountTransactionPath,
@@ -37,15 +38,6 @@ import { ownedCpAMountMetadataPath, readOwnedCpAMountMetadata } from './member-m
 const withNode = <A, E>(
   effect: Effect.Effect<A, E, FileSystem.FileSystem | Scope.Scope>,
 ): Effect.Effect<A, E> => effect.pipe(Effect.provide(NodeServices.layer), Effect.scoped)
-
-const pinnedCoreutilsPath = (name: 'cp' | 'mv'): Effect.Effect<string> =>
-  Effect.promise(async () => {
-    const path = await readlink(`/run/current-system/sw/bin/${name}`)
-    if (NodePath.isAbsolute(path) === false || path.startsWith('/nix/store/') === false) {
-      throw new Error(`Expected pinned Nix coreutils ${name}, got '${path}'`)
-    }
-    return path
-  })
 
 const forceRemoveTree = (root: string): Effect.Effect<void> =>
   Effect.promise(async () => {
@@ -113,8 +105,7 @@ const makeFixture = (): Effect.Effect<
     })
     yield* writeSource({ root: sourceA, version: 'A' })
     yield* writeSource({ root: sourceB, version: 'B' })
-    const cpPath = yield* pinnedCoreutilsPath('cp')
-    const mvPath = yield* pinnedCoreutilsPath('mv')
+    const { cpPath, mvPath } = yield* Effect.promise(() => resolvePinnedCoreutils())
     const member = 'dep'
     return {
       workspaceRoot,
@@ -436,6 +427,40 @@ describe('cp-a member mount lifecycle', () => {
         publishedPath: fixture.destinationPath,
       })
       expect(metadata.lockedCommit).toBe('b'.repeat(40))
+    }, withNode),
+  )
+
+  it.effect.skipIf(process.platform !== 'linux')(
+    'notifies a root-scoped live observer when an owned mount advances',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      yield* firstPublish(fixture)
+      const observed = yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const observer = watch(NodePath.join(fixture.workspaceRoot, 'repos'))
+          const event = new Promise<{ eventType: string; filename: string }>((resolve, reject) => {
+            observer.on('change', (eventType, filename) => {
+              if (filename?.toString() !== fixture.member) return
+              resolve({ eventType, filename: filename.toString() })
+            })
+            observer.once('error', reject)
+          })
+          return { observer, event }
+        }),
+        ({ observer }) => Effect.sync(() => observer.close()),
+      )
+
+      const result = yield* advance(fixture)
+      expect(result._tag).toBe('Published')
+      expect(yield* Effect.promise(() => observed.event)).toEqual({
+        eventType: 'rename',
+        filename: fixture.member,
+      })
+      expect(
+        yield* Effect.promise(() =>
+          readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
+        ),
+      ).toBe('B\n')
     }, withNode),
   )
 

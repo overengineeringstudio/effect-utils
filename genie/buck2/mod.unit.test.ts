@@ -33,9 +33,9 @@ describe('buck2SemanticFingerprint', () => {
 describe('renderBuck2Visibility', () => {
   it('renders visibility forwarded by a generated target', () => {
     expect(renderBuck2Visibility({ visibility: ['PUBLIC'] })).toBe('    visibility = ["PUBLIC"],')
-    expect(
-      renderBuck2Visibility({ visibility: ['effect_utils//packages/@overeng/tui-core:'] }),
-    ).toBe('    visibility = ["effect_utils//packages/@overeng/tui-core:"],')
+    expect(renderBuck2Visibility({ visibility: ['//packages/@overeng/tui-core:'] })).toBe(
+      '    visibility = ["//packages/@overeng/tui-core:"],',
+    )
   })
 
   it('rejects an empty visibility projection', () => {

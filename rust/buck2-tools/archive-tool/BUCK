@@ -4,7 +4,7 @@
 # Projection source: rust/buck2-tools/archive-tool/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:a13657dbbdf67a9aed0040dddcc087726a6f8f17247ea9ad70fbf663da72c70b
+# Semantic fingerprint: sha256:ae24cc243055d16858f0ce809870f706d15bb514a03d71a5506924b6fd3e50d6
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/BUCK.genie.ts, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/archive-tool/src/**/*.rs, rust/buck2-tools/archive-tool/tests/**/*.rs, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
@@ -17,10 +17,10 @@ native.rust_binary(
         "src/main.rs",
     ],
     deps = [
-        "effect_utils//rust/buck2-tools/core:lib",
-        "effect_utils//rust/third-party:clap",
-        "effect_utils//rust/third-party:flate2",
-        "effect_utils//rust/third-party:tar",
+        "//rust/buck2-tools/core:lib",
+        "//rust/third-party:clap",
+        "//rust/third-party:flate2",
+        "//rust/third-party:tar",
     ],
     edition = "2021",
     env = {

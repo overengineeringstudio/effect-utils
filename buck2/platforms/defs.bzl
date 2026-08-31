@@ -103,35 +103,35 @@ native_execution_platform = rule(
 def host_platform_label():
     host = host_info()
     if host.os.is_linux and host.arch.is_x86_64:
-        return "effect_utils//buck2/platforms:linux_x86_64"
+        return "//buck2/platforms:linux_x86_64"
     if host.os.is_linux and host.arch.is_aarch64:
-        return "effect_utils//buck2/platforms:linux_aarch64"
+        return "//buck2/platforms:linux_aarch64"
     if host.os.is_macos and host.arch.is_aarch64:
-        return "effect_utils//buck2/platforms:macos_aarch64"
+        return "//buck2/platforms:macos_aarch64"
     fail("host_platform supports only x86_64-linux, aarch64-linux, and aarch64-darwin")
 
 def host_execution_platform_label():
     host = host_info()
     if host.os.is_linux and host.arch.is_x86_64:
-        return "effect_utils//buck2/platforms:exec_linux_x86_64"
+        return "//buck2/platforms:exec_linux_x86_64"
     if host.os.is_linux and host.arch.is_aarch64:
-        return "effect_utils//buck2/platforms:exec_linux_aarch64"
+        return "//buck2/platforms:exec_linux_aarch64"
     if host.os.is_macos and host.arch.is_aarch64:
-        return "effect_utils//buck2/platforms:exec_macos_aarch64"
+        return "//buck2/platforms:exec_macos_aarch64"
     fail("host execution platform supports only x86_64-linux, aarch64-linux, and aarch64-darwin")
 
 def native_execution_constraints(target_platform):
     """Returns the execution constraints for an admitted native target pair."""
     constraints = {
-        "effect_utils//buck2/platforms:linux_x86_64": [
+        "//buck2/platforms:linux_x86_64": [
             "prelude//cpu/constraints:x86_64",
             "prelude//os/constraints:linux",
         ],
-        "effect_utils//buck2/platforms:linux_aarch64": [
+        "//buck2/platforms:linux_aarch64": [
             "prelude//cpu/constraints:arm64",
             "prelude//os/constraints:linux",
         ],
-        "effect_utils//buck2/platforms:macos_aarch64": [
+        "//buck2/platforms:macos_aarch64": [
             "prelude//cpu/constraints:arm64",
             "prelude//os/constraints:macos",
         ],
@@ -143,17 +143,17 @@ def native_execution_constraints(target_platform):
 def product_platform_constraints(target_platform):
     """Returns the complete target constraints for an admitted product platform."""
     constraints = {
-        "effect_utils//buck2/platforms:linux_x86_64": [
+        "//buck2/platforms:linux_x86_64": [
             "prelude//abi/constraints:gnu",
             "prelude//cpu/constraints:x86_64",
             "prelude//os/constraints:linux",
         ],
-        "effect_utils//buck2/platforms:linux_aarch64": [
+        "//buck2/platforms:linux_aarch64": [
             "prelude//abi/constraints:gnu",
             "prelude//cpu/constraints:arm64",
             "prelude//os/constraints:linux",
         ],
-        "effect_utils//buck2/platforms:macos_aarch64": [
+        "//buck2/platforms:macos_aarch64": [
             "prelude//cpu/constraints:arm64",
             "prelude//os/constraints:macos",
         ],
@@ -165,9 +165,9 @@ def product_platform_constraints(target_platform):
 def host_execution_constraints():
     host = host_info()
     if host.os.is_linux and host.arch.is_x86_64:
-        return native_execution_constraints("effect_utils//buck2/platforms:linux_x86_64")
+        return native_execution_constraints("//buck2/platforms:linux_x86_64")
     if host.os.is_linux and host.arch.is_aarch64:
-        return native_execution_constraints("effect_utils//buck2/platforms:linux_aarch64")
+        return native_execution_constraints("//buck2/platforms:linux_aarch64")
     if host.os.is_macos and host.arch.is_aarch64:
-        return native_execution_constraints("effect_utils//buck2/platforms:macos_aarch64")
+        return native_execution_constraints("//buck2/platforms:macos_aarch64")
     fail("host execution constraints support only x86_64-linux, aarch64-linux, and aarch64-darwin")

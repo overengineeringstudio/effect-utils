@@ -29,7 +29,6 @@
     "**/package.json",
     "**/tsconfig.json",
     "**/tsconfig.*.json",
-    "packages/@overeng/otelite/tests/conformance/**",
-    "packages/@overeng/buck2-tools/src/__fixtures__/pnpm-install-descriptor/**"
+    "packages/@overeng/otelite/tests/conformance/**"
   ]
 }

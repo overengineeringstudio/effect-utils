@@ -9,7 +9,7 @@ The action shape follows
 context/buck2/02-execution/.experiments/2026-08-25-tsgo-rule-prototype.md.
 """
 
-load("@effect_utils//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
+load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
 TsgoTypecheckInfo = provider(fields = {
     "toolchain_identity": str,
@@ -70,7 +70,7 @@ tsgo_typecheck = rule(
         "package_tree": attrs.source(),
         "project": attrs.string(default = "tsconfig.json"),
         "_tsgo": attrs.default_only(attrs.exec_dep(
-            default = "effect_utils//toolchains:effect_tsgo",
+            default = "//buck2/toolchains:effect_tsgo",
             providers = [EffectTsgoToolchainInfo],
         )),
     },
@@ -123,7 +123,7 @@ tsgo_emit = rule(
         "out_dir": attrs.string(default = "dist"),
         "declaration_entrypoint": attrs.string(default = "src/mod.d.ts"),
         "_tsgo": attrs.default_only(attrs.exec_dep(
-            default = "effect_utils//toolchains:effect_tsgo",
+            default = "//buck2/toolchains:effect_tsgo",
             providers = [EffectTsgoToolchainInfo],
         )),
     },

@@ -1,3 +1,10 @@
+/**
+ * Concrete cp-a member-mount mechanism.
+ *
+ * This layer copies, protects, publishes, recovers, and tears down mount directories. It delegates
+ * manifest construction and content identity to the R6 layer rather than defining a second
+ * identity model.
+ */
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import type { Stats } from 'node:fs'

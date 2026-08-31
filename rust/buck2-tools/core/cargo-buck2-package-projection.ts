@@ -17,15 +17,351 @@ import archiveToolManifest from '../archive-tool/Cargo.toml' with { type: 'toml'
 import productManifest from '../product/Cargo.toml' with { type: 'toml' }
 import coreManifest from './Cargo.toml' with { type: 'toml' }
 
+/**
+ * Projects one Cargo workspace member into its generated first-party Buck package.
+ */
+export const cargoBuck2PackageProjection = ({
+  buildProduct = false,
+  sourceUrl,
+}: {
+  readonly buildProduct?: boolean
+  readonly sourceUrl: string
+}): GenieOutput<unknown> => {
+  const projectionSource = path
+    .relative(process.cwd(), fileURLToPath(sourceUrl))
+    .replaceAll('\\', '/')
+  if (path.posix.basename(projectionSource) !== 'BUCK.genie.ts') {
+    throw new Error(`Cargo Buck projection source must be BUCK.genie.ts: ${projectionSource}`)
+  }
+  const packagePath = path.posix.dirname(projectionSource)
+  const member = memberByPath.get(packagePath)
+  if (member === undefined)
+    throw new Error(`Buck projection source is not a Cargo workspace member: ${packagePath}`)
+  const manifest = member.manifest
+  const packageMetadata = requireValue({
+    value: manifest.package,
+    field: `${member.manifestPath} package`,
+  })
+  if (
+    path.posix.normalize(path.posix.join(packagePath, packageMetadata.workspace ?? '')) !== 'rust'
+  ) {
+    throw new Error(`Cargo package ${packagePath} does not resolve workspace to rust/Cargo.toml`)
+  }
+  if (
+    packageMetadata.version === undefined ||
+    typeof packageMetadata.version === 'string' ||
+    packageMetadata.version.workspace !== true
+  ) {
+    throw new Error(`Cargo package ${packagePath} must inherit workspace.package.version`)
+  }
+  if (
+    packageMetadata.edition === undefined ||
+    typeof packageMetadata.edition === 'string' ||
+    packageMetadata.edition.workspace !== true
+  ) {
+    throw new Error(`Cargo package ${packagePath} must inherit workspace.package.edition`)
+  }
+  if (
+    packageMetadata.autobins !== undefined ||
+    packageMetadata.autolib !== undefined ||
+    packageMetadata.autotests !== undefined
+  ) {
+    throw new Error(`Cargo automatic target overrides are unsupported in ${member.manifestPath}`)
+  }
+  if (
+    (packageMetadata.build !== undefined && packageMetadata.build !== false) ||
+    existsSync(path.join(process.cwd(), packagePath, 'build.rs')) === true
+  ) {
+    throw new Error(`Cargo build scripts are unsupported in ${member.manifestPath}`)
+  }
+  if (manifest['build-dependencies'] !== undefined) {
+    throw new Error(`Cargo build dependencies are unsupported in ${member.manifestPath}`)
+  }
+  if (
+    (manifest.test?.length ?? 0) > 0 ||
+    (manifest.bench?.length ?? 0) > 0 ||
+    (manifest.example?.length ?? 0) > 0
+  ) {
+    throw new Error(
+      `Explicit Cargo test, bench, and example targets are unsupported in ${member.manifestPath}`,
+    )
+  }
+  if (Object.keys(manifest.features ?? {}).length > 0) {
+    throw new Error(`Package-defined Cargo features are unsupported in ${member.manifestPath}`)
+  }
+
+  const packageName = requireValue({
+    value: packageMetadata.name,
+    field: `${member.manifestPath} package.name`,
+  })
+  const version = requireValue({
+    value: workspace.package?.version,
+    field: 'workspace.package.version',
+  })
+  const edition = requireValue({
+    value: workspace.package?.edition,
+    field: 'workspace.package.edition',
+  })
+  const normalDependencies = resolveDependencyTable({
+    member,
+    dependencies: manifest.dependencies,
+    field: 'dependencies',
+  })
+  const devDependencies = resolveDependencyTable({
+    member,
+    dependencies: manifest['dev-dependencies'],
+    field: 'dev-dependencies',
+  })
+  const conditionalNormalDependencies = resolveConditionalDependencies({
+    member,
+    target: manifest.target,
+    kind: 'dependencies',
+  })
+  const conditionalDevDependencies = resolveConditionalDependencies({
+    member,
+    target: manifest.target,
+    kind: 'dev-dependencies',
+  })
+  const unresolvedProductionDependencies = [
+    ...normalDependencies,
+    ...conditionalNormalDependencies.map((entry) => entry.dependency),
+  ].filter((dependency) => dependency.targetAvailable === false)
+  if (unresolvedProductionDependencies.length > 0) {
+    throw new Error(
+      `rust/third-party/BUCK is missing production targets: ${sorted(
+        unresolvedProductionDependencies.map((dependency) => dependency.name),
+      ).join(', ')}`,
+    )
+  }
+  const sources = discoverRustSources({ packagePath })
+  const sourceSet = new Set(sources)
+
+  const library = manifest.lib
+  if (library?.['proc-macro'] === true || library?.['crate-type'] !== undefined) {
+    throw new Error(
+      `Cargo proc-macro and crate-type library semantics are unsupported in ${member.manifestPath}`,
+    )
+  }
+  const libraryName = library?.name
+  const libraryPath = library?.path
+  if ((libraryName === undefined) !== (libraryPath === undefined)) {
+    throw new Error(
+      `Cargo library name and path must be explicit together in ${member.manifestPath}`,
+    )
+  }
+  if (libraryPath !== undefined && sourceSet.has(libraryPath) === false) {
+    throw new Error(`Cargo library path is not a discovered Rust source: ${libraryPath}`)
+  }
+
+  const binaries = (manifest.bin ?? []).map((binary, index) => {
+    if ((binary['required-features']?.length ?? 0) > 0) {
+      throw new Error(`Cargo binary required-features are unsupported at bin[${index}]`)
+    }
+    const name = requireValue({ value: binary.name, field: `bin[${index}].name` })
+    const crateRoot = requireValue({ value: binary.path, field: `bin[${index}].path` })
+    if (sourceSet.has(crateRoot) === false) {
+      throw new Error(`Cargo binary path is not a discovered Rust source: ${crateRoot}`)
+    }
+    return { crateRoot, name }
+  })
+  if (library === undefined && binaries.length === 0) {
+    throw new Error(`Cargo package ${packagePath} has no explicit library or binary target`)
+  }
+  if (new Set(binaries.map((binary) => binary.name)).size !== binaries.length) {
+    throw new Error(`Cargo package ${packagePath} has duplicate binary names`)
+  }
+
+  const binaryRoots = new Set(binaries.map((binary) => binary.crateRoot))
+  const srcSources = sources.filter((source) => source.startsWith('src/'))
+  const librarySources = srcSources.filter((source) => binaryRoots.has(source) === false)
+  const integrationTestRoots = sources.filter(
+    (source) =>
+      source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
+  )
+  const normalLabels = normalDependencies.map((dependency) => dependency.label)
+  const compileEnv = {
+    CARGO_PKG_NAME: packageName,
+    CARGO_PKG_VERSION: version,
+  }
+
+  const semanticInputPaths = sorted([
+    'genie/buck2/mod.ts',
+    'rust/buck2-tools/core/cargo-buck2-package-projection.ts',
+    'rust/Cargo.toml',
+    'rust/Cargo.lock',
+    'rust/reindeer.toml',
+    'rust/third-party/BUCK',
+    ...workspaceMembers.map((workspaceMember) => workspaceMember.manifestPath),
+    projectionSource,
+    `${packagePath}/src/**/*.rs`,
+    `${packagePath}/tests/**/*.rs`,
+  ])
+  const graphFingerprints = Object.fromEntries(
+    semanticInputPaths
+      .filter((input) => input.endsWith('/**/*.rs') === false && input.endsWith('.ts') === false)
+      .map((input) => [input, sha256(readFileSync(path.join(process.cwd(), input), 'utf8'))]),
+  )
+  const semanticData = {
+    binaries,
+    compileEnv,
+    conditionalDevDependencies,
+    conditionalNormalDependencies,
+    devDependencies,
+    edition,
+    graphFingerprints,
+    integrationTestRoots,
+    library: libraryName === undefined ? undefined : { name: libraryName, path: libraryPath },
+    librarySources,
+    normalDependencies,
+    packageName,
+    packagePath,
+    sources,
+    version,
+    buildProduct,
+  }
+  const fingerprint = buck2SemanticFingerprint({
+    generator,
+    schemaVersion,
+    semanticData,
+  })
+
+  const commonRuleLines = [
+    `    edition = ${starlarkString(edition)},`,
+    '    env = {',
+    ...Object.entries(compileEnv).map(
+      ([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`,
+    ),
+    '    },',
+  ]
+  const normalConditional = conditionalNormalDependencies
+  const renderRule = ({
+    rule,
+    name,
+    crate,
+    crateRoot,
+    ruleSources,
+    dependencies,
+    conditionalDependencies,
+    visibility,
+  }: {
+    readonly rule: 'rust_binary' | 'rust_library'
+    readonly name: string
+    readonly crate: string
+    readonly crateRoot: string
+    readonly ruleSources: readonly string[]
+    readonly dependencies: readonly string[]
+    readonly conditionalDependencies: readonly ConditionalDependency[]
+    readonly visibility?: readonly string[]
+  }): readonly string[] => [
+    `native.${rule}(`,
+    `    name = ${starlarkString(name)},`,
+    `    crate = ${starlarkString(crate)},`,
+    `    crate_root = ${starlarkString(crateRoot)},`,
+    ...renderStringList({ name: 'srcs', values: ruleSources }),
+    ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
+    ...commonRuleLines,
+    ...(visibility === undefined
+      ? []
+      : renderStringList({ name: 'visibility', values: visibility })),
+    ')',
+    '',
+  ]
+
+  const rules: string[] = []
+  if (libraryName !== undefined && libraryPath !== undefined) {
+    rules.push(
+      ...renderRule({
+        rule: 'rust_library',
+        name: 'lib',
+        crate: libraryName,
+        crateRoot: libraryPath,
+        ruleSources: librarySources,
+        dependencies: normalLabels,
+        conditionalDependencies: normalConditional,
+        visibility: ['PUBLIC'],
+      }),
+    )
+  }
+  for (const binary of binaries) {
+    const binaryDependencies = sorted([
+      ...normalLabels,
+      ...(libraryName === undefined ? [] : [':lib']),
+    ])
+    rules.push(
+      ...renderRule({
+        rule: 'rust_binary',
+        name: binary.name,
+        crate: crateIdentifier(binary.name),
+        crateRoot: binary.crateRoot,
+        ruleSources: [binary.crateRoot],
+        dependencies: binaryDependencies,
+        conditionalDependencies: normalConditional,
+        visibility: ['PUBLIC'],
+      }),
+    )
+  }
+  if (buildProduct === true) {
+    if (binaries.length !== 1) {
+      throw new Error(
+        `BuildProduct projection requires exactly one binary in ${member.manifestPath}`,
+      )
+    }
+    const binary = requireValue({ value: binaries[0], field: `${member.manifestPath} binary` })
+    rules.push(
+      `rust_product_executable(`,
+      `    name = ${starlarkString(`${packageName}-product-executable`)},`,
+      `    binary = ${starlarkString(`:${binary.name}`)},`,
+      `    recipe = ${starlarkString(`cargo-workspace:${packageName}@${version}`)},`,
+      `    target_platform = host_platform_label(),`,
+      ')',
+      '',
+      'build_product(',
+      `    name = ${starlarkString(`${packageName}-product`)},`,
+      `    entrypoint = ${starlarkString(`bin/${packageName}`)},`,
+      `    executable = ${starlarkString(`:${packageName}-product-executable`)},`,
+      `    product_name = ${starlarkString(packageName)},`,
+      `    target_platform = host_platform_label(),`,
+      ')',
+      '',
+    )
+  }
+
+  const rendered = [
+    `# Projection source: ${projectionSource}`,
+    `# Projection schema version: ${schemaVersion}`,
+    `# Projection generator: ${generator}`,
+    `# Semantic fingerprint: ${fingerprint}`,
+    `# Semantic inputs: ${semanticInputPaths.join(', ')}`,
+    `# Regenerate: ${regenerationCommand}`,
+    '',
+    'load("@prelude//:prelude.bzl", "native")',
+    ...(buildProduct === true
+      ? [
+          'load("//buck2/products:defs.bzl", "build_product")',
+          'load("//buck2/platforms:defs.bzl", "host_platform_label")',
+          'load("//buck2/rust:defs.bzl", "rust_product_executable")',
+        ]
+      : []),
+    ...rules,
+  ].join('\n')
+
+  return createGenieOutput({ data: semanticData, stringify: () => rendered })
+}
+
 const generator = 'effect-utils/rust/cargo-buck2-package-projection' as const
 const schemaVersion = 1 as const
 const regenerationCommand = 'devenv tasks run genie:run' as const
-const thirdPartyPackage = 'effect_utils//rust/third-party' as const
+const thirdPartyPackage = '//rust/third-party' as const
 
-const compareStrings = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0
+const compareStrings = ({
+  left,
+  right,
+}: {
+  readonly left: string
+  readonly right: string
+}): number => (left < right ? -1 : left > right ? 1 : 0)
 const sorted = (values: readonly string[]): readonly string[] =>
-  [...new Set(values)].toSorted(compareStrings)
+  [...new Set(values)].toSorted((left, right) => compareStrings({ left, right }))
 const starlarkString = (value: string): string => JSON.stringify(value)
 const sha256 = (value: string): `sha256:${string}` =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`
@@ -53,7 +389,7 @@ const assertKnownKeys = ({
   const unexpected = Object.keys(value).filter((key) => allowed.includes(key) === false)
   if (unexpected.length > 0) {
     throw new Error(
-      `Unsupported Cargo keys at ${field}: ${unexpected.toSorted(compareStrings).join(', ')}`,
+      `Unsupported Cargo keys at ${field}: ${unexpected.toSorted((left, right) => compareStrings({ left, right })).join(', ')}`,
     )
   }
 }
@@ -296,7 +632,7 @@ const resolveDependency = ({
     return {
       defaultFeatures: memberRequest.defaultFeatures,
       features: memberRequest.features,
-      label: `effect_utils//${dependencyPath}:lib`,
+      label: `//${dependencyPath}:lib`,
       name: dependencyName,
       requestSource: 'member',
       targetAvailable: true,
@@ -355,7 +691,7 @@ const resolveDependencyTable = ({
     .map(([dependencyName, request]) =>
       resolveDependency({ member, dependencyName, request, field: `${field}.${dependencyName}` }),
     )
-    .toSorted((left, right) => compareStrings(left.name, right.name))
+    .toSorted((left, right) => compareStrings({ left: left.name, right: right.name }))
 
 const discoverRustSources = ({
   packagePath,
@@ -367,7 +703,7 @@ const discoverRustSources = ({
   const walk = (relativeDirectory: string): void => {
     for (const entry of readdirSync(path.join(packageRoot, relativeDirectory), {
       withFileTypes: true,
-    }).toSorted((left, right) => compareStrings(left.name, right.name))) {
+    }).toSorted((left, right) => compareStrings({ left: left.name, right: right.name }))) {
       const relativePath = path.posix.join(relativeDirectory, entry.name)
       if (entry.isSymbolicLink() === true) {
         throw new Error(`Rust source census refuses symlink: ${packagePath}/${relativePath}`)
@@ -378,9 +714,9 @@ const discoverRustSources = ({
     }
   }
   walk('src')
-  if (existsSync(path.join(packageRoot, 'tests'))) walk('tests')
+  if (existsSync(path.join(packageRoot, 'tests')) === true) walk('tests')
   if (sources.length === 0) throw new Error(`Rust source census found no inputs in ${packagePath}`)
-  return sources.toSorted(compareStrings)
+  return sources.toSorted((left, right) => compareStrings({ left, right }))
 }
 
 const targetConditionLabels = (condition: string): readonly string[] => {
@@ -429,10 +765,10 @@ const resolveConditionalDependencies = ({
       }).map((dependency) => ({ condition, dependency, selectLabels }))
     })
     .toSorted((left, right) =>
-      compareStrings(
-        `${left.condition}:${left.dependency.name}`,
-        `${right.condition}:${right.dependency.name}`,
-      ),
+      compareStrings({
+        left: `${left.condition}:${left.dependency.name}`,
+        right: `${right.condition}:${right.dependency.name}`,
+      }),
     )
 
 const renderStringList = ({
@@ -457,7 +793,7 @@ const renderDependencies = ({
   const base = sorted(unconditional)
   const selected = new Map<string, string[]>()
   for (const entry of conditional) {
-    if (base.includes(entry.dependency.label)) continue
+    if (base.includes(entry.dependency.label) === true) continue
     for (const selectLabel of entry.selectLabels) {
       const labels = selected.get(selectLabel) ?? []
       labels.push(entry.dependency.label)
@@ -470,343 +806,16 @@ const renderDependencies = ({
     ...baseLines.slice(0, -1),
     '    ] + select({',
     ...[...selected.entries()]
-      .toSorted(([left], [right]) => compareStrings(left, right))
-      .flatMap(([selectLabel, labels]) => [
-        `        ${starlarkString(selectLabel)}: [`,
-        ...sorted(labels).map((label) => `            ${starlarkString(label)},`),
-        '        ],',
-      ]),
+      .toSorted(([left], [right]) => compareStrings({ left, right }))
+      .flatMap(([selectLabel, labels]) =>
+        [`        ${starlarkString(selectLabel)}: [`].concat(
+          sorted(labels).map((label) => `            ${starlarkString(label)},`),
+          '        ],',
+        ),
+      ),
     '        "DEFAULT": [],',
     '    }),',
   ]
 }
 
 const crateIdentifier = (value: string): string => value.replaceAll(/[^A-Za-z0-9_]/g, '_')
-
-export const cargoBuck2PackageProjection = ({
-  buildProduct = false,
-  sourceUrl,
-}: {
-  readonly buildProduct?: boolean
-  readonly sourceUrl: string
-}): GenieOutput<unknown> => {
-  const projectionSource = path
-    .relative(process.cwd(), fileURLToPath(sourceUrl))
-    .replaceAll('\\', '/')
-  if (path.posix.basename(projectionSource) !== 'BUCK.genie.ts') {
-    throw new Error(`Cargo Buck projection source must be BUCK.genie.ts: ${projectionSource}`)
-  }
-  const packagePath = path.posix.dirname(projectionSource)
-  const member = memberByPath.get(packagePath)
-  if (member === undefined)
-    throw new Error(`Buck projection source is not a Cargo workspace member: ${packagePath}`)
-  const manifest = member.manifest
-  const packageMetadata = requireValue({
-    value: manifest.package,
-    field: `${member.manifestPath} package`,
-  })
-  if (
-    path.posix.normalize(path.posix.join(packagePath, packageMetadata.workspace ?? '')) !== 'rust'
-  ) {
-    throw new Error(`Cargo package ${packagePath} does not resolve workspace to rust/Cargo.toml`)
-  }
-  if (
-    packageMetadata.version === undefined ||
-    typeof packageMetadata.version === 'string' ||
-    packageMetadata.version.workspace !== true
-  ) {
-    throw new Error(`Cargo package ${packagePath} must inherit workspace.package.version`)
-  }
-  if (
-    packageMetadata.edition === undefined ||
-    typeof packageMetadata.edition === 'string' ||
-    packageMetadata.edition.workspace !== true
-  ) {
-    throw new Error(`Cargo package ${packagePath} must inherit workspace.package.edition`)
-  }
-  if (
-    packageMetadata.autobins !== undefined ||
-    packageMetadata.autolib !== undefined ||
-    packageMetadata.autotests !== undefined
-  ) {
-    throw new Error(`Cargo automatic target overrides are unsupported in ${member.manifestPath}`)
-  }
-  if (
-    (packageMetadata.build !== undefined && packageMetadata.build !== false) ||
-    existsSync(path.join(process.cwd(), packagePath, 'build.rs'))
-  ) {
-    throw new Error(`Cargo build scripts are unsupported in ${member.manifestPath}`)
-  }
-  if (manifest['build-dependencies'] !== undefined) {
-    throw new Error(`Cargo build dependencies are unsupported in ${member.manifestPath}`)
-  }
-  if (
-    (manifest.test?.length ?? 0) > 0 ||
-    (manifest.bench?.length ?? 0) > 0 ||
-    (manifest.example?.length ?? 0) > 0
-  ) {
-    throw new Error(
-      `Explicit Cargo test, bench, and example targets are unsupported in ${member.manifestPath}`,
-    )
-  }
-  if (Object.keys(manifest.features ?? {}).length > 0) {
-    throw new Error(`Package-defined Cargo features are unsupported in ${member.manifestPath}`)
-  }
-
-  const packageName = requireValue({
-    value: packageMetadata.name,
-    field: `${member.manifestPath} package.name`,
-  })
-  const version = requireValue({
-    value: workspace.package?.version,
-    field: 'workspace.package.version',
-  })
-  const edition = requireValue({
-    value: workspace.package?.edition,
-    field: 'workspace.package.edition',
-  })
-  const normalDependencies = resolveDependencyTable({
-    member,
-    dependencies: manifest.dependencies,
-    field: 'dependencies',
-  })
-  const devDependencies = resolveDependencyTable({
-    member,
-    dependencies: manifest['dev-dependencies'],
-    field: 'dev-dependencies',
-  })
-  const conditionalNormalDependencies = resolveConditionalDependencies({
-    member,
-    target: manifest.target,
-    kind: 'dependencies',
-  })
-  const conditionalDevDependencies = resolveConditionalDependencies({
-    member,
-    target: manifest.target,
-    kind: 'dev-dependencies',
-  })
-  const unresolvedProductionDependencies = [
-    ...normalDependencies,
-    ...conditionalNormalDependencies.map((entry) => entry.dependency),
-  ].filter((dependency) => dependency.targetAvailable === false)
-  if (unresolvedProductionDependencies.length > 0) {
-    throw new Error(
-      `rust/third-party/BUCK is missing production targets: ${sorted(
-        unresolvedProductionDependencies.map((dependency) => dependency.name),
-      ).join(', ')}`,
-    )
-  }
-  const sources = discoverRustSources({ packagePath })
-  const sourceSet = new Set(sources)
-
-  const library = manifest.lib
-  if (library?.['proc-macro'] === true || library?.['crate-type'] !== undefined) {
-    throw new Error(
-      `Cargo proc-macro and crate-type library semantics are unsupported in ${member.manifestPath}`,
-    )
-  }
-  const libraryName = library?.name
-  const libraryPath = library?.path
-  if ((libraryName === undefined) !== (libraryPath === undefined)) {
-    throw new Error(
-      `Cargo library name and path must be explicit together in ${member.manifestPath}`,
-    )
-  }
-  if (libraryPath !== undefined && sourceSet.has(libraryPath) === false) {
-    throw new Error(`Cargo library path is not a discovered Rust source: ${libraryPath}`)
-  }
-
-  const binaries = (manifest.bin ?? []).map((binary, index) => {
-    if ((binary['required-features']?.length ?? 0) > 0) {
-      throw new Error(`Cargo binary required-features are unsupported at bin[${index}]`)
-    }
-    const name = requireValue({ value: binary.name, field: `bin[${index}].name` })
-    const crateRoot = requireValue({ value: binary.path, field: `bin[${index}].path` })
-    if (sourceSet.has(crateRoot) === false) {
-      throw new Error(`Cargo binary path is not a discovered Rust source: ${crateRoot}`)
-    }
-    return { crateRoot, name }
-  })
-  if (library === undefined && binaries.length === 0) {
-    throw new Error(`Cargo package ${packagePath} has no explicit library or binary target`)
-  }
-  if (new Set(binaries.map((binary) => binary.name)).size !== binaries.length) {
-    throw new Error(`Cargo package ${packagePath} has duplicate binary names`)
-  }
-
-  const binaryRoots = new Set(binaries.map((binary) => binary.crateRoot))
-  const srcSources = sources.filter((source) => source.startsWith('src/'))
-  const librarySources = srcSources.filter((source) => binaryRoots.has(source) === false)
-  const integrationTestRoots = sources.filter(
-    (source) =>
-      source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
-  )
-  const normalLabels = normalDependencies.map((dependency) => dependency.label)
-  const compileEnv = {
-    CARGO_PKG_NAME: packageName,
-    CARGO_PKG_VERSION: version,
-  }
-
-  const semanticInputPaths = sorted([
-    'genie/buck2/mod.ts',
-    'rust/buck2-tools/core/cargo-buck2-package-projection.ts',
-    'rust/Cargo.toml',
-    'rust/Cargo.lock',
-    'rust/reindeer.toml',
-    'rust/third-party/BUCK',
-    ...workspaceMembers.map((workspaceMember) => workspaceMember.manifestPath),
-    projectionSource,
-    `${packagePath}/src/**/*.rs`,
-    `${packagePath}/tests/**/*.rs`,
-  ])
-  const graphFingerprints = Object.fromEntries(
-    semanticInputPaths
-      .filter((input) => input.endsWith('/**/*.rs') === false && input.endsWith('.ts') === false)
-      .map((input) => [input, sha256(readFileSync(path.join(process.cwd(), input), 'utf8'))]),
-  )
-  const semanticData = {
-    binaries,
-    compileEnv,
-    conditionalDevDependencies,
-    conditionalNormalDependencies,
-    devDependencies,
-    edition,
-    graphFingerprints,
-    integrationTestRoots,
-    library: libraryName === undefined ? undefined : { name: libraryName, path: libraryPath },
-    librarySources,
-    normalDependencies,
-    packageName,
-    packagePath,
-    sources,
-    version,
-    buildProduct,
-  }
-  const fingerprint = buck2SemanticFingerprint({
-    generator,
-    schemaVersion,
-    semanticData,
-  })
-
-  const commonRuleLines = [
-    `    edition = ${starlarkString(edition)},`,
-    '    env = {',
-    ...Object.entries(compileEnv).map(
-      ([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`,
-    ),
-    '    },',
-  ]
-  const normalConditional = conditionalNormalDependencies
-  const renderRule = ({
-    rule,
-    name,
-    crate,
-    crateRoot,
-    ruleSources,
-    dependencies,
-    conditionalDependencies,
-    visibility,
-  }: {
-    readonly rule: 'rust_binary' | 'rust_library'
-    readonly name: string
-    readonly crate: string
-    readonly crateRoot: string
-    readonly ruleSources: readonly string[]
-    readonly dependencies: readonly string[]
-    readonly conditionalDependencies: readonly ConditionalDependency[]
-    readonly visibility?: readonly string[]
-  }): readonly string[] => [
-    `native.${rule}(`,
-    `    name = ${starlarkString(name)},`,
-    `    crate = ${starlarkString(crate)},`,
-    `    crate_root = ${starlarkString(crateRoot)},`,
-    ...renderStringList({ name: 'srcs', values: ruleSources }),
-    ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
-    ...commonRuleLines,
-    ...(visibility === undefined
-      ? []
-      : renderStringList({ name: 'visibility', values: visibility })),
-    ')',
-    '',
-  ]
-
-  const rules: string[] = []
-  if (libraryName !== undefined && libraryPath !== undefined) {
-    rules.push(
-      ...renderRule({
-        rule: 'rust_library',
-        name: 'lib',
-        crate: libraryName,
-        crateRoot: libraryPath,
-        ruleSources: librarySources,
-        dependencies: normalLabels,
-        conditionalDependencies: normalConditional,
-        visibility: ['PUBLIC'],
-      }),
-    )
-  }
-  for (const binary of binaries) {
-    const binaryDependencies = sorted([
-      ...normalLabels,
-      ...(libraryName === undefined ? [] : [':lib']),
-    ])
-    rules.push(
-      ...renderRule({
-        rule: 'rust_binary',
-        name: binary.name,
-        crate: crateIdentifier(binary.name),
-        crateRoot: binary.crateRoot,
-        ruleSources: [binary.crateRoot],
-        dependencies: binaryDependencies,
-        conditionalDependencies: normalConditional,
-        visibility: ['PUBLIC'],
-      }),
-    )
-  }
-  if (buildProduct) {
-    if (binaries.length !== 1) {
-      throw new Error(
-        `BuildProduct projection requires exactly one binary in ${member.manifestPath}`,
-      )
-    }
-    const binary = requireValue({ value: binaries[0], field: `${member.manifestPath} binary` })
-    rules.push(
-      `rust_product_executable(`,
-      `    name = ${starlarkString(`${packageName}-product-executable`)},`,
-      `    binary = ${starlarkString(`:${binary.name}`)},`,
-      `    recipe = ${starlarkString(`cargo-workspace:${packageName}@${version}`)},`,
-      `    target_platform = host_platform_label(),`,
-      ')',
-      '',
-      'build_product(',
-      `    name = ${starlarkString(`${packageName}-product`)},`,
-      `    entrypoint = ${starlarkString(`bin/${packageName}`)},`,
-      `    executable = ${starlarkString(`:${packageName}-product-executable`)},`,
-      `    product_name = ${starlarkString(packageName)},`,
-      `    target_platform = host_platform_label(),`,
-      ')',
-      '',
-    )
-  }
-
-  const rendered = [
-    `# Projection source: ${projectionSource}`,
-    `# Projection schema version: ${schemaVersion}`,
-    `# Projection generator: ${generator}`,
-    `# Semantic fingerprint: ${fingerprint}`,
-    `# Semantic inputs: ${semanticInputPaths.join(', ')}`,
-    `# Regenerate: ${regenerationCommand}`,
-    '',
-    'load("@prelude//:prelude.bzl", "native")',
-    ...(buildProduct
-      ? [
-          'load("@effect_utils//buck2/products:defs.bzl", "build_product")',
-          'load("@effect_utils//buck2/platforms:defs.bzl", "host_platform_label")',
-          'load("@effect_utils//buck2/rust:defs.bzl", "rust_product_executable")',
-        ]
-      : []),
-    ...rules,
-  ].join('\n')
-
-  return createGenieOutput({ data: semanticData, stringify: () => rendered })
-}

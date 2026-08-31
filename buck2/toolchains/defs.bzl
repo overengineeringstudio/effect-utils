@@ -1,7 +1,7 @@
 """Configured Rust and TypeScript toolchains realized by pinned Nix inputs."""
 
 load(
-    "@effect_utils//buck2/platforms:defs.bzl",
+    "//buck2/platforms:defs.bzl",
     "admitted_rust_target_triple",
     "ProductPlatformInfo",
     "host_execution_constraints",
@@ -99,11 +99,9 @@ def configured_rust_toolchain(
     )
 
 
-PnpmMaterializerToolchainInfo = provider(fields = {
-    "bun": str,
+BunToolchainInfo = provider(fields = {
+    "executable": str,
     "identity": str,
-    "pnpm": str,
-    "store_dir": str,
 })
 
 
@@ -118,48 +116,36 @@ def _require_nix_store_binary(executable, binary, tool):
             fail("{} executable path is not normalized: {}".format(tool, executable))
 
 
-def _pnpm_materializer_toolchain_impl(ctx):
-    _require_nix_store_binary(ctx.attrs.bun, "bun", "Bun")
-    _require_nix_store_binary(ctx.attrs.pnpm, "pnpm", "pnpm")
-    if not ctx.attrs.store_dir or ctx.attrs.store_dir.startswith("/"):
-        fail("pnpm materializer store_dir must be a non-empty project-relative path")
+def _bun_toolchain_impl(ctx):
+    _require_nix_store_binary(ctx.attrs.executable, "bun", "Bun")
     return [
         DefaultInfo(),
-        PnpmMaterializerToolchainInfo(
-            bun = ctx.attrs.bun,
-            identity = "bun={};pnpm={};store={}".format(ctx.attrs.bun, ctx.attrs.pnpm, ctx.attrs.store_dir),
-            pnpm = ctx.attrs.pnpm,
-            store_dir = ctx.attrs.store_dir,
+        BunToolchainInfo(
+            executable = ctx.attrs.executable,
+            identity = ctx.attrs.executable,
         ),
     ]
 
 
-_pnpm_materializer_toolchain = rule(
-    impl = _pnpm_materializer_toolchain_impl,
+_bun_toolchain = rule(
+    impl = _bun_toolchain_impl,
     attrs = {
-        "bun": attrs.string(),
-        "pnpm": attrs.string(),
-        "store_dir": attrs.string(),
+        "executable": attrs.string(),
     },
 )
 
 
-def pnpm_materializer_toolchain(name, bun_by_platform, pnpm_by_platform, store_dir, **kwargs):
-    """Declares the exact Nix Bun/pnpm pair used by local pnpm deploy actions."""
+def bun_toolchain(name, executable_by_platform, **kwargs):
+    """Declares the exact Nix Bun executable used by JavaScript actions."""
     if "exec_compatible_with" in kwargs:
-        fail("pnpm_materializer_toolchain owns execution compatibility")
+        fail("bun_toolchain owns execution compatibility")
     platform = _host_nix_platform()
-    bun = bun_by_platform.get(platform)
-    pnpm = pnpm_by_platform.get(platform)
-    if bun == None or pnpm == None:
-        fail("pnpm materializer has no tool realization for {}".format(platform))
-    _require_nix_store_binary(bun, "bun", "Bun")
-    _require_nix_store_binary(pnpm, "pnpm", "pnpm")
-    _pnpm_materializer_toolchain(
+    executable = executable_by_platform.get(platform)
+    if executable == None:
+        fail("Bun toolchain has no realization for {}".format(platform))
+    _bun_toolchain(
         name = name,
-        bun = bun,
-        pnpm = pnpm,
-        store_dir = store_dir,
+        executable = executable,
         exec_compatible_with = host_execution_constraints(),
         **kwargs
     )

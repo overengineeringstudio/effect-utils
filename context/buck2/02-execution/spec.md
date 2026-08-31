@@ -50,6 +50,20 @@ executor-local projected tools are explicitly local-only. Toolchain
 executables referenced in action command lines are `/nix/store` paths
 (EXEC-R02).
 
+`local-only` constrains execution placement; it does not disable shared action
+cache reads or writes. For an admitted local action, the canonical
+`/nix/store` realization path participates in the action key and binds the
+immutable local tool identity; the typed provider also binds protocol, runtime
+requirements, and exact execution-platform compatibility. Stage-zero
+capability descriptors additionally record explicit content and closure
+identities. The executable remains executor-local and is not transported
+through the Buck CAS.
+
+Remote execution requires the portable archive or execution-image contract
+from dependency-materialization
+[decision 0006](../../dependency-materialization/05-buck2-evidence/.decisions/0006-nix-exported-buck-toolchains.md);
+shared-cache reuse of a local action does not imply that contract has been met.
+
 A stage-zero provider binds an exact Nix realization identity, executable,
 protocol, and execution-platform constraint; a negative test proves an
 undeclared ambient copy is ignored; a graph-built replacement retires it

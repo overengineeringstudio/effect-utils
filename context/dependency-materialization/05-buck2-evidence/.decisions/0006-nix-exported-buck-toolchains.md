@@ -60,14 +60,28 @@ execution disabled.
 - Toolchain, normalization ABI, and execution-image changes are distinct
   observable invalidation dimensions.
 
-## Amendment 1
+## Amendment 1: Local Execution with Shared-Cache Reuse
 
-Narrowed by buck2 decisions
-[0014](../../../buck2/.decisions/0014-composed-workspace-cells.md) and
-[0023](../../../buck2/.decisions/0023-buck-fetched-rust-crates.md)
-(2026-08-30): admitted toolchains reference `/nix/store` executables directly
-with remote-cache reads and uploads enabled, because store paths are
-content-addressed and fleet-identical, and cross-machine digest equality was
-proven at the decision-0014 gate. The evidence-only restriction in this
-decision applied to the pre-cell bootstrap shape and no longer constrains
-admitted targets.
+Buck decisions
+[0013](../../../buck2/.decisions/0013-shared-cache-foundation.md),
+[0014](../../../buck2/.decisions/0014-megarepo-cell-composition.md), and
+[0015 Amendment 2](../../../buck2/.decisions/0015-buck-owned-dependency-surface.md)
+narrow the blanket cache restriction above for admitted, local-execution
+actions. Decision 0013 requires admitted actions to read and write the shared
+cache; decision 0014 selects canonical `/nix/store` tool paths as part of
+composition identity; decision 0015 explicitly keeps execution local while
+permitting same-platform cache upload and reuse. This does not select remote
+execution.
+
+The narrowed contract remains subject to EXEC-R02: the canonical Nix
+realization path binds the immutable local tool identity, and the executable
+provider also binds protocol, runtime requirements, and execution-platform
+compatibility. Stage-zero capability descriptors additionally carry explicit
+content and closure identities. The action is constrained to the matching
+local execution platform, while its outputs may be uploaded and reused by an
+identical same-platform context.
+
+The tui-core authority-transfer and Buck pin records prove this cache replay
+across fresh worktrees on one x86-64 Linux host; they do not prove
+cross-machine tool execution or transport a Nix closure through the Buck CAS.
+Portable archives or execution images remain the route to remote execution.

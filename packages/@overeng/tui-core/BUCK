@@ -4,12 +4,12 @@
 # Projection source: packages/@overeng/tui-core/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:186fe70476e4f617869c6709b63a6056dcf9e725d777f1bf3fe2003330d0b64d
-# Semantic inputs: genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/buck2-materializer.ts, packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts, packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch, pnpm-lock.yaml, pnpm-workspace.yaml
+# Semantic fingerprint: sha256:f7ba6116845ca92c6cf257ac623e0f5eae795f044545687cbbf6de91008b6696
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
-load("@effect_utils//buck2:materialization.bzl", "package_tree", "pnpm_editor_inputs", "pnpm_node_modules")
-load("@effect_utils//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
 
 export_file(
     name = "package.json",
@@ -17,63 +17,24 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
-pnpm_node_modules(
+export_materialization_inputs([
+    "src/ansi.ts",
+    "src/mod.ts",
+    "src/renderer.ts",
+    "src/symbols.ts",
+    "src/terminal.ts",
+    "test/renderer.test.ts",
+])
+
+alias(
     name = "node_modules",
-    package_name = "@overeng/tui-core",
-    root_package_json = "effect_utils//:package.json",
-    lockfile = "effect_utils//:pnpm-lock.yaml",
-    workspace_manifest = "effect_utils//:pnpm-workspace.yaml",
-    workspace_package_manifests = {
-        "context/effect/socket/package.json": "effect_utils//:context/effect/socket/package.json",
-        "context/opentui/package.json": "effect_utils//:context/opentui/package.json",
-        "packages/@overeng/agent-session-ingest/package.json": "effect_utils//:packages/@overeng/agent-session-ingest/package.json",
-        "packages/@overeng/buck2-tools/package.json": "effect_utils//:packages/@overeng/buck2-tools/package.json",
-        "packages/@overeng/ci-tools/package.json": "effect_utils//:packages/@overeng/ci-tools/package.json",
-        "packages/@overeng/content-address/package.json": "effect_utils//:packages/@overeng/content-address/package.json",
-        "packages/@overeng/effect-ai-claude-cli/package.json": "effect_utils//:packages/@overeng/effect-ai-claude-cli/package.json",
-        "packages/@overeng/effect-distributed-lock/package.json": "effect_utils//:packages/@overeng/effect-distributed-lock/package.json",
-        "packages/@overeng/effect-path/package.json": "effect_utils//:packages/@overeng/effect-path/package.json",
-        "packages/@overeng/effect-react/package.json": "effect_utils//:packages/@overeng/effect-react/package.json",
-        "packages/@overeng/effect-rpc-tanstack/package.json": "effect_utils//:packages/@overeng/effect-rpc-tanstack/package.json",
-        "packages/@overeng/effect-rpc-tanstack/examples/basic/package.json": "effect_utils//:packages/@overeng/effect-rpc-tanstack/examples/basic/package.json",
-        "packages/@overeng/effect-schema-form/package.json": "effect_utils//:packages/@overeng/effect-schema-form/package.json",
-        "packages/@overeng/effect-schema-form-aria/package.json": "effect_utils//:packages/@overeng/effect-schema-form-aria/package.json",
-        "packages/@overeng/genie/package.json": "effect_utils//:packages/@overeng/genie/package.json",
-        "packages/@overeng/kdl/package.json": "effect_utils//:packages/@overeng/kdl/package.json",
-        "packages/@overeng/kdl-effect/package.json": "effect_utils//:packages/@overeng/kdl-effect/package.json",
-        "packages/@overeng/megarepo/package.json": "effect_utils//:packages/@overeng/megarepo/package.json",
-        "packages/@overeng/notion-cli/package.json": "effect_utils//:packages/@overeng/notion-cli/package.json",
-        "packages/@overeng/notion-core/package.json": "effect_utils//:packages/@overeng/notion-core/package.json",
-        "packages/@overeng/notion-datasource-sync/package.json": "effect_utils//:packages/@overeng/notion-datasource-sync/package.json",
-        "packages/@overeng/notion-effect-client/package.json": "effect_utils//:packages/@overeng/notion-effect-client/package.json",
-        "packages/@overeng/notion-effect-schema/package.json": "effect_utils//:packages/@overeng/notion-effect-schema/package.json",
-        "packages/@overeng/notion-md/package.json": "effect_utils//:packages/@overeng/notion-md/package.json",
-        "packages/@overeng/notion-property-write/package.json": "effect_utils//:packages/@overeng/notion-property-write/package.json",
-        "packages/@overeng/notion-react/package.json": "effect_utils//:packages/@overeng/notion-react/package.json",
-        "packages/@overeng/npm-release/package.json": "effect_utils//:packages/@overeng/npm-release/package.json",
-        "packages/@overeng/otel-contract/package.json": "effect_utils//:packages/@overeng/otel-contract/package.json",
-        "packages/@overeng/oxc-config/package.json": "effect_utils//:packages/@overeng/oxc-config/package.json",
-        "packages/@overeng/pty-effect/package.json": "effect_utils//:packages/@overeng/pty-effect/package.json",
-        "packages/@overeng/react-inspector/package.json": "effect_utils//:packages/@overeng/react-inspector/package.json",
-        "packages/@overeng/restate-effect/package.json": "effect_utils//:packages/@overeng/restate-effect/package.json",
-        "packages/@overeng/tui-core/package.json": "package.json",
-        "packages/@overeng/tui-react/package.json": "effect_utils//packages/@overeng/tui-react:package.json",
-        "packages/@overeng/tui-stories/package.json": "effect_utils//:packages/@overeng/tui-stories/package.json",
-        "packages/@overeng/utils/package.json": "effect_utils//:packages/@overeng/utils/package.json",
-        "packages/@overeng/utils-dev/package.json": "effect_utils//:packages/@overeng/utils-dev/package.json",
-    },
-    patches = {
-        "packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch": "effect_utils//:packages/@overeng/utils/patches/@myobie__pty@0.10.0.patch",
-    },
-    runtime = "effect_utils//:packages/@overeng/buck2-tools/src/buck2-materializer.ts",
-    descriptor_module = "effect_utils//:packages/@overeng/buck2-tools/src/pnpm-install-descriptor.ts",
-    normalizer = "effect_utils//:packages/@overeng/buck2-tools/src/pnpm-deploy-normalizer.ts",
+    actual = "//buck2/dependencies:importer_packages_overeng_tui_core_45029ece7ddb",
     visibility = ["PUBLIC"],
 )
 
-pnpm_editor_inputs(
+alias(
     name = "editor_inputs",
-    node_modules = ":node_modules",
+    actual = ":node_modules",
     visibility = ["PUBLIC"],
 )
 
@@ -90,7 +51,7 @@ package_tree(
         "test/renderer.test.ts": "test/renderer.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
-    runtime = "effect_utils//:packages/@overeng/buck2-tools/src/buck2-materializer.ts",
+    runtime = "//:packages/@overeng/buck2-tools/src/package-tree.ts",
     workspace_siblings = {},
     visibility = ["PUBLIC"],
 )

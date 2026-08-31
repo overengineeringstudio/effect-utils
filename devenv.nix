@@ -154,7 +154,7 @@ let
     ${buck2RustToolchainCapability.preflight}
     exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh \
       "''${DEVENV_ROOT:-$PWD}" ${lib.escapeShellArg buck2ExecutionPlatform} \
-      archive-tool effect-utils/buck2-archive-tool/v1 ${
+      archive-tool effect-utils/buck2-archive-tool/v2 ${
         buck2Stage0Definition."archive-tool"
       }/bin/buck2-archive-tool \
       product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product \
@@ -900,58 +900,29 @@ in
     '';
   };
 
-  tasks."buck2:rust-deps:materialize" = {
-    description = "Project the Cargo.lock-derived Rust vendor tree for Reindeer and Buck";
-    exec = trace.exec "buck2:rust-deps:materialize" ''
-      set -euo pipefail
-      root="''${DEVENV_ROOT:-$PWD}"
-      vendor="$root/rust/third-party/vendor"
-      expected=${repoFlake.packages.${currentSystem}.buck2-rust-vendor}
-      if [ -e "$vendor" ] && [ ! -L "$vendor" ]; then
-        echo "refusing to replace non-symlink Rust vendor path: $vendor" >&2
-        exit 1
-      fi
-      current=""
-      if [ -L "$vendor" ]; then
-        current="$(${pkgs.coreutils}/bin/readlink -f "$vendor")"
-      fi
-      if [ "$current" != "$expected" ]; then
-        candidate="$vendor.next.$$"
-        trap '${pkgs.coreutils}/bin/rm -f "$candidate"' EXIT
-        ${pkgs.coreutils}/bin/ln -s "$expected" "$candidate"
-        ${pkgs.coreutils}/bin/mv -Tf "$candidate" "$vendor"
-      fi
-      test "$(${pkgs.coreutils}/bin/readlink -f "$vendor")" = "$expected"
-    '';
-  };
-
   tasks."buck2:rust-deps:generate" = {
-    description = "Regenerate the strict Reindeer graph from the Cargo workspace";
-    after = [ "buck2:rust-deps:materialize" ];
+    description = "Regenerate the non-vendored Reindeer graph from the Cargo workspace";
     exec = trace.exec "buck2:rust-deps:generate" ''
       set -euo pipefail
-      exec ${pkgs.reindeer}/bin/reindeer \
-        --cargo-path ${pkgs.cargo}/bin/cargo \
-        --rustc-path ${pkgs.rustc}/bin/rustc \
-        --config rust/reindeer.toml buckify
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-rust-deps.sh" generate \
+        "$root" \
+        ${pkgs.reindeer}/bin/reindeer \
+        ${pkgs.cargo}/bin/cargo \
+        ${pkgs.rustc}/bin/rustc
     '';
   };
 
   tasks."buck2:rust-deps:check" = {
-    description = "Verify the strict Reindeer graph matches Cargo inputs";
-    after = [ "buck2:rust-deps:materialize" ];
+    description = "Verify the non-vendored Reindeer graph matches Cargo inputs";
     exec = trace.exec "buck2:rust-deps:check" ''
       set -euo pipefail
-      candidate="$(${pkgs.coreutils}/bin/mktemp)"
-      trap '${pkgs.coreutils}/bin/rm -f "$candidate"' EXIT
-      ${pkgs.reindeer}/bin/reindeer \
-        --cargo-path ${pkgs.cargo}/bin/cargo \
-        --rustc-path ${pkgs.rustc}/bin/rustc \
-        --config rust/reindeer.toml buckify --stdout >"$candidate"
-      ${pkgs.diffutils}/bin/cmp rust/third-party/BUCK "$candidate" || {
-        echo "buck2:rust-deps:check: generated Reindeer graph is stale" >&2
-        exit 1
-      }
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bash}/bin/bash "$root/scripts/buck2-rust-deps.sh" check \
+        "$root" \
+        ${pkgs.reindeer}/bin/reindeer \
+        ${pkgs.cargo}/bin/cargo \
+        ${pkgs.rustc}/bin/rustc
     '';
   };
 
@@ -996,11 +967,30 @@ in
     '';
   };
 
+  tasks."buck2:editor-authority" = {
+    description = "Derive exact whole-workspace editor dependency authority from semantic and Buck ownership";
+    exec = trace.exec "buck2:editor-authority" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
+      buck="$workspace_root/.megarepo/bin/buck2"
+      ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" \
+        --repo-root "$root" \
+        --workspace-root "$workspace_root" \
+        --cell effect_utils \
+        --buck2 "$buck" \
+        --git ${pkgs.git}/bin/git \
+        --output "$root/.devenv/editor-workspace-authority.json"
+    '';
+  };
+
   tasks."buck2:tui-core:publish-editor" = {
     description = "Publish the admitted Buck tui-core node_modules tree to the scoped editor view";
+    after = [ "buck2:editor-authority" ];
     exec = trace.exec "buck2:tui-core:publish-editor" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      authority="$root/.devenv/editor-workspace-authority.json"
       scratch="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/editor-publish-inputs.XXXXXX")"
       cleanup_editor_publish() {
         status=$?
@@ -1024,15 +1014,20 @@ in
         --editor-inputs "$scratch/editor_inputs" \
         --node-modules "$scratch/node_modules" \
         --cp ${pkgs.coreutils}/bin/cp \
+        --workspace-authority "$authority" \
+        --consumer-cache "$root/.devenv/vite-cache/tui-core" \
+        --snapshot-retention 3 \
         --mv ${pkgs.coreutils}/bin/mv
     '';
   };
 
   tasks."buck2:tui-core:check-editor" = {
     description = "Check the scoped tui-core editor view against current admitted Buck outputs";
+    after = [ "buck2:editor-authority" ];
     exec = trace.exec "buck2:tui-core:check-editor" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      authority="$root/.devenv/editor-workspace-authority.json"
       scratch="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/editor-check-inputs.XXXXXX")"
       cleanup_editor_check() {
         status=$?
@@ -1056,6 +1051,9 @@ in
         --editor-inputs "$scratch/editor_inputs" \
         --node-modules "$scratch/node_modules" \
         --cp ${pkgs.coreutils}/bin/cp \
+        --workspace-authority "$authority" \
+        --consumer-cache "$root/.devenv/vite-cache/tui-core" \
+        --snapshot-retention 3 \
         --mv ${pkgs.coreutils}/bin/mv
     '';
   };
@@ -1080,13 +1078,20 @@ in
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.coreutils ]}
-      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
-      export BUCK2_BIN="$workspace_root/.megarepo/bin/buck2"
+      if [ -f "$root/../../.megarepo-owned-worktree.json" ]; then
+        export TYPESCRIPT_DIST_MODE=publish
+        export WORKSPACE_ROOT="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
+        export BUCK2_BIN="$WORKSPACE_ROOT/.megarepo/bin/buck2"
+      else
+        export TYPESCRIPT_DIST_MODE=check
+        export TSGO_BIN=${effectTsgo}/bin/tsgo
+        export DIFF_BIN=${pkgs.diffutils}/bin/diff
+      fi
       materializer="$root/scripts/typescript-materialize-dist.sh"
       ${pkgs.bash}/bin/bash "$materializer" "$root" \
-        packages/@overeng/tui-core effect_utils//packages/@overeng/tui-core:dist src/mod.d.ts
+        packages/@overeng/tui-core effect_utils//packages/@overeng/tui-core:dist src/mod.d.ts tsconfig.json
       ${pkgs.bash}/bin/bash "$materializer" "$root" \
-        packages/@overeng/tui-react effect_utils//packages/@overeng/tui-react:dist src/mod.d.ts
+        packages/@overeng/tui-react effect_utils//packages/@overeng/tui-react:dist src/mod.d.ts tsconfig.buck.json
     '';
   };
 
@@ -1120,13 +1125,13 @@ in
       buck="$workspace_root/.megarepo/bin/buck2"
       "$buck" audit providers \
         --target-platforms effect_utils//buck2/platforms:host_platform \
-        effect_utils//toolchains:cross_cell_provider_identity \
-        effect_utils//toolchains:cross_cell_product_identity
+        effect_utils//buck2/toolchains:cross_cell_provider_identity \
+        effect_utils//buck2/toolchains:cross_cell_product_identity
       exec "$buck" build \
         effect_utils//packages/@overeng/tui-core:typecheck \
         effect_utils//packages/@overeng/tui-react:typecheck \
-        effect_utils//toolchains:archive_tool \
-        effect_utils//toolchains:product_tool \
+        effect_utils//buck2/toolchains:archive_tool \
+        effect_utils//buck2/toolchains:product_tool \
         --local-only
     '';
   };
