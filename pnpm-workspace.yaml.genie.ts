@@ -21,6 +21,14 @@ export default pnpmWorkspaceYaml.root({
         '@opentui/core@0.4.1 exact-pins string-width@7.2.0; not force-overridden because string-width 8 changes emoji/wide-char width logic that the TUI renderer relies on',
       issue: '#821',
     },
+    {
+      package: 'unplugin',
+      // Storybook 10.4.6 exact-pins unplugin 2.3.11 while the StyleX preset
+      // uses v3. Both majors are required until Storybook updates. See #1155.
+      reason:
+        '@storybook/csf-plugin@10.4.6 exact-pins unplugin@2.3.11 while @overeng/stylex-preset uses catalog unplugin@3.0.0',
+      issue: '#1155',
+    },
   ],
   ...commonPnpmWorkspaceData,
 })

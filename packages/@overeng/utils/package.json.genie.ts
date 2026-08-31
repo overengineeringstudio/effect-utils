@@ -10,6 +10,7 @@ import {
 } from '../../../genie/internal.ts'
 import effectDistributedLockPkg from '../effect-distributed-lock/package.json.genie.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
+import stylexPresetPkg from '../stylex-preset/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
@@ -23,8 +24,8 @@ const peerDepNames = [
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils' }),
   dependencies: {
-    workspace: [effectDistributedLockPkg, otelContractPkg],
-    external: catalog.pick('@noble/hashes', '@opentelemetry/api', '@stylexjs/unplugin'),
+    workspace: [effectDistributedLockPkg, otelContractPkg, stylexPresetPkg],
+    external: catalog.pick('@noble/hashes', '@opentelemetry/api'),
   },
   devDependencies: {
     workspace: [utilsDevPkg],

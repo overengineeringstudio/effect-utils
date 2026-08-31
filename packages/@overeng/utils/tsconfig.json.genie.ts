@@ -15,6 +15,7 @@ export default tsconfigJson({
   references: [
     { path: '../effect-distributed-lock' },
     { path: '../otel-contract' },
+    { path: '../stylex-preset' },
     { path: '../utils-dev' },
   ],
 } satisfies TSConfigArgs)

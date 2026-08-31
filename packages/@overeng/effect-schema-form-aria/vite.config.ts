@@ -1,6 +1,7 @@
-import { unplugin as stylex } from '@stylexjs/unplugin'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
+
+import { createStylexVitePlugin } from '@overeng/stylex-preset/vite'
 
 const publicationEntry = new URL('./src/mod.ts', import.meta.url).pathname
 const resetStylesheet = new URL('./src/styles.css', import.meta.url).pathname
@@ -17,11 +18,7 @@ const includePublicationReset = {
 } satisfies Plugin
 
 export default defineConfig({
-  plugins: [
-    includePublicationReset,
-    stylex.vite({ externalPackages: ['tailwind-stylex'] }),
-    react(),
-  ],
+  plugins: [includePublicationReset, createStylexVitePlugin(), react()],
   build: {
     emptyOutDir: false,
     lib: {

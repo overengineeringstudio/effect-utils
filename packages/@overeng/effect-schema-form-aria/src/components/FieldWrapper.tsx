@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
-import { spacing } from 'tailwind-stylex/tokens.stylex'
+
+import { spacing } from '@overeng/stylex-preset/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 

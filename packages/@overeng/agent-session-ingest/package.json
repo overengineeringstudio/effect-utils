@@ -26,6 +26,7 @@
     "@effect/vitest": "4.0.0-rc.111",
     "@overeng/utils": "workspace:^",
     "@playwright/test": "1.61.0",
+    "@stylexjs/stylex": "0.19.0",
     "effect": "4.0.0-rc.111",
     "vitest": "4.1.9"
   },
@@ -49,6 +50,7 @@
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/stylex-preset",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

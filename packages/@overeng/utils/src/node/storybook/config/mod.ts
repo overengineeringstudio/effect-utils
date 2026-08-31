@@ -9,8 +9,9 @@
  */
 
 import type { StorybookConfig } from '@storybook/react-vite'
-import { unplugin as stylex } from '@stylexjs/unplugin'
 import type { InlineConfig } from 'vite'
+
+import { createStylexVitePlugin } from '@overeng/stylex-preset/vite'
 
 type StorybookViteFinal<TConfig extends object> = (config: TConfig) => TConfig | Promise<TConfig>
 
@@ -22,7 +23,7 @@ export interface DomStorybookConfigOptions {
   addons?: StorybookConfig['addons']
   /** Disable minification (useful for react-inspector to preserve function names) */
   disableMinify?: boolean
-  /** Enable the StyleX Vite plugin (`@stylexjs/unplugin`) for StyleX-based styling */
+  /** Enable the StyleX Vite plugin for StyleX-based styling */
   stylex?: boolean
 }
 
@@ -130,13 +131,7 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
       }
 
       if (enableStylex === true) {
-        // `externalPackages` is supported at runtime (unplugin core destructures it)
-        // but missing from @stylexjs/unplugin@0.19 UserOptions typings; required so
-        // tailwind-stylex token modules compile instead of being bundled raw.
-        const stylexOptions = {
-          externalPackages: ['tailwind-stylex'],
-        } as Parameters<typeof stylex.vite>[0]
-        typedConfig.plugins = [stylex.vite(stylexOptions), ...(typedConfig.plugins ?? [])]
+        typedConfig.plugins = [createStylexVitePlugin(), ...(typedConfig.plugins ?? [])]
       }
 
       return callUserViteFinal({ config: typedConfig, viteFinal })

@@ -1,7 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 import { NumberField as AriaNumberField, Input, Label, Text } from 'react-aria-components'
-import { fontSizes, radii, spacing } from 'tailwind-stylex/tokens.stylex'
+
+import { fontSizes, radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 import { FieldWrapper } from './FieldWrapper.tsx'
