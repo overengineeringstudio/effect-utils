@@ -30,7 +30,13 @@ export default packageJson(
     exports: {
       './tokens.stylex': exportEntry('./src/tokens.stylex.ts', { environment: 'browser' }),
       './preflight.css': exportEntry('./src/preflight.css', { environment: 'browser' }),
-      './vite': exportEntry('./src/vite.ts', { environment: 'node' }),
+      './vite': exportEntry(
+        {
+          types: './src/vite-types.d.ts',
+          default: './src/vite.js',
+        },
+        { environment: 'node' },
+      ),
     },
     publishConfig: {
       access: 'public',

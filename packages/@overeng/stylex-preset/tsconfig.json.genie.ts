@@ -9,6 +9,8 @@ export default tsconfigJson({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
+    allowJs: true,
+    checkJs: true,
     lib: [...domLib],
   },
   include: ['src/**/*'],
