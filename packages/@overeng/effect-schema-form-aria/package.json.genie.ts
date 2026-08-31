@@ -14,27 +14,23 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-schema-form-aria' }),
   dependencies: {
     workspace: [schemaFormPkg],
+    external: catalog.pick('@stylexjs/stylex', 'tailwind-stylex'),
   },
   devDependencies: {
     workspace: [utilsPkg],
-    external: {
-      ...catalog.pick(
-        ...peerDepNames,
-        'effect',
-        'react',
-        '@storybook/react',
-        '@storybook/react-vite',
-        '@tailwindcss/vite',
-        '@types/react',
-        '@types/react-dom',
-        '@vitejs/plugin-react',
-        'storybook',
-        'tailwindcss',
-        'typescript',
-        'vite',
-        'vitest',
-      ),
-    },
+    external: catalog.pick(
+      'effect',
+      '@storybook/react',
+      '@storybook/react-vite',
+      '@stylexjs/unplugin',
+      '@types/react',
+      '@types/react-dom',
+      '@vitejs/plugin-react',
+      'storybook',
+      'typescript',
+      'vite',
+      'vitest',
+    ),
   },
   peerDependencies: {
     workspace: [schemaFormPkg],
@@ -48,14 +44,17 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       '.': exportEntry('./src/mod.ts', { environment: 'browser' }),
+      './styles.css': exportEntry('./src/styles.css', { environment: 'browser' }),
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': './dist/mod.js',
+        './styles.css': './dist/styles.css',
       },
     },
     scripts: {
+      build: 'tsc --build tsconfig.json && vite build',
       storybook: 'storybook dev -p 6010',
       'storybook:build': 'storybook build',
     },

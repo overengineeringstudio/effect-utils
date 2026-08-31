@@ -1,5 +1,7 @@
+import * as stylex from '@stylexjs/stylex'
 import type { Schema } from 'effect'
 import type { ReactNode } from 'react'
+import { spacing } from 'tailwind-stylex/tokens.stylex'
 
 import {
   formatLiteralLabel,
@@ -9,6 +11,13 @@ import {
 
 import { FieldGroup, FieldGroupEmpty } from './components/FieldGroup.tsx'
 import { ariaRenderers } from './renderers.tsx'
+
+const styles = stylex.create({
+  fieldsGrid: {
+    display: 'grid',
+    rowGap: spacing[4],
+  },
+})
 
 /** Props for AriaSchemaForm component */
 export interface AriaSchemaFormProps<T extends Record<string, unknown>> {
@@ -80,7 +89,12 @@ export const AriaSchemaForm = <T extends Record<string, unknown>>({
         // Render fields
         const renderedFields = (
           <div
-            className={`grid gap-4 ${tagInfo.isTagged === false || showTagHeader === false ? className : ''}`}
+            className={[
+              stylex.props(styles.fieldsGrid).className,
+              tagInfo.isTagged === false || showTagHeader === false ? className : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
           >
             {fields.map((field) => (
               <div key={field.key}>{renderField(field)}</div>

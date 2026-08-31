@@ -1,6 +1,9 @@
+import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 import { NumberField as AriaNumberField, Input, Label, Text } from 'react-aria-components'
+import { fontSizes, radii, spacing } from 'tailwind-stylex/tokens.stylex'
 
+import { tokens } from '../tokens.stylex.ts'
 import { FieldWrapper } from './FieldWrapper.tsx'
 
 /** Props for NumberField component */
@@ -20,6 +23,87 @@ export interface NumberFieldProps {
   /** Whether the field is disabled */
   isDisabled?: boolean | undefined
 }
+
+const styles = stylex.create({
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    columnGap: spacing[2],
+  },
+  label: {
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    color: tokens.ink,
+    whiteSpace: 'nowrap',
+  },
+  compactInput: {
+    width: spacing[20],
+    paddingInline: spacing[2],
+    paddingBlock: '0.125rem',
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    borderRadius: radii.default,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.input,
+    color: tokens.ink,
+    outline: 'none',
+    ':focus': {
+      boxShadow: `0 0 0 1px ${tokens.primary}`,
+    },
+    ':disabled': {
+      opacity: 0.5,
+    },
+  },
+  toggle: {
+    width: '1rem',
+    height: '1rem',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.default,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    ':hover': {
+      backgroundColor: tokens['surface-raised'],
+    },
+    ':disabled': {
+      opacity: 0.5,
+    },
+  },
+  root: {
+    display: 'grid',
+    rowGap: spacing['1.5'],
+  },
+  input: {
+    width: '100%',
+    paddingInline: spacing['2.5'],
+    paddingBlock: spacing[2],
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    borderRadius: radii.default,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.input,
+    color: tokens.ink,
+    outline: 'none',
+    ':focus': {
+      boxShadow: `0 0 0 1px ${tokens.primary}`,
+    },
+    ':disabled': {
+      opacity: 0.5,
+      cursor: 'not-allowed',
+    },
+  },
+  description: {
+    fontSize: '12px',
+    color: tokens['subtle-ink'],
+  },
+})
 
 /**
  * Number field component.
@@ -42,8 +126,8 @@ export const NumberField = ({
   if (isOptional === true) {
     return (
       <FieldWrapper description={hint}>
-        <div className="flex items-center gap-2">
-          <label htmlFor={id} className="text-sm text-ink whitespace-nowrap">
+        <div {...stylex.props(styles.row)}>
+          <label htmlFor={id} {...stylex.props(styles.label)}>
             {label}
           </label>
           <input
@@ -55,7 +139,7 @@ export const NumberField = ({
               const target = e.target as HTMLInputElement
               onChange(target.value === '' ? undefined : Number(target.value))
             }}
-            className="w-20 px-2 py-0.5 text-sm rounded border border-border bg-input text-ink focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            {...stylex.props(styles.compactInput)}
           />
           <button
             type="button"
@@ -64,14 +148,14 @@ export const NumberField = ({
             title={isEnabled === true ? 'Click to disable (set to undefined)' : 'Click to enable'}
             onClick={() => onChange(isEnabled === true ? undefined : 0)}
             disabled={isDisabled}
-            className="size-4 shrink-0 rounded border border-border flex items-center justify-center hover:bg-surface-raised disabled:opacity-50"
+            {...stylex.props(styles.toggle)}
           >
             {isEnabled === true ? (
               <svg
                 width="10"
                 height="10"
                 viewBox="0 0 12 12"
-                className="text-accent"
+                style={{ color: tokens.accent }}
                 aria-hidden="true"
               >
                 <path
@@ -93,18 +177,15 @@ export const NumberField = ({
   // Required field: standard number input
   return (
     <AriaNumberField
-      className="grid gap-1.5"
+      {...stylex.props(styles.root)}
       value={value ?? NaN}
       onChange={(v) => onChange(Number.isNaN(v) === true ? undefined : v)}
       isDisabled={isDisabled}
     >
-      <Label className="text-sm text-ink">{label}</Label>
-      <Input
-        id={id}
-        className="w-full px-2.5 py-2 text-sm rounded border border-border bg-input text-ink focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-      />
+      <Label {...stylex.props(styles.label)}>{label}</Label>
+      <Input {...stylex.props(styles.input)} id={id} />
       {hint !== undefined && (
-        <Text slot="description" className="text-[12px] text-subtle-ink">
+        <Text slot="description" {...stylex.props(styles.description)}>
           {hint}
         </Text>
       )}

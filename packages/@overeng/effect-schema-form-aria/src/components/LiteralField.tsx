@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 import {
   Button,
@@ -10,9 +11,11 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from 'react-aria-components'
+import { fontSizes, radii, spacing } from 'tailwind-stylex/tokens.stylex'
 
 import { formatLiteralLabel } from '@overeng/effect-schema-form'
 
+import { tokens } from '../tokens.stylex.ts'
 import { FieldWrapper } from './FieldWrapper.tsx'
 
 /** Maximum number of options before switching from segmented control to select */
@@ -38,11 +41,136 @@ export interface LiteralFieldProps {
   isDisabled?: boolean | undefined
 }
 
+const styles = stylex.create({
+  group: {
+    display: 'grid',
+    rowGap: spacing[1],
+  },
+  label: {
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    color: tokens.ink,
+  },
+  segmentedGroup: {
+    display: 'flex',
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    overflow: 'hidden',
+  },
+  segment: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    paddingInline: spacing[3],
+    paddingBlock: spacing['1.5'],
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    color: tokens.ink,
+    backgroundColor: tokens.surface,
+    borderRightWidth: 1,
+    borderRightStyle: 'solid',
+    borderRightColor: tokens.border,
+    transitionProperty: 'background-color, color',
+    transitionDuration: '150ms',
+    ':last-child': {
+      borderRightWidth: 0,
+    },
+  },
+  segmentUnselected: {
+    ':hover': {
+      backgroundColor: tokens['surface-raised'],
+    },
+  },
+  segmentSelected: {
+    backgroundColor: tokens.primary,
+    color: '#ffffff',
+  },
+  root: {
+    display: 'grid',
+    rowGap: spacing['1.5'],
+  },
+  trigger: {
+    width: '100%',
+    paddingInline: spacing['2.5'],
+    paddingBlock: spacing[2],
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    textAlign: 'left',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: radii.default,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.input,
+    color: tokens.ink,
+    outline: 'none',
+    ':focus': {
+      boxShadow: `0 0 0 1px ${tokens.primary}`,
+    },
+    ':disabled': {
+      opacity: 0.5,
+    },
+  },
+  triggerValue: {
+    flexGrow: 1,
+  },
+  chevron: {
+    width: '1rem',
+    height: '1rem',
+    color: tokens['subtle-ink'],
+  },
+  popover: {
+    width: 'var(--trigger-width)',
+    overflow: 'hidden',
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.surface,
+    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+  },
+  listBox: {
+    outline: 'none',
+    padding: spacing[1],
+    maxHeight: 'calc(var(--spacing, 0.25rem) * 60)',
+    overflow: 'auto',
+  },
+  option: {
+    paddingInline: spacing['2.5'],
+    paddingBlock: spacing['1.5'],
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    cursor: 'pointer',
+    borderRadius: radii.default,
+  },
+  optionUnselected: {
+    ':hover': {
+      backgroundColor: tokens['surface-raised'],
+    },
+  },
+  optionMuted: {
+    color: tokens['subtle-ink'],
+  },
+  optionInk: {
+    color: tokens.ink,
+  },
+  optionSelected: {
+    backgroundColor: tokens.primary,
+    color: '#ffffff',
+  },
+  hint: {
+    fontSize: '12px',
+    color: tokens['subtle-ink'],
+  },
+})
+
 /**
  * Literal union field.
- *
- * Renders as a segmented control for 5 or fewer options,
- * or as a select dropdown for more options.
+ * Renders a segmented toggle control for small option sets and a select dropdown for larger ones.
  */
 export const LiteralField = ({
   id,
@@ -65,8 +193,8 @@ export const LiteralField = ({
   if (segmentedOptions.length <= MAX_SEGMENTED_OPTIONS) {
     return (
       <FieldWrapper description={hint}>
-        <div className="grid gap-1">
-          {label !== undefined && <span className="text-sm text-ink">{label}</span>}
+        <div {...stylex.props(styles.group)}>
+          {label !== undefined && <span {...stylex.props(styles.label)}>{label}</span>}
           <ToggleButtonGroup
             aria-label={label ?? id}
             selectionMode="single"
@@ -76,13 +204,18 @@ export const LiteralField = ({
               onChange(selected === '' || selected === undefined ? undefined : String(selected))
             }}
             isDisabled={isDisabled}
-            className="flex rounded-lg border border-border overflow-hidden"
+            {...stylex.props(styles.segmentedGroup)}
           >
             {segmentedOptions.map((opt) => (
               <ToggleButton
                 key={opt.value}
                 id={opt.value}
-                className="flex-1 px-3 py-1.5 text-sm text-ink bg-surface hover:bg-surface-raised data-[selected]:bg-primary data-[selected]:text-white transition-colors border-r border-border last:border-r-0"
+                className={({ isSelected }) =>
+                  stylex.props(
+                    styles.segment,
+                    isSelected === true ? styles.segmentSelected : styles.segmentUnselected,
+                  ).className ?? ''
+                }
               >
                 {opt.label}
               </ToggleButton>
@@ -102,21 +235,28 @@ export const LiteralField = ({
         onChange(key === '' || key === null || key === undefined ? undefined : String(key))
       }
       isDisabled={isDisabled}
-      className="grid gap-1.5"
+      {...stylex.props(styles.root)}
     >
-      {label !== undefined && <Label className="text-sm text-ink">{label}</Label>}
-      <Button className="w-full px-2.5 py-2 text-sm rounded border border-border bg-input text-ink text-left flex items-center justify-between focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50">
-        <SelectValue className="flex-1" />
-        <svg viewBox="0 0 16 16" className="size-4 text-subtle-ink" aria-hidden="true">
+      {label !== undefined && <Label {...stylex.props(styles.label)}>{label}</Label>}
+      <Button {...stylex.props(styles.trigger)}>
+        <SelectValue {...stylex.props(styles.triggerValue)} />
+        <svg viewBox="0 0 16 16" {...stylex.props(styles.chevron)} aria-hidden="true">
           <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" />
         </svg>
       </Button>
-      <Popover className="w-[--trigger-width] overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
-        <ListBox className="outline-none p-1 max-h-60 overflow-auto">
+      <Popover {...stylex.props(styles.popover)}>
+        <ListBox {...stylex.props(styles.listBox)}>
           {isOptional && (
             <ListBoxItem
               id=""
-              className="px-2.5 py-1.5 text-sm text-subtle-ink cursor-pointer rounded hover:bg-surface-raised data-[selected]:bg-primary data-[selected]:text-white"
+              textValue="— Select —"
+              className={({ isSelected }) =>
+                stylex.props(
+                  styles.option,
+                  styles.optionMuted,
+                  isSelected === true ? styles.optionSelected : styles.optionUnselected,
+                ).className ?? ''
+              }
             >
               — Select —
             </ListBoxItem>
@@ -125,14 +265,21 @@ export const LiteralField = ({
             <ListBoxItem
               key={opt.value}
               id={opt.value}
-              className="px-2.5 py-1.5 text-sm text-ink cursor-pointer rounded hover:bg-surface-raised data-[selected]:bg-primary data-[selected]:text-white"
+              textValue={opt.label}
+              className={({ isSelected }) =>
+                stylex.props(
+                  styles.option,
+                  styles.optionInk,
+                  isSelected === true ? styles.optionSelected : styles.optionUnselected,
+                ).className ?? ''
+              }
             >
               {opt.label}
             </ListBoxItem>
           ))}
         </ListBox>
       </Popover>
-      {hint !== undefined && <span className="text-[12px] text-subtle-ink">{hint}</span>}
+      {hint !== undefined && <span {...stylex.props(styles.hint)}>{hint}</span>}
     </Select>
   )
 }

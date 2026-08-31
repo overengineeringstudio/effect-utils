@@ -54,6 +54,7 @@ peerDependencyRules:
     typescript: '>=6.0.0'
     eslint: '>=10.0.0'
     vitest: '>=4.0.0'
+    unplugin: '>=3.0.0'
 
 allowBuilds:
   '@myobie/pty': false
@@ -66,6 +67,7 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - '@types/node'
+  - tailwind-stylex
   - effect
   - '@effect/platform-node'
   - '@effect/vitest'

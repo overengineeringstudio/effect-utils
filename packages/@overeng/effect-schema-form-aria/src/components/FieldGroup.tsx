@@ -1,5 +1,9 @@
+import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 import { Group, Header, Text } from 'react-aria-components'
+import { fontSizes, radii, spacing } from 'tailwind-stylex/tokens.stylex'
+
+import { tokens } from '../tokens.stylex.ts'
 
 /** Props for FieldGroup component */
 export interface FieldGroupProps {
@@ -13,6 +17,60 @@ export interface FieldGroupProps {
   children: ReactNode
 }
 
+const styles = stylex.create({
+  base: {
+    borderRadius: radii.lg,
+    borderStyle: 'solid',
+    borderWidth: 1,
+  },
+  defaultVariant: {
+    borderColor: tokens.border,
+    backgroundColor: tokens.surface,
+    padding: spacing[4],
+  },
+  subtleVariant: {
+    borderColor: `color-mix(in oklab, ${tokens.border} 50%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.surface} 30%, transparent)`,
+    padding: spacing[3],
+  },
+  header: {
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+    color: tokens.ink,
+    marginBottom: spacing[3],
+  },
+  fieldsGrid: {
+    display: 'grid',
+    rowGap: spacing[4],
+  },
+})
+
+/** Styles shared with FieldGroupEmpty (subtle look). */
+export const emptyGroupStyles = stylex.create({
+  root: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.border} 50%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.surface} 30%, transparent)`,
+    padding: spacing[3],
+  },
+  header: {
+    fontSize: fontSizes.sm,
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+    color: tokens.ink,
+    marginBottom: spacing[2],
+  },
+  message: {
+    fontSize: fontSizes.xs,
+    lineHeight: '1rem',
+    fontStyle: 'italic',
+    color: tokens['subtle-ink'],
+  },
+})
+
 /**
  * Groups related form fields with an accessible header.
  * Used for tagged structs and nested field groups.
@@ -23,14 +81,18 @@ export const FieldGroup = ({
   className = '',
   children,
 }: FieldGroupProps): ReactNode => {
-  const baseClasses = 'rounded-lg border'
-  const variantClasses =
-    variant === 'subtle' ? 'border-border/50 bg-surface/30 p-3' : 'border-border bg-surface p-4'
+  const groupClassName = [
+    stylex.props(styles.base, variant === 'subtle' ? styles.subtleVariant : styles.defaultVariant)
+      .className,
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
-    <Group className={`${baseClasses} ${variantClasses} ${className}`}>
-      <Header className="text-sm font-medium text-ink mb-3">{label}</Header>
-      <div className="grid gap-4">{children}</div>
+    <Group className={groupClassName}>
+      <Header {...stylex.props(styles.header)}>{label}</Header>
+      <div {...stylex.props(styles.fieldsGrid)}>{children}</div>
     </Group>
   )
 }
@@ -52,9 +114,15 @@ export const FieldGroupEmpty = ({
   label,
   message = 'No additional options',
   className = '',
-}: FieldGroupEmptyProps): ReactNode => (
-  <Group className={`rounded-lg border border-border/50 bg-surface/30 p-3 ${className}`}>
-    <Header className="text-sm font-medium text-ink mb-2">{label}</Header>
-    <Text className="text-xs text-subtle-ink italic">{message}</Text>
-  </Group>
-)
+}: FieldGroupEmptyProps): ReactNode => {
+  const rootClassName = [stylex.props(emptyGroupStyles.root).className, className]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <Group className={rootClassName}>
+      <Header {...stylex.props(emptyGroupStyles.header)}>{label}</Header>
+      <Text {...stylex.props(emptyGroupStyles.message)}>{message}</Text>
+    </Group>
+  )
+}

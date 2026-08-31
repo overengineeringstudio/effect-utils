@@ -1,6 +1,6 @@
 # @overeng/effect-schema-form-aria
 
-Styled React Aria implementation for `@overeng/effect-schema-form`. Provides accessible, styled form components using React Aria Components and Tailwind CSS.
+Styled React Aria implementation for `@overeng/effect-schema-form`. Provides accessible, styled form components using React Aria Components and StyleX.
 
 [**Storybook**](https://overeng-effect-utils-schema-form-ar.vercel.app) - Interactive component documentation and examples
 
@@ -13,6 +13,12 @@ bun add @overeng/effect-schema-form-aria @overeng/effect-schema-form react-aria-
 ## Usage
 
 ### Quick Start
+
+Import the package reset once in your application entry point. It preserves the form-control and box-model defaults that the components require:
+
+```tsx
+import '@overeng/effect-schema-form-aria/styles.css'
+```
 
 ```tsx
 import { AriaSchemaForm } from '@overeng/effect-schema-form-aria'
@@ -150,23 +156,14 @@ Automatically renders as segmented control (5 or fewer options) or dropdown (mor
 
 ## Styling
 
-Components use Tailwind CSS with semantic design tokens. Ensure your app defines these CSS variables:
+Components use StyleX with semantic variables exported as `tokens`. The package stylesheet contains only the base/reset rules required by the components; component styles are compiled from colocated `stylex.create` declarations.
 
-```css
-:root {
-  --color-ink: /* text color */;
-  --color-subtle-ink: /* secondary text */;
-  --color-muted-ink: /* muted text */;
-  --color-border: /* border color */;
-  --color-input: /* input background */;
-  --color-surface: /* surface background */;
-  --color-surface-raised: /* hover state */;
-  --color-primary: /* accent color */;
-  --color-accent: /* accent color */;
-}
+```tsx
+import { tokens } from '@overeng/effect-schema-form-aria'
+import '@overeng/effect-schema-form-aria/styles.css'
 ```
 
-Or customize the components by overriding the className props or creating your own renderers.
+The default semantic color values intentionally match the previous Tailwind implementation.
 
 ## Custom Renderers
 

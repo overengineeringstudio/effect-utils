@@ -32,7 +32,8 @@ printf '{"name":"fixture-root","private":true,"packageManager":"pnpm@11.8.0","de
   "$stable_stage_path" > "$workspace/package.json"
 
 install_fixture() {
-  "${pnpm_command[@]}" --dir "$workspace" install \
+  # The temporary fixture install is the behavior under test, not a workspace mutation.
+  DEVENV_TASK_PASSTHROUGH=1 "${pnpm_command[@]}" --dir "$workspace" install \
     --store-dir "$workspace/.devenv/pnpm-store" \
     --config.enable-global-virtual-store=false \
     --config.virtual-store-dir=node_modules/.pnpm \

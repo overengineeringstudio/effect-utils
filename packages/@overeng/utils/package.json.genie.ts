@@ -24,7 +24,7 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils' }),
   dependencies: {
     workspace: [effectDistributedLockPkg, otelContractPkg],
-    external: catalog.pick('@noble/hashes', '@opentelemetry/api'),
+    external: catalog.pick('@noble/hashes', '@opentelemetry/api', '@stylexjs/unplugin'),
   },
   devDependencies: {
     workspace: [utilsDevPkg],

@@ -11,6 +11,7 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     ...reactJsx,
+    rootDir: './src',
     lib: [...domLib],
   },
   include: ['src/**/*'],

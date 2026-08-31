@@ -63,6 +63,16 @@ All notable changes to this project will be documented in this file.
   collapses the per-parent-dir watchers into one recursive watch rooted at the
   deepest common ancestor of the targets.
 
+- **@overeng/effect-schema-form-aria** (pilot): migrate styling from Tailwind
+  CSS v4 to StyleX (`@stylexjs/stylex`). Components consume a semantic token
+  layer (`src/tokens.stylex.ts`, exported as `tokens`) built on StyleX vars;
+  raw scales (spacing, radii, font sizes) come from `tailwind-stylex`.
+  State-dependent styling (selection) moves to React Aria render-prop
+  `className` instead of Tailwind group/data variants. Consumers import the
+  required reset from `@overeng/effect-schema-form-aria/styles.css`; the
+  publication build emits that reset and compiled component rules together.
+  Byte-identical markup baselines were regenerated with hashed StyleX class names.
+
 - **@overeng/effect-rpc-tanstack**: client request-id policy — `layerClient`
   now validates outgoing RPC request ids at the client boundary. Non-empty
   strings and non-negative, finite numbers/bigints are accepted (v4 interop);

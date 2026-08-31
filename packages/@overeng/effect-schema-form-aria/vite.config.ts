@@ -1,7 +1,44 @@
-import tailwindcss from '@tailwindcss/vite'
+import { unplugin as stylex } from '@stylexjs/unplugin'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+
+const publicationEntry = new URL('./src/mod.ts', import.meta.url).pathname
+const resetStylesheet = new URL('./src/styles.css', import.meta.url).pathname
+
+const includePublicationReset = {
+  name: 'effect-schema-form-aria:publication-reset',
+  apply: 'build',
+  enforce: 'pre',
+  // oxlint-disable-next-line overeng/named-args -- Vite's Plugin transform hook has a fixed positional signature.
+  transform: (code, id) =>
+    id === publicationEntry
+      ? { code: `import ${JSON.stringify(resetStylesheet)}\n${code}`, map: null }
+      : undefined,
+} satisfies Plugin
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    includePublicationReset,
+    stylex.vite({ externalPackages: ['tailwind-stylex'] }),
+    react(),
+  ],
+  build: {
+    emptyOutDir: false,
+    lib: {
+      entry: publicationEntry,
+      formats: ['es'],
+      fileName: 'mod',
+      cssFileName: 'styles',
+    },
+    rollupOptions: {
+      external: [
+        /^@overeng\/effect-schema-form(?:\/|$)/,
+        /^@stylexjs\/stylex(?:\/|$)/,
+        /^effect(?:\/|$)/,
+        /^react(?:\/|$)/,
+        /^react-aria-components(?:\/|$)/,
+      ],
+    },
+    sourcemap: true,
+  },
 })

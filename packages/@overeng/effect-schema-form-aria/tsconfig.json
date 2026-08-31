@@ -42,7 +42,7 @@
       }
     ],
     "composite": true,
-    "rootDir": ".",
+    "rootDir": "./src",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "jsx": "react-jsx"
   },
