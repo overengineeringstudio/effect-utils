@@ -67,10 +67,14 @@ the packages and project attribution are needed.
 - `megarepo.nix` - Megarepo workspace tasks
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`
-    provides `nix:flake-lock:check-duplicates`.
-  - The task compares complete `.locked` objects within each lockfile, reports
-    every duplicate group in deterministic order, and fails for missing or
-    invalid lockfiles. Similar but non-identical identities are allowed.
+    selects the lockfiles and only defines `nix:flake-lock:check-duplicates`.
+    Each consumer explicitly attaches that task to its authoritative aggregate
+    gate.
+  - Lockfile paths are resolved relative to the task working directory.
+  - Each lockfile is checked independently. Complete `.locked` identities are
+    never compared across files. The task reports every within-file duplicate
+    group in deterministic order and fails for missing or invalid lockfiles;
+    similar but non-identical identities are allowed.
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
   - Local development shares one complete pnpm Store Cache between trusted
