@@ -343,6 +343,9 @@ export const catalog = defineCatalog({
   vitest: '4.1.9',
   '@vitejs/plugin-react': '6.0.2',
 
+  // pnpm workspace lock projection
+  '@pnpm/lockfile.fs': '1100.1.6',
+  '@pnpm/lockfile.pruner': '1100.0.11',
   // TanStack
   '@tanstack/react-router': '1.170.16',
   '@tanstack/react-start': '1.168.26',

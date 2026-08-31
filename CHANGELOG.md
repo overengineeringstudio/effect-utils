@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **Nix workspace tooling**: aggregate CLI dependency sources now prune shared
+  pnpm lockfiles to the selected importer's reachable closure, so unrelated
+  workspace lock changes no longer invalidate fixed-output dependencies.
 - **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
   adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
   lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`
