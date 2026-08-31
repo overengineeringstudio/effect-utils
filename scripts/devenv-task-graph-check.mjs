@@ -105,6 +105,8 @@ const reaches = ({ start, target }) => {
 for (const name of [
   'ts:check',
   'ts:check:strict',
+  'ts:build',
+  'ts:build-watch',
   'check:quick',
   'buck2:check',
   'buck2:typescript:materialize-dist',
@@ -131,7 +133,7 @@ try {
 }
 
 const materializer = 'buck2:typescript:materialize-dist'
-for (const name of ['ts:check', 'ts:check:strict', 'check:quick']) {
+for (const name of ['ts:check', 'ts:check:strict', 'ts:build', 'ts:build-watch', 'check:quick']) {
   ok({
     condition: reaches({ start: name, target: materializer }),
     name: `${name} reaches ${materializer}`,

@@ -9,17 +9,50 @@ bare_repo="$repo_root/.bare"
 workspace_root="$repo_root/$branch_ref"
 member_root="$workspace_root/repos/effect-utils"
 
-[ -e "$workspace_root" ] || [ -L "$workspace_root" ] || exit 0
-test -f "$workspace_root/.megarepo-owned-worktree.json"
+workspace_parent="${workspace_root%/*}"
+workspace_name="${workspace_root##*/}"
+acquisition_temp="$workspace_parent/.$workspace_name.owned-worktree-acquisition-temp"
+if [ ! -e "$workspace_root" ] && [ ! -L "$workspace_root" ] &&
+  [ ! -e "$acquisition_temp" ] && [ ! -L "$acquisition_temp" ]; then
+  exit 0
+fi
 test -d "$bare_repo"
-[ "$(git -C "$member_root" symbolic-ref --quiet HEAD)" = "$branch_ref" ]
 [ "$(git --git-dir="$bare_repo" rev-parse --is-bare-repository)" = true ]
 case "$store_root" in
   "${RUNNER_TEMP:?RUNNER_TEMP not set}"/megarepo-store/*) ;;
   *) echo "::error::refusing cleanup outside job-local runner store: $store_root" >&2; exit 1 ;;
 esac
 
-git --git-dir="$bare_repo" worktree remove --force "$member_root"
+if [ -f "$workspace_root/.megarepo-owned-worktree.json" ]; then
+  owned_worktree="$member_root"
+elif [ -e "$workspace_root" ] || [ -L "$workspace_root" ]; then
+  owned_worktree="$workspace_root"
+else
+  owned_worktree="$acquisition_temp"
+fi
+
+current_worktree=
+registered_worktree=
+matching_registrations=0
+while IFS= read -r -d '' field; do
+  case "$field" in
+    worktree\ *) current_worktree="${field#worktree }" ;;
+    "branch $branch_ref")
+      test -n "$current_worktree"
+      registered_worktree="$current_worktree"
+      matching_registrations=$((matching_registrations + 1))
+      ;;
+    '') current_worktree= ;;
+  esac
+done < <(git --git-dir="$bare_repo" worktree list --porcelain -z)
+
+[ "$matching_registrations" -eq 1 ]
+[ "$registered_worktree" = "$owned_worktree" ]
+[ "$(git -C "$owned_worktree" rev-parse --path-format=absolute --show-toplevel)" = "$owned_worktree" ]
+[ "$(git -C "$owned_worktree" rev-parse --path-format=absolute --git-common-dir)" = "$bare_repo" ]
+[ "$(git -C "$owned_worktree" symbolic-ref --quiet HEAD)" = "$branch_ref" ]
+
+git --git-dir="$bare_repo" worktree remove --force "$owned_worktree"
 rm -rf -- "$workspace_root"
 git --git-dir="$bare_repo" update-ref -d "$branch_ref"
 rm -rf -- "$store_root"

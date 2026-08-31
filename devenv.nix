@@ -1101,6 +1101,8 @@ in
   };
 
   tasks."ts:check".after = [ "buck2:typescript:materialize-dist" ];
+  tasks."ts:build".after = [ "buck2:typescript:materialize-dist" ];
+  tasks."ts:build-watch".after = [ "buck2:typescript:materialize-dist" ];
 
   tasks."buck2:task-guards:check" = {
     description = "Check TypeScript publication failure paths and evaluated task ordering";

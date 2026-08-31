@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -1247,7 +1248,7 @@ describe('effect-utils CI composition workspace', () => {
     20_000,
   )
 
-  it('stops before exports when composition apply fails', async () => {
+  it('cleans a registered partial workspace when composition apply fails', async () => {
     const fixture = makeFixture('Linux')
     try {
       const result = await runComposition(fixture, { FAKE_MR_FAIL: '1' })
@@ -1255,6 +1256,39 @@ describe('effect-utils CI composition workspace', () => {
       expect(readFileSync(fixture.envFile, 'utf8')).not.toContain('EFFECT_UTILS_MEMBER_ROOT')
       expect(git(fixture.checkout, 'rev-parse', 'HEAD')).toBe(fixture.sha)
       expect(git(fixture.checkout, 'status', '--porcelain=v1', '--untracked-files=all')).toBe('')
+
+      const store = fixture.env.MEGAREPO_STORE!
+      const workspace = join(
+        store,
+        'github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job',
+      )
+      expect(existsSync(join(workspace, '.megarepo-owned-worktree.json'))).toBe(false)
+      expect(git(workspace, 'symbolic-ref', 'HEAD')).toBe('refs/heads/ci-100-2-unit_job')
+
+      const cleanup = await cleanupComposition(fixture)
+      expect(cleanup.status, cleanup.stderr).toBe(0)
+      expect(existsSync(store)).toBe(false)
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
+    }
+  }, 20_000)
+
+  it('refuses a registered partial workspace on an unrelated branch', async () => {
+    const fixture = makeFixture('Linux')
+    try {
+      const result = await runComposition(fixture, { FAKE_MR_FAIL: '1' })
+      expect(result.status).toBe(37)
+      const store = fixture.env.MEGAREPO_STORE!
+      const workspace = join(
+        store,
+        'github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job',
+      )
+      git(workspace, 'switch', '-c', 'unrelated')
+
+      const cleanup = await cleanupComposition(fixture)
+      expect(cleanup.status).not.toBe(0)
+      expect(existsSync(workspace)).toBe(true)
+      expect(git(workspace, 'symbolic-ref', 'HEAD')).toBe('refs/heads/unrelated')
     } finally {
       rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
     }

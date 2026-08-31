@@ -266,11 +266,7 @@ pub fn normalized_relative(value: &str, field: &str) -> ToolResult<String> {
 }
 
 pub fn safe_text(value: &str, field: &str) -> ToolResult<String> {
-    if value.is_empty()
-        || value
-            .bytes()
-            .any(|byte| byte == 0 || byte == b'\n' || byte == b'\r')
-    {
+    if value.is_empty() || value.bytes().any(|byte| byte < 32 || byte == 127) {
         return Err(ToolError::new(
             "BUCK2_INVALID_TEXT",
             format!("{field} must be non-empty and contain no control characters"),
@@ -303,6 +299,24 @@ mod tests {
             let bad = format!("bin/{}tool", char::from(byte));
             assert!(
                 normalized_relative(&bad, "path").is_err(),
+                "accepted byte {byte}"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_text_accepts_names_without_ascii_controls() {
+        for value in ["tool/v1", "native-executable/v1", "x86_64-linux", "gnu"] {
+            assert_eq!(safe_text(value, "runtime name").unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn runtime_text_rejects_every_ascii_control() {
+        for byte in (0_u8..=31).chain(std::iter::once(127)) {
+            let bad = format!("native{}runtime", char::from(byte));
+            assert!(
+                safe_text(&bad, "runtime name").is_err(),
                 "accepted byte {byte}"
             );
         }
