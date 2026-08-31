@@ -7,7 +7,10 @@
   "exports": {
     "./preflight.css": "./src/preflight.css",
     "./tokens.stylex": "./src/tokens.stylex.ts",
-    "./vite": "./src/vite.ts"
+    "./vite": {
+      "types": "./src/vite-types.d.ts",
+      "default": "./src/vite.js"
+    }
   },
   "publishConfig": {
     "access": "public",
