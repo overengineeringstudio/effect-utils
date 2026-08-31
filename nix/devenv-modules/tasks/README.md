@@ -16,6 +16,9 @@ imports = [
     geniePatterns = [ "*.genie.ts" ];
     genieCoverageDirs = [ "." ];
   })
+  (inputs.effect-utils.devenvModules.tasks.flake-lock-duplicates {
+    lockfiles = [ "flake.lock" ];
+  })
 ];
 ```
 
@@ -62,6 +65,16 @@ the packages and project attribution are needed.
     non-ignored files through `git ls-files` before calling oxlint/oxfmt, and do
     not use devenv's `execIfModified` glob walker.
 - `megarepo.nix` - Megarepo workspace tasks
+- `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
+  - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`
+    selects the lockfiles and only defines `nix:flake-lock:check-duplicates`.
+    Each consumer explicitly attaches that task to its authoritative aggregate
+    gate.
+  - Lockfile paths are resolved relative to the task working directory.
+  - Each lockfile is checked independently. Complete `.locked` identities are
+    never compared across files. The task reports every within-file duplicate
+    group in deterministic order and fails for missing or invalid lockfiles;
+    similar but non-identical identities are allowed.
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
   - Local development shares one complete pnpm Store Cache between trusted

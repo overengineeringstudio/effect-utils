@@ -281,6 +281,7 @@
           gh-labels = import ./nix/devenv-modules/gh-labels.nix;
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
           nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
+          flake-lock-duplicates = import ./nix/devenv-modules/tasks/shared/flake-lock-duplicates.nix;
           secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow
           worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
