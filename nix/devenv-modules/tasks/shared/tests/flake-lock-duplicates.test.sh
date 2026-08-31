@@ -79,7 +79,7 @@ build_task_script() {
 
   LOCKFILES_JSON="$lockfiles_json" nix-build --no-out-link --impure --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $MODULE {
         lockfiles = builtins.fromJSON (builtins.getEnv \"LOCKFILES_JSON\");
@@ -184,7 +184,7 @@ z.lock: exact duplicate locked identity in nodes: alpha, beta" "$output" "sorted
 
 echo "Test 8: flake exports the parameterized module"
 exported="$(nix-instantiate --eval --strict --json --expr "
-  let flake = builtins.getFlake (toString $ROOT);
+  let flake = builtins.getFlake \"$NIX_FLAKE_REF\";
   in builtins.hasAttr \"flake-lock-duplicates\" flake.devenvModules.tasks
 " | jq -r .)"
 assert_equals "true" "$exported" "flake module export"

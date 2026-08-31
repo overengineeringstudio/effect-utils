@@ -42,7 +42,7 @@ extract_workflow_report_task_script() {
 
   nix-instantiate --eval --strict --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       pkgsForTest = pkgs // {
         gh = \"$tmpdir/fake-gh-pkg\";

@@ -1591,9 +1591,6 @@ importers:
       '@opentui/react':
         specifier: 0.4.1
         version: 0.4.1(react-devtools-core@7.0.1)(react@19.2.7)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)
-      '@overeng/tui-core':
-        specifier: workspace:^
-        version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
         version: link:../tui-react

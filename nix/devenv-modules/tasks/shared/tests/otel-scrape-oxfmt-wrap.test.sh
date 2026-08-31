@@ -108,7 +108,7 @@ extract_format_exec() {
   local output_path="$1"
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       oxfmtPkg = builtins.getEnv \"TEST_FAKE_OXFMT_PKG\";
       evaluated = pkgs.lib.evalModules {

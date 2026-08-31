@@ -51,7 +51,7 @@ eval_instr_prelude() {
   # $1 = adapter
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       trace = import $ROOT/nix/devenv-modules/tasks/lib/trace.nix { lib = pkgs.lib; };
     in trace.instr { adapter = \"$1\"; name = \"lint:check:oxlint\"; }
@@ -69,7 +69,7 @@ eval_instr_prelude vitest > "$vitest_prelude"
 task_exec="$tmpdir/task-exec.sh"
 nix eval --impure --raw --expr "
   let
-    flake = builtins.getFlake (toString $ROOT);
+    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     trace = import $ROOT/nix/devenv-modules/tasks/lib/trace.nix { lib = pkgs.lib; };
   in trace.exec \"test:task\" \"exit 0\"
@@ -156,7 +156,7 @@ printf '%s\n' "$out" | grep -q -- "--adapter vitest" \
 # --- WIRING: the real oxlint task exec consumes the arrays + the --format=json flag ---
 oxlint_exec="$(nix eval --impure --raw --expr "
   let
-    flake = builtins.getFlake (toString $ROOT);
+    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     mod = (import $ROOT/nix/devenv-modules/tasks/shared/lint-oxc.nix {
       geniePatterns = [ \"packages/*/*.genie.ts\" ];

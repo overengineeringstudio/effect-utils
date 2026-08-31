@@ -10,7 +10,7 @@ eval_setup_module_attr() {
 
   nix eval --impure --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       setupModule = import $ROOT/nix/devenv-modules/tasks/shared/setup.nix {
         requiredTasks = [ \"required\" ];
@@ -39,7 +39,7 @@ eval_observability_module_attr() {
 
   nix eval --impure --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       observabilityModule = import $ROOT/nix/devenv-modules/observability.nix {
         project = \"fixture\";

@@ -69,6 +69,14 @@ export const buck2TypeScriptAdmissions = {
     ],
     editorViewConsumer: false,
   },
+  stylexPreset: {
+    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_stylex_preset_eec8ac17a1d4',
+    packageName: '@overeng/stylex-preset',
+    packagePath: 'packages/@overeng/stylex-preset',
+    projectionSource: 'packages/@overeng/stylex-preset/BUCK.genie.ts',
+    sourceRoots: ['src'],
+    editorViewConsumer: false,
+  },
   utils: {
     dependencyImporter: '//buck2/dependencies:importer_packages_overeng_utils_07fe64e7b8ad',
     packageName: '@overeng/utils',

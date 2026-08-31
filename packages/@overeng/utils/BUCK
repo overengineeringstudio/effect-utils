@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:c89afcab9baf69d93511c68ceb46212c111ec651624f352993b0da1fa74734a8
+# Semantic fingerprint: sha256:d8fea343a4c64baacb354172f7b0186d0c3633d37ee88787940d650535354f0b
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -97,6 +97,7 @@ export_materialization_inputs([
     "src/node/playwright/wait.ts",
     "src/node/semaphore.contract.ts",
     "src/node/storybook/config/mod.ts",
+    "src/node/storybook/config/mod.unit.test.ts",
     "src/node/storybook/mod.ts",
     "src/node/storybook/opentui-stub.ts",
     "src/node/watch.ts",
@@ -200,6 +201,7 @@ package_tree(
         "src/node/playwright/wait.ts": "src/node/playwright/wait.ts",
         "src/node/semaphore.contract.ts": "src/node/semaphore.contract.ts",
         "src/node/storybook/config/mod.ts": "src/node/storybook/config/mod.ts",
+        "src/node/storybook/config/mod.unit.test.ts": "src/node/storybook/config/mod.unit.test.ts",
         "src/node/storybook/mod.ts": "src/node/storybook/mod.ts",
         "src/node/storybook/opentui-stub.ts": "src/node/storybook/opentui-stub.ts",
         "src/node/watch.ts": "src/node/watch.ts",
