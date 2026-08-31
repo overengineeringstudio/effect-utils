@@ -9,7 +9,10 @@ implementation details.
 
 ## Kept Here
 
-- [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md)
+- [megarepo/](./megarepo/) - VRS for the megarepo tool (`mr`): repo
+  arrangement, workspace ownership, ontology, and decision records
+- [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md) - package-local
+  reference for commands, config, and integrations
 - [dependency-materialization/](./dependency-materialization/) - local pnpm,
   projection, Nix prepared dependency, store authority, Buck2 evidence, and
   observability contracts
