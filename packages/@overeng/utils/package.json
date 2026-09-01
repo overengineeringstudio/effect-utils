@@ -70,10 +70,10 @@
     "@opentelemetry/semantic-conventions": "1.41.1",
     "@overeng/utils-dev": "workspace:^",
     "@playwright/test": "1.61.0",
-    "@storybook/react-vite": "10.4.6",
+    "@storybook/react-vite": "10.5.10",
     "@types/node": "26.0.0",
     "effect": "4.0.0-rc.111",
-    "storybook": "10.4.6",
+    "storybook": "10.5.10",
     "typescript": "6.0.3",
     "vite": "8.0.16",
     "vitest": "4.1.9"

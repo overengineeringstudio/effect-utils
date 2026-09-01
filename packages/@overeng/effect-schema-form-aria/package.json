@@ -26,13 +26,13 @@
   },
   "devDependencies": {
     "@overeng/utils": "workspace:^",
-    "@storybook/react": "10.4.6",
-    "@storybook/react-vite": "10.4.6",
+    "@storybook/react": "10.5.10",
+    "@storybook/react-vite": "10.5.10",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "effect": "4.0.0-rc.111",
-    "storybook": "10.4.6",
+    "storybook": "10.5.10",
     "typescript": "6.0.3",
     "vite": "8.0.16",
     "vitest": "4.1.9"

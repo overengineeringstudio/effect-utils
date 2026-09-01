@@ -142,10 +142,12 @@ export const commonPnpmWorkspaceData = {
   packageExtensions: {
     ...commonPnpmPolicySettings.packageExtensions,
     // Storybook loads the configured framework preset dynamically from the
-    // storybook package, so the dependency edge must be explicit.
+    // storybook package, so the dependency edge must be explicit. Derived from
+    // the catalog rather than restated, so a cohort bump cannot leave a second
+    // framework version resolving here.
     storybook: {
       dependencies: {
-        '@storybook/react-vite': '10.4.6',
+        '@storybook/react-vite': externalCatalog['@storybook/react-vite'],
       },
     },
   },
