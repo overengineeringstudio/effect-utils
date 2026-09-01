@@ -20,8 +20,8 @@ export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
 /** Self-hosted macOS runner labels (aarch64-darwin, e.g. mbp2021) */
 export const darwinArm64Runner = ['sh-darwin-arm64', 'nix'] as const
 
-/** Namespace Linux runner with enough ephemeral storage for paired base/head Nix closures. */
-export const namespaceLinuxX64PairedPerfRunner = 'nscloud-ubuntu-24.04-amd64-16x32-with-features'
+/** Namespace Linux runner with 288 GB for paired base/head Nix closures. */
+export const namespaceLinuxX64PairedPerfRunner = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
 
 /** All self-hosted runner labels — derived from the runner constants above + RUNNER_PROFILES */
 const SELF_HOSTED_RUNNER_LABELS = [

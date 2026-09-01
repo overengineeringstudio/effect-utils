@@ -2969,7 +2969,7 @@ jobs:
   devenv-perf:
     runs-on:
       [
-        nscloud-ubuntu-24.04-amd64-16x32-with-features,
+        nscloud-ubuntu-24.04-amd64-16x64-with-features,
         'namespace-features:github.run-id=${{ github.run_id }}',
       ]
     permissions:
@@ -2985,7 +2985,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       ARTIFACT_DIR: '${{ github.workspace }}/tmp/devenv-perf-ci'
       OTEL_SERVICE_NAME: devenv-perf-ci
-      RUNNER_CLASS: 'nscloud-ubuntu-24.04-amd64-16x32-with-features,namespace-features:github.run-id=${{ github.run_id }}'
+      RUNNER_CLASS: 'nscloud-ubuntu-24.04-amd64-16x64-with-features,namespace-features:github.run-id=${{ github.run_id }}'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}

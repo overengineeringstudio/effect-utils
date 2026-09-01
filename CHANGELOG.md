@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **CI performance gate**: keep `devenv-perf` merge-blocking while giving its
-  pull-request-only paired base/head plan a 90-minute budget and a 160 GB
+  pull-request-only paired base/head plan a 90-minute budget and a 288 GB
   Namespace runner that can retain both Nix closures. Gate-disabled diagnostics
   no longer run a baseline sample that cannot contribute evidence.
 

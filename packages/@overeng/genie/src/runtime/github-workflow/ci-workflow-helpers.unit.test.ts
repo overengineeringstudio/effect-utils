@@ -868,7 +868,7 @@ describe('ci workflow devenv perf helpers', () => {
       `paired_baseline_enabled="$(jq -r 'if .enabled == true then 1 else 0 end' <<<"$gate_policy")"`,
     )
     expect(generatedDevenvPerfJob).toContain('timeout-minutes: 90')
-    expect(generatedDevenvPerfJob).toContain('nscloud-ubuntu-24.04-amd64-16x32-with-features')
+    expect(generatedDevenvPerfJob).toContain('nscloud-ubuntu-24.04-amd64-16x64-with-features')
     expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_warm' 'Warm shell eval'")
     expect(generatedCiWorkflowYamlSource).toContain("measure 'tasks_list' 'devenv tasks list'")
     expect(generatedCiWorkflowYamlSource).toContain(
