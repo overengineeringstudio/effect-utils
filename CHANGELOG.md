@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: the cp-a mount rename primitives ran with
+  `stdio: 'ignore'`, so a failure reached CI as a bare `GNU mv no-clobber first
+  publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
+  carries the command's stderr, the exact argv, and the resolved binary — whose
+  Nix store path names the coreutils version.
+
 - **@overeng/megarepo tests**: composition refuses non-canonical paths on
   purpose — R6 identity, owned-worktree acquisition and the private-scratch
   ownership guard all require the physical path — but eight integration fixtures

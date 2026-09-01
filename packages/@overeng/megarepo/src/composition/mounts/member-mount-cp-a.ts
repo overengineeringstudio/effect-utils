@@ -415,16 +415,29 @@ const runCommand = ({
     recoveryPaths,
     try: () =>
       new Promise<void>((resolve, reject) => {
-        const child = spawn(binary, [...args], { stdio: 'ignore' })
+        // Capture stderr. These commands are the rename primitives R6 depends on,
+        // and a bare exit code is not diagnosable from a CI log: an unsupported
+        // option, ENOTSUP or EXDEV from the kernel all look identical. Report the
+        // resolved binary (its Nix store path names the coreutils version), the
+        // exact argv, and whatever the command said.
+        const child = spawn(binary, [...args], { stdio: ['ignore', 'ignore', 'pipe'] })
+        let stderr = ''
+        child.stderr?.setEncoding('utf8')
+        child.stderr?.on('data', (chunk: string) => {
+          if (stderr.length < 4096) stderr += chunk
+        })
         child.once('error', reject)
         child.once('close', (exitCode, signal) => {
-          if (exitCode === 0) resolve()
-          else
-            reject(
-              new Error(
-                `${commandName} exited ${String(exitCode)}${signal === null ? '' : ` (${signal})`}`,
-              ),
-            )
+          if (exitCode === 0) {
+            resolve()
+            return
+          }
+          const detail = stderr.trim()
+          reject(
+            new Error(
+              `${commandName} exited ${String(exitCode)}${signal === null ? '' : ` (${signal})`}: ${binary} ${args.join(' ')}${detail === '' ? ' (no stderr)' : `\n${detail}`}`,
+            ),
+          )
         })
       }),
   })
