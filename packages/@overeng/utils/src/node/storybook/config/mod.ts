@@ -120,7 +120,7 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
     viteFinal,
   } = options
 
-  const resolvedAddons = a11y ? [...(addons ?? []), '@storybook/addon-a11y'] : addons
+  const resolvedAddons = a11y === true ? [...(addons ?? []), '@storybook/addon-a11y'] : addons
 
   const config = {
     stories,

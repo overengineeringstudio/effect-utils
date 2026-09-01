@@ -76,7 +76,7 @@ const runGit = ({ args, cwd }: { args: readonly string[]; cwd: string }): string
 }
 
 const listPngs = (root: string): string[] => {
-  if (!existsSync(root)) return []
+  if (existsSync(root) === false) return []
   return readdirSync(root, { withFileTypes: true, recursive: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith('.png'))
     .map((entry) => join(entry.parentPath, entry.name))
@@ -101,7 +101,7 @@ const linkNodeModules = ({
   for (const packageDir of ['', ...packageDirs]) {
     const source = join(repoRoot, packageDir, 'node_modules')
     const target = join(worktreeDir, packageDir, 'node_modules')
-    if (!existsSync(source) || existsSync(target)) continue
+    if (existsSync(source) === false || existsSync(target) === true) continue
     symlinkSync(source, target, 'dir')
   }
 }
@@ -135,7 +135,7 @@ const runVitest = ({
       'json',
       '--outputFile',
       reportFile,
-      ...(update ? ['--update'] : []),
+      ...(update === true ? ['--update'] : []),
     ],
     {
       cwd,
@@ -165,7 +165,7 @@ const parseAssertions = ({
   reportFile: string
   output: string
 }): readonly VitestJsonAssertion[] => {
-  if (!existsSync(reportFile)) {
+  if (existsSync(reportFile) === false) {
     throw new Error(`[story-gate] Vitest produced no JSON report:\n${output}`)
   }
   const report = JSON.parse(readFileSync(reportFile, 'utf8')) as {
@@ -175,9 +175,12 @@ const parseAssertions = ({
 }
 
 const classify = (message: string): StoryGateChangeKind => {
-  if (message.includes('Expected image dimensions')) return 'dimensions'
-  if (message.includes('pixels (ratio')) return 'pixels'
-  if (message.includes('toHaveNoViolations') || message.includes('accessibility')) {
+  if (message.includes('Expected image dimensions') === true) return 'dimensions'
+  if (message.includes('pixels (ratio') === true) return 'pixels'
+  if (
+    message.includes('toHaveNoViolations') === true ||
+    message.includes('accessibility') === true
+  ) {
     return 'accessibility'
   }
   return 'other'
@@ -208,10 +211,10 @@ export const runStoryGate = async ({
   const completeMarker = join(baselineDir, '.complete')
   const scratchDir = mkdtempSync(join(tmpdir(), 'story-gate-'))
 
-  if (refresh) rmSync(baselineDir, { recursive: true, force: true })
+  if (refresh === true) rmSync(baselineDir, { recursive: true, force: true })
 
-  if (!existsSync(completeMarker)) {
-    if (!existsSync(worktreeDir)) {
+  if (existsSync(completeMarker) === false) {
+    if (existsSync(worktreeDir) === false) {
       mkdirSync(dirname(worktreeDir), { recursive: true })
       runGit({
         args: ['worktree', 'add', '--detach', '--force', worktreeDir, baselineSha],
@@ -245,7 +248,7 @@ export const runStoryGate = async ({
     // failing stories — an accessibility violation that already existed is not
     // something this change caused. What matters is that the capture produced
     // a report; the compare phase subtracts whatever failed on both sides.
-    if (!existsSync(baselineReportFile)) {
+    if (existsSync(baselineReportFile) === false) {
       throw new Error(`[story-gate] baseline capture at ${baselineRef} failed:\n${capture.output}`)
     }
     writeFileSync(completeMarker, `${baselineSha}\n`)
@@ -289,8 +292,8 @@ export const runStoryGate = async ({
   for (const failure of failures) {
     const story = failure.fullName ?? failure.title ?? '<unnamed>'
     const detail = (failure.failureMessages ?? []).join('\n').trim()
-    if (preExisting.has(story)) continue
-    if (detail.includes('No reference screenshot found')) {
+    if (preExisting.has(story) === true) continue
+    if (detail.includes('No reference screenshot found') === true) {
       added.push(story)
     } else {
       changed.push({ story, kind: classify(detail), detail })

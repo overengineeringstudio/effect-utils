@@ -76,9 +76,7 @@ const getCssPostTransformHandler = (cssPostPlugin) => {
  * @returns {Plugin[]}
  */
 export const createStylexVitePlugins = ({ externalPackages = [], entries = [] } = {}) => {
-  const deduplicatedExternalPackages = [
-    ...new Set(['@overeng/stylex-tokens', ...externalPackages]),
-  ]
+  const deduplicatedExternalPackages = [...new Set(['@overeng/stylex-tokens', ...externalPackages])]
   // `externalPackages` is supported at runtime (unplugin core destructures it)
   // but missing from @stylexjs/unplugin@0.19 UserOptions typings.
   const stylexOptions = /** @type {Parameters<typeof stylex.vite>[0]} */ ({
@@ -86,16 +84,20 @@ export const createStylexVitePlugins = ({ externalPackages = [], entries = [] } 
   })
 
   const upstream = stylex.vite(stylexOptions)
-  const collectCss = /** @type {{ __stylexCollectCss?: () => string }} */ (upstream)
-    .__stylexCollectCss
+  const collectCss = /** @type {{ __stylexCollectCss?: () => string }} */ (
+    upstream
+  ).__stylexCollectCss
   if (typeof collectCss !== 'function') {
     throw new Error(
       '[overeng:stylex] @stylexjs/unplugin no longer exposes `__stylexCollectCss`; the virtual-module injection path cannot read compiled rules.',
     )
   }
 
-  const { generateBundle: _pickAssetInGenerateBundle, writeBundle: _appendToDisk, ...compiler } =
-    upstream
+  const {
+    generateBundle: _pickAssetInGenerateBundle,
+    writeBundle: _appendToDisk,
+    ...compiler
+  } = upstream
 
   const entryIds = new Set(entries)
 
@@ -115,7 +117,7 @@ export const createStylexVitePlugins = ({ externalPackages = [], entries = [] } 
     // migration relies on while a utility framework is still present.
     // oxlint-disable-next-line overeng/named-args -- Vite's Plugin transform hook has a fixed positional signature.
     transform: (code, id) =>
-      entryIds.has(stripQuery(id))
+      entryIds.has(stripQuery(id)) === true
         ? { code: `${code}\nimport ${JSON.stringify(stylexVirtualCssId)}\n`, map: null }
         : null,
   }
@@ -136,7 +138,7 @@ export const createStylexVitePlugins = ({ externalPackages = [], entries = [] } 
     // oxlint-disable-next-line overeng/named-args -- Vite's Plugin renderChunk hook has a fixed positional signature.
     renderChunk: async function (_code, chunk) {
       const modules = /** @type {{ modules: Record<string, unknown> }} */ (chunk).modules
-      if (!Object.hasOwn(modules, resolvedStylexVirtualCssId)) {
+      if (Object.hasOwn(modules, resolvedStylexVirtualCssId) === false) {
         return null
       }
 
@@ -156,7 +158,7 @@ export const createStylexVitePlugins = ({ externalPackages = [], entries = [] } 
     // assert `viteMetadata.importedCss`. This only refuses to exit zero after
     // compiling rules that nothing in the bundle can reach.
     generateBundle: () => {
-      if (swapped || collectCss() === '') return
+      if (swapped === true || collectCss() === '') return
       throw new Error(
         `[overeng:stylex] compiled StyleX rules exist but no chunk imported ${stylexVirtualCssId}, so they would be dropped from this build. Name the build entry in \`entries\`.`,
       )

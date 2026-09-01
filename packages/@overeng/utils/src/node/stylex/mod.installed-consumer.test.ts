@@ -22,9 +22,13 @@ it('loads the StyleX Vite entry from a node_modules-installed consumer', () => {
   try {
     mkdirSync(installedPackage, { recursive: true })
     cpSync(join(packageRoot, 'package.json'), join(installedPackage, 'package.json'))
-    cpSync(join(packageRoot, 'src', 'node', 'stylex'), join(installedPackage, 'src', 'node', 'stylex'), {
-      recursive: true,
-    })
+    cpSync(
+      join(packageRoot, 'src', 'node', 'stylex'),
+      join(installedPackage, 'src', 'node', 'stylex'),
+      {
+        recursive: true,
+      },
+    )
     for (const dependency of ['@stylexjs/unplugin', 'unplugin']) {
       const target = join(consumerRoot, 'node_modules', dependency)
       mkdirSync(join(target, '..'), { recursive: true })

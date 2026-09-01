@@ -161,7 +161,5 @@ export const createStoryGateConfig = ({
     createProject({ configDir, theme, headless, baselineRoot }),
   )
 
-  return projects.length === 1 && projects[0] !== undefined
-    ? projects[0]
-    : { test: { projects } }
+  return projects.length === 1 && projects[0] !== undefined ? projects[0] : { test: { projects } }
 }

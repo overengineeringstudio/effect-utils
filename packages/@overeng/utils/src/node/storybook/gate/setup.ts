@@ -7,10 +7,10 @@
  * @module
  */
 
-import { beforeAll } from 'vitest'
+import { setProjectAnnotations } from 'storybook/internal/preview-api'
 // oxlint-disable-next-line import/no-unresolved -- emitted by the Storybook Vite builder that `storybookTest` installs.
 import { getProjectAnnotations } from 'virtual:/@storybook/builder-vite/project-annotations.js'
-import { setProjectAnnotations } from 'storybook/internal/preview-api'
+import { beforeAll } from 'vitest'
 
 import { storyGateAnnotations } from './annotations.ts'
 
@@ -24,5 +24,5 @@ import { storyGateAnnotations } from './annotations.ts'
  */
 beforeAll(() => {
   const base = getProjectAnnotations()
-  setProjectAnnotations([...(Array.isArray(base) ? base : [base]), storyGateAnnotations])
+  setProjectAnnotations([...(Array.isArray(base) === true ? base : [base]), storyGateAnnotations])
 })
