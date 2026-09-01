@@ -35,6 +35,7 @@ import {
   initGitRepo,
   runGitCommand,
 } from '../test-utils/setup.ts'
+import { makeCanonicalTempDirectoryScoped } from '../test-utils/temp-root.ts'
 import { mrCommand } from './mod.ts'
 import { StatusState } from './renderers/StatusOutput/schema.ts'
 
@@ -84,7 +85,7 @@ const createTestWorkspace = (args: {
     const fs = yield* FileSystem.FileSystem
 
     // Create temp directory for workspace
-    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* makeCanonicalTempDirectoryScoped()}/`)
     const workspacePath = EffectPath.ops.join(
       tmpDir,
       EffectPath.unsafe.relativeDir('test-workspace/'),
@@ -155,10 +156,10 @@ describe('mr status --output json', () => {
       'should report syncNeeded=false when workspace is fully synced',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a local repo to symlink to
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'local-lib' },
@@ -276,10 +277,10 @@ describe('mr status --output json', () => {
       'should report symlinkExists=true when symlink is present',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a local repo
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'my-lib' },
@@ -342,10 +343,10 @@ describe('mr status --output json', () => {
       'should report commitDrift when local commit differs from locked commit',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a repo that will have a different commit than the lock
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'drifted-lib' },
@@ -386,10 +387,10 @@ describe('mr status --output json', () => {
       'should not report commitDrift when commits match',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a repo
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'synced-lib' },
@@ -427,10 +428,10 @@ describe('mr status --output json', () => {
       'should not report commitDrift for local path members',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a local repo
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'local-lib' },
@@ -466,10 +467,10 @@ describe('mr status --output json', () => {
       'should correctly report status for mixed local and remote members',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a local repo
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const localRepoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'local-lib' },
@@ -527,7 +528,7 @@ describe('mr status --output json', () => {
         function* () {
           const fs = yield* FileSystem.FileSystem
           const workspacePath = EffectPath.unsafe.absoluteDir(
-            `${yield* fs.makeTempDirectoryScoped()}/`,
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
           )
           yield* Effect.addFinalizer(() =>
             Effect.promise(async () => {
@@ -678,7 +679,9 @@ describe('mr status --output json', () => {
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const workspaceA = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('a/'))
           const workspaceB = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('b/'))
 

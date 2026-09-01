@@ -12,6 +12,7 @@ import * as Git from '../../core/git.ts'
 import { createLockedMember, LockFile } from '../../core/lock.ts'
 import type { MegarepoStore } from '../../store/store.ts'
 import { addCommit, initGitRepo } from '../../test-utils/setup.ts'
+import { makeCanonicalTempDirectoryScoped } from '../../test-utils/temp-root.ts'
 import {
   CompositionCutoverError,
   compositionCacheSections,
@@ -27,7 +28,7 @@ interface Fixture {
 
 const makeFixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
-  const root = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+  const root = EffectPath.unsafe.absoluteDir(`${yield* makeCanonicalTempDirectoryScoped()}/`)
   const seed = EffectPath.ops.join(root, EffectPath.unsafe.relativeDir('seed/'))
   const repoBase = EffectPath.ops.join(
     root,
@@ -183,7 +184,7 @@ describe('reference-only member lock lookup', () => {
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
-        const workspaceRoot = yield* fs.makeTempDirectoryScoped()
+        const workspaceRoot = yield* makeCanonicalTempDirectoryScoped()
         const ownedMemberPath = NodePath.join(workspaceRoot, 'repos', 'owned')
         yield* fs.makeDirectory(ownedMemberPath, { recursive: true })
         yield* fs.writeFileString(

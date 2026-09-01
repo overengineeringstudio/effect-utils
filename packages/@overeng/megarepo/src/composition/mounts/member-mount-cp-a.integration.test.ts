@@ -17,11 +17,12 @@ import * as NodePath from 'node:path'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Fiber, type Scope } from 'effect'
-import * as FileSystem from 'effect/FileSystem'
+import type * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import { expect } from 'vitest'
 
 import { resolvePinnedCoreutils } from '../../test-utils/coreutils.ts'
+import { makeCanonicalTempDirectoryScoped } from '../../test-utils/temp-root.ts'
 import {
   cpAMemberMountDestinationPath,
   cpAMemberMountTransactionPath,
@@ -87,8 +88,7 @@ const makeFixture = (): Effect.Effect<
   FileSystem.FileSystem | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const workspaceRoot = yield* fs.makeTempDirectoryScoped()
+    const workspaceRoot = yield* makeCanonicalTempDirectoryScoped()
     yield* Effect.addFinalizer(() => forceRemoveTree(workspaceRoot))
     const sourceA = NodePath.join(workspaceRoot, 'store-a')
     const sourceB = NodePath.join(workspaceRoot, 'store-b')

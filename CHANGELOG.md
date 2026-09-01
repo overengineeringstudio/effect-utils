@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo tests**: composition refuses non-canonical paths on
+  purpose — R6 identity, owned-worktree acquisition and the private-scratch
+  ownership guard all require the physical path — but eight integration fixtures
+  rooted their trees at a raw temporary directory, which on macOS is under the
+  `/var` -> `/private/var` symlink. Every one of those guards then refused a
+  fixture that real callers would have satisfied: 56 failures across 8 files.
+  The fixtures now root at the physical temporary directory, the way
+  `createStoreFixture` already did, via a shared
+  `test-utils/temp-root.ts`. No guard is weakened; production is unchanged.
+
 - **CI composition scripts**: `cleanup-effect-utils-composition.sh` derived its
   store, workspace and worktree paths from `MEGAREPO_STORE`/`RUNNER_TEMP`
   verbatim but compared them against Git, which always answers with resolved

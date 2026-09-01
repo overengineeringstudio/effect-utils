@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -45,7 +46,12 @@ const withWrapperFixture = async <T>(
     readonly env: NodeJS.ProcessEnv
   }) => Promise<T> | T,
 ): Promise<T> => {
-  const directory = await mkdtemp(join(tmpdir(), 'megarepo-composition-wrapper-'))
+  // Root the fixture at the physical temp dir. Composition refuses non-canonical
+  // paths on purpose (the private-scratch identity guard compares realpath against
+  // the path it was handed), and real callers reach it through paths the store or
+  // Git already resolved. On macOS `os.tmpdir()` is under the /var -> /private/var
+  // symlink; where nothing above it is a symlink this is the identity.
+  const directory = await mkdtemp(join(realpathSync(tmpdir()), 'megarepo-composition-wrapper-'))
   try {
     const fakeDirectory = join(directory, "fake buck's directory")
     const fakeBuck = join(fakeDirectory, "buck2's fake")

@@ -9,6 +9,7 @@ import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import { expect } from 'vitest'
 
+import { makeCanonicalTempDirectoryScoped } from '../../test-utils/temp-root.ts'
 import {
   assertOwnedCpAMountIdentity,
   computeR6SourcePathIdentity,
@@ -111,7 +112,7 @@ const makeFixture = (
 ): Effect.Effect<string, PlatformError, FileSystem.FileSystem | Scope.Scope> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const parent = yield* fs.makeTempDirectoryScoped()
+    const parent = yield* makeCanonicalTempDirectoryScoped()
     const root = NodePath.join(parent, 'tree')
     yield* fs.makeDirectory(root, { recursive: true })
     yield* Effect.addFinalizer(() => setTreeWritable(root).pipe(Effect.ignore))
@@ -138,7 +139,7 @@ const makeProtectedTreeAt = (
 const makeOwnedFixture = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const workspaceRoot = yield* fs.makeTempDirectoryScoped()
+    const workspaceRoot = yield* makeCanonicalTempDirectoryScoped()
     const member = 'dep'
     const mountPath = NodePath.join(workspaceRoot, 'repos', member)
     yield* fs.makeDirectory(mountPath, { recursive: true })
@@ -710,7 +711,7 @@ describe('owned cp-a metadata and inspection', () => {
     'preserves S0 Missing and Symlink classifications without treating them as owned',
     Effect.fnUntraced(function* () {
       const fs = yield* FileSystem.FileSystem
-      const workspaceRoot = yield* fs.makeTempDirectoryScoped()
+      const workspaceRoot = yield* makeCanonicalTempDirectoryScoped()
       const expected = {
         member: 'dep',
         lockedCommit: 'a'.repeat(40),
@@ -806,7 +807,7 @@ describe('owned cp-a metadata and inspection', () => {
     'computes a stable source-path identity from realpath aliases',
     Effect.fnUntraced(function* () {
       const fs = yield* FileSystem.FileSystem
-      const parent = yield* fs.makeTempDirectoryScoped()
+      const parent = yield* makeCanonicalTempDirectoryScoped()
       const source = NodePath.join(parent, 'source')
       const alias = NodePath.join(parent, 'alias')
       yield* fs.makeDirectory(source)

@@ -21,6 +21,7 @@ import { EffectPath } from '@overeng/effect-path'
 
 import { findMegarepoRoot } from '../../cli/context.ts'
 import * as Git from '../../core/git.ts'
+import { makeCanonicalTempDirectoryScoped } from '../../test-utils/temp-root.ts'
 import { OWNED_WORKTREE_ROOT_MANIFEST } from './owned-worktree-acquisition-schema.ts'
 import {
   acquireOwnedWorktree,
@@ -53,7 +54,7 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
 
 const makeFixture = Effect.fnUntraced(function* () {
   const fs = yield* FileSystem.FileSystem
-  const tmp = yield* fs.makeTempDirectoryScoped()
+  const tmp = yield* makeCanonicalTempDirectoryScoped()
   const source = NodePath.join(tmp, 'source')
   const bareRepo = NodePath.join(tmp, 'repo.git')
   const workspaceRoot = NodePath.join(tmp, 'workspace')

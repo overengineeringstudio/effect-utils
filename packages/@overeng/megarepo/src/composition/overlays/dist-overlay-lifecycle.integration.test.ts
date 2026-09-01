@@ -13,10 +13,11 @@ import * as NodePath from 'node:path'
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Schema, type Scope } from 'effect'
-import * as FileSystem from 'effect/FileSystem'
+import type * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { resolvePinnedCoreutils } from '../../test-utils/coreutils.ts'
+import { makeCanonicalTempDirectoryScoped } from '../../test-utils/temp-root.ts'
 import {
   makeOwnedCpAMountMetadata,
   scanR6ProtectedMount,
@@ -86,8 +87,7 @@ const makeArtifact = async (path: string, content: string): Promise<void> => {
 
 const makeFixture = ({ withSymlinkParent = false }: { withSymlinkParent?: boolean } = {}) =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const workspaceRoot = yield* fs.makeTempDirectoryScoped()
+    const workspaceRoot = yield* makeCanonicalTempDirectoryScoped()
     const member = 'dep'
     const mountPath = NodePath.join(workspaceRoot, 'repos', member)
     const artifactA = NodePath.join(workspaceRoot, 'artifacts', 'a')

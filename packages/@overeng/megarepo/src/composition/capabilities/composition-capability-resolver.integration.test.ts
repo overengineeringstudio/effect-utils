@@ -79,7 +79,12 @@ interface Fixture {
 const makeFixture = async ({
   projector,
 }: { readonly projector?: string } = {}): Promise<Fixture> => {
-  const root = await mkdtemp(NodePath.join(tmpdir(), 'megarepo-capability-resolver-'))
+  // Root the fixture at the physical temp dir. Composition refuses non-canonical
+  // paths on purpose (the private-scratch identity guard compares realpath against
+  // the path it was handed), and real callers reach it through paths the store or
+  // Git already resolved. On macOS `os.tmpdir()` is under the /var -> /private/var
+  // symlink; where nothing above it is a symlink this is the identity.
+  const root = await mkdtemp(NodePath.join(realpathSync(tmpdir()), 'megarepo-capability-resolver-'))
   const memberRoot = NodePath.join(root, 'member')
   const scratchRoot = NodePath.join(root, 'scratch')
   const scripts = NodePath.join(memberRoot, 'scripts')
