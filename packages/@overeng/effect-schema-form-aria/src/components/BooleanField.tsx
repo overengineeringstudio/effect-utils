@@ -60,6 +60,7 @@ const styles = stylex.create({
   check: {
     width: '0.75rem',
     height: '0.75rem',
+    // oxlint-disable-next-line overeng/stylex-no-raw-color, @stylexjs/valid-styles -- needs a semantic `onPrimary` token; see #1171
     color: '#ffffff',
     opacity: 0,
     transitionProperty: 'opacity',

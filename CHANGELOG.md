@@ -58,6 +58,40 @@ All notable changes to this project will be documented in this file.
   incidental as `PluginContextMeta.rolldownVersion`. Since every plugin member
   except `name` is optional in both majors, one required `name` stays assignable
   to `PluginOption` everywhere while imposing nothing.
+- **@overeng/oxc-config**: StyleX enforcement, as two deliberately complementary
+  layers. New first-party rules `overeng/stylex-no-raw-color` (bans raw colour
+  literals as values inside `stylex.create`, including colours embedded in
+  composite values such as `boxShadow` and gradients, while leaving the token
+  layer — `defineConsts`/`defineVars`/`createTheme` — alone) and
+  `overeng/stylex-outline-focus-visible-only` (reserves `outline`,
+  `outlineOffset` and `outlineColor` for the focus-visible state, so a selection
+  or pressed state cannot silently outrank the focus ring). The upstream
+  `@stylexjs/eslint-plugin` rules are adopted alongside them under their
+  documented `@stylexjs/*` names via a new namespace-shim plugin entry;
+  `stylexOxlintRules` in `genie/oxlint-base.ts` is the shared policy, and it
+  enumerates colour properties explicitly because a `*olor*` glob also matches
+  five keyword-valued properties. Upstream value limits are per-property and
+  cannot see inside a composite value, which is why both layers ship.
+  The pilot package `effect-schema-form-aria` — the reference implementation the
+  pattern was derived from — fails the enforcement the pattern produced, in 17
+  places. Each site carries a per-line `oxlint-disable-next-line` with a reason
+  rather than a file-scoped override, so new code there is still gated
+  (issue #1171).
+
+### Fixed
+
+- **nix/oxlint-with-plugins.nix**: three fixes to the oxlint wrapper.
+  `jsPlugins` entries other than ours are no longer discarded, so third-party JS
+  plugins can load beside `@overeng/oxc-config` (previously any such plugin
+  failed to resolve, and consumers grew local workarounds). `oxlint --config X`
+  with the config flag FIRST no longer exits 1 with no output at all — the
+  argument-rewrite loop used `((i++))`, which returns status 1 when `i` is 0 and
+  aborted the wrapper under `set -o errexit`, indistinguishable from a lint
+  failure in CI. And `OVERENG_OXC_CONFIG_PLUGIN` now overrides the injected
+  plugin path, so rule development can lint against live plugin source instead of
+  the Nix build-time snapshot (a newly added rule previously reported "not found
+  in plugin 'overeng'"). Covered by
+  `nix/devenv-modules/tasks/shared/tests/oxlint-plugin-injection.test.sh`.
 
 ### Changed
 

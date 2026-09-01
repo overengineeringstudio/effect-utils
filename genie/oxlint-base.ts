@@ -27,6 +27,11 @@ type OtelOxlintRulesArgs = {
   readonly unsafeContract?: OxlintRuleSeverity
 }
 
+type StylexOxlintRulesArgs = {
+  /** Severity for the whole StyleX enforcement set. Defaults to `error`. */
+  readonly severity?: OxlintRuleSeverity
+}
+
 /** Standard ignore patterns for oxlint across all repos */
 export const baseOxlintIgnorePatterns = [
   '**/node_modules/**',
@@ -79,6 +84,97 @@ export const otelOxlintRules = ({
   ({
     'overeng/no-raw-otel-primitives': rawOtel,
     'overeng/otel-contract-in-seam-file': contractSeam,
+  }) satisfies OxlintOverride['rules']
+
+/**
+ * CSS properties whose value IS a colour, enumerated explicitly.
+ *
+ * A colour-shaped glob (`*olor*`) is NOT usable here, measured: it also matches
+ * `colorScheme`, `colorAdjust`, `forcedColorAdjust`, `printColorAdjust` and
+ * `colorInterpolation`, which take keywords and would be wrongly banned.
+ *
+ * Deliberately excluded even though they do take colours: `fill`, `stroke`,
+ * `floodColor`, `stopColor` and `scrollbarColor`. Each legitimately accepts a
+ * value an allowlist would reject — `none`, an `url(#fragment)` paint reference,
+ * or a pair — so limiting them would produce false positives.
+ * `overeng/stylex-no-raw-color` still covers colour literals in those values.
+ */
+export const stylexColorProperties = [
+  'accentColor',
+  'backgroundColor',
+  'borderBlockColor',
+  'borderBlockEndColor',
+  'borderBlockStartColor',
+  'borderBottomColor',
+  'borderColor',
+  'borderInlineColor',
+  'borderInlineEndColor',
+  'borderInlineStartColor',
+  'borderLeftColor',
+  'borderRightColor',
+  'borderTopColor',
+  'caretColor',
+  'color',
+  'columnRuleColor',
+  'outlineColor',
+  'textDecorationColor',
+  'textEmphasisColor',
+  'WebkitTapHighlightColor',
+] as const
+
+/**
+ * Shared StyleX lint policy: two complementary enforcement layers.
+ *
+ * **Upstream** (`@stylexjs/*`, loaded via the namespace shim in
+ * `@overeng/oxc-config`) owns general style validation. Its per-property value
+ * limits are what close the core hazard: with a colour property limited to an
+ * allowlist, a literal colour errors while a semantic token reference from a
+ * `*.stylex.ts` module passes untouched. `sort-keys` is deliberately NOT enabled
+ * — it fights the `property-specificity` resolution the design relies on.
+ *
+ * **First-party** (`overeng/stylex-*`) owns what per-property limits structurally
+ * cannot reach. A value limit is keyed on one property, so it cannot see a colour
+ * embedded in a composite value; measured, a colour inside a `boxShadow` and
+ * inside a gradient both passed upstream validation. Banning composite properties
+ * outright is not viable because they need literal offsets.
+ *
+ * The overlap on plain colour properties is kept on purpose: an array `limit`
+ * drops its custom `reason` from the diagnostic, so only the first-party message
+ * names the remedy.
+ *
+ * See the stylex spec's "Enforcement" section and decision 0005 Amendment 2.
+ */
+export const stylexOxlintRules = ({
+  severity = 'error',
+}: StylexOxlintRulesArgs = {}): OxlintOverride['rules'] =>
+  ({
+    'overeng/stylex-no-raw-color': severity,
+    'overeng/stylex-outline-focus-visible-only': severity,
+
+    '@stylexjs/valid-styles': [
+      severity,
+      {
+        propLimits: Object.fromEntries(
+          stylexColorProperties.map((property) => [
+            property,
+            {
+              // Unioned by upstream with the CSS-wide keywords and `null`, so
+              // unsetting a colour still works. Everything else — including a
+              // hand-written `var()` — must come through a token reference.
+              limit: ['transparent', 'currentColor', 'currentcolor'],
+              // Currently dropped from the diagnostic for array limits; kept so
+              // it appears if upstream starts rendering it.
+              reason: 'Read colours from a semantic token exported by a `*.stylex.ts` module.',
+            },
+          ]),
+        ),
+      },
+    ] as const,
+    '@stylexjs/valid-shorthands': severity,
+    '@stylexjs/no-unused': severity,
+    '@stylexjs/no-legacy-contextual-styles': severity,
+    '@stylexjs/no-lookahead-selectors': severity,
+    '@stylexjs/enforce-extension': severity,
   }) satisfies OxlintOverride['rules']
 
 /** Standard rules shared across all repos */

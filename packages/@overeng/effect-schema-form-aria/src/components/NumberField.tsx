@@ -50,9 +50,11 @@ const styles = stylex.create({
     backgroundColor: tokens.input,
     color: tokens.ink,
     outline: 'none',
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':focus': {
       boxShadow: `0 0 0 1px ${tokens.primary}`,
     },
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':disabled': {
       opacity: 0.5,
     },
@@ -68,9 +70,11 @@ const styles = stylex.create({
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: tokens.border,
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':hover': {
       backgroundColor: tokens['surface-raised'],
     },
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':disabled': {
       opacity: 0.5,
     },
@@ -92,9 +96,11 @@ const styles = stylex.create({
     backgroundColor: tokens.input,
     color: tokens.ink,
     outline: 'none',
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':focus': {
       boxShadow: `0 0 0 1px ${tokens.primary}`,
     },
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':disabled': {
       opacity: 0.5,
       cursor: 'not-allowed',

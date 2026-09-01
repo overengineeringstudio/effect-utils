@@ -5,17 +5,34 @@ import {
   baseOxlintPlugins,
   baseOxlintRules,
   otelOxlintRules,
+  stylexOxlintRules,
 } from './genie/oxlint-base.ts'
 import { oxlintConfig, type OxlintConfigArgs } from './packages/@overeng/genie/src/runtime/mod.ts'
 
 /** Path to custom oxlint rules plugin */
 const OXC_PLUGIN_PATH = './packages/@overeng/oxc-config/src/mod.ts'
 
+/**
+ * Path to the `@stylexjs` namespace shim, which re-exports the upstream
+ * `@stylexjs/eslint-plugin` rules. A second plugin entry rather than the bare
+ * package specifier, because upstream ships no `meta.name` and a bare specifier
+ * only resolves from the root `node_modules`, which this aggregate root cannot
+ * carry a dependency in. See that file's header.
+ */
+const STYLEX_UPSTREAM_PLUGIN_PATH =
+  './packages/@overeng/oxc-config/src/stylex-upstream-plugin.ts'
+
 export default oxlintConfig({
   plugins: baseOxlintPlugins,
-  jsPlugins: [OXC_PLUGIN_PATH],
+  jsPlugins: [OXC_PLUGIN_PATH, STYLEX_UPSTREAM_PLUGIN_PATH],
   categories: baseOxlintCategories,
-  rules: baseOxlintRules,
+  rules: {
+    ...baseOxlintRules,
+    // StyleX enforcement, both layers (decision 0005 Amendment 2). Repo-wide
+    // rather than scoped, so a target becomes gated the moment it starts using
+    // StyleX — the rules are inert in files that never call the StyleX API.
+    ...stylexOxlintRules(),
+  },
   ignorePatterns: [
     ...baseOxlintIgnorePatterns,
     // The emitted Weaver registry directory: generated YAML/TS bindings + thin codegen glue

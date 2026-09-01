@@ -74,17 +74,20 @@ const styles = stylex.create({
     borderRightColor: tokens.border,
     transitionProperty: 'background-color, color',
     transitionDuration: '150ms',
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':last-child': {
       borderRightWidth: 0,
     },
   },
   segmentUnselected: {
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':hover': {
       backgroundColor: tokens['surface-raised'],
     },
   },
   segmentSelected: {
     backgroundColor: tokens.primary,
+    // oxlint-disable-next-line overeng/stylex-no-raw-color, @stylexjs/valid-styles -- needs a semantic `onPrimary` token; see #1171
     color: '#ffffff',
   },
   root: {
@@ -108,9 +111,11 @@ const styles = stylex.create({
     backgroundColor: tokens.input,
     color: tokens.ink,
     outline: 'none',
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':focus': {
       boxShadow: `0 0 0 1px ${tokens.primary}`,
     },
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':disabled': {
       opacity: 0.5,
     },
@@ -131,6 +136,7 @@ const styles = stylex.create({
     borderStyle: 'solid',
     borderColor: tokens.border,
     backgroundColor: tokens.surface,
+    // oxlint-disable-next-line overeng/stylex-no-raw-color -- needs a scheme-varying elevation-shadow token; see #1171
     boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
   },
   listBox: {
@@ -148,6 +154,7 @@ const styles = stylex.create({
     borderRadius: radii.default,
   },
   optionUnselected: {
+    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
     ':hover': {
       backgroundColor: tokens['surface-raised'],
     },
@@ -160,6 +167,7 @@ const styles = stylex.create({
   },
   optionSelected: {
     backgroundColor: tokens.primary,
+    // oxlint-disable-next-line overeng/stylex-no-raw-color, @stylexjs/valid-styles -- needs a semantic `onPrimary` token; see #1171
     color: '#ffffff',
   },
   hint: {
