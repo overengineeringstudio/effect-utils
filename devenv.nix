@@ -751,7 +751,9 @@ in
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun test genie/buck2/*.unit.test.ts
+      # Directory, not a flat glob: genie/buck2/vitest.config.ts includes
+      # `**/*.unit.test.ts`, and Bun discovers recursively the same way.
+      exec ${pkgs.bun}/bin/bun test genie/buck2/
     '';
     execIfModified = [
       "BUCK"
