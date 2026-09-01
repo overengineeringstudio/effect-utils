@@ -375,8 +375,7 @@ export const composePushBody = (opts: {
     readonly localHref?: string
   }[]
 }): string => {
-  const pushBody = stripMaterializedChildLinks({ body: opts.resolvedBody, children: opts.children })
-  const trimmed = pushBody.replace(/\n+$/u, '')
+  const trimmed = opts.resolvedBody.replace(/\n+$/u, '')
   if (opts.children.length === 0) return normalizeMarkdownLineEndings(`${trimmed}\n`)
   const anchors = opts.children
     .map((child) => `<page url="${pageUrl(child.pageId)}">${child.title}</page>`)
@@ -524,15 +523,11 @@ const composeTreePushBody = (opts: {
   readonly relPath: string
   readonly resolvedBody: string
   readonly children: readonly ChildIndexChild[]
-}): Effect.Effect<string, NmdError> => {
-  const resolvedBody = stripMaterializedChildLinks({
-    body: opts.resolvedBody,
-    children: opts.children,
-  })
-  return childAnchors(resolvedBody).length === 0
+}): Effect.Effect<string, NmdError> =>
+  childAnchors(opts.resolvedBody).length === 0
     ? Effect.succeed(
         composePushBody({
-          resolvedBody,
+          resolvedBody: opts.resolvedBody,
           children: opts.children.flatMap((child) =>
             child.pageId === undefined
               ? []
@@ -546,14 +541,13 @@ const composeTreePushBody = (opts: {
           ),
         }),
       )
-    : validateAndFillChildAnchors({ ...opts, resolvedBody }).pipe(
+    : validateAndFillChildAnchors(opts).pipe(
         Effect.map((body) =>
           normalizeMarkdownLineEndings(
             `${blankLineSeparateChildAnchors(body).replace(/\n+$/u, '')}\n`,
           ),
         ),
       )
-}
 
 /** Re-render a file with the real `page_id`/`url` bound in (keeps body + title). */
 const bindFrontmatter = (opts: {
@@ -746,6 +740,7 @@ const syncTreeLocal = (opts: {
     const store = yield* NmdStateStore
     const { root, rootFile, rootPageId, pages, previous, plan } = opts
     const stateAnchor = treeStateAnchor(root)
+    const stripMaterializedLinks = previous?.authority === 'remote'
     const rootRel = rootFile
     const rootPage = pages.find((page) => page.relPath === rootRel)
     if (rootPage === undefined) {
@@ -873,7 +868,7 @@ const syncTreeLocal = (opts: {
     }
 
     if (plan === true) {
-      yield* classifyPlan({ root, pages, idForRelPath, slugMap, ops })
+      yield* classifyPlan({ root, pages, idForRelPath, slugMap, ops, stripMaterializedLinks })
       const liveIds = new Set(idForRelPath.values())
       for (const [relPath, pageId] of Object.entries(previous?.pages ?? {})) {
         if (liveIds.has(pageId) === false) {
@@ -916,7 +911,10 @@ const syncTreeLocal = (opts: {
       const pageId = idForRelPath.get(page.relPath)
       if (pageId === undefined) continue
       const children = childrenOf.get(page.relPath) ?? []
-      const bodyForPush = stripMaterializedChildLinks({ body: page.body, children })
+      const bodyForPush =
+        stripMaterializedLinks === true
+          ? stripMaterializedChildLinks({ body: page.body, children })
+          : page.body
       const resolvedBody = yield* resolveCrossRefs({
         body: bodyForPush,
         relPath: page.relPath,
@@ -1086,6 +1084,7 @@ const classifyPlan = (opts: {
   readonly idForRelPath: ReadonlyMap<string, string>
   readonly slugMap: ReadonlyMap<string, string>
   readonly ops: TreeOp[]
+  readonly stripMaterializedLinks: boolean
 }): Effect.Effect<void, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
     const childrenOf = childIndexChildrenByParent({
@@ -1098,7 +1097,10 @@ const classifyPlan = (opts: {
       if (opts.ops.some((op) => op.relPath === page.relPath && op._tag === 'move') === true)
         continue
       const children = childrenOf.get(page.relPath) ?? []
-      const bodyForPush = stripMaterializedChildLinks({ body: page.body, children })
+      const bodyForPush =
+        opts.stripMaterializedLinks === true
+          ? stripMaterializedChildLinks({ body: page.body, children })
+          : page.body
       const resolved = yield* resolveCrossRefs({
         body: bodyForPush,
         relPath: page.relPath,
@@ -1407,25 +1409,32 @@ const syncTreeFromRemote = (opts: {
         .exists(path)
         .pipe(Effect.mapError((cause) => makeFsError({ operation: 'exists', path, cause })))
       const previousRelPath = previousRelPathByPageId.get(node.pageId)
-      let unindexedSamePage = false
-      if (exists === true && previousPageIdByRelPath.has(node.relPath) === false) {
+      let samePageAtExistingPath = false
+      if (exists === true) {
         const existingFile = yield* store.readNmdFile({ path }).pipe(
           Effect.flatMap((content) => parseNmdFile({ path, content })),
           Effect.result,
         )
-        unindexedSamePage =
-          existingFile._tag === 'Success' &&
-          existingFile.success.frontmatter.notion_md.page_id === node.pageId
-        if (unindexedSamePage === false) {
+        const existingPageId =
+          existingFile._tag === 'Success'
+            ? existingFile.success.frontmatter.notion_md.page_id
+            : undefined
+        const trackedPageId = previousPageIdByRelPath.get(node.relPath)
+        samePageAtExistingPath = existingPageId === node.pageId
+        const isTrackedOccupant = trackedPageId !== undefined && existingPageId === trackedPageId
+        if (samePageAtExistingPath === false && isTrackedOccupant === false) {
           return yield* new NmdCliError({
-            message: `Refusing to overwrite untracked local file ${path} while mirroring page ${node.pageId}`,
+            message:
+              trackedPageId === undefined
+                ? `Refusing to overwrite untracked local file ${path} while mirroring page ${node.pageId}`
+                : `Refusing to overwrite tracked local file ${path}: expected page ${trackedPageId}, found ${existingPageId ?? 'no page identity'}`,
           })
         }
       }
       const op: TreeOp =
         previousRelPath !== undefined && previousRelPath !== node.relPath
           ? { _tag: 'move', relPath: node.relPath, pageId: node.pageId }
-          : exists === true && (previousRelPath === node.relPath || unindexedSamePage === true)
+          : exists === true && (previousRelPath === node.relPath || samePageAtExistingPath === true)
             ? { _tag: 'update', relPath: node.relPath, pageId: node.pageId }
             : { _tag: 'materialize', relPath: node.relPath, pageId: node.pageId }
       ops.push(op)

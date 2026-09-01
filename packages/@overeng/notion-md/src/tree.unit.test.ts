@@ -1020,6 +1020,21 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
+  it('preserves user-authored links to child files in local-authoritative trees', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(
+        join(dir, 'index.nmd'),
+        unbound({ title: 'Root', body: 'Root.\n\n[Read the details](alpha.nmd)' }),
+      )
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+
+      expect(fake.remoteBody(rootPageId)).toContain('[Read the details](https://app.notion.com/p/')
+    })
+  })
+
   it('strips derived child anchors from from-remote file bodies while keeping composed baselines', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
@@ -1228,6 +1243,57 @@ describe('track path routing', () => {
         `Refusing to overwrite untracked local file ${unknownPath}`,
       )
       expect(await readFile(unknownPath, 'utf8')).toBe('unknown local file\n')
+    })
+  })
+
+  it('refuses to overwrite a tracked path rebound to another page', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const alphaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Alpha',
+        markdown: 'Alpha body.\n',
+      })
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+      const alphaPath = join(dir, 'alpha.nmd')
+      const reboundId = '99999999-9999-4999-8999-999999999999'
+      const reboundFile = (await readFile(alphaPath, 'utf8')).replaceAll(alphaId, reboundId)
+      await writeFile(alphaPath, reboundFile)
+
+      await expect(run(syncPath({ path: dir }), fake)).rejects.toThrow(
+        `Refusing to overwrite tracked local file ${alphaPath}: expected page ${alphaId}, found ${reboundId}`,
+      )
+      expect(await readFile(alphaPath, 'utf8')).toBe(reboundFile)
+    })
+  })
+
+  it('allows remote page moves between paths occupied by their tracked predecessors', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const alphaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Alpha',
+        markdown: 'Alpha body.\n',
+      })
+      const betaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Beta',
+        markdown: 'Beta body.\n',
+      })
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+
+      fake.renameRemote(alphaId, 'Beta')
+      fake.renameRemote(betaId, 'Alpha')
+      const result = await run(syncPath({ path: dir }), fake)
+
+      expect(result._tag === 'tree' ? result.ops : []).toEqual(
+        expect.arrayContaining([
+          { _tag: 'move', relPath: 'beta.nmd', pageId: alphaId },
+          { _tag: 'move', relPath: 'alpha.nmd', pageId: betaId },
+        ]),
+      )
+      expect(await readFile(join(dir, 'alpha.nmd'), 'utf8')).toContain(`"page_id": "${betaId}"`)
+      expect(await readFile(join(dir, 'beta.nmd'), 'utf8')).toContain(`"page_id": "${alphaId}"`)
     })
   })
 
