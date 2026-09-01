@@ -49,17 +49,11 @@ const styles = stylex.create({
     backgroundColor: tokens.input,
     color: tokens.ink,
     outline: 'none',
-    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
-    ':focus': {
-      boxShadow: `0 0 0 1px ${tokens.primary}`,
-    },
+    boxShadow: { default: null, '[data-focus-visible]': `0 0 0 1px ${tokens.primary}` },
+    opacity: { default: 1, ':disabled': 0.5 },
+    cursor: { default: null, ':disabled': 'not-allowed' },
     '::placeholder': {
       color: tokens['subtle-ink'],
-    },
-    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
-    ':disabled': {
-      opacity: 0.5,
-      cursor: 'not-allowed',
     },
   },
   description: {

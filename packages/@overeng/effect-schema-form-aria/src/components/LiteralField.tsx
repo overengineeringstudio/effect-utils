@@ -68,27 +68,21 @@ const styles = stylex.create({
     fontSize: fontSizes.sm,
     lineHeight: '1.25rem',
     color: tokens.ink,
-    backgroundColor: tokens.surface,
-    borderRightWidth: 1,
+    backgroundColor: { default: tokens.surface, ':hover': tokens['surface-raised'] },
+    borderRightWidth: { default: 1, ':last-child': 0 },
     borderRightStyle: 'solid',
     borderRightColor: tokens.border,
     transitionProperty: 'background-color, color',
     transitionDuration: '150ms',
-    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
-    ':last-child': {
-      borderRightWidth: 0,
-    },
-  },
-  segmentUnselected: {
-    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
-    ':hover': {
-      backgroundColor: tokens['surface-raised'],
-    },
   },
   segmentSelected: {
-    backgroundColor: tokens.primary,
-    // oxlint-disable-next-line overeng/stylex-no-raw-color, @stylexjs/valid-styles -- needs a semantic `onPrimary` token; see #1171
-    color: '#ffffff',
+    // Applied as the argument after `segment`, so it is the last write to both
+    // properties and wins by application order rather than by which condition
+    // kind happens to outrank which. The hover value is restated rather than
+    // left to fall through: `segment` sets `backgroundColor` under a `:hover`
+    // key, and a later unconditional `backgroundColor` does not replace that key.
+    backgroundColor: { default: tokens.primary, ':hover': tokens.primary },
+    color: tokens['on-primary'],
   },
   root: {
     display: 'grid',
@@ -110,15 +104,13 @@ const styles = stylex.create({
     borderColor: tokens.border,
     backgroundColor: tokens.input,
     color: tokens.ink,
+    // `outline` is reserved for the focus ring design-system-wide, so the base
+    // only suppresses the user-agent one. React Aria's own focus-visible state
+    // is preferred over `:focus`: it normalises across input modalities, so a
+    // pointer click no longer paints a keyboard focus ring.
     outline: 'none',
-    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
-    ':focus': {
-      boxShadow: `0 0 0 1px ${tokens.primary}`,
-    },
-    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
-    ':disabled': {
-      opacity: 0.5,
-    },
+    boxShadow: { default: null, '[data-focus-visible]': `0 0 0 1px ${tokens.primary}` },
+    opacity: { default: 1, ':disabled': 0.5 },
   },
   triggerValue: {
     flexGrow: 1,
@@ -136,8 +128,7 @@ const styles = stylex.create({
     borderStyle: 'solid',
     borderColor: tokens.border,
     backgroundColor: tokens.surface,
-    // oxlint-disable-next-line overeng/stylex-no-raw-color -- needs a scheme-varying elevation-shadow token; see #1171
-    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+    boxShadow: tokens['shadow-raised'],
   },
   listBox: {
     outline: 'none',
@@ -152,12 +143,7 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     cursor: 'pointer',
     borderRadius: radii.default,
-  },
-  optionUnselected: {
-    // oxlint-disable-next-line @stylexjs/no-legacy-contextual-styles, @stylexjs/valid-styles -- deprecated top-level pseudo-class; nesting it changes condition precedence, so it needs the visual gate. See #1171
-    ':hover': {
-      backgroundColor: tokens['surface-raised'],
-    },
+    backgroundColor: { default: null, ':hover': tokens['surface-raised'] },
   },
   optionMuted: {
     color: tokens['subtle-ink'],
@@ -166,9 +152,9 @@ const styles = stylex.create({
     color: tokens.ink,
   },
   optionSelected: {
-    backgroundColor: tokens.primary,
-    // oxlint-disable-next-line overeng/stylex-no-raw-color, @stylexjs/valid-styles -- needs a semantic `onPrimary` token; see #1171
-    color: '#ffffff',
+    // Same ordering contract as `segmentSelected`.
+    backgroundColor: { default: tokens.primary, ':hover': tokens.primary },
+    color: tokens['on-primary'],
   },
   hint: {
     fontSize: '12px',
@@ -219,10 +205,8 @@ export const LiteralField = ({
                 key={opt.value}
                 id={opt.value}
                 className={({ isSelected }) =>
-                  stylex.props(
-                    styles.segment,
-                    isSelected === true ? styles.segmentSelected : styles.segmentUnselected,
-                  ).className ?? ''
+                  stylex.props(styles.segment, isSelected === true && styles.segmentSelected)
+                    .className ?? ''
                 }
               >
                 {opt.label}
@@ -262,7 +246,7 @@ export const LiteralField = ({
                 stylex.props(
                   styles.option,
                   styles.optionMuted,
-                  isSelected === true ? styles.optionSelected : styles.optionUnselected,
+                  isSelected === true && styles.optionSelected,
                 ).className ?? ''
               }
             >
@@ -278,7 +262,7 @@ export const LiteralField = ({
                 stylex.props(
                   styles.option,
                   styles.optionInk,
-                  isSelected === true ? styles.optionSelected : styles.optionUnselected,
+                  isSelected === true && styles.optionSelected,
                 ).className ?? ''
               }
             >

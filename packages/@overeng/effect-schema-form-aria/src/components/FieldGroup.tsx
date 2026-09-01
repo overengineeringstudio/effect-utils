@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
-import { Group, Header, Text } from 'react-aria-components'
+import { Group, Text } from 'react-aria-components'
 
 import { fontSizes, radii, spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
@@ -90,9 +90,15 @@ export const FieldGroup = ({
     .filter(Boolean)
     .join(' ')
 
+  // The group label is a plain element, not React Aria's `Header`. `Header`
+  // renders `<header>`, and a `<header>` that is not inside sectioning content
+  // is a `banner` landmark — so two field groups on a page produced two banners
+  // and the accessibility gate failed the nested-group story on
+  // `landmark-no-duplicate-banner` and `landmark-unique`. Naming the group with
+  // `aria-label` gives it the accessible name it was missing anyway.
   return (
-    <Group className={groupClassName}>
-      <Header {...stylex.props(styles.header)}>{label}</Header>
+    <Group aria-label={label} className={groupClassName}>
+      <div {...stylex.props(styles.header)}>{label}</div>
       <div {...stylex.props(styles.fieldsGrid)}>{children}</div>
     </Group>
   )
@@ -120,9 +126,10 @@ export const FieldGroupEmpty = ({
     .filter(Boolean)
     .join(' ')
 
+  // Same landmark reasoning as `FieldGroup`.
   return (
-    <Group className={rootClassName}>
-      <Header {...stylex.props(emptyGroupStyles.header)}>{label}</Header>
+    <Group aria-label={label} className={rootClassName}>
+      <div {...stylex.props(emptyGroupStyles.header)}>{label}</div>
       <Text {...stylex.props(emptyGroupStyles.message)}>{message}</Text>
     </Group>
   )

@@ -60,8 +60,7 @@ const styles = stylex.create({
   check: {
     width: '0.75rem',
     height: '0.75rem',
-    // oxlint-disable-next-line overeng/stylex-no-raw-color, @stylexjs/valid-styles -- needs a semantic `onPrimary` token; see #1171
-    color: '#ffffff',
+    color: tokens['on-primary'],
     opacity: 0,
     transitionProperty: 'opacity',
     transitionDuration: '150ms',
@@ -90,28 +89,37 @@ export const BooleanField = ({
       isDisabled={isDisabled}
       {...stylex.props(styles.root)}
     >
+      {/*
+        Selection lives on the CheckboxButton, not on the box the style targets,
+        so the box cannot read it as one of its own conditions. React Aria
+        surfaces it as a render prop, which is the sanctioned mechanism for that
+        case, and the selected styles are ordered arguments rather than a
+        mutually exclusive branch — the winner is last and the precedence is the
+        argument order. Reading `isSelected` rather than the `value` prop also
+        stops the style re-deriving state the component already resolved.
+      */}
       <AriaCheckboxButton {...stylex.props(styles.button)}>
-        <div
-          className={stylex.props(styles.box, value === true && styles.boxSelected).className ?? ''}
-        >
-          <svg
-            viewBox="0 0 12 12"
-            className={
-              stylex.props(styles.check, value === true && styles.checkVisible).className ?? ''
-            }
-            aria-hidden="true"
-          >
-            <path
-              d="M3 6l2 2 4-5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-        </div>
-        <span>{label}</span>
+        {({ isSelected }) => (
+          <>
+            <div {...stylex.props(styles.box, isSelected === true && styles.boxSelected)}>
+              <svg
+                viewBox="0 0 12 12"
+                {...stylex.props(styles.check, isSelected === true && styles.checkVisible)}
+                aria-hidden="true"
+              >
+                <path
+                  d="M3 6l2 2 4-5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
+            <span>{label}</span>
+          </>
+        )}
       </AriaCheckboxButton>
     </AriaCheckboxField>
   </FieldWrapper>
