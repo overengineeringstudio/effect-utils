@@ -17,7 +17,10 @@ All notable changes to this project will be documented in this file.
   apart (one spelled the macOS key `aarch64-darwin`, the projection and the
   other two `aarch64-macos`) are consolidated into a single exported
   `host_capability_platform`. Toolchain identity is in the action key, so this
-  invalidates cached TypeScript actions once.
+  invalidates cached TypeScript actions once. `buck2:editor-authority` and
+  `buck2:typescript:materialize-dist` invoke Buck but did not depend on
+  `buck2:capabilities:project`; they now do, so the projection the toolchains
+  read is ordered rather than incidental.
 
 - **@overeng/buck2-tools**: path-containment checks compared a canonicalized
   path against a non-canonicalized one, so every check failed wherever the

@@ -971,6 +971,9 @@ in
 
   tasks."buck2:editor-authority" = {
     description = "Derive exact whole-workspace editor dependency authority from semantic and Buck ownership";
+    # Buck analysis of //buck2/toolchains reads the `.buck2/capabilities`
+    # projection, so every task that invokes Buck must be ordered after it.
+    after = [ "buck2:capabilities:project" ];
     exec = trace.exec "buck2:editor-authority" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -1075,7 +1078,10 @@ in
 
   tasks."buck2:typescript:materialize-dist" = {
     description = "Atomically materialize all Buck-owned TypeScript declarations";
-    after = [ "genie:run" ];
+    after = [
+      "buck2:capabilities:project"
+      "genie:run"
+    ];
     exec = trace.exec "buck2:typescript:materialize-dist" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
