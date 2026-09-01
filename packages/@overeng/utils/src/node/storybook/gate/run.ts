@@ -2,6 +2,21 @@
  * Runner for the story gate: derives baselines from a git ref, captures both
  * sides on one host, and reports every way the story set can move.
  *
+ * KNOWN STRUCTURAL LIMIT, stated because it shapes what any verdict here can
+ * mean. Capture and comparison are welded into one command: one invocation
+ * captures the baseline tree twice and the compare tree once, then compares.
+ * So this runner cannot produce a self-consistency pair for the compare side,
+ * and a protocol wanting one needs a second invocation with `--ref <after-sha>`.
+ * `captureSets` reports the asymmetry rather than leaving the report to read as
+ * complete under a protocol it does not implement.
+ *
+ * Separating capture from comparison — capture writes a named directory,
+ * comparison is an offline pass over directories — is the real repair, and it
+ * would make "this claim rests on these capture sets" expressible directly
+ * instead of narrated. It is deliberately NOT attempted here: this change
+ * repairs the readiness signal, and one semantic change at a time is what keeps
+ * a measurement attributable to the thing that caused it.
+ *
  * @module
  */
 
@@ -20,7 +35,13 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
-import { excludedStoryMarker } from './constants.ts'
+import {
+  excludedStoryMarker,
+  settledStoryMarker,
+  type StorySettleRecord,
+  storySettleConfig,
+  unsettledStoryMarker,
+} from './constants.ts'
 import { baselineDirEnvVar, manifestEnvVar } from './project.ts'
 
 /** How a story's render differs from the baseline ref. */
@@ -31,6 +52,33 @@ export interface StoryGateChange {
   readonly story: string
   readonly kind: StoryGateChangeKind
   readonly detail: string
+}
+
+/**
+ * What a tree contained when it was captured.
+ *
+ * Scoped deliberately, because an over-broad hash is a guard that cries wolf
+ * and the first thing anyone does with one of those is switch it off. Tracked
+ * content is covered exactly and cheaply by `head` plus a hash of the diff
+ * against it; untracked files are included only under the package's source and
+ * story roots, which is where a file that can change a render would have to
+ * appear. A scratch script sitting beside the package is therefore not
+ * contamination, and a new untracked story file is.
+ *
+ * `entries` exists so a refusal can say WHICH entry moved. A guard whose
+ * refusal cannot be diagnosed gets bypassed, which is the same lesson as a
+ * summary that could not say its baseline was unusable, applied before the fact
+ * rather than after.
+ */
+export interface TreeIdentity {
+  /** Commit the tree was on. */
+  readonly head: string
+  /** Combined digest over every entry — the value that is actually compared. */
+  readonly digest: string
+  /** Human-readable statement of what was hashed. */
+  readonly scope: string
+  /** Per-entry hashes, keyed by a label naming what the entry is. */
+  readonly entries: Readonly<Record<string, string>>
 }
 
 /** Outcome of one gate run. */
@@ -64,11 +112,52 @@ export interface StoryGateReport {
    */
   readonly uncovered: readonly string[]
   /**
-   * Stories that opted out of visual comparison via
+   * Stories that opted out of visual comparison BY DECLARATION, via
    * `parameters.storyGate.unstable`, for surfaces no freeze can settle.
    * Reported so an opt-out stays a visible decision rather than silent absence.
+   *
+   * Distinct from {@link StoryGateReport.unsettled}, which is the same
+   * mechanical effect reached by observation rather than by declaration. The
+   * two are never merged: this list is a set of reviewed decisions recorded in
+   * source, and an unreviewed exclusion hiding inside it would be invisible in
+   * exactly the way the gate's other guards exist to prevent.
    */
   readonly excluded: readonly string[]
+  /**
+   * Stories the settle signal watched and never saw reach a quiet DOM.
+   *
+   * Excluded from the visual comparison with a stated reason and an observed
+   * shape history, and counted, because the mechanism's value is in the
+   * RECORDING more than in the waiting. A story that never settles is still
+   * captured, still named, and still attributable; the failure mode being
+   * removed is the one where such a story simply disappears from the run and
+   * the summary stays green over a story nobody compared.
+   *
+   * These stories never call `toMatchScreenshot`, so they resolve no baseline
+   * path and enter no manifest — which is what keeps them out of `preExisting`,
+   * where a baseline-side failure would silently subtract its own compare-side
+   * failure.
+   */
+  readonly unsettled: readonly StorySettleRecord[]
+  /**
+   * What the settle signal cost, measured rather than assumed.
+   *
+   * `bound` is reported alongside the observed spread because the bound is a
+   * bound and not a target: an ordinary story satisfies the predicate on its
+   * first three polls, so quoting the ceiling as per-story cost would overstate
+   * it by more than an order of magnitude. `settledStories` is a positive count
+   * emitted per story by the browser, not inferred from the absence of failure
+   * markers — a harness that never launched cannot fake it.
+   */
+  readonly settle: {
+    readonly settledStories: number
+    readonly unsettledStories: number
+    readonly boundMs: number
+    readonly minMs: number
+    readonly medianMs: number
+    readonly maxMs: number
+    readonly totalMs: number
+  }
   /** Health of the baseline capture itself. A baseline nothing passed at is not a baseline. */
   readonly baseline: { readonly total: number; readonly passed: number; readonly failed: number }
   /**
@@ -103,6 +192,40 @@ export interface StoryGateReport {
     /** Of those, how many render differently across at least one project pair. */
     readonly differing: number
   }
+  /**
+   * Which capture sets each verdict rests on, and how many times each side was
+   * captured.
+   *
+   * Present because the asymmetry is real and was previously unstated: ONE
+   * invocation captures the baseline tree TWICE — that pair is where
+   * `selfInconsistent` comes from — and the compare tree exactly ONCE. So a
+   * single run yields a before-pair and an after-single, and the report used to
+   * read as complete under a protocol that assumed pairs on both sides.
+   *
+   * The deeper reason this has to be said rather than fixed here: capture and
+   * comparison are welded into one command, so the gate cannot offer an
+   * after-pair without a second invocation. Decoupling them is the real repair
+   * and is deliberately not attempted in this change — see the module note.
+   */
+  readonly captureSets: {
+    readonly baselineDir: string
+    readonly baselineCaptures: number
+    readonly compareCaptures: number
+  }
+  /**
+   * Identity of each tree at the moment it was captured.
+   *
+   * Asserts the assumption that a capture set came from ONE tree, rather than
+   * trusting whoever ran it to have avoided editing mid-run. The failure this
+   * closes is invisible to every other guard here: if source changes land while
+   * a same-tree-twice pair is in flight, HMR recompiles and BOTH captures span
+   * both trees, so they agree with each other while both are wrong.
+   * Self-consistency cannot see contamination common to both samples.
+   */
+  readonly treeIdentity: {
+    readonly baseline: TreeIdentity
+    readonly compare: TreeIdentity
+  }
   readonly ok: boolean
 }
 
@@ -123,18 +246,27 @@ export interface StoryGateReport {
  * that legitimately ships one colour scheme declares itself — without that, the
  * guard fails a correct target for a property of the target and someone turns
  * it off.
+ *
+ * A story that never settled is refused too, and the asymmetry with
+ * `parameters.storyGate.unstable` is the point rather than an inconsistency. A
+ * declared opt-out is a reviewed decision, so it passes; a failure to settle is
+ * an UNREVIEWED one the harness discovered, and letting it pass would mean the
+ * gate reporting green over a story it did not compare. The remedy is visible
+ * and cheap — fix the story, or declare it unstable and put the decision on the
+ * record — which is exactly the choice `uncovered` already forces.
  */
 export const isStoryGateOk = ({
   added,
   removed,
   changed,
   uncovered,
+  unsettled,
   baseline,
   themeAxis,
   themeVaries = true,
 }: Pick<
   StoryGateReport,
-  'added' | 'removed' | 'changed' | 'uncovered' | 'baseline' | 'themeAxis'
+  'added' | 'removed' | 'changed' | 'uncovered' | 'unsettled' | 'baseline' | 'themeAxis'
 > & {
   readonly themeVaries?: boolean
 }): boolean =>
@@ -142,6 +274,7 @@ export const isStoryGateOk = ({
   removed.length === 0 &&
   changed.length === 0 &&
   uncovered.length === 0 &&
+  unsettled.length === 0 &&
   baseline.passed > 0 &&
   (themeVaries === false ||
     themeAxis.projects.length < 2 ||
@@ -172,6 +305,18 @@ export interface StoryGateRunOptions {
    * @default true
    */
   readonly themeVaries?: boolean
+  /**
+   * Package-relative directories whose UNTRACKED files count as part of the
+   * tree's identity.
+   *
+   * These are the places a file that can change a render would have to appear.
+   * Everything else untracked is excluded so that a scratch script beside the
+   * package does not refuse an otherwise valid comparison — a guard that cries
+   * wolf gets switched off, and then it protects nothing.
+   *
+   * @default ['src', 'stories', '.storybook']
+   */
+  readonly sourceRoots?: readonly string[]
 }
 
 const runGit = ({ args, cwd }: { args: readonly string[]; cwd: string }): string => {
@@ -301,10 +446,18 @@ const runVitest = ({
       'run',
       '--config',
       configFile,
+      // BOTH reporters, and the json one is named in `--outputFile.json` so it
+      // still lands in a file. `--reporter json` ALONE replaces the console
+      // reporter, and the json report has no field for a browser-side
+      // `console.info` — so the story-gate markers, which are the only channel
+      // carrying "why this story was not compared", were being discarded before
+      // the runner ever saw them. Every exclusion the browser reports travels on
+      // the default reporter's stream; the JSON file carries only assertions.
+      '--reporter',
+      'default',
       '--reporter',
       'json',
-      '--outputFile',
-      reportFile,
+      `--outputFile.json=${reportFile}`,
       ...(update === true ? ['--update'] : []),
     ],
     {
@@ -357,6 +510,213 @@ const classify = (message: string): StoryGateChangeKind => {
 }
 
 /**
+ * Pull the settle records a run's browser side emitted for one marker.
+ *
+ * The payload is JSON rather than a delimited string so that a story name
+ * containing the delimiter cannot corrupt a record — the name is chosen by
+ * whoever wrote the story, and a parser that a story title can break is a
+ * channel that loses its own contents.
+ *
+ * A malformed line is collected as a defect rather than dropped. Silently
+ * skipping it would reintroduce, in the reporting layer, exactly the
+ * disappearance the settle signal exists to prevent.
+ */
+const parseSettleRecords = ({
+  output,
+  marker,
+}: {
+  output: string
+  marker: string
+}): { readonly records: readonly StorySettleRecord[]; readonly malformed: readonly string[] } => {
+  const records: StorySettleRecord[] = []
+  const malformed: string[] = []
+  const seen = new Set<string>()
+  for (const line of output.split('\n')) {
+    const at = line.indexOf(marker)
+    if (at === -1) continue
+    const payload = line.slice(at + marker.length).trim()
+    try {
+      const record = JSON.parse(payload) as StorySettleRecord
+      // One story can emit twice when a run retries it; the last record wins
+      // and the story is counted once, because a count that double-counts a
+      // retry is not a count of stories.
+      if (seen.has(record.id) === true) {
+        records[records.findIndex((existing) => existing.id === record.id)] = record
+        continue
+      }
+      seen.add(record.id)
+      records.push(record)
+    } catch {
+      malformed.push(payload.slice(0, 200))
+    }
+  }
+  return { records, malformed }
+}
+
+/** Cost of the settle signal over one run's settled stories. */
+const summariseSettle = ({
+  settled,
+  unsettled,
+}: {
+  settled: readonly StorySettleRecord[]
+  unsettled: readonly StorySettleRecord[]
+}): StoryGateReport['settle'] => {
+  const durations = settled.map((record) => record.elapsedMs).sort((a, b) => a - b)
+  const median = durations.length === 0 ? 0 : (durations[durations.length >> 1] ?? 0)
+  return {
+    settledStories: settled.length,
+    unsettledStories: unsettled.length,
+    boundMs: storySettleConfig.boundMs,
+    minMs: durations[0] ?? 0,
+    medianMs: median,
+    maxMs: durations[durations.length - 1] ?? 0,
+    totalMs: [...durations, ...unsettled.map((record) => record.elapsedMs)].reduce(
+      (sum, value) => sum + value,
+      0,
+    ),
+  }
+}
+
+/**
+ * Files that can change a render but are not tracked, so a content hash is the
+ * only way to notice them.
+ *
+ * Restricted to the package's source and story roots on purpose. Hashing every
+ * untracked file would refuse a comparison over a scratch script no story
+ * imports, and a guard that refuses legitimate runs gets switched off — which
+ * costs more than the case it was protecting against.
+ */
+const untrackedSourceFiles = ({
+  repoRoot,
+  packageRoot,
+  sourceRoots,
+}: {
+  repoRoot: string
+  packageRoot: string
+  sourceRoots: readonly string[]
+}): readonly string[] => {
+  const present = sourceRoots
+    .map((root) => join(packageRoot, root))
+    .filter((root) => existsSync(root) === true)
+    .map((root) => relative(repoRoot, root))
+  if (present.length === 0) return []
+  return runGit({
+    args: ['ls-files', '--others', '--exclude-standard', '--', ...present],
+    cwd: repoRoot,
+  })
+    .split('\n')
+    .filter((line) => line !== '')
+}
+
+/**
+ * Identity of a tree at one instant, scoped to what can change a render.
+ *
+ * Tracked content is captured exactly by `HEAD` plus a per-path hash of the
+ * diff against it — cheap, because git already knows which paths moved — and
+ * untracked files are added only under the package's source and story roots.
+ */
+const readTreeIdentity = ({
+  repoRoot,
+  packageRoot,
+  sourceRoots,
+}: {
+  repoRoot: string
+  packageRoot: string
+  sourceRoots: readonly string[]
+}): TreeIdentity => {
+  const head = runGit({ args: ['rev-parse', 'HEAD'], cwd: repoRoot })
+  const entries: Record<string, string> = { HEAD: head }
+
+  const changed = runGit({ args: ['diff', 'HEAD', '--name-only'], cwd: repoRoot })
+    .split('\n')
+    .filter((line) => line !== '')
+  for (const path of changed) {
+    const diff = runGit({ args: ['diff', 'HEAD', '--', path], cwd: repoRoot })
+    entries[`tracked:${path}`] = createHash('sha1').update(diff).digest('hex')
+  }
+
+  for (const path of untrackedSourceFiles({ repoRoot, packageRoot, sourceRoots })) {
+    const absolute = join(repoRoot, path)
+    entries[`untracked:${path}`] = existsSync(absolute)
+      ? createHash('sha1').update(readFileSync(absolute)).digest('hex')
+      : 'absent'
+  }
+
+  const digest = createHash('sha1')
+    .update(
+      Object.keys(entries)
+        .sort()
+        .map((key) => `${key}=${entries[key]}`)
+        .join('\n'),
+    )
+    .digest('hex')
+
+  return {
+    head,
+    digest,
+    scope: `tracked content at ${repoRoot} plus untracked files under ${sourceRoots
+      .map((root) => join(relative(repoRoot, packageRoot), root))
+      .join(', ')}`,
+    entries,
+  }
+}
+
+/**
+ * Name every entry that moved between two identities.
+ *
+ * The refusal has to be diagnosable or it will be bypassed, so this reports the
+ * scope it hashed, the entry count, and each differing path with both sides —
+ * never just "the tree changed".
+ */
+const describeIdentityDrift = ({
+  before,
+  after,
+}: {
+  before: TreeIdentity
+  after: TreeIdentity
+}): string => {
+  const keys = [...new Set([...Object.keys(before.entries), ...Object.keys(after.entries)])].sort()
+  const drifted = keys
+    .filter((key) => before.entries[key] !== after.entries[key])
+    .map(
+      (key) =>
+        `    ${key}: ${before.entries[key] ?? '<absent>'} -> ${after.entries[key] ?? '<absent>'}`,
+    )
+  return [
+    `  scope: ${before.scope}`,
+    `  entries hashed: ${Object.keys(before.entries).length} before, ${Object.keys(after.entries).length} after`,
+    `  differing entries (${drifted.length}):`,
+    ...drifted,
+  ].join('\n')
+}
+
+/**
+ * Refuse a capture set whose tree moved while it was being captured.
+ *
+ * This is the one contamination the same-tree-twice check structurally cannot
+ * see: if source changes land mid-pair, HMR recompiles and both captures span
+ * both trees, so they agree with each other while both are invalid. A
+ * self-consistency check is blind to error common to both samples, so the
+ * assumption has to be asserted rather than assumed.
+ */
+const assertTreeUnchanged = ({
+  before,
+  after,
+  what,
+}: {
+  before: TreeIdentity
+  after: TreeIdentity
+  what: string
+}): void => {
+  if (before.digest === after.digest) return
+  throw new Error(
+    `[story-gate] the tree moved while ${what} was being captured, so that capture set spans two trees and cannot be compared.\n${describeIdentityDrift(
+      { before, after },
+    )}\n  Re-run without editing source during the capture.`,
+  )
+}
+
+/**
  * Run the gate for one package against one git ref.
  *
  * Two captures are required rather than one: compiled styles are baked into a
@@ -372,6 +732,7 @@ export const runStoryGate = async ({
   cacheDir,
   refresh = false,
   themeVaries = true,
+  sourceRoots = ['src', 'stories', '.storybook'],
 }: StoryGateRunOptions): Promise<StoryGateReport> => {
   const packageRoot = resolve(packageDir)
   const repoRoot = runGit({ args: ['rev-parse', '--show-toplevel'], cwd: packageRoot })
@@ -380,7 +741,34 @@ export const runStoryGate = async ({
   const baselineDir = join(cacheRoot, baselineSha)
   const worktreeDir = join(cacheRoot, `tree-${baselineSha}`)
   const completeMarker = join(baselineDir, '.complete')
+  const identityPath = join(baselineDir, 'tree-identity.json')
+  const settlePath = join(baselineDir, 'unsettled.json')
   const scratchDir = mkdtempSync(join(tmpdir(), 'story-gate-'))
+
+  /**
+   * The baseline pair's identity covers BOTH trees, not just the worktree it
+   * renders from. The derived worktree borrows the main tree's `node_modules`
+   * by symlink, so an edit to a workspace package in the main tree reaches the
+   * baseline capture through that link — which is precisely how a capture set
+   * ends up spanning two trees while looking like it came from one.
+   */
+  const baselinePairIdentity = (): TreeIdentity => {
+    const worktree = readTreeIdentity({
+      repoRoot: worktreeDir,
+      packageRoot: join(worktreeDir, relative(repoRoot, packageRoot)),
+      sourceRoots,
+    })
+    const linked = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
+    return {
+      head: worktree.head,
+      digest: createHash('sha1').update(`${worktree.digest}\n${linked.digest}`).digest('hex'),
+      scope: `${worktree.scope}; plus the linked main tree: ${linked.scope}`,
+      entries: Object.fromEntries([
+        ...Object.entries(worktree.entries).map(([key, value]) => [`worktree/${key}`, value]),
+        ...Object.entries(linked.entries).map(([key, value]) => [`linked/${key}`, value]),
+      ]),
+    }
+  }
 
   if (refresh === true) rmSync(baselineDir, { recursive: true, force: true })
 
@@ -426,6 +814,7 @@ export const runStoryGate = async ({
     rmSync(probeDir, { recursive: true, force: true })
     mkdirSync(probeDir, { recursive: true })
     mkdirSync(baselineDir, { recursive: true })
+    const identityBefore = baselinePairIdentity()
     const baselineReportFile = join(baselineDir, 'baseline-report.json')
     const captureCwd = join(worktreeDir, relative(repoRoot, packageRoot))
     runVitest({
@@ -452,6 +841,25 @@ export const runStoryGate = async ({
     if (existsSync(baselineReportFile) === false) {
       throw new Error(`[story-gate] baseline capture at ${baselineRef} failed:\n${capture.output}`)
     }
+    // Asserted AFTER the pair, not before it: the point is that neither capture
+    // spanned an edit, and only a reading taken once both are on disk can say
+    // that. This is the guard the same-tree-twice check cannot be, because a
+    // recompile mid-pair contaminates both halves in the same direction and
+    // leaves them agreeing with each other.
+    const identityAfter = baselinePairIdentity()
+    assertTreeUnchanged({
+      before: identityBefore,
+      after: identityAfter,
+      what: `the baseline pair at ${baselineRef}`,
+    })
+    writeFileSync(identityPath, JSON.stringify(identityAfter))
+
+    const baselineSettle = parseSettleRecords({
+      output: capture.output,
+      marker: unsettledStoryMarker,
+    })
+    writeFileSync(settlePath, JSON.stringify(baselineSettle.records))
+
     const probeCaptures = hashCaptures(probeDir)
     const selfInconsistent = [...hashCaptures(baselineDir)]
       .filter(([key, hash]) => probeCaptures.has(key) === true && probeCaptures.get(key) !== hash)
@@ -492,6 +900,7 @@ export const runStoryGate = async ({
   const manifest = join(scratchDir, 'requested.txt')
   const reportFile = join(scratchDir, 'compare-report.json')
   writeFileSync(manifest, '')
+  const compareIdentityBefore = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
   const compare = runVitest({
     cwd: packageRoot,
     configFile,
@@ -499,6 +908,12 @@ export const runStoryGate = async ({
     manifest,
     reportFile,
     update: false,
+  })
+  const compareIdentity = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
+  assertTreeUnchanged({
+    before: compareIdentityBefore,
+    after: compareIdentity,
+    what: 'the compare tree',
   })
 
   const requested = new Set(
@@ -521,6 +936,41 @@ export const runStoryGate = async ({
       line.slice(line.indexOf(excludedStoryMarker) + excludedStoryMarker.length).trim(),
     )
 
+  const settledRecords = parseSettleRecords({
+    output: compare.output,
+    marker: settledStoryMarker,
+  })
+  const unsettledRecords = parseSettleRecords({
+    output: compare.output,
+    marker: unsettledStoryMarker,
+  })
+  // A marker the runner could not parse is a defect in the channel, and a
+  // channel that loses records silently is the failure this whole mechanism
+  // exists to remove. Surfaced as an unsettled entry with its own reason rather
+  // than dropped, so the count stays honest even when the parse fails.
+  const malformed = [...settledRecords.malformed, ...unsettledRecords.malformed].map(
+    (payload): StorySettleRecord => ({
+      id: `<unparseable> ${payload}`,
+      name: '<unparseable settle record>',
+      elapsedMs: 0,
+      shapes: [],
+      reason: 'shape-never-quiet',
+    }),
+  )
+  const unsettled = [...unsettledRecords.records, ...malformed]
+  // A story unsettled at the BASELINE produced no reference image by
+  // construction, so its compare-side assertion fails with "no existing
+  // reference" and would be reported as `added` — an existing story labelled as
+  // new, which is a wrong verdict rather than a noisy one. Named for what it is
+  // instead. This is also the racy-settler case: a story that settles on one
+  // run and not the other is non-comparable, and saying so is the honest answer.
+  const unsettledAtBaseline: readonly StorySettleRecord[] = existsSync(settlePath)
+    ? (JSON.parse(readFileSync(settlePath, 'utf8')) as StorySettleRecord[])
+    : []
+  const unsettledNames = new Set(
+    [...unsettled, ...unsettledAtBaseline].flatMap((record) => [record.id, record.name]),
+  )
+
   const assertions = parseAssertions({ reportFile, output: compare.output })
   const failures = assertions.filter((assertion) => assertion.status === 'failed')
   const added: string[] = []
@@ -532,6 +982,7 @@ export const runStoryGate = async ({
     // story with no baseline image cannot be known-failing debt, and letting
     // the skip run first is precisely what swallowed it.
     if (detail.includes('No existing reference screenshot found') === true) {
+      if (unsettledNames.has(story) === true) continue
       added.push(story)
     } else if (preExisting.has(story) === true) {
       continue
@@ -539,6 +990,8 @@ export const runStoryGate = async ({
       changed.push({ story, kind: classify(detail), detail })
     }
   }
+
+  const settle = summariseSettle({ settled: settledRecords.records, unsettled })
 
   return {
     baselineRef,
@@ -551,14 +1004,29 @@ export const runStoryGate = async ({
     preExisting: [...preExisting],
     uncovered,
     excluded: [...new Set(excluded)],
+    unsettled: [
+      ...unsettled,
+      ...unsettledAtBaseline.filter(
+        (record) => unsettled.some((current) => current.id === record.id) === false,
+      ),
+    ],
+    settle,
     baseline,
     selfInconsistent,
     themeAxis,
+    captureSets: { baselineDir, baselineCaptures: 2, compareCaptures: 1 },
+    treeIdentity: {
+      baseline: existsSync(identityPath)
+        ? (JSON.parse(readFileSync(identityPath, 'utf8')) as TreeIdentity)
+        : { head: baselineSha, digest: 'unrecorded', scope: 'not recorded by this cache entry', entries: {} },
+      compare: compareIdentity,
+    },
     ok: isStoryGateOk({
       added,
       removed,
       changed,
       uncovered,
+      unsettled,
       baseline,
       themeAxis,
       themeVaries,

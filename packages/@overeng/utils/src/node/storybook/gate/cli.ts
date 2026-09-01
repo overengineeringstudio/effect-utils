@@ -47,14 +47,46 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
     themeVaries: argv.includes('--single-scheme') === false,
   })
 
+  // Capture liveness comes FIRST, before any pass/fail number. The failure
+  // signature this project keeps hitting is zero-work-plus-zero-errors: a
+  // harness that never launched a browser emits no failures and reads as
+  // perfect. A positive settled count, emitted per story by the browser itself,
+  // is the only thing that distinguishes "everything settled" from "nothing
+  // ran", so it is asserted before anything is interpreted.
+  const liveness = [
+    '=== capture liveness ===',
+    `  settled ${report.settle.settledStories} · never settled ${report.settle.unsettledStories} · opted out ${report.excluded.length} · compared ${report.comparedStories}`,
+    `  settle cost per story: min ${report.settle.minMs}ms · median ${report.settle.medianMs}ms · max ${report.settle.maxMs}ms (bound ${report.settle.boundMs}ms — a bound, not a target)`,
+    `  total spent settling: ${report.settle.totalMs}ms`,
+    ...(report.settle.settledStories === 0
+      ? ['', '!! NOTHING SETTLED — every number below is meaningless.']
+      : []),
+  ]
+
+  // Which capture sets the verdict rests on, stated rather than implied. One
+  // invocation captures the baseline tree twice and the compare tree ONCE, so
+  // this run cannot speak to the compare side's self-consistency — and saying
+  // so beats reading as complete under a protocol that assumed pairs on both
+  // sides.
+  const provenance = [
+    '=== capture provenance ===',
+    `  baseline    ${report.baselineRef} (${report.baselineSha.slice(0, 9)}) captured ${report.captureSets.baselineCaptures}x · tree ${report.treeIdentity.baseline.digest.slice(0, 9)}`,
+    `  compare     working tree (${report.treeIdentity.compare.head.slice(0, 9)}) captured ${report.captureSets.compareCaptures}x · tree ${report.treeIdentity.compare.digest.slice(0, 9)}`,
+    `  captures in ${report.captureSets.baselineDir}`,
+    '  The compare side was captured ONCE, so the self-inconsistency list below covers the baseline tree only. For an after-pair, run the gate again with --ref <after-sha>.',
+  ]
+
   // The baseline health goes in the headline, not the detail. The false green
   // this guards against turned on a summary that said "no regressions" while
   // the report said every story failed at the baseline; a summary that cannot
   // express "the baseline was unusable" is part of that defect.
   const verdict = report.ok === true ? 'PASS' : 'FAIL'
   const lines = [
-    `${verdict}  ${report.comparedStories} compared · ${report.baseline.passed}/${report.baseline.total} passed at baseline · ${report.changed.length} changed · ${report.added.length} added · ${report.removed.length} removed · ${report.uncovered.length} uncovered · ${report.preExisting.length} pre-existing · ${report.excluded.length} excluded · ${report.selfInconsistent.length} self-inconsistent`,
-    `baseline    ${report.baselineRef} (${report.baselineSha.slice(0, 9)})`,
+    ...liveness,
+    '',
+    ...provenance,
+    '',
+    `${verdict}  ${report.comparedStories} compared · ${report.baseline.passed}/${report.baseline.total} passed at baseline · ${report.changed.length} changed · ${report.added.length} added · ${report.removed.length} removed · ${report.uncovered.length} uncovered · ${report.preExisting.length} pre-existing · ${report.excluded.length} excluded · ${report.unsettled.length} never settled · ${report.selfInconsistent.length} self-inconsistent`,
     ...(report.baseline.passed === 0
       ? ['', 'Nothing passed at the baseline ref. That is an unusable baseline, not a clean run.']
       : []),
@@ -75,12 +107,22 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
           `${report.uncovered.length} stories have no baseline image, so they were never compared.`,
         ]
       : []),
+    ...(report.unsettled.length > 0
+      ? [
+          '',
+          `${report.unsettled.length} stories never reached a quiet DOM within ${report.settle.boundMs}ms and were excluded from the visual comparison. Excluded BY OBSERVATION, not by declaration — nobody reviewed these. Either fix the story or declare parameters.storyGate.unstable so the decision is on the record.`,
+        ]
+      : []),
     '',
     ...report.changed.map((change) => `  ${change.kind.padEnd(13)} ${change.story}`),
     ...report.added.map((story) => `  added         ${story}`),
     ...report.removed.map((story) => `  removed       ${story}`),
     ...report.uncovered.map((file) => `  uncovered     ${file}`),
     ...report.excluded.map((story) => `  excluded      ${story} (parameters.storyGate.unstable)`),
+    ...report.unsettled.flatMap((record) => [
+      `  never settled ${record.name} (${record.reason ?? 'unknown'}, gave up after ${record.elapsedMs}ms)`,
+      `                shapes: ${record.shapes.join(' -> ')}`,
+    ]),
   ]
   process.stdout.write(`${lines.join('\n')}\n`)
 

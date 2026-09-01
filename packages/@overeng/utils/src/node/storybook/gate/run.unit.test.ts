@@ -7,6 +7,7 @@ const clean = {
   removed: [],
   changed: [],
   uncovered: [],
+  unsettled: [],
   baseline: { total: 39, passed: 28, failed: 11 },
   themeAxis: { projects: ['story-gate-light', 'story-gate-dark'], comparable: 39, differing: 38 },
 } as const
@@ -34,6 +35,27 @@ describe('isStoryGateOk', () => {
     expect(isStoryGateOk({ ...clean, uncovered: ['src/stories/Button.stories.tsx/x.png'] })).toBe(
       false,
     )
+  })
+
+  it('refuses to pass when a story never reached a quiet DOM', () => {
+    // A story that never settled was excluded from the comparison by
+    // OBSERVATION, so passing would report green over a story nobody compared —
+    // the same shape as `uncovered`. The remedy is visible: fix the story, or
+    // declare it unstable and put the decision on the record.
+    expect(
+      isStoryGateOk({
+        ...clean,
+        unsettled: [
+          {
+            id: 'components-select--with-error',
+            name: 'Select > With Error',
+            elapsedMs: 20_031,
+            shapes: ['41:2180', '43:2320'],
+            reason: 'shape-never-quiet',
+          },
+        ],
+      }),
+    ).toBe(false)
   })
 
   it('fails on added, removed and changed stories', () => {
