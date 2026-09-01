@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+
 - **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
   adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
   lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`
@@ -41,6 +42,7 @@ All notable changes to this project will be documented in this file.
   `resolveCliBuildIdentity` is unchanged.
 
 ### Removed
+
 - **context/effect-4/**: the flip-era migration docs (alignment register, idiom
   catalog, differential recipes, ops manuals). The executable
   baseline-collection gate moved to
@@ -694,6 +696,12 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   success, not the child exit code. Pure passthrough stays silent (R04);
   `--trace-link off` / `OTEL_SCRAPE_TRACE_LINK=off` disables it.
 
+- **@overeng/notion-md**: `track <page> <existing-directory>` now materializes a
+  remote-authoritative child-page tree as separate `.nmd` files plus an authority-tagged workspace
+  manifest. Ordinary directory sync refreshes content and reconciles recorded additions, moves,
+  and deletions while preserving unknown local files. Child placeholders become relative local
+  navigation links without entering the remote push baseline, and Unicode titles produce stable
+  ASCII paths with German umlaut transliteration. File and missing-path tracking is unchanged.
 - **genie semantic-conventions generator (M1) / @overeng/genie + @overeng/otel-contract**:
   First genie generator for OpenTelemetry semantic-convention registries.
   - Layer 1 (`@overeng/genie` `src/runtime/weaver`, dep-free): a faithful typed model of the

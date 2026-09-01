@@ -22,24 +22,42 @@ each file's required `source` frontmatter field.
 
 ## Commands
 
-| Command                                               | Meaning                                                                 |
-| ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| `notion-md track <page-id-or-url> [file-or-dir]`      | Materialize an existing Notion page as tracked local `.nmd` state       |
-| `notion-md status <path...>`                          | Read-only live status for local `.nmd` files                            |
-| `notion-md status <dir> --recursive`                  | Read-only status for existing `.nmd` files discovered under a directory |
-| `notion-md sync <path...>`                            | Reconcile local paths toward in-sync according to each file's `source`  |
-| `notion-md sync <dir> --recursive --concurrency 4`    | Reconcile a flat batch of existing `.nmd` files                         |
-| `notion-md sync <path...> --watch --poll-interval-ms` | Keep reconciling after file events and remote polling                   |
+| Command                                               | Meaning                                                                             |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `notion-md track <page-id-or-url> [file-or-dir]`      | Materialize one page into a file, or its child-page tree into an existing directory |
+| `notion-md status <path...>`                          | Read-only live status for local `.nmd` files                                        |
+| `notion-md status <dir> --recursive`                  | Read-only status for existing `.nmd` files discovered under a directory             |
+| `notion-md sync <path...>`                            | Reconcile local paths toward in-sync according to each file's `source`              |
+| `notion-md sync <dir> --recursive --concurrency 4`    | Reconcile a flat batch of existing `.nmd` files                                     |
+| `notion-md sync <path...> --watch --poll-interval-ms` | Keep reconciling after file events and remote polling                               |
 
 ## `track`
 
 ```sh
 notion-md track <page-id-or-url> notes.nmd
+notion-md track <page-id-or-url> ./notes-directory
 ```
 
-`track` establishes a local tracked file for an existing Notion page. It writes
-strict frontmatter with the page identity, parent, page metadata, and explicit
-`source`.
+With a `.nmd` file or missing output path, `track` retains the single-page
+behavior: it writes strict frontmatter with the page identity, parent, page
+metadata, and explicit `source`.
+
+An existing directory is detected from its filesystem type and invokes the
+remote subtree materializer. The root becomes `index.nmd`, each child page gets
+its own remote-authoritative nested `.nmd` file, and `.notion-md/workspace.json`
+records remote authority plus the derived tree index. Later `sync <directory>`
+passes refresh content and reconcile additions, page-id moves, and remote
+deletions; deletion is limited to files recorded by the previous manifest, so
+unknown local files are preserved. Directory tracking supports `--as remote`
+only; `--as local` and `--as shared` remain single-file modes.
+
+Remote titles become stable lowercase ASCII paths; German umlauts use the
+conventional `ae` / `oe` / `ue` transliteration before general Unicode
+normalization. Notion child placeholders and id-bearing child anchors become
+relative Markdown links to the materialized child files. The stored remote
+baseline strips those local navigation links and retains the canonical Notion
+child anchors, so the guarded local tree composer remains a no-op at the
+materialization baseline.
 
 The default source is `remote`, because the first materialization starts from
 Notion:

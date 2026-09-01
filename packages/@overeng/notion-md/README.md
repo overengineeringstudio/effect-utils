@@ -25,6 +25,7 @@ An `.nmd` file is:
 
 ```sh
 notion-md track <page-id-or-url> page.nmd
+notion-md track <page-id-or-url> ./existing-directory
 notion-md status page.nmd
 notion-md status docs --recursive
 notion-md sync page.nmd
@@ -38,12 +39,13 @@ The CLI reads `NOTION_API_TOKEN`.
 
 ## Safety Model
 
-- `track <page> <file.nmd>` writes a strict `.nmd` envelope for an existing Notion page and records explicit `source`.
+- `track <page> <file.nmd>` writes a strict `.nmd` envelope for one existing page; `track <page> <existing-directory>` materializes its remote-authoritative child-page tree as separate `.nmd` files plus `.notion-md/workspace.json`.
 - `status <path...>` is read-only and reports `in-sync`, `local-ahead`, `remote-ahead`, `diverged`, or `unbound`.
 - `sync <path...>` dispatches per file from frontmatter `source`, not flags or argument shape.
 - `source: local` mirrors local state to Notion; `source: remote` mirrors Notion state to the local file; `source: shared` uses the guarded base/merge path.
 - Unbound `source: local` files with `page_id: null` create new Notion pages on `sync`.
 - Every write command supports `--dry-run`.
+- `sync <dir>` follows the workspace manifest's explicit authority; remote trees refresh content and reconcile recorded additions, moves, and deletions without deleting unknown local files.
 - `sync <dir> --recursive` is flat batch mode for existing `.nmd` files only; it does not imply hierarchy, moves, trashing, or remote materialization.
 - `sync --watch` runs the same frontmatter-dispatched reconcile path after local file changes and on a remote polling interval.
 - Multi-file and recursive folder sync are orchestration only: each `.nmd` still maps to one Notion page and duplicate page ids are rejected before mutation.

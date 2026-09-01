@@ -56,8 +56,9 @@ import {
   withOperation,
   withRootOperation,
 } from './observability.ts'
+import { syncPath, targetKind, trackPath } from './path.ts'
 import { ProgressReporterStderrLines } from './progress.ts'
-import { reconcileFile, reconcileTree, statusTree, trackPage } from './reconcile.ts'
+import { reconcileFile, reconcileTree, statusTree } from './reconcile.ts'
 import {
   garbageCollectObjects,
   NmdStateStoreLive,
@@ -66,6 +67,7 @@ import {
   type NmdObjectGcResult,
 } from './state-store.ts'
 import type { SyncOptions } from './sync.ts'
+import type { TreeSyncResult } from './tree.ts'
 import { NOTION_MD_VERSION } from './version.ts'
 
 const NonEmptyCliText = Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())).annotate({
@@ -85,7 +87,7 @@ const PositiveInteger = Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0))).a
 
 /** Local `.nmd` paths (file or directory). `status`/`sync` take only local paths. */
 const localTargetsArg = Args.string('path').pipe(
-  Args.withDescription('Local .nmd file or directory (a directory means everything under it)'),
+  Args.withDescription('Local .nmd file or directory tree (--recursive selects flat batch mode)'),
   Args.withSchema(NonEmptyCliText),
   Args.atLeast(1),
 )
@@ -97,7 +99,9 @@ const trackPageRefArg = Args.string('page-id-or-url').pipe(
 )
 
 const trackOutPathArg = Args.string('path').pipe(
-  Args.withDescription('Local .nmd file to write (default: <page-id>.nmd)'),
+  Args.withDescription(
+    'Local .nmd file, or an existing directory for the full child-page tree (default: <page-id>.nmd)',
+  ),
   Args.withSchema(NonEmptyCliText),
   Args.optional,
 )
@@ -436,11 +440,11 @@ const parseNotionPageRefOrFail = (value: string): Effect.Effect<string, NmdCliEr
 }
 
 /*
- * Direction is each file's `source`; there is deliberately no push/pull verb.
- * `status` and `sync` surface this one-line explainer (spec git-native framing).
+ * Direction is each file's `source`, or a tree manifest's explicit authority;
+ * there is deliberately no push/pull verb.
  */
 const directionExplainer =
-  "no push/pull — direction is each file's `source`; `sync` always moves toward in-sync, `source` decides which way."
+  "no push/pull — direction is each file's `source` or tree workspace authority; `sync` always moves toward in-sync."
 
 const porcelainLine = (status: { readonly path: string; readonly status: string }): string =>
   `${status.status.padEnd(12)} ${basename(status.path)}`
@@ -453,6 +457,20 @@ const renderStatus = (opts: {
     ? logJson(opts.results)
     : Effect.gen(function* () {
         for (const r of opts.results) yield* Console.log(porcelainLine(r))
+        yield* Console.log('')
+        yield* Console.log(directionExplainer)
+      })
+
+const renderTreeSync = (opts: {
+  readonly json: boolean
+  readonly result: TreeSyncResult
+}): Effect.Effect<void> =>
+  opts.json === true
+    ? logJson(opts.result)
+    : Effect.gen(function* () {
+        for (const op of opts.result.ops) {
+          yield* Console.log(`${op._tag.padEnd(16)} ${op.relPath}`)
+        }
         yield* Console.log('')
         yield* Console.log(directionExplainer)
       })
@@ -474,7 +492,7 @@ const trackCommand = Command.make(
         Effect.flatMap((pageId) => {
           const outPath = Option.isSome(out) === true ? out.value : `${pageId}.nmd`
           return withNotion(
-            trackPage({ pageId, outPath, source: as, dryRun }).pipe(
+            trackPath({ pageId, outPath, source: as, dryRun }).pipe(
               Effect.map((result): unknown => result),
             ),
           )
@@ -483,7 +501,7 @@ const trackCommand = Command.make(
     }).pipe(Effect.flatMap(logJson)),
 ).pipe(
   Command.withDescription(
-    'Track an existing Notion page as a local .nmd file (the only command taking a page id)',
+    'Track an existing Notion page as one local .nmd file or an existing directory tree (the only command taking a page id)',
   ),
 )
 
@@ -530,7 +548,7 @@ const statusCommand = Command.make(
   ),
 )
 
-/** `sync [path...]` — reconcile self-describing files; dispatch per file on `source`. */
+/** `sync [path...]` — reconcile files by `source`, or trees by manifest authority. */
 const syncCommand = Command.make(
   'sync',
   {
@@ -611,38 +629,53 @@ const syncCommand = Command.make(
       command: 'sync',
       label: paths.length === 1 ? basename(paths[0] ?? 'target') : `${paths.length} targets`,
       effect: withNotion(
-        reconcileTree({
-          targets: paths,
-          recursive,
-          concurrency,
-          force,
-          allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
-          allowReviewMarkup,
-          gcObjects,
-          dryRun,
-        }).pipe(
-          Effect.flatMap((batch) =>
-            json === true
-              ? logJson(batch)
-              : Effect.gen(function* () {
-                  for (const item of batch.items) {
-                    yield* Console.log(
-                      item._tag === 'success'
-                        ? `${item.result._tag.padEnd(16)} ${basename(item.result.path)}`
-                        : `error            ${basename(item.path)}${guardSuffix(item.error)}`,
-                    )
-                  }
-                  yield* Console.log('')
-                  yield* Console.log(directionExplainer)
-                }),
-          ),
-        ),
+        Effect.gen(function* () {
+          if (
+            paths.length === 1 &&
+            recursive === false &&
+            (yield* targetKind(paths[0] ?? '')) === 'directory'
+          ) {
+            const result = yield* syncPath({
+              path: paths[0] ?? '',
+              force,
+              dryRun,
+              allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
+              allowReviewMarkup,
+              gcObjects,
+            })
+            if (result._tag !== 'tree') {
+              return yield* Effect.die(new Error('Directory sync did not return a tree result'))
+            }
+            return yield* renderTreeSync({ json, result })
+          }
+
+          const batch = yield* reconcileTree({
+            targets: paths,
+            recursive,
+            concurrency,
+            force,
+            allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
+            allowReviewMarkup,
+            gcObjects,
+            dryRun,
+          })
+          if (json === true) return yield* logJson(batch)
+          for (const item of batch.items) {
+            yield* Console.log(
+              item._tag === 'success'
+                ? `${item.result._tag.padEnd(16)} ${basename(item.result.path)}`
+                : `error            ${basename(item.path)}${guardSuffix(item.error)}`,
+            )
+          }
+          yield* Console.log('')
+          yield* Console.log(directionExplainer)
+        }),
       ),
     })
   },
 ).pipe(
   Command.withDescription(
-    'Reconcile self-describing .nmd files toward in-sync; dispatch per file on frontmatter `source`',
+    'Reconcile .nmd files by frontmatter `source`, or a directory tree by workspace authority',
   ),
 )
 
