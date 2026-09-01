@@ -11,8 +11,10 @@ import {
   reconcileTree,
   statusFile,
   statusTree,
+  trackPage,
   type ReconcileResult,
   type ReconcileStatus,
+  type TrackResult,
 } from './reconcile.ts'
 import type { NmdStateStore } from './state-store.ts'
 import { syncTree, type TreeSyncResult } from './tree.ts'
@@ -26,6 +28,16 @@ export type StatusPathResult = ReconcileStatus | TreeSyncResult | BatchResult<Re
 export type SyncPathResult = ReconcileResult | TreeSyncResult | BatchResult<ReconcileResult>
 /** Result of a dry-run directory tree plan. */
 export type PlanPathResult = TreeSyncResult
+/** Result of tracking a remote page into one file or an existing directory tree. */
+export type TrackPathResult = TrackResult | TreeSyncResult
+
+/** Options for routing `track` by the explicit filesystem kind of its output path. */
+export interface TrackPathOptions {
+  readonly pageId: string
+  readonly outPath: string
+  readonly source: TrackResult['source']
+  readonly dryRun?: boolean
+}
 
 /** Options for status over the public path-oriented API. */
 export interface StatusPathOptions {
@@ -66,6 +78,40 @@ export const targetKind = (
     const info = yield* fs.stat(target).pipe(Effect.result)
     if (info._tag === 'Failure') return 'missing'
     return info.success.type === 'Directory' ? 'directory' : 'file'
+  })
+
+/**
+ * Track one remote page into a file, or its full child-page subtree into an
+ * existing directory. Missing targets retain the single-file `trackPage` behavior.
+ */
+export const trackPath = (
+  opts: TrackPathOptions,
+): Effect.Effect<
+  TrackPathResult,
+  NmdError,
+  FileSystem.FileSystem | NotionMdGateway | NmdStateStore
+> =>
+  Effect.gen(function* () {
+    const kind = yield* targetKind(opts.outPath)
+    if (kind === 'directory') {
+      if (opts.source !== 'remote') {
+        return yield* new NmdCliError({
+          message: `Directory track targets only support --as remote; use a .nmd file target with --as ${opts.source}`,
+        })
+      }
+      return yield* syncTree({
+        root: opts.outPath,
+        rootPageId: opts.pageId,
+        fromRemote: true,
+        ...(opts.dryRun === undefined ? {} : { plan: opts.dryRun }),
+      })
+    }
+    return yield* trackPage({
+      pageId: opts.pageId,
+      outPath: opts.outPath,
+      source: opts.source,
+      ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+    })
   })
 
 /** Compare a local path with Notion, routing files, trees, and flat batches safely. */
@@ -160,7 +206,7 @@ export const syncPath = (
       return yield* syncTree({
         root: opts.path,
         fromRemote: true,
-        pushOptions: { path: opts.path, ...pushSafety(opts) },
+        ...(opts.dryRun === undefined ? {} : { plan: opts.dryRun }),
         ...(opts.rootPageId === undefined ? {} : { rootPageId: opts.rootPageId }),
         ...(opts.rootFile === undefined ? {} : { rootFile: opts.rootFile }),
       })
@@ -185,7 +231,7 @@ export const syncPath = (
       }
       return yield* syncTree({
         root: opts.path,
-        fromRemote: false,
+        ...(opts.dryRun === undefined ? {} : { plan: opts.dryRun }),
         pushOptions: { path: opts.path, ...pushSafety(opts) },
         ...(opts.rootPageId === undefined ? {} : { rootPageId: opts.rootPageId }),
         ...(opts.rootFile === undefined ? {} : { rootFile: opts.rootFile }),

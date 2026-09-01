@@ -16,7 +16,7 @@ import {
   type PullPageResult,
   type RemotePageSnapshot,
 } from './model.ts'
-import { statusPath, syncPath } from './path.ts'
+import { statusPath, syncPath, trackPath } from './path.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { statusPage } from './sync.ts'
 import {
@@ -61,6 +61,14 @@ class FakeTreeNotion {
   /** Simulate a concurrent remote edit (someone edited the page on Notion). */
   mutateRemote(id: string, markdown: string): void {
     this.require(id).markdown = markdown
+  }
+
+  renameRemote(id: string, title: string): void {
+    this.require(id).title = title
+  }
+
+  trashRemote(id: string): void {
+    this.require(id).inTrash = true
   }
 
   /** Simulate a write that succeeds but whose refreshed Markdown observation is lossy. */
@@ -962,6 +970,18 @@ describe('notion-md tree reconcile lifecycle', () => {
       })
       fake.addRemotePage({ parentId: subtreeId, title: 'Child', markdown: 'Child body.\n' })
 
+      fake.mutateRemote(
+        rootPageId,
+        [
+          `Root body.`,
+          '',
+          `<page url="${pageUrl(leafId)}">Same</page>`,
+          '',
+          `<page url="${pageUrl(subtreeId)}">Same</page>`,
+          '',
+        ].join('\n'),
+      )
+
       const result = await run(
         syncTree({ root: dir, rootPageId, fromRemote: true, rootFile: 'index.nmd' }),
         fake,
@@ -975,8 +995,28 @@ describe('notion-md tree reconcile lifecycle', () => {
         ),
       ).toContain(`"page_id": "${subtreeId}"`)
 
-      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      const plan = await run(syncTree({ root: dir, plan: true, fromRemote: false }), fake)
       expect(plan.ops.some((op) => op._tag === 'update')).toBe(false)
+      const rootFile = await readFile(join(dir, 'index.nmd'), 'utf8')
+      expect(rootFile).toContain('[Same](same.nmd)')
+      expect(rootFile).toContain(
+        `[Same](same-${subtreeId.replaceAll('-', '').slice(-6)}/index.nmd)`,
+      )
+    })
+  })
+
+  it('refuses an ambiguous title-only child placeholder', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      fake.addRemotePage({ parentId: rootPageId, title: 'Same', markdown: 'First.\n' })
+      fake.addRemotePage({ parentId: rootPageId, title: 'Same', markdown: 'Second.\n' })
+      fake.mutateRemote(rootPageId, 'Root body.\n\n[Same]()\n')
+
+      await expect(
+        run(syncTree({ root: dir, rootPageId, fromRemote: true }), fake),
+      ).rejects.toThrow(
+        'Ambiguous child placeholder "Same" in index.nmd; use an id-bearing child anchor',
+      )
     })
   })
 
@@ -998,9 +1038,222 @@ describe('notion-md tree reconcile lifecycle', () => {
       expect(rootFile).toContain('Root body.')
       expect(rootFile).not.toContain('<page url=')
 
-      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      const plan = await run(syncTree({ root: dir, plan: true, fromRemote: false }), fake)
       expect(opTags(plan.ops).noop).toBe(2)
+      expect(rootFile).toContain('[Alpha](alpha.nmd)')
       expect(opTags(plan.ops).update).toBeUndefined()
+    })
+  })
+})
+
+describe('track path routing', () => {
+  it('materializes an existing directory as a remote subtree with a workspace manifest', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const guideId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Guide',
+        markdown: 'Guide body.\n\n[Setup]()\n',
+      })
+      const setupId = fake.addRemotePage({
+        parentId: guideId,
+        title: 'Setup',
+        markdown: 'Setup body.\n',
+      })
+      fake.mutateRemote(rootPageId, 'Root body.\n\n[Guide]()\n')
+
+      const result = await run(
+        trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }),
+        fake,
+      )
+
+      expect(result).toMatchObject({
+        _tag: 'tree',
+        root: dir,
+        rootPageId,
+        rootFile: 'index.nmd',
+        direction: 'from-remote',
+        plan: false,
+      })
+      expect(await readFile(join(dir, 'index.nmd'), 'utf8')).toContain(`"page_id": "${rootPageId}"`)
+      expect(await readFile(join(dir, 'guide', 'index.nmd'), 'utf8')).toContain(
+        `"page_id": "${guideId}"`,
+      )
+      expect(await readFile(join(dir, 'guide', 'setup.nmd'), 'utf8')).toContain(
+        `"page_id": "${setupId}"`,
+      )
+      expect(await readFile(join(dir, 'guide', 'setup.nmd'), 'utf8')).toContain(
+        '"source": "remote"',
+      )
+      const rootContent = await readFile(join(dir, 'index.nmd'), 'utf8')
+      expect(rootContent).toContain('[Guide](guide/index.nmd)')
+      expect(rootContent).not.toContain('[Guide]()')
+      const guideContent = await readFile(join(dir, 'guide', 'index.nmd'), 'utf8')
+      expect(guideContent).toContain('[Setup](setup.nmd)')
+      expect(guideContent).not.toContain('[Setup]()')
+      const forwardPlan = await run(syncTree({ root: dir, fromRemote: false, plan: true }), fake)
+      expect(opTags(forwardPlan.ops).noop).toBe(3)
+      expect(opTags(forwardPlan.ops).update).toBeUndefined()
+      expect(JSON.parse(await readFile(join(dir, '.notion-md', 'workspace.json'), 'utf8'))).toEqual(
+        {
+          version: 1,
+          root_page_id: rootPageId,
+          root_file: 'index.nmd',
+          authority: 'remote',
+          pages: {
+            'guide/index.nmd': guideId,
+            'guide/setup.nmd': setupId,
+          },
+        },
+      )
+    })
+  })
+
+  it('keeps a missing .nmd target on the single-page track path', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const outPath = join(dir, 'root.nmd')
+
+      const result = await run(trackPath({ pageId: rootPageId, outPath, source: 'remote' }), fake)
+
+      expect(result).toEqual({ path: outPath, pageId: rootPageId, source: 'remote' })
+      expect(await readFile(outPath, 'utf8')).toContain('"source": "remote"')
+      await expect(
+        readFile(join(dir, '.notion-md', 'workspace.json'), 'utf8'),
+      ).rejects.toMatchObject({ code: 'ENOENT' })
+    })
+  })
+
+  it('rejects a non-remote source for a directory instead of silently ignoring it', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+
+      await expect(
+        run(trackPath({ pageId: rootPageId, outPath: dir, source: 'shared' }), fake),
+      ).rejects.toThrow(
+        'Directory track targets only support --as remote; use a .nmd file target with --as shared',
+      )
+    })
+  })
+
+  it('refreshes remote content on ordinary directory sync', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const alphaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Alpha',
+        markdown: 'Original body.\n',
+      })
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+
+      fake.mutateRemote(alphaId, 'Refreshed body.\n')
+      const result = await run(syncPath({ path: dir }), fake)
+
+      expect(result).toMatchObject({ _tag: 'tree', direction: 'from-remote' })
+      expect(await readFile(join(dir, 'alpha.nmd'), 'utf8')).toContain('Refreshed body.')
+    })
+  })
+
+  it('moves a tracked page by page id when its remote title and path change', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const alphaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Alpha',
+        markdown: 'Alpha body.\n',
+      })
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+
+      fake.renameRemote(alphaId, 'Handbook')
+      const result = await run(syncPath({ path: dir }), fake)
+
+      expect(result._tag === 'tree' ? result.ops : []).toContainEqual({
+        _tag: 'move',
+        relPath: 'handbook.nmd',
+        pageId: alphaId,
+      })
+      await expect(readFile(join(dir, 'alpha.nmd'), 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      })
+      expect(await readFile(join(dir, 'handbook.nmd'), 'utf8')).toContain(`"page_id": "${alphaId}"`)
+    })
+  })
+
+  it('adds and deletes recorded remote pages without deleting unknown local files', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const alphaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Alpha',
+        markdown: 'Alpha body.\n',
+      })
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+      await writeFile(join(dir, 'local-notes.nmd'), 'unknown local file\n')
+
+      fake.trashRemote(alphaId)
+      const betaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Beta',
+        markdown: 'Beta body.\n',
+      })
+      const result = await run(syncPath({ path: dir }), fake)
+
+      expect(result._tag === 'tree' ? result.ops : []).toEqual(
+        expect.arrayContaining([
+          { _tag: 'delete', relPath: 'alpha.nmd', pageId: alphaId },
+          { _tag: 'materialize', relPath: 'beta.nmd', pageId: betaId },
+        ]),
+      )
+      await expect(readFile(join(dir, 'alpha.nmd'), 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      })
+      expect(await readFile(join(dir, 'beta.nmd'), 'utf8')).toContain('Beta body.')
+      expect(await readFile(join(dir, 'local-notes.nmd'), 'utf8')).toBe('unknown local file\n')
+    })
+  })
+
+  it('refuses a remote addition that would overwrite an unknown local file', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+      const unknownPath = join(dir, 'local-notes.nmd')
+      await writeFile(unknownPath, 'unknown local file\n')
+      fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Local Notes',
+        markdown: 'Remote body.\n',
+      })
+
+      await expect(run(syncPath({ path: dir }), fake)).rejects.toThrow(
+        `Refusing to overwrite untracked local file ${unknownPath}`,
+      )
+      expect(await readFile(unknownPath, 'utf8')).toBe('unknown local file\n')
+    })
+  })
+
+  it('defaults a legacy workspace manifest without authority to local tree sync', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await mkdir(join(dir, '.notion-md'), { recursive: true })
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha.' }))
+      await writeFile(
+        join(dir, '.notion-md', 'workspace.json'),
+        `${JSON.stringify({
+          version: 1,
+          root_page_id: rootPageId,
+          root_file: 'index.nmd',
+          pages: {},
+        })}\n`,
+      )
+
+      const result = await run(syncPath({ path: dir }), fake)
+
+      expect(result).toMatchObject({ _tag: 'tree', direction: 'local' })
+      expect(fake.childTitles(rootPageId)).toEqual(['Alpha'])
+      expect(
+        JSON.parse(await readFile(join(dir, '.notion-md', 'workspace.json'), 'utf8')),
+      ).toMatchObject({ authority: 'local' })
     })
   })
 })

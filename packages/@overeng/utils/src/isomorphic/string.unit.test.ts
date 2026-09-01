@@ -3,7 +3,7 @@ import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { formatReasonMessage, nonEmptyTrimmedString } from './string.ts'
+import { formatReasonMessage, nonEmptyTrimmedString, titleSlug } from './string.ts'
 
 Vitest.describe('formatReasonMessage', () => {
   /* The cause segment is space-separated like the other parts, so it reads
@@ -69,6 +69,15 @@ Vitest.describe('formatReasonMessage', () => {
 
   Vitest.it('omits the cause segment when cause is undefined', () => {
     expect(formatReasonMessage({ reason: 'Timeout', method: 'waitFor' })).toBe('Timeout (waitFor)')
+  })
+})
+
+Vitest.describe('titleSlug', () => {
+  Vitest.it('transliterates German titles before general Unicode normalization', () => {
+    expect(titleSlug('Werk und künstlerische Themen')).toBe('werk-und-kuenstlerische-themen')
+    expect(titleSlug('Quellen und offene Prüfpunkte')).toBe('quellen-und-offene-pruefpunkte')
+    expect(titleSlug('ÄÖÜ äöü Straße ẞ')).toBe('aeoeue-aeoeue-strasse-ss')
+    expect(titleSlug('Crème brûlée')).toBe('creme-brulee')
   })
 })
 
