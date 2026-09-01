@@ -28,7 +28,7 @@ import {
 } from './composition-capability-resolver.ts'
 
 const trackedProjectorPath = fileURLToPath(
-  new URL('../../../../../scripts/buck2-capability-project.sh', import.meta.url),
+  new URL('../../../../../../scripts/buck2-capability-project.sh', import.meta.url),
 )
 
 const rawShell = execFileSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).trim()
