@@ -33,6 +33,7 @@ import {
   rm,
   stat,
   unlink,
+  type FileHandle,
 } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
@@ -705,6 +706,243 @@ const updatePhase = ({
     yield* replaceTransaction({ path: transactionPath, transaction: next, runtime })
     return next
   })
+
+interface MovableProtectedRoot {
+  readonly path: string
+  readonly identity: CpAMountInodeIdentity
+}
+
+interface OpenMovableProtectedRoot extends MovableProtectedRoot {
+  readonly handle: FileHandle
+}
+
+const assertOpenDirectoryIdentity = async ({
+  root,
+  expectedMode,
+}: {
+  root: OpenMovableProtectedRoot
+  expectedMode?: number
+}): Promise<void> => {
+  const info = await root.handle.stat()
+  if (
+    info.isDirectory() === false ||
+    identitiesEqual({ left: identityFromStat(info), right: root.identity }) === false
+  ) {
+    throw new Error(`Cp-a movable root identity changed at '${root.path}'`)
+  }
+  if (expectedMode !== undefined && (info.mode & 0o777) !== expectedMode) {
+    throw new Error(
+      `Cp-a movable root '${root.path}' has mode ${(info.mode & 0o777).toString(8)}, expected ${expectedMode.toString(8)}`,
+    )
+  }
+}
+
+const restoreOpenMovableRoot = async (root: OpenMovableProtectedRoot): Promise<void> => {
+  try {
+    await assertOpenDirectoryIdentity({ root })
+    await root.handle.chmod(0o555)
+    await assertOpenDirectoryIdentity({ root, expectedMode: 0o555 })
+  } finally {
+    await root.handle.close()
+  }
+}
+
+const restoreOpenMovableRoots = async ({
+  roots,
+  index = 0,
+  failures = [],
+}: {
+  roots: ReadonlyArray<OpenMovableProtectedRoot>
+  index?: number
+  failures?: Array<unknown>
+}): Promise<ReadonlyArray<unknown>> => {
+  const root = roots[index]
+  if (root === undefined) return failures
+
+  try {
+    await restoreOpenMovableRoot(root)
+  } catch (cause) {
+    failures.push(cause)
+  }
+  return restoreOpenMovableRoots({ roots, index: index + 1, failures })
+}
+
+const openMovableProtectedRoots = async ({
+  roots,
+  opened,
+  index = 0,
+}: {
+  roots: ReadonlyArray<MovableProtectedRoot>
+  opened: Array<OpenMovableProtectedRoot>
+  index?: number
+}): Promise<ReadonlyArray<OpenMovableProtectedRoot>> => {
+  const root = roots[index]
+  if (root === undefined) return opened
+
+  const handle = await open(root.path, 'r')
+  const openedRoot = { ...root, handle }
+  try {
+    await assertOpenDirectoryIdentity({ root: openedRoot })
+  } catch (cause) {
+    await handle.close()
+    throw cause
+  }
+  opened.push(openedRoot)
+  await handle.chmod(0o755)
+  await assertOpenDirectoryIdentity({ root: openedRoot, expectedMode: 0o755 })
+  return openMovableProtectedRoots({ roots, opened, index: index + 1 })
+}
+
+/**
+ * Darwin's directory rename requires a writable moved root even when its containing directory is
+ * writable. Keep the R6-protected inode open across only the rename command, so both chmod calls
+ * remain bound to the recorded inode even when exchange changes its pathname.
+ */
+const withDarwinMovableProtectedRoots = <A>({
+  platform,
+  roots,
+  effect,
+  recoveryPaths,
+}: {
+  platform: RuntimePlatform
+  roots: ReadonlyArray<MovableProtectedRoot>
+  effect: Effect.Effect<A, CpAMemberMountError>
+  recoveryPaths: ReadonlyArray<string>
+}): Effect.Effect<A, CpAMemberMountError> => {
+  if (platform !== 'darwin' || roots.length === 0) return effect
+
+  return Effect.acquireUseRelease(
+    io({
+      path: roots.map(({ path }) => path).join(','),
+      message: 'Cannot prepare protected cp-a roots for an atomic directory move',
+      recoveryPaths,
+      try: async () => {
+        const opened: Array<OpenMovableProtectedRoot> = []
+        try {
+          return await openMovableProtectedRoots({ roots, opened })
+        } catch (cause) {
+          const restorationFailures = await restoreOpenMovableRoots({ roots: opened })
+          if (restorationFailures.length > 0) {
+            const preparationError = Object.assign(
+              new Error(
+                'Cannot restore cp-a roots after preparing an atomic directory move failed',
+                { cause },
+              ),
+              { restorationFailures },
+            )
+            throw preparationError
+          }
+          throw cause
+        }
+      },
+    }),
+    () => effect,
+    (opened) =>
+      io({
+        path: opened.map(({ path }) => path).join(','),
+        message: 'Cannot restore protected cp-a roots after an atomic directory move',
+        recoveryPaths,
+        try: async () => {
+          const failures = await restoreOpenMovableRoots({ roots: opened })
+          if (failures.length > 0) {
+            throw new AggregateError(
+              failures,
+              'Cannot restore protected cp-a roots after an atomic directory move',
+            )
+          }
+        },
+      }).pipe(Effect.orDie),
+  )
+}
+
+/**
+ * A process may die while Darwin roots are temporarily movable. Re-protect only transaction-bound
+ * directory inodes before R6 observation, so recovery never treats a writable mount as valid.
+ */
+const restoreTransactionRootProtectionAtPath = async ({
+  path,
+  identities,
+}: {
+  path: string
+  identities: ReadonlyArray<CpAMountInodeIdentity>
+}): Promise<void> => {
+  let pathInfo: Stats
+  try {
+    pathInfo = await lstat(path)
+  } catch (cause) {
+    if (typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === 'ENOENT')
+      return
+    throw cause
+  }
+  if (pathInfo.isDirectory() === false) return
+  const pathIdentity = identityFromStat(pathInfo)
+  const expectedIdentity = identities.find((identity) =>
+    identitiesEqual({ left: pathIdentity, right: identity }),
+  )
+  if (expectedIdentity === undefined) return
+
+  const handle = await open(path, 'r')
+  const root = { path, identity: expectedIdentity, handle }
+  try {
+    await assertOpenDirectoryIdentity({ root })
+    if ((pathInfo.mode & 0o777) !== 0o555) await handle.chmod(0o555)
+    await assertOpenDirectoryIdentity({ root, expectedMode: 0o555 })
+  } finally {
+    await handle.close()
+  }
+}
+
+const restoreTransactionRootsProtection = async ({
+  paths,
+  identities,
+  index = 0,
+}: {
+  paths: ReadonlyArray<string>
+  identities: ReadonlyArray<CpAMountInodeIdentity>
+  index?: number
+}): Promise<void> => {
+  const path = paths[index]
+  if (path === undefined) return
+
+  await restoreTransactionRootProtectionAtPath({ path, identities })
+  return restoreTransactionRootsProtection({ paths, identities, index: index + 1 })
+}
+
+const restoreTransactionRootProtection = ({
+  transaction,
+  platform,
+  transactionPath,
+}: {
+  transaction: CpAMemberMountTransactionType
+  platform: RuntimePlatform
+  transactionPath: string
+}): Effect.Effect<void, CpAMemberMountError> => {
+  if (platform !== 'darwin') return Effect.void
+
+  const identities = [
+    ...(transaction.newIdentity.candidateIdentity === null
+      ? []
+      : [transaction.newIdentity.candidateIdentity]),
+    ...(transaction.oldIdentity._tag === 'Owned' ? [transaction.oldIdentity.identity] : []),
+  ]
+  const recoveryPaths = [
+    transaction.destinationPath,
+    transaction.stagePath,
+    transactionPath,
+  ] as const
+
+  return io({
+    path: transactionPath,
+    message: 'Cannot restore transaction-bound cp-a roots before recovery',
+    reason: 'AmbiguousRecovery',
+    recoveryPaths,
+    try: () =>
+      restoreTransactionRootsProtection({
+        paths: [transaction.destinationPath, transaction.stagePath],
+        identities,
+      }),
+  })
+}
 
 const unprotectDirectories = (root: string): Effect.Effect<void, CpAMemberMountError> =>
   io({
@@ -1444,12 +1682,18 @@ export const materializeCpAMemberMount = ({
           try: () => runtime.beforeFirstPublish!({ destinationPath, stagePath }),
         })
       }
-      yield* runCommand({
-        binary: runtime.mvPath,
-        args: ['-T', '--no-clobber', '--no-copy', stagePath, destinationPath],
-        path: destinationPath,
-        commandName: 'GNU mv no-clobber first publish',
-        recoveryPaths: [destinationPath, stagePath, transactionPath],
+      const recoveryPaths = [destinationPath, stagePath, transactionPath]
+      yield* withDarwinMovableProtectedRoots({
+        platform: runtime.platform ?? process.platform,
+        roots: [{ path: stagePath, identity: candidateIdentity }],
+        recoveryPaths,
+        effect: runCommand({
+          binary: runtime.mvPath,
+          args: ['-T', '--no-clobber', '--no-copy', stagePath, destinationPath],
+          path: destinationPath,
+          commandName: 'GNU mv no-clobber first publish',
+          recoveryPaths,
+        }),
       })
       const [stageAfterPublish, destinationAfterPublish] = yield* Effect.all([
         lstatMaybe(stagePath),
@@ -1477,12 +1721,23 @@ export const materializeCpAMemberMount = ({
         reason: 'FirstPublish',
       })
     } else {
-      yield* runCommand({
-        binary: runtime.mvPath,
-        args: ['-T', '--exchange', '--no-copy', stagePath, destinationPath],
-        path: destinationPath,
-        commandName: 'GNU mv exchange',
-        recoveryPaths: [destinationPath, stagePath, transactionPath],
+      const recoveryPaths = [destinationPath, stagePath, transactionPath]
+      yield* withDarwinMovableProtectedRoots({
+        platform: runtime.platform ?? process.platform,
+        roots: [
+          { path: stagePath, identity: candidateIdentity },
+          ...(oldIdentity._tag === 'Owned'
+            ? [{ path: destinationPath, identity: oldIdentity.identity }]
+            : []),
+        ],
+        recoveryPaths,
+        effect: runCommand({
+          binary: runtime.mvPath,
+          args: ['-T', '--exchange', '--no-copy', stagePath, destinationPath],
+          path: destinationPath,
+          commandName: 'GNU mv exchange',
+          recoveryPaths,
+        }),
       })
       yield* syncDirectory({
         runtime,
@@ -1713,6 +1968,8 @@ export const recoverCpAMemberMount = ({
     const transactionPath = cpAMemberMountTransactionPath(request)
     const transaction = yield* readTransaction(transactionPath)
     yield* validateTransactionPaths({ request, transaction, transactionPath })
+    const platform = runtime.platform ?? process.platform
+    yield* restoreTransactionRootProtection({ transaction, platform, transactionPath })
 
     let destination = yield* observeTransactionPath({
       path: transaction.destinationPath,
@@ -1757,20 +2014,29 @@ export const recoverCpAMemberMount = ({
         return yield* rollbackCandidate
       }
       if (destination._tag === 'Missing' && stage._tag === 'New') {
-        yield* runCommand({
-          binary: runtime.mvPath,
-          args: [
-            '-T',
-            '--no-clobber',
-            '--no-copy',
-            transaction.stagePath,
-            transaction.destinationPath,
-          ],
-          path: transaction.destinationPath,
-          commandName: 'GNU mv no-clobber recovery publish',
-          recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
-        })
         const candidateIdentity = transaction.newIdentity.candidateIdentity
+        const recoveryPaths = [transaction.destinationPath, transaction.stagePath, transactionPath]
+        yield* withDarwinMovableProtectedRoots({
+          platform,
+          roots:
+            candidateIdentity === null
+              ? []
+              : [{ path: transaction.stagePath, identity: candidateIdentity }],
+          recoveryPaths,
+          effect: runCommand({
+            binary: runtime.mvPath,
+            args: [
+              '-T',
+              '--no-clobber',
+              '--no-copy',
+              transaction.stagePath,
+              transaction.destinationPath,
+            ],
+            path: transaction.destinationPath,
+            commandName: 'GNU mv no-clobber recovery publish',
+            recoveryPaths,
+          }),
+        })
         const [stageAfterPublish, destinationAfterPublish] = yield* Effect.all([
           lstatMaybe(transaction.stagePath),
           lstatMaybe(transaction.destinationPath),
@@ -1831,18 +2097,37 @@ export const recoverCpAMemberMount = ({
           allowVerifiedDarwinAdvance: request.allowVerifiedDarwinAdvance,
           destinationPath: transaction.destinationPath,
         })
-        yield* runCommand({
-          binary: runtime.mvPath,
-          args: [
-            '-T',
-            '--exchange',
-            '--no-copy',
-            transaction.stagePath,
-            transaction.destinationPath,
+        const candidateIdentity = transaction.newIdentity.candidateIdentity
+        const recoveryPaths = [transaction.destinationPath, transaction.stagePath, transactionPath]
+        yield* withDarwinMovableProtectedRoots({
+          platform,
+          roots: [
+            ...(candidateIdentity === null
+              ? []
+              : [{ path: transaction.stagePath, identity: candidateIdentity }]),
+            ...(transaction.oldIdentity._tag === 'Owned'
+              ? [
+                  {
+                    path: transaction.destinationPath,
+                    identity: transaction.oldIdentity.identity,
+                  },
+                ]
+              : []),
           ],
-          path: transaction.destinationPath,
-          commandName: 'GNU mv recovery exchange',
-          recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+          recoveryPaths,
+          effect: runCommand({
+            binary: runtime.mvPath,
+            args: [
+              '-T',
+              '--exchange',
+              '--no-copy',
+              transaction.stagePath,
+              transaction.destinationPath,
+            ],
+            path: transaction.destinationPath,
+            commandName: 'GNU mv recovery exchange',
+            recoveryPaths,
+          }),
         })
         yield* syncDirectory({
           runtime,

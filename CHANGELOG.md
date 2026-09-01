@@ -6,9 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: macOS refused cp-a first-publish and exchange renames
+  while the staged and published R6 roots were protected as `0555`, even though
+  their shared parent was writable. The Darwin rename boundary now opens and
+  verifies the transaction-recorded directory inodes, makes only those roots
+  writable for the rename, and restores `0555` through the same file
+  descriptors on success or failure. Recovery re-protects transaction-bound
+  roots before R6 inspection, so a crash during the short writable window
+  cannot make a writable mount valid.
+
 - **@overeng/megarepo**: the cp-a mount rename primitives ran with
   `stdio: 'ignore'`, so a failure reached CI as a bare `GNU mv no-clobber first
-  publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
+publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
   carries the command's stderr, the exact argv, the resolved binary — whose Nix
   store path names the coreutils version — and the mode and owner of every path
   the rename touches, including the shared parent, which is what actually
@@ -208,6 +217,7 @@ All notable changes to this project will be documented in this file.
   enforced admission ceiling.
 
 ### Removed
+
 - **context/effect-4/**: the flip-era migration docs (alignment register, idiom
   catalog, differential recipes, ops manuals). The executable
   baseline-collection gate moved to

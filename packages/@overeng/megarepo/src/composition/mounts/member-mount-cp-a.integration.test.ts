@@ -46,7 +46,14 @@ const forceRemoveTree = (root: string): Effect.Effect<void> =>
       const info = await lstat(path)
       if (info.isSymbolicLink() === true || info.isDirectory() === false) return
       await chmod(path, 0o755)
-      for (const child of await readdir(path)) await visit(NodePath.join(path, child))
+      const children = await readdir(path)
+      const visitChild = async (index: number): Promise<void> => {
+        const child = children[index]
+        if (child === undefined) return
+        await visit(NodePath.join(path, child))
+        return visitChild(index + 1)
+      }
+      await visitChild(0)
     }
     await visit(root).catch(() => undefined)
   })
@@ -202,6 +209,41 @@ const exchange = ({
       }),
   )
 
+const makeModeCheckingMv = ({
+  fixture,
+  name,
+  exitCode,
+}: {
+  fixture: Fixture
+  name: string
+  exitCode?: number
+}): Effect.Effect<{ readonly mvPath: string; readonly observationsPath: string }> =>
+  Effect.promise(async () => {
+    const mvPath = NodePath.join(fixture.workspaceRoot, `mv-mode-check-${name}`)
+    const observationsPath = `${mvPath}.observations`
+    const encodedMvPath = Buffer.from(fixture.mvPath).toString('base64')
+    const script = [
+      `#!${process.execPath}`,
+      `const { appendFileSync, existsSync, statSync } = require('node:fs')`,
+      `const { spawnSync } = require('node:child_process')`,
+      `const mvPath = Buffer.from('${encodedMvPath}', 'base64').toString()`,
+      `const operands = process.argv.slice(-2).filter((path) => existsSync(path))`,
+      `const modes = operands.map((path) => statSync(path).mode & 0o777)`,
+      `appendFileSync(__filename + '.observations', modes.join(',') + '\\n')`,
+      `if (modes.length === 0 || modes.some((mode) => mode !== 0o755)) process.exit(91)`,
+      exitCode === undefined
+        ? `const result = spawnSync(mvPath, process.argv.slice(2), { stdio: 'inherit' }); process.exit(result.status ?? 1)`
+        : `process.exit(${String(exitCode)})`,
+      '',
+    ].join('\n')
+    await writeFile(mvPath, script)
+    await chmod(mvPath, 0o755)
+    return { mvPath, observationsPath }
+  })
+
+const modeOf = (path: string): Effect.Effect<number> =>
+  Effect.promise(async () => (await lstat(path)).mode & 0o777)
+
 const stagePath = (fixture: Fixture): string =>
   NodePath.join(NodePath.dirname(fixture.destinationPath), '.mr-stage-v1-646570-test')
 
@@ -300,6 +342,40 @@ describe('cp-a member mount lifecycle', () => {
           }),
         ),
       ).toBe(true)
+    }, withNode),
+  )
+
+  it.effect(
+    'makes only identity-bound Darwin rename roots writable and re-protects first-publish and exchange results',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      const checkedMv = yield* makeModeCheckingMv({ fixture, name: 'success' })
+
+      const published = yield* firstPublish(fixture, {
+        mvPath: checkedMv.mvPath,
+        platform: 'darwin',
+      })
+      expect(published).toMatchObject({ _tag: 'Published', operation: 'FirstPublish' })
+      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
+
+      const advanced = yield* materializeCpAMemberMount({
+        request: requestFor({
+          fixture,
+          sourcePath: fixture.sourceB,
+          lockedCommit: 'b'.repeat(40),
+          allowVerifiedDarwinAdvance: true,
+        }),
+        runtime: runtimeFor(fixture, {
+          mvPath: checkedMv.mvPath,
+          platform: 'darwin',
+        }),
+      })
+      expect(advanced).toMatchObject({ _tag: 'Published', operation: 'Advance' })
+      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
+      expect(yield* pathExists(stagePath(fixture))).toBe(false)
+      expect(yield* Effect.promise(() => readFile(checkedMv.observationsPath, 'utf8'))).toBe(
+        '493\n493,493\n',
+      )
     }, withNode),
   )
 
@@ -531,16 +607,20 @@ describe('cp-a member mount lifecycle', () => {
   )
 
   it.effect(
-    'branches only on exchange exit code and leaves both trees for recovery on failure',
+    'restores retained Darwin stage and destination roots after an exchange command failure',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
       yield* firstPublish(fixture)
-      const failingMv = NodePath.join(fixture.workspaceRoot, 'mv-fails')
-      yield* Effect.promise(async () => {
-        await writeFile(failingMv, '#!/bin/sh\necho misleading-success >&2\nexit 17\n')
-        await chmod(failingMv, 0o755)
-      })
-      const result = yield* advance(fixture, { mvPath: failingMv }).pipe(Effect.result)
+      const failingMv = yield* makeModeCheckingMv({ fixture, name: 'failure', exitCode: 17 })
+      const result = yield* materializeCpAMemberMount({
+        request: requestFor({
+          fixture,
+          sourcePath: fixture.sourceB,
+          lockedCommit: 'b'.repeat(40),
+          allowVerifiedDarwinAdvance: true,
+        }),
+        runtime: runtimeFor(fixture, { mvPath: failingMv.mvPath, platform: 'darwin' }),
+      }).pipe(Effect.result)
       expect(result._tag).toBe('Failure')
       if (result._tag === 'Failure') expect(result.failure.reason).toBe('CommandFailure')
       expect(
@@ -553,15 +633,20 @@ describe('cp-a member mount lifecycle', () => {
           readFile(NodePath.join(stagePath(fixture), 'version.txt'), 'utf8'),
         ),
       ).toBe('B\n')
+      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
+      expect(yield* modeOf(stagePath(fixture))).toBe(0o555)
+      expect(yield* Effect.promise(() => readFile(failingMv.observationsPath, 'utf8'))).toBe(
+        '493,493\n',
+      )
       expect(yield* pathExists(fixture.transactionPath)).toBe(true)
 
       const recovered = yield* recoverCpAMemberMount({
         request: {
           workspaceRoot: fixture.workspaceRoot,
           member: fixture.member,
-          allowVerifiedDarwinAdvance: false,
+          allowVerifiedDarwinAdvance: true,
         },
-        runtime: { mvPath: fixture.mvPath, platform: 'linux' },
+        runtime: { mvPath: fixture.mvPath, platform: 'darwin' },
       })
       expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledForward' })
       expect(
@@ -569,6 +654,7 @@ describe('cp-a member mount lifecycle', () => {
           readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
         ),
       ).toBe('B\n')
+      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
     }, withNode),
   )
 
@@ -862,7 +948,7 @@ describe('cp-a transaction recovery fault matrix', () => {
   )
 
   it.effect(
-    'rolls forward a completely staged first publish',
+    're-protects a writable staged root before rolling forward a Darwin first publish',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
       yield* firstPublish(fixture, {
@@ -875,13 +961,14 @@ describe('cp-a transaction recovery fault matrix', () => {
           readFile(NodePath.join(stagePath(fixture), 'version.txt'), 'utf8'),
         ),
       ).toBe('A\n')
+      yield* Effect.promise(() => chmod(stagePath(fixture), 0o755))
       const recovered = yield* recoverCpAMemberMount({
         request: {
           workspaceRoot: fixture.workspaceRoot,
           member: fixture.member,
           allowVerifiedDarwinAdvance: false,
         },
-        runtime: { mvPath: fixture.mvPath, platform: 'linux' },
+        runtime: { mvPath: fixture.mvPath, platform: 'darwin' },
       })
       expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledForward' })
       expect(
@@ -889,11 +976,12 @@ describe('cp-a transaction recovery fault matrix', () => {
           readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
         ),
       ).toBe('A\n')
+      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
     }, withNode),
   )
 
   it.effect(
-    'ignores stale staged phase after an observed exchange and rolls forward',
+    're-protects exchanged roots left writable by a Darwin crash before rolling forward',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
       yield* firstPublish(fixture)
@@ -902,6 +990,10 @@ describe('cp-a transaction recovery fault matrix', () => {
           if (phase === 'Staged') throw new Error('crash')
         },
       }).pipe(Effect.result)
+      yield* Effect.promise(async () => {
+        await chmod(stagePath(fixture), 0o755)
+        await chmod(fixture.destinationPath, 0o755)
+      })
       yield* exchange({
         mvPath: fixture.mvPath,
         left: stagePath(fixture),
@@ -911,9 +1003,9 @@ describe('cp-a transaction recovery fault matrix', () => {
         request: {
           workspaceRoot: fixture.workspaceRoot,
           member: fixture.member,
-          allowVerifiedDarwinAdvance: false,
+          allowVerifiedDarwinAdvance: true,
         },
-        runtime: { mvPath: fixture.mvPath, platform: 'linux' },
+        runtime: { mvPath: fixture.mvPath, platform: 'darwin' },
       })
       expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledForward' })
       expect(
@@ -922,6 +1014,7 @@ describe('cp-a transaction recovery fault matrix', () => {
         ),
       ).toBe('B\n')
       expect(yield* pathExists(stagePath(fixture))).toBe(false)
+      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
     }, withNode),
   )
 
