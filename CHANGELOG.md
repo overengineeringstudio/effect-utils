@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **buck2 materializer tests**: `assert_no_staging` in
+  `nix/devenv-modules/tasks/shared/tests/typescript-materialize-dist.test.sh`
+  used `compgen -G`, a programmable-completion builtin the non-interactive
+  nixpkgs `bash` is built without. The assertion exited 127 and was a silent
+  no-op on every platform. It now iterates the glob directly and actually
+  fails when the materializer leaves a `.dist-buck2.*` staging directory
+  behind.
+
 ### Changed
 
 - **@overeng/megarepo**: `src/lib/` is gone; its 100 files now sit in

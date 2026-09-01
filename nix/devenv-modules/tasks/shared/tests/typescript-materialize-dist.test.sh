@@ -72,12 +72,16 @@ assert_old_dist() {
   }
 }
 
+# `compgen` is a programmable-completion builtin that the non-interactive
+# nixpkgs `bash` is built without, so it is unavailable here and this assertion
+# silently passed. Iterate the glob instead, which every POSIX shell supports.
 assert_no_staging() {
   repo="$1"
-  if compgen -G "$repo/$PACKAGE_PATH/.dist-buck2.*" >/dev/null; then
-    echo "FAIL: materializer left a staging directory" >&2
+  for staging in "$repo/$PACKAGE_PATH"/.dist-buck2.*; do
+    [ -e "$staging" ] || continue
+    echo "FAIL: materializer left a staging directory: $staging" >&2
     return 1
-  fi
+  done
 }
 
 test_missing_directory() {
