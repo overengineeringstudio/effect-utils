@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/utils**: `@overeng/utils/node/storybook/gate` — a reusable
+  story-driven visual and accessibility gate. Every story becomes a browser
+  test that renders, plays, checks accessibility and compares a screenshot
+  against a baseline derived from a git ref rather than committed. Three
+  settings are non-default because each ecosystem default fails silently:
+  comparator `threshold: 0` with `includeAA: true` (pixelmatch defaults to a
+  perceptual `0.1` and to ignoring anti-aliased pixels, so a one-pixel radius
+  change passes), `parameters.a11y.test: 'error'` (the default `'todo'` only
+  warns, and the parameter is inert unless `@storybook/addon-a11y` is
+  registered — hence the new `a11y` flag on `createDomStorybookConfig`), and
+  ref-derived baselines, because host fonts move one to three thousand pixels
+  per story and make a committed baseline valid only on the machine that wrote
+  it. The gate reports added, removed and changed stories, and reports failures
+  that already existed at the baseline ref separately so it answers "did this
+  change make it worse" on packages that carry debt. Measured on
+  `effect-schema-form-aria`: 39 stories, clean tree reports zero; a one-pixel
+  border radius is caught on exactly the two affected stories at 85 and 81
+  differing pixels, with no false positives on the other 37.
+
 ### Changed
 
 - **@overeng/stylex-preset -> @overeng/stylex-tokens**: the shared StyleX
