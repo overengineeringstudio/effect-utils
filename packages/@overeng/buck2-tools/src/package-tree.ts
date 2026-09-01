@@ -14,6 +14,8 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { canonicalizePath } from './real-path.ts'
+
 /** Explicit inputs and destination for one immutable Buck package-tree projection. */
 export type PackageTreeOptions = {
   readonly output: string
@@ -126,6 +128,11 @@ const pathIsInside = ({
 }
 
 const assertContainedSymlinks = (root: string): void => {
+  // Lexical targets are built from `root`, so they are compared against `root`;
+  // `realpathSync` answers in the canonical namespace, so resolved targets are
+  // compared against the canonical root. Comparing either against the other
+  // root reports containment failures for paths that are plainly contained.
+  const canonicalRoot = canonicalizePath(root)
   const visit = (directory: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).toSorted((left, right) =>
       left.name.localeCompare(right.name, 'en'),
@@ -162,7 +169,7 @@ const assertContainedSymlinks = (root: string): void => {
         }
         throw error
       }
-      if (pathIsInside({ root, candidate: resolvedDestination }) === false) {
+      if (pathIsInside({ root: canonicalRoot, candidate: resolvedDestination }) === false) {
         throw new Error(
           `package tree: unsafe symlink ${displayPath}: chained target resolves outside tree`,
         )

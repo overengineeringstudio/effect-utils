@@ -118,11 +118,16 @@ test_replaces_stale_dist() {
     WORKSPACE_ROOT="$repo" BUCK2_BIN="$repo/bin/buck2" \
     bash "$MATERIALIZER" "$repo" "$PACKAGE_PATH" "$TARGET" "$DECLARATION_ENTRYPOINT" "$PROJECT"
   mapfile -t buck_args < "$repo/buck-args"
+  # The materializer anchors its staging directory on the physical repository
+  # root (`pwd -P`), so the expectation has to be stated in the same resolved
+  # form. On macOS `$repo` is under the `/tmp` -> `/private/tmp` symlink; on
+  # Linux `/tmp` is a real directory and this is the identity.
+  repo_physical="$(cd "$repo" && pwd -P)"
   [ "${#buck_args[@]}" -eq 4 ] &&
     [ "${buck_args[0]}" = build ] &&
     [ "${buck_args[1]}" = "$TARGET" ] &&
     [ "${buck_args[2]}" = --out ] &&
-    [[ "${buck_args[3]}" = "$repo/$PACKAGE_PATH/.dist-buck2."*/dist ]] || {
+    [[ "${buck_args[3]}" = "$repo_physical/$PACKAGE_PATH/.dist-buck2."*/dist ]] || {
       echo "FAIL: materializer did not invoke the expected Buck build" >&2
       return 1
     }

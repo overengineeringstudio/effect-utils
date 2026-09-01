@@ -20,6 +20,8 @@ import {
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
+import { canonicalizePath } from './real-path.ts'
+
 /** Versioned identity of the persisted scoped editor-view record. */
 export const editorViewSchema = 'effect-utils/editor-view/v1' as const
 /** Versioned contract proving that every required workspace package is Buck-owned. */
@@ -477,7 +479,10 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
   const editorRoot = resolve(packageDir, '..', '..', '.editor-view')
   if (isWithin({ root: repoRoot, candidate: editorRoot }) === false)
     fail(`editor root escapes repository: ${editorRoot}`)
-  const consumerCache = resolve(repoRoot, options.consumerCache)
+  // The consumer cache is the one path a caller supplies absolutely, so it can
+  // arrive in a different namespace than the canonical repository root (macOS
+  // `/tmp` vs `/private/tmp`). Canonicalize it before every containment check.
+  const consumerCache = canonicalizePath(resolve(repoRoot, options.consumerCache))
   if (
     isWithin({ root: repoRoot, candidate: consumerCache }) === false ||
     isWithin({ root: editorRoot, candidate: consumerCache }) === true ||

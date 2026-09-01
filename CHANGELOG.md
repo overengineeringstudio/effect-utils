@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/buck2-tools**: path-containment checks compared a canonicalized
+  path against a non-canonicalized one, so every check failed wherever the
+  repository root is reached through a symlink — including macOS, where `/tmp`
+  is a symlink to `/private/tmp`, which is why `test (macos-arm64)` was red
+  and Linux was green. `editor-view-authority` (authority output),
+  `editor-view` (consumer cache) and `package-tree` (chained symlink targets)
+  now canonicalize both sides through a shared `canonicalizePath` helper that
+  resolves the deepest existing ancestor, so it works on paths that do not
+  exist yet. Where no ancestor is a symlink the helper is the identity, so
+  behaviour on a non-symlinked root is unchanged. The materializer shell test
+  likewise states its expectation in the same resolved form the materializer's
+  `pwd -P` produces.
+
 - **buck2 materializer tests**: `assert_no_staging` in
   `nix/devenv-modules/tasks/shared/tests/typescript-materialize-dist.test.sh`
   used `compgen -G`, a programmable-completion builtin the non-interactive

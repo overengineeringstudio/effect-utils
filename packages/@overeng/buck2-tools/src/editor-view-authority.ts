@@ -11,6 +11,7 @@ import {
   parseGitCandidatePaths,
   requireRepositoryRelativePath,
 } from './owned-files.ts'
+import { canonicalizePath } from './real-path.ts'
 
 type CommandInvocation = {
   readonly command: string
@@ -131,7 +132,12 @@ export const writeEditorViewAuthority = async ({
   if (isAbsolute(git) === false) fail(`Git must be an absolute path: ${git}`)
   const canonicalRepoRoot = realpathSync(repoRoot)
   const canonicalWorkspaceRoot = realpathSync(workspaceRoot)
-  const outputPath = resolve(canonicalRepoRoot, output)
+  // `output` may arrive as an absolute path in a different namespace than the
+  // canonical repository root (macOS `/tmp` vs `/private/tmp`), in which case
+  // `resolve` returns it unchanged and the containment check below compares two
+  // namespaces. Canonicalize it, and publish through the canonical form so the
+  // atomic rename lands in the directory the containment check admitted.
+  const outputPath = canonicalizePath(resolve(canonicalRepoRoot, output))
   const outputFromRepo = relative(canonicalRepoRoot, outputPath)
   if (
     isAbsolute(outputFromRepo) === true ||
