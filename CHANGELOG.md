@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **CI composition scripts**: `cleanup-effect-utils-composition.sh` derived its
+  store, workspace and worktree paths from `MEGAREPO_STORE`/`RUNNER_TEMP`
+  verbatim but compared them against Git, which always answers with resolved
+  paths. On macOS, where the runner temp sits under the `/var` ->
+  `/private/var` symlink, the worktree-identity guards could never match and
+  `set -e` aborted a legitimate cleanup with exit 1. The script now resolves the
+  store root and runner temp once and re-derives from them, so every comparison
+  is same-namespace; no guard is weakened. `bootstrap-cold-proof.sh` had the
+  same asymmetry in a guard that fails on match, where it silently stopped
+  matching rather than failing loudly.
+
 - **buck2 package trees**: the `package_tree` runner was staged into its action
   as a single file, so the `./real-path.ts` import the containment fix added
   resolved against a directory that did not contain it and every

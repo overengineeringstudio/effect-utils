@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -1208,8 +1209,13 @@ describe('effect-utils CI composition workspace', () => {
         expect(readFileSync(fixture.nixLog, 'utf8')).toBe(
           `${fixture.checkout}|build --no-link --print-out-paths .#megarepo\n`,
         )
+        // The composition step runs `mr` under `env -i`, which drops PWD, so the
+        // child shell reports the resolved working directory while every other
+        // field is the path the runner handed in. Compare the first field in the
+        // same resolved form; on a filesystem with no symlink above the fixture
+        // this is the identity.
         expect(readFileSync(fixture.mrLog, 'utf8')).toContain(
-          `${dirname(workspace)}|${join(fixture.runnerTemp, 'megarepo-store/100/2/unit_job')}|unset|--cwd ${workspace} apply --worktree-mode tracking --lock-sync off --output ci`,
+          `${realpathSync(dirname(workspace))}|${join(fixture.runnerTemp, 'megarepo-store/100/2/unit_job')}|unset|--cwd ${workspace} apply --worktree-mode tracking --lock-sync off --output ci`,
         )
         expect(readFileSync(fixture.envFile, 'utf8')).toContain(
           `EFFECT_UTILS_MEMBER_ROOT=${member}\n`,

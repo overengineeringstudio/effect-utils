@@ -58,8 +58,11 @@ git -C "$repo" archive --format=tar HEAD | tar -x -C "$tree"
 # The whole point is "cold": there must be no installed dependency graph anywhere on the path bun or
 # pnpm would resolve against.
 [ ! -e "${tree}/node_modules" ] || fail "fresh tree unexpectedly contains node_modules"
-case "$tree" in
-  "${repo}"/*) fail "temp tree is inside the repo (${tree}); bun/pnpm would resolve the repo node_modules" ;;
+# Both sides resolved: $repo can come from DEVENV_ROOT unresolved while $tree
+# comes from mktemp, and on a filesystem with a symlinked temp root a mismatched
+# pair makes this guard silently stop matching instead of failing loudly.
+case "$(cd "$tree" && pwd -P)" in
+  "$(cd "$repo" && pwd -P)"/*) fail "temp tree is inside the repo (${tree}); bun/pnpm would resolve the repo node_modules" ;;
 esac
 ancestor="$tree"
 while [ "$ancestor" != "/" ]; do
