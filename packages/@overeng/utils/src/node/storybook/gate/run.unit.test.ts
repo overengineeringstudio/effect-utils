@@ -8,6 +8,7 @@ const clean = {
   changed: [],
   uncovered: [],
   baseline: { total: 39, passed: 28, failed: 11 },
+  themeAxis: { projects: ['story-gate-light', 'story-gate-dark'], comparable: 39, differing: 38 },
 } as const
 
 describe('isStoryGateOk', () => {
@@ -44,5 +45,54 @@ describe('isStoryGateOk', () => {
         changed: [{ story: 'Default', kind: 'pixels', detail: '85 pixels (ratio 0.01) differ.' }],
       }),
     }).toEqual({ added: false, removed: false, changed: false })
+  })
+
+  it('refuses to pass when both theme projects rendered the same thing', () => {
+    // The defect this guards: the theme toolbar global never reached the
+    // element the overrides were keyed on, so both projects captured the light
+    // palette and the gate reported green double-coverage over an axis that did
+    // not vary. Two projects, 39 comparable stories, zero differing.
+    expect(
+      isStoryGateOk({
+        ...clean,
+        themeAxis: { ...clean.themeAxis, differing: 0 },
+      }),
+    ).toBe(false)
+  })
+
+  it('accepts a target that declares a single colour scheme', () => {
+    // Measured counterexample: a site pinning one scheme has 0 of 57 probes
+    // differing, correctly. Failing it would punish a correct target for a
+    // property of the target, and the guard would get switched off.
+    expect(
+      isStoryGateOk({
+        ...clean,
+        themeAxis: { ...clean.themeAxis, comparable: 57, differing: 0 },
+        themeVaries: false,
+      }),
+    ).toBe(true)
+  })
+
+  it('does not demand variation from a single-project run', () => {
+    expect(
+      isStoryGateOk({
+        ...clean,
+        themeAxis: { projects: ['story-gate'], comparable: 39, differing: 0 },
+      }),
+    ).toBe(true)
+  })
+
+  it('does not report a healthy axis from stories that differ from themselves', () => {
+    // `comparable` is the post-exclusion count. A suite where every story is
+    // nondeterministic excludes everything, and zero comparable stories is not
+    // evidence of a working axis — but it is also not evidence of a broken one,
+    // so the verdict defers rather than inventing a failure the counts cannot
+    // support. The empty set is visible in `selfInconsistent`.
+    expect(
+      isStoryGateOk({
+        ...clean,
+        themeAxis: { ...clean.themeAxis, comparable: 0, differing: 0 },
+      }),
+    ).toBe(true)
   })
 })

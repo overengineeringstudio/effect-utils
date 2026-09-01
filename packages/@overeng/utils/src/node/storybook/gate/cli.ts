@@ -13,11 +13,13 @@ import { pathToFileURL } from 'node:url'
 
 import { runStoryGate } from './run.ts'
 
-const usage = `Usage: gate [--package <dir>] [--ref <git-ref>] [--refresh]
+const usage = `Usage: gate [--package <dir>] [--ref <git-ref>] [--refresh] [--single-scheme]
 
-  --package  package directory holding .storybook (default: cwd)
-  --ref      git ref supplying the baseline (default: HEAD)
-  --refresh  re-derive the baseline even if one is cached
+  --package        package directory holding .storybook (default: cwd)
+  --ref            git ref supplying the baseline (default: HEAD)
+  --refresh        re-derive the baseline even if one is cached
+  --single-scheme  this target ships one colour scheme, so theme projects are
+                   expected to render identically and that is not a failure
 `
 
 const readFlag = ({
@@ -42,6 +44,7 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
     packageDir: readFlag({ argv, flag: '--package' }) ?? process.cwd(),
     baselineRef: readFlag({ argv, flag: '--ref' }) ?? 'HEAD',
     refresh: argv.includes('--refresh'),
+    themeVaries: argv.includes('--single-scheme') === false,
   })
 
   // The baseline health goes in the headline, not the detail. The false green
@@ -50,10 +53,21 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
   // express "the baseline was unusable" is part of that defect.
   const verdict = report.ok === true ? 'PASS' : 'FAIL'
   const lines = [
-    `${verdict}  ${report.comparedStories} compared · ${report.baseline.passed}/${report.baseline.total} passed at baseline · ${report.changed.length} changed · ${report.added.length} added · ${report.removed.length} removed · ${report.uncovered.length} uncovered · ${report.preExisting.length} pre-existing · ${report.excluded.length} excluded`,
+    `${verdict}  ${report.comparedStories} compared · ${report.baseline.passed}/${report.baseline.total} passed at baseline · ${report.changed.length} changed · ${report.added.length} added · ${report.removed.length} removed · ${report.uncovered.length} uncovered · ${report.preExisting.length} pre-existing · ${report.excluded.length} excluded · ${report.selfInconsistent.length} self-inconsistent`,
     `baseline    ${report.baselineRef} (${report.baselineSha.slice(0, 9)})`,
     ...(report.baseline.passed === 0
       ? ['', 'Nothing passed at the baseline ref. That is an unusable baseline, not a clean run.']
+      : []),
+    ...(report.themeAxis.projects.length > 1
+      ? [
+          `theme axis  ${report.themeAxis.differing}/${report.themeAxis.comparable} comparable stories differ across ${report.themeAxis.projects.join(', ')}`,
+        ]
+      : []),
+    ...(report.themeAxis.projects.length > 1 && report.themeAxis.differing === 0
+      ? [
+          '',
+          'No story rendered differently across the theme projects. Either the theme global never reaches the styled element — in which case both projects captured the same palette and the coverage is imaginary — or this target ships one scheme and should pass --single-scheme.',
+        ]
       : []),
     ...(report.uncovered.length > 0
       ? [
