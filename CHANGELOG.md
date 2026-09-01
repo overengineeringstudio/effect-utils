@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **buck2 package trees**: the `package_tree` runner was staged into its action
+  as a single file, so the `./real-path.ts` import the containment fix added
+  resolved against a directory that did not contain it and every
+  `:package_tree` action died with `Cannot find module`. `runtime` now points
+  at a `filegroup` that co-locates the runner with its complete relative-import
+  closure, and the rule takes a `runtime_entry` naming the module to execute.
+  A new `genie:buck2:test` task runs the Buck2 genie suite — which nothing ran
+  before, so its guards were inert — and a new guard walks the relative-import
+  closure of every staged runner and fails when it is not declared.
+
 - **buck2 toolchains**: `bun` and `effect-tsgo` were the only two tools bypassing
   the `.buck2/capabilities` projection, carrying hand-written `/nix/store` paths
   per platform instead. The `x86_64-linux` tsgo pin had gone stale against the

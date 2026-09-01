@@ -26,9 +26,15 @@ def _add_mapped_sources(args, flag, sources):
 def _package_tree_impl(ctx):
     node_modules = ctx.attrs.node_modules
     out = ctx.actions.declare_output("package_tree", dir = True)
+    _require_relative_path(ctx.attrs.runtime_entry, "runtime entry")
+
+    # The runner is staged as a directory holding its complete relative-import
+    # closure, so a sibling `./module.ts` import resolves inside the action.
+    # Only the declared modules are present: an undeclared one fails closed.
+    runtime_tree = ctx.attrs.runtime[DefaultInfo].default_outputs[0]
     args = cmd_args([
         ctx.attrs._bun[BunToolchainInfo].executable,
-        ctx.attrs.runtime,
+        cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
         "--output",
         out.as_output(),
         "--node-modules",
@@ -69,7 +75,8 @@ _package_tree = rule(
             value = attrs.string(),
             default = {},
         ),
-        "runtime": attrs.source(),
+        "runtime": attrs.dep(providers = [DefaultInfo]),
+        "runtime_entry": attrs.string(),
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
@@ -78,7 +85,7 @@ _package_tree = rule(
 )
 
 
-def package_tree(name, node_modules, files, runtime, workspace_siblings = {}, **kwargs):
+def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_siblings = {}, **kwargs):
     """Assembles one package tree; sibling specs carry files plus node_modules-relative links."""
     workspace_files = {}
     workspace_links = {}
@@ -100,6 +107,7 @@ def package_tree(name, node_modules, files, runtime, workspace_siblings = {}, **
         node_modules = node_modules,
         files = files,
         runtime = runtime,
+        runtime_entry = runtime_entry,
         workspace_files = workspace_files,
         workspace_links = workspace_links,
         **kwargs

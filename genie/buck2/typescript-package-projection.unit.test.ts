@@ -9,6 +9,7 @@ import contentAddressBuck from '../../packages/@overeng/content-address/BUCK.gen
 import effectDistributedLockBuck from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import otelContractBuck from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
+import stylexPresetBuck from '../../packages/@overeng/stylex-preset/BUCK.genie.ts'
 import tuiCoreBuck from '../../packages/@overeng/tui-core/BUCK.genie.ts'
 import tuiReactBuck from '../../packages/@overeng/tui-react/BUCK.genie.ts'
 import utilsDevBuck from '../../packages/@overeng/utils-dev/BUCK.genie.ts'
@@ -24,6 +25,7 @@ const outputsByAdmission = {
   contentAddress: contentAddressBuck.stringify(genieContext),
   effectDistributedLock: effectDistributedLockBuck.stringify(genieContext),
   otelContract: otelContractBuck.stringify(genieContext),
+  stylexPreset: stylexPresetBuck.stringify(genieContext),
   tuiCore: tuiCoreBuck.stringify(genieContext),
   tuiReact: tuiReactBuck.stringify(genieContext),
   utils: utilsBuck.stringify(genieContext),
@@ -55,9 +57,8 @@ describe('declared-closure package projection', () => {
     for (const admitted of admittedPackages) {
       expect(admitted.output).toContain(`    actual = "${admitted.importer}",`)
       expect(admitted.output).toContain('    actual = ":node_modules",')
-      expect(admitted.output).toContain(
-        '    runtime = "//:packages/@overeng/buck2-tools/src/package-tree.ts",',
-      )
+      expect(admitted.output).toContain('    runtime = "//:package_tree_runtime",')
+      expect(admitted.output).toContain('    runtime_entry = "package-tree.ts",')
       for (const retiredTerm of retiredProviderTerms) {
         expect(admitted.output).not.toContain(retiredTerm)
       }
@@ -83,6 +84,7 @@ describe('declared-closure package projection', () => {
         `${packagePath}/`,
       )
     }
+    expect(rootBuck).toContain('name = "package_tree_runtime",')
     expect(rootBuck).toContain('packages/@overeng/buck2-tools/src/package-tree.ts')
     for (const admitted of admittedPackages) {
       for (const packagePath of admittedPackages.map(({ packagePath }) => packagePath)) {
@@ -109,7 +111,7 @@ describe('same-cell label projection', () => {
       expect(admitted.output).not.toMatch(/@?effect_utils\/\//u)
       expect(admitted.output).toContain('load("//buck2:materialization.bzl"')
       expect(admitted.output).toContain('//buck2/dependencies:importer_')
-      expect(admitted.output).toContain('//:packages/@overeng/buck2-tools/src/package-tree.ts')
+      expect(admitted.output).toContain('//:package_tree_runtime')
     }
 
     const hubSources = [

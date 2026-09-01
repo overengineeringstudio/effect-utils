@@ -7,6 +7,7 @@ import {
   type GenieOutput,
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
+import { packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
 const regenerationCommand = 'devenv tasks run genie:run' as const
 const sourceExtensions = ['.cts', '.mts', '.ts', '.tsx'] as const
@@ -23,7 +24,9 @@ const commonSemanticInputs = [
   'genie/buck2/typescript-admissions.ts',
   'genie/buck2/typescript-package-projection.ts',
   'package.json.genie.ts',
-  'packages/@overeng/buck2-tools/src/package-tree.ts',
+  // The package-tree runner and every module staged with it: a change to any of
+  // them changes the action, so it must refresh the projection fingerprint.
+  ...packageTreeRuntime.modules,
 ] as const
 
 const compareStrings = ({ left, right }: { left: string; right: string }): number =>
@@ -129,7 +132,7 @@ export const buck2TypeScriptPackageProjection = ({
     ),
   )
   const visibility = ['PUBLIC'] as const
-  const packageTreeRuntime = '//:packages/@overeng/buck2-tools/src/package-tree.ts'
+  const runtimeEntry = stagedModuleName(packageTreeRuntime.entry)
   const sourceLabel = (repoRelativePath: string): string => {
     if (repoRelativePath.startsWith(`${packagePath}/`) === true) {
       return repoRelativePath.slice(packagePath.length + 1)
@@ -208,7 +211,8 @@ export const buck2TypeScriptPackageProjection = ({
     packageName,
     packagePath,
     packageSources,
-    packageTreeRuntime,
+    packageTreeRuntime: packageTreeRuntime.label,
+    packageTreeRuntimeEntry: runtimeEntry,
     projectFile,
     sourceRoots,
     visibility,
@@ -284,7 +288,8 @@ export const buck2TypeScriptPackageProjection = ({
       '    name = "package_tree",',
       '    node_modules = ":node_modules",',
       ...renderMap({ name: 'files', entries: packageFileEntries }),
-      `    runtime = ${starlarkString(packageTreeRuntime)},`,
+      `    runtime = ${starlarkString(packageTreeRuntime.label)},`,
+      `    runtime_entry = ${starlarkString(runtimeEntry)},`,
       ...renderWorkspaceSiblings(),
       renderBuck2Visibility({ visibility }),
       ')',

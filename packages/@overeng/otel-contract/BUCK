@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/otel-contract/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:66b7d156575ab8938bfeace91fd749d8c676903c9999e39b63c177e8ff1a4a95
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/src/**/*.cts, packages/@overeng/otel-contract/src/**/*.mts, packages/@overeng/otel-contract/src/**/*.ts, packages/@overeng/otel-contract/src/**/*.tsx, packages/@overeng/otel-contract/tsconfig.json.genie.ts
+# Semantic fingerprint: sha256:977f7bdf344a3cc7ebf3adcec113a855004a6e44dbe25849c7ada0ca8f6324f4
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/src/**/*.cts, packages/@overeng/otel-contract/src/**/*.mts, packages/@overeng/otel-contract/src/**/*.ts, packages/@overeng/otel-contract/src/**/*.tsx, packages/@overeng/otel-contract/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
@@ -67,7 +67,8 @@ package_tree(
         "src/registry.unit.test.ts": "src/registry.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
-    runtime = "//:packages/@overeng/buck2-tools/src/package-tree.ts",
+    runtime = "//:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
     workspace_siblings = {},
     visibility = ["PUBLIC"],
 )

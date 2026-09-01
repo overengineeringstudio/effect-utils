@@ -574,7 +574,10 @@ in
     # Self-contained test tasks: each package uses its own vitest from node_modules
     (taskModules.test {
       packages = packagesWithTests;
-      extraTests = [ "devenv-modules:test" ];
+      extraTests = [
+        "devenv-modules:test"
+        "genie:buck2:test"
+      ];
       packageConcurrency = 4;
       retainVitestJson = true;
     })
@@ -736,6 +739,26 @@ in
       exec ${pkgs.bun}/bin/bun test src/*.test.ts
     ''
   );
+
+  # The Buck2 genie projection suite lives outside packages/@overeng, so the
+  # per-package `test:<pkg>` tasks and the root Vitest projects list both miss
+  # it. Give it its own task and hang it off `test:run`, or the projection and
+  # staged-runtime guards never run. Like test:buck2-tools it runs under pinned
+  # Bun: the pnpm-lock projection it imports reads Bun.YAML.
+  tasks."genie:buck2:test" = {
+    description = "Run the Buck2 genie projection and staged-runtime guards under pinned Bun";
+    after = [ "pnpm:install" ];
+    exec = trace.exec "genie:buck2:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun test genie/buck2/*.unit.test.ts
+    '';
+    execIfModified = [
+      "BUCK"
+      "genie/buck2/**/*.ts"
+      "packages/@overeng/buck2-tools/src/**/*.ts"
+    ];
+  };
 
   # NOTE (decision 0004): there is deliberately NO `genie:bootstrap`-before-`pnpm:install` edge.
   # An earlier form wired `pnpm:install.after = [ "genie:bootstrap" ]` so install would run
