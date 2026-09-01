@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **buck2 toolchains**: `bun` and `effect-tsgo` were the only two tools bypassing
+  the `.buck2/capabilities` projection, carrying hand-written `/nix/store` paths
+  per platform instead. The `x86_64-linux` tsgo pin had gone stale against the
+  current nixpkgs, so it was never realized on a CI runner and every TypeScript
+  Buck action died with a bare `Error at spawn` (ENOENT) — the shared cause of
+  the red `typecheck` and `buck2` jobs. Both tools are now projected from live
+  Nix realizations like the Rust and support tools, so the per-platform maps are
+  gone and cannot go stale. The three host-platform helpers that had drifted
+  apart (one spelled the macOS key `aarch64-darwin`, the projection and the
+  other two `aarch64-macos`) are consolidated into a single exported
+  `host_capability_platform`. Toolchain identity is in the action key, so this
+  invalidates cached TypeScript actions once.
+
 - **@overeng/buck2-tools**: path-containment checks compared a canonicalized
   path against a non-canonicalized one, so every check failed wherever the
   repository root is reached through a symlink — including macOS, where `/tmp`

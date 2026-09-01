@@ -1,6 +1,7 @@
 """Attested executor capabilities provisioned by the activated Nix profile."""
 
 load("//buck2/platforms:defs.bzl", "host_execution_constraints")
+load("//buck2/toolchains:defs.bzl", "host_capability_platform")
 load("//.buck2/capabilities:defs.bzl", "CAPABILITIES")
 
 BuckSupportToolInfo = provider(fields = {
@@ -15,18 +16,8 @@ BuckSupportToolInfo = provider(fields = {
     "tool_id": str,
 })
 
-def _host_platform():
-    host = host_info()
-    if host.os.is_linux and host.arch.is_x86_64:
-        return "x86_64-linux"
-    if host.os.is_linux and host.arch.is_aarch64:
-        return "aarch64-linux"
-    if host.os.is_macos and host.arch.is_aarch64:
-        return "aarch64-macos"
-    fail("support tools admit only x86_64-linux, aarch64-linux, and aarch64-macos")
-
 def _support_tool_impl(ctx):
-    platform = _host_platform()
+    platform = host_capability_platform()
     executable = ctx.attrs.executable
     manifest = ctx.attrs.manifest
     return [
@@ -63,7 +54,7 @@ _support_tool = rule(
 )
 
 def support_tool(name, protocol, tool_id, **kwargs):
-    platform = _host_platform()
+    platform = host_capability_platform()
     metadata = CAPABILITIES[platform][tool_id]
     capability = "//.buck2/capabilities/generations/{}/{}/{}".format(metadata["generation"], platform, tool_id)
     _support_tool(

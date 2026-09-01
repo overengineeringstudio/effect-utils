@@ -23,6 +23,46 @@ ConfiguredRustToolchainInfo = provider(fields = {
     "target_triple": provider_field(str),
 })
 
+def host_capability_platform():
+    """Returns the projection platform key for the admitted native host.
+
+    This is the same spelling `buck2ExecutionPlatform` hands to
+    `scripts/buck2-capability-project.sh`, so it indexes `CAPABILITIES`
+    directly. Every capability consumer must use this one helper: a second
+    spelling of the macOS key is how a toolchain silently misses its
+    realization.
+    """
+    host = host_info()
+    if host.os.is_linux and host.arch.is_x86_64:
+        return "x86_64-linux"
+    if host.os.is_linux and host.arch.is_aarch64:
+        return "aarch64-linux"
+    if host.os.is_macos and host.arch.is_aarch64:
+        return "aarch64-macos"
+    fail("Nix capabilities admit only x86_64-linux, aarch64-linux, and aarch64-macos")
+
+def require_capability(capabilities, generation, platform, tool_id):
+    """Returns the projected metadata for one tool, or fails with the reason."""
+    platform_capabilities = capabilities.get(platform)
+    if platform_capabilities == None:
+        fail("generated Buck capabilities do not contain native platform {}".format(platform))
+    metadata = platform_capabilities.get(tool_id)
+    if metadata == None:
+        fail("generated Buck capabilities do not contain {} for {}".format(tool_id, platform))
+    for field in ["closureIdentity", "contentDigest", "executableStorePath", "generation"]:
+        if not metadata.get(field):
+            fail("generated {} capability has no {}".format(tool_id, field))
+    if metadata["generation"] != generation:
+        fail("generated {} capability belongs to a stale generation".format(tool_id))
+    executable = metadata["executableStorePath"]
+    if not executable.startswith("/nix/store/") or "/bin/" not in executable:
+        fail("generated {} capability is not an immutable Nix executable: {}".format(tool_id, executable))
+    if not metadata["closureIdentity"].startswith("/nix/store/"):
+        fail("generated {} capability has a non-Nix closure identity".format(tool_id))
+    if len(metadata["contentDigest"]) != 64:
+        fail("generated {} capability has an invalid content digest".format(tool_id))
+    return metadata
+
 def host_rust_target_triple():
     """Returns the Rust target triple for the admitted native host."""
     host = host_info()
@@ -135,14 +175,13 @@ _bun_toolchain = rule(
 )
 
 
-def bun_toolchain(name, executable_by_platform, **kwargs):
+def bun_toolchain(name, capabilities, generation, **kwargs):
     """Declares the exact Nix Bun executable used by JavaScript actions."""
     if "exec_compatible_with" in kwargs:
         fail("bun_toolchain owns execution compatibility")
-    platform = _host_nix_platform()
-    executable = executable_by_platform.get(platform)
-    if executable == None:
-        fail("Bun toolchain has no realization for {}".format(platform))
+    platform = host_capability_platform()
+    executable = require_capability(capabilities, generation, platform, "bun")["executableStorePath"]
+    _require_nix_store_binary(executable, "bun", "Bun")
     _bun_toolchain(
         name = name,
         executable = executable,
@@ -183,26 +222,18 @@ _effect_tsgo_toolchain = rule(
 )
 
 
-def _host_nix_platform():
-    host = host_info()
-    if host.os.is_linux and host.arch.is_x86_64:
-        return "x86_64-linux"
-    if host.os.is_linux and host.arch.is_aarch64:
-        return "aarch64-linux"
-    if host.os.is_macos and host.arch.is_aarch64:
-        return "aarch64-darwin"
-    fail("configured Nix toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
-
-
-def effect_tsgo_toolchain(name, bun_by_platform, executable_by_platform, runner, **kwargs):
+def effect_tsgo_toolchain(name, capabilities, generation, runner, **kwargs):
     """Declares the exact Nix Bun/effect-tsgo pair used by TypeScript actions."""
     if "exec_compatible_with" in kwargs:
         fail("effect_tsgo_toolchain owns execution compatibility")
-    platform = _host_nix_platform()
-    bun = bun_by_platform.get(platform)
-    executable = executable_by_platform.get(platform)
-    if bun == None or executable == None:
-        fail("effect-tsgo has no tool realization for {}".format(platform))
+    platform = host_capability_platform()
+    bun = require_capability(capabilities, generation, platform, "bun")["executableStorePath"]
+    executable = require_capability(
+        capabilities,
+        generation,
+        platform,
+        "effect-tsgo",
+    )["executableStorePath"]
     _require_nix_store_binary(bun, "bun", "Bun")
     _require_nix_store_binary(executable, "tsgo", "effect-tsgo")
     _effect_tsgo_toolchain(

@@ -10,7 +10,9 @@ load(
 load(
     "//buck2/toolchains:defs.bzl",
     "ConfiguredRustToolchainInfo",
+    "host_capability_platform",
     "host_rust_target_triple",
+    "require_capability",
 )
 load(
     "@prelude//cxx:cxx_toolchain_types.bzl",
@@ -46,39 +48,6 @@ _TOOL_IDS = [
     "rust-strip",
     "rust-shell",
 ]
-
-
-def _host_capability_platform():
-    host = host_info()
-    if host.os.is_linux and host.arch.is_x86_64:
-        return "x86_64-linux"
-    if host.os.is_linux and host.arch.is_aarch64:
-        return "aarch64-linux"
-    if host.os.is_macos and host.arch.is_aarch64:
-        return "aarch64-macos"
-    fail("native Rust toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
-
-
-def _require_capability(capabilities, generation, platform, tool_id):
-    platform_capabilities = capabilities.get(platform)
-    if platform_capabilities == None:
-        fail("generated Buck capabilities do not contain native platform {}".format(platform))
-    metadata = platform_capabilities.get(tool_id)
-    if metadata == None:
-        fail("generated Buck capabilities do not contain {} for {}".format(tool_id, platform))
-    for field in ["closureIdentity", "contentDigest", "executableStorePath", "generation"]:
-        if not metadata.get(field):
-            fail("generated {} capability has no {}".format(tool_id, field))
-    if metadata["generation"] != generation:
-        fail("generated {} capability belongs to a stale generation".format(tool_id))
-    executable = metadata["executableStorePath"]
-    if not executable.startswith("/nix/store/") or "/bin/" not in executable:
-        fail("generated {} capability is not an immutable Nix executable: {}".format(tool_id, executable))
-    if not metadata["closureIdentity"].startswith("/nix/store/"):
-        fail("generated {} capability has a non-Nix closure identity".format(tool_id))
-    if len(metadata["contentDigest"]) != 64:
-        fail("generated {} capability has an invalid content digest".format(tool_id))
-    return metadata
 
 
 def _toolchain_identity(platform, target_platform, target_triple, metadata):
@@ -275,10 +244,10 @@ def _compile_env(metadata, target_triple):
 
 def native_rust_toolchains(capabilities, generation, target_platform):
     """Declares conventional `//buck2/toolchains:rust` and `:cxx` for the native pair."""
-    capability_platform = _host_capability_platform()
+    capability_platform = host_capability_platform()
     metadata = {}
     for tool_id in _TOOL_IDS:
-        metadata[tool_id] = _require_capability(
+        metadata[tool_id] = require_capability(
             capabilities,
             generation,
             capability_platform,

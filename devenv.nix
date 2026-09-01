@@ -158,6 +158,8 @@ let
         buck2Stage0Definition."archive-tool"
       }/bin/buck2-archive-tool \
       product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product \
+      bun effect-utils/buck2-bun/v1 ${pkgs.bun}/bin/bun \
+      effect-tsgo effect-utils/buck2-effect-tsgo/v1 ${effectTsgo}/bin/tsgo \
       rust-compiler effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-compiler} \
       rust-rustdoc effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-rustdoc} \
       rust-clippy-driver effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-clippy-driver} \
