@@ -27,7 +27,8 @@
     "./node/stylex": {
       "types": "./src/node/stylex/mod-types.d.ts",
       "default": "./src/node/stylex/mod.js"
-    }
+    },
+    "./node/stylex/focus-order": "./src/node/stylex/focus-order.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -41,6 +42,7 @@
       "./node/playwright": "./dist/node/playwright/mod.js",
       "./node/playwright/config": "./dist/node/playwright/config/mod.js",
       "./node/stylex": "./dist/node/stylex/mod.js",
+      "./node/stylex/focus-order": "./dist/node/stylex/focus-order.js",
       "./node/storybook": "./dist/node/storybook/mod.js",
       "./node/storybook/config": "./dist/node/storybook/config/mod.js",
       "./node/storybook/gate": "./dist/node/storybook/gate/mod.js",
