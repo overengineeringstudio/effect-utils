@@ -1,6 +1,6 @@
 # Megarepo Requirements
 
-Status: draft — pending human ratification.
+Status: ratified.
 
 This sub-VRS has no `vision.md`; that document is human-authored and not yet
 written. In its place: megarepo (`mr`) exists so that several independently
