@@ -13,11 +13,11 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { parseSourceString, isRemoteSource } from '../lib/config.ts'
-import * as Git from '../lib/git.ts'
-import { LOCK_FILE_NAME, readLockFile } from '../lib/lock.ts'
-import { refreshWorkspaceRegistry } from '../lib/store-liveness.ts'
-import { makeStoreLayer, Store } from '../lib/store.ts'
+import { parseSourceString, isRemoteSource } from '../core/config.ts'
+import * as Git from '../core/git.ts'
+import { LOCK_FILE_NAME, readLockFile } from '../core/lock.ts'
+import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
+import { makeStoreLayer, Store } from '../store/store.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   createStoreFixture,
@@ -825,7 +825,7 @@ describe('lock file pin/unpin operations', () => {
         expect(lockFile.members['my-lib']!.pinned).toBe(false)
 
         // Import and use pinMember
-        const { pinMember } = yield* Effect.promise(() => import('../lib/lock.ts'))
+        const { pinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
         const pinnedLockFile = pinMember({ lockFile, memberName: 'my-lib' })
 
         // Verify the member is now pinned
@@ -868,7 +868,7 @@ describe('lock file pin/unpin operations', () => {
         expect(lockFile.members['my-lib']!.pinned).toBe(true)
 
         // Import and use unpinMember
-        const { unpinMember } = yield* Effect.promise(() => import('../lib/lock.ts'))
+        const { unpinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
         const unpinnedLockFile = unpinMember({
           lockFile,
           memberName: 'my-lib',
@@ -919,7 +919,7 @@ describe('lock file pin/unpin operations', () => {
         const lockFile = Option.getOrThrow(lockFileOpt)
 
         // Pin lib1
-        const { pinMember } = yield* Effect.promise(() => import('../lib/lock.ts'))
+        const { pinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
         const pinnedLockFile = pinMember({ lockFile, memberName: 'lib1' })
 
         // Verify lib1 is pinned but lib2 is unchanged

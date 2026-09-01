@@ -8,9 +8,9 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import * as Git from '../../lib/git.ts'
-import { createLockedMember, LockFile } from '../../lib/lock.ts'
-import type { MegarepoStore } from '../../lib/store.ts'
+import * as Git from '../../core/git.ts'
+import { createLockedMember, LockFile } from '../../core/lock.ts'
+import type { MegarepoStore } from '../../store/store.ts'
 import { addCommit, initGitRepo } from '../../test-utils/setup.ts'
 import {
   CompositionCutoverError,

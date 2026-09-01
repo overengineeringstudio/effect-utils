@@ -8,7 +8,7 @@ import React from 'react'
 
 import { Box, Text } from '@overeng/tui-react'
 
-import { abbreviateStorePath } from '../../lib/store-path.ts'
+import { abbreviateStorePath } from '../../store/store-path.ts'
 
 // =============================================================================
 // Types

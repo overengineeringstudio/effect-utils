@@ -26,4 +26,4 @@ export {
   type BuckMemberManifestCapability,
   type BuckMemberToolchainAuthority,
   type BuckMemberToolchainRequirement,
-} from './lib/generators/composition-root.ts'
+} from './composition/root/composition-root.ts'

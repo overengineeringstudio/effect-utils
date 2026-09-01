@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/megarepo**: `src/lib/` is gone; its 100 files now sit in
+  responsibility directories (`core/`, `composition/{acquisition,mounts,overlays,capabilities,root,apply}/`,
+  `store/`, `sync/`, `generators/`) per the hierarchy ratified in
+  `context/megarepo/spec.md`. Pure moves plus relative-import rewrites — no
+  behavior change, no public-surface change (`.`, `./buck2-manifest` and
+  `./cli` are unchanged). `core/` provably imports nothing from
+  `composition/`. The `member-mount-r6` and `member-mount-cp-a` module headers
+  now explain their codenames and why they are two modules rather than one.
+
 - **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
   adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
   lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`

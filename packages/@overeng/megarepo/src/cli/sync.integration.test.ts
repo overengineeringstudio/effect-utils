@@ -9,7 +9,7 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME_JSON, MegarepoConfig } from '../lib/config.ts'
+import { CONFIG_FILE_NAME_JSON, MegarepoConfig } from '../core/config.ts'
 import {
   LockFile,
   LOCK_FILE_NAME,
@@ -19,8 +19,8 @@ import {
   readLockFile,
   updateLockedMember,
   writeLockFile,
-} from '../lib/lock.ts'
-import { MegarepoSyncTree, SyncErrorItem } from '../lib/sync/schema.ts'
+} from '../core/lock.ts'
+import { MegarepoSyncTree, SyncErrorItem } from '../sync/schema.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   addCommit,

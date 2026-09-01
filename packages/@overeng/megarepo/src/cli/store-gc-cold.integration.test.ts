@@ -37,10 +37,14 @@ import { expect, vi } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
-import * as Git from '../lib/git.ts'
-import { refreshWorkspaceRegistry } from '../lib/store-liveness.ts'
-import { makeStubPrStateResolverLayer, type GhPr, type StubPrRepo } from '../lib/store-pr-state.ts'
-import { makeStoreLayer, Store } from '../lib/store.ts'
+import * as Git from '../core/git.ts'
+import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
+import {
+  makeStubPrStateResolverLayer,
+  type GhPr,
+  type StubPrRepo,
+} from '../store/store-pr-state.ts'
+import { makeStoreLayer, Store } from '../store/store.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   createArchiveEntry,

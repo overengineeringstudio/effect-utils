@@ -12,6 +12,11 @@ import React from 'react'
 import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
+import { teardownCpAMemberMount } from '../../composition/mounts/member-mount-cp-a.ts'
+import {
+  foreignMemberMountMessage,
+  inspectMemberMount,
+} from '../../composition/mounts/member-mount.ts'
 import {
   buildSourceStringWithRef,
   MegarepoConfig,
@@ -21,8 +26,8 @@ import {
   isRemoteSource,
   readMegarepoConfig,
   writeMegarepoConfig,
-} from '../../lib/config.ts'
-import * as Git from '../../lib/git.ts'
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
 import {
   createEmptyLockFile,
   createLockedMember,
@@ -33,13 +38,11 @@ import {
   unpinMember,
   updateLockedMember,
   writeLockFile,
-} from '../../lib/lock.ts'
-import { teardownCpAMemberMount } from '../../lib/member-mount-cp-a.ts'
-import { foreignMemberMountMessage, inspectMemberMount } from '../../lib/member-mount.ts'
-import { classifyRef } from '../../lib/ref.ts'
-import { runPreflightChecks } from '../../lib/store-hygiene.ts'
-import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
-import { Store, StoreLayer } from '../../lib/store.ts'
+} from '../../core/lock.ts'
+import { classifyRef } from '../../core/ref.ts'
+import { runPreflightChecks } from '../../store/store-hygiene.ts'
+import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
+import { Store, StoreLayer } from '../../store/store.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import {
   NotInMegarepoError,

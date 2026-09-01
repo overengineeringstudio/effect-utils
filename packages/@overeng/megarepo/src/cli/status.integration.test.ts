@@ -19,13 +19,13 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { CompositionGeneratorConfig, MegarepoConfig } from '../lib/config.ts'
-import { createLockedMember, LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
-import { materializeCpAMemberMount } from '../lib/member-mount-cp-a.ts'
 import {
   OWNED_WORKTREE_ROOT_MANIFEST,
   OwnedWorktreeRootManifest,
-} from '../lib/owned-worktree-acquisition-schema.ts'
+} from '../composition/acquisition/owned-worktree-acquisition-schema.ts'
+import { materializeCpAMemberMount } from '../composition/mounts/member-mount-cp-a.ts'
+import { CompositionGeneratorConfig, MegarepoConfig } from '../core/config.ts'
+import { createLockedMember, LockFile, LOCK_FILE_NAME, writeLockFile } from '../core/lock.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { resolvePinnedCoreutils } from '../test-utils/coreutils.ts'
 import {

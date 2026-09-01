@@ -19,7 +19,7 @@ import {
   CONFIG_FILE_NAME_JSON,
   MegarepoConfig,
   parseSourceString,
-} from '../lib/config.ts'
+} from '../core/config.ts'
 import {
   createLockedMember,
   LOCK_FILE_NAME,
@@ -27,8 +27,8 @@ import {
   updateLockedMember,
   writeLockFile,
   LockFile,
-} from '../lib/lock.ts'
-import { classifyRef } from '../lib/ref.ts'
+} from '../core/lock.ts'
+import { classifyRef } from '../core/ref.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { addCommit, initGitRepo, readConfig } from '../test-utils/setup.ts'
 import { mrCommand } from './mod.ts'

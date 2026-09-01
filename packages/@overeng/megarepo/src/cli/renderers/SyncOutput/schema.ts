@@ -12,7 +12,7 @@ import {
   SyncErrorItem,
   SyncOptions,
   MegarepoSyncTree,
-} from '../../../lib/sync/schema.ts'
+} from '../../../sync/schema.ts'
 
 // =============================================================================
 // Pre-flight Hygiene Issue (for display)

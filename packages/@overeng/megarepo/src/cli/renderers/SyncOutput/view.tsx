@@ -19,7 +19,7 @@ import {
   type MemberSyncResult,
   type SyncErrorItem,
   type SyncMode,
-} from '../../../lib/sync/schema.ts'
+} from '../../../sync/schema.ts'
 import {
   WorkspaceRootLabel,
   TaskItem,

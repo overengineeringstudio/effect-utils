@@ -17,8 +17,8 @@ ratification.
 ## Scope
 
 **Defines:** the two responsibilities of `mr` (repo arrangement and workspace
-ownership), the CLI surface, the composition state machine, and the ratified
-target source hierarchy.
+ownership), the CLI surface, the composition state machine, and the source
+hierarchy.
 
 **Does not define:** the buck2-facing composition contract — the composition
 root shape, cell identity, action-identity hygiene, and the mount-shape
@@ -256,17 +256,17 @@ context and applied centrally by the shared row component — individual
 renderers never set dimming for scope purposes, so the rule cannot drift per
 view.
 
-## Target Source Hierarchy
+## Source Hierarchy
 
-The hierarchy below is ratified (q10, 2026-08-31) as the target. It is **not**
-the current layout: today's `src/lib/` is flat. The restructure is a separate
-post-landing PR and this section is what that PR is measured against.
+The hierarchy below was ratified as the target (q10, 2026-08-31) and is now the
+current layout: `src/lib/` no longer exists.
 
 ```text
 packages/@overeng/megarepo/src/
   core/                  # repo arrangement primitives, composition-agnostic
     git.ts ref.ts lock.ts config.ts
     megarepo-traversal.ts issues.ts observability.ts
+    source-policy.ts version.ts
     nix-lock/
   composition/           # workspace ownership, one dir per state-machine stage
     acquisition/         # owned branch-attached worktree acquire + recover
@@ -276,12 +276,15 @@ packages/@overeng/megarepo/src/
     root/                # composition-root generation
     apply/               # the state machine that sequences the above
   store/                 # store layout, liveness, hygiene, GC, locks
+  sync/                  # member sync: store fetch + worktree placement
+  generators/            # config-file generators (vscode workspace, JSON schema)
   buck2-manifest.ts      # public subpath export: ./buck2-manifest
+  *.contract.ts          # OTel semantic-convention contracts, read by path
   cli/                   # unchanged
 ```
 
 Two properties are the point of the split, and either one breaking is a reason
-to reject a restructure that otherwise matches the tree:
+to reject a change that otherwise matches the tree:
 
 1. **`core/` does not import `composition/`.** Repo arrangement is usable, and
    testable, without any composition concept. The dependency runs one way.
@@ -289,16 +292,23 @@ to reject a restructure that otherwise matches the tree:
    `mr apply` maps to exactly one directory, so the sequence in the code and
    the sequence in this spec are the same list.
 
+`store/` is the home of the `store-*` family. Store layout, liveness, hygiene
+and GC are arrangement-side, but the family is too large to sit as loose files
+in `core/`, so it gets a sibling directory rather than a subdirectory of either
+half.
+
+`sync/` and `generators/` are siblings of `core/` rather than members of it.
+Both reach into `composition/` — `sync/` inspects member mounts before it will
+touch a member path, and `generators/` re-exports the composition-root
+generators — so folding either into `core/` would break property 1.
+
 `buck2-manifest.ts` stays a top-level file, not a member of `composition/`: it
 is the package's public subpath export (`@overeng/megarepo/buck2-manifest`) and
-its stability contract is external. Tests stay colocated with their subject
-(`*.unit.test.ts`, `*.integration.test.ts` beside the module).
+its stability contract is external. The `*.contract.ts` files likewise stay at
+the `src/` root, because the weaver registry references them by path. Tests
+stay colocated with their subject (`*.unit.test.ts`, `*.integration.test.ts`
+beside the module).
 
 ## Open Design Questions
 
-- **DQ1 Store directory placement.** The q10 ratification enumerated `core/`
-  and `composition/` explicitly and did not name a home for the `store-*`
-  family. This spec records `src/store/` as the reading, on the grounds that
-  store liveness and GC are arrangement-side but too large to sit as loose
-  files in `core/`. Confirm or correct at restructure time; nothing else in
-  this document depends on the answer.
+None open.

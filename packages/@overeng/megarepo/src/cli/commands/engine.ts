@@ -17,6 +17,10 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
+  foreignMemberMountMessage,
+  inspectMemberMount,
+} from '../../composition/mounts/member-mount.ts'
+import {
   type ConfigNotFoundError,
   findConfigPath,
   getMemberPath,
@@ -25,9 +29,8 @@ import {
   isRemoteSource,
   parseSourceString,
   readMegarepoConfig,
-} from '../../lib/config.ts'
-import { generateAll, getEnabledGenerators } from '../../lib/generators/mod.ts'
-import * as Git from '../../lib/git.ts'
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
 import {
   checkLockStaleness,
   createEmptyLockFile,
@@ -36,13 +39,13 @@ import {
   syncLockWithConfig,
   upsertLockedMember,
   writeLockFile,
-} from '../../lib/lock.ts'
-import { foreignMemberMountMessage, inspectMemberMount } from '../../lib/member-mount.ts'
-import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
-import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
-import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
-import type { StoreLock } from '../../lib/store-lock.ts'
-import { Store, StoreLayer } from '../../lib/store.ts'
+} from '../../core/lock.ts'
+import { syncNixLocks, type NixLockSyncResult } from '../../core/nix-lock/mod.ts'
+import { generateAll, getEnabledGenerators } from '../../generators/mod.ts'
+import { runPreflightChecks, type StoreHygieneError } from '../../store/store-hygiene.ts'
+import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
+import type { StoreLock } from '../../store/store-lock.ts'
+import { Store, StoreLayer } from '../../store/store.ts'
 import {
   type GitProtocol,
   type MissingRefAction,
@@ -52,8 +55,8 @@ import {
   type MegarepoSyncResult,
   type MemberSyncResult,
   type SyncMode,
-} from '../../lib/sync/mod.ts'
-import type { MegarepoSyncTree as MegarepoSyncTreeType } from '../../lib/sync/schema.ts'
+} from '../../sync/mod.ts'
+import type { MegarepoSyncTree as MegarepoSyncTreeType } from '../../sync/schema.ts'
 import { Cwd, findMegarepoRoot, outputModeLayer, type OutputModeValue } from '../context.ts'
 import {
   NotInMegarepoError,

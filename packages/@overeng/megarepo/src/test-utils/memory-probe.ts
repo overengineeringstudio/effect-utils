@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs'
 import { NodeServices } from '@effect/platform-node'
 import { Effect } from 'effect'
 
-import * as Git from '../lib/git.ts'
+import * as Git from '../core/git.ts'
 import { encodeJson } from './json.ts'
 
 const readProcKb = (field: 'VmHWM' | 'VmRSS'): number => {

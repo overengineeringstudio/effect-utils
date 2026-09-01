@@ -2,7 +2,7 @@ import { constants } from 'node:fs'
 import { access, lstat, readlink, realpath } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
-import { compositionRuntimeEnvironmentNames } from '../lib/composition-runtime.ts'
+import { compositionRuntimeEnvironmentNames } from '../composition/apply/composition-runtime.ts'
 
 const toolNames = ['cp', 'mv'] as const
 type CoreutilsTool = (typeof toolNames)[number]

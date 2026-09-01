@@ -3,9 +3,9 @@ import * as Cli from 'effect/unstable/cli'
 
 import { EffectPath } from '@overeng/effect-path'
 
-import { readMegarepoConfig } from '../../lib/config.ts'
-import { LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
-import { checkSourcePolicy, formatSourcePolicyViolation } from '../../lib/source-policy.ts'
+import { readMegarepoConfig } from '../../core/config.ts'
+import { LOCK_FILE_NAME, readLockFile } from '../../core/lock.ts'
+import { checkSourcePolicy, formatSourcePolicyViolation } from '../../core/source-policy.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
 import { CheckCommandError, LockFileRequiredError, NotInMegarepoError } from '../errors.ts'
 import * as Observability from '../observability.ts'

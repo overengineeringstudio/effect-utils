@@ -7,7 +7,7 @@
 
 import { Schema } from 'effect'
 
-import { RefMismatch } from '../../../lib/issues.ts'
+import { RefMismatch } from '../../../core/issues.ts'
 
 // =============================================================================
 // Git Status

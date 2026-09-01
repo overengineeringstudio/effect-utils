@@ -13,7 +13,7 @@ import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { MegarepoConfig } from '../lib/config.ts'
+import { MegarepoConfig } from '../core/config.ts'
 
 // =============================================================================
 // Types

@@ -14,37 +14,37 @@ import {
   type BuckMemberManifest,
 } from '@overeng/megarepo/buck2-manifest'
 
-import type {
-  CompositionApplyOutput,
-  CompositionApplyRequest,
-  CompositionCommandOutput,
-} from '../../lib/composition-apply-schema.ts'
-import { compositionApply } from '../../lib/composition-apply.ts'
-import { resolveCompositionCapabilities } from '../../lib/composition-capability-resolver.ts'
-import { compositionApplyRuntimeFromEnv } from '../../lib/composition-runtime.ts'
-import {
-  getMemberPath,
-  isRemoteSource,
-  parseSourceString,
-  readMegarepoConfig,
-  type CompositionGeneratorConfig,
-} from '../../lib/config.ts'
-import * as Git from '../../lib/git.ts'
-import { LOCK_FILE_NAME, readLockFile, type LockFile } from '../../lib/lock.ts'
 import {
   OWNED_WORKTREE_ROOT_MANIFEST,
   OwnedWorktreeAcquisitionJournal,
   OwnedWorktreeRootManifest,
-} from '../../lib/owned-worktree-acquisition-schema.ts'
+} from '../../composition/acquisition/owned-worktree-acquisition-schema.ts'
 import {
   acquireOwnedWorktree,
   ownedWorktreeAcquisitionJournalPath,
   planOwnedWorktreeAcquisition,
   recoverOwnedWorktreeAcquisition,
   type OwnedWorkspaceGenerationContext,
-} from '../../lib/owned-worktree-acquisition.ts'
-import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
-import { Store, type MegarepoStore } from '../../lib/store.ts'
+} from '../../composition/acquisition/owned-worktree-acquisition.ts'
+import type {
+  CompositionApplyOutput,
+  CompositionApplyRequest,
+  CompositionCommandOutput,
+} from '../../composition/apply/composition-apply-schema.ts'
+import { compositionApply } from '../../composition/apply/composition-apply.ts'
+import { compositionApplyRuntimeFromEnv } from '../../composition/apply/composition-runtime.ts'
+import { resolveCompositionCapabilities } from '../../composition/capabilities/composition-capability-resolver.ts'
+import {
+  getMemberPath,
+  isRemoteSource,
+  parseSourceString,
+  readMegarepoConfig,
+  type CompositionGeneratorConfig,
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
+import { LOCK_FILE_NAME, readLockFile, type LockFile } from '../../core/lock.ts'
+import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
+import { Store, type MegarepoStore } from '../../store/store.ts'
 
 const strictParseOptions = { errors: 'all', onExcessProperty: 'error' } as const
 

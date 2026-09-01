@@ -14,6 +14,11 @@ import React from 'react'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
+import { teardownCpAMemberMount } from '../../composition/mounts/member-mount-cp-a.ts'
+import {
+  readOwnedCpAMountMetadata,
+  type OwnedCpAMountMetadataError,
+} from '../../composition/mounts/member-mount-r6.ts'
 import {
   ConfigNotFoundError,
   findConfigPath,
@@ -21,19 +26,14 @@ import {
   isRemoteSource,
   parseSourceString,
   readMegarepoConfig,
-} from '../../lib/config.ts'
-import * as Git from '../../lib/git.ts'
-import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
-import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
-import { type MegarepoTraversal, withMegarepoTraversal } from '../../lib/megarepo-traversal.ts'
-import { teardownCpAMemberMount } from '../../lib/member-mount-cp-a.ts'
-import {
-  readOwnedCpAMountMetadata,
-  type OwnedCpAMountMetadataError,
-} from '../../lib/member-mount-r6.ts'
-import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
-import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
-import { Store, StoreLayer } from '../../lib/store.ts'
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
+import { detectRefMismatch, type RefMismatch } from '../../core/issues.ts'
+import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../core/lock.ts'
+import { type MegarepoTraversal, withMegarepoTraversal } from '../../core/megarepo-traversal.ts'
+import { extractRefFromSymlinkPath } from '../../core/ref.ts'
+import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
+import { Store, StoreLayer } from '../../store/store.ts'
 import {
   Cwd,
   detectCurrentMemberPath,

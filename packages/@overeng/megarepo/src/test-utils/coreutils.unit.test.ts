@@ -4,7 +4,7 @@ import * as NodePath from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { compositionRuntimeEnvironmentNames } from '../lib/composition-runtime.ts'
+import { compositionRuntimeEnvironmentNames } from '../composition/apply/composition-runtime.ts'
 import { resolvePinnedCoreutils } from './coreutils.ts'
 
 const withFixture = async <A>(run: (root: string) => Promise<A>): Promise<A> => {

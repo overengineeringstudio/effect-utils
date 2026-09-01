@@ -12,7 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import type { MemberSyncResult } from '../../../../../sync/schema.ts'
 import {
   buildSyncCommand,
   buildSyncOptions,
