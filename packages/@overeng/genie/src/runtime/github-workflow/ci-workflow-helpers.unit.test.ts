@@ -151,6 +151,12 @@ const extractSourceBlock = (source: string, startMarker: string, endMarker: stri
   return source.slice(start, end)
 }
 
+const generatedDevenvPerfJob = extractSourceBlock(
+  generatedCiWorkflowYamlSource,
+  '  devenv-perf:',
+  '  nix-closure-sizes:',
+)
+
 const pnpmDepsScanSource = extractSourceBlock(
   ciWorkflowSource,
   'const withEachPnpmDepsDrvShellLines = ({',
@@ -858,6 +864,10 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('--trace-to')
     expect(generatedCiWorkflowYamlSource).toContain('json:file:$trace_file')
     expect(generatedCiWorkflowYamlSource).toContain('$ARTIFACT_DIR/traces/shell_eval_traced.json')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      `paired_baseline_enabled="$(jq -r 'if .enabled == true then 1 else 0 end' <<<"$gate_policy")"`,
+    )
+    expect(generatedDevenvPerfJob).toContain('timeout-minutes: 90')
     expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_warm' 'Warm shell eval'")
     expect(generatedCiWorkflowYamlSource).toContain("measure 'tasks_list' 'devenv tasks list'")
     expect(generatedCiWorkflowYamlSource).toContain(

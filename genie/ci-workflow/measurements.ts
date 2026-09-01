@@ -780,6 +780,8 @@ measure() {
   local stderr="$ARTIFACT_DIR/$id.stderr"
   local samples_file="$ARTIFACT_DIR/$id.samples.json"
   local started ended status duration_ms
+  local paired_baseline_enabled
+  paired_baseline_enabled="$(jq -r 'if .enabled == true then 1 else 0 end' <<<"$gate_policy")"
 
   mkdir -p "$(dirname "$trace_file")"
   if ! [[ "$repetitions" =~ ^[0-9]+$ ]] || [ "$repetitions" -lt 1 ]; then
@@ -836,7 +838,7 @@ measure() {
     done
 
     local base_ran_before_head=0 base_stdout base_stderr base_started base_ended base_status base_duration_ms
-    if [ "$phase" = "measured" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ $(((measured_index + order_offset) % 2)) -eq 0 ]; then
+    if [ "$phase" = "measured" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$paired_baseline_enabled" -eq 1 ] && [ $(((measured_index + order_offset) % 2)) -eq 0 ]; then
       base_ran_before_head=1
       base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
       base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
@@ -895,7 +897,7 @@ measure() {
       '{index:$index,measuredIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),pairIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),subject:"head",phase:$phase,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end),order:(if $phase == "measured" then $order else null end),orderSeed:(if $phase == "measured" then $orderSeed else null end)}' \
       >>"$samples_file"
 
-    if [ "$phase" = "measured" ] && [ "$status" -eq 0 ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$base_ran_before_head" -eq 0 ]; then
+    if [ "$phase" = "measured" ] && [ "$status" -eq 0 ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$paired_baseline_enabled" -eq 1 ] && [ "$base_ran_before_head" -eq 0 ]; then
       base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
       base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
       base_started="$(date +%s%3N)"

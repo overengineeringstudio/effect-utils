@@ -719,7 +719,7 @@ const extraJobs: Record<string, any> = {
         maxHistory: 20,
       },
     }),
-    'timeout-minutes': jobTimeoutMinutes,
+    'timeout-minutes': 90,
   },
   'nix-closure-sizes': {
     if: normalCiIf,

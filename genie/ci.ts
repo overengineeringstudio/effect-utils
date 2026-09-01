@@ -44,6 +44,7 @@ export const EXTRA_CI_JOB_NAMES = [
   // Empirical bootstrap-safety authority (R32, issue #884): builds the self-contained nix genie and
   // proves `genie --phase bootstrap` + `pnpm install` run cold (no node_modules). Merge-blocking.
   'bootstrap-cold-proof',
+  'devenv-perf',
   'nix-closure-sizes',
   'source-shape',
   'test-integration-notion',
@@ -55,11 +56,7 @@ export const EXTRA_CI_JOB_NAMES = [
 export const REQUIRED_DEPLOY_CI_JOB_NAMES = ['deploy-storybooks'] as const
 
 /** Workflow jobs that intentionally do not block merging. */
-export const advisoryCIJobNames = [
-  'devenv-perf',
-  'ci-measurements-report',
-  'notify-alignment',
-] as const
+export const advisoryCIJobNames = ['ci-measurements-report', 'notify-alignment'] as const
 
 /** CI job keys emitted by the generated workflow. */
 export const CI_JOB_NAMES = [
