@@ -10,7 +10,6 @@ import {
 } from '../../../genie/internal.ts'
 import effectDistributedLockPkg from '../effect-distributed-lock/package.json.genie.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
-import stylexPresetPkg from '../stylex-preset/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
@@ -24,8 +23,15 @@ const peerDepNames = [
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils' }),
   dependencies: {
-    workspace: [effectDistributedLockPkg, otelContractPkg, stylexPresetPkg],
-    external: catalog.pick('@noble/hashes', '@opentelemetry/api'),
+    workspace: [effectDistributedLockPkg, otelContractPkg],
+    external: catalog.pick(
+      '@noble/hashes',
+      '@opentelemetry/api',
+      // StyleX build integration (`./node/stylex`) lives here rather than in the
+      // browser-pure token package — VRS stylex R11/R12, decision 0006.
+      '@stylexjs/unplugin',
+      'unplugin',
+    ),
   },
   devDependencies: {
     workspace: [utilsDevPkg],
@@ -66,6 +72,16 @@ export default packageJson(
       './node/playwright/config': exportEntry('./src/node/playwright/config/mod.ts', {
         environment: 'node',
       }),
+      // Checked JavaScript, not TypeScript: Vite loads config files through
+      // Node, which refuses TypeScript stripping for packages under
+      // `node_modules`. See #1167.
+      './node/stylex': exportEntry(
+        {
+          types: './src/node/stylex/mod-types.d.ts',
+          default: './src/node/stylex/mod.js',
+        },
+        { environment: 'node' },
+      ),
       './node/storybook': exportEntry('./src/node/storybook/mod.ts', { environment: 'node' }),
       './node/storybook/config': exportEntry('./src/node/storybook/config/mod.ts', {
         environment: 'node',
@@ -93,6 +109,7 @@ export default packageJson(
         './node/otel-attrs': './dist/node/otel-attrs.js',
         './node/playwright': './dist/node/playwright/mod.js',
         './node/playwright/config': './dist/node/playwright/config/mod.js',
+        './node/stylex': './dist/node/stylex/mod.js',
         './node/storybook': './dist/node/storybook/mod.js',
         './node/storybook/config': './dist/node/storybook/config/mod.js',
         './lock': './dist/lock/mod.js',

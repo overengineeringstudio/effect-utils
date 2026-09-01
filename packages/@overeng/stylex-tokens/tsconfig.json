@@ -10,7 +10,7 @@
     "rewriteRelativeImportExtensions": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "allowJs": true,
+    "allowJs": false,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -43,8 +43,7 @@
     ],
     "composite": true,
     "rootDir": ".",
-    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "checkJs": true
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"]
 }

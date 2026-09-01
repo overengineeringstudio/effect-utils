@@ -7,7 +7,7 @@ import {
   SchemaForm,
   type SchemaFormRenderProps,
 } from '@overeng/effect-schema-form'
-import { spacing } from '@overeng/stylex-preset/tokens.stylex'
+import { spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
 import { FieldGroup, FieldGroupEmpty } from './components/FieldGroup.tsx'
 import { ariaRenderers } from './renderers.tsx'

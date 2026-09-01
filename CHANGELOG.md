@@ -6,6 +6,37 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/stylex-preset -> @overeng/stylex-tokens**: the shared StyleX
+  package is renamed to say what it durably is — our design-token package — and
+  is now browser-pure. Its generated manifest declares no build-tool dependency
+  at all: `@stylexjs/unplugin`, `unplugin` and `vite` are gone. Third-party
+  attribution for the vendored scales is retained. The package fell out of 16
+  packages' workspace closures as a result (18 -> 2), because `@overeng/utils`
+  needed it only to wire the Storybook factory.
+  **Compiled class names change.** A `defineConsts` value inlines its literal,
+  but the atomic class hash still incorporates the constant's package-qualified
+  identity: after the rename, `font-size:.875rem` moved from `.xox1hw9` to
+  `.x1aa13qb` while the declaration stayed byte-identical. Emitted rules are
+  unchanged as a multiset (92 rules, identical after masking hashed
+  identifiers); only names and intra-priority ordering move. Markup baselines in
+  `effect-schema-form-aria` were regenerated for that reason.
+- **@overeng/utils**: owns StyleX build integration at
+  `@overeng/utils/node/stylex`, and compiled CSS now enters the bundle as a
+  virtual CSS module imported by each named entry rather than by picking an
+  emitted asset by filename. Upstream's picker tries a caller predicate, then an
+  unhashed `index.css`, then `style.css`, then silently falls back to the first
+  CSS asset and exits zero — which on a route-chunked build can strand every
+  rule in a lazy chunk. Its two asset-picking hooks are dropped; the dev path,
+  which already used a virtual module upstream, is untouched. Side effect of
+  going through the module graph: the rules are minified with everything else
+  (`effect-schema-form-aria` stylesheet 7096 -> 6167 bytes, same 92 rules;
+  Storybook 7084 -> 6155). A build that compiles rules no entry imports now
+  fails instead of shipping unstyled output.
+- **@overeng/utils**: `createDomStorybookConfig` drops its `stylex` option and
+  gains `a11y`. The StyleX flag was redundant wherever the app's own Vite config
+  registers the plugin — the builder merges that config, and enabling the flag
+  as well produced byte-identical CSS from a second plugin instance.
+
 - **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
   adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
   lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`

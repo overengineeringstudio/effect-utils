@@ -2,7 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 import { Group, Header, Text } from 'react-aria-components'
 
-import { fontSizes, radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
+import { fontSizes, radii, spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 

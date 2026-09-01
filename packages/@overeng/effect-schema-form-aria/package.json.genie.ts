@@ -7,14 +7,14 @@ import {
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 import schemaFormPkg from '../effect-schema-form/package.json.genie.ts'
-import stylexPresetPkg from '../stylex-preset/package.json.genie.ts'
+import stylexTokensPkg from '../stylex-tokens/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['react-aria-components', 'react-dom'] as const
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-schema-form-aria' }),
   dependencies: {
-    workspace: [schemaFormPkg, stylexPresetPkg],
+    workspace: [schemaFormPkg, stylexTokensPkg],
     external: catalog.pick('@stylexjs/stylex'),
   },
   devDependencies: {

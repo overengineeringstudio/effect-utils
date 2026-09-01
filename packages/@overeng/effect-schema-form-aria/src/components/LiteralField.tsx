@@ -13,7 +13,7 @@ import {
 } from 'react-aria-components'
 
 import { formatLiteralLabel } from '@overeng/effect-schema-form'
-import { fontSizes, radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
+import { fontSizes, radii, spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 import { FieldWrapper } from './FieldWrapper.tsx'

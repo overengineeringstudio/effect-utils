@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 
-import { colors } from '@overeng/stylex-preset/tokens.stylex'
+import { colors } from '@overeng/stylex-tokens/tokens.stylex'
 
 /**
  * Semantic design tokens for effect-schema-form-aria.
