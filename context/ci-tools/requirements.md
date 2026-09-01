@@ -85,8 +85,9 @@ This document is constrained by [vision.md](./vision.md) and is implemented by
 - **R18 Hermetic task E2E:** Required E2E must exercise the real task launcher,
   real `ci-tools` CLI, and fake providers without external credentials.
 - **R19 Provider fake E2E:** Provider tests must cover success, lookup failure,
-  unauthorized credentials, invalid provider output, unsafe alias refusal, and
-  redaction.
+  unauthorized credentials, invalid provider output, unsafe alias refusal,
+  alias collision handling (same-commit holder, released holder, own-project
+  persistent holder, foreign-held holder), and redaction.
 - **R20 Live E2E guardrails:** Live E2E must require an explicit shared-project
   mode and reserved alias namespace before deploying to shared provider projects.
 - **R21 Live marker verification:** Live E2E must fetch the final deploy URL and

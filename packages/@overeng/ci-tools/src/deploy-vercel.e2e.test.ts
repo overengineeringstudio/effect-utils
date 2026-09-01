@@ -15,12 +15,16 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-project'
+type AliasApiMode = 'ok' | 'transient-error' | 'transport-error'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
 let apiMode: ApiMode = 'ok'
+let aliasApiMode: AliasApiMode = 'ok'
 let server: Server
 let apiBaseUrl = ''
+let deploymentCommitShas: Record<string, string> = {}
+let aliasHolder: { readonly deploymentId: string; readonly projectId?: string } | undefined
 
 const testProcessEnv = () => {
   const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
@@ -34,6 +38,7 @@ const readRecord = (path: string) => {
   if (line === undefined) throw new Error(`No workflow report record in ${path}`)
   return JSON.parse(line.slice('WORKFLOW_REPORT_V1: '.length)) as {
     readonly status: string
+    readonly summary?: string
     readonly links?: readonly { readonly url: string }[]
     readonly data?: Record<string, unknown>
   }
@@ -99,6 +104,50 @@ const runCiTools = async (opts: {
 
 beforeAll(async () => {
   server = createServer((request, response) => {
+    if (request.url?.startsWith('/v13/deployments/') === true) {
+      const url = new URL(request.url, 'http://localhost')
+      if (url.searchParams.get('teamId') !== 'fake-org') {
+        response.writeHead(400, { connection: 'close' }).end('missing team scope')
+        return
+      }
+      const ref = decodeURIComponent(url.pathname.slice('/v13/deployments/'.length))
+      const commitSha = deploymentCommitShas[ref]
+      if (commitSha === 'transport-error') {
+        request.socket.destroy()
+        return
+      }
+      if (commitSha === undefined) {
+        response.writeHead(404, { connection: 'close' }).end('not found')
+        return
+      }
+      response
+        .writeHead(200, { 'content-type': 'application/json', connection: 'close' })
+        .end(JSON.stringify({ meta: { githubCommitSha: commitSha } }))
+      return
+    }
+    if (request.url?.startsWith('/v4/aliases/') === true) {
+      const url = new URL(request.url, 'http://localhost')
+      if (url.searchParams.get('teamId') !== 'fake-org') {
+        response.writeHead(400, { connection: 'close' }).end('missing team scope')
+        return
+      }
+      if (aliasApiMode === 'transient-error') {
+        response.writeHead(503, { connection: 'close' }).end('temporarily unavailable')
+        return
+      }
+      if (aliasApiMode === 'transport-error') {
+        request.socket.destroy()
+        return
+      }
+      if (aliasHolder === undefined) {
+        response.writeHead(404, { connection: 'close' }).end('not found')
+        return
+      }
+      response
+        .writeHead(200, { 'content-type': 'application/json', connection: 'close' })
+        .end(JSON.stringify(aliasHolder))
+      return
+    }
     if (request.url !== '/v9/projects/fake-project?teamId=fake-org') {
       response.writeHead(404, { connection: 'close' }).end('not found')
       return
@@ -623,6 +672,264 @@ exit 1
       expect(result.status).not.toBe(0)
       expect(readRecord(reportFile).data).toMatchObject({ errorKind: 'UnsafeE2EAlias' })
     } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('ci-tools deploy vercel alias collisions', () => {
+  type CollisionWorkspace = {
+    readonly root: string
+    readonly artifactDir: string
+    readonly fakeVercelBin: string
+    readonly logPath: string
+  }
+
+  const makeCollisionWorkspace = () => {
+    const root = mkdtempSync(join(tmpdir(), 'ci-tools-vercel-alias-'))
+    const artifactDir = join(root, 'static')
+    const binDir = join(root, 'bin')
+    mkdirSync(artifactDir)
+    mkdirSync(binDir)
+    writeFileSync(join(artifactDir, 'index.html'), 'vercel static marker')
+    const logPath = join(root, 'vercel.log')
+    const fakeVercelBin = join(binDir, 'vercel')
+    writeFileSync(
+      fakeVercelBin,
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "${logPath}"
+if [ "\${1:-}" = "deploy" ]; then
+  printf 'https://deploy-web.vercel.app\\n'
+  exit 0
+fi
+if [ "\${1:-}" = "alias" ]; then
+  case "\${FAKE_VERCEL_ALIAS_MODE:-permanent}" in
+    same-commit)
+      echo 'Error: The chosen alias "ptg.vercel.app" is already in use.' >&2
+      exit 1
+      ;;
+    release-after-retry)
+      attempts=$(( $(cat "\${FAKE_VERCEL_ATTEMPTS_FILE}" 2>/dev/null || echo 0) + 1 ))
+      printf '%s\\n' "$attempts" > "\${FAKE_VERCEL_ATTEMPTS_FILE}"
+      if [ "$attempts" -ge 2 ]; then
+        printf 'Aliased %s to %s\\n' "\${2:-}" "\${3:-}"
+        exit 0
+      fi
+      echo 'Error: The chosen alias "ptg.vercel.app" is already in use.' >&2
+      exit 1
+      ;;
+    *)
+      echo 'Error: The chosen alias "ptg.vercel.app" is already in use.' >&2
+      exit 1
+      ;;
+  esac
+fi
+echo "unexpected fake vercel invocation: $*" >&2
+exit 1
+`,
+      { mode: 0o755 },
+    )
+    return { root, artifactDir, fakeVercelBin, logPath }
+  }
+
+  const countAliasAttempts = (logPath: string) =>
+    (readFileSync(logPath, 'utf8').match(/args=alias /gu) ?? []).length
+
+  const prodDeployArgs = (workspace: CollisionWorkspace) => [
+    '--target',
+    'ptg',
+    '--artifact-dir',
+    workspace.artifactDir,
+    '--mode',
+    'prod',
+    '--scope-env',
+    'VERCEL_SCOPE',
+  ]
+
+  it('succeeds when an already-in-use alias is held by a deployment of the same commit', async () => {
+    apiMode = 'ok'
+    deploymentCommitShas = { 'deploy-web.vercel.app': 'sha-main', 'dpl-holder': 'sha-main' }
+    aliasHolder = { deploymentId: 'dpl-holder', projectId: 'fake-project' }
+    const workspace = makeCollisionWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: prodDeployArgs(workspace),
+        env: { FAKE_VERCEL_ALIAS_MODE: 'same-commit' },
+      })
+      if (result.status !== 0) {
+        console.error({ stdout: result.stdout, stderr: result.stderr })
+      }
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('Vercel deploy URL: https://ptg.vercel.app')
+      expect(countAliasAttempts(workspace.logPath)).toBe(1)
+      const record = readRecord(reportFile)
+      expect(record.status).toBe('success')
+      expect(record.data).toMatchObject({
+        provider: 'vercel',
+        target: 'ptg',
+        mode: 'prod',
+        alias: 'ptg',
+        finalUrl: 'https://ptg.vercel.app/',
+        rawDeployUrl: 'https://deploy-web.vercel.app/',
+        attempts: 1,
+      })
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+  it('rechecks once and succeeds when our project releases the alias', async () => {
+    apiMode = 'ok'
+    deploymentCommitShas = { 'deploy-web.vercel.app': 'sha-main', 'dpl-holder': 'sha-cron' }
+    aliasHolder = { deploymentId: 'dpl-holder', projectId: 'fake-project' }
+    const workspace = makeCollisionWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: prodDeployArgs(workspace),
+        env: {
+          FAKE_VERCEL_ALIAS_MODE: 'release-after-retry',
+          FAKE_VERCEL_ATTEMPTS_FILE: join(workspace.root, 'alias-attempts'),
+        },
+      })
+      if (result.status !== 0) {
+        console.error({ stdout: result.stdout, stderr: result.stderr })
+      }
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('Vercel deploy URL: https://ptg.vercel.app')
+      expect(countAliasAttempts(workspace.logPath)).toBe(2)
+      const record = readRecord(reportFile)
+      expect(record.status).toBe('success')
+      expect(record.data).toMatchObject({
+        alias: 'ptg',
+        finalUrl: 'https://ptg.vercel.app/',
+        attempts: 2,
+      })
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('fails after one immediate recheck when our project keeps holding the alias', async () => {
+    apiMode = 'ok'
+    deploymentCommitShas = { 'deploy-web.vercel.app': 'sha-main', 'dpl-holder': 'sha-cron' }
+    aliasHolder = { deploymentId: 'dpl-holder', projectId: 'fake-project' }
+    const workspace = makeCollisionWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: prodDeployArgs(workspace),
+        env: { FAKE_VERCEL_ALIAS_MODE: 'permanent' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(countAliasAttempts(workspace.logPath)).toBe(2)
+      const record = readRecord(reportFile)
+      expect(record.data).toMatchObject({
+        errorKind: 'ProviderOperationFailed',
+        retryable: false,
+        attempts: 2,
+      })
+      expect(record.summary).toMatch(/alias/iu)
+      expect(JSON.stringify(record)).toContain('already in use')
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('records the collision failure when deployment metadata is unavailable', async () => {
+    apiMode = 'ok'
+    deploymentCommitShas = { 'dpl-holder': 'transport-error' }
+    aliasHolder = { deploymentId: 'dpl-holder', projectId: 'fake-project' }
+    const workspace = makeCollisionWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: prodDeployArgs(workspace),
+        env: { FAKE_VERCEL_ALIAS_MODE: 'permanent' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(countAliasAttempts(workspace.logPath)).toBe(2)
+      const record = readRecord(reportFile)
+      expect(record.data).toMatchObject({
+        errorKind: 'ProviderOperationFailed',
+        retryable: false,
+        attempts: 2,
+      })
+      expect(record.summary).toMatch(/alias/iu)
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('fails fast with an actionable error when the alias is held outside the project', async () => {
+    apiMode = 'ok'
+    deploymentCommitShas = { 'deploy-web.vercel.app': 'sha-main' }
+    aliasHolder = undefined
+    const workspace = makeCollisionWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: prodDeployArgs(workspace),
+        env: { FAKE_VERCEL_ALIAS_MODE: 'same-commit' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(countAliasAttempts(workspace.logPath)).toBe(1)
+      const record = readRecord(reportFile)
+      expect(record.summary).toMatch(/--alias-prefix/iu)
+      expect(record.summary).toContain('ptg.vercel.app')
+      expect(record.data).toMatchObject({
+        errorKind: 'ProviderOperationFailed',
+        retryable: false,
+        attempts: 1,
+      })
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    ['transient-error', 'ProviderOperationFailed'],
+    ['transport-error', 'ProviderProjectLookupFailed'],
+  ] as const)('preserves %s alias lookup failures as retryable', async (mode, errorKind) => {
+    apiMode = 'ok'
+    aliasApiMode = mode
+    deploymentCommitShas = {}
+    aliasHolder = undefined
+    const workspace = makeCollisionWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: prodDeployArgs(workspace),
+        env: { FAKE_VERCEL_ALIAS_MODE: 'permanent' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(countAliasAttempts(workspace.logPath)).toBe(1)
+      expect(readRecord(reportFile).data).toMatchObject({
+        errorKind,
+        retryable: true,
+        attempts: 1,
+      })
+    } finally {
+      aliasApiMode = 'ok'
       rmSync(workspace.root, { recursive: true, force: true })
     }
   })

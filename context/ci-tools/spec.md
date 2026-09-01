@@ -203,16 +203,17 @@ Requirement trace: R06, R17.
 Expected failures are represented as `Schema.TaggedError` classes. The initial
 tags are:
 
-| Error tag                     | Retryable   | Meaning                                                                  |
-| ----------------------------- | ----------- | ------------------------------------------------------------------------ |
-| `MissingAuth`                 | no          | Required provider token env var is absent or empty                       |
-| `Unauthorized`                | no          | Provider rejected the token or account access                            |
-| `MissingBuildOutput`          | no          | Local artifact directory does not exist                                  |
-| `ProviderProjectLookupFailed` | yes         | Provider project/site lookup failed or returned incomplete metadata      |
-| `InvalidProviderOutput`       | no          | Provider CLI/API response does not decode to the expected schema         |
-| `ProviderOperationFailed`     | conditional | Provider command/API failed without a more specific classification       |
-| `UnsafeE2EAlias`              | no          | Live E2E attempted a shared-project alias outside the reserved namespace |
-| `VerificationFailed`          | yes         | Deployed URL did not serve the expected local fixture content            |
+| Error tag                     | Retryable   | Meaning                                                                                                          |
+| ----------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `MissingAuth`                 | no          | Required provider token env var is absent or empty                                                               |
+| `Unauthorized`                | no          | Provider rejected the token or account access                                                                    |
+| `MissingBuildOutput`          | no          | Local artifact directory does not exist                                                                          |
+| `ProviderProjectLookupFailed` | yes         | Provider project/site lookup failed or returned incomplete metadata                                              |
+| `InvalidProviderOutput`       | no          | Provider CLI/API response does not decode to the expected schema                                                 |
+| `ProviderOperationFailed`     | conditional | Provider command/API failed without a more specific classification                                               |
+| `AliasAssignmentFailed`       | no          | Alias could not be assigned after collision handling; carries the classified inner failure and the attempt count |
+| `UnsafeE2EAlias`              | no          | Live E2E attempted a shared-project alias outside the reserved namespace                                         |
+| `VerificationFailed`          | yes         | Deployed URL did not serve the expected local fixture content                                                    |
 
 Unexpected defects remain defects. They are not converted into expected domain
 errors unless the boundary has enough information to classify them.
@@ -303,6 +304,16 @@ first runs `vercel pull` and `vercel build` locally, then passes the resulting
 `.vercel/output` directory to `ci-tools deploy vercel --artifact-kind
 prebuilt-output`. Team projects may pass `--scope-env` so the provider CLI is
 scoped without committing account identifiers.
+
+Prod and PR modes assign a deterministic `<aliasPrefix or target>.vercel.app`
+host (PR mode appends `-pr-<number>`). When Vercel reports the host as already
+in use, the adapter resolves the current holder: a deployment of the same
+commit succeeds immediately, a same-project holder is rechecked exactly once,
+and a holder outside the project fails fast with `AliasAssignmentFailed` whose
+message names the remedy (`--alias-prefix` with a globally unique value, or an
+explicit production domain). `*.vercel.app` hosts are a global namespace across
+Vercel accounts, so a derived name claimed by another account can never be
+assigned.
 
 Requirement trace: R13, R14, R15, R16, R17.
 
