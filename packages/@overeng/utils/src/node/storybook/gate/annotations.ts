@@ -5,6 +5,10 @@
  * never loads this module, so the `vitest/browser` import stays out of the
  * preview bundle.
  *
+ * The readiness predicate itself lives in `./settle.ts`, which imports nothing
+ * browser-only so its loop can be tested directly. This module supplies the real
+ * browser environment for it and owns the reporting.
+ *
  * @module
  */
 
@@ -18,6 +22,7 @@ import {
   type StorySettleRecord,
   unsettledStoryMarker,
 } from './constants.ts'
+import { type SettleEnvironment, settle, shapeOf, summariseShapes } from './settle.ts'
 
 /** Minimal shape of the story context the gate reads. */
 interface GateStoryContext {
@@ -34,8 +39,8 @@ interface GateStoryContext {
  * The only channel from the browser back to the runner.
  *
  * `console.info` rather than a return value because the story's outcome has to
- * reach a Node process that only sees this run's stdout and its JSON report,
- * and the JSON report has no field for "why this story was not compared".
+ * reach a Node process that only sees this run's stdout and its JSON report, and
+ * the JSON report has no field for "why this story was not compared".
  */
 const emit = (line: string): void => {
   // eslint-disable-next-line no-console -- the only channel from the browser back to the runner.
@@ -46,46 +51,6 @@ const sleep = (ms: number): Promise<void> => {
   const { promise, resolve } = Promise.withResolvers<void>()
   setTimeout(resolve, ms)
   return promise
-}
-
-/**
- * Structural signature of the subtree that is about to be captured.
- *
- * Element count catches additions and removals; markup length catches attribute
- * and text churn that leaves the count constant.
- *
- * Deliberately NOT computed-style or pixel based, and this is the load-bearing
- * property rather than an implementation detail. This predicate decides *when*
- * to read, so if it depended on *what* is read, the readiness check and the
- * measurement could agree with each other while both were wrong. Reusing the
- * screenshot or a style reader here is the trap.
- *
- * Rooted at `canvasElement` because that is exactly the element
- * `toMatchScreenshot` captures. Settling over a wider root would wait on
- * content that is never compared; a narrower one would read a subtree while its
- * container still moved. Content portalled out of the canvas is outside both the
- * predicate and the capture, so the two stay in agreement by construction.
- */
-const shapeOf = (root: HTMLElement): string =>
-  `${root.querySelectorAll('*').length}:${root.innerHTML.length}`
-
-/**
- * Keep a shape history readable without lying about its length.
- *
- * A story that never settles can churn for the whole bound, and a hundred
- * entries on one console line is a channel nobody reads. Both ends are kept
- * because they answer different questions — the first shapes say what the story
- * started as, the last say what it was still doing when the bound expired — and
- * the elision states its own size rather than trailing off.
- */
-const summariseShapes = (shapes: readonly string[]): readonly string[] => {
-  const keep = 6
-  if (shapes.length <= keep * 2) return shapes
-  return [
-    ...shapes.slice(0, keep),
-    `… ${shapes.length - keep * 2} more transitions elided …`,
-    ...shapes.slice(-keep),
-  ]
 }
 
 /**
@@ -107,38 +72,46 @@ const fontsReady = async (): Promise<boolean> => {
 }
 
 /**
- * Poll the captured subtree until its shape repeats `quietPolls` times running,
- * or the bound expires.
+ * The real browser's answers to the predicate's questions.
  *
- * Returns the outcome instead of throwing, because the caller has to RECORD
- * whether the story settled. That is the whole point of the mechanism and it
- * matters more than the waiting: a story that never settles is still named,
- * counted and attributable, which makes it an exclusion rather than a
- * disappearance.
+ * Network activity is read off the resource timeline rather than by patching
+ * `fetch`/`XMLHttpRequest`: the gate runs inside Vitest's own browser client, and
+ * monkey-patching the transport it communicates over would risk breaking every
+ * run in order to fix a subset of them. The timeline is passive.
  */
-const settle = async (
-  root: HTMLElement,
-): Promise<{ readonly settled: boolean; readonly shapes: readonly string[] }> => {
-  const { quietPolls, pollIntervalMs, boundMs } = storySettleConfig
-  const deadline = Date.now() + boundMs
-  const shapes: string[] = []
-  let previous: string | undefined
-  let repeats = 0
-
-  for (;;) {
-    const current = shapeOf(root)
-    if (current === previous) {
-      repeats += 1
-      if (repeats >= quietPolls) return { settled: true, shapes }
-    } else {
-      repeats = 0
-      previous = current
-      shapes.push(current)
+const browserEnvironment = (root: HTMLElement): SettleEnvironment => ({
+  now: () => Date.now(),
+  sleep,
+  msSinceLastResource: () => {
+    // Structural rather than `PerformanceResourceTiming`: only these two fields
+    // are read, and the full interface does not overlap `PerformanceEntryList`
+    // closely enough for a direct assertion.
+    const resources = performance.getEntriesByType('resource') as readonly {
+      readonly startTime: number
+      readonly responseEnd?: number
+    }[]
+    if (resources.length === 0) return Number.POSITIVE_INFINITY
+    let latest = 0
+    for (const entry of resources) {
+      // A still-in-flight entry reports `responseEnd: 0`; its start time is the
+      // honest lower bound on when it might finish, and treating it as recent
+      // activity is the conservative reading.
+      const end =
+        entry.responseEnd === undefined || entry.responseEnd === 0
+          ? entry.startTime
+          : entry.responseEnd
+      if (end > latest) latest = end
     }
-    if (Date.now() >= deadline) return { settled: false, shapes }
-    await sleep(pollIntervalMs)
-  }
-}
+    return performance.now() - latest
+  },
+  incompleteImages: () => {
+    let incomplete = 0
+    for (const image of root.querySelectorAll('img')) {
+      if (image.complete === false) incomplete += 1
+    }
+    return incomplete
+  },
+})
 
 /**
  * The two per-story gate behaviours whose ecosystem defaults fail silently.
@@ -169,16 +142,17 @@ export const storyGateAnnotations = {
     // the visual comparison entirely and says so; render, play and accessibility
     // still run.
     //
-    // Checked BEFORE the settle signal, not after: a story declared unstable
-    // should not spend the 20s bound proving what its author already stated.
+    // Checked BEFORE the settle signal: a story declared unstable should not
+    // spend the 20s bound proving what its author already stated.
     if (context.parameters?.storyGate?.unstable === true) {
       emit(`${excludedStoryMarker}${context.id}`)
       return
     }
 
     const started = Date.now()
-    const fonts = await fontsReady()
-    if (fonts === false) {
+    const environment = browserEnvironment(context.canvasElement)
+
+    if ((await fontsReady()) === false) {
       const record: StorySettleRecord = {
         id: context.id,
         name,
@@ -190,7 +164,7 @@ export const storyGateAnnotations = {
       return
     }
 
-    const outcome = await settle(context.canvasElement)
+    const outcome = await settle({ root: context.canvasElement, environment })
     const elapsedMs = Date.now() - started
 
     // Returning WITHOUT asserting is what keeps an unsettled story out of the
@@ -205,7 +179,7 @@ export const storyGateAnnotations = {
         name,
         elapsedMs,
         shapes: summariseShapes(outcome.shapes),
-        reason: 'shape-never-quiet',
+        reason: outcome.reason ?? 'shape-never-quiet',
       }
       emit(`${unsettledStoryMarker}${JSON.stringify(record)}`)
       return

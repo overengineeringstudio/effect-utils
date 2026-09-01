@@ -66,16 +66,27 @@ export const unsettledStoryMarker = '[story-gate] unsettled '
  *   a font that never loads surfaces as an opaque test timeout, and a verdict
  *   channel that cannot state its own cause is the defect this gate exists to
  *   remove.
+ * - `workQuietMs: 600`. How long the network must have been idle before a quiet
+ *   DOM is believed. Exists because quiet is NOT evidence of finished: the
+ *   motivating control mounts empty and populates at +1873ms, and a shape-only
+ *   predicate is satisfied at its 600ms floor and captures the empty state.
+ *   Matched to the DOM quiet budget so the two conditions demand the same
+ *   evidence.
  */
 export const storySettleConfig = {
   quietPolls: 3,
   pollIntervalMs: 200,
   boundMs: 20_000,
   fontsBoundMs: 5_000,
+  workQuietMs: 600,
 } as const
 
 /** Why a story was excluded from visual comparison by observation. */
-export type StorySettleFailure = 'shape-never-quiet' | 'fonts-never-ready'
+export type StorySettleFailure =
+  | 'shape-never-quiet'
+  | 'fonts-never-ready'
+  /** The DOM held still, but the network never stopped delivering. */
+  | 'work-never-drained'
 
 /** One story's settle outcome, as carried across the console channel. */
 export interface StorySettleRecord {
