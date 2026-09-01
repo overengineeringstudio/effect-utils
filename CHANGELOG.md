@@ -51,6 +51,13 @@ All notable changes to this project will be documented in this file.
   produces two identical frames — declare `parameters.storyGate.unstable` and
   are reported as `excluded` rather than failing at baseline and silently
   poisoning the subtraction.
+  Known limitation: on a package with no animations and only 150ms transitions,
+  the freeze makes roughly two runs in five report one to three spurious pixel
+  diffs where the same package was stable at zero before it. Measured across
+  twelve runs and independently controlled at the pre-freeze commit. The failure
+  is a false ALARM rather than a false pass — it never lets a regression
+  through — but the gate is not yet trustworthy enough to gate a merge on
+  unattended, and the cause is unresolved.
 - **@overeng/utils**: `createStylexVitePlugins` now declares a structural return
   type rather than vite's nominal `Plugin`. Naming vite's own type published
   effect-utils' bundler major as part of the contract: a consumer on a different

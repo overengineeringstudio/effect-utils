@@ -30,6 +30,18 @@ import { storyGateAnnotations } from './annotations.ts'
  * non-determinism being removed. Setup modules evaluate before any story
  * renders.
  *
+ * Animations are made to FINISH rather than pause. Pausing freezes each one at
+ * whatever frame it had reached when the style applied, which depends on when
+ * the element mounted relative to injection — measured as 1-3 stories flapping
+ * between otherwise identical runs on a package that was previously stable at
+ * 0. Zero duration with a forwards fill lands every animation on its end state,
+ * which is the same state on every run.
+ *
+ * Deliberately limited to motion. Caret blink is already handled by the
+ * matcher's own `caret: 'hide'` screenshot option, and scroll behaviour was a
+ * speculative addition on my part with no evidence behind it — an unevidenced
+ * `!important` rule against every element is a liability, not insurance.
+ *
  * This cannot reach canvas or JS-driven animation. Those stories should declare
  * `parameters.storyGate.unstable`, which excludes them visibly rather than
  * letting them rot in the pre-existing set.
@@ -41,10 +53,10 @@ const freezeMotion = (): void => {
   transition: none !important;
   transition-duration: 0s !important;
   transition-delay: 0s !important;
+  animation-duration: 0s !important;
   animation-delay: 0s !important;
-  animation-play-state: paused !important;
-  caret-color: transparent !important;
-  scroll-behavior: auto !important;
+  animation-iteration-count: 1 !important;
+  animation-fill-mode: forwards !important;
 }`
   document.head.append(style)
 }
