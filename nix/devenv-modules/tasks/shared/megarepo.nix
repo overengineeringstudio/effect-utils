@@ -168,7 +168,7 @@ let
           exit 0
         fi
 
-        mr apply ${bootstrapOnlyArgs}
+        mr apply --worktree-mode commit ${bootstrapOnlyArgs}
       '';
       status = trace.status "mr:bootstrap" "path" ''
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
@@ -203,7 +203,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr apply --lock-sync off "''${MR_SKIP_ARGS[@]}"
+        mr apply --worktree-mode tracking --lock-sync off "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:setup" "binary" mrStatusCheck;
@@ -219,7 +219,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr fetch --apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
+        mr fetch --apply --worktree-mode tracking${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:fetch-apply" "binary" mrStatusCheck;
@@ -249,7 +249,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
+        mr apply --worktree-mode tracking${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:apply" "binary" mrStatusCheck;

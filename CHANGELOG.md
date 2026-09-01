@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
   Namespace runner that can retain both Nix closures. Gate-disabled diagnostics
   no longer run a baseline sample that cannot contribute evidence.
 
+- **Megarepo devenv tasks**: select commit worktrees for lock-based bootstrap
+  and tracking worktrees for shared branch mutation tasks so refreshed CI task
+  graphs do not rely on the interactive-only automatic worktree strategy.
+
 - **@overeng/megarepo**: macOS refused cp-a first-publish and exchange renames
   while the staged and published R6 roots were protected as `0555`, even though
   their shared parent was writable. The Darwin rename boundary now opens and

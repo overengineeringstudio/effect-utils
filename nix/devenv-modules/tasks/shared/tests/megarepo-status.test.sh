@@ -198,4 +198,19 @@ fi
 echo "  ok: setup task is the canonical setup dependency"
 
 echo ""
+echo "Test 7: shared mutation tasks select worktree strategies explicitly"
+for command in \
+  'mr apply --worktree-mode commit' \
+  'mr apply --worktree-mode tracking --lock-sync off' \
+  'mr fetch --apply --worktree-mode tracking' \
+  'mr apply --worktree-mode tracking${if syncAll'
+do
+  if ! grep -F "$command" "$module_file" >/dev/null; then
+    echo "FAIL: shared task does not select an explicit worktree strategy: $command"
+    exit 1
+  fi
+done
+echo "  ok: shared mutation tasks select explicit worktree strategies"
+
+echo ""
 echo "All megarepo status tests passed"
