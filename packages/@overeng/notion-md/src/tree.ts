@@ -1306,6 +1306,7 @@ const materializeRemoteTreeNode = (opts: {
   readonly rootFile: string
   readonly node: RemoteTreeNode
   readonly children: readonly RemoteTreeNode[]
+  readonly plan: boolean
 }): Effect.Effect<void, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1335,6 +1336,7 @@ const materializeRemoteTreeNode = (opts: {
         }),
       })),
     })
+    if (opts.plan === true) return
 
     yield* fs
       .makeDirectory(dirname(path), { recursive: true })
@@ -1440,15 +1442,14 @@ const syncTreeFromRemote = (opts: {
       ops.push(op)
     }
 
-    if (plan === false) {
-      for (const node of remoteNodes) {
-        yield* materializeRemoteTreeNode({
-          root,
-          rootFile,
-          node,
-          children: remoteChildrenByParent.get(node.pageId) ?? [],
-        })
-      }
+    for (const node of remoteNodes) {
+      yield* materializeRemoteTreeNode({
+        root,
+        rootFile,
+        node,
+        children: remoteChildrenByParent.get(node.pageId) ?? [],
+        plan,
+      })
     }
 
     const previousEntries = [

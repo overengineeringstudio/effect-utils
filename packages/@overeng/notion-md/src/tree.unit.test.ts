@@ -1124,6 +1124,31 @@ describe('track path routing', () => {
     })
   })
 
+  it('validates every remote node during directory track dry-run without writing', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const childId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Lossy',
+        markdown: 'Incomplete body.\n',
+      })
+      fake.setRemoteCompleteness(childId, {
+        _tag: 'lossy',
+        reasons: ['rendered_markdown_has_unobserved_suffix'],
+      })
+
+      await expect(
+        run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote', dryRun: true }), fake),
+      ).rejects.toThrow('Remote Markdown body')
+      await expect(readFile(join(dir, 'index.nmd'), 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      })
+      await expect(
+        readFile(join(dir, '.notion-md', 'workspace.json'), 'utf8'),
+      ).rejects.toMatchObject({ code: 'ENOENT' })
+    })
+  })
+
   it('keeps a missing .nmd target on the single-page track path', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
@@ -1151,6 +1176,24 @@ describe('track path routing', () => {
     })
   })
 
+  it('refuses to re-track an existing workspace under a different root page', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const otherRootId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Other root',
+        markdown: 'Other body.\n',
+      })
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+      const originalRoot = await readFile(join(dir, 'index.nmd'), 'utf8')
+
+      await expect(
+        run(trackPath({ pageId: otherRootId, outPath: dir, source: 'remote' }), fake),
+      ).rejects.toThrow(`workspace already tracks root ${rootPageId}`)
+      expect(await readFile(join(dir, 'index.nmd'), 'utf8')).toBe(originalRoot)
+    })
+  })
+
   it('refreshes remote content on ordinary directory sync', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
@@ -1166,6 +1209,29 @@ describe('track path routing', () => {
 
       expect(result).toMatchObject({ _tag: 'tree', direction: 'from-remote' })
       expect(await readFile(join(dir, 'alpha.nmd'), 'utf8')).toContain('Refreshed body.')
+    })
+  })
+
+  it('routes non-recursive directory status through the remote tree plan', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const alphaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Alpha',
+        markdown: 'Original body.\n',
+      })
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+      fake.mutateRemote(alphaId, 'Remote change.\n')
+
+      const result = await run(statusPath({ path: dir }), fake)
+
+      expect(result).toMatchObject({
+        _tag: 'tree',
+        direction: 'from-remote',
+        plan: true,
+        ops: expect.arrayContaining([{ _tag: 'update', relPath: 'alpha.nmd', pageId: alphaId }]),
+      })
+      expect(await readFile(join(dir, 'alpha.nmd'), 'utf8')).toContain('Original body.')
     })
   })
 

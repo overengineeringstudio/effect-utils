@@ -40,14 +40,14 @@ The CLI reads `NOTION_API_TOKEN`.
 ## Safety Model
 
 - `track <page> <file.nmd>` writes a strict `.nmd` envelope for one existing page; `track <page> <existing-directory>` materializes its remote-authoritative child-page tree as separate `.nmd` files plus `.notion-md/workspace.json`.
-- `status <path...>` is read-only and reports `in-sync`, `local-ahead`, `remote-ahead`, `diverged`, or `unbound`.
-- `sync <path...>` dispatches per file from frontmatter `source`, not flags or argument shape.
+- `status <path...>` is read-only: files report `in-sync`, `local-ahead`, `remote-ahead`, `diverged`, or `unbound`; non-recursive directories report a tree plan.
+- File sync dispatches from frontmatter `source`; non-recursive directory sync dispatches from workspace authority.
 - `source: local` mirrors local state to Notion; `source: remote` mirrors Notion state to the local file; `source: shared` uses the guarded base/merge path.
 - Unbound `source: local` files with `page_id: null` create new Notion pages on `sync`.
-- Every write command supports `--dry-run`.
-- `sync <dir>` follows the workspace manifest's explicit authority; remote trees refresh content and reconcile recorded additions, moves, and deletions without deleting unknown local files.
+- Every write command supports `--dry-run`; remote tree plans validate every page and ownership boundary without writing.
+- `sync <dir>` follows the workspace manifest's explicit authority; remote trees refresh content and reconcile recorded additions, moves, and deletions only across manifest and frontmatter-proven ownership.
 - `sync <dir> --recursive` is flat batch mode for existing `.nmd` files only; it does not imply hierarchy, moves, trashing, or remote materialization.
-- `sync --watch` runs the same frontmatter-dispatched reconcile path after local file changes and on a remote polling interval.
+- `sync --watch` supports files and flat recursive batches; a hierarchical directory tree is rejected rather than entering one-file watch.
 - Multi-file and recursive folder sync are orchestration only: each `.nmd` still maps to one Notion page and duplicate page ids are rejected before mutation.
 - Sync refuses to update pages with unresolved unknown Notion blocks unless destructive deletion is explicit.
 - Shared sync writes a Roughdraft conflict artifact next to the `.nmd` file when local and remote body edits diverge.

@@ -56,7 +56,7 @@ import {
   withOperation,
   withRootOperation,
 } from './observability.ts'
-import { syncPath, targetKind, trackPath } from './path.ts'
+import { statusPath, syncPath, targetKind, trackPath } from './path.ts'
 import { ProgressReporterStderrLines } from './progress.ts'
 import { reconcileFile, reconcileTree, statusTree } from './reconcile.ts'
 import {
@@ -528,18 +528,30 @@ const statusCommand = Command.make(
       command: 'status',
       label: paths.length === 1 ? basename(paths[0] ?? 'target') : `${paths.length} targets`,
       effect: withNotion(
-        statusTree({ targets: paths, recursive, concurrency }).pipe(
-          Effect.flatMap((batch) =>
-            renderStatus({
-              json,
-              results: batch.items.flatMap((item) =>
-                item._tag === 'success'
-                  ? [{ path: item.result.path, status: item.result.status }]
-                  : [{ path: item.path, status: 'error' }],
-              ),
-            }),
-          ),
-        ),
+        Effect.gen(function* () {
+          const onlyPath = paths.length === 1 ? paths[0] : undefined
+          if (
+            onlyPath !== undefined &&
+            recursive === false &&
+            (yield* targetKind(onlyPath)) === 'directory'
+          ) {
+            const result = yield* statusPath({ path: onlyPath })
+            if (!('ops' in result)) {
+              return yield* Effect.die('Directory status did not return a tree result')
+            }
+            return yield* renderTreeSync({ json, result })
+          }
+
+          const batch = yield* statusTree({ targets: paths, recursive, concurrency })
+          return yield* renderStatus({
+            json,
+            results: batch.items.flatMap((item) =>
+              item._tag === 'success'
+                ? [{ path: item.result.path, status: item.result.status }]
+                : [{ path: item.path, status: 'error' }],
+            ),
+          })
+        }),
       ),
     }),
 ).pipe(
@@ -578,51 +590,65 @@ const syncCommand = Command.make(
     json,
   }) => {
     if (watch === true) {
-      const syncOptions: SyncOptions = {
-        path: paths[0] ?? '',
-        force,
-        dryRun,
-        allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
-        allowReviewMarkup,
-      }
-      return paths.length === 1
-        ? withNotion(
-            runWatch({
-              syncOptions: { ...syncOptions, gcObjects } as SyncOptions,
-              pollIntervalMs,
-            }),
-          )
-        : withNotion(
-            targetsFor({ paths, recursive }).pipe(
-              Effect.flatMap((resolved) =>
-                resolved.length === 0
-                  ? Effect.fail(
-                      new NmdCliError({
-                        message: 'No .nmd files matched the requested watch targets',
-                      }),
-                    )
-                  : runBatchWatch({
-                      paths: resolved,
-                      concurrency,
-                      pollIntervalMs,
-                      force,
-                      dryRun,
-                      runSyncMany: (batchOpts) =>
-                        reconcileTree({
-                          targets: batchOpts.targets,
-                          ...(batchOpts.concurrency === undefined
-                            ? {}
-                            : { concurrency: batchOpts.concurrency }),
-                          ...(batchOpts.force === undefined ? {} : { force: batchOpts.force }),
-                          ...(batchOpts.dryRun === undefined ? {} : { dryRun: batchOpts.dryRun }),
-                          allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
-                          allowReviewMarkup,
-                          gcObjects,
+      return Effect.gen(function* () {
+        const onlyPath = paths.length === 1 ? paths[0] : undefined
+        if (
+          onlyPath !== undefined &&
+          recursive === false &&
+          (yield* targetKind(onlyPath)) === 'directory'
+        ) {
+          return yield* new NmdCliError({
+            message:
+              'Directory tree watch is not supported; run one-shot `notion-md sync <directory>` or use `--recursive` for flat file watch.',
+          })
+        }
+
+        const syncOptions: SyncOptions = {
+          path: paths[0] ?? '',
+          force,
+          dryRun,
+          allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
+          allowReviewMarkup,
+        }
+        return yield* paths.length === 1
+          ? withNotion(
+              runWatch({
+                syncOptions: { ...syncOptions, gcObjects } as SyncOptions,
+                pollIntervalMs,
+              }),
+            )
+          : withNotion(
+              targetsFor({ paths, recursive }).pipe(
+                Effect.flatMap((resolved) =>
+                  resolved.length === 0
+                    ? Effect.fail(
+                        new NmdCliError({
+                          message: 'No .nmd files matched the requested watch targets',
                         }),
-                    }),
+                      )
+                    : runBatchWatch({
+                        paths: resolved,
+                        concurrency,
+                        pollIntervalMs,
+                        force,
+                        dryRun,
+                        runSyncMany: (batchOpts) =>
+                          reconcileTree({
+                            targets: batchOpts.targets,
+                            ...(batchOpts.concurrency === undefined
+                              ? {}
+                              : { concurrency: batchOpts.concurrency }),
+                            ...(batchOpts.force === undefined ? {} : { force: batchOpts.force }),
+                            ...(batchOpts.dryRun === undefined ? {} : { dryRun: batchOpts.dryRun }),
+                            allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
+                            allowReviewMarkup,
+                            gcObjects,
+                          }),
+                      }),
+                ),
               ),
-            ),
-          )
+            )
+      })
     }
 
     return commandSpan({

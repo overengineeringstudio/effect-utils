@@ -17,6 +17,7 @@ import {
   type TrackResult,
 } from './reconcile.ts'
 import type { NmdStateStore } from './state-store.ts'
+import { readTreeIndexOptional } from './tree-index.ts'
 import { syncTree, type TreeSyncResult } from './tree.ts'
 
 /** Filesystem shape used to choose the appropriate notion-md reconcile engine. */
@@ -97,6 +98,12 @@ export const trackPath = (
       if (opts.source !== 'remote') {
         return yield* new NmdCliError({
           message: `Directory track targets only support --as remote; use a .nmd file target with --as ${opts.source}`,
+        })
+      }
+      const previous = yield* readTreeIndexOptional(opts.outPath)
+      if (previous !== undefined && previous.root_page_id !== opts.pageId) {
+        return yield* new NmdCliError({
+          message: `Refusing to track Notion root ${opts.pageId} into ${opts.outPath}: workspace already tracks root ${previous.root_page_id}`,
         })
       }
       return yield* syncTree({

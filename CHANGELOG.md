@@ -698,10 +698,14 @@ violations }` (the offending `DiffOp[]`); block ops and page content
 
 - **@overeng/notion-md**: `track <page> <existing-directory>` now materializes a
   remote-authoritative child-page tree as separate `.nmd` files plus an authority-tagged workspace
-  manifest. Ordinary directory sync refreshes content and reconciles recorded additions, moves,
-  and deletions while preserving unknown local files. Child placeholders become relative local
-  navigation links without entering the remote push baseline, and Unicode titles produce stable
-  ASCII paths with German umlaut transliteration. File and missing-path tracking is unchanged.
+  manifest. Non-recursive directory status plans the same tree engine; ordinary directory sync
+  refreshes content and reconciles recorded additions, page-ID moves, and deletions only across
+  manifest and frontmatter-proven ownership. Dry-run validates every remote node without writing,
+  and a different root cannot repurpose an established workspace. Child placeholders become
+  relative local navigation links without entering the remote push baseline, while local-authority
+  user links remain authored content. Hierarchical tree watch is rejected; `--recursive` remains
+  flat file watch. Unicode titles produce stable ASCII paths with German umlaut transliteration.
+  File and missing-path tracking is unchanged.
 - **genie semantic-conventions generator (M1) / @overeng/genie + @overeng/otel-contract**:
   First genie generator for OpenTelemetry semantic-convention registries.
   - Layer 1 (`@overeng/genie` `src/runtime/weaver`, dep-free): a faithful typed model of the
