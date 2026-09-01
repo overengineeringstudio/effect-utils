@@ -21,6 +21,8 @@
     "./node/playwright/config": "./src/node/playwright/config/mod.ts",
     "./node/storybook": "./src/node/storybook/mod.ts",
     "./node/storybook/config": "./src/node/storybook/config/mod.ts",
+    "./node/storybook/gate": "./src/node/storybook/gate/mod.ts",
+    "./node/storybook/gate/setup": "./src/node/storybook/gate/setup.ts",
     "./node/stylex": {
       "types": "./src/node/stylex/mod-types.d.ts",
       "default": "./src/node/stylex/mod.js"
@@ -40,6 +42,8 @@
       "./node/stylex": "./dist/node/stylex/mod.js",
       "./node/storybook": "./dist/node/storybook/mod.js",
       "./node/storybook/config": "./dist/node/storybook/config/mod.js",
+      "./node/storybook/gate": "./dist/node/storybook/gate/mod.js",
+      "./node/storybook/gate/setup": "./dist/node/storybook/gate/setup.js",
       "./lock": "./dist/lock/mod.js",
       "./browser": "./dist/browser/mod.js",
       "./cuid": {
@@ -75,9 +79,14 @@
     "@opentelemetry/semantic-conventions": "1.41.1",
     "@overeng/utils-dev": "workspace:^",
     "@playwright/test": "1.61.0",
+    "@storybook/addon-a11y": "10.5.10",
+    "@storybook/addon-vitest": "10.5.10",
     "@storybook/react-vite": "10.5.10",
     "@types/node": "26.0.0",
+    "@vitest/browser": "4.1.9",
+    "@vitest/browser-playwright": "4.1.9",
     "effect": "4.0.0-rc.111",
+    "playwright": "1.61.0",
     "storybook": "10.5.10",
     "typescript": "6.0.3",
     "vite": "8.0.16",

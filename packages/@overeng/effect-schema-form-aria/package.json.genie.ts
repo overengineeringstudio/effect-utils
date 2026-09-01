@@ -22,6 +22,12 @@ const runtimeDeps = catalog.compose({
     external: catalog.pick(
       'effect',
       '@storybook/react',
+      // Story-gate stack; see @overeng/utils/node/storybook/gate.
+      '@storybook/addon-a11y',
+      '@storybook/addon-vitest',
+      '@vitest/browser',
+      '@vitest/browser-playwright',
+      'playwright',
       '@storybook/react-vite',
       '@types/react',
       '@types/react-dom',

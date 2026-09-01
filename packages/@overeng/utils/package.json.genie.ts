@@ -43,6 +43,17 @@ const runtimeDeps = catalog.compose({
         '@types/node',
         'storybook',
         '@storybook/react-vite',
+        // Story-gate stack. These stay devDependencies for the same reason
+        // Storybook itself does: a consumer that runs the gate necessarily owns
+        // its own Storybook install, and making them real dependencies would
+        // put Storybook in the closure of everything that depends on utils.
+        // @vitest/browser pins `vitest` at exactly 4.1.9, so these five move in
+        // lockstep with the vitest pin.
+        '@storybook/addon-vitest',
+        '@storybook/addon-a11y',
+        '@vitest/browser',
+        '@vitest/browser-playwright',
+        'playwright',
         'typescript',
         'vite',
         'vitest',
@@ -86,6 +97,14 @@ export default packageJson(
       './node/storybook/config': exportEntry('./src/node/storybook/config/mod.ts', {
         environment: 'node',
       }),
+      './node/storybook/gate': exportEntry('./src/node/storybook/gate/mod.ts', {
+        environment: 'node',
+      }),
+      // Referenced by path from the gate's `test.setupFiles`, never imported
+      // from Node: it runs inside the Vitest browser environment.
+      './node/storybook/gate/setup': exportEntry('./src/node/storybook/gate/setup.ts', {
+        environment: 'browser',
+      }),
       './lock': exportEntry('./src/lock/mod.ts', { environment: 'node' }),
       './browser': exportEntry('./src/browser/mod.ts', { environment: 'browser' }),
       './cuid': exportEntry(
@@ -112,6 +131,8 @@ export default packageJson(
         './node/stylex': './dist/node/stylex/mod.js',
         './node/storybook': './dist/node/storybook/mod.js',
         './node/storybook/config': './dist/node/storybook/config/mod.js',
+        './node/storybook/gate': './dist/node/storybook/gate/mod.js',
+        './node/storybook/gate/setup': './dist/node/storybook/gate/setup.js',
         './lock': './dist/lock/mod.js',
         './browser': './dist/browser/mod.js',
         './cuid': {

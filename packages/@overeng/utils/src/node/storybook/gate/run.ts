@@ -105,24 +105,30 @@ const runVitest = ({
   configFile,
   baselineDir,
   manifest,
+  reportFile,
   update,
 }: {
   cwd: string
   configFile: string
   baselineDir: string
   manifest: string | undefined
+  reportFile: string
   update: boolean
 }): { readonly status: number; readonly output: string } => {
+  // The package's own binary, not `pnpm exec`: the runner is invoked from
+  // scripts and CI steps that do not necessarily have a package manager on
+  // PATH, and the derived worktree borrows this same `node_modules` anyway.
+  const vitestBin = join(cwd, 'node_modules', '.bin', 'vitest')
   const result = spawnSync(
-    'pnpm',
+    vitestBin,
     [
-      'exec',
-      'vitest',
       'run',
       '--config',
       configFile,
       '--reporter',
       'json',
+      '--outputFile',
+      reportFile,
       ...(update ? ['--update'] : []),
     ],
     {
@@ -146,13 +152,17 @@ interface VitestJsonAssertion {
   readonly failureMessages?: readonly string[]
 }
 
-const parseAssertions = (output: string): readonly VitestJsonAssertion[] => {
-  const start = output.indexOf('{')
-  const end = output.lastIndexOf('}')
-  if (start === -1 || end === -1) {
+const parseAssertions = ({
+  reportFile,
+  output,
+}: {
+  reportFile: string
+  output: string
+}): readonly VitestJsonAssertion[] => {
+  if (!existsSync(reportFile)) {
     throw new Error(`[story-gate] Vitest produced no JSON report:\n${output}`)
   }
-  const report = JSON.parse(output.slice(start, end + 1)) as {
+  const report = JSON.parse(readFileSync(reportFile, 'utf8')) as {
     readonly testResults?: readonly { readonly assertionResults?: readonly VitestJsonAssertion[] }[]
   }
   return (report.testResults ?? []).flatMap((file) => file.assertionResults ?? [])
@@ -190,6 +200,7 @@ export const runStoryGate = async ({
   const baselineDir = join(cacheRoot, baselineSha)
   const worktreeDir = join(cacheRoot, `tree-${baselineSha}`)
   const completeMarker = join(baselineDir, '.complete')
+  const scratchDir = mkdtempSync(join(tmpdir(), 'story-gate-'))
 
   if (refresh) rmSync(baselineDir, { recursive: true, force: true })
 
@@ -219,6 +230,7 @@ export const runStoryGate = async ({
       configFile,
       baselineDir,
       manifest: undefined,
+      reportFile: join(scratchDir, 'baseline-report.json'),
       update: true,
     })
     if (capture.status !== 0) {
@@ -227,13 +239,15 @@ export const runStoryGate = async ({
     writeFileSync(completeMarker, `${baselineSha}\n`)
   }
 
-  const manifest = join(mkdtempSync(join(tmpdir(), 'story-gate-')), 'requested.txt')
+  const manifest = join(scratchDir, 'requested.txt')
+  const reportFile = join(scratchDir, 'compare-report.json')
   writeFileSync(manifest, '')
   const compare = runVitest({
     cwd: packageRoot,
     configFile,
     baselineDir,
     manifest,
+    reportFile,
     update: false,
   })
 
@@ -247,7 +261,7 @@ export const runStoryGate = async ({
     .filter((file) => !requested.has(file))
     .map((file) => relative(baselineDir, file))
 
-  const assertions = parseAssertions(compare.output)
+  const assertions = parseAssertions({ reportFile, output: compare.output })
   const failures = assertions.filter((assertion) => assertion.status === 'failed')
   const added: string[] = []
   const changed: StoryGateChange[] = []
