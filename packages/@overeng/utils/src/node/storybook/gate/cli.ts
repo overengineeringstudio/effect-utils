@@ -9,6 +9,7 @@
  * @module
  */
 
+import { realpathSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 import { runStoryGate } from './run.ts'
@@ -138,7 +139,21 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
   return report.ok === true ? 0 : 1
 }
 
+/**
+ * Run only when invoked directly — compared through `realpath`, which is the
+ * load-bearing detail.
+ *
+ * Measured: a megarepo materialises `repos/effect-utils` as a SYMLINK into the
+ * store, so `process.argv[1]` is the symlinked path while `import.meta.url` is
+ * the resolved one. A plain comparison fails, the module loads, nothing runs,
+ * and the process exits 0 WITH NO OUTPUT — a gate that silently does nothing
+ * and reports success, which is the exact failure signature this gate exists to
+ * eliminate. Every megarepo consumer reaches this file through such a symlink.
+ */
 const entryPath = process.argv[1]
-if (entryPath !== undefined && import.meta.url === pathToFileURL(entryPath).href) {
-  process.exitCode = await runStoryGateCli(process.argv.slice(2))
+if (entryPath !== undefined) {
+  const invokedDirectly =
+    import.meta.url === pathToFileURL(entryPath).href ||
+    import.meta.url === pathToFileURL(realpathSync(entryPath)).href
+  if (invokedDirectly === true) process.exitCode = await runStoryGateCli(process.argv.slice(2))
 }
