@@ -44,6 +44,12 @@ export interface StoryGateReport {
   readonly removed: readonly string[]
   /** Stories that rendered differently, including dimension mismatches. */
   readonly changed: readonly StoryGateChange[]
+  /**
+   * Stories already failing at the baseline ref, so not caused by this change.
+   * Reported rather than hidden — a package can carry accessibility debt and
+   * still need a gate that answers "did I make it worse".
+   */
+  readonly preExisting: readonly string[]
   readonly ok: boolean
 }
 
@@ -225,19 +231,34 @@ export const runStoryGate = async ({
     linkNodeModules({ repoRoot, worktreeDir })
 
     mkdirSync(baselineDir, { recursive: true })
+    const baselineReportFile = join(baselineDir, 'baseline-report.json')
     const capture = runVitest({
       cwd: join(worktreeDir, relative(repoRoot, packageRoot)),
       configFile,
       baselineDir,
       manifest: undefined,
-      reportFile: join(scratchDir, 'baseline-report.json'),
+      reportFile: baselineReportFile,
       update: true,
     })
-    if (capture.status !== 0) {
+    // A non-zero exit is expected and not fatal here. Under `--update` the
+    // screenshots are written regardless, and the ref may legitimately carry
+    // failing stories — an accessibility violation that already existed is not
+    // something this change caused. What matters is that the capture produced
+    // a report; the compare phase subtracts whatever failed on both sides.
+    if (!existsSync(baselineReportFile)) {
       throw new Error(`[story-gate] baseline capture at ${baselineRef} failed:\n${capture.output}`)
     }
     writeFileSync(completeMarker, `${baselineSha}\n`)
   }
+
+  const preExisting = new Set(
+    parseAssertions({
+      reportFile: join(baselineDir, 'baseline-report.json'),
+      output: '',
+    })
+      .filter((assertion) => assertion.status === 'failed')
+      .map((assertion) => assertion.fullName ?? assertion.title ?? '<unnamed>'),
+  )
 
   const manifest = join(scratchDir, 'requested.txt')
   const reportFile = join(scratchDir, 'compare-report.json')
@@ -268,6 +289,7 @@ export const runStoryGate = async ({
   for (const failure of failures) {
     const story = failure.fullName ?? failure.title ?? '<unnamed>'
     const detail = (failure.failureMessages ?? []).join('\n').trim()
+    if (preExisting.has(story)) continue
     if (detail.includes('No reference screenshot found')) {
       added.push(story)
     } else {
@@ -283,6 +305,7 @@ export const runStoryGate = async ({
     added,
     removed,
     changed,
+    preExisting: [...preExisting],
     ok: added.length === 0 && removed.length === 0 && changed.length === 0,
   }
 }
