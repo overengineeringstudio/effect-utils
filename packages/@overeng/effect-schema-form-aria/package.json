@@ -17,7 +17,8 @@
   "scripts": {
     "build": "tsc --build tsconfig.json && vite build",
     "storybook": "storybook dev -p 6010",
-    "storybook:build": "storybook build"
+    "storybook:build": "storybook build",
+    "gate": "bun node_modules/@overeng/utils/src/node/storybook/gate/cli.ts"
   },
   "dependencies": {
     "@overeng/effect-schema-form": "workspace:^",

@@ -60,6 +60,17 @@ const getCssPostTransformHandler = (cssPostPlugin) => {
  */
 
 /**
+ * A bundler plugin, described by the only member every Vite and Rollup major
+ * agrees on. Mirrors `StylexVitePlugin` in `./mod-types.d.ts`, which is what
+ * consumers resolve; kept here so the emitted declarations widen the same way.
+ *
+ * Naming vite's own `Plugin` in the signature would publish effect-utils'
+ * bundler major as part of this package's contract — a consumer on a different
+ * Vite major could not accept the value at all.
+ *
+ * @typedef {{ name: string }} StylexVitePlugin
+
+/**
  * Shared StyleX Vite integration.
  *
  * Compiled CSS enters the bundle as a virtual CSS module in the module graph
@@ -73,7 +84,7 @@ const getCssPostTransformHandler = (cssPostPlugin) => {
  * Upstream's dev path already uses a virtual module and is left untouched.
  *
  * @param {StylexVitePluginsOptions} [options]
- * @returns {Plugin[]}
+ * @returns {StylexVitePlugin[]}
  */
 export const createStylexVitePlugins = ({ externalPackages = [], entries = [] } = {}) => {
   const deduplicatedExternalPackages = [...new Set(['@overeng/stylex-tokens', ...externalPackages])]

@@ -19,6 +19,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 
+import { excludedStoryMarker } from './constants.ts'
 import { baselineDirEnvVar, manifestEnvVar } from './project.ts'
 
 /** How a story's render differs from the baseline ref. */
@@ -50,8 +51,50 @@ export interface StoryGateReport {
    * still need a gate that answers "did I make it worse".
    */
   readonly preExisting: readonly string[]
+  /**
+   * Stories the compare run asked for that have no baseline image on disk.
+   *
+   * Derived from the filesystem rather than from test messages, because this is
+   * the case that inverted the gate: a story that failed at the baseline
+   * produced no screenshot, and subtracting it as `preExisting` made its
+   * compare-side failure disappear. With every story in that state the
+   * regression list is empty by construction and the gate reports success over
+   * a total loss of styling. An uncovered story is never debt.
+   */
+  readonly uncovered: readonly string[]
+  /**
+   * Stories that opted out of visual comparison via
+   * `parameters.storyGate.unstable`, for surfaces no freeze can settle.
+   * Reported so an opt-out stays a visible decision rather than silent absence.
+   */
+  readonly excluded: readonly string[]
+  /** Health of the baseline capture itself. A baseline nothing passed at is not a baseline. */
+  readonly baseline: { readonly total: number; readonly passed: number; readonly failed: number }
   readonly ok: boolean
 }
+
+/**
+ * The verdict, separated from the run so it is testable without a browser.
+ *
+ * Zero passes at the baseline is the one case the machine refuses outright:
+ * it means the comparison had nothing to compare against, and an empty
+ * regression list over it is meaningless rather than clean. Everything between
+ * — a degraded but informative baseline — is surfaced in the counts and left to
+ * a human, because a fraction threshold set wrong rejects the informative case
+ * along with the broken one.
+ */
+export const isStoryGateOk = ({
+  added,
+  removed,
+  changed,
+  uncovered,
+  baseline,
+}: Pick<StoryGateReport, 'added' | 'removed' | 'changed' | 'uncovered' | 'baseline'>): boolean =>
+  added.length === 0 &&
+  removed.length === 0 &&
+  changed.length === 0 &&
+  uncovered.length === 0 &&
+  baseline.passed > 0
 
 /** Options for {@link runStoryGate}. */
 export interface StoryGateRunOptions {
@@ -254,13 +297,18 @@ export const runStoryGate = async ({
     writeFileSync(completeMarker, `${baselineSha}\n`)
   }
 
+  const baselineAssertions = parseAssertions({
+    reportFile: join(baselineDir, 'baseline-report.json'),
+    output: '',
+  })
+  const baselineFailures = baselineAssertions.filter((assertion) => assertion.status === 'failed')
+  const baseline = {
+    total: baselineAssertions.length,
+    passed: baselineAssertions.length - baselineFailures.length,
+    failed: baselineFailures.length,
+  }
   const preExisting = new Set(
-    parseAssertions({
-      reportFile: join(baselineDir, 'baseline-report.json'),
-      output: '',
-    })
-      .filter((assertion) => assertion.status === 'failed')
-      .map((assertion) => assertion.fullName ?? assertion.title ?? '<unnamed>'),
+    baselineFailures.map((assertion) => assertion.fullName ?? assertion.title ?? '<unnamed>'),
   )
 
   const manifest = join(scratchDir, 'requested.txt')
@@ -282,8 +330,18 @@ export const runStoryGate = async ({
   )
   const baselineFiles = listPngs(baselineDir)
   const removed = baselineFiles
-    .filter((file) => !requested.has(file))
+    .filter((file) => requested.has(file) === false)
     .map((file) => relative(baselineDir, file))
+  const uncovered = [...requested]
+    .filter((file) => existsSync(file) === false)
+    .map((file) => relative(baselineDir, file))
+
+  const excluded = compare.output
+    .split('\n')
+    .filter((line) => line.includes(excludedStoryMarker) === true)
+    .map((line) =>
+      line.slice(line.indexOf(excludedStoryMarker) + excludedStoryMarker.length).trim(),
+    )
 
   const assertions = parseAssertions({ reportFile, output: compare.output })
   const failures = assertions.filter((assertion) => assertion.status === 'failed')
@@ -292,9 +350,13 @@ export const runStoryGate = async ({
   for (const failure of failures) {
     const story = failure.fullName ?? failure.title ?? '<unnamed>'
     const detail = (failure.failureMessages ?? []).join('\n').trim()
-    if (preExisting.has(story) === true) continue
-    if (detail.includes('No reference screenshot found') === true) {
+    // Missing-reference is checked BEFORE the pre-existing skip on purpose: a
+    // story with no baseline image cannot be known-failing debt, and letting
+    // the skip run first is precisely what swallowed it.
+    if (detail.includes('No existing reference screenshot found') === true) {
       added.push(story)
+    } else if (preExisting.has(story) === true) {
+      continue
     } else {
       changed.push({ story, kind: classify(detail), detail })
     }
@@ -309,6 +371,9 @@ export const runStoryGate = async ({
     removed,
     changed,
     preExisting: [...preExisting],
-    ok: added.length === 0 && removed.length === 0 && changed.length === 0,
+    uncovered,
+    excluded: [...new Set(excluded)],
+    baseline,
+    ok: isStoryGateOk({ added, removed, changed, uncovered, baseline }),
   }
 }

@@ -15,6 +15,43 @@ import { beforeAll } from 'vitest'
 import { storyGateAnnotations } from './annotations.ts'
 
 /**
+ * Freeze motion before anything renders.
+ *
+ * The matcher waits for two consecutive identical frames, and a transition
+ * firing once on mount straddles exactly that window. This is the measured
+ * cause: on a component library, every `Button` variant failed while `Avatar`,
+ * `Badge` and `Browser` passed, and Button at rest has no keyframe animation —
+ * only `transition-colors duration-150`. So disabling transitions is the
+ * load-bearing half; pausing animations alone would have looked like a fix
+ * while leaving most stories failing.
+ *
+ * Injected at module scope, not from a hook: a style applied after a transition
+ * has started freezes it at whatever point it reached, which is the
+ * non-determinism being removed. Setup modules evaluate before any story
+ * renders.
+ *
+ * This cannot reach canvas or JS-driven animation. Those stories should declare
+ * `parameters.storyGate.unstable`, which excludes them visibly rather than
+ * letting them rot in the pre-existing set.
+ */
+const freezeMotion = (): void => {
+  const style = document.createElement('style')
+  style.setAttribute('data-overeng-story-gate', 'freeze-motion')
+  style.textContent = `*, *::before, *::after {
+  transition: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  animation-delay: 0s !important;
+  animation-play-state: paused !important;
+  caret-color: transparent !important;
+  scroll-behavior: auto !important;
+}`
+  document.head.append(style)
+}
+
+freezeMotion()
+
+/**
  * `setProjectAnnotations` replaces rather than merges, and the Storybook Vitest
  * addon calls it at module scope from its own setup file. Setup-file ordering
  * between the addon's injected entries and ours is decided by Vite's config

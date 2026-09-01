@@ -63,6 +63,9 @@ export default packageJson(
       build: 'tsc --build tsconfig.json && vite build',
       storybook: 'storybook dev -p 6010',
       'storybook:build': 'storybook build',
+      // Reaches past `exports` on purpose: this runs the workspace source, and
+      // the published `dist` entry is for consumers rather than for this script.
+      gate: 'bun node_modules/@overeng/utils/src/node/storybook/gate/cli.ts',
     },
   },
   runtimeDeps,

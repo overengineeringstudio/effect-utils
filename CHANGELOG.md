@@ -23,7 +23,41 @@ All notable changes to this project will be documented in this file.
   change make it worse" on packages that carry debt. Measured on
   `effect-schema-form-aria`: 39 stories, clean tree reports zero; a one-pixel
   border radius is caught on exactly the two affected stories at 85 and 81
-  differing pixels, with no false positives on the other 37.
+  differing pixels, with no false positives on the other 37. Runnable as
+  `@overeng/utils/node/storybook/gate/cli` — a check every target has to write
+  its own driver for is not the working visual check R08 asks for.
+
+- **@overeng/utils**: the story gate can no longer report success over an
+  unusable baseline. It subtracts failures present at both refs so it answers
+  "did this change make it worse" on packages carrying drift — but with no
+  floor, a run where every story failed at the baseline produced an empty
+  regression list *by construction* and reported no regressions over a total
+  loss of styling. Measured at 212/212 failed on one app and 708/942 on another.
+  Now: missing-reference is detected before the pre-existing skip that swallowed
+  it; stories whose baseline image does not exist are `uncovered`, derived from
+  the filesystem rather than from message text, and force a failure; zero passes
+  at the baseline is a hard failure; and the summary line leads with the
+  baseline pass count, because the defect turned on a summary that said "no
+  regressions" over a report that said otherwise. No fraction threshold: a
+  quarter passing is degraded but still informative, and a badly-set fraction
+  would reject that along with the broken case.
+- **@overeng/utils**: the gate freezes motion before first paint. The screenshot
+  matcher waits for two consecutive identical frames, which a transition firing
+  once on mount straddles — measured, and it is transitions rather than
+  animations: every `Button` variant failed while `Avatar` and `Badge` passed,
+  and Button at rest carries only `transition-colors duration-150`. Confirmed
+  sufficient by an A/B with the accessibility addon disabled, which changed
+  nothing. Stories on surfaces no freeze can settle — a live WebGL canvas never
+  produces two identical frames — declare `parameters.storyGate.unstable` and
+  are reported as `excluded` rather than failing at baseline and silently
+  poisoning the subtraction.
+- **@overeng/utils**: `createStylexVitePlugins` now declares a structural return
+  type rather than vite's nominal `Plugin`. Naming vite's own type published
+  effect-utils' bundler major as part of the contract: a consumer on a different
+  Vite major could not accept the value at all, failing on internals as
+  incidental as `PluginContextMeta.rolldownVersion`. Since every plugin member
+  except `name` is optional in both majors, one required `name` stays assignable
+  to `PluginOption` everywhere while imposing nothing.
 
 ### Changed
 
@@ -41,6 +75,11 @@ All notable changes to this project will be documented in this file.
   unchanged as a multiset (92 rules, identical after masking hashed
   identifiers); only names and intra-priority ordering move. Markup baselines in
   `effect-schema-form-aria` were regenerated for that reason.
+  If you had a worktree installed before this rename, delete the leftover
+  `packages/@overeng/stylex-preset/` directory. Only its gitignored `dist` and
+  `node_modules` survive, so `git status` stays clean while the labels generator
+  keeps walking it and re-adding a `system:stylex-preset` label, and
+  `lint:check:genie` then fails on drift that is not in the tree.
 - **@overeng/utils**: owns StyleX build integration at
   `@overeng/utils/node/stylex`, and compiled CSS now enters the bundle as a
   virtual CSS module imported by each named entry rather than by picking an

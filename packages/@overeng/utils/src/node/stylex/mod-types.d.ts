@@ -1,5 +1,3 @@
-import type { Plugin } from 'vite'
-
 /**
  * Module specifier of the virtual stylesheet holding all compiled StyleX rules.
  *
@@ -19,7 +17,25 @@ export interface StylexVitePluginsOptions {
    * stylesheet import. One per surface: the library/app entry, and the
    * Storybook preview when the package has stories.
    */
-  readonly entries: readonly string[]
+  readonly entries?: readonly string[]
+}
+
+/**
+ * A bundler plugin, described by the only member every Vite and Rollup major
+ * agrees on.
+ *
+ * Deliberately structural. Naming vite's own `Plugin` here would publish
+ * effect-utils' bundler major as part of this package's contract: a consumer on
+ * a different Vite major cannot accept the value at all, failing on internals
+ * as incidental as `PluginContextMeta.rolldownVersion`. Since every other
+ * member of a plugin is optional in both majors, one required `name` is enough
+ * to remain assignable to `PluginOption` everywhere while imposing nothing.
+ *
+ * The implementation still builds precisely-typed vite plugins; only the
+ * published signature is widened, and only outward.
+ */
+export interface StylexVitePlugin {
+  name: string
 }
 
 /**
@@ -27,4 +43,6 @@ export interface StylexVitePluginsOptions {
  * CSS module in the module graph rather than by picking an emitted asset by
  * filename.
  */
-export declare const createStylexVitePlugins: (options: StylexVitePluginsOptions) => Plugin[]
+export declare const createStylexVitePlugins: (
+  options?: StylexVitePluginsOptions,
+) => StylexVitePlugin[]

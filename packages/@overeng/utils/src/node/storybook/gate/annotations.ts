@@ -11,10 +11,13 @@
 import { expect } from 'vitest'
 import { page } from 'vitest/browser'
 
+import { excludedStoryMarker } from './constants.ts'
+
 /** Minimal shape of the story context the gate reads. */
 interface GateStoryContext {
   readonly id: string
   readonly canvasElement: HTMLElement
+  readonly parameters?: { readonly storyGate?: { readonly unstable?: boolean } }
 }
 
 /**
@@ -33,6 +36,19 @@ interface GateStoryContext {
 export const storyGateAnnotations = {
   parameters: { a11y: { test: 'error' } },
   afterEach: async (context: GateStoryContext): Promise<void> => {
+    // Escape hatch for surfaces no freeze can settle — a live WebGL canvas
+    // never produces two identical consecutive frames. Without an explicit
+    // opt-out those stories fail at the baseline, land in `preExisting`, and
+    // silently suppress their own compare-side failures: the defect this gate
+    // was just fixed for, reintroduced through a different door. Opting out
+    // takes the story out of the visual comparison entirely and says so;
+    // render, play and accessibility still run.
+    if (context.parameters?.storyGate?.unstable === true) {
+      // eslint-disable-next-line no-console -- the only channel from the browser back to the runner.
+      console.info(`${excludedStoryMarker}${context.id}`)
+      return
+    }
+
     await expect(page.elementLocator(context.canvasElement)).toMatchScreenshot(context.id)
   },
 }

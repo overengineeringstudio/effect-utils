@@ -100,6 +100,9 @@ export default packageJson(
       './node/storybook/gate': exportEntry('./src/node/storybook/gate/mod.ts', {
         environment: 'node',
       }),
+      './node/storybook/gate/cli': exportEntry('./src/node/storybook/gate/cli.ts', {
+        environment: 'node',
+      }),
       // Referenced by path from the gate's `test.setupFiles`, never imported
       // from Node: it runs inside the Vitest browser environment.
       './node/storybook/gate/setup': exportEntry('./src/node/storybook/gate/setup.ts', {
@@ -132,6 +135,7 @@ export default packageJson(
         './node/storybook': './dist/node/storybook/mod.js',
         './node/storybook/config': './dist/node/storybook/config/mod.js',
         './node/storybook/gate': './dist/node/storybook/gate/mod.js',
+        './node/storybook/gate/cli': './dist/node/storybook/gate/cli.js',
         './node/storybook/gate/setup': './dist/node/storybook/gate/setup.js',
         './lock': './dist/lock/mod.js',
         './browser': './dist/browser/mod.js',
