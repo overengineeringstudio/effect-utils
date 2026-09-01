@@ -395,6 +395,30 @@ const snapshotsEqual = ({
     return other !== undefined && sourceEntriesEqual({ left: entry, right: other })
   })
 
+/**
+ * Permission state of the paths a rename touches, for a failure report.
+ *
+ * A rename needs write on the parent that holds both entries; moving a
+ * directory across parents additionally needs write on the directory itself.
+ * Those two are indistinguishable from `Permission denied` alone, so name the
+ * modes and owners that decided it.
+ */
+const describeRenameOperands = async (paths: ReadonlyArray<string>): Promise<string> => {
+  const described = await Promise.all(
+    paths.map(async (candidate) => {
+      try {
+        const info = await lstat(candidate)
+        const kind =
+          info.isDirectory() === true ? 'dir' : info.isSymbolicLink() === true ? 'link' : 'file'
+        return `${candidate} [${kind} mode=${(info.mode & 0o7777).toString(8)} uid=${String(info.uid)}]`
+      } catch (cause) {
+        return `${candidate} [unreadable: ${cause instanceof Error ? cause.message : String(cause)}]`
+      }
+    }),
+  )
+  return described.join('\n  ')
+}
+
 const runCommand = ({
   binary,
   args,
@@ -433,11 +457,15 @@ const runCommand = ({
             return
           }
           const detail = stderr.trim()
-          reject(
-            new Error(
-              `${commandName} exited ${String(exitCode)}${signal === null ? '' : ` (${signal})`}: ${binary} ${args.join(' ')}${detail === '' ? ' (no stderr)' : `\n${detail}`}`,
-            ),
-          )
+          const operands = args.filter((argument) => argument.startsWith('-') === false)
+          const parents = [...new Set(operands.map((operand) => NodePath.dirname(operand)))]
+          void describeRenameOperands([...operands, ...parents]).then((described) => {
+            reject(
+              new Error(
+                `${commandName} exited ${String(exitCode)}${signal === null ? '' : ` (${signal})`}: ${binary} ${args.join(' ')}${detail === '' ? ' (no stderr)' : `\n${detail}`}\n  ${described}`,
+              ),
+            )
+          })
         })
       }),
   })

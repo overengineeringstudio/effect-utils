@@ -9,8 +9,10 @@ All notable changes to this project will be documented in this file.
 - **@overeng/megarepo**: the cp-a mount rename primitives ran with
   `stdio: 'ignore'`, so a failure reached CI as a bare `GNU mv no-clobber first
   publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
-  carries the command's stderr, the exact argv, and the resolved binary — whose
-  Nix store path names the coreutils version.
+  carries the command's stderr, the exact argv, the resolved binary — whose Nix
+  store path names the coreutils version — and the mode and owner of every path
+  the rename touches, including the shared parent, which is what actually
+  decides a `Permission denied`.
 
 - **@overeng/megarepo tests**: composition refuses non-canonical paths on
   purpose — R6 identity, owned-worktree acquisition and the private-scratch
