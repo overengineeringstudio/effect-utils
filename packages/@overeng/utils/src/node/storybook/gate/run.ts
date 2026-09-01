@@ -33,7 +33,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 
 import {
   excludedStoryMarker,
@@ -170,6 +170,22 @@ export interface StoryGateReport {
    * "these two things differ" assertion vacuously.
    */
   readonly selfInconsistent: readonly string[]
+  /**
+   * Stories that rendered differently AND were already known nondeterministic,
+   * so the difference says nothing.
+   *
+   * Split out of `changed` rather than left in it. Measured on an identical
+   * tree with nothing changed: 21 stories reported as `changed`, of which 19
+   * were already in `selfInconsistent` — the gate computed the exclusion set,
+   * printed its size, and then reported its members as regressions anyway.
+   *
+   * Kept as its own list instead of silently filtered, so the report can state
+   * how much of the difference was noise the probe had already identified. A
+   * story here needs its nondeterminism fixed before the gate can say anything
+   * about it; it is not evidence of a regression, and not evidence of its
+   * absence either.
+   */
+  readonly nondeterministic: readonly string[]
   /**
    * Whether the theme projects actually render differently.
    *
@@ -479,6 +495,16 @@ interface VitestJsonAssertion {
   readonly title?: string
   readonly status?: string
   readonly failureMessages?: readonly string[]
+  /**
+   * Basename of the story file the assertion came from.
+   *
+   * Carried because `fullName` is the BARE story name — measured: `With
+   * Values`, not `Forms/AriaSchemaForm > With Values` — so it is only unique
+   * within a file. A library with `Default` in twenty story files has twenty
+   * assertions called `Default`, and any set keyed on the name alone silently
+   * conflates them.
+   */
+  readonly file?: string
 }
 
 const parseAssertions = ({
@@ -492,9 +518,65 @@ const parseAssertions = ({
     throw new Error(`[story-gate] Vitest produced no JSON report:\n${output}`)
   }
   const report = JSON.parse(readFileSync(reportFile, 'utf8')) as {
-    readonly testResults?: readonly { readonly assertionResults?: readonly VitestJsonAssertion[] }[]
+    readonly testResults?: readonly {
+      readonly name?: string
+      readonly assertionResults?: readonly VitestJsonAssertion[]
+    }[]
   }
-  return (report.testResults ?? []).flatMap((file) => file.assertionResults ?? [])
+  return (report.testResults ?? []).flatMap((file) =>
+    (file.assertionResults ?? []).map((assertion) =>
+      file.name === undefined ? assertion : { ...assertion, file: basename(file.name) },
+    ),
+  )
+}
+
+/**
+ * Storybook's story-id slug for a story name.
+ *
+ * Needed because the two sides of this join speak different namespaces: a
+ * capture key ends in the story ID (`components-numberfield--with-hint`) while a
+ * Vitest assertion carries the bare story NAME (`With Hint`). Storybook derives
+ * the id's suffix from the name by this same slugging, so slugging the name is
+ * what lets one be looked up by the other.
+ */
+export const slugStoryName = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+/**
+ * Key a story by its file AND its slug, never by name alone.
+ *
+ * `fullName` is unique only within a story file, so a name-only key conflates
+ * every `Default` in the library. Conflating them here would let one story's
+ * self-inconsistency suppress a DIFFERENT story's real regression — a false
+ * green, which is worse than the noise this subtraction removes.
+ */
+export const storyKey = ({ file, slug }: { file: string; slug: string }): string => `${file}::${slug}`
+
+/**
+ * The stories the baseline probe already proved nondeterministic, keyed to join
+ * against Vitest assertions.
+ *
+ * Capture keys look like
+ * `<project>/<dir>/<Foo.stories.tsx>/<story-id>.png`, so the story file is the
+ * penultimate segment and the id is the basename.
+ */
+export const selfInconsistentStoryKeys = (captureKeys: readonly string[]): ReadonlySet<string> => {
+  const keys = new Set<string>()
+  for (const captureKey of captureKeys) {
+    const segments = captureKey.split(sep)
+    const png = segments.at(-1)
+    const file = segments.at(-2)
+    if (png === undefined || file === undefined) continue
+    const id = png.replace(/\.png$/, '')
+    // The id is `<title-slug>--<name-slug>`; only the name half can be
+    // reconstructed from a Vitest assertion, so that is what is keyed.
+    const slug = id.includes('--') ? (id.split('--').at(-1) ?? id) : id
+    keys.add(storyKey({ file, slug }))
+  }
+  return keys
 }
 
 const classify = (message: string): StoryGateChangeKind => {
@@ -971,6 +1053,20 @@ export const runStoryGate = async ({
     [...unsettled, ...unsettledAtBaseline].flatMap((record) => [record.id, record.name]),
   )
 
+  // The exclusion set the probe capture already computed, finally applied to
+  // the thing it exists for. Measured on an IDENTICAL tree with nothing
+  // changed: 21 stories reported as `changed`, 19 of which the gate's own probe
+  // had already named self-inconsistent. It identified them, printed the count
+  // in its summary, and then reported them as regressions anyway — so every
+  // conversion PR on every target opened with a changed-list of pure noise the
+  // machinery already knew how to filter.
+  //
+  // A story that differs from ITSELF cannot support a `changed` verdict either
+  // way; that is the same reasoning the theme-variation count already applies,
+  // and it was only ever applied there.
+  const selfInconsistentKeys = selfInconsistentStoryKeys(selfInconsistent)
+  const nondeterministic: string[] = []
+
   const assertions = parseAssertions({ reportFile, output: compare.output })
   const failures = assertions.filter((assertion) => assertion.status === 'failed')
   const added: string[] = []
@@ -986,6 +1082,14 @@ export const runStoryGate = async ({
       added.push(story)
     } else if (preExisting.has(story) === true) {
       continue
+    } else if (
+      failure.file !== undefined &&
+      selfInconsistentKeys.has(storyKey({ file: failure.file, slug: slugStoryName(story) })) ===
+        true
+    ) {
+      // Excluded, not dropped: it moves to its own list so the summary can say
+      // how much of the changed-list was noise the probe had already found.
+      nondeterministic.push(story)
     } else {
       changed.push({ story, kind: classify(detail), detail })
     }
@@ -1013,6 +1117,7 @@ export const runStoryGate = async ({
     settle,
     baseline,
     selfInconsistent,
+    nondeterministic,
     themeAxis,
     captureSets: { baselineDir, baselineCaptures: 2, compareCaptures: 1 },
     treeIdentity: {

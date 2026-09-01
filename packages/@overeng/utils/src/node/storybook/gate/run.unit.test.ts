@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { isStoryGateOk } from './run.ts'
+import {
+  isStoryGateOk,
+  selfInconsistentStoryKeys,
+  slugStoryName,
+  storyKey,
+} from './run.ts'
 
 const clean = {
   added: [],
@@ -116,5 +121,46 @@ describe('isStoryGateOk', () => {
         themeAxis: { ...clean.themeAxis, comparable: 0, differing: 0 },
       }),
     ).toBe(true)
+  })
+})
+
+describe('selfInconsistentStoryKeys', () => {
+  it('keys a capture by its story file and story slug', () => {
+    // The two sides of this join speak different namespaces: a capture key ends
+    // in the story ID, a Vitest assertion carries the bare story NAME. Measured
+    // shapes, from a real run:
+    //   capture   story-gate/src/stories/NumberField.stories.tsx/components-numberfield--with-hint.png
+    //   assertion fullName 'With Hint'
+    expect(
+      selfInconsistentStoryKeys([
+        'story-gate/src/stories/NumberField.stories.tsx/components-numberfield--with-hint.png',
+      ]).has(storyKey({ file: 'NumberField.stories.tsx', slug: slugStoryName('With Hint') })),
+    ).toBe(true)
+  })
+
+  it('does not let one file\u2019s nondeterminism suppress another file\u2019s regression', () => {
+    // The defect a name-only key would introduce, and it is a FALSE GREEN
+    // rather than noise: `Default` exists in many story files, so keying on the
+    // name alone would let a nondeterministic `Default` in one file silently
+    // absorb a real change to `Default` in every other file.
+    const keys = selfInconsistentStoryKeys([
+      'story-gate/src/stories/Book.stories.tsx/components-book--default.png',
+    ])
+    expect({
+      sameFile: keys.has(
+        storyKey({ file: 'Book.stories.tsx', slug: slugStoryName('Default') }),
+      ),
+      otherFile: keys.has(
+        storyKey({ file: 'Avatar.stories.tsx', slug: slugStoryName('Default') }),
+      ),
+    }).toEqual({ sameFile: true, otherFile: false })
+  })
+
+  it('slugs a story name the way Storybook derives the id suffix', () => {
+    expect({
+      spaces: slugStoryName('With Error'),
+      punctuation: slugStoryName('Optional & Disabled'),
+      collapsed: slugStoryName('All   Sizes'),
+    }).toEqual({ spaces: 'with-error', punctuation: 'optional-disabled', collapsed: 'all-sizes' })
   })
 })

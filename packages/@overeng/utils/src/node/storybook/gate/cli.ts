@@ -86,7 +86,7 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
     '',
     ...provenance,
     '',
-    `${verdict}  ${report.comparedStories} compared · ${report.baseline.passed}/${report.baseline.total} passed at baseline · ${report.changed.length} changed · ${report.added.length} added · ${report.removed.length} removed · ${report.uncovered.length} uncovered · ${report.preExisting.length} pre-existing · ${report.excluded.length} excluded · ${report.unsettled.length} never settled · ${report.selfInconsistent.length} self-inconsistent`,
+    `${verdict}  ${report.comparedStories} compared · ${report.baseline.passed}/${report.baseline.total} passed at baseline · ${report.changed.length} changed · ${report.added.length} added · ${report.removed.length} removed · ${report.uncovered.length} uncovered · ${report.preExisting.length} pre-existing · ${report.excluded.length} excluded · ${report.unsettled.length} never settled · ${report.nondeterministic.length} nondeterministic · ${report.selfInconsistent.length} self-inconsistent captures`,
     ...(report.baseline.passed === 0
       ? ['', 'Nothing passed at the baseline ref. That is an unusable baseline, not a clean run.']
       : []),
@@ -113,6 +113,12 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
           `${report.unsettled.length} stories never reached a quiet DOM within ${report.settle.boundMs}ms and were excluded from the visual comparison. Excluded BY OBSERVATION, not by declaration — nobody reviewed these. Either fix the story or declare parameters.storyGate.unstable so the decision is on the record.`,
         ]
       : []),
+    ...(report.nondeterministic.length > 0
+      ? [
+          '',
+          `${report.nondeterministic.length} stories rendered differently but were already known nondeterministic from the baseline probe, so their difference is not evidence either way. They are excluded from the changed list and named below; fix their nondeterminism and the gate can start speaking about them.`,
+        ]
+      : []),
     '',
     ...report.changed.map((change) => `  ${change.kind.padEnd(13)} ${change.story}`),
     ...report.added.map((story) => `  added         ${story}`),
@@ -123,6 +129,9 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
       `  never settled ${record.name} (${record.reason ?? 'unknown'}, gave up after ${record.elapsedMs}ms)`,
       `                shapes: ${record.shapes.join(' -> ')}`,
     ]),
+    ...report.nondeterministic.map(
+      (story) => `  nondeterministic ${story} (differs from itself at the baseline)`,
+    ),
   ]
   process.stdout.write(`${lines.join('\n')}\n`)
 
