@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -12,7 +13,12 @@ import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { Clock, Effect, Result } from 'effect'
+import * as HttpClient from 'effect/unstable/http/HttpClient'
+import * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { runVercelDeploy } from './deploy-vercel.ts'
 
 type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-project'
 
@@ -119,7 +125,18 @@ beforeAll(async () => {
     }
     response
       .writeHead(200, { 'content-type': 'application/json', connection: 'close' })
-      .end(JSON.stringify({ id: 'fake-project', name: 'fake-vercel-project' }))
+      .end(
+        JSON.stringify({
+          id: 'fake-project',
+          name: 'fake-vercel-project',
+          targets: {
+            production: {
+              id: 'dpl_previous',
+              url: 'prior-web.vercel.app',
+            },
+          },
+        }),
+      )
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -188,6 +205,14 @@ if [ "\${1:-}" = "deploy" ]; then
   printf 'https://deploy-web.vercel.app\\n'
   exit 0
 fi
+if [ "\${1:-}" = "promote" ]; then
+  if [ "\${FAKE_VERCEL_PROMOTE_FAIL:-0}" = "1" ]; then
+    echo 'Promotion failed' >&2
+    exit 1
+  fi
+  printf 'Promoted %s\\n' "\${2:-}"
+  exit 0
+fi
 if [ "\${1:-}" = "alias" ] && [ "\${2:-}" = "rm" ]; then
   printf 'Removed alias %s\\n' "\${3:-}"
   exit 0
@@ -202,6 +227,125 @@ exit 1
       { mode: 0o755 },
     )
     return { root, artifactDir, fakeVercelBin, logPath }
+  }
+
+  const runDirectProductionDeploy = async (opts: {
+    readonly workdir: string
+    readonly artifactDir: string
+    readonly artifactKind?: 'static' | 'prebuilt-output'
+    readonly fakeVercelBin: string
+    readonly logPath: string
+    readonly immutableResponseText: string
+    readonly immutableResponseStatus?: number
+    readonly productionResponseText?: string
+    readonly promoteFails?: boolean
+    readonly productionDomains?: readonly string[]
+    readonly buildPrebuiltOutput?: boolean
+    readonly vercelRootDirectory?: string
+    readonly buildEnv?: readonly string[]
+    readonly workflowReportOutputFile?: string
+  }) => {
+    const envNames = [
+      'CI_TOOLS_TEST_VERCEL_TOKEN',
+      'CI_TOOLS_TEST_VERCEL_ORG_ID',
+      'CI_TOOLS_TEST_VERCEL_PROJECT_ID',
+      'CI_TOOLS_TEST_VERCEL_SCOPE',
+      'DEVENV_TASK_OUTPUT_FILE',
+      'FAKE_VERCEL_REQUIRE_DOTFILE',
+      'FAKE_VERCEL_PROMOTE_FAIL',
+    ] as const
+    const previousEnv = {
+      CI_TOOLS_TEST_VERCEL_TOKEN: process.env.CI_TOOLS_TEST_VERCEL_TOKEN,
+      CI_TOOLS_TEST_VERCEL_ORG_ID: process.env.CI_TOOLS_TEST_VERCEL_ORG_ID,
+      CI_TOOLS_TEST_VERCEL_PROJECT_ID: process.env.CI_TOOLS_TEST_VERCEL_PROJECT_ID,
+      CI_TOOLS_TEST_VERCEL_SCOPE: process.env.CI_TOOLS_TEST_VERCEL_SCOPE,
+      DEVENV_TASK_OUTPUT_FILE: process.env.DEVENV_TASK_OUTPUT_FILE,
+      FAKE_VERCEL_REQUIRE_DOTFILE: process.env.FAKE_VERCEL_REQUIRE_DOTFILE,
+      FAKE_VERCEL_PROMOTE_FAIL: process.env.FAKE_VERCEL_PROMOTE_FAIL,
+    }
+    process.env.CI_TOOLS_TEST_VERCEL_TOKEN = 'fake-token'
+    process.env.CI_TOOLS_TEST_VERCEL_ORG_ID = 'fake-org'
+    process.env.CI_TOOLS_TEST_VERCEL_PROJECT_ID = 'fake-project'
+    process.env.CI_TOOLS_TEST_VERCEL_SCOPE = 'fake-scope'
+    delete process.env.DEVENV_TASK_OUTPUT_FILE
+    process.env.FAKE_VERCEL_REQUIRE_DOTFILE = '0'
+    const previousCwd = process.cwd()
+    process.env.FAKE_VERCEL_PROMOTE_FAIL = opts.promoteFails === true ? '1' : '0'
+    process.chdir(opts.workdir)
+
+    const httpClient = HttpClient.make((request, url) =>
+      Effect.sync(() => {
+        if (url.pathname.startsWith('/v9/projects/') === true) {
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(
+              '{"id":"fake-project","name":"fake-vercel-project","targets":{"production":{"id":"dpl_previous","url":"prior-web.vercel.app"}}}',
+              { status: 200 },
+            ),
+          )
+        }
+
+        appendFileSync(opts.logPath, `http=${url.host}${url.pathname}\n`)
+        const isImmutable = url.host === 'deploy-web.vercel.app'
+        const text = isImmutable
+          ? opts.immutableResponseText
+          : (opts.productionResponseText ?? 'production marker')
+        const status = isImmutable ? (opts.immutableResponseStatus ?? 200) : 200
+        return HttpClientResponse.fromWeb(request, new Response(text, { status }))
+      }),
+    )
+
+    try {
+      return await Effect.runPromise(
+        runVercelDeploy({
+          target: 'app',
+          artifactDir: opts.artifactDir,
+          artifactKind: opts.artifactKind ?? 'static',
+          mode: 'prod',
+          productionDomains: opts.productionDomains ?? [
+            'app.example.com',
+            'www.app.example.com',
+          ],
+          projectIdEnv: 'CI_TOOLS_TEST_VERCEL_PROJECT_ID',
+          orgIdEnv: 'CI_TOOLS_TEST_VERCEL_ORG_ID',
+          authTokenEnv: 'CI_TOOLS_TEST_VERCEL_TOKEN',
+          scopeEnv: 'CI_TOOLS_TEST_VERCEL_SCOPE',
+          buildPrebuiltOutput: opts.buildPrebuiltOutput ?? false,
+          vercelRootDirectory: opts.vercelRootDirectory,
+          buildEnv: opts.buildEnv ?? [],
+          vercelBin: opts.fakeVercelBin,
+          vercelApiBaseUrl: 'https://api.vercel.test',
+          createdAtUtc: '2026-09-01T08:00:00Z',
+          e2eAllowSharedProject: false,
+          e2eReservedAliasPrefix: 'ci-tools-e2e',
+          e2eVerifyPath: '/index.html',
+          e2eVerifyText: 'production marker',
+          workflowReportOutputFile: opts.workflowReportOutputFile,
+        }).pipe(
+          Effect.provideService(HttpClient.HttpClient, httpClient),
+          Effect.provideService(Clock.Clock, {
+            currentTimeMillisUnsafe: Date.now,
+            currentTimeMillis: Effect.sync(Date.now),
+            currentTimeNanosUnsafe: () => BigInt(Date.now()) * 1_000_000n,
+            currentTimeNanos: Effect.sync(() => BigInt(Date.now()) * 1_000_000n),
+            monotonicTimeNanosUnsafe: () => BigInt(Date.now()) * 1_000_000n,
+            monotonicTimeNanos: Effect.sync(() => BigInt(Date.now()) * 1_000_000n),
+            sleep: () => Effect.void,
+          }),
+          Effect.result,
+        ),
+      )
+    } finally {
+      process.chdir(previousCwd)
+      for (const name of envNames) {
+        const value = previousEnv[name]
+        if (value === undefined) {
+          delete process.env[name]
+        } else {
+          process.env[name] = value
+        }
+      }
+    }
   }
 
   it('deploys PR previews with Vercel prebuilt packaging, alias semantics, and records', async () => {
@@ -273,53 +417,38 @@ exit 1
     }
   })
 
-  it('runs Vercel pull/build for build-mode prebuilt output before deploy', async () => {
-    apiMode = 'ok'
+  it('runs production pull/build before staged deploy and records promotion evidence', async () => {
     const workspace = makeWorkspace()
     const reportFile = join(workspace.root, 'report.jsonl')
     try {
-      const result = await runCiTools({
+      const result = await runDirectProductionDeploy({
         workdir: workspace.root,
+        artifactDir: join(workspace.root, '.vercel', 'output'),
+        artifactKind: 'prebuilt-output',
         fakeVercelBin: workspace.fakeVercelBin,
-        reportFile,
-        args: [
-          '--target',
-          'app',
-          '--artifact-dir',
-          join(workspace.root, '.vercel', 'output'),
-          '--artifact-kind',
-          'prebuilt-output',
-          '--mode',
-          'prod',
-          '--production-domain',
-          'app.example.com',
-          '--build-prebuilt-output',
-          '--vercel-root-directory',
-          'app',
-          '--build-env',
-          'BUILD_MARKER=ci-tools',
-          '--scope-env',
-          'VERCEL_SCOPE',
-        ],
-        env: { FAKE_VERCEL_REQUIRE_DOTFILE: '0' },
+        logPath: workspace.logPath,
+        immutableResponseText: 'production marker',
+        productionDomains: ['app.example.com'],
+        buildPrebuiltOutput: true,
+        vercelRootDirectory: 'app',
+        buildEnv: ['BUILD_MARKER=ci-tools'],
+        workflowReportOutputFile: reportFile,
       })
-      if (result.status !== 0) {
-        console.error({ stdout: result.stdout, stderr: result.stderr })
-      }
-      expect(result.status).toBe(0)
-      expect(result.stdout).toContain('Pulling Vercel project settings and env for app')
-      expect(result.stdout).toContain('Building app locally with vercel build')
+      expect(Result.isSuccess(result)).toBe(true)
+
       const log = readFileSync(workspace.logPath, 'utf8')
       expect(log).toContain(
         'args=pull --yes --environment production --scope fake-scope --token fake-token',
       )
       expect(log).toContain('args=build --yes --prod --scope fake-scope --token fake-token')
-      expect(log).toContain(
-        'args=deploy --prebuilt --yes --prod --scope fake-scope --token fake-token',
-      )
-      expect(log).toContain(
-        'args=alias https://deploy-web.vercel.app app.example.com --scope fake-scope',
-      )
+      const deployCommand =
+        'args=deploy --prebuilt --yes --prod --skip-domain --scope fake-scope --token fake-token'
+      const promoteCommand =
+        'args=promote https://deploy-web.vercel.app --yes --scope fake-scope --token fake-token'
+      expect(log).toContain(deployCommand)
+      expect(log).toContain(promoteCommand)
+      expect(log).not.toContain('args=alias')
+      expect(log.indexOf(deployCommand)).toBeLessThan(log.indexOf(promoteCommand))
       expect(log).toContain(`cwd=${realpathSync(workspace.root)} VERCEL_PROJECT_ID=fake-project`)
       expect(existsSync(join(workspace.root, 'app', 'vercel.json'))).toBe(false)
       expect(existsSync(join(workspace.root, '.vercel'))).toBe(false)
@@ -329,7 +458,152 @@ exit 1
         mode: 'prod',
         finalUrl: 'https://app.example.com/',
         productionDomains: ['app.example.com'],
+        rawDeployUrl: 'https://deploy-web.vercel.app/',
+        promotedDeployUrl: 'https://deploy-web.vercel.app/',
+        previousProductionDeploymentId: 'dpl_previous',
+        previousProductionDeploymentUrl: 'https://prior-web.vercel.app/',
       })
+      expect(readRecord(reportFile).data).not.toHaveProperty('alias')
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('verifies the immutable production deployment before promotion and domains after', async () => {
+    const workspace = makeWorkspace()
+    try {
+      const result = await runDirectProductionDeploy({
+        workdir: workspace.root,
+        artifactDir: workspace.artifactDir,
+        fakeVercelBin: workspace.fakeVercelBin,
+        logPath: workspace.logPath,
+        immutableResponseText: 'production marker',
+      })
+      expect(Result.isSuccess(result)).toBe(true)
+
+      const log = readFileSync(workspace.logPath, 'utf8')
+      const deployIndex = log.indexOf('args=deploy --prebuilt --yes --prod --skip-domain')
+      const immutableVerifyIndex = log.indexOf('http=deploy-web.vercel.app/index.html')
+      const promoteIndex = log.indexOf('args=promote https://deploy-web.vercel.app --yes')
+      const primaryDomainVerifyIndex = log.indexOf('http=app.example.com/index.html')
+      const secondaryDomainVerifyIndex = log.indexOf('http=www.app.example.com/index.html')
+      expect(deployIndex).toBeGreaterThanOrEqual(0)
+      expect(immutableVerifyIndex).toBeGreaterThan(deployIndex)
+      expect(promoteIndex).toBeGreaterThan(immutableVerifyIndex)
+      expect(primaryDomainVerifyIndex).toBeGreaterThan(promoteIndex)
+      expect(secondaryDomainVerifyIndex).toBeGreaterThan(primaryDomainVerifyIndex)
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not promote when immutable production verification fails', async () => {
+    const workspace = makeWorkspace()
+    try {
+      const result = await runDirectProductionDeploy({
+        workdir: workspace.root,
+        artifactDir: workspace.artifactDir,
+        fakeVercelBin: workspace.fakeVercelBin,
+        logPath: workspace.logPath,
+        immutableResponseText: 'wrong marker',
+      })
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result) === true) {
+        expect(result.failure._tag).toBe('VerificationFailed')
+      }
+
+      const log = readFileSync(workspace.logPath, 'utf8')
+      expect(log).toContain('http=deploy-web.vercel.app/index.html')
+      expect(log).not.toContain('args=promote')
+      expect(log).not.toContain('http=app.example.com/index.html')
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a nonzero promote command and does not verify production domains', async () => {
+    const workspace = makeWorkspace()
+    try {
+      const result = await runDirectProductionDeploy({
+        workdir: workspace.root,
+        artifactDir: workspace.artifactDir,
+        fakeVercelBin: workspace.fakeVercelBin,
+        logPath: workspace.logPath,
+        immutableResponseText: 'production marker',
+        promoteFails: true,
+      })
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result) === true) {
+        expect(result.failure).toMatchObject({
+          _tag: 'ProviderOperationFailed',
+          operation: 'promote',
+        })
+      }
+
+      const log = readFileSync(workspace.logPath, 'utf8')
+      expect(log).toContain('args=promote https://deploy-web.vercel.app --yes')
+      expect(log).not.toContain('http=app.example.com/index.html')
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('records promoted and prior deployment evidence when production-domain verification fails', async () => {
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runDirectProductionDeploy({
+        workdir: workspace.root,
+        artifactDir: workspace.artifactDir,
+        fakeVercelBin: workspace.fakeVercelBin,
+        logPath: workspace.logPath,
+        immutableResponseText: 'production marker',
+        productionResponseText: 'stale marker',
+        workflowReportOutputFile: reportFile,
+      })
+      expect(Result.isFailure(result)).toBe(true)
+      expect(readRecord(reportFile).data).toMatchObject({
+        errorKind: 'VerificationFailed',
+        diagnostics: {
+          verificationStage: 'final',
+          stagedDeployUrl: 'https://deploy-web.vercel.app',
+          promotedDeployUrl: 'https://deploy-web.vercel.app',
+          previousProductionDeploymentId: 'dpl_previous',
+          previousProductionDeploymentUrl: 'https://prior-web.vercel.app',
+        },
+      })
+      expect(
+        readFileSync(workspace.logPath, 'utf8').match(/http=app\.example\.com\/index\.html/gu),
+      ).toHaveLength(10)
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a staged-production protection hint for an unbypassed 401', async () => {
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runDirectProductionDeploy({
+        workdir: workspace.root,
+        artifactDir: workspace.artifactDir,
+        fakeVercelBin: workspace.fakeVercelBin,
+        logPath: workspace.logPath,
+        immutableResponseText: 'protected',
+        immutableResponseStatus: 401,
+        workflowReportOutputFile: reportFile,
+      })
+      expect(Result.isFailure(result)).toBe(true)
+      expect(readRecord(reportFile).data).toMatchObject({
+        errorKind: 'VerificationFailed',
+        diagnostics: {
+          httpStatus: '401',
+          verificationStage: 'staged-production',
+          protectionHint:
+            'Configure --protection-bypass-env with a Vercel protection bypass secret',
+        },
+      })
+      expect(readFileSync(workspace.logPath, 'utf8')).not.toContain('args=promote')
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }
@@ -362,7 +636,7 @@ exit 1
           '--artifact-kind',
           'prebuilt-output',
           '--mode',
-          'prod',
+          'preview',
           '--build-prebuilt-output',
           '--vercel-root-directory',
           'app',
@@ -405,7 +679,7 @@ exit 1
           '--artifact-kind',
           'prebuilt-output',
           '--mode',
-          'prod',
+          'preview',
           '--build-prebuilt-output',
           '--vercel-root-directory',
           'app',
@@ -467,10 +741,13 @@ exit 1
         workdir: workspace.root,
         fakeVercelBin: workspace.fakeVercelBin,
         reportFile,
-        args: ['--target', 'web', '--artifact-dir', workspace.artifactDir, '--mode', 'preview'],
+        args: ['--target', 'web', '--artifact-dir', workspace.artifactDir, '--mode', 'prod'],
         env: { FAKE_VERCEL_MODE: 'no-url' },
       })
       expect(result.status).not.toBe(0)
+      expect(readFileSync(workspace.logPath, 'utf8')).toContain(
+        'args=deploy --prebuilt --yes --prod --skip-domain',
+      )
       const record = readRecord(reportFile)
       expect(record.status).toBe('failure')
       expect(record.data).toMatchObject({

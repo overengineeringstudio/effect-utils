@@ -80,9 +80,19 @@ export type VercelDeployCommandOptions = {
   readonly e2eVerifyText?: string | undefined
 }
 
+const VercelDeploymentTargetJson = Schema.Struct({
+  id: Schema.optional(NonEmptyTrimmedString),
+  url: Schema.optional(NonEmptyTrimmedString),
+}).annotate({ identifier: 'CiTools.Vercel.DeploymentTargetJson' })
+
 const VercelProjectJson = Schema.Struct({
   id: Schema.optional(NonEmptyTrimmedString),
   name: Schema.optional(NonEmptyTrimmedString),
+  targets: Schema.optional(
+    Schema.Struct({
+      production: Schema.optional(Schema.NullOr(VercelDeploymentTargetJson)),
+    }),
+  ),
 }).annotate({ identifier: 'CiTools.Vercel.ProjectJson' })
 
 const VercelProjectFileJson = Schema.fromJsonString(
@@ -109,7 +119,7 @@ const vercelAlias = Effect.fn('ci-tools.deploy.vercel.alias')(function* (opts: {
   const suffix = opts.aliasSuffix === undefined ? '' : `-${opts.aliasSuffix}`
   switch (opts.mode) {
     case 'prod':
-      return `${opts.target}${suffix}`
+      return undefined
     case 'pr':
       if (opts.pr === undefined) {
         return yield* new ProviderOperationFailed({
@@ -592,7 +602,7 @@ const classifyVercelFailure = (opts: {
   readonly stdout: string
   readonly stderr: string
   readonly authToken: string
-  readonly operation: 'prepare' | 'deploy' | 'alias' | 'cleanup'
+  readonly operation: 'prepare' | 'deploy' | 'alias' | 'promote' | 'cleanup'
 }) => {
   const sanitizedStderr = redactDeployDiagnosticText(opts.stderr, {
     secretValues: [opts.authToken],
@@ -640,9 +650,10 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
   readonly target: string
   readonly finalUrl: URL
   readonly path: string
-  readonly expectedText: string
+  readonly expectedText: string | undefined
   readonly attempt: number
   readonly protectionBypass: string | undefined
+  readonly phase: 'staged-production' | 'final'
 }) {
   const verifyUrl = new URL(opts.path, opts.finalUrl)
   const client = yield* HttpClient.HttpClient
@@ -668,30 +679,54 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
           finalUrl: opts.finalUrl,
           transient: true,
           message: cause.message,
-          diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+          diagnostics: {
+            attempt: String(opts.attempt),
+            verifyPath: opts.path,
+            verificationStage: opts.phase,
+          },
         }),
     ),
   )
 
   if (response.status < 200 || response.status >= 300) {
+    const stagedProtectionFailure =
+      opts.phase === 'staged-production' &&
+      opts.protectionBypass === undefined &&
+      (response.status === 401 || response.status === 403)
     return yield* new VerificationFailed({
       provider: 'vercel',
       target: opts.target,
       finalUrl: opts.finalUrl,
       transient: response.status >= 500,
-      message: `Vercel live E2E verification returned HTTP ${response.status}`,
-      diagnostics: { attempt: String(opts.attempt), httpStatus: String(response.status) },
+      message: stagedProtectionFailure
+        ? `Staged production verification returned HTTP ${response.status}; configure --protection-bypass-env with a Vercel protection bypass secret`
+        : `Vercel live E2E verification returned HTTP ${response.status}`,
+      diagnostics: {
+        attempt: String(opts.attempt),
+        httpStatus: String(response.status),
+        verificationStage: opts.phase,
+        ...(stagedProtectionFailure
+          ? {
+              protectionHint:
+                'Configure --protection-bypass-env with a Vercel protection bypass secret',
+            }
+          : {}),
+      },
     })
   }
 
-  if (response.text.includes(opts.expectedText) === false) {
+  if (opts.expectedText !== undefined && response.text.includes(opts.expectedText) === false) {
     return yield* new VerificationFailed({
       provider: 'vercel',
       target: opts.target,
       finalUrl: opts.finalUrl,
       transient: false,
       message: 'Vercel live E2E marker text was not served',
-      diagnostics: { attempt: String(opts.attempt), verifyPath: opts.path },
+      diagnostics: {
+        attempt: String(opts.attempt),
+        verifyPath: opts.path,
+        verificationStage: opts.phase,
+      },
     })
   }
 })
@@ -700,8 +735,9 @@ const verifyFinalUrl = Effect.fn('ci-tools.deploy.vercel.verify')(function* (opt
   readonly target: string
   readonly finalUrl: URL
   readonly path: string
-  readonly expectedText: string
+  readonly expectedText: string | undefined
   readonly protectionBypass: string | undefined
+  readonly phase: 'staged-production' | 'final'
 }) {
   let lastFailure: VerificationFailed | undefined
   for (let attempt = 1; attempt <= 10; attempt += 1) {
@@ -729,6 +765,9 @@ const verifyFinalUrl = Effect.fn('ci-tools.deploy.vercel.verify')(function* (opt
     )
     if (Result.isSuccess(result) === true) return
     lastFailure = result.failure
+    if (opts.phase === 'staged-production') {
+      return yield* lastFailure
+    }
     if (attempt < 10) {
       yield* Effect.sleep('2 seconds')
     }
@@ -937,7 +976,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     )
   }
 
-  yield* resolveVercelProject({
+  const project = yield* resolveVercelProject({
     target: options.target,
     projectId,
     orgId,
@@ -945,6 +984,14 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     authToken: authTokenValue,
     apiBaseUrl: options.vercelApiBaseUrl,
   }).pipe(Effect.catch(failWithRecord))
+  const previousProductionDeployment =
+    options.mode === 'prod' ? (project.targets?.production ?? undefined) : undefined
+  const previousProductionDeploymentUrl =
+    previousProductionDeployment?.url === undefined
+      ? undefined
+      : previousProductionDeployment.url.startsWith('https://')
+        ? previousProductionDeployment.url
+        : `https://${previousProductionDeployment.url}`
 
   let cleanupLocalVercel = false
   try {
@@ -1002,7 +1049,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
             'deploy',
             '--prebuilt',
             '--yes',
-            ...(options.mode === 'prod' ? ['--prod'] : []),
+            ...(options.mode === 'prod' ? ['--prod', '--skip-domain'] : []),
             ...vercelScopeArgs(scope),
             '--token',
             authTokenValue,
@@ -1044,8 +1091,69 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         )
       }
 
+      const promotion =
+        options.mode === 'prod'
+          ? yield* Effect.gen(function* () {
+              yield* verifyFinalUrl({
+                target: input.target,
+                finalUrl: new URL(rawDeployUrl),
+                path: input.e2e?.verifyContent?.path ?? '/',
+                expectedText: input.e2e?.verifyContent?.expectedText,
+                protectionBypass,
+                phase: 'staged-production',
+              }).pipe(Effect.catch(failWithRecord))
+
+              const promoteResult = yield* DeployProviderOperation.with({
+                attributes: {
+                  provider: 'vercel',
+                  target: input.target,
+                },
+                effect: runVercelCommand({
+                  vercelBin: options.vercelBin,
+                  cwd: preparedOutput.workDir,
+                  args: [
+                    'promote',
+                    rawDeployUrl,
+                    '--yes',
+                    ...vercelScopeArgs(scope),
+                    '--token',
+                    authTokenValue,
+                  ],
+                  env: {
+                    VERCEL_PROJECT_ID: projectId,
+                    VERCEL_ORG_ID: orgId,
+                    ...(teamId === undefined ? {} : { VERCEL_TEAM_ID: teamId }),
+                  },
+                }),
+              })
+              if (promoteResult.status !== 0) {
+                return yield* failWithRecord(
+                  classifyVercelFailure({
+                    target: options.target,
+                    status: promoteResult.status,
+                    stdout: promoteResult.stdout,
+                    stderr: promoteResult.stderr,
+                    authToken: authTokenValue,
+                    operation: 'promote',
+                  }),
+                )
+              }
+
+              return {
+                _tag: 'DeployPromotionResult',
+                deploymentUrl: rawDeployUrl,
+                ...(previousProductionDeployment?.id === undefined
+                  ? {}
+                  : { previousProductionDeploymentId: previousProductionDeployment.id }),
+                ...(previousProductionDeploymentUrl === undefined
+                  ? {}
+                  : { previousProductionDeploymentUrl }),
+              } as const
+            })
+          : undefined
+
       let finalUrl = rawDeployUrl
-      if (alias !== undefined) {
+      if (options.mode !== 'prod' && alias !== undefined) {
         const aliasHost = `${alias}.vercel.app`
         const aliasResult = yield* DeployProviderOperation.with({
           attributes: {
@@ -1085,45 +1193,13 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         finalUrl = `https://${aliasHost}`
       }
 
-      for (const productionDomain of productionDomains) {
-        const domainResult = yield* DeployProviderOperation.with({
-          attributes: {
-            provider: 'vercel',
-            target: input.target,
-          },
-          effect: runVercelCommand({
-            vercelBin: options.vercelBin,
-            cwd: preparedOutput.workDir,
-            args: [
-              'alias',
-              rawDeployUrl,
-              productionDomain,
-              ...vercelScopeArgs(scope),
-              '--token',
-              authTokenValue,
-            ],
-            env: {
-              VERCEL_PROJECT_ID: projectId,
-              VERCEL_ORG_ID: orgId,
-              ...(teamId === undefined ? {} : { VERCEL_TEAM_ID: teamId }),
-            },
-          }),
-        })
-        if (domainResult.status !== 0) {
-          return yield* failWithRecord(
-            classifyVercelFailure({
-              target: options.target,
-              status: domainResult.status,
-              stdout: domainResult.stdout,
-              stderr: domainResult.stderr,
-              authToken: authTokenValue,
-              operation: 'alias',
-            }),
-          )
-        }
-      }
-      if (productionDomains.length > 0) {
-        finalUrl = `https://${productionDomains[0]}`
+      if (options.mode === 'prod') {
+        finalUrl =
+          productionDomains.length > 0
+            ? `https://${productionDomains[0]}`
+            : project.name === undefined
+              ? rawDeployUrl
+              : `https://${project.name}.vercel.app`
       }
 
       const preliminary = decodeResultEither({
@@ -1139,6 +1215,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         startedAtUtc: createdAtUtc,
         endedAtUtc: isoNow(),
         attempts: 1,
+        ...(promotion === undefined ? {} : { promotion }),
       })
 
       if (Result.isFailure(preliminary) === true) {
@@ -1153,14 +1230,55 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         )
       }
 
-      if (input.e2e?.verifyContent !== undefined) {
-        yield* verifyFinalUrl({
-          target: input.target,
-          finalUrl: preliminary.success.finalUrl,
-          path: input.e2e.verifyContent.path,
-          expectedText: input.e2e.verifyContent.expectedText,
-          protectionBypass,
-        }).pipe(Effect.catch(failWithRecord))
+      if (options.mode === 'prod' || input.e2e?.verifyContent !== undefined) {
+        const postPromotionUrls =
+          options.mode !== 'prod'
+            ? [preliminary.success.finalUrl]
+            : productionDomains.length === 0
+              ? [preliminary.success.finalUrl]
+              : productionDomains.map((domain) => new URL(`https://${domain}`))
+        for (const url of postPromotionUrls) {
+          const verification = verifyFinalUrl({
+            target: input.target,
+            finalUrl: url,
+            path: input.e2e?.verifyContent?.path ?? '/',
+            expectedText: input.e2e?.verifyContent?.expectedText,
+            protectionBypass,
+            phase: 'final',
+          })
+          yield* (
+            options.mode !== 'prod'
+              ? verification.pipe(Effect.catch(failWithRecord))
+              : verification.pipe(
+                  Effect.catch((failure) =>
+                    failWithRecord(
+                      new VerificationFailed({
+                        provider: 'vercel',
+                        target: input.target,
+                        finalUrl: failure.finalUrl,
+                        transient: failure.transient,
+                        message: 'Vercel production domain verification failed after promotion',
+                        diagnostics: {
+                          ...(failure.diagnostics ?? {}),
+                          verificationMessage: failure.message,
+                          stagedDeployUrl: rawDeployUrl,
+                          promotedDeployUrl: rawDeployUrl,
+                          ...(previousProductionDeployment?.id === undefined
+                            ? {}
+                            : {
+                                previousProductionDeploymentId:
+                                  previousProductionDeployment.id,
+                              }),
+                          ...(previousProductionDeploymentUrl === undefined
+                            ? {}
+                            : { previousProductionDeploymentUrl }),
+                        },
+                      }),
+                    ),
+                  ),
+                )
+          )
+        }
       }
 
       const cleanup =
@@ -1193,6 +1311,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         endedAtUtc: isoNow(),
         attempts: 1,
         ...(cleanup === undefined ? {} : { cleanup }),
+        ...(promotion === undefined ? {} : { promotion }),
       })
       if (Result.isFailure(decoded) === true) {
         return yield* failWithRecord(
