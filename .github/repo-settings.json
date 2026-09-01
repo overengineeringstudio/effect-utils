@@ -78,9 +78,6 @@
             "context": "bootstrap-cold-proof"
           },
           {
-            "context": "devenv-perf"
-          },
-          {
             "context": "nix-closure-sizes"
           },
           {

@@ -10,8 +10,8 @@ notion-md sync <path...> --watch [--poll-interval-ms <ms>]
 ```
 
 `track` is the only command that accepts a Notion page id or URL. `status` and
-`sync` accept local `.nmd` files or directories only. Sync direction lives in
-each file's required `source` frontmatter field.
+`sync` accept local `.nmd` files or directories only. Files take direction from
+required `source` frontmatter; Tracked Trees take it from workspace authority.
 
 ## Environment
 
@@ -22,24 +22,46 @@ each file's required `source` frontmatter field.
 
 ## Commands
 
-| Command                                               | Meaning                                                                 |
-| ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| `notion-md track <page-id-or-url> [file-or-dir]`      | Materialize an existing Notion page as tracked local `.nmd` state       |
-| `notion-md status <path...>`                          | Read-only live status for local `.nmd` files                            |
-| `notion-md status <dir> --recursive`                  | Read-only status for existing `.nmd` files discovered under a directory |
-| `notion-md sync <path...>`                            | Reconcile local paths toward in-sync according to each file's `source`  |
-| `notion-md sync <dir> --recursive --concurrency 4`    | Reconcile a flat batch of existing `.nmd` files                         |
-| `notion-md sync <path...> --watch --poll-interval-ms` | Keep reconciling after file events and remote polling                   |
+| Command                                               | Meaning                                                                             |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `notion-md track <page-id-or-url> [file-or-dir]`      | Materialize one page into a file, or its child-page tree into an existing directory |
+| `notion-md status <path...>`                          | Read-only live status for local `.nmd` files                                        |
+| `notion-md status <dir>`                              | Read-only plan for a hierarchical Tracked Tree                                      |
+| `notion-md status <dir> --recursive`                  | Read-only status for a flat batch of existing `.nmd` files                          |
+| `notion-md sync <path...>`                            | Reconcile files by `source` or a Tracked Tree by workspace authority                |
+| `notion-md sync <dir> --recursive --concurrency 4`    | Reconcile a flat batch of existing `.nmd` files                                     |
+| `notion-md sync <path...> --watch --poll-interval-ms` | Keep files or flat recursive batches reconciling after local and remote cues        |
 
 ## `track`
 
 ```sh
 notion-md track <page-id-or-url> notes.nmd
+notion-md track <page-id-or-url> ./notes-directory
 ```
 
-`track` establishes a local tracked file for an existing Notion page. It writes
-strict frontmatter with the page identity, parent, page metadata, and explicit
-`source`.
+With a `.nmd` file or missing output path, `track` retains the single-page
+behavior: it writes strict frontmatter with the page identity, parent, page
+metadata, and explicit `source`.
+
+An existing directory is detected from its filesystem type and invokes the
+remote subtree materializer. The root becomes `index.nmd`, each child page gets
+its own remote-authoritative nested `.nmd` file, and `.notion-md/workspace.json`
+records remote authority plus the derived tree index. Later `sync <directory>`
+passes refresh content and reconcile additions, page-id moves, and remote
+deletions; deletion is limited to files recorded by the previous manifest whose
+frontmatter still identifies the expected page. Unknown or rebound local files
+are preserved or refused. Directory tracking supports `--as remote` only,
+refuses a different root for an established workspace, and validates every
+remote node under `--dry-run`; `--as local` and `--as shared` remain single-file
+modes.
+
+Remote titles become stable lowercase ASCII paths; German umlauts use the
+conventional `ae` / `oe` / `ue` transliteration before general Unicode
+normalization. Notion child placeholders and id-bearing child anchors become
+relative Markdown links to the materialized child files. The stored remote
+baseline strips those local navigation links and retains the canonical Notion
+child anchors, so the guarded local tree composer remains a no-op at the
+materialization baseline.
 
 The default source is `remote`, because the first materialization starts from
 Notion:
@@ -58,6 +80,7 @@ page to track yet.
 
 ```sh
 notion-md status notes.nmd
+notion-md status tracked-tree
 notion-md status docs --recursive --concurrency 4
 ```
 
@@ -82,8 +105,9 @@ notion-md sync notes.nmd
 notion-md sync docs --recursive --concurrency 4
 ```
 
-`sync` runs one reconciliation pass for local paths. The command does not accept
-Notion page ids. Each file's frontmatter decides the mechanism:
+`sync` runs one reconciliation pass for local paths and does not accept Notion
+page ids. A file's frontmatter decides its mechanism; a non-recursive directory
+uses its workspace manifest's `local` or `remote` authority:
 
 | `source` | Normal sync behavior                                                     |
 | -------- | ------------------------------------------------------------------------ |
@@ -120,10 +144,15 @@ notion-md sync notes.nmd --watch --poll-interval-ms 30000
 notion-md sync docs --recursive --watch --poll-interval-ms 30000
 ```
 
-Watch mode runs the same reconciliation pass after local file changes and on a
-remote polling interval. One file target emits one-file watch events. Multiple
-files or recursive directory targets use a batch watch envelope and reconcile
-affected files with bounded concurrency.
+Watch mode runs the same file reconciliation pass after local file changes and
+on a remote polling interval. One file target emits one-file watch events.
+Multiple files or recursive directory targets use a batch watch envelope and
+reconcile affected files with bounded concurrency.
+
+A hierarchical directory tree without `--recursive` is rejected: tree sync is
+currently one-shot, and must not fall through to one-file watch on the directory
+path. `--recursive` explicitly selects flat file watch rather than tree
+reconciliation.
 
 Options:
 
@@ -133,8 +162,8 @@ Options:
 | `--poll-interval-ms` | `30000` | Remote polling interval in milliseconds    |
 | `--dry-run`          | `false` | Keep watch live while each pass plans only |
 
-The watched file set is resolved at startup. Restart the watcher after adding a
-new `.nmd` file.
+The watched file set is resolved at startup. Restart the flat batch watcher after
+adding a new `.nmd` file.
 
 ## Output
 

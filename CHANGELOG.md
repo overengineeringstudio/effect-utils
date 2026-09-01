@@ -20,8 +20,8 @@ All notable changes to this project will be documented in this file.
 publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
   carries the command's stderr, the exact argv, the resolved binary — whose Nix
   store path names the coreutils version — and the mode and owner of every path
-  the rename touches, including the shared parent, which is what actually
-  decides a `Permission denied`.
+  the rename touches, so `Permission denied` does not hide which permission
+  check failed.
 
 - **@overeng/megarepo tests**: composition refuses non-canonical paths on
   purpose — R6 identity, owned-worktree acquisition and the private-scratch
@@ -103,7 +103,6 @@ publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
   `./cli` are unchanged). `core/` provably imports nothing from
   `composition/`. The `member-mount-r6` and `member-mount-cp-a` module headers
   now explain their codenames and why they are two modules rather than one.
-
 - **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
   adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
   lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`
@@ -395,6 +394,16 @@ publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
   plain `Context.Reference` values now, not classes — type-level references
   must use the exported shape types (e.g. `ProgressReporterShape`,
   `NotionThrottleShape`) instead of the tag name.
+
+### Fixed
+
+- **@overeng/ci-tools**: handle Vercel `already in use` alias collisions
+  deterministically: resolve the current holder on collision, succeed when it
+  is a deployment of the same commit, recheck once for a same-project holder,
+  and fail fast with an actionable error naming the remedy when the host is
+  held outside the project (`AliasAssignmentFailed` carries the classified
+  inner failure and attempt count; workflow-report records report true
+  attempts).
 
 ### Added
 
@@ -3644,6 +3653,16 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   success, not the child exit code. Pure passthrough stays silent (R04);
   `--trace-link off` / `OTEL_SCRAPE_TRACE_LINK=off` disables it.
 
+- **@overeng/notion-md**: `track <page> <existing-directory>` now materializes a
+  remote-authoritative child-page tree as separate `.nmd` files plus an authority-tagged workspace
+  manifest. Non-recursive directory status plans the same tree engine; ordinary directory sync
+  refreshes content and reconciles recorded additions, page-ID moves, and deletions only across
+  manifest and frontmatter-proven ownership. Dry-run validates every remote node without writing,
+  and a different root cannot repurpose an established workspace. Child placeholders become
+  relative local navigation links without entering the remote push baseline, while local-authority
+  user links remain authored content. Hierarchical tree watch is rejected; `--recursive` remains
+  flat file watch. Unicode titles produce stable ASCII paths with German umlaut transliteration.
+  File and missing-path tracking is unchanged.
 - **genie semantic-conventions generator (M1) / @overeng/genie + @overeng/otel-contract**:
   First genie generator for OpenTelemetry semantic-convention registries.
   - Layer 1 (`@overeng/genie` `src/runtime/weaver`, dep-free): a faithful typed model of the

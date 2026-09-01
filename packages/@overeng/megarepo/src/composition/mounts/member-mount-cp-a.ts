@@ -399,10 +399,10 @@ const snapshotsEqual = ({
 /**
  * Permission state of the paths a rename touches, for a failure report.
  *
- * A rename needs write on the parent that holds both entries; moving a
- * directory across parents additionally needs write on the directory itself.
- * Those two are indistinguishable from `Permission denied` alone, so name the
- * modes and owners that decided it.
+ * A rename needs write access to the parent entries. The macOS CI environment
+ * also refused to move protected `0555` directory roots within a writable
+ * shared parent. `Permission denied` alone does not identify which permission
+ * check failed, so report the modes and owners of every operand.
  */
 const describeRenameOperands = async (paths: ReadonlyArray<string>): Promise<string> => {
   const described = await Promise.all(

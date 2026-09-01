@@ -19,7 +19,7 @@ import {
   type NmdError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
-import { normalizeMarkdownLineEndings, sha256Digest, stripChildAnchors } from './hash.ts'
+import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { NotionMdGateway, type RemoteMarkdownSnapshot, type RemotePageSnapshot } from './model.ts'
 import { SyncTreeSpan, withOperation } from './observability.ts'
 import {
@@ -29,17 +29,18 @@ import {
   writeSyncState,
 } from './state-store.ts'
 import { buildTreeNodeLocalState, pushGuarded, treeNodePersist, type PushOptions } from './sync.ts'
-import { readTreeIndexOptional, writeTreeIndex, type TreeIndex } from './tree-index.ts'
+import { readTreeIndexOptional, writeTreeIndex, type NormalizedTreeIndex } from './tree-index.ts'
 
 export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
 
 /**
  * Unified directory-tree ↔ Notion-subtree reconcile.
  *
- * The local directory tree is the source of truth for hierarchy: each `.nmd`
- * file is a page, directory nesting is page nesting. Binding/identity lives IN
- * the file (frontmatter `page_id`); an unbound file (`page_id: null`) is a
- * to-be-created page.
+ * The workspace manifest records which side is authoritative. In a local tree,
+ * each `.nmd` file is a page and directory nesting is page nesting;
+ * frontmatter `page_id` carries identity and `page_id: null` means
+ * to-be-created. In a remote tree, the Notion child-page graph is mirrored into
+ * that same layout.
  *
  * `tree.ts` is a pure ORCHESTRATOR: it computes hierarchy, the slug→id map, and
  * the composed body per node, then delegates every per-node create/update to
@@ -154,6 +155,7 @@ export type TreeOp =
   | { readonly _tag: 'trash_blocked'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'conflict'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'materialize'; readonly relPath: string; readonly pageId: string }
+  | { readonly _tag: 'delete'; readonly relPath: string; readonly pageId: string }
 
 /** Result envelope for a tree sync (or plan) pass. */
 export interface TreeSyncResult {
@@ -261,7 +263,7 @@ const walkNmdFiles = (
 const detectRootFile = (opts: {
   readonly root: string
   readonly explicit: string | undefined
-  readonly previous: TreeIndex | undefined
+  readonly previous: NormalizedTreeIndex | undefined
 }): Effect.Effect<string, NmdError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -339,6 +341,27 @@ const scanLocalPages = (opts: {
     })
   })
 
+const materializedChildLink = /^(?<indent>\s*)\[(?<label>[^\]]+)\]\((?<href>[^)]+)\)\s*$/u
+
+const childHref = (opts: {
+  readonly parentRelPath: string
+  readonly childRelPath: string
+}): string => toPosix(relative(dirname(opts.parentRelPath), opts.childRelPath))
+
+const stripMaterializedChildLinks = (opts: {
+  readonly body: string
+  readonly children: readonly ChildIndexChild[]
+}): string =>
+  opts.body
+    .split('\n')
+    .map((line) => {
+      const link = materializedChildLink.exec(line)
+      if (link === null) return line
+      const isDerived = opts.children.some((child) => child.localHref === link.groups?.href)
+      return isDerived === true ? '' : line
+    })
+    .join('\n')
+
 /**
  * Compose the body to PUSH for a page: resolved cross-refs + DERIVED child
  * index. Re-emits one `<page url>` anchor per ordered child (blank-line
@@ -346,7 +369,11 @@ const scanLocalPages = (opts: {
  */
 export const composePushBody = (opts: {
   readonly resolvedBody: string
-  readonly children: readonly { readonly title: string; readonly pageId: string }[]
+  readonly children: readonly {
+    readonly title: string
+    readonly pageId: string
+    readonly localHref?: string
+  }[]
 }): string => {
   const trimmed = opts.resolvedBody.replace(/\n+$/u, '')
   if (opts.children.length === 0) return normalizeMarkdownLineEndings(`${trimmed}\n`)
@@ -367,6 +394,7 @@ type ChildAnchor =
 interface ChildIndexChild {
   readonly title: string
   readonly pageId?: string
+  readonly localHref?: string
 }
 
 const childKey = (child: ChildIndexChild): string =>
@@ -500,9 +528,16 @@ const composeTreePushBody = (opts: {
     ? Effect.succeed(
         composePushBody({
           resolvedBody: opts.resolvedBody,
-          children: opts.children.filter(
-            (child): child is { readonly title: string; readonly pageId: string } =>
-              child.pageId !== undefined,
+          children: opts.children.flatMap((child) =>
+            child.pageId === undefined
+              ? []
+              : [
+                  {
+                    title: child.title,
+                    pageId: child.pageId,
+                    ...(child.localHref === undefined ? {} : { localHref: child.localHref }),
+                  },
+                ],
           ),
         }),
       )
@@ -601,7 +636,7 @@ const frontmatterForRemotePage = (page: RemotePageSnapshot): NmdFrontmatterV2 =>
     version: 2,
     api_version: NOTION_API_VERSION,
     object: 'page',
-    source: 'local',
+    source: 'remote',
     page_id: page.id,
     url: page.url,
     parent: toParentRef(page),
@@ -637,15 +672,19 @@ const buildSlugMap = (
 const childrenByParent = (opts: {
   readonly pages: readonly LocalTreePage[]
   readonly idForRelPath: ReadonlyMap<string, string>
-}): Map<string, { readonly title: string; readonly pageId: string }[]> => {
-  const childrenOf = new Map<string, { readonly title: string; readonly pageId: string }[]>()
+}): Map<string, ChildIndexChild[]> => {
+  const childrenOf = new Map<string, ChildIndexChild[]>()
   for (const page of opts.pages) {
     const parentRel = page.parentRelPath
     if (parentRel === undefined) continue
     const id = opts.idForRelPath.get(page.relPath)
     if (id === undefined) continue
     const list = childrenOf.get(parentRel) ?? []
-    list.push({ title: page.title, pageId: id })
+    list.push({
+      title: page.title,
+      pageId: id,
+      localHref: childHref({ parentRelPath: parentRel, childRelPath: page.relPath }),
+    })
     childrenOf.set(parentRel, list)
   }
   return childrenOf
@@ -664,6 +703,7 @@ const childIndexChildrenByParent = (opts: {
     list.push({
       title: page.title,
       ...(pageId === undefined ? {} : { pageId }),
+      localHref: childHref({ parentRelPath: parentRel, childRelPath: page.relPath }),
     })
     childrenOf.set(parentRel, list)
   }
@@ -687,7 +727,7 @@ const syncTreeLocal = (opts: {
   readonly rootFile: string
   readonly rootPageId: string
   readonly pages: readonly LocalTreePage[]
-  readonly previous: TreeIndex | undefined
+  readonly previous: NormalizedTreeIndex | undefined
   readonly plan: boolean
   readonly pushOptions: PushOptions
 }): Effect.Effect<
@@ -700,6 +740,7 @@ const syncTreeLocal = (opts: {
     const store = yield* NmdStateStore
     const { root, rootFile, rootPageId, pages, previous, plan } = opts
     const stateAnchor = treeStateAnchor(root)
+    const stripMaterializedLinks = previous?.authority === 'remote'
     const rootRel = rootFile
     const rootPage = pages.find((page) => page.relPath === rootRel)
     if (rootPage === undefined) {
@@ -748,7 +789,13 @@ const syncTreeLocal = (opts: {
       }
       yield* writeTreeIndex({
         root,
-        index: { version: 1, root_page_id: rootPageId, root_file: rootFile, pages: {} },
+        index: {
+          version: 1,
+          root_page_id: rootPageId,
+          root_file: rootFile,
+          authority: 'local',
+          pages: {},
+        },
       })
     }
 
@@ -821,7 +868,7 @@ const syncTreeLocal = (opts: {
     }
 
     if (plan === true) {
-      yield* classifyPlan({ root, pages, idForRelPath, slugMap, ops })
+      yield* classifyPlan({ root, pages, idForRelPath, slugMap, ops, stripMaterializedLinks })
       const liveIds = new Set(idForRelPath.values())
       for (const [relPath, pageId] of Object.entries(previous?.pages ?? {})) {
         if (liveIds.has(pageId) === false) {
@@ -863,8 +910,13 @@ const syncTreeLocal = (opts: {
     for (const page of pages) {
       const pageId = idForRelPath.get(page.relPath)
       if (pageId === undefined) continue
+      const children = childrenOf.get(page.relPath) ?? []
+      const bodyForPush =
+        stripMaterializedLinks === true
+          ? stripMaterializedChildLinks({ body: page.body, children })
+          : page.body
       const resolvedBody = yield* resolveCrossRefs({
-        body: page.body,
+        body: bodyForPush,
         relPath: page.relPath,
         slugMap,
         idMap: idForRelPath,
@@ -872,7 +924,7 @@ const syncTreeLocal = (opts: {
       const composedBody = yield* composeTreePushBody({
         relPath: page.relPath,
         resolvedBody,
-        children: childrenOf.get(page.relPath) ?? [],
+        children,
       })
       const path = filePathFor({ root, relPath: page.relPath })
       const remoteForStatus = yield* gateway.pullPage({ pageId })
@@ -1009,7 +1061,13 @@ const syncTreeLocal = (opts: {
     }
     yield* writeTreeIndex({
       root,
-      index: { version: 1, root_page_id: rootPageId, root_file: rootFile, pages: indexPages },
+      index: {
+        version: 1,
+        root_page_id: rootPageId,
+        root_file: rootFile,
+        authority: 'local',
+        pages: indexPages,
+      },
     })
 
     return ops
@@ -1026,6 +1084,7 @@ const classifyPlan = (opts: {
   readonly idForRelPath: ReadonlyMap<string, string>
   readonly slugMap: ReadonlyMap<string, string>
   readonly ops: TreeOp[]
+  readonly stripMaterializedLinks: boolean
 }): Effect.Effect<void, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
     const childrenOf = childIndexChildrenByParent({
@@ -1037,16 +1096,21 @@ const classifyPlan = (opts: {
       if (pageId === undefined) continue
       if (opts.ops.some((op) => op.relPath === page.relPath && op._tag === 'move') === true)
         continue
+      const children = childrenOf.get(page.relPath) ?? []
+      const bodyForPush =
+        opts.stripMaterializedLinks === true
+          ? stripMaterializedChildLinks({ body: page.body, children })
+          : page.body
       const resolved = yield* resolveCrossRefs({
-        body: page.body,
+        body: bodyForPush,
         relPath: page.relPath,
         slugMap: opts.slugMap,
         idMap: opts.idForRelPath,
-      }).pipe(Effect.orElseSucceed(() => page.body))
+      }).pipe(Effect.orElseSucceed(() => bodyForPush))
       const composed = yield* composeTreePushBody({
         relPath: page.relPath,
         resolvedBody: resolved,
-        children: childrenOf.get(page.relPath) ?? [],
+        children,
       })
       const prevState = yield* readSyncStateOptional({
         path: treeStateAnchor(opts.root),
@@ -1167,11 +1231,82 @@ const buildRemoteTree = (opts: {
     return nodes
   })
 
+const emptyChildLink = /^(?<indent>\s*)\[(?<label>[^\]]+)\]\(\)\s*$/u
+
+const materializeRemoteChildLinks = (opts: {
+  readonly body: string
+  readonly parentRelPath: string
+  readonly children: readonly RemoteTreeNode[]
+}): Effect.Effect<{ readonly localBody: string; readonly bareBody: string }, NmdCliError> =>
+  Effect.gen(function* () {
+    const localLines: string[] = []
+    const bareLines: string[] = []
+
+    for (const line of opts.body.split('\n')) {
+      const anchor = blockChildAnchor.exec(line)
+      const placeholder = emptyChildLink.exec(line)
+      if (anchor === null && placeholder === null) {
+        localLines.push(line)
+        bareLines.push(line)
+        continue
+      }
+
+      const label = anchor?.groups?.label ?? placeholder?.groups?.label ?? ''
+      const indent = anchor?.groups?.indent ?? placeholder?.groups?.indent ?? ''
+      const url = anchorUrlAttr.exec(anchor?.groups?.attrs ?? '')
+      const rawUrl = url?.groups?.double ?? url?.groups?.single
+      const linkedPageId = rawUrl === undefined ? undefined : parseNotionUuid(rawUrl)
+      let child: RemoteTreeNode | undefined
+
+      if (rawUrl !== undefined) {
+        if (linkedPageId === undefined) {
+          return yield* new NmdCliError({
+            message: `Invalid child page URL in ${opts.parentRelPath}: ${rawUrl}`,
+          })
+        }
+        child = opts.children.find((candidate) => candidate.pageId === linkedPageId)
+        if (child === undefined) {
+          return yield* new NmdCliError({
+            message: `Child page ${linkedPageId} in ${opts.parentRelPath} is not a direct child`,
+          })
+        }
+      } else {
+        const matches = opts.children.filter((candidate) => candidate.title === label)
+        if (matches.length === 0 && anchor === null) {
+          localLines.push(line)
+          bareLines.push(line)
+          continue
+        }
+        if (matches.length !== 1) {
+          return yield* new NmdCliError({
+            message: `Ambiguous child placeholder "${label}" in ${opts.parentRelPath}; use an id-bearing child anchor`,
+          })
+        }
+        child = matches[0]
+      }
+
+      if (child === undefined) continue
+      localLines.push(
+        `${indent}[${label}](${childHref({
+          parentRelPath: opts.parentRelPath,
+          childRelPath: child.relPath,
+        })})`,
+      )
+      bareLines.push('')
+    }
+
+    return {
+      localBody: normalizeMarkdownLineEndings(localLines.join('\n')),
+      bareBody: normalizeMarkdownLineEndings(bareLines.join('\n')),
+    }
+  })
+
 const materializeRemoteTreeNode = (opts: {
   readonly root: string
   readonly rootFile: string
   readonly node: RemoteTreeNode
   readonly children: readonly RemoteTreeNode[]
+  readonly plan: boolean
 }): Effect.Effect<void, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1185,11 +1320,23 @@ const materializeRemoteTreeNode = (opts: {
       pageId: opts.node.pageId,
       markdown: pulled.markdown,
     })
-    const bareBody = stripChildAnchors(pulled.markdown.markdown)
-    const baselineBody = composePushBody({
-      resolvedBody: bareBody,
-      children: opts.children.map((child) => ({ title: child.title, pageId: child.pageId })),
+    const bodies = yield* materializeRemoteChildLinks({
+      body: pulled.markdown.markdown,
+      parentRelPath: opts.node.relPath,
+      children: opts.children,
     })
+    const baselineBody = composePushBody({
+      resolvedBody: bodies.bareBody,
+      children: opts.children.map((child) => ({
+        title: child.title,
+        pageId: child.pageId,
+        localHref: childHref({
+          parentRelPath: opts.node.relPath,
+          childRelPath: child.relPath,
+        }),
+      })),
+    })
+    if (opts.plan === true) return
 
     yield* fs
       .makeDirectory(dirname(path), { recursive: true })
@@ -1198,7 +1345,7 @@ const materializeRemoteTreeNode = (opts: {
       path,
       content: renderNmdFile({
         frontmatter: frontmatterForRemotePage(pulled.page),
-        body: bareBody,
+        body: bodies.localBody,
       }),
     })
     yield* establishBaseline({
@@ -1210,16 +1357,16 @@ const materializeRemoteTreeNode = (opts: {
 
 /**
  * Pull/mirror direction within the ONE tree engine: walk the remote subtree and
- * materialize/reconcile each page into the SAME `<root-file>` / `<dir>/<root-file>`
- * layout and the SAME index file the forward path uses, so pull→edit→push
- * round-trips. Missing files are materialized; existing ones are reconciled via
- * the single-page guarded `statusPage`/`pullPage` (remote-authoritative pull).
+ * materialize each page into the SAME `<root-file>` / `<dir>/<root-file>` layout.
+ * Page ids reconcile renamed/moved paths; only stale paths recorded by the prior
+ * manifest may be removed, so unrelated local files remain outside the mirror.
  */
 const syncTreeFromRemote = (opts: {
   readonly root: string
   readonly rootFile: string
   readonly rootPageId: string
   readonly plan: boolean
+  readonly previous: NormalizedTreeIndex | undefined
 }): Effect.Effect<
   readonly TreeOp[],
   NmdError,
@@ -1227,7 +1374,8 @@ const syncTreeFromRemote = (opts: {
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const { root, rootFile, rootPageId, plan } = opts
+    const store = yield* NmdStateStore
+    const { root, rootFile, rootPageId, plan, previous } = opts
     yield* fs
       .makeDirectory(root, { recursive: true })
       .pipe(Effect.mapError((cause) => makeFsError({ operation: 'mkdir', path: root, cause })))
@@ -1236,6 +1384,19 @@ const syncTreeFromRemote = (opts: {
     const ops: TreeOp[] = []
     const indexPages: Record<string, string> = {}
     const remoteChildrenByParent = new Map<string, RemoteTreeNode[]>()
+    const previousPageIdByRelPath = new Map(Object.entries(previous?.pages ?? {}))
+    const previousRelPathByPageId = new Map(
+      [...previousPageIdByRelPath].map(([relPath, pageId]) => [pageId, relPath] as const),
+    )
+    if (previous !== undefined) {
+      previousPageIdByRelPath.set(previous.root_file, previous.root_page_id)
+      previousRelPathByPageId.set(previous.root_page_id, previous.root_file)
+    }
+    const currentRelPaths = new Set(remoteNodes.map((node) => node.relPath))
+    const currentRelPathByPageId = new Map(
+      remoteNodes.map((node) => [node.pageId, node.relPath] as const),
+    )
+
     for (const node of remoteNodes) {
       if (node.parentPageId === undefined) continue
       const list = remoteChildrenByParent.get(node.parentPageId) ?? []
@@ -1249,49 +1410,106 @@ const syncTreeFromRemote = (opts: {
       const exists = yield* fs
         .exists(path)
         .pipe(Effect.mapError((cause) => makeFsError({ operation: 'exists', path, cause })))
-      if (plan === true) {
-        ops.push(
-          exists === true
-            ? { _tag: 'update', relPath: node.relPath, pageId: node.pageId }
-            : { _tag: 'materialize', relPath: node.relPath, pageId: node.pageId },
-        )
-        continue
-      }
-      yield* fs
-        .makeDirectory(dirname(path), { recursive: true })
-        .pipe(Effect.mapError((cause) => makeFsError({ operation: 'mkdir', path, cause })))
+      const previousRelPath = previousRelPathByPageId.get(node.pageId)
+      let samePageAtExistingPath = false
       if (exists === true) {
-        yield* materializeRemoteTreeNode({
-          root,
-          rootFile,
-          node,
-          children: remoteChildrenByParent.get(node.pageId) ?? [],
-        })
-        ops.push({ _tag: 'update', relPath: node.relPath, pageId: node.pageId })
-      } else {
-        yield* materializeRemoteTreeNode({
-          root,
-          rootFile,
-          node,
-          children: remoteChildrenByParent.get(node.pageId) ?? [],
-        })
-        ops.push({ _tag: 'materialize', relPath: node.relPath, pageId: node.pageId })
+        const existingFile = yield* store.readNmdFile({ path }).pipe(
+          Effect.flatMap((content) => parseNmdFile({ path, content })),
+          Effect.result,
+        )
+        const existingPageId =
+          existingFile._tag === 'Success'
+            ? existingFile.success.frontmatter.notion_md.page_id
+            : undefined
+        const trackedPageId = previousPageIdByRelPath.get(node.relPath)
+        samePageAtExistingPath = existingPageId === node.pageId
+        const isTrackedOccupant = trackedPageId !== undefined && existingPageId === trackedPageId
+        if (samePageAtExistingPath === false && isTrackedOccupant === false) {
+          return yield* new NmdCliError({
+            message:
+              trackedPageId === undefined
+                ? `Refusing to overwrite untracked local file ${path} while mirroring page ${node.pageId}`
+                : `Refusing to overwrite tracked local file ${path}: expected page ${trackedPageId}, found ${existingPageId ?? 'no page identity'}`,
+          })
+        }
+      }
+      const op: TreeOp =
+        previousRelPath !== undefined && previousRelPath !== node.relPath
+          ? { _tag: 'move', relPath: node.relPath, pageId: node.pageId }
+          : exists === true && (previousRelPath === node.relPath || samePageAtExistingPath === true)
+            ? { _tag: 'update', relPath: node.relPath, pageId: node.pageId }
+            : { _tag: 'materialize', relPath: node.relPath, pageId: node.pageId }
+      ops.push(op)
+    }
+
+    for (const node of remoteNodes) {
+      yield* materializeRemoteTreeNode({
+        root,
+        rootFile,
+        node,
+        children: remoteChildrenByParent.get(node.pageId) ?? [],
+        plan,
+      })
+    }
+
+    const previousEntries = [
+      ...(previous === undefined ? [] : [[previous.root_file, previous.root_page_id] as const]),
+      ...Object.entries(previous?.pages ?? {}),
+    ]
+    for (const [previousRelPath, pageId] of previousEntries) {
+      const currentRelPath = currentRelPathByPageId.get(pageId)
+      const moved = currentRelPath !== undefined && currentRelPath !== previousRelPath
+      const deleted = currentRelPath === undefined
+      if (moved === false && deleted === false) continue
+      if (deleted === true) {
+        ops.push({ _tag: 'delete', relPath: previousRelPath, pageId })
+      }
+      if (plan === true || currentRelPaths.has(previousRelPath) === true) continue
+      const stalePath = filePathFor({ root, relPath: previousRelPath })
+      const exists = yield* fs
+        .exists(stalePath)
+        .pipe(
+          Effect.mapError((cause) => makeFsError({ operation: 'exists', path: stalePath, cause })),
+        )
+      if (exists === true) {
+        const trackedFile = yield* store.readNmdFile({ path: stalePath }).pipe(
+          Effect.flatMap((content) => parseNmdFile({ path: stalePath, content })),
+          Effect.result,
+        )
+        if (
+          trackedFile._tag === 'Success' &&
+          trackedFile.success.frontmatter.notion_md.page_id === pageId
+        ) {
+          yield* fs
+            .remove(stalePath)
+            .pipe(
+              Effect.mapError((cause) =>
+                makeFsError({ operation: 'remove', path: stalePath, cause }),
+              ),
+            )
+        }
       }
     }
 
     if (plan === false) {
       yield* writeTreeIndex({
         root,
-        index: { version: 1, root_page_id: rootPageId, root_file: rootFile, pages: indexPages },
+        index: {
+          version: 1,
+          root_page_id: rootPageId,
+          root_file: rootFile,
+          authority: 'remote',
+          pages: indexPages,
+        },
       })
     }
     return ops
   })
 
 /**
- * Reconcile a directory tree against a Notion subtree. Forward (local-as-desired)
- * by default; `fromRemote` mirrors Notion into the same layout/index. Both
- * directions are this one engine — there is no separate workspace materializer.
+ * Reconcile a directory tree against a Notion subtree. An existing manifest's
+ * authority selects local push or remote mirror; legacy/no-manifest trees default
+ * to local, while `fromRemote` explicitly selects the initial remote materialization.
  */
 export const syncTree = (opts: {
   readonly root: string
@@ -1308,18 +1526,18 @@ export const syncTree = (opts: {
   Effect.gen(function* () {
     const root = resolve(opts.root)
     const plan = opts.plan === true
-    const fromRemote = opts.fromRemote === true
     const previous = yield* readTreeIndexOptional(root)
+    const fromRemote = opts.fromRemote ?? previous?.authority === 'remote'
 
     if (fromRemote === true) {
       const rootFile = opts.rootFile ?? previous?.root_file ?? ROOT_FILE_CANDIDATES[0]
       const rootPageId = opts.rootPageId ?? previous?.root_page_id
       if (rootPageId === undefined) {
         return yield* new NmdCliError({
-          message: `--from-remote needs a Notion root page id; pass --root on first mirror`,
+          message: `Remote tree sync needs a Notion root page id; track the directory first`,
         })
       }
-      const ops = yield* syncTreeFromRemote({ root, rootFile, rootPageId, plan })
+      const ops = yield* syncTreeFromRemote({ root, rootFile, rootPageId, plan, previous })
       return {
         _tag: 'tree',
         root,

@@ -7,7 +7,7 @@ lifecycle. Builds on [../requirements.md](../requirements.md) +
 rationale in [../.decisions/](../.decisions/). See [../spec.md](../spec.md) for the
 architecture index.
 
-Traces: R20, R28. The guarded-push / three-way-merge / settle decisions invoked
+Traces: R20, R28, R51, R53, R55. The guarded-push / three-way-merge / settle decisions invoked
 by these flows are owned by [03-sync-engine](../03-sync-engine/spec.md) (R09, R11,
 R13, R15); the lossy-page refusal at the pull is owned by
 [04-fidelity](../04-fidelity/spec.md) (R30/R38); the `.nmd` envelope and object
@@ -84,72 +84,71 @@ Markdown through CommonMark can promote prose paragraphs to Setext/ATX headings.
 `notion-md` therefore treats endpoint Markdown as evidence and adopts the
 client block-tree renderer output as the clean body.
 
-## CLI
-
-Current commands:
+## CLI and Authority Dispatch
 
 ```bash
-notion-md sync <page-id-or-url> page.nmd
-notion-md sync docs --from-remote --root <page-id-or-url>
-notion-md plan docs
-notion-md status page.nmd
-notion-md sync page.nmd [--watch] [--poll-interval-ms 30000]
-notion-md sync docs
+notion-md track <page-id-or-url> [file-or-existing-directory] [--as local|remote|shared]
+notion-md status <path...> [--recursive] [--concurrency 4]
+notion-md sync <path...> [--recursive] [--concurrency 4] [--dry-run]
+notion-md sync <path...> --watch [--poll-interval-ms 30000]
 ```
 
-Environment:
+`track` is the only command that accepts a Notion page reference. A file or
+missing target establishes one Tracked Page and records its authority in
+frontmatter `source`. An existing directory establishes a remote-authoritative
+Tracked Tree: it walks the complete child-page hierarchy, materializes one
+`.nmd` file per page, and writes `.notion-md/workspace.json` with `remote`
+authority. Directory tracking refuses `local` and `shared`, and refuses a root
+page that differs from an established manifest's root.
 
-| Variable           | Meaning          |
-| ------------------ | ---------------- |
-| `NOTION_API_TOKEN` | Notion API token |
+Files dispatch from frontmatter `source`. A non-recursive directory dispatches
+from the Tree Manifest: `status` executes the tree engine as a read-only plan,
+and `sync` applies the declared `local` or `remote` authority. A legacy manifest
+without authority normalizes to `local` when read and is written back with
+explicit authority. `--recursive` deliberately selects flat batch discovery of
+existing `.nmd` files instead of hierarchical tree reconciliation.
 
-Output:
+Every `--dry-run` follows the apply read and validation path. In particular, a
+remote tree plan pulls every node and checks observation completeness, child
+anchors/placeholders, destination ownership, and root identity, but writes no
+files, sidecars, manifests, or Notion state. Hierarchical directory watch is not
+supported and is rejected before entering one-file watch; `--recursive` remains
+the explicit flat file-watch surface.
 
-- One-shot commands emit pretty JSON results by default.
-- Watch emits compact NDJSON event lines by default.
-- Watch `sync_error` events include structured typed error fields.
-- The long-term stable contract is explicit `--output human|json|ndjson`, with `auto` allowed only as a convenience alias after envelope schemas are versioned.
+One-shot commands emit pretty JSON by default. Watch emits compact NDJSON.
+Write-path commands also surface the staged sync-progress indicator on TTY
+stderr ([01-editor](../01-editor/spec.md#sync-progress-indicator-write-path),
+R43–R45).
 
-The write-path commands also surface the staged sync-progress indicator on a TTY
-stderr ([01-editor](../01-editor/spec.md#sync-progress-indicator-write-path), R43–R45).
+## Remote-Authoritative Tree Reconciliation
 
-Future CLI contract:
+Remote tracking and each subsequent remote-authoritative directory pass walk
+the Notion subtree top-down. The root uses the manifest's root filename; a page
+with children anchors its directory through that same filename, and leaf pages
+use stable slugged `.nmd` paths. Page IDs, not titles or paths, preserve identity
+across remote renames and moves.
 
-```bash
-notion-md diff <file.nmd> [--surface body|properties|comments|files]
-notion-md comments pull|push <file.nmd>
-notion-md doctor <page-id-or-url|file.nmd>
-notion-md store verify|gc|export <file.nmd>
-```
+For each remote node:
 
-Batch commands:
+1. Pull and validate a complete remote body.
+2. Render direct child-page anchors or unambiguous title placeholders as
+   relative Derived Child Links in the local body.
+3. Render the canonical Notion child anchors into the clean sync baseline.
+4. Write the page with `source: remote` and establish its baseline unless the
+   pass is a plan.
 
-```bash
-notion-md status <target...> [--recursive] [--concurrency 4]
-notion-md sync <target> [--recursive] [--concurrency 4] [--watch]
-```
+The prior Tree Manifest is only routing and ownership evidence. Before writing
+an existing destination, reconciliation parses the file's frontmatter and
+accepts it only when it identifies the incoming page or the manifest-recorded
+occupant. This permits page-ID-preserving path swaps while refusing unknown,
+identity-less, or rebound files. After materialization, a stale path is removed
+only when the prior manifest recorded that page and the current file still
+identifies it; unrelated local files remain untouched.
 
-Rules:
-
-- A single file target emits a single-page JSON result.
-- Multiple status targets or flat recursive directory targets emit a batch envelope.
-- Directory tree targets read `.notion-md/workspace.json` as an internal tree
-  index when present. `plan` reports tree operations without writing files, and
-  `sync` applies the local tree unless `--from-remote` is explicit.
-- Recursive discovery includes existing `*.nmd` files and skips `.notion-md`,
-  `.git`, and `node_modules`.
-- Duplicate `page_id` values in the same batch are rejected before any Notion
-  mutation.
-- Missing or malformed files are reported as per-file errors when other valid
-  targets can still run.
-- Local file deletion, local rename, and remote page moves are not destructive
-  intent. Remote archive/delete remains explicit future behavior.
-
-Batch and folder support do not change the ownership unit: one `.nmd` file maps
-to one Notion page, and every mutation still passes through the same page-local
-guards ([03-sync-engine](../03-sync-engine/spec.md)). The batch layer only owns
-target discovery, duplicate page-id preflight, bounded concurrency, per-file
-result reporting, and multi-file watch scheduling.
+Derived Child Links are stripped only when composing a previously
+remote-authoritative tree back into canonical child anchors. Local-authoritative
+trees treat a Markdown link whose href happens to match a child path as authored
+content and preserve it through cross-reference resolution.
 
 ## Watch Lifecycle
 
@@ -172,8 +171,8 @@ Rules:
   adapters are thin stream producers; coalescing policy stays in the watch loop.
 - Multi-file watch resolves the target set at startup, watches the containing
   directories for those files, coalesces by path, and runs batch sync passes with
-  bounded concurrency. New files discovered after startup require restarting the
-  watcher until a tree manifest/daemon owns dynamic discovery.
+  bounded concurrency. New files require restarting the flat batch watcher.
+  Hierarchical Tracked Trees use one-shot `status` / `sync`; tree watch is refused.
 
 The watch core uses a sliding queue and debounce window. Future tests may inject
 source streams and `TestClock`, but production code must stay on Effect Platform
