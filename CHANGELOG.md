@@ -38,9 +38,11 @@ All notable changes to this project will be documented in this file.
   is a symlink to `/private/tmp`, which is why `test (macos-arm64)` was red
   and Linux was green. `editor-view-authority` (authority output),
   `editor-view` (consumer cache) and `package-tree` (chained symlink targets)
-  now canonicalize both sides through a shared `canonicalizePath` helper that
-  resolves the deepest existing ancestor, so it works on paths that do not
-  exist yet. Where no ancestor is a symlink the helper is the identity, so
+  and `editor-view` (workspace authority manifest) now canonicalize both sides
+  through a shared helper that resolves the deepest existing ancestor, so it
+  works on paths that do not exist yet. Caller-supplied paths canonicalize
+  everything above the final component and keep that component verbatim, so the
+  later "must not be a symlink" guards still fire. Where no ancestor is a symlink the helper is the identity, so
   behaviour on a non-symlinked root is unchanged. The materializer shell test
   likewise states its expectation in the same resolved form the materializer's
   `pwd -P` produces.

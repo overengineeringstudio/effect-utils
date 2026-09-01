@@ -11,7 +11,7 @@ import {
   parseGitCandidatePaths,
   requireRepositoryRelativePath,
 } from './owned-files.ts'
-import { canonicalizePath } from './real-path.ts'
+import { canonicalizeParent } from './real-path.ts'
 
 type CommandInvocation = {
   readonly command: string
@@ -137,7 +137,7 @@ export const writeEditorViewAuthority = async ({
   // `resolve` returns it unchanged and the containment check below compares two
   // namespaces. Canonicalize it, and publish through the canonical form so the
   // atomic rename lands in the directory the containment check admitted.
-  const outputPath = canonicalizePath(resolve(canonicalRepoRoot, output))
+  const outputPath = canonicalizeParent(resolve(canonicalRepoRoot, output))
   const outputFromRepo = relative(canonicalRepoRoot, outputPath)
   if (
     isAbsolute(outputFromRepo) === true ||

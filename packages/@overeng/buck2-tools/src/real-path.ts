@@ -35,3 +35,19 @@ export const canonicalizePath = (path: string): string => {
     existing = parent
   }
 }
+
+/**
+ * Canonicalizes everything above the final path component, keeping that
+ * component verbatim.
+ *
+ * Use this for a caller-supplied path that a later check inspects with
+ * `lstat`: `canonicalizePath` would resolve a symlinked leaf and quietly defeat
+ * a "must not be a symlink" guard, while the containment question is only ever
+ * about the directories above it.
+ */
+export const canonicalizeParent = (path: string): string => {
+  const absolute = resolve(path)
+  const parent = dirname(absolute)
+  if (parent === absolute) return absolute
+  return join(canonicalizePath(parent), basename(absolute))
+}

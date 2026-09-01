@@ -20,7 +20,7 @@ import {
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
-import { canonicalizePath } from './real-path.ts'
+import { canonicalizeParent } from './real-path.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
 export const editorViewSchema = 'effect-utils/editor-view/v1' as const
@@ -390,7 +390,11 @@ export const validateWorkspaceDependencyAuthority = ({
   repoRoot: string
   packageName: string
 }): WorkspaceDependencyAuthority => {
-  const authorityPath = resolve(repoRoot, path)
+  // `path` is caller-supplied and may arrive absolute in a different namespace
+  // than the canonical repository root, in which case `resolve` returns it
+  // unchanged and the containment check compares two namespaces. The final
+  // component stays verbatim so the symlink guard below still sees a symlink.
+  const authorityPath = canonicalizeParent(resolve(repoRoot, path))
   if (isWithin({ root: repoRoot, candidate: authorityPath }) === false)
     fail(`workspace authority manifest escapes repository: ${authorityPath}`)
   const status = lstatSync(authorityPath)
@@ -482,7 +486,7 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
   // The consumer cache is the one path a caller supplies absolutely, so it can
   // arrive in a different namespace than the canonical repository root (macOS
   // `/tmp` vs `/private/tmp`). Canonicalize it before every containment check.
-  const consumerCache = canonicalizePath(resolve(repoRoot, options.consumerCache))
+  const consumerCache = canonicalizeParent(resolve(repoRoot, options.consumerCache))
   if (
     isWithin({ root: repoRoot, candidate: consumerCache }) === false ||
     isWithin({ root: editorRoot, candidate: consumerCache }) === true ||
