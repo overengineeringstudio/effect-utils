@@ -132,8 +132,7 @@ const walkValue = ({ context, node, property }: ValueWalk): void => {
       for (const member of node.properties) {
         if (member.type !== 'Property') continue
         const key = staticKeyName(member)
-        const nextProperty =
-          key !== undefined && isConditionKey(key) === false ? key : property
+        const nextProperty = key !== undefined && isConditionKey(key) === false ? key : property
         walkValue({ context, node: member.value, property: nextProperty })
       }
       return

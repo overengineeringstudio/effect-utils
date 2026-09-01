@@ -181,8 +181,7 @@ export const stylexOutlineFocusVisibleOnlyRule = {
   meta: {
     type: 'problem' as const,
     docs: {
-      description:
-        'Reserve outline, outlineOffset and outlineColor for the focus-visible state',
+      description: 'Reserve outline, outlineOffset and outlineColor for the focus-visible state',
       recommended: false,
     },
     messages: {
