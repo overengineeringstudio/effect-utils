@@ -159,6 +159,13 @@ export const CleanupResult = Schema.TaggedStruct('CleanupResult', {
 }).annotate({ identifier: 'CiTools.Deploy.CleanupResult' })
 export type CleanupResult = typeof CleanupResult.Type
 
+export const DeployPromotionResult = Schema.TaggedStruct('DeployPromotionResult', {
+  deploymentUrl: HttpsUrl,
+  previousProductionDeploymentId: Schema.optional(NonEmptyTrimmedString),
+  previousProductionDeploymentUrl: Schema.optional(HttpsUrl),
+}).annotate({ identifier: 'CiTools.Deploy.PromotionResult' })
+export type DeployPromotionResult = typeof DeployPromotionResult.Type
+
 export const DeployResultV1 = Schema.TaggedStruct('DeployResult', {
   schemaVersion: Schema.Literal(1),
   provider: DeployProvider,
@@ -173,6 +180,7 @@ export const DeployResultV1 = Schema.TaggedStruct('DeployResult', {
   endedAtUtc: Schema.DateTimeUtcFromString,
   attempts: PositiveInt,
   cleanup: Schema.optional(CleanupResult),
+  promotion: Schema.optional(DeployPromotionResult),
 }).annotate({ identifier: 'CiTools.Deploy.ResultV1' })
 export type DeployResultV1 = typeof DeployResultV1.Type
 
@@ -286,6 +294,7 @@ export class ProviderOperationFailed extends Schema.TaggedError<ProviderOperatio
     'alias',
     'verify',
     'cleanup',
+    'promote',
   ]),
   transient: Schema.Boolean,
 }) {
@@ -465,6 +474,23 @@ export const deploySuccessRecord = (
       finalUrl: opts.result.finalUrl.toString(),
       deployedAtUtc: encodeDateTimeUtc(opts.result.endedAtUtc),
       ...(opts.result.cleanup === undefined ? {} : { cleanup: opts.result.cleanup.status }),
+      ...(opts.result.promotion === undefined
+        ? {}
+        : {
+            promotedDeployUrl: opts.result.promotion.deploymentUrl.toString(),
+            ...(opts.result.promotion.previousProductionDeploymentId === undefined
+              ? {}
+              : {
+                  previousProductionDeploymentId:
+                    opts.result.promotion.previousProductionDeploymentId,
+                }),
+            ...(opts.result.promotion.previousProductionDeploymentUrl === undefined
+              ? {}
+              : {
+                  previousProductionDeploymentUrl:
+                    opts.result.promotion.previousProductionDeploymentUrl.toString(),
+                }),
+          }),
     },
   })
 
