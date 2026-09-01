@@ -4,8 +4,9 @@
  *
  * KNOWN STRUCTURAL LIMIT, stated because it shapes what any verdict here can
  * mean. Capture and comparison are welded into one command: one invocation
- * captures the baseline tree twice and the compare tree once, then compares.
- * So this runner cannot produce a self-consistency pair for the compare side,
+ * captures the baseline tree three times and the compare tree once, then
+ * compares. So this runner cannot produce a self-consistency set for the
+ * compare side,
  * and a protocol wanting one needs a second invocation with `--ref <after-sha>`.
  * `captureSets` reports the asymmetry rather than leaving the report to read as
  * complete under a protocol it does not implement.
@@ -163,13 +164,68 @@ export interface StoryGateReport {
   /**
    * Stories whose baseline capture disagreed with itself.
    *
-   * The baseline tree is captured twice and the second capture is the one kept,
-   * so any story whose two captures differ is nondeterministic under this
+   * The baseline tree is captured three times and the LAST capture is the one
+   * kept, so any story whose captures disagree is nondeterministic under this
    * harness and cannot support a conclusion either way. Named rather than
    * absorbed: a story that differs from itself would otherwise satisfy any
    * "these two things differ" assertion vacuously.
+   *
+   * This is the UNION of the two failure modes. {@link StoryGateReport.stability}
+   * splits it, and the split is the informative part: one half a pair already
+   * caught, one half no pair ever could.
    */
   readonly selfInconsistent: readonly string[]
+  /**
+   * The self-consistency probe's outcome, split three ways rather than two.
+   *
+   * Two captures have MEASURED false negatives: `Avatar > All Sizes` reproduced
+   * across the pair and then differed on a third capture of the identical tree.
+   * So `differedOnSecond` is not "the unstable set", it is "the unstable set a
+   * pair can see" — and the gap between those two was invisible before this
+   * field existed, because both populations collapsed into one count.
+   *
+   * `differedOnThird` is the one worth naming. A story there settled, captured
+   * twice identically, and still did not reproduce. That is not a readiness
+   * failure and no better settle predicate can reach it: readiness asks whether
+   * the DOM stopped changing, reproducibility asks whether the render repeats,
+   * and a surface whose DOM is quiet while its compositor is not satisfies the
+   * first while failing the second.
+   *
+   * WHAT THIS DOES NOT DO, stated because the counts read as certainty. A third
+   * capture is a better detector, not an eliminator. A story alternating
+   * between two frames at ~50/50 — Avatar's measured shape, 2 distinct frames
+   * over 12 cold-cache captures — agrees across N captures by chance at
+   * 2^-(N-1): 50% at two captures, 25% at three. A clean `differedOnThird`
+   * halves the miss rate; it does not retire it. A probe trusted as certain
+   * while being 75% reliable is worse than one known to be partial.
+   */
+  readonly stability: {
+    /** How many times the baseline tree was actually captured: 2 or 3. */
+    readonly captures: number
+    /** Captures identical across every capture taken. */
+    readonly reproduced: number
+    /** Differed between capture 1 and capture 2 — the class a pair check catches today. */
+    readonly differedOnSecond: readonly string[]
+    /**
+     * Identical across captures 1 and 2, then differed on capture 3.
+     *
+     * ALWAYS empty when `captures` is 2, and that emptiness is not a
+     * measurement. `thirdCaptureMs` being `undefined` is the only thing telling
+     * the two apart, which is why it is reported rather than derived.
+     */
+    readonly differedOnThird: readonly string[]
+    /**
+     * Wall time of the third capture alone, or `undefined` if it was skipped.
+     *
+     * Separated from the rest because the third capture is the marginal cost
+     * this field exists to make arguable: divide by the story count for a
+     * per-story figure, and state host load beside it or the number cannot be
+     * interpreted — a prior 2x discrepancy in this project was purely load.
+     */
+    readonly thirdCaptureMs: number | undefined
+    /** Wall time of each baseline capture, in capture order, ms. */
+    readonly captureMs: readonly number[]
+  }
   /**
    * Stories that rendered differently AND were already known nondeterministic,
    * so the difference says nothing.
@@ -213,10 +269,15 @@ export interface StoryGateReport {
    * captured.
    *
    * Present because the asymmetry is real and was previously unstated: ONE
-   * invocation captures the baseline tree TWICE — that pair is where
-   * `selfInconsistent` comes from — and the compare tree exactly ONCE. So a
-   * single run yields a before-pair and an after-single, and the report used to
-   * read as complete under a protocol that assumed pairs on both sides.
+   * invocation captures the baseline tree `baselineCaptures` times — that set
+   * is where `selfInconsistent` comes from — and the compare tree exactly ONCE.
+   * So a single run yields a before-set and an after-single, and the report
+   * used to read as complete under a protocol that assumed pairs on both sides.
+   *
+   * `baselineCaptures` is reported rather than assumed constant precisely
+   * because it is now settable. A run that took two captures and a run that
+   * took three produce differently-trustworthy exclusion sets, and a reader
+   * cannot tell which they are holding without this number.
    *
    * The deeper reason this has to be said rather than fixed here: capture and
    * comparison are welded into one command, so the gate cannot offer an
@@ -333,6 +394,24 @@ export interface StoryGateRunOptions {
    * @default ['src', 'stories', '.storybook']
    */
   readonly sourceRoots?: readonly string[]
+  /**
+   * How many times the baseline tree is captured for the self-consistency probe.
+   *
+   * THREE by default, and the third is not redundancy. Measured on a real
+   * library: `Avatar > All Sizes` reproduced across the first two captures and
+   * then differed on a third capture of the identical tree. A story can settle
+   * twice and still not be reproducible, and a two-capture probe reports it as
+   * clean.
+   *
+   * Set to 2 only for a fast local loop, and know exactly what that buys: the
+   * run then cannot observe the differed-only-on-the-third class AT ALL, and
+   * reports it as unmeasured rather than as zero. The default is the safe value
+   * because a run that silently captured less than it claims would be one more
+   * way this gate reports success while doing less work than it says.
+   *
+   * @default 3
+   */
+  readonly baselineCaptures?: 2 | 3
 }
 
 const runGit = ({ args, cwd }: { args: readonly string[]; cwd: string }): string => {
@@ -411,6 +490,68 @@ const countThemeVariation = ({
     if (new Set(perProject.values()).size > 1) differing += 1
   }
   return { projects, comparable, differing }
+}
+
+/**
+ * Split a set of same-tree captures three ways: reproduced everywhere, differed
+ * on the second capture, differed only on the third.
+ *
+ * The three-way split rather than a boolean is the whole point. A pair yields
+ * only "agreed" or "disagreed", and `Avatar > All Sizes` was measured to agree
+ * on a pair and then differ on a third capture of the same tree — so a pair's
+ * "agreed" silently contains two populations with different causes. Naming the
+ * third makes the pair check's false-negative rate observable at all.
+ *
+ * It raises the detection rate; it does not close the class. For a story
+ * alternating between two frames at ~50/50 the chance of N captures agreeing is
+ * 2^-(N-1), so three captures still miss it a quarter of the time.
+ *
+ * Only keys present in EVERY capture are classified. A key in one capture and
+ * missing from another is a different defect that `added`/`removed`/`uncovered`
+ * already carry, and folding it in here would inflate an instability count with
+ * a coverage problem.
+ */
+export const classifyStability = ({
+  captures,
+  captureMs,
+}: {
+  captures: readonly Map<string, string>[]
+  captureMs: readonly number[]
+}): StoryGateReport['stability'] => {
+  const first = captures[0] ?? new Map<string, string>()
+  const rest = captures.slice(1)
+  const differedOnSecond: string[] = []
+  const differedOnThird: string[] = []
+  let reproduced = 0
+
+  for (const [key, hash] of first) {
+    let firstDiffering = -1
+    let missing = false
+    for (const [index, capture] of rest.entries()) {
+      const other = capture.get(key)
+      if (other === undefined) {
+        missing = true
+        break
+      }
+      if (other !== hash && firstDiffering === -1) firstDiffering = index
+    }
+    if (missing === true) continue
+    if (firstDiffering === -1) reproduced += 1
+    else if (firstDiffering === 0) differedOnSecond.push(key)
+    else differedOnThird.push(key)
+  }
+
+  return {
+    captures: captures.length,
+    reproduced,
+    differedOnSecond,
+    differedOnThird,
+    // `undefined` rather than 0: a skipped capture has no cost AND no result,
+    // and this field is what says which of those an empty third-capture list
+    // means.
+    thirdCaptureMs: captures.length >= 3 ? captureMs[2] : undefined,
+    captureMs,
+  }
 }
 
 /**
@@ -815,6 +956,7 @@ export const runStoryGate = async ({
   refresh = false,
   themeVaries = true,
   sourceRoots = ['src', 'stories', '.storybook'],
+  baselineCaptures = 3,
 }: StoryGateRunOptions): Promise<StoryGateReport> => {
   const packageRoot = resolve(packageDir)
   const repoRoot = runGit({ args: ['rev-parse', '--show-toplevel'], cwd: packageRoot })
@@ -825,6 +967,7 @@ export const runStoryGate = async ({
   const completeMarker = join(baselineDir, '.complete')
   const identityPath = join(baselineDir, 'tree-identity.json')
   const settlePath = join(baselineDir, 'unsettled.json')
+  const stabilityPath = join(baselineDir, 'stability.json')
   const scratchDir = mkdtempSync(join(tmpdir(), 'story-gate-'))
 
   /**
@@ -854,7 +997,20 @@ export const runStoryGate = async ({
 
   if (refresh === true) rmSync(baselineDir, { recursive: true, force: true })
 
-  if (existsSync(completeMarker) === false) {
+  // A cached baseline is reusable only if it carries a stability record taken
+  // with at least as many captures as this run asked for. Without that check a
+  // single `--skip-third-capture` run poisons every later one: they would read
+  // `differedOnThird: []` off disk and report the class as a measured zero when
+  // nothing measured it. Fail toward re-deriving — that costs time, the other
+  // way costs a false green.
+  const cachedStability = existsSync(stabilityPath)
+    ? (JSON.parse(readFileSync(stabilityPath, 'utf8')) as StoryGateReport['stability'])
+    : undefined
+  if (
+    existsSync(completeMarker) === false ||
+    cachedStability === undefined ||
+    cachedStability.captures < baselineCaptures
+  ) {
     if (existsSync(worktreeDir) === false) {
       mkdirSync(dirname(worktreeDir), { recursive: true })
       runGit({
@@ -874,39 +1030,58 @@ export const runStoryGate = async ({
     }
     linkNodeModules({ repoRoot, worktreeDir })
 
-    // The baseline tree is captured TWICE and the second capture is the one
-    // kept. Two reasons, both measured.
+    // The baseline tree is captured `baselineCaptures` times — THREE by default
+    // — and the LAST capture is the one kept. Three reasons, all measured.
     //
     // First, it establishes which stories are comparable at all. A story whose
-    // two captures of one unchanged tree disagree is nondeterministic, and any
+    // captures of one unchanged tree disagree is nondeterministic, and any
     // later conclusion drawn about it — changed, unchanged, theme-varying — is
     // noise wearing a verdict. Measured shapes: an element present in one
     // capture and absent in the next accounted for 9 of 70 captures on one
     // surface, and 17 of 212 on another with an independent instrument.
     //
-    // Second, it removes a cold/warm asymmetry the design otherwise builds in.
+    // Second, TWO captures have measured false negatives. `Avatar > All Sizes`
+    // reproduced across a pair and then differed on a third capture of the
+    // identical tree. A pair answers "did these two agree"; only a third
+    // separates "reproduces" from "happened to agree twice". That class is
+    // reported on its own below, because it is the one no earlier run could see
+    // and no readiness predicate can reach — the DOM was quiet throughout.
+    //
+    // Third, it removes a cold/warm asymmetry the design otherwise builds in.
     // The baseline is captured in a freshly derived worktree while the compare
     // capture runs warm, and the first capture into a cold cache was measured
     // to differ from every later one deterministically — reproducing to the
     // pixel, 689 and 693 pixels on two stories, at a fractionally-positioned
-    // border hairline. Keeping the second capture makes both sides warm, so the
+    // border hairline. Keeping the LAST capture makes both sides warm, so the
     // comparator's tolerance is spent on real host variance rather than on an
     // artefact we put there ourselves.
-    const probeDir = join(cacheRoot, `probe-${baselineSha}`)
-    rmSync(probeDir, { recursive: true, force: true })
-    mkdirSync(probeDir, { recursive: true })
     mkdirSync(baselineDir, { recursive: true })
     const identityBefore = baselinePairIdentity()
     const baselineReportFile = join(baselineDir, 'baseline-report.json')
     const captureCwd = join(worktreeDir, relative(repoRoot, packageRoot))
-    runVitest({
-      cwd: captureCwd,
-      configFile,
-      baselineDir: probeDir,
-      manifest: undefined,
-      reportFile: join(probeDir, 'probe-report.json'),
-      update: true,
-    })
+
+    // Every capture but the last lands in scratch; the last writes the baseline
+    // the comparison actually uses.
+    const probeDirs = Array.from({ length: baselineCaptures - 1 }, (_unused, index) =>
+      join(cacheRoot, `probe-${index}-${baselineSha}`),
+    )
+    const captureMs: number[] = []
+    for (const [index, probeDir] of probeDirs.entries()) {
+      rmSync(probeDir, { recursive: true, force: true })
+      mkdirSync(probeDir, { recursive: true })
+      const startedAt = Date.now()
+      runVitest({
+        cwd: captureCwd,
+        configFile,
+        baselineDir: probeDir,
+        manifest: undefined,
+        reportFile: join(probeDir, `probe-${index}-report.json`),
+        update: true,
+      })
+      captureMs.push(Date.now() - startedAt)
+    }
+
+    const keptStartedAt = Date.now()
     const capture = runVitest({
       cwd: captureCwd,
       configFile,
@@ -915,6 +1090,7 @@ export const runStoryGate = async ({
       reportFile: baselineReportFile,
       update: true,
     })
+    captureMs.push(Date.now() - keptStartedAt)
     // A non-zero exit is expected and not fatal here. Under `--update` the
     // screenshots are written regardless, and the ref may legitimately carry
     // failing stories — an accessibility violation that already existed is not
@@ -923,16 +1099,17 @@ export const runStoryGate = async ({
     if (existsSync(baselineReportFile) === false) {
       throw new Error(`[story-gate] baseline capture at ${baselineRef} failed:\n${capture.output}`)
     }
-    // Asserted AFTER the pair, not before it: the point is that neither capture
-    // spanned an edit, and only a reading taken once both are on disk can say
-    // that. This is the guard the same-tree-twice check cannot be, because a
-    // recompile mid-pair contaminates both halves in the same direction and
-    // leaves them agreeing with each other.
+    // Asserted AFTER every capture, not before: the point is that no capture in
+    // the set spanned an edit, and only a reading taken once all of them are on
+    // disk can say that. This is the guard self-consistency cannot be, because
+    // a recompile mid-set contaminates every capture in the same direction and
+    // leaves them agreeing with each other — and a third capture does not help
+    // there either, for exactly the same reason.
     const identityAfter = baselinePairIdentity()
     assertTreeUnchanged({
       before: identityBefore,
       after: identityAfter,
-      what: `the baseline pair at ${baselineRef}`,
+      what: `the ${baselineCaptures}-capture baseline set at ${baselineRef}`,
     })
     writeFileSync(identityPath, JSON.stringify(identityAfter))
 
@@ -942,12 +1119,12 @@ export const runStoryGate = async ({
     })
     writeFileSync(settlePath, JSON.stringify(baselineSettle.records))
 
-    const probeCaptures = hashCaptures(probeDir)
-    const selfInconsistent = [...hashCaptures(baselineDir)]
-      .filter(([key, hash]) => probeCaptures.has(key) === true && probeCaptures.get(key) !== hash)
-      .map(([key]) => key)
-    writeFileSync(join(baselineDir, 'self-inconsistent.json'), JSON.stringify(selfInconsistent))
-    rmSync(probeDir, { recursive: true, force: true })
+    const measured = classifyStability({
+      captures: [...probeDirs.map(hashCaptures), hashCaptures(baselineDir)],
+      captureMs,
+    })
+    writeFileSync(stabilityPath, JSON.stringify(measured))
+    for (const probeDir of probeDirs) rmSync(probeDir, { recursive: true, force: true })
     writeFileSync(completeMarker, `${baselineSha}\n`)
   }
 
@@ -966,14 +1143,15 @@ export const runStoryGate = async ({
   )
 
   // Read back rather than recomputed, because the baseline is cached across
-  // runs and the probe capture that produced this only happens when the cache
-  // is cold. An older cache entry predating this file yields an empty set,
-  // which is the honest answer: nothing was excluded because nothing was
-  // measured.
-  const selfInconsistentPath = join(baselineDir, 'self-inconsistent.json')
-  const selfInconsistent: string[] = existsSync(selfInconsistentPath)
-    ? (JSON.parse(readFileSync(selfInconsistentPath, 'utf8')) as string[])
-    : []
+  // runs and the captures that produced this only happen when the cache is
+  // cold. The completeness check above refuses an entry with no stability
+  // record, or one taken with fewer captures than this run asked for, so this
+  // read cannot silently serve a two-capture answer to a three-capture run.
+  const stability = JSON.parse(readFileSync(stabilityPath, 'utf8')) as StoryGateReport['stability']
+  // Both classes are non-reproducible and both are subtracted from `changed`.
+  // The split exists so the report can say which kind each was, not so one of
+  // them can be treated as acceptable.
+  const selfInconsistent = [...stability.differedOnSecond, ...stability.differedOnThird]
   const themeAxis = countThemeVariation({
     captures: hashCaptures(baselineDir),
     selfInconsistent: new Set(selfInconsistent),
@@ -1117,9 +1295,10 @@ export const runStoryGate = async ({
     settle,
     baseline,
     selfInconsistent,
+    stability,
     nondeterministic,
     themeAxis,
-    captureSets: { baselineDir, baselineCaptures: 2, compareCaptures: 1 },
+    captureSets: { baselineDir, baselineCaptures, compareCaptures: 1 },
     treeIdentity: {
       baseline: existsSync(identityPath)
         ? (JSON.parse(readFileSync(identityPath, 'utf8')) as TreeIdentity)

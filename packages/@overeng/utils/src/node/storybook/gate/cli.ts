@@ -21,6 +21,12 @@ const usage = `Usage: gate [--package <dir>] [--ref <git-ref>] [--refresh] [--si
   --refresh        re-derive the baseline even if one is cached
   --single-scheme  this target ships one colour scheme, so theme projects are
                    expected to render identically and that is not a failure
+  --skip-third-capture
+                   capture the baseline twice instead of three times, for a
+                   fast local loop. The run then CANNOT observe a story that
+                   reproduces across a pair and differs on a third capture —
+                   a class with measured members — and reports it as unmeasured
+                   rather than as zero. Default is three; this is an opt-out.
 `
 
 const readFlag = ({
@@ -46,6 +52,10 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
     baselineRef: readFlag({ argv, flag: '--ref' }) ?? 'HEAD',
     refresh: argv.includes('--refresh'),
     themeVaries: argv.includes('--single-scheme') === false,
+    // Opt-OUT, and the default is the thorough one. A flag whose default
+    // silently did less work than the report claims would be the fifth way this
+    // gate has been caught reporting success over work it did not do.
+    baselineCaptures: argv.includes('--skip-third-capture') === true ? 2 : 3,
   })
 
   // Capture liveness comes FIRST, before any pass/fail number. The failure
@@ -64,8 +74,39 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
       : []),
   ]
 
+  // Three-way, not two. A pair check has MEASURED false negatives — a story
+  // that reproduced across two captures and then differed on a third of the
+  // identical tree — so "differed on the second" and "differed only on the
+  // third" are different populations with different causes, and one combined
+  // self-inconsistent count hides the second entirely.
+  //
+  // The residual is printed WITH the result rather than left to the reader. A
+  // story alternating between two frames at ~50/50 agrees across three captures
+  // a quarter of the time, so this is a better detector and not a closed class.
+  // A probe trusted as certain while being 75% reliable is worse than one known
+  // to be partial.
+  const marginalMs =
+    report.stability.thirdCaptureMs === undefined || report.stability.reproduced === 0
+      ? undefined
+      : Math.round(report.stability.thirdCaptureMs / report.stability.reproduced)
+  const stability = [
+    `=== capture stability (baseline captured ${report.stability.captures}x) ===`,
+    `  reproduced across all ${report.stability.captures}      ${report.stability.reproduced}`,
+    `  differed on capture 2       ${report.stability.differedOnSecond.length}  (a two-capture probe catches these)`,
+    ...(report.stability.thirdCaptureMs === undefined
+      ? [
+          '  differed only on capture 3  NOT MEASURED — this run passed --skip-third-capture, so a story that reproduces across a pair and differs on a third was counted as stable. That is not a zero.',
+        ]
+      : [
+          `  differed only on capture 3  ${report.stability.differedOnThird.length}  (invisible to a two-capture probe)`,
+          `  third capture cost          ${report.stability.thirdCaptureMs}ms${marginalMs === undefined ? '' : ` · ${marginalMs}ms/story marginal`} · each capture ${report.stability.captureMs.join('/')}ms`,
+          '  A third capture lowers the miss rate, it does not close the class: a story alternating between two frames at ~50/50 still agrees across three captures 25% of the time.',
+        ]),
+  ]
+
   // Which capture sets the verdict rests on, stated rather than implied. One
-  // invocation captures the baseline tree twice and the compare tree ONCE, so
+  // invocation captures the baseline tree `baselineCaptures` times and the
+  // compare tree ONCE, so
   // this run cannot speak to the compare side's self-consistency — and saying
   // so beats reading as complete under a protocol that assumed pairs on both
   // sides.
@@ -74,7 +115,7 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
     `  baseline    ${report.baselineRef} (${report.baselineSha.slice(0, 9)}) captured ${report.captureSets.baselineCaptures}x · tree ${report.treeIdentity.baseline.digest.slice(0, 9)}`,
     `  compare     working tree (${report.treeIdentity.compare.head.slice(0, 9)}) captured ${report.captureSets.compareCaptures}x · tree ${report.treeIdentity.compare.digest.slice(0, 9)}`,
     `  captures in ${report.captureSets.baselineDir}`,
-    '  The compare side was captured ONCE, so the self-inconsistency list below covers the baseline tree only. For an after-pair, run the gate again with --ref <after-sha>.',
+    '  The compare side was captured ONCE, so the stability figures above cover the baseline tree only. For an after-set, run the gate again with --ref <after-sha>.',
   ]
 
   // The baseline health goes in the headline, not the detail. The false green
@@ -84,6 +125,8 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
   const verdict = report.ok === true ? 'PASS' : 'FAIL'
   const lines = [
     ...liveness,
+    '',
+    ...stability,
     '',
     ...provenance,
     '',
@@ -114,6 +157,12 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
           `${report.unsettled.length} stories never reached a quiet DOM within ${report.settle.boundMs}ms and were excluded from the visual comparison. Excluded BY OBSERVATION, not by declaration — nobody reviewed these. Either fix the story or declare parameters.storyGate.unstable so the decision is on the record.`,
         ]
       : []),
+    ...(report.stability.differedOnThird.length > 0
+      ? [
+          '',
+          `${report.stability.differedOnThird.length} captures reproduced across the first two captures of the identical baseline tree and then differed on a third. A two-capture probe reports these as stable, which is why they are named separately. They are NOT a readiness failure — the DOM was quiet and the settle signal was satisfied — so no better settle predicate reaches them; look downstream at compositing, image decode, or anything varying after layout is final.`,
+        ]
+      : []),
     ...(report.nondeterministic.length > 0
       ? [
           '',
@@ -132,6 +181,9 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
     ]),
     ...report.nondeterministic.map(
       (story) => `  nondeterministic ${story} (differs from itself at the baseline)`,
+    ),
+    ...report.stability.differedOnThird.map(
+      (key) => `  third-capture only ${key} (reproduced on captures 1-2, differed on 3)`,
     ),
   ]
   process.stdout.write(`${lines.join('\n')}\n`)

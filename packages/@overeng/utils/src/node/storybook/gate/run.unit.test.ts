@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  classifyStability,
   isStoryGateOk,
   selfInconsistentStoryKeys,
   slugStoryName,
@@ -162,5 +163,88 @@ describe('selfInconsistentStoryKeys', () => {
       punctuation: slugStoryName('Optional & Disabled'),
       collapsed: slugStoryName('All   Sizes'),
     }).toEqual({ spaces: 'with-error', punctuation: 'optional-disabled', collapsed: 'all-sizes' })
+  })
+})
+
+describe('classifyStability', () => {
+  it('separates a capture the pair check catches from one only a third capture sees', () => {
+    // The measured false negative this exists for: `Avatar > All Sizes` passed
+    // the two-capture probe and then differed on a third capture of the
+    // IDENTICAL tree. Collapsed into one self-inconsistent count that story is
+    // indistinguishable from one the pair caught, and the two have different
+    // causes — the pair catches a DOM that was still moving, the third catches
+    // a render that was quiet and still did not reproduce.
+    const outcome = classifyStability({
+      captures: [
+        new Map([
+          ['light/steady.png', 'a'],
+          ['light/pair-catches.png', 'a'],
+          ['light/third-only.png', 'a'],
+        ]),
+        new Map([
+          ['light/steady.png', 'a'],
+          ['light/pair-catches.png', 'MOVED'],
+          ['light/third-only.png', 'a'],
+        ]),
+        new Map([
+          ['light/steady.png', 'a'],
+          ['light/pair-catches.png', 'MOVED'],
+          ['light/third-only.png', 'MOVED'],
+        ]),
+      ],
+      captureMs: [1000, 1100, 1200],
+    })
+    expect({
+      reproduced: outcome.reproduced,
+      differedOnSecond: outcome.differedOnSecond,
+      differedOnThird: outcome.differedOnThird,
+      thirdCaptureMs: outcome.thirdCaptureMs,
+    }).toEqual({
+      reproduced: 1,
+      differedOnSecond: ['light/pair-catches.png'],
+      differedOnThird: ['light/third-only.png'],
+      thirdCaptureMs: 1200,
+    })
+  })
+
+  it('reports the third-capture class as unmeasured rather than zero when two captures were taken', () => {
+    // `differedOnThird: []` from a two-capture run and from a three-capture run
+    // are the same value meaning opposite things: "nothing looked there" versus
+    // "something looked and found nothing". `thirdCaptureMs` is the only thing
+    // separating them, so a reader trusting the empty list on its own repeats
+    // the original false negative with more confidence than before.
+    const outcome = classifyStability({
+      captures: [new Map([['light/a.png', 'a']]), new Map([['light/a.png', 'a']])],
+      captureMs: [1000, 1100],
+    })
+    expect({
+      reproduced: outcome.reproduced,
+      differedOnThird: outcome.differedOnThird,
+      thirdCaptureMs: outcome.thirdCaptureMs,
+    }).toEqual({ reproduced: 1, differedOnThird: [], thirdCaptureMs: undefined })
+  })
+
+  it('leaves a capture missing from any set unclassified rather than counting it unstable', () => {
+    // A key present in one capture and absent from another is a coverage
+    // defect, not an instability one, and `added`/`removed`/`uncovered` already
+    // carry it. Folding it in here would inflate the instability count with a
+    // different problem and send whoever reads it looking for a race that is
+    // not there.
+    const outcome = classifyStability({
+      captures: [
+        new Map([
+          ['light/present.png', 'a'],
+          ['light/vanishes.png', 'a'],
+        ]),
+        new Map([['light/present.png', 'a']]),
+        new Map([['light/present.png', 'a']]),
+      ],
+      captureMs: [1000, 1100, 1200],
+    })
+    expect({
+      reproduced: outcome.reproduced,
+      differedOnSecond: outcome.differedOnSecond,
+      differedOnThird: outcome.differedOnThird,
+    }).toEqual({ reproduced: 1, differedOnSecond: [], differedOnThird: [] })
   })
 })
