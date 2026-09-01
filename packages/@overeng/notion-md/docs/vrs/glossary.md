@@ -16,6 +16,24 @@ A Notion page bound to a local `.nmd` file through explicit frontmatter identity
 and Source. Tracking is established by `track`.
 _Avoid_: cloned page, imported page
 
+**Tracked Tree**:
+A Notion root page and its child-page hierarchy bound to one local directory.
+Each page retains its own `.nmd` frontmatter identity; the Tree Manifest declares
+the hierarchy's authority and routes directory operations.
+_Avoid_: recursive batch, folder sync
+
+**Tree Manifest**:
+The regenerable `.notion-md/workspace.json` routing and prior-ownership index for
+a Tracked Tree. It records the root, layout, authority, and last materialized
+path-to-page mapping, but never supersedes `.nmd` frontmatter as page identity.
+_Avoid_: identity store, source of truth
+
+**Derived Child Link**:
+A relative local Markdown link rendered from a direct Notion child-page anchor
+inside a remote-authoritative Tracked Tree. It is local navigation, not authored
+body content; the sync baseline retains the canonical Notion child anchor.
+_Avoid_: user-authored child-file link
+
 **Mirror Sync**:
 The stateless mechanism for pages authored on exactly one side. `source: local`
 mirrors local content to Notion; `source: remote` mirrors Notion content to the
@@ -29,9 +47,10 @@ resolved.
 _Avoid_: bidirectional mode, two-way sync
 
 **Authority**:
-The side that wins under Mirror Sync when the local and remote Modeled Body
-differs. Local is authoritative for `source: local`; Notion is authoritative for
-`source: remote`.
+The side that wins when modeled content differs. A file derives authority from
+`source`; a Tracked Tree derives it from the Tree Manifest. Local authority
+mirrors local content to Notion, remote authority mirrors Notion into the local
+surface, and `shared` is available only through per-file Source.
 _Avoid_: winner flag, precedence
 
 **Modeled Body**:

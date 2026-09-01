@@ -5,16 +5,32 @@ import { Effect, FileSystem, Schema } from 'effect'
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 
 /** Regenerable path↔id index for a synced tree (NOT the source of identity). */
-export const TreeIndex = Schema.Struct({
+const TreeAuthority = Schema.Literals(['local', 'remote'])
+
+const treeIndexPrefix = {
   version: Schema.Literal(1),
   root_page_id: Schema.String,
   /** Root-file basename, so a later run reconstructs the same layout. */
   root_file: Schema.String,
+}
+
+const treeIndexSuffix = {
   /** posix relativePath (from root) → page_id; derived from frontmatter each run. */
   pages: Schema.Record(Schema.String, Schema.String),
+}
+
+/** On-disk tree index; legacy manifests may omit `authority`. */
+export const TreeIndex = Schema.Struct({
+  ...treeIndexPrefix,
+  authority: Schema.optional(TreeAuthority),
+  ...treeIndexSuffix,
 }).annotate({ identifier: 'NotionMd.TreeIndex' })
 
 export type TreeIndex = typeof TreeIndex.Type
+/** Tree index after read-boundary authority normalization. */
+export type NormalizedTreeIndex = Omit<TreeIndex, 'authority'> & {
+  readonly authority: typeof TreeAuthority.Type
+}
 
 const encodeTreeIndexJson = Schema.encodeSync(Schema.fromJsonString(TreeIndex, { space: 2 }))
 const decodeTreeIndexJson = Schema.decodeUnknownEffect(Schema.fromJsonString(TreeIndex), {
@@ -42,7 +58,7 @@ export const treeIndexPath = (root: string): string => join(root, '.notion-md', 
 /** Read the internal tree index when present. */
 export const readTreeIndexOptional = (
   root: string,
-): Effect.Effect<TreeIndex | undefined, NmdError, FileSystem.FileSystem> =>
+): Effect.Effect<NormalizedTreeIndex | undefined, NmdError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = treeIndexPath(root)
@@ -54,6 +70,12 @@ export const readTreeIndexOptional = (
       .readFileString(path)
       .pipe(Effect.mapError((cause) => makeFsError({ operation: 'read', path, cause })))
     return yield* decodeTreeIndexJson(content).pipe(
+      Effect.map(
+        (index): NormalizedTreeIndex => ({
+          ...index,
+          authority: index.authority ?? 'local',
+        }),
+      ),
       Effect.mapError(
         (cause) =>
           new NmdCliError({
@@ -66,7 +88,7 @@ export const readTreeIndexOptional = (
 /** Write the derived tree index under the tree root's `.notion-md` directory. */
 export const writeTreeIndex = (opts: {
   readonly root: string
-  readonly index: TreeIndex
+  readonly index: NormalizedTreeIndex
 }): Effect.Effect<void, NmdFileSystemError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -85,7 +107,7 @@ export interface TreeMembership {
   readonly relPath: string
   readonly pageId: string
   readonly isRoot: boolean
-  readonly index: TreeIndex
+  readonly index: NormalizedTreeIndex
 }
 
 /**

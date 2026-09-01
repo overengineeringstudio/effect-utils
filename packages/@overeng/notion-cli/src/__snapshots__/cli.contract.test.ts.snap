@@ -47,7 +47,7 @@ USAGE
   notion md status [flags] <path...>
 
 ARGUMENTS
-  path... string    Local .nmd file or directory (a directory means everything under it)
+  path... string    Local .nmd file or directory tree (--recursive selects flat batch mode)
 
 FLAGS
   --recursive, -r          Discover existing .nmd files recursively under a directory target
@@ -77,7 +77,7 @@ USAGE
   notion md status [flags] <path...>
 
 ARGUMENTS
-  path... string    Local .nmd file or directory (a directory means everything under it)
+  path... string    Local .nmd file or directory tree (--recursive selects flat batch mode)
 
 FLAGS
   --recursive, -r          Discover existing .nmd files recursively under a directory target

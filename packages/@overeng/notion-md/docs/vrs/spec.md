@@ -38,33 +38,36 @@ Traces requirements [R09](./requirements.md), [R11](./requirements.md), and
 
 Make notion-md frictionless: the common single-source path (author on one side,
 mirror to the other) pays _zero_ stored-state complexity; bidirectional power is
-opt-in and progressively disclosed. The engine dispatches on self-describing
-files, not on CLI flags.
+opt-in and progressively disclosed. The engine dispatches on a self-describing
+file's `source` or a Tracked Tree's manifest authority, not direction flags.
 
 ### Decided surface (bake-off outcome)
 
 The decided surface is three single-purpose, near-flagless verbs:
-`track` / `status` / `sync`. Direction
-and identity live in each file's frontmatter, not in flags (R34).
+`track` / `status` / `sync`. File direction and identity live in frontmatter;
+hierarchical directory authority and routing live in the derived Tree Manifest.
 
-| Verb                     | Argument             | Behavior                                                                                                                                                                               |
-| ------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `track <id\|url> [path]` | a Notion page id/url | The ONLY command taking a page id. Establishes a local tracked file/subtree for an existing Notion page. Writes self-describing frontmatter (`page_id`, `parent`, `source`).           |
-| `status <path...>`       | local paths          | Read-only, **safe by construction** (no write path in its call graph). Reports the live in-sync decision per file in git-porcelain vocabulary; never mutates.                          |
-| `sync <path...>`         | local paths          | Reconciles self-describing files; dispatches per file on frontmatter `source`, never on flags/arity. Creates remote pages for unbound local files. Always moves a file toward in-sync. |
+| Verb                     | Argument             | Behavior                                                                                                                                                                                             |
+| ------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `track <id\|url> [path]` | a Notion page id/url | The ONLY command taking a page id. Establishes a local Tracked Page, or a remote-authoritative Tracked Tree when `path` is an existing directory.                                                    |
+| `status <path...>`       | local paths          | Read-only, **safe by construction** (no write path in its call graph). Reports file status or a directory-tree plan; never mutates.                                                                  |
+| `sync <path...>`         | local paths          | Reconciles files by frontmatter `source` and non-recursive directory trees by manifest authority. Creates remote pages for unbound local files and always moves the selected surface toward in-sync. |
 
 #### `track <id|url> [path]`
 
-Establishes tracking for an existing Notion page by materializing a local
-file/subtree and writing self-describing frontmatter (`page_id`, `parent`,
-`source`).
+Establishes tracking for an existing Notion page. A file or missing path
+materializes one self-describing `.nmd` file (`page_id`, `parent`, `source`).
+An existing directory materializes the full remote child-page hierarchy and
+writes an explicit remote-authority Tree Manifest (R51).
 
-- `--as local|remote|shared` — default `remote` (you tracked existing Notion state).
-- `--dry-run` — read and validate the remote page, report the intended output,
-  and write nothing.
-- Fail-closed on lossy remote observation: no clean base from a truncated or
+- `--as local|remote|shared` — default `remote` for a file; directory tracking
+  accepts only `remote`.
+- `--dry-run` — read and validate the complete selected page or tree, report the
+  intended output, and write nothing.
+- Fail closed on lossy remote observation: no clean base from a truncated or
   lossy body.
-- Refuses to overwrite an existing file bound to a different page.
+- Refuse an existing file bound to a different page or an established tree
+  bound to a different root.
 
 #### `status <path...>`
 
@@ -87,12 +90,14 @@ manual preview.
 
 #### `sync <path...>`
 
-Reconciles self-describing files. Dispatch is per file on frontmatter `source`,
-never on flags or argument arity. Common-path flags: zero.
+Reconciles self-describing local paths. A file dispatches on frontmatter
+`source`; a non-recursive directory dispatches on manifest authority. A missing
+manifest authority normalizes to `local` for compatibility. `--recursive`
+selects flat batch discovery rather than hierarchical tree reconciliation.
 
-Local-first creation is part of `sync`: an unbound `source: local` file creates
-a new remote page and records the returned `page_id`. Existing remote pages are
-adopted with `track`, not with `sync`.
+Local-first creation is part of file sync: an unbound `source: local` file
+creates a new remote page and records the returned `page_id`. Existing remote
+pages are adopted with `track`, not with `sync`.
 
 | Flag                            | Effect                                                                                                                                                                             |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -124,12 +129,12 @@ alternate surface area.
 
 `track` / `status` / `sync` keep one target grammar: `track` takes Notion page
 ids or URLs, while `status` and `sync` take local paths. There is deliberately
-**no `push` / `pull` verb**: direction lives
-in each file's `source` — the per-file upstream-tracking config, analogous to
-git's `branch.<x>.remote`. `status` and `sync` surface the one-line explainer:
+**no `push` / `pull` verb**: direction lives in a file's `source` or a Tracked
+Tree's manifest authority, analogous to git upstream configuration. `status`
+and `sync` surface the one-line explainer:
 
-> no push/pull — direction is each file's `source`; `sync` always moves toward
-> in-sync, `source` decides which way.
+> no push/pull — direction is each file's `source` or tree workspace authority;
+> `sync` always moves toward in-sync.
 
 git's staging, commits, and branches are rejected entirely — there is no `add`,
 `commit`, `log`, or heuristic `sync <page-url>` form.

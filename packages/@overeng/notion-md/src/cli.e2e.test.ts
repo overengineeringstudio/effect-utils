@@ -156,6 +156,18 @@ describe('notion-md CLI boundary', () => {
   )
 
   it(
+    'rejects directory tree watch instead of entering one-file watch mode',
+    async () => {
+      await withTempDir(async (dir) => {
+        await expect(runCli(['sync', dir, '--watch'])).rejects.toMatchObject({
+          stdout: expect.stringContaining('Directory tree watch is not supported'),
+        })
+      })
+    },
+    cliTestTimeoutMs,
+  )
+
+  it(
     'rejects a non-page-id track argument before resolving Notion credentials',
     async () => {
       await withTempDir(async (dir) => {

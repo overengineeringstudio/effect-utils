@@ -77,15 +77,30 @@ export const formatReasonMessage = (input: {
   return parts.join(' ')
 }
 
+const GERMAN_ASCII: Readonly<Record<string, string>> = {
+  ä: 'ae',
+  ö: 'oe',
+  ü: 'ue',
+  Ä: 'Ae',
+  Ö: 'Oe',
+  Ü: 'Ue',
+  ß: 'ss',
+  ẞ: 'Ss',
+}
+
 /**
- * Converts a title into a URL-safe lowercase slug (max 120 chars).
+ * Converts a title into a URL-safe lowercase ASCII slug (max 120 chars).
  *
+ * German letters are transliterated before NFKD decomposition so their
+ * conventional vowel survives; remaining combining marks are removed.
  * Non-alphanumeric runs become single hyphens; leading/trailing hyphens are trimmed.
  * Returns `"untitled"` for blank or all-punctuation titles.
  */
 export const titleSlug = (title: string): string => {
   const slug = title
-    .normalize('NFC')
+    .replace(/[äöüÄÖÜßẞ]/gu, (letter) => GERMAN_ASCII[letter] ?? letter)
+    .normalize('NFKD')
+    .replace(/\p{Mark}+/gu, '')
     .toLocaleLowerCase('en-US')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
