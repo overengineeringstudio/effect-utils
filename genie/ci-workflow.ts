@@ -94,6 +94,7 @@ export {
   jobLocalCiDiagnosticsDir,
   linuxArm64Runner,
   linuxX64Runner,
+  namespaceLinuxX64PairedPerfRunner,
   nixBinaryCachesExtraConf,
   nixExtraConf,
   preparedCiRuntimeScriptsDir,

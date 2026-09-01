@@ -191,9 +191,21 @@ const exchangeDirectories = async ({
   right: string
 }): Promise<void> => {
   const temporary = `${left}.exchange-test`
-  await rename(left, temporary)
-  await rename(right, left)
-  await rename(temporary, right)
+  await chmod(left, 0o755)
+  await chmod(right, 0o755)
+  try {
+    await rename(left, temporary)
+    await rename(right, left)
+    await rename(temporary, right)
+  } finally {
+    await Promise.all(
+      [left, right, temporary].map((path) =>
+        chmod(path, 0o555).catch((cause: NodeJS.ErrnoException) => {
+          if (cause.code !== 'ENOENT') throw cause
+        }),
+      ),
+    )
+  }
 }
 
 describe('R6 source and protected scans', () => {
@@ -416,10 +428,18 @@ describe('R6 source and protected scans', () => {
       yield* fs.writeFileString(NodePath.join(collision, 'README'), 'b')
       yield* fs.chmod(NodePath.join(collision, 'Readme'), 0o444)
       yield* fs.chmod(NodePath.join(collision, 'README'), 0o444)
-      const collisionResult = yield* scanR6Source({ root: collision }).pipe(Effect.result)
-      expect(collisionResult._tag).toBe('Failure')
-      if (collisionResult._tag === 'Failure')
-        expect(collisionResult.failure.reason).toBe('PathCollision')
+      const [readme, uppercaseReadme] = yield* Effect.promise(() =>
+        Promise.all([
+          lstat(NodePath.join(collision, 'Readme')),
+          lstat(NodePath.join(collision, 'README')),
+        ]),
+      )
+      if (readme.dev !== uppercaseReadme.dev || readme.ino !== uppercaseReadme.ino) {
+        const collisionResult = yield* scanR6Source({ root: collision }).pipe(Effect.result)
+        expect(collisionResult._tag).toBe('Failure')
+        if (collisionResult._tag === 'Failure')
+          expect(collisionResult.failure.reason).toBe('PathCollision')
+      }
 
       const forbidden = yield* makeFixture('source')
       yield* fs.symlink('../../escape', NodePath.join(forbidden, 'dir', 'escape-link'))

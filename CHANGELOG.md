@@ -7,17 +7,21 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **CI performance gate**: keep `devenv-perf` merge-blocking while giving its
-  pull-request-only paired base/head plan a 90-minute budget. Gate-disabled
-  diagnostics no longer run a baseline sample that cannot contribute evidence.
+  pull-request-only paired base/head plan a 90-minute budget and a 160 GB
+  Namespace runner that can retain both Nix closures. Gate-disabled diagnostics
+  no longer run a baseline sample that cannot contribute evidence.
 
 - **@overeng/megarepo**: macOS refused cp-a first-publish and exchange renames
   while the staged and published R6 roots were protected as `0555`, even though
   their shared parent was writable. The Darwin rename boundary now opens and
   verifies the transaction-recorded directory inodes, makes only those roots
   writable for the rename, and restores `0555` through the same file
-  descriptors on success or failure. Recovery re-protects transaction-bound
-  roots before R6 inspection, so a crash during the short writable window
-  cannot make a writable mount valid.
+  descriptors on success or failure. Physical Darwin behavior is no longer
+  disabled when a test injects Linux policy, and the R6 and overlay fault
+  fixtures perform their synthetic renames with the same protected-root
+  discipline. Recovery re-protects transaction-bound roots before R6
+  inspection, so a crash during the short writable window cannot make a writable
+  mount valid.
 
 - **@overeng/megarepo**: the cp-a mount rename primitives ran with
   `stdio: 'ignore'`, so a failure reached CI as a bare `GNU mv no-clobber first

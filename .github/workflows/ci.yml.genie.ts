@@ -25,6 +25,7 @@ import {
   defaultNixClosureMeasurementBuckets,
   devenvPerfJob,
   downloadPreviousGitHubArtifactStep,
+  namespaceLinuxX64PairedPerfRunner,
   namespaceRunner,
   nixClosureMeasurementSteps,
   sourceShapeMeasurementStep,
@@ -606,7 +607,7 @@ const extraJobs: Record<string, any> = {
   'devenv-perf': {
     ...devenvPerfJob({
       runsOn: namespaceRunner({
-        profile: 'namespace-profile-linux-x86-64',
+        profile: namespaceLinuxX64PairedPerfRunner,
         runId: '${{ github.run_id }}',
       }),
       artifactName: 'devenv-perf',

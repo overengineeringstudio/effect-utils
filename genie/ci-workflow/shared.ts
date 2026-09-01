@@ -20,9 +20,18 @@ export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
 /** Self-hosted macOS runner labels (aarch64-darwin, e.g. mbp2021) */
 export const darwinArm64Runner = ['sh-darwin-arm64', 'nix'] as const
 
+/** Namespace Linux runner with enough ephemeral storage for paired base/head Nix closures. */
+export const namespaceLinuxX64PairedPerfRunner = 'nscloud-ubuntu-24.04-amd64-16x32-with-features'
+
 /** All self-hosted runner labels — derived from the runner constants above + RUNNER_PROFILES */
 const SELF_HOSTED_RUNNER_LABELS = [
-  ...new Set([...RUNNER_PROFILES, ...linuxX64Runner, ...linuxArm64Runner, ...darwinArm64Runner]),
+  ...new Set([
+    ...RUNNER_PROFILES,
+    ...linuxX64Runner,
+    ...linuxArm64Runner,
+    ...darwinArm64Runner,
+    namespaceLinuxX64PairedPerfRunner,
+  ]),
 ] as const
 
 /** Default actionlint config with all known self-hosted runner labels */

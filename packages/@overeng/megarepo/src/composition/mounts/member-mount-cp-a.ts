@@ -796,7 +796,8 @@ const openMovableProtectedRoots = async ({
 /**
  * Darwin's directory rename requires a writable moved root even when its containing directory is
  * writable. Keep the R6-protected inode open across only the rename command, so both chmod calls
- * remain bound to the recorded inode even when exchange changes its pathname.
+ * remain bound to the recorded inode even when exchange changes its pathname. The injected
+ * platform also enables this behavior in deterministic tests on non-Darwin hosts.
  */
 const withDarwinMovableProtectedRoots = <A>({
   platform,
@@ -809,7 +810,7 @@ const withDarwinMovableProtectedRoots = <A>({
   effect: Effect.Effect<A, CpAMemberMountError>
   recoveryPaths: ReadonlyArray<string>
 }): Effect.Effect<A, CpAMemberMountError> => {
-  if (platform !== 'darwin' || roots.length === 0) return effect
+  if ((platform !== 'darwin' && process.platform !== 'darwin') || roots.length === 0) return effect
 
   return Effect.acquireUseRelease(
     io({
@@ -917,7 +918,7 @@ const restoreTransactionRootProtection = ({
   platform: RuntimePlatform
   transactionPath: string
 }): Effect.Effect<void, CpAMemberMountError> => {
-  if (platform !== 'darwin') return Effect.void
+  if (platform !== 'darwin' && process.platform !== 'darwin') return Effect.void
 
   const identities = [
     ...(transaction.newIdentity.candidateIdentity === null

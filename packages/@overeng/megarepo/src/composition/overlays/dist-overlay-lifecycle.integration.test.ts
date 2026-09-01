@@ -439,8 +439,11 @@ describe('dist overlay lifecycle', () => {
       const destination = NodePath.join(fixture.mountPath, 'dir/dist')
       yield* Effect.promise(async () => {
         const parent = NodePath.dirname(destination)
+        const oldDestination = `${destination}.owned-old`
         await chmod(parent, 0o755)
-        await rename(destination, `${destination}.owned-old`)
+        await chmod(destination, 0o755)
+        await rename(destination, oldDestination)
+        await chmod(oldDestination, 0o555)
         await mkdir(destination)
         await writeFile(NodePath.join(destination, 'foreign.txt'), 'foreign\n')
         await chmod(NodePath.join(destination, 'foreign.txt'), 0o444)
@@ -708,11 +711,15 @@ describe('dist overlay lifecycle', () => {
         request: requestFor({ fixture }),
         runtime: runtime({
           beforePublish: async () => {
+            const exchanged = `${fixture.mountPath}.exchanged`
             await mkdir(NodePath.join(replacement, 'dir'), { recursive: true })
             await chmod(NodePath.join(replacement, 'dir'), 0o555)
-            await chmod(replacement, 0o555)
-            await rename(fixture.mountPath, `${fixture.mountPath}.exchanged`)
+            await chmod(replacement, 0o755)
+            await chmod(fixture.mountPath, 0o755)
+            await rename(fixture.mountPath, exchanged)
             await rename(replacement, fixture.mountPath)
+            await chmod(exchanged, 0o555)
+            await chmod(fixture.mountPath, 0o555)
           },
         }),
       }).pipe(Effect.result)
