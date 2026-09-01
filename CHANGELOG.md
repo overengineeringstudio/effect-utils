@@ -80,6 +80,49 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/effect-schema-form-aria**: the pilot package's three independent
+  drift findings are resolved together, because all three were waiting on the
+  same prerequisite — a working visual gate for this package. The seventeen
+  per-line `oxlint-disable` suppressions are gone and all eight StyleX rules
+  gate the package again.
+  **Raw colours become semantic tokens**: `on-primary` for foregrounds drawn on
+  `primary`, and `shadow-raised` for popover elevation, defaulting to the
+  `shadows.lg` scale step. **`primary` moves `blue500` -> `blue600`**, which is
+  the accessibility fix rather than a palette preference: the gate failed ten of
+  thirty-nine stories because white text on the selected segment measured
+  3.76:1 against AA's 4.5:1, and `blue600` measures 5.25:1. Renaming the literal
+  alone would have preserved the violation behind a better name.
+  **Thirteen deprecated top-level pseudo-class sites move into condition
+  objects.** Every site was reviewed for a competing state rather than
+  translated mechanically, because nesting a pseudo-class changes which
+  condition wins. Eleven set a property nothing else touches; the two that
+  compete — the segmented control's and the list option's background under hover
+  versus selection — now resolve by `stylex.props` argument order, with the
+  selected style restating the hover value because a later unconditional
+  `backgroundColor` does not replace an earlier one under a `:hover` key.
+  **Focus moves to the accessible-component library's focus-visible state**
+  (native `:focus-visible` on the one plain `<input>`), so a pointer click no
+  longer paints a keyboard focus ring. The ring is still drawn with `boxShadow`
+  rather than converted to `outline`: the partitioning invariant already holds
+  and no story renders a focused element, so repainting it would be a change the
+  gate structurally cannot adjudicate.
+  **State resolution stops re-deriving what the component knows.** The checkbox
+  read its own `value` prop; selection lives on the CheckboxButton, an ancestor
+  of the styled box, so it now comes from React Aria's render prop. The
+  segmented control and list options applied one of two mutually exclusive style
+  objects, hover rule included, and now apply one additive override.
+  **The eleventh gate failure was structural, not colour**: React Aria's
+  `Header` renders `<header>`, which outside sectioning content is a `banner`
+  landmark, so nested field groups produced two banners. The label is a plain
+  element now and the group carries the accessible name it lacked.
+  Adjudicated against the gate: 20 stories changed, 18 of them the intended
+  `43,127,255 -> 21,93,252` recolour confined to selected segments, checkbox
+  boxes and the accent tick. The other two are the gate's own sub-pixel fringe,
+  proven by recapturing the *unchanged* baseline tree and reproducing both
+  diffs identically (689 and 693 pixels, max channel delta 2). Zero
+  accessibility failures remain, and the condition-nesting, ordered-argument and
+  landmark changes moved no pixels at all. Closes #1171.
+
 - **nix/oxlint-with-plugins.nix**: three fixes to the oxlint wrapper.
   `jsPlugins` entries other than ours are no longer discarded, so third-party JS
   plugins can load beside `@overeng/oxc-config` (previously any such plugin
