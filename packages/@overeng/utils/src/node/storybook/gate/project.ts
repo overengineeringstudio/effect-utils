@@ -225,13 +225,43 @@ const createProject = ({
           toMatchScreenshot: {
             comparatorName: 'pixelmatch',
             comparatorOptions: {
-              // Both of these are non-default and both defaults fail silently.
-              // `allowedMismatchedPixelRatio: 0` alone does NOT compare exactly:
+              // All three are non-default and every default fails silently.
+              //
+              // `allowedMismatchedPixels: 0` alone does NOT compare strictly:
               // pixelmatch defaults to a perceptual `threshold` of 0.1 and to
               // ignoring anti-aliased pixels. Measured — a token mis-map moving
               // a radius by one pixel and one colour channel by six passed
               // across three stories under those defaults.
-              threshold: 0,
+              //
+              // `threshold` is 0.02 rather than 0 because 0 fails on sub-pixel
+              // anti-aliasing. A border at a fractional y renders as ~70%
+              // coverage on one row with the remainder bleeding into the next,
+              // and the split is not stable across capture sessions. Measured
+              // on a real artifact: one 1px-tall row, 689 pixels, each off by
+              // 1-2/255 against white.
+              //
+              // The reason a tolerance is safe here is that the noise is an
+              // INTENSITY delta while the smallest regression the gate must
+              // catch is a STRUCTURAL one, and pixelmatch's threshold separates
+              // them by two orders of magnitude. Swept against this comparator:
+              //
+              //   threshold  AA fringe   1px border shift
+              //   0          689         1868
+              //   0.005      689         1868
+              //   0.0075     0           1868
+              //   0.02       0           ~1868   <- landed here
+              //   0.05       0           1860
+              //   0.1        0           0
+              //
+              // 0.02 sits ~2.7x above where the noise dies and ~5x below where
+              // a 1px shift starts eroding at all. Do not raise it towards 0.1;
+              // that is where real geometry changes stop being reported.
+              //
+              // `allowedMismatchedPixels` stays 0 on purpose. Absorbing the
+              // fringe with a pixel-count budget instead would have cost the
+              // property that a single structurally-different pixel still
+              // fails; keeping the count at 0 preserves it.
+              threshold: 0.02,
               includeAA: true,
               allowedMismatchedPixels: 0,
             },
@@ -253,7 +283,8 @@ const createProject = ({
  * Four settings are non-default because each ecosystem default fails silently,
  * and all four are measured:
  *
- * 1. Comparator `threshold: 0` with `includeAA: true` — see the inline note.
+ * 1. Comparator `threshold: 0.02` with `includeAA: true` and a zero mismatched-
+ *    pixel budget — see the inline note for the sweep behind the number.
  * 2. `parameters.a11y.test: 'error'`, applied through `setupFiles`; the default
  *    `'todo'` downgrades every violation to a warning. See `./annotations.ts`.
  * 3. Baselines resolved into a ref-derived directory rather than a committed
