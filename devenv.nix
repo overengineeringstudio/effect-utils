@@ -709,6 +709,16 @@ in
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
+  # Source-mode mr must receive the same pinned composition runtime as the
+  # packaged wrapper; refreshed tasks can invoke composition from owned members.
+  env.MR_COMPOSITION_CP_BIN = "${pkgs.coreutils}/bin/cp";
+  env.MR_COMPOSITION_BUCK2_BIN = "${buck2Machine}/bin/buck2";
+  env.MR_COMPOSITION_BUCK2_PROTOCOL = "facebook/buck2-cli/2026-08-22";
+  env.MR_COMPOSITION_SYSTEM = currentSystem;
+  env.MR_COMPOSITION_PLATFORM = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux";
+  env.MR_COMPOSITION_GIT_BIN = "${pkgs.git}/bin/git";
+  env.MR_CAPABILITY_NIX_BIN = "${pkgs.nix}/bin/nix";
+  env.MR_CAPABILITY_MV_BIN = "${pkgs.coreutils}/bin/mv";
 
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).

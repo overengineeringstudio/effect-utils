@@ -12,8 +12,10 @@ All notable changes to this project will be documented in this file.
   no longer run a baseline sample that cannot contribute evidence.
 
 - **Megarepo devenv tasks**: select commit worktrees for lock-based bootstrap
-  and tracking worktrees for shared branch mutation tasks so refreshed CI task
-  graphs do not rely on the interactive-only automatic worktree strategy.
+  and tracking worktrees for shared branch mutation tasks. The source-mode `mr`
+  wrapper now receives the same pinned composition runtime as the packaged CLI,
+  so refreshed CI task graphs do not rely on interactive defaults or ambient
+  tool paths.
 
 - **@overeng/megarepo**: macOS refused cp-a first-publish and exchange renames
   while the staged and published R6 roots were protected as `0555`, even though

@@ -213,4 +213,24 @@ done
 echo "  ok: shared mutation tasks select explicit worktree strategies"
 
 echo ""
+echo "Test 8: source-mode mr receives the canonical composition runtime"
+devenv_file="$(cd "$(dirname "$module_file")/../../../.." && pwd)/devenv.nix"
+for runtime_name in \
+  MR_COMPOSITION_CP_BIN \
+  MR_COMPOSITION_BUCK2_BIN \
+  MR_COMPOSITION_BUCK2_PROTOCOL \
+  MR_COMPOSITION_SYSTEM \
+  MR_COMPOSITION_PLATFORM \
+  MR_COMPOSITION_GIT_BIN \
+  MR_CAPABILITY_NIX_BIN \
+  MR_CAPABILITY_MV_BIN
+do
+  if ! grep -F "env.$runtime_name =" "$devenv_file" >/dev/null; then
+    echo "FAIL: source-mode mr is missing $runtime_name"
+    exit 1
+  fi
+done
+echo "  ok: source-mode mr receives the canonical composition runtime"
+
+echo ""
 echo "All megarepo status tests passed"
