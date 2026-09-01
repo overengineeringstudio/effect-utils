@@ -24,7 +24,10 @@ export default defineConfig({
     // Both surfaces are named because the compiled StyleX stylesheet is a
     // virtual module that only lands in a bundle where an entry imports it, and
     // the Storybook builder merges this config rather than supplying its own.
-    createStylexVitePlugins({ entries: [publicationEntry, storybookPreviewEntry] }),
+    createStylexVitePlugins({
+      entries: [publicationEntry, storybookPreviewEntry],
+      useCSSLayers: { before: ['overeng.reset'] },
+    }),
     react(),
   ],
   build: {

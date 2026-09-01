@@ -15,6 +15,6 @@ import { createStylexVitePlugins } from '@overeng/utils/node/stylex'
 // served, not bundled.
 export default defineConfig(
   mergeConfig(createStoryGateConfig({}), {
-    plugins: [createStylexVitePlugins()],
+    plugins: [createStylexVitePlugins({ useCSSLayers: { before: ['overeng.reset'] } })],
   }),
 )

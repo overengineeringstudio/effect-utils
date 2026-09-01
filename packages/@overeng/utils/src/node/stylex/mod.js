@@ -52,6 +52,16 @@ const getCssPostTransformHandler = (cssPostPlugin) => {
  * @typedef {object} StylexVitePluginsOptions
  * @property {readonly string[]} [externalPackages]
  *   Packages that ship uncompiled StyleX source and must be compiled by us.
+ * @property {boolean | { before?: readonly string[], after?: readonly string[], prefix?: string }} [useCSSLayers]
+ *   Emit compiled rules into cascade layers. Defaults to OFF, and that default
+ *   is load-bearing rather than conservative: unlayered StyleX beats a utility
+ *   framework's layered utilities unconditionally, which is what lets converted
+ *   code win during a migration without any ordering work. Turn it on only for
+ *   a target that has left its utility framework AND whose global stylesheets
+ *   are themselves layered — layered CSS loses to *any* unlayered CSS, so one
+ *   unlayered global reset silently outranks every component rule it touches.
+ *   Name those stylesheets' layers in `before` so the emitted `@layer` statement
+ *   fixes the order by declaration instead of by stylesheet parse order.
  * @property {readonly string[]} [entries]
  *   Absolute paths of the build entries that should receive the virtual
  *   stylesheet import — one per surface: the library/app entry, and the
@@ -86,12 +96,17 @@ const getCssPostTransformHandler = (cssPostPlugin) => {
  * @param {StylexVitePluginsOptions} [options]
  * @returns {StylexVitePlugin[]}
  */
-export const createStylexVitePlugins = ({ externalPackages = [], entries = [] } = {}) => {
+export const createStylexVitePlugins = ({
+  externalPackages = [],
+  entries = [],
+  useCSSLayers = false,
+} = {}) => {
   const deduplicatedExternalPackages = [...new Set(['@overeng/stylex-tokens', ...externalPackages])]
   // `externalPackages` is supported at runtime (unplugin core destructures it)
   // but missing from @stylexjs/unplugin@0.19 UserOptions typings.
   const stylexOptions = /** @type {Parameters<typeof stylex.vite>[0]} */ ({
     externalPackages: deduplicatedExternalPackages,
+    useCSSLayers,
   })
 
   const upstream = stylex.vite(stylexOptions)
@@ -124,8 +139,13 @@ export const createStylexVitePlugins = ({ externalPackages = [], entries = [] } 
         : null,
     // Appended, not prepended. Import statements hoist, so this still runs
     // before the module body, but it sorts *after* the entry's own stylesheet
-    // imports — which puts unlayered StyleX rules last, the precedence the
-    // migration relies on while a utility framework is still present.
+    // imports. That ordering is no longer what decides precedence now that the
+    // rules are layered — the emitted `@layer` statement does that, and it does
+    // it independently of parse order, which is the point of naming the reset
+    // in `before`. Appending is kept anyway: a consumer of this factory may
+    // still carry a utility framework — `useCSSLayers` defaults off for exactly
+    // that reason — and there the unlayered-wins property does depend on the
+    // entry's own stylesheets sorting first.
     // oxlint-disable-next-line overeng/named-args -- Vite's Plugin transform hook has a fixed positional signature.
     transform: (code, id) =>
       entryIds.has(stripQuery(id)) === true

@@ -78,6 +78,31 @@ All notable changes to this project will be documented in this file.
   rather than a file-scoped override, so new code there is still gated
   (issue #1171).
 
+- **@overeng/utils**: `createStylexVitePlugins` takes `useCSSLayers`, and
+  `@overeng/effect-schema-form-aria` turns it on. Unlayered output was never a
+  preference — it is what lets converted code beat a utility framework's
+  layered utilities without any ordering work — so the option defaults OFF and
+  the flip is per target, on the target that has left the framework. Nothing
+  outside this repo changes.
+  The audit that gates the flip, stated in full because the answer was not the
+  expected one. Utility framework: none — no `package.json` in the repo names
+  one. StyleX consumers: exactly one, `@overeng/effect-schema-form-aria`, plus
+  the token package itself. Global stylesheets: five CSS files, of which three
+  (`notion-react`'s katex, vendored-notion and styles) belong to a package that
+  does not use StyleX and never shares a document with one here, one
+  (`effect-schema-form-aria/src/styles.css`) only re-exports the fifth, and the
+  fifth is `@overeng/stylex-tokens/preflight.css`.
+  **That last one is why "Tailwind-free" was not sufficient.** The reset was
+  unlayered and sets `box-sizing`, `margin`, `padding` and `border` on `*`.
+  Layered CSS loses to *any* unlayered CSS, so flipping layers on without
+  touching it would have handed those four properties to the reset on every
+  component in the package — silently, and in the direction the migration is
+  supposed to prevent. The reset now declares itself in `overeng.reset` and the
+  compiler is configured with `before: ['overeng.reset']`, so the emitted
+  `@layer overeng.reset, priority1, ...;` statement fixes the order by
+  declaration rather than by which stylesheet the browser parses first — the
+  same "do not depend on injection order" rule the token layer already follows.
+
 ### Fixed
 
 - **@overeng/effect-schema-form-aria**: the pilot package's three independent

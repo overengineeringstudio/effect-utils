@@ -9,7 +9,7 @@ import { createStylexVitePlugins } from '@overeng/utils/node/stylex'
 // transform it. No `entries` here: the virtual stylesheet is a build-only
 // concern and these tests assert compiled class names, not rendered CSS.
 export default defineConfig({
-  plugins: [createStylexVitePlugins(), react()],
+  plugins: [createStylexVitePlugins({ useCSSLayers: { before: ['overeng.reset'] } }), react()],
   ssr: { noExternal: ['@overeng/stylex-tokens'] },
   test: {
     exclude: ['**/dist/**', '**/node_modules/**'],
