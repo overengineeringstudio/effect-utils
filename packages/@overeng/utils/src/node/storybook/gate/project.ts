@@ -88,6 +88,12 @@ const createProject = ({
         ...(theme === undefined ? {} : { initialGlobals: { [theme.name]: theme.value } }),
       }),
     ],
+    // The baseline half of a run happens inside a git worktree that borrows the
+    // main tree's `node_modules` by symlink, so workspace sources — this gate's
+    // own setup file among them — resolve to paths outside the served root and
+    // Vite refuses them. This is a throwaway test server; strict roots buy
+    // nothing here and cost the derived-baseline mechanism entirely.
+    server: { fs: { strict: false } },
     test: {
       name: projectName,
       setupFiles: ['@overeng/utils/node/storybook/gate/setup'],

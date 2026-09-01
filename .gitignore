@@ -33,6 +33,11 @@ result-*
 storybook-static
 .vercel
 
+# Story gate — diff images from a failed screenshot assertion. Evidence for one
+# run, never an artifact: baselines are derived from a git ref on demand and
+# live under node_modules/.cache, so nothing the gate produces is committed.
+.vitest-attachments
+
 # Playwright
 test-results
 playwright-report
