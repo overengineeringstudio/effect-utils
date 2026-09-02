@@ -867,6 +867,10 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain(
       `paired_baseline_enabled="$(jq -r 'if .enabled == true then 1 else 0 end' <<<"$gate_policy")"`,
     )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      `if [ "$phase" = "warmup" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$paired_baseline_enabled" -eq 1 ]; then`,
+    )
+    expect(generatedCiWorkflowYamlSource).toContain('subject:"base",phase:"warmup",status:$status')
     expect(generatedDevenvPerfJob).toContain('timeout-minutes: 90')
     expect(generatedDevenvPerfJob).toContain('nscloud-ubuntu-24.04-amd64-16x64-with-features')
     expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_warm' 'Warm shell eval'")
@@ -888,6 +892,12 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(generatedCiWorkflowYamlSource).toContain('probeLabel: .label')
     expect(generatedCiWorkflowYamlSource).toContain('sampleCount: (.statistics.sampleCount // 1)')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      '| Probe | Runs | Head total | Base total | Head median | Paired delta | Measured share |',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'map([.samples[]?.durationMs] | add // 0) | add',
+    )
     expect(generatedCiWorkflowYamlSource).toContain('baselineSources')
     expect(generatedCiWorkflowYamlSource).toContain('low_baseline_count')
     expect(generatedCiWorkflowYamlSource).toContain('low_current_sample_count')
