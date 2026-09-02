@@ -15,5 +15,4 @@ export default tsconfigJson({
     lib: [...domLib],
   },
   include: ['src/**/*', 'test/**/*'],
-  references: [{ path: '../utils' }],
 } satisfies TSConfigArgs)

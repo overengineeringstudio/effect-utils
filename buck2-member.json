@@ -45,6 +45,10 @@
     {
       "target": "//packages/@overeng/utils-dev:dist",
       "destination": "packages/@overeng/utils-dev/dist"
+    },
+    {
+      "target": "//packages/@overeng/utils:dist",
+      "destination": "packages/@overeng/utils/dist"
     }
   ],
   "capabilities": [

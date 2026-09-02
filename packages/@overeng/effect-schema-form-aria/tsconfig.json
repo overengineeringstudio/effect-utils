@@ -50,9 +50,6 @@
   "references": [
     {
       "path": "../effect-schema-form"
-    },
-    {
-      "path": "../utils"
     }
   ]
 }

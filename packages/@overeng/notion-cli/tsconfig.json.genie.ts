@@ -18,6 +18,5 @@ export default tsconfigJson({
     { path: '../notion-datasource-sync' },
     { path: '../notion-md' },
     { path: '../notion-effect-schema' },
-    { path: '../utils' },
   ],
 } satisfies TSConfigArgs)

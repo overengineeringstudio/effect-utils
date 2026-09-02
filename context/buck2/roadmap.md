@@ -145,9 +145,9 @@ RENAME_EXCHANGE advance.
   with that package's admission.
 - Workspace-sibling live links (symlink-back) are part of the standard rule.
 - The coverage-asserted registry in `genie/tsconfig-projects.ts` has 38 root
-  projects. tui-core and tui-react are admitted; 36 projects remain in both
-  root solutions and leave them one package-scoped deletion-ledger entry at a
-  time, grouped by dependency layer for review and landing.
+  projects. Seven are admitted; 31 projects remain in both root solutions and
+  leave them one package-scoped deletion-ledger entry at a time, grouped by
+  dependency layer for review and landing.
 
 - Admission 2 transfers `@overeng/tui-react` typecheck and declaration emit to
   `//packages/@overeng/tui-react:typecheck` and
@@ -191,6 +191,15 @@ RENAME_EXCHANGE advance.
   package-specific mutation controls, budgets, and individual deletion ledgers
   are retained in
   [`2026-09-02-middle-layer-authority-transfer.md`](./02-execution/.experiments/2026-09-02-middle-layer-authority-transfer.md).
+
+- The utils dependency-layer admission transfers `@overeng/utils` to Buck. It
+  leaves both root solutions, all 16 dependent project-reference edges are
+  deleted, and all 13 public type conditions consume Buck declarations while
+  runtime defaults remain at source.
+- tui-react replaces its content-tracked utils source sibling with the utils
+  `dist` edge. The ordinary utils tsconfig is write-free. The mutation control,
+  cache budgets, hostile-environment proof, and deletion ledger are retained in
+  [`2026-09-02-utils-authority-transfer.md`](./02-execution/.experiments/2026-09-02-utils-authority-transfer.md).
 
 ## Phase 4 — dependency-surface authority transfer (gated)
 

@@ -4,23 +4,60 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/isomorphic/mod.ts",
-    "./browser": "./src/browser/mod.ts",
+    ".": {
+      "types": "./dist/src/isomorphic/mod.d.ts",
+      "default": "./src/isomorphic/mod.ts"
+    },
+    "./browser": {
+      "types": "./dist/src/browser/mod.d.ts",
+      "default": "./src/browser/mod.ts"
+    },
     "./cuid": {
+      "types": "./dist/src/cuid/mod.d.ts",
       "browser": "./src/cuid/cuid.browser.ts",
       "node": "./src/cuid/cuid.node.ts",
       "default": "./src/cuid/mod.ts"
     },
-    "./lock": "./src/lock/mod.ts",
-    "./node": "./src/node/mod.ts",
-    "./node/cli-help-rewrite": "./src/node/cli-help-rewrite.ts",
-    "./node/cli-version": "./src/node/cli-version.ts",
-    "./node/otel": "./src/node/otel.ts",
-    "./node/otel-attrs": "./src/node/otel-attrs.ts",
-    "./node/playwright": "./src/node/playwright/mod.ts",
-    "./node/playwright/config": "./src/node/playwright/config/mod.ts",
-    "./node/storybook": "./src/node/storybook/mod.ts",
-    "./node/storybook/config": "./src/node/storybook/config/mod.ts"
+    "./lock": {
+      "types": "./dist/src/lock/mod.d.ts",
+      "default": "./src/lock/mod.ts"
+    },
+    "./node": {
+      "types": "./dist/src/node/mod.d.ts",
+      "default": "./src/node/mod.ts"
+    },
+    "./node/cli-help-rewrite": {
+      "types": "./dist/src/node/cli-help-rewrite.d.ts",
+      "default": "./src/node/cli-help-rewrite.ts"
+    },
+    "./node/cli-version": {
+      "types": "./dist/src/node/cli-version.d.ts",
+      "default": "./src/node/cli-version.ts"
+    },
+    "./node/otel": {
+      "types": "./dist/src/node/otel.d.ts",
+      "default": "./src/node/otel.ts"
+    },
+    "./node/otel-attrs": {
+      "types": "./dist/src/node/otel-attrs.d.ts",
+      "default": "./src/node/otel-attrs.ts"
+    },
+    "./node/playwright": {
+      "types": "./dist/src/node/playwright/mod.d.ts",
+      "default": "./src/node/playwright/mod.ts"
+    },
+    "./node/playwright/config": {
+      "types": "./dist/src/node/playwright/config/mod.d.ts",
+      "default": "./src/node/playwright/config/mod.ts"
+    },
+    "./node/storybook": {
+      "types": "./dist/src/node/storybook/mod.d.ts",
+      "default": "./src/node/storybook/mod.ts"
+    },
+    "./node/storybook/config": {
+      "types": "./dist/src/node/storybook/config/mod.d.ts",
+      "default": "./src/node/storybook/config/mod.ts"
+    }
   },
   "publishConfig": {
     "access": "public",

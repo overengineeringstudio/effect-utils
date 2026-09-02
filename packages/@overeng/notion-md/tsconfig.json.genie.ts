@@ -20,6 +20,5 @@ export default tsconfigJson({
     { path: '../notion-effect-client' },
     { path: '../notion-effect-schema' },
     { path: '../notion-property-write' },
-    { path: '../utils' },
   ],
 } satisfies TSConfigArgs)

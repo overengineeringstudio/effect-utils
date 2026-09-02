@@ -12,5 +12,4 @@ export default tsconfigJson({
     ...nodeTypes,
   },
   include: ['src/**/*', 'examples/**/*'],
-  references: [{ path: '../utils' }],
 } satisfies TSConfigArgs)
