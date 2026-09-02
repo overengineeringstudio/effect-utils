@@ -136,7 +136,15 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
         typedConfig.build = { minify: false }
       }
 
-      return callUserViteFinal({ config: typedConfig, viteFinal })
+      /* Returns the parameter's own contextual type rather than `InlineConfig`. A
+       * cross-checkout `link:` consumer typechecks this source but resolves `vite`
+       * from its OWN node_modules, so naming Vite's type here makes the returned
+       * config a DIFFERENT `InlineConfig` than the `ViteFinal` slot expects. Under
+       * `strict` that cannot be reconciled: `dev.createEnvironment` takes a
+       * `ResolvedConfig`, so parameters compare contravariantly and the check
+       * recurses Vite's whole type graph. Peer-version parity does not help — only
+       * not naming the type across the boundary does. */
+      return (await callUserViteFinal({ config: typedConfig, viteFinal })) as typeof storybookConfig
     },
   } satisfies StorybookConfig
 
@@ -226,7 +234,9 @@ export const createTuiStorybookConfig: CreateTuiStorybookConfig = <TConfig exten
         external: ['@opentui/core', '@opentui/react'],
       }
 
-      return callUserViteFinal({ config: typedConfig, viteFinal })
+      /* See the DOM factory: returns the parameter's contextual type so Vite's
+       * `InlineConfig` never crosses the package boundary. */
+      return (await callUserViteFinal({ config: typedConfig, viteFinal })) as typeof storybookConfig
     },
   } satisfies StorybookConfig
 
