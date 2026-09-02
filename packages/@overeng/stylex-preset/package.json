@@ -6,7 +6,10 @@
   "type": "module",
   "exports": {
     "./preflight.css": "./src/preflight.css",
-    "./tokens.stylex": "./src/tokens.stylex.ts",
+    "./tokens.stylex": {
+      "types": "./dist/src/tokens.stylex.d.ts",
+      "default": "./src/tokens.stylex.ts"
+    },
     "./vite": {
       "types": "./src/vite-types.d.ts",
       "default": "./src/vite.js"

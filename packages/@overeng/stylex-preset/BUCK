@@ -60,5 +60,6 @@ tsgo_typecheck(
 tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
+    declaration_entrypoint = "src/tokens.stylex.d.ts",
     visibility = ["PUBLIC"],
 )

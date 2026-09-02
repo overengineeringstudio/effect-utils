@@ -44,7 +44,8 @@
     "composite": true,
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "checkJs": true
+    "checkJs": true,
+    "noEmit": true
   },
   "include": ["src/**/*"]
 }

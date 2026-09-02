@@ -4,10 +4,22 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./cli-contract": "./src/cli-contract.ts",
-    "./node-vitest": "./src/node-vitest/mod.ts",
-    "./node-vitest/setup-fast-check": "./src/node-vitest/setup-fast-check.ts",
-    "./otelite": "./src/otelite/mod.ts"
+    "./cli-contract": {
+      "types": "./dist/src/cli-contract.d.ts",
+      "default": "./src/cli-contract.ts"
+    },
+    "./node-vitest": {
+      "types": "./dist/src/node-vitest/mod.d.ts",
+      "default": "./src/node-vitest/mod.ts"
+    },
+    "./node-vitest/setup-fast-check": {
+      "types": "./dist/src/node-vitest/setup-fast-check.d.ts",
+      "default": "./src/node-vitest/setup-fast-check.ts"
+    },
+    "./otelite": {
+      "types": "./dist/src/otelite/mod.d.ts",
+      "default": "./src/otelite/mod.ts"
+    }
   },
   "publishConfig": {
     "access": "public",

@@ -166,6 +166,19 @@ RENAME_EXCHANGE advance.
   assembled package tree. The editor root install remains transitional until
   Phase 4 and is deliberately not deleted by this admission.
 
+- The first dependency-layer admission transfers `@overeng/utils-dev` and
+  `@overeng/stylex-preset` to their package-local Buck `typecheck` and `dist`
+  targets. Each package keeps source runtime defaults while its TypeScript
+  exports consume Buck declarations.
+- The utils-dev deletion-ledger entry removes it from both root solutions,
+  deletes 25 dependent project-reference edges, and changes tui-react's Buck
+  package tree from a utils-dev source sibling to its `dist`. The stylex-preset
+  entry deletes its two dependent project-reference edges; it had no prior root
+  solution entry or standalone package check/build task. Both ordinary
+  tsconfigs are write-free. The integrated gate and package-specific evidence
+  are retained in
+  [`2026-09-02-foundation-layer-authority-transfer.md`](./02-execution/.experiments/2026-09-02-foundation-layer-authority-transfer.md).
+
 ## Phase 4 — dependency-surface authority transfer (gated)
 
 - End-state per [decision 0015](./.decisions/0015-buck-owned-dependency-surface.md)

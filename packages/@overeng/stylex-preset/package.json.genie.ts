@@ -28,7 +28,10 @@ export default packageJson(
     ...privatePackageDefaults,
     description: 'Shared StyleX design tokens, preflight styles, and Vite integration',
     exports: {
-      './tokens.stylex': exportEntry('./src/tokens.stylex.ts', { environment: 'browser' }),
+      './tokens.stylex': exportEntry(
+        { types: './dist/src/tokens.stylex.d.ts', default: './src/tokens.stylex.ts' },
+        { environment: 'browser' },
+      ),
       './preflight.css': exportEntry('./src/preflight.css', { environment: 'browser' }),
       './vite': exportEntry(
         {

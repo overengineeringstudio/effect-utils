@@ -23,6 +23,5 @@ export default tsconfigJson({
     { path: '../notion-property-write' },
     { path: '../otel-contract' },
     { path: '../utils' },
-    { path: '../utils-dev' },
   ],
 } satisfies TSConfigArgs)

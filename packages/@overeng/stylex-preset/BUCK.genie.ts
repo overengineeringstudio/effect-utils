@@ -8,6 +8,10 @@ export const buck2TypeScriptAdmission = {
   projectionSource: 'packages/@overeng/stylex-preset/BUCK.genie.ts',
   sourceRoots: ['src'],
   editorViewConsumer: false,
+  authority: {
+    declarationEntrypoint: 'src/tokens.stylex.d.ts',
+    projectFile: 'tsconfig.json',
+  },
 } as const satisfies Buck2TypeScriptAdmission
 
 export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

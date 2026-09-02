@@ -53,12 +53,6 @@
     },
     {
       "path": "../otel-contract"
-    },
-    {
-      "path": "../stylex-preset"
-    },
-    {
-      "path": "../utils-dev"
     }
   ]
 }

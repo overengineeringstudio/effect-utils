@@ -19,12 +19,20 @@
   ],
   "distOverlays": [
     {
+      "target": "//packages/@overeng/stylex-preset:dist",
+      "destination": "packages/@overeng/stylex-preset/dist"
+    },
+    {
       "target": "//packages/@overeng/tui-core:dist",
       "destination": "packages/@overeng/tui-core/dist"
     },
     {
       "target": "//packages/@overeng/tui-react:dist",
       "destination": "packages/@overeng/tui-react/dist"
+    },
+    {
+      "target": "//packages/@overeng/utils-dev:dist",
+      "destination": "packages/@overeng/utils-dev/dist"
     }
   ],
   "capabilities": [

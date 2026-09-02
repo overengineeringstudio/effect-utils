@@ -15,9 +15,5 @@ export default tsconfigJson({
     lib: [...domLib],
   },
   include: ['src/**/*'],
-  references: [
-    { path: '../effect-schema-form' },
-    { path: '../stylex-preset' },
-    { path: '../utils' },
-  ],
+  references: [{ path: '../effect-schema-form' }, { path: '../utils' }],
 } satisfies TSConfigArgs)

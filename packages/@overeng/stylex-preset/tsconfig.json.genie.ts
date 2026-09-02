@@ -11,6 +11,7 @@ export default tsconfigJson({
     ...packageTsconfigCompilerOptions,
     allowJs: true,
     checkJs: true,
+    noEmit: true,
     lib: [...domLib],
   },
   include: ['src/**/*'],

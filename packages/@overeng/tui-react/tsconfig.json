@@ -52,9 +52,6 @@
   "references": [
     {
       "path": "../utils"
-    },
-    {
-      "path": "../utils-dev"
     }
   ]
 }
