@@ -123,6 +123,8 @@ publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
   `./cli` are unchanged). `core/` provably imports nothing from
   `composition/`. The `member-mount-r6` and `member-mount-cp-a` module headers
   now explain their codenames and why they are two modules rather than one.
+- **workflow-report devenv module**: Resolve packages from the module-provided
+  `pkgs` set so consumers can evaluate the module from a pure store source.
 - **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
   adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
   lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`

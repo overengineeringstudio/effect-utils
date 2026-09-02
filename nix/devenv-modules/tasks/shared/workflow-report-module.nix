@@ -5,26 +5,22 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
   cfg = config.effectUtils.workflowReport;
   trace = import ../lib/trace.nix { inherit lib; };
   root = ../../../..;
-  repoFlake = builtins.getFlake "git+file://${toString root}";
-  repoSource = repoFlake.outPath;
-  pinnedPkgs = import repoFlake.inputs.nixpkgs {
-    system = builtins.currentSystem;
-  };
-  ciToolsPkg = import (repoSource + "/packages/@overeng/ci-tools/nix/build.nix") {
-    pkgs = pinnedPkgs;
-    src = repoSource;
+  ciToolsPkg = import (root + "/packages/@overeng/ci-tools/nix/build.nix") {
+    inherit pkgs;
+    src = root;
     dirty = true;
   };
   resolvedCiToolsBin =
     if cfg.ciToolsBin == null then "${ciToolsPkg}/bin/ci-tools" else cfg.ciToolsBin;
   ciTools = lib.escapeShellArg resolvedCiToolsBin;
-  gh = if cfg.ghBin == null then "${pinnedPkgs.gh}/bin/gh" else cfg.ghBin;
+  gh = if cfg.ghBin == null then "${pkgs.gh}/bin/gh" else cfg.ghBin;
 in
 {
   options.effectUtils.workflowReport = {
