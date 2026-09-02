@@ -179,6 +179,19 @@ RENAME_EXCHANGE advance.
   are retained in
   [`2026-09-02-foundation-layer-authority-transfer.md`](./02-execution/.experiments/2026-09-02-foundation-layer-authority-transfer.md).
 
+- The middle dependency-layer admission transfers `@overeng/content-address`,
+  `@overeng/effect-distributed-lock`, and `@overeng/otel-contract` to Buck. All
+  three leave both root solutions, their 17 dependent project-reference edges
+  are deleted, and their public type conditions consume Buck declarations while
+  runtime defaults remain at source.
+- The package trees replace authoritative workspace source siblings with
+  same-cell `dist` edges: content-address and effect-distributed-lock consume
+  utils-dev, while otel-contract consumes content-address and utils-dev. Each
+  package's ordinary tsconfig is write-free. The integrated gate,
+  package-specific mutation controls, budgets, and individual deletion ledgers
+  are retained in
+  [`2026-09-02-middle-layer-authority-transfer.md`](./02-execution/.experiments/2026-09-02-middle-layer-authority-transfer.md).
+
 ## Phase 4 — dependency-surface authority transfer (gated)
 
 - End-state per [decision 0015](./.decisions/0015-buck-owned-dependency-surface.md)

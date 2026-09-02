@@ -12,5 +12,5 @@ export default tsconfigJson({
     ...nodeTypes,
   },
   include: ['src/**/*'],
-  references: [{ path: '../otel-contract' }],
+  references: [],
 } satisfies TSConfigArgs)

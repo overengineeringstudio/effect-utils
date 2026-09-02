@@ -49,9 +49,6 @@
   "include": ["src/**/*", "examples/**/*"],
   "references": [
     {
-      "path": "../otel-contract"
-    },
-    {
       "path": "../utils"
     }
   ]

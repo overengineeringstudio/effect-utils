@@ -4,8 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts",
-    "./registry": "./src/registry.ts"
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./registry": {
+      "types": "./dist/src/registry.d.ts",
+      "default": "./src/registry.ts"
+    }
   },
   "publishConfig": {
     "access": "public",

@@ -49,9 +49,6 @@
   "include": ["src/**/*", "bin/**/*.ts"],
   "references": [
     {
-      "path": "../otel-contract"
-    },
-    {
       "path": "../utils"
     }
   ]

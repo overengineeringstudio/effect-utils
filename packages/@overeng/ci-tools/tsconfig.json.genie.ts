@@ -13,5 +13,5 @@ export default tsconfigJson({
     types: ['node', 'bun'],
   },
   include: ['src/**/*', 'bin/**/*.ts'],
-  references: [{ path: '../otel-contract' }, { path: '../utils' }],
+  references: [{ path: '../utils' }],
 } satisfies TSConfigArgs)

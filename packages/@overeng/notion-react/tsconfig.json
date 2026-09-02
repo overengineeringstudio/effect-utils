@@ -60,9 +60,6 @@
       "path": "../notion-md"
     },
     {
-      "path": "../otel-contract"
-    },
-    {
       "path": "../utils"
     }
   ]

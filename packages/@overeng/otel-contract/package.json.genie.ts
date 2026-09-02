@@ -31,10 +31,16 @@ export default packageJson(
     name: '@overeng/otel-contract',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry('./src/mod.ts', { environment: 'isomorphic-es2024' }),
+      '.': exportEntry(
+        { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
+        { environment: 'isomorphic-es2024' },
+      ),
       // Design-time projector (Layer 2 authoring + AST → registry fragment). Imported ONLY by
       // `.genie.ts` files; never by runtime product code (verified out of the `.` bundle).
-      './registry': exportEntry('./src/registry.ts', { environment: 'isomorphic-es2024' }),
+      './registry': exportEntry(
+        { types: './dist/src/registry.d.ts', default: './src/registry.ts' },
+        { environment: 'isomorphic-es2024' },
+      ),
     },
     publishConfig: {
       access: 'public',

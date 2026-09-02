@@ -47,12 +47,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*"],
-  "references": [
-    {
-      "path": "../effect-distributed-lock"
-    },
-    {
-      "path": "../otel-contract"
-    }
-  ]
+  "references": []
 }

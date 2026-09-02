@@ -12,5 +12,5 @@ export default tsconfigJson({
     ...nodeTypes,
   },
   include: ['src/**/*'],
-  references: [{ path: '../effect-distributed-lock' }, { path: '../otel-contract' }],
+  references: [],
 } satisfies TSConfigArgs)

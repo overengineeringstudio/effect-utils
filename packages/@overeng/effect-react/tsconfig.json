@@ -50,9 +50,6 @@
   "include": ["src/**/*", "test/**/*"],
   "references": [
     {
-      "path": "../otel-contract"
-    },
-    {
       "path": "../utils"
     }
   ]
