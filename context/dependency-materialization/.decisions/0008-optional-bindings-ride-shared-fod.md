@@ -25,10 +25,10 @@ inclusion a per-install-root opt-in on the existing prepared-deps artifact.
 
 ## Options
 
-| Option                                                    | Tradeoff                                                                                                                                              | Outcome  |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| Per-install-root opt-in on the existing prepared-deps FOD | Keeps one dependency boundary and one hash class; requires an atomic opt-in plus hash refresh per root                                                | Accepted |
-| Global-on for every consumer                              | Bloats every consumer's artifact with bindings it never loads and moves every hash                                                                    | Rejected |
+| Option                                                    | Tradeoff                                                                                                                                                                                 | Outcome  |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Per-install-root opt-in on the existing prepared-deps FOD | Keeps one dependency boundary and one hash class; requires an atomic opt-in plus hash refresh per root                                                                                   | Accepted |
+| Global-on for every consumer                              | Bloats every consumer's artifact with bindings it never loads and moves every hash                                                                                                       | Rejected |
 | Separate binding-only FOD beside the prepared-deps FOD    | A rolldown/oxc/lightningcss version bump is a lockfile-driven change that _should_ move the prepared-deps hash; a parallel artifact adds a second boundary and hash class for no benefit | Rejected |
 
 ## Decision

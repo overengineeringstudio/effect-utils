@@ -26,11 +26,11 @@ closure.
 
 ## Options
 
-| Option                                                       | Tradeoff                                                                                             | Outcome                     |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | --------------------------- |
-| Derive the required set from the resolved lockfile closure   | Safe-direction over-approximation; reuses the existing native dependency policy as the one registry  | Accepted                    |
-| Hand-maintained per-consumer `requiredNativeFamilies` list   | Drifts silently; a list that forgets one family passes review and fails the next build that loads it | Rejected                    |
-| Derived set plus an expected-set tripwire pin                 | Catches an unreviewed family added by a dependency bump; auto-derive stays authoritative             | Admissible, off by default  |
+| Option                                                     | Tradeoff                                                                                             | Outcome                    |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------- |
+| Derive the required set from the resolved lockfile closure | Safe-direction over-approximation; reuses the existing native dependency policy as the one registry  | Accepted                   |
+| Hand-maintained per-consumer `requiredNativeFamilies` list | Drifts silently; a list that forgets one family passes review and fails the next build that loads it | Rejected                   |
+| Derived set plus an expected-set tripwire pin              | Catches an unreviewed family added by a dependency bump; auto-derive stays authoritative             | Admissible, off by default |
 
 ## Decision
 

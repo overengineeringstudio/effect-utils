@@ -23,10 +23,10 @@ boundary uses one convergent transition rather than a lenient report-only phase
 
 ## Options
 
-| Option                                                     | Tradeoff                                                                                                   | Outcome  |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------- |
-| Enforcement bound to the per-root optional-binding opt-in  | Hard from the first build for opt-in roots; non-opt-in roots are out of scope, so the landing stays inert  | Accepted |
-| Global report-only-then-strict rollout phase               | Runs a lenient completeness policy beside a strict one for the same boundary, which `0004` forbids         | Rejected |
+| Option                                                    | Tradeoff                                                                                                  | Outcome  |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------- |
+| Enforcement bound to the per-root optional-binding opt-in | Hard from the first build for opt-in roots; non-opt-in roots are out of scope, so the landing stays inert | Accepted |
+| Global report-only-then-strict rollout phase              | Runs a lenient completeness policy beside a strict one for the same boundary, which `0004` forbids        | Rejected |
 
 ## Decision
 
