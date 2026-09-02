@@ -202,9 +202,18 @@ assert_contains "overeng(no-raw-nondeterminism)" "$out_first" "config-flag-first
 assert_contains "overeng(no-raw-nondeterminism)" "$out_last" "config-flag-last run reports diagnostics"
 
 echo ""
-echo "Test 4: a leaked temp config would break the repo tree; none is left behind"
-leaked="$(find . -maxdepth 1 -name '.oxlint-with-plugins.*' -print)"
-assert_equals "" "$leaked" "injected temp config is cleaned up on exit"
+# The injected config is a PERSISTENT, git-ignored root cache, not a temp file:
+# `.gitignore` carries `.oxlint-with-plugins.*` specifically for it, and the
+# wrapper keeps the complete file on purpose because deleting it on EXIT raced
+# a hash crawler mid-read. So the contract is not "nothing is left behind" —
+# it is "what is left behind has the one deterministic name the gitignore
+# covers", and the randomly-suffixed STAGED file never lands in the tree.
+echo "Test 4: the published cache is deterministic and gitignore-covered"
+published="$(find . -maxdepth 1 -name '.oxlint-with-plugins.*' -print | sort)"
+assert_equals "./.oxlint-with-plugins.json" "$published" \
+  "exactly the one deterministic cache name is published"
+staged_leak="$(find . -maxdepth 1 -name 'oxlint-with-plugins.*' -print)"
+assert_equals "" "$staged_leak" "no randomly-suffixed staged config leaks into the tree"
 
 echo ""
 echo "Test 5: OVERENG_OXC_CONFIG_PLUGIN lints live plugin source (bug 3)"

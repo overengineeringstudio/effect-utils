@@ -1,8 +1,21 @@
-# Wrapper around oxlint-npm that auto-injects the @overeng/oxc-config JS plugin.
+# Wrapper around oxlint-npm that points the @overeng/oxc-config JS plugin entry at
+# a resolvable implementation.
 #
 # When the project's .oxlintrc.json (or an explicit -c config) contains overeng/*
-# rules, this wrapper transparently injects (or replaces) the plugin path
-# via a temporary config copy. Projects without overeng rules get plain pass-through.
+# rules, this wrapper rewrites that config's `jsPlugins` entry for our plugin to a
+# concrete path, via an injected config copy. Projects without overeng rules get
+# plain pass-through.
+#
+# The rewrite SUBSTITUTES our entry and leaves every other `jsPlugins` entry
+# alone, so third-party JS plugins (e.g. `@stylexjs/eslint-plugin`) declared next
+# to ours still resolve.
+#
+# Plugin source selection:
+#   default                        the Nix-built plugin snapshot (hermetic)
+#   OVERENG_OXC_CONFIG_PLUGIN=<p>  use <p> instead — point it at
+#                                  packages/@overeng/oxc-config/src/mod.ts to lint
+#                                  against live plugin source (rule development;
+#                                  no Nix rebuild between edits)
 #
 # Usage:
 #   oxlintWithPlugins = import ./oxlint-with-plugins.nix { inherit pkgs; oxlintNpm = ...; };
@@ -19,7 +32,12 @@ pkgs.writeShellApplication {
     pkgs.flock
   ];
   text = ''
-    pluginPath="${oxlintNpm.pluginPath}"
+    # Rule development escape hatch: the default plugin is a Nix build-time
+    # snapshot, so edits to packages/@overeng/oxc-config/src/*.ts are invisible and
+    # a newly added rule reports "not found in plugin 'overeng'". Overriding this
+    # with the plugin's TypeScript entry point makes the wrapper lint against live
+    # source (the host runtime is Bun, which imports .ts directly).
+    pluginPath="''${OVERENG_OXC_CONFIG_PLUGIN:-${oxlintNpm.pluginPath}}"
 
     # Find the config file: explicit -c/--config arg, or default .oxlintrc.json
     config_file=""
@@ -45,7 +63,7 @@ pkgs.writeShellApplication {
       # path passes explicit deep file paths). So we write the injected copy into
       # the SAME directory as the source config (repo root for the default
       # .oxlintrc.json), keeping it an ancestor of the lint targets so plugin rules
-      # apply. Cleaned up on EXIT via trap.
+      # apply. The published copy DELIBERATELY outlives the process; see below.
       config_dir=$(dirname "$config_file")
 
       # Publish a persistent, git-ignored root cache atomically, and serialize
@@ -93,7 +111,12 @@ pkgs.writeShellApplication {
         case "''${args[$i]}" in
           -c|--config)
             new_args+=("''${args[$i]}" "$tmpconfig")
-            ((i++))
+            # NOTE: `i=$((i+1))`, never `((i++))`. Post-increment evaluates to the
+            # OLD value of i, so `((i++))` exits 1 when i is 0 — and under
+            # `set -o errexit` that aborted the wrapper with no output and exit 1,
+            # indistinguishable from a lint failure. Reproduced by passing
+            # `--config` as the first argument.
+            i=$((i + 1))
             replaced=true
             ;;
           *)
