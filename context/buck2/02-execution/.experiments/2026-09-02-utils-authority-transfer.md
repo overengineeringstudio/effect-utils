@@ -22,6 +22,7 @@ The utils `typecheck` and `dist` targets were built together. A deliberate `numb
 - **Hostile environment PASS:** with an empty environment, fresh writable HOME, and minimal PATH, 271/271 commands were cache hits, zero commands executed locally, and the build completed in 8.1s.
 - **Buck target gate PASS:** `CI=1 devenv tasks run buck2:check --no-tui` completed successfully in 1m40s with all authoritative typecheck targets.
 - **Integrated bridge PASS:** `CI=1 devenv tasks run check:quick --no-tui` completed successfully in 1m12s; its dependency graph materialized all authoritative declarations before the surviving root TypeScript check.
+- **Full repository gate PASS:** the final `CI=1 devenv tasks run check:all --no-tui` completed successfully in 5m39s.
 - **Generated and Nix authority PASS:** Genie regenerated the authority surfaces and Evergreen refreshed the six affected root-workspace pnpm fixed-output hashes.
 
 ### Deletion ledger — `@overeng/utils`
