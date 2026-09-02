@@ -70,12 +70,14 @@ export const authoritativeBuck2TypeScriptAdmissions = Object.values(
 )
 
 /** Dist overlays derived from the same package-local authority declarations. */
-export const buck2TypeScriptDistOverlays = authoritativeBuck2TypeScriptAdmissions.map(
-  ({ distTarget, packagePath }) => ({
+export const buck2TypeScriptDistOverlays = authoritativeBuck2TypeScriptAdmissions
+  .map(({ distTarget, packagePath }) => ({
     target: distTarget,
     destination: `${packagePath}/dist`,
-  }),
-)
+  }))
+  .toSorted((left, right) =>
+    Buffer.from(left.destination).compare(Buffer.from(right.destination)),
+  )
 
 /** Byte-sorted package paths whose editor dependency surface is currently admitted. */
 export const editorViewConsumerPackagePaths = Object.values(buck2TypeScriptAdmissions)

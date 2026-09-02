@@ -9,6 +9,7 @@ export default tsconfigJson({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
+    noEmit: true,
     lib: [...domLib],
   },
   include: ['src/**/*'],

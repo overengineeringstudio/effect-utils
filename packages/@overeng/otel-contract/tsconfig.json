@@ -51,9 +51,6 @@
   "references": [
     {
       "path": "../content-address"
-    },
-    {
-      "path": "../utils-dev"
     }
   ]
 }

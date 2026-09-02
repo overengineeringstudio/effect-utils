@@ -116,6 +116,14 @@ describe('declared-closure package projection', () => {
 
     expect(output).toContain('    declaration_entrypoint = "src/tokens.stylex.d.ts",')
   })
+
+  it('projects only package-local handwritten declarations into emit inputs', () => {
+    expect(outputsByAdmission.stylexPreset).toContain(
+      '        "src/vite-types.d.ts": "src/vite-types.d.ts",',
+    )
+    expect(outputsByAdmission.utils).toContain('    declaration_sources = {')
+    expect(outputsByAdmission.utils).not.toContain('.d.ts":')
+  })
 })
 
 describe('same-cell label projection', () => {

@@ -13,5 +13,5 @@ export default tsconfigJson({
     types: ['node', 'bun'],
   },
   include: ['src/**/*'],
-  references: [{ path: '../utils-dev' }],
+  references: [],
 } satisfies TSConfigArgs)

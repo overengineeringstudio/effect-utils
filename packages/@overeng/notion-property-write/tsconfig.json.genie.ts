@@ -12,5 +12,5 @@ export default tsconfigJson({
     ...nodeTypes,
   },
   include: ['src/**/*'],
-  references: [{ path: '../notion-effect-schema' }, { path: '../utils-dev' }],
+  references: [{ path: '../notion-effect-schema' }],
 } satisfies TSConfigArgs)

@@ -47,9 +47,5 @@
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "references": [
-    {
-      "path": "../utils-dev"
-    }
-  ]
+  "references": []
 }

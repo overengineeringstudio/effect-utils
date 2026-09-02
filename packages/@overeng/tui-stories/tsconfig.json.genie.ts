@@ -14,5 +14,5 @@ export default tsconfigJson({
     ...reactJsx,
   },
   include: ['src/**/*', 'test/**/*', 'bin/**/*.ts', 'bin/**/*.tsx'],
-  references: [{ path: '../megarepo' }, { path: '../utils' }, { path: '../utils-dev' }],
+  references: [{ path: '../megarepo' }, { path: '../utils' }],
 } satisfies TSConfigArgs)

@@ -131,6 +131,7 @@ export const buck2TypeScriptPackageProjection = ({
     throw new Error(`Unsafe package project file: ${projectFile}`)
   }
   const packageSources = discoverPackageSources({ packagePath, sourceRoots })
+  const declarationSources = packageSources.filter((source) => source.endsWith('.d.ts'))
   const buckPackagePaths = new Set(
     [packagePath, ...workspaceSiblings.map((sibling) => sibling.packagePath)].filter((candidate) =>
       existsSync(path.join(process.cwd(), candidate, 'BUCK.genie.ts')),
@@ -216,6 +217,7 @@ export const buck2TypeScriptPackageProjection = ({
     packageName,
     packagePath,
     packageSources,
+    declarationSources,
     packageTreeRuntime: packageTreeRuntime.label,
     packageTreeRuntimeEntry: runtimeEntry,
     projectFile,
@@ -309,6 +311,10 @@ export const buck2TypeScriptPackageProjection = ({
       'tsgo_emit(',
       '    name = "dist",',
       '    package_tree = ":package_tree",',
+      ...renderMap({
+        name: 'declaration_sources',
+        entries: declarationSources.map((source) => [source, source]),
+      }),
       ...(projectFile === 'tsconfig.json' ? [] : [`    project = ${starlarkString(projectFile)},`]),
       ...(authority === undefined
         ? []

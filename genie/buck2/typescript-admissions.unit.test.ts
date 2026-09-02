@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
 import { describe, expect, it } from 'vitest'
@@ -32,10 +33,14 @@ describe('Buck2 TypeScript authority derivation', () => {
 
   it('derives manifest overlays and root TypeScript authority from the same entries', () => {
     expect(buck2TypeScriptDistOverlays).toEqual(
-      authoritativeBuck2TypeScriptAdmissions.map(({ distTarget, packagePath }) => ({
-        destination: `${packagePath}/dist`,
-        target: distTarget,
-      })),
+      authoritativeBuck2TypeScriptAdmissions
+        .map(({ distTarget, packagePath }) => ({
+          destination: `${packagePath}/dist`,
+          target: distTarget,
+        }))
+        .toSorted((left, right) =>
+          Buffer.from(left.destination).compare(Buffer.from(right.destination)),
+        ),
     )
 
     const projectedManifest = decodeBuckMemberManifestJson(
@@ -48,16 +53,18 @@ describe('Buck2 TypeScript authority derivation', () => {
         buck2Authority === undefined ? [] : [{ buck2Authority, path }],
       ),
     ).toEqual(
-      authoritativeBuck2TypeScriptAdmissions.map(
-        ({ distTarget, packagePath, typecheckTarget }) => ({
+      authoritativeBuck2TypeScriptAdmissions
+        .filter(({ packagePath }) =>
+          rootWorkspaceTsconfigProjects.some(({ path }) => path === packagePath),
+        )
+        .map(({ distTarget, packagePath, typecheckTarget }) => ({
           buck2Authority: {
             _tag: 'Buck2TypeScriptAuthority',
             emitTarget: distTarget,
             typecheckTarget,
           },
           path: packagePath,
-        }),
-      ),
+        })),
     )
   })
 })

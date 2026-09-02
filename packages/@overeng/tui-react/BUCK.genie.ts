@@ -21,7 +21,7 @@ export const buck2TypeScriptAdmission = {
     {
       packageName: '@overeng/utils-dev',
       packagePath: 'packages/@overeng/utils-dev',
-      sourceRoots: ['src'],
+      distTarget: '//packages/@overeng/utils-dev:dist',
     },
   ],
   editorViewConsumer: false,

@@ -16,9 +16,5 @@ export default tsconfigJson({
     checkJs: true,
   },
   include: ['src/**/*'],
-  references: [
-    { path: '../effect-distributed-lock' },
-    { path: '../otel-contract' },
-    { path: '../utils-dev' },
-  ],
+  references: [{ path: '../effect-distributed-lock' }, { path: '../otel-contract' }],
 } satisfies TSConfigArgs)

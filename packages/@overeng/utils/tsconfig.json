@@ -54,9 +54,6 @@
     },
     {
       "path": "../otel-contract"
-    },
-    {
-      "path": "../utils-dev"
     }
   ]
 }

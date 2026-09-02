@@ -1,7 +1,9 @@
+/* oxlint-disable overeng/exports-first -- Focused tests import narrow seams beside the private helpers they exercise. */
 import { createHash, type Hash } from 'node:crypto'
 import { createReadStream, type Stats } from 'node:fs'
 import {
   chmod,
+  copyFile,
   cp,
   lstat,
   mkdir,
@@ -14,6 +16,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const signalNumbers = {
   SIGHUP: 1,
@@ -32,6 +35,7 @@ type TypecheckOptions = {
 
 type EmitOptions = {
   readonly declarationEntrypoint: string
+  readonly declarationSources: readonly string[]
   readonly outDir: string
   readonly output: string
   readonly packageTree: string
@@ -105,8 +109,24 @@ const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions => {
   }
 }
 
-const parseEmitOptions = (args: readonly string[]): EmitOptions => {
-  requireExactArgumentCount({ args, command: 'emit', count: 6 })
+/** Parses the fail-closed emit command contract for focused rule/runner tests. */
+export const parseEmitOptions = (args: readonly string[]): EmitOptions => {
+  if (args.length < 6 || (args.length - 6) % 2 !== 0) {
+    fail(
+      `emit expected 6 arguments followed by declaration flag/path pairs, received ${args.length}`,
+    )
+  }
+  const declarationSources: string[] = []
+  for (let index = 6; index < args.length; index += 2) {
+    const flag = requireArgument({ args, index, name: 'declaration flag' })
+    if (flag !== '--copy-declaration') fail(`unexpected emit argument: ${flag}`)
+    declarationSources.push(
+      requireNormalizedRelativePath({
+        name: 'declaration source',
+        value: requireArgument({ args, index: index + 1, name: 'declaration source' }),
+      }),
+    )
+  }
   return {
     tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
     packageTree: requireArgument({ args, index: 1, name: 'package tree' }),
@@ -123,6 +143,7 @@ const parseEmitOptions = (args: readonly string[]): EmitOptions => {
       value: requireArgument({ args, index: 4, name: 'declaration entrypoint' }),
     }),
     output: requireArgument({ args, index: 5, name: 'output' }),
+    declarationSources,
   }
 }
 
@@ -267,6 +288,39 @@ const prepareStagedOutput = async (options: {
   await symlink(resolve(output), stagedOutput)
 }
 
+/** Copies only the explicitly action-keyed declaration sources into an emitted dist. */
+export const copyDeclarationSources = async (options: {
+  readonly declarationSources: readonly string[]
+  readonly output: string
+  readonly packageRoot: string
+}): Promise<void> => {
+  await forEachSequential({
+    iterator: options.declarationSources.values(),
+    visit: async (candidate) => {
+      const relativePath = requireNormalizedRelativePath({
+        name: 'declaration source',
+        value: candidate,
+      })
+      const source = join(options.packageRoot, relativePath)
+      let metadata: Stats
+      try {
+        metadata = await lstat(source)
+      } catch (error) {
+        if (isErrnoException(error) === true && error.code === 'ENOENT') {
+          fail(`declaration source does not exist: ${relativePath}`)
+        }
+        throw error
+      }
+      if (metadata.isFile() === false) {
+        fail(`declaration source is not a regular file: ${relativePath}`)
+      }
+      const destination = join(options.output, relativePath)
+      await mkdir(dirname(destination), { recursive: true })
+      await copyFile(source, destination)
+    },
+  })
+}
+
 const validateOutput = async (options: {
   readonly declarationEntrypoint: string
   readonly output: string
@@ -399,8 +453,14 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
       ],
       cwd: packageRoot,
     })
-    if (status === 0)
+    if (status === 0) {
+      await copyDeclarationSources({
+        declarationSources: options.declarationSources,
+        output,
+        packageRoot,
+      })
       await validateOutput({ declarationEntrypoint: options.declarationEntrypoint, output })
+    }
   } catch (error) {
     primaryError = error
   }
@@ -442,24 +502,27 @@ const removeSignalForwarding = (): void => {
   process.removeListener('SIGTERM', signalHandlers.SIGTERM)
 }
 
-const main = async (): Promise<number> => {
-  const [command, ...args] = process.argv.slice(2)
-  if (command === 'typecheck') return runTypecheck(parseTypecheckOptions(args))
-  if (command === 'emit') return runEmit(parseEmitOptions(args))
+/** Runs the hermetic TypeScript action selected by the Buck rule command. */
+export const runTypeScriptCli = async (args: readonly string[]): Promise<number> => {
+  const [command, ...commandArgs] = args
+  if (command === 'typecheck') return runTypecheck(parseTypecheckOptions(commandArgs))
+  if (command === 'emit') return runEmit(parseEmitOptions(commandArgs))
   return fail(`expected command "typecheck" or "emit", received ${command ?? '<missing>'}`)
 }
 
-installSignalForwarding()
-let status = 1
-try {
-  status = await main()
-} catch (error) {
-  console.error(formatError(error))
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  installSignalForwarding()
+  let status = 1
+  try {
+    status = await runTypeScriptCli(process.argv.slice(2))
+  } catch (error) {
+    console.error(formatError(error))
+  }
+  removeSignalForwarding()
+  if (forwardedSignal !== undefined) {
+    const signal = forwardedSignal
+    process.kill(process.pid, signal)
+    process.exit(128 + signalNumbers[signal])
+  }
+  process.exit(status)
 }
-removeSignalForwarding()
-if (forwardedSignal !== undefined) {
-  const signal = forwardedSignal
-  process.kill(process.pid, signal)
-  process.exit(128 + signalNumbers[signal])
-}
-process.exit(status)

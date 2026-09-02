@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-distributed-lock/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:11c89d69f0c6c79bdac0f806b353cc6f41d1ff7d3df652f232bb3bae9f9fe997
+# Semantic fingerprint: sha256:4009e76f6c1f767d7eac57d7854eced4c073e0b3b95ba8a9acdbae800c840149
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/src/**/*.cts, packages/@overeng/effect-distributed-lock/src/**/*.mts, packages/@overeng/effect-distributed-lock/src/**/*.ts, packages/@overeng/effect-distributed-lock/src/**/*.tsx, packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -64,5 +64,7 @@ tsgo_typecheck(
 tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
+    declaration_sources = {
+    },
     visibility = ["PUBLIC"],
 )

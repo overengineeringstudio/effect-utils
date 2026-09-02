@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/content-address/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b113a5cc4be457e0424af7ec4b1ff7a1a161f58435b55bb60055b4bfeb43c6f5
+# Semantic fingerprint: sha256:652236f7fc3083f79f3d8bd1d103165fa0749da594ae034f16e61e9fe59ed3c9
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/content-address/src/**/*.cts, packages/@overeng/content-address/src/**/*.mts, packages/@overeng/content-address/src/**/*.ts, packages/@overeng/content-address/src/**/*.tsx, packages/@overeng/content-address/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -58,5 +58,7 @@ tsgo_typecheck(
 tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
+    declaration_sources = {
+    },
     visibility = ["PUBLIC"],
 )
