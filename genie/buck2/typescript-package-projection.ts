@@ -10,9 +10,10 @@ import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 import { packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
 const regenerationCommand = 'devenv tasks run genie:run' as const
-const sourceExtensions = ['.cts', '.mts', '.ts', '.tsx'] as const
+const sourceExtensions = ['.cts', '.js', '.mts', '.ts', '.tsx'] as const
 const sourceExtensionSet: Readonly<Record<string, true>> = {
   '.cts': true,
+  '.js': true,
   '.mts': true,
   '.ts': true,
   '.tsx': true,

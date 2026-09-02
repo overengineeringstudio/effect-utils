@@ -35,7 +35,6 @@ export default packageJson(
         { environment: 'browser' },
       ),
       './preflight.css': exportEntry('./src/preflight.css', { environment: 'browser' }),
-
     },
     publishConfig: {
       access: 'public',

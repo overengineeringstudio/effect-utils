@@ -107,7 +107,7 @@ describe('declared-closure package projection', () => {
 
   it('projects package-specific declaration entrypoints for authoritative emits', () => {
     const output = buck2TypeScriptPackageProjection({
-      ...buck2TypeScriptAdmissions.stylexPreset,
+      ...buck2TypeScriptAdmissions.stylexTokens,
       authority: {
         declarationEntrypoint: 'src/tokens.stylex.d.ts',
         projectFile: 'tsconfig.json',
@@ -118,11 +118,18 @@ describe('declared-closure package projection', () => {
   })
 
   it('projects only package-local handwritten declarations into emit inputs', () => {
-    expect(outputsByAdmission.stylexPreset).toContain(
-      '        "src/vite-types.d.ts": "src/vite-types.d.ts",',
+    expect(outputsByAdmission.tuiReact).toContain(
+      '        "src/storybook/asset-modules.d.ts": "src/storybook/asset-modules.d.ts",',
     )
-    expect(outputsByAdmission.utils).toContain('    declaration_sources = {')
-    expect(outputsByAdmission.utils).not.toContain('.d.ts":')
+    expect(outputsByAdmission.utils).toContain(
+      '        "src/node/storybook/gate/virtual-modules.d.ts": "src/node/storybook/gate/virtual-modules.d.ts",',
+    )
+    expect(outputsByAdmission.utils).toContain(
+      '        "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",',
+    )
+    expect(outputsByAdmission.utils).toContain(
+      '        "src/node/stylex/mod.js": "src/node/stylex/mod.js",',
+    )
   })
 })
 
