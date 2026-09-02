@@ -10,6 +10,24 @@ staying consistent with the strict-scan principle that a prepared-deps purity
 boundary uses one convergent transition rather than a lenient report-only phase
 (`0004`).
 
+## Evidence and Argument
+
+- For an opt-in root, the families _are_ required data, so report-only would be
+  the exact ambiguity `0004` rejects. Hard-from-day-one is the `0004`-consistent
+  choice.
+- For a non-opt-in root, the families are genuinely not part of the artifact, so
+  there is nothing to enforce — this is scope, not leniency.
+- This keeps the upstream landing behaviorally inert for every existing
+  consumer: nothing opts in on the merge, so nothing changes until a consumer
+  deliberately turns on inclusion.
+
+## Options
+
+| Option                                                     | Tradeoff                                                                                                   | Outcome  |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------- |
+| Enforcement bound to the per-root optional-binding opt-in  | Hard from the first build for opt-in roots; non-opt-in roots are out of scope, so the landing stays inert  | Accepted |
+| Global report-only-then-strict rollout phase               | Runs a lenient completeness policy beside a strict one for the same boundary, which `0004` forbids         | Rejected |
+
 ## Decision
 
 Bind completeness enforcement to the root's optional-binding opt-in
@@ -22,17 +40,6 @@ Bind completeness enforcement to the root's optional-binding opt-in
 
 There is never a lenient completeness policy running beside a strict one for the
 same boundary, which is what `0004` forbids.
-
-## Rationale
-
-- For an opt-in root, the families _are_ required data, so report-only would be
-  the exact ambiguity `0004` rejects. Hard-from-day-one is the `0004`-consistent
-  choice.
-- For a non-opt-in root, the families are genuinely not part of the artifact, so
-  there is nothing to enforce — this is scope, not leniency.
-- This keeps the upstream landing behaviorally inert for every existing
-  consumer: nothing opts in on the merge, so nothing changes until a consumer
-  deliberately turns on inclusion.
 
 ## Consequences
 

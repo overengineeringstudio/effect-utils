@@ -149,8 +149,12 @@ Required mutation controls are:
 | Ambient package-manager state removed | Admitted consumer result remains equal                    |
 | Exact restoration                     | Original closure and artifact identity return             |
 
-Execution evidence and no-verdict semantics follow
-[`context/buck2/05-evidence-verification`](../../buck2/05-evidence-verification/).
+Execution evidence and no-verdict semantics follow the Buck VRS evidence
+contract — `BUCK-R12`/`BUCK-R13` in
+[`context/buck2/requirements.md`](../../buck2/requirements.md) and
+[decision 0016](../../buck2/.decisions/0016-evidence-rigor-at-transfer.md).
+The former `context/buck2/05-evidence-verification` subsystem collapsed into
+those requirements and that record.
 
 ## Historical Records
 

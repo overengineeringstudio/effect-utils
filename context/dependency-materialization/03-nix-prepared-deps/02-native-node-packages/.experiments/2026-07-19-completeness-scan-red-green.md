@@ -2,11 +2,12 @@
 
 Date: 2026-07-19 · System: x86_64-linux (portable)
 
-## Hypothesis
+## Question
 
-The completeness assertion is non-vacuous: it goes RED on a bindingless prepared
-tree naming the missing families/triples, and GREEN on a complete tree — and its
-detector actually reaches the native families in a real workspace lockfile.
+Is the completeness assertion non-vacuous — does it go RED on a bindingless
+prepared tree naming the missing families/triples and GREEN on a complete
+tree — and does its detector actually reach the native families in a real
+workspace lockfile?
 
 ## Method
 
@@ -16,7 +17,7 @@ detector actually reaches the native families in a real workspace lockfile.
 - Discrimination probe: drop exactly one binding
   (`@rolldown/binding-linux-arm64-gnu`) and confirm the failure names it.
 
-## Results
+## Result
 
 - **Parser defect found and fixed.** The workspace `pnpm-lock.yaml` is a
   multi-document file (pnpm prepends a `---`-separated bootstrap document of
@@ -36,10 +37,15 @@ detector actually reaches the native families in a real workspace lockfile.
 
 ## Conclusion
 
-The assertion is non-vacuous and discriminating (`DMP.NIX.NATIVE-R08`,
-`DMP.NIX.NATIVE-R10`), and auto-derive reaches every family in a real closure
-(`DMP.NIX.NATIVE-R09`, `0007`). Detecting a real multi-family gap that a
-hand-written list would have under-counted is direct evidence for auto-derive.
+The assertion is non-vacuous and discriminating, and auto-derive reaches every
+family in a real closure. Detecting a real multi-family gap that a hand-written
+list would have under-counted is direct evidence for auto-derive.
+
+## VRS Impact
+
+Supports `DMP.NIX.NATIVE-R08` and `DMP.NIX.NATIVE-R10` (non-vacuous,
+discriminating assertion) and `DMP.NIX.NATIVE-R09` with decision `0007`
+(auto-derive reaches every family in a real closure).
 
 ## Residual
 
