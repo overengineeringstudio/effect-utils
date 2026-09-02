@@ -24,9 +24,9 @@ without commitment.
 
 ## Options
 
-| Decision   | Selected                        | Alternatives rejected                                                                                     |
-| ---------- | ------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Test lane  | Admit unit tests, spike-gated   | Permanent-legacy (caps cache value; the "unit tests are unbounded" claim is itself ungrounded); defer-with-trigger (boundary stays undefended) |
+| Decision  | Selected                      | Alternatives rejected                                                                                                                          |
+| --------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Test lane | Admit unit tests, spike-gated | Permanent-legacy (caps cache value; the "unit tests are unbounded" claim is itself ungrounded); defer-with-trigger (boundary stays undefended) |
 
 ## Decision
 

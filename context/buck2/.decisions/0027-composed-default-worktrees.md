@@ -25,10 +25,10 @@ after a soak.
 
 ## Options
 
-| Decision        | Selected                                       | Alternatives rejected                                                          |
-| --------------- | ---------------------------------------------- | ------------------------------------------------------------------------------ |
+| Decision        | Selected                                        | Alternatives rejected                                                                                              |
+| --------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Default shape   | Composed-by-default after the #1056 stack lands | Agents-first (two workflow shapes to support); gates-only until Phase 4 (no local beneficiary, late bug surfacing) |
-| Normative depth | Requirement now, riding #1056 sign-off          | Decision + contract rev 4 only, requirement after soak                          |
+| Normative depth | Requirement now, riding #1056 sign-off          | Decision + contract rev 4 only, requirement after soak                                                             |
 
 ## Decision
 
