@@ -8,7 +8,7 @@ import * as Cli from 'effect/unstable/cli'
 
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 
-import { MR_VERSION } from '../lib/version.ts'
+import { MR_VERSION } from '../core/version.ts'
 // Import extracted commands
 import {
   addCommand,

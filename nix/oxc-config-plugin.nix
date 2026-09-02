@@ -19,6 +19,8 @@
   pkgs,
   bun,
   src,
+  depsBuilds,
+  hashSourcePath,
 }:
 
 let
@@ -29,7 +31,8 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-dN3vhTO6KVj2NVp6gWz8KZd0oby1VHrUiKu21m//tb0=";
+  depsBuild = depsBuilds.".";
+  pnpmDepsHash = depsBuild.hash;
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -190,9 +193,89 @@ pkgs.stdenv.mkDerivation {
   pname = "oxc-config-plugin";
   version = "0.1.0";
   passthru = {
-    # Export the plugin's prepared deps boundary directly so hash tooling does
-    # not have to rebuild the full bundling derivation just to refresh one FOD.
+    # Export the prepared dependency boundary and its source-owned hash identity
+    # in the same shape as mkPnpmCli consumers.
     inherit pnpmDeps;
+    depsBuildsByInstallRoot.root = pnpmDeps;
+    depsBuildEntries = [
+      {
+        attrName = "root";
+        dir = ".";
+        hash = pnpmDepsHash;
+        lockfilePath = "pnpm-lock.yaml";
+        memberDirs = [ packageDir ];
+        profileKey = "oxc-config-root";
+      }
+    ];
+    fodHashRepairTargets = [
+      {
+        schemaVersion = 1;
+        kind = "dependency-fod-hash-repair-target";
+        producer = "effect-utils.oxc-config-plugin";
+        subject = {
+          packageName = "@overeng/oxc-config";
+          inherit packageDir;
+        };
+        attrName = "root";
+        installDir = ".";
+        lockfilePath = "pnpm-lock.yaml";
+        memberDirs = [ packageDir ];
+        profileKey = "oxc-config-root";
+        declaredHash = pnpmDepsHash;
+        depsDrvPath = pnpmDeps.drvPath;
+        hashPath = [
+          "depsBuilds"
+          "."
+          "hash"
+        ];
+      }
+    ];
+    evergreen.fodGraph.v1 =
+      let
+        packageAttr = ".#packages.${pkgs.stdenv.hostPlatform.system}.oxc-config";
+        boundaryAttr = "${packageAttr}.passthru.depsBuildsByInstallRoot.root";
+      in
+      {
+        schema = "evergreen.fodGraph.v1";
+        version = 1;
+        consumer = {
+          attr = packageAttr;
+          consumerAttr = packageAttr;
+          system = pkgs.stdenv.hostPlatform.system;
+          package = "oxc-config";
+          surfacedName = "oxc-config";
+        };
+        capabilityGaps = [ ];
+        boundaries = [
+          {
+            attr = boundaryAttr;
+            variant = "depsBuilds";
+            consumerAttr = packageAttr;
+            system = pkgs.stdenv.hostPlatform.system;
+            package = "oxc-config";
+            surfacedName = "oxc-config";
+            inherit boundaryAttr packageDir hashSourcePath;
+            builderFile = hashSourcePath;
+            hashSet = "depsBuilds";
+            installRoot = ".";
+            installRootAttr = "root";
+            lockfilePath = "pnpm-lock.yaml";
+            memberDirs = [ packageDir ];
+            profileKey = "oxc-config-root";
+            hashKey = ".";
+            equivalenceKey = "oxc-config-root";
+            hash = pnpmDepsHash;
+            hashPath = [
+              "depsBuilds"
+              "."
+              "hash"
+            ];
+            depsBuildDrvPath = pnpmDeps.drvPath;
+            depsBuildDrvPaths = [ pnpmDeps.drvPath ];
+            supportedSystems = [ pkgs.stdenv.hostPlatform.system ];
+          }
+        ];
+      };
   };
 
   nativeBuildInputs = [

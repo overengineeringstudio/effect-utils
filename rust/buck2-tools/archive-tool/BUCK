@@ -1,0 +1,33 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: rust/buck2-tools/archive-tool/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:ae24cc243055d16858f0ce809870f706d15bb514a03d71a5506924b6fd3e50d6
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/BUCK.genie.ts, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/archive-tool/src/**/*.rs, rust/buck2-tools/archive-tool/tests/**/*.rs, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+native.rust_binary(
+    name = "buck2-archive-tool",
+    crate = "buck2_archive_tool",
+    crate_root = "src/main.rs",
+    srcs = [
+        "src/main.rs",
+    ],
+    deps = [
+        "//rust/buck2-tools/core:lib",
+        "//rust/third-party:clap",
+        "//rust/third-party:flate2",
+        "//rust/third-party:tar",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "buck2-archive-tool",
+        "CARGO_PKG_VERSION": "0.0.0",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)

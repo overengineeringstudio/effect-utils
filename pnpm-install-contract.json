@@ -111,6 +111,7 @@
       "context/effect/socket",
       "context/opentui",
       "packages/@overeng/agent-session-ingest",
+      "packages/@overeng/buck2-tools",
       "packages/@overeng/ci-tools",
       "packages/@overeng/content-address",
       "packages/@overeng/effect-ai-claude-cli",

@@ -42,7 +42,7 @@ extract_workflow_report_task_script() {
 
   nix-instantiate --eval --strict --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       pkgsForTest = pkgs // {
         gh = \"$tmpdir/fake-gh-pkg\";
@@ -70,6 +70,16 @@ extract_workflow_report_task_script() {
 
 echo "Running workflow-report task E2E tests..."
 echo ""
+module_source="$(<"$ROOT/nix/devenv-modules/tasks/shared/workflow-report-module.nix")"
+assert_contains \
+  "$module_source" \
+  'repoFlake = builtins.getFlake "git+file://${toString root}";' \
+  "workflow-report module should evaluate its flake from the Git-filtered repository source"
+assert_contains \
+  "$module_source" \
+  'src = repoSource;' \
+  "workflow-report module should build ci-tools from the Git-filtered repository source"
+
 
 tmpdir="$(mktemp -d)"
 cleanup() {

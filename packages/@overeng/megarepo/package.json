@@ -5,12 +5,14 @@
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",
+    "./buck2-manifest": "./src/buck2-manifest.ts",
     "./cli": "./src/cli/mod.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
       ".": "./dist/mod.js",
+      "./buck2-manifest": "./dist/buck2-manifest.js",
       "./cli": "./dist/cli.js"
     }
   },

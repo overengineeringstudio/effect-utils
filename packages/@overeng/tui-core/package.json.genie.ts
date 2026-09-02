@@ -22,7 +22,10 @@ export default packageJson(
     name: '@overeng/tui-core',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      '.': exportEntry(
+        { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
+        { environment: 'node' },
+      ),
     },
     publishConfig: {
       access: 'public',

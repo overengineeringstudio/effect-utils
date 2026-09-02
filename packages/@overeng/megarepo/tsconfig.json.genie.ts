@@ -16,8 +16,6 @@ export default tsconfigJson({
   },
   include: ['src/**/*', 'test/**/*', 'bin/**/*'],
   references: [
-    { path: '../tui-core' },
-    { path: '../tui-react' },
     { path: '../effect-path' },
     { path: '../kdl' },
     { path: '../kdl-effect' },

@@ -113,7 +113,8 @@ let
 
   checkWorkspaceMembersScript = ''
     set -o pipefail
-    [ -d ./repos ] || exit 1
+    workspace_root="$(mr root --output json | ${jq} -er '.root')"
+    [ -d "$workspace_root/repos" ] || exit 1
 
     ${loadCheckSkipMembersScript}
 
@@ -122,7 +123,7 @@ let
       if should_skip_member "$member"; then
         continue
       fi
-      if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+      if [ ! -L "$workspace_root/repos/$member" ] && [ ! -d "$workspace_root/repos/$member" ]; then
         exit 1
       fi
     done
@@ -167,7 +168,7 @@ let
           exit 0
         fi
 
-        mr apply ${bootstrapOnlyArgs}
+        mr apply --worktree-mode commit ${bootstrapOnlyArgs}
       '';
       status = trace.status "mr:bootstrap" "path" ''
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
@@ -202,7 +203,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr apply --lock-sync off "''${MR_SKIP_ARGS[@]}"
+        mr apply --worktree-mode tracking --lock-sync off "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:setup" "binary" mrStatusCheck;
@@ -218,7 +219,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr fetch --apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
+        mr fetch --apply --worktree-mode tracking${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:fetch-apply" "binary" mrStatusCheck;
@@ -248,7 +249,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
+        mr apply --worktree-mode tracking${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:apply" "binary" mrStatusCheck;
@@ -273,8 +274,9 @@ let
           exit 0
         fi
 
-        if [ ! -d ./repos ]; then
-          echo "[devenv] Missing repos/ directory." >&2
+        workspace_root="$(mr root --output json | ${jq} -er '.root')"
+        if [ ! -d "$workspace_root/repos" ]; then
+          echo "[devenv] Missing workspace repos/ directory." >&2
           echo "[devenv] Fix: devenv tasks run mr:setup" >&2
           exit 1
         fi
@@ -288,7 +290,7 @@ let
           if should_skip_member "$member"; then
             continue
           fi
-          if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+          if [ ! -L "$workspace_root/repos/$member" ] && [ ! -d "$workspace_root/repos/$member" ]; then
             missing="$missing $member"
           fi
         done

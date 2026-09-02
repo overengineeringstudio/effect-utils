@@ -9,8 +9,8 @@ import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { MegarepoConfig } from '../lib/config.ts'
-import * as Git from '../lib/git.ts'
+import { MegarepoConfig } from '../core/config.ts'
+import * as Git from '../core/git.ts'
 import {
   LockFile,
   createLockedMember,
@@ -18,9 +18,9 @@ import {
   LOCK_FILE_NAME,
   readLockFile,
   writeLockFile,
-} from '../lib/lock.ts'
-import * as Observability from '../lib/observability.ts'
-import { refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
+} from '../core/lock.ts'
+import * as Observability from '../core/observability.ts'
+import { refTypeToPathSegment, classifyRef } from '../core/ref.ts'
 
 // =============================================================================
 // Types
@@ -83,7 +83,7 @@ const initGitRepo = (path: AbsoluteDirPath) =>
     const existing = yield* fs.readFileString(configPath)
     yield* fs.writeFileString(
       configPath,
-      `${existing}[user]\n\temail = test@example.com\n\tname = Test User\n`,
+      `${existing}[user]\n\temail = test@example.com\n\tname = Test User\n[commit]\n\tgpgsign = false\n`,
     )
   })
 

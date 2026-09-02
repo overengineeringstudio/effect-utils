@@ -1,0 +1,84 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:648719d0c122f82605df4c6bb865e47a6aa009f11993530c4f20a75aff152ba1
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2/products:defs.bzl", "build_product")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
+load("//buck2/rust:defs.bzl", "rust_product_executable")
+native.rust_library(
+    name = "lib",
+    crate = "otel_scrape",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/adapters/deadnix.rs",
+        "src/adapters/mod.rs",
+        "src/adapters/node_cpuprofile.rs",
+        "src/adapters/oxlint.rs",
+        "src/adapters/vitest.rs",
+        "src/content_address.rs",
+        "src/lib.rs",
+        "src/telemetry_registry.gen.rs",
+    ],
+    deps = [
+        "//rust/third-party:getrandom",
+        "//rust/third-party:libc",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "otel-scrape",
+        "CARGO_PKG_VERSION": "0.0.0",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "otel-scrape",
+    crate = "otel_scrape",
+    crate_root = "src/main.rs",
+    srcs = [
+        "src/main.rs",
+    ],
+    deps = [
+        "//rust/third-party:getrandom",
+        "//rust/third-party:libc",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "otel-scrape",
+        "CARGO_PKG_VERSION": "0.0.0",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+rust_product_executable(
+    name = "otel-scrape-product-executable",
+    binary = ":otel-scrape",
+    recipe = "cargo-workspace:otel-scrape@0.0.0",
+    target_platform = host_platform_label(),
+)
+
+build_product(
+    name = "otel-scrape-product",
+    entrypoint = "bin/otel-scrape",
+    executable = ":otel-scrape-product-executable",
+    product_name = "otel-scrape",
+    target_platform = host_platform_label(),
+)

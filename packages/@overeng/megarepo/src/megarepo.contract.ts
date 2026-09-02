@@ -2,7 +2,7 @@
  * SEAM member contract for the `megarepo.*` telemetry namespace (decision 0005) — megarepo's OWN
  * observability, authored via the Layer-2 `@overeng/otel-contract/registry` surface. This is the
  * single home for megarepo's telemetry catalog + signals: the Weaver registry projection AND the
- * runtime encoders (`src/lib/observability.ts`, `src/cli/observability.ts`) both derive from it
+ * runtime encoders (`src/core/observability.ts`, `src/cli/observability.ts`) both derive from it
  * (SC-R13/R14).
  *
  * This is a `*.contract.ts` seam file, so it is exempt from the `otel-contract-in-seam-file` lint

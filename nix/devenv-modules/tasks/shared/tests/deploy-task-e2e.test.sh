@@ -69,7 +69,7 @@ assert_deploy_modules_include_workflow_report_tasks() {
   task_names="$(
     nix-instantiate --eval --strict --json --expr "
       let
-        flake = builtins.getFlake (toString $ROOT);
+        flake = builtins.getFlake \"$NIX_FLAKE_REF\";
         pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
         evaluated = pkgs.lib.evalModules {
           modules = [
@@ -116,7 +116,7 @@ extract_netlify_task_script() {
 
   nix-instantiate --eval --strict --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       evaluated = pkgs.lib.evalModules {
         modules = [
@@ -155,7 +155,7 @@ extract_vercel_static_task_script() {
 
   nix-instantiate --eval --strict --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       pkgsForTest = pkgs // {
         bun = \"$tmpdir/fake-bun-pkg\";
@@ -199,7 +199,7 @@ extract_vercel_build_task_script() {
 
   nix-instantiate --eval --strict --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       pkgsForTest = pkgs // {
         bun = \"$tmpdir/fake-bun-pkg\";

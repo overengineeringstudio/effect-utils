@@ -4,8 +4,120 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI performance gate**: keep `devenv-perf` merge-blocking while giving its
+  pull-request-only paired base/head plan a 90-minute budget and a 288 GB
+  Namespace runner that can retain both Nix closures. Gate-disabled diagnostics
+  no longer run a baseline sample that cannot contribute evidence.
+
+- **Megarepo devenv tasks**: select commit worktrees for lock-based bootstrap
+  and tracking worktrees for shared branch mutation tasks. The source-mode `mr`
+  wrapper now receives the same pinned composition runtime as the packaged CLI.
+  Buck capability projection and TypeScript materialization wait for workspace
+  reconciliation, so forced CI task graphs cannot project stale capabilities or
+  start Buck while `mr` holds the workspace update lock.
+
+- **@overeng/megarepo**: macOS refused cp-a first-publish and exchange renames
+  while the staged and published R6 roots were protected as `0555`, even though
+  their shared parent was writable. The Darwin rename boundary now opens and
+  verifies the transaction-recorded directory inodes, makes only those roots
+  writable for the rename, and restores `0555` through the same file
+  descriptors on success or failure. Physical Darwin behavior is no longer
+  disabled when a test injects Linux policy, and the R6 and overlay fault
+  fixtures perform their synthetic renames with the same protected-root
+  discipline. Recovery re-protects transaction-bound roots before R6
+  inspection, so a crash during the short writable window cannot make a writable
+  mount valid.
+
+- **@overeng/megarepo**: the cp-a mount rename primitives ran with
+  `stdio: 'ignore'`, so a failure reached CI as a bare `GNU mv no-clobber first
+publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
+  carries the command's stderr, the exact argv, the resolved binary — whose Nix
+  store path names the coreutils version — and the mode and owner of every path
+  the rename touches, so `Permission denied` does not hide which permission
+  check failed.
+
+- **@overeng/megarepo tests**: composition refuses non-canonical paths on
+  purpose — R6 identity, owned-worktree acquisition and the private-scratch
+  ownership guard all require the physical path — but eight integration fixtures
+  rooted their trees at a raw temporary directory, which on macOS is under the
+  `/var` -> `/private/var` symlink. Every one of those guards then refused a
+  fixture that real callers would have satisfied: 56 failures across 8 files.
+  The fixtures now root at the physical temporary directory, the way
+  `createStoreFixture` already did, via a shared
+  `test-utils/temp-root.ts`. No guard is weakened; production is unchanged.
+
+- **CI composition scripts**: `cleanup-effect-utils-composition.sh` derived its
+  store, workspace and worktree paths from `MEGAREPO_STORE`/`RUNNER_TEMP`
+  verbatim but compared them against Git, which always answers with resolved
+  paths. On macOS, where the runner temp sits under the `/var` ->
+  `/private/var` symlink, the worktree-identity guards could never match and
+  `set -e` aborted a legitimate cleanup with exit 1. The script now resolves the
+  store root and runner temp once and re-derives from them, so every comparison
+  is same-namespace; no guard is weakened. `bootstrap-cold-proof.sh` had the
+  same asymmetry in a guard that fails on match, where it silently stopped
+  matching rather than failing loudly.
+
+- **buck2 package trees**: the `package_tree` runner was staged into its action
+  as a single file, so the `./real-path.ts` import the containment fix added
+  resolved against a directory that did not contain it and every
+  `:package_tree` action died with `Cannot find module`. `runtime` now points
+  at a `filegroup` that co-locates the runner with its complete relative-import
+  closure, and the rule takes a `runtime_entry` naming the module to execute.
+  A new `genie:buck2:test` task runs the Buck2 genie suite — which nothing ran
+  before, so its guards were inert — and a new guard walks the relative-import
+  closure of every staged runner and fails when it is not declared.
+
+- **buck2 toolchains**: `bun` and `effect-tsgo` were the only two tools bypassing
+  the `.buck2/capabilities` projection, carrying hand-written `/nix/store` paths
+  per platform instead. The `x86_64-linux` tsgo pin had gone stale against the
+  current nixpkgs, so it was never realized on a CI runner and every TypeScript
+  Buck action died with a bare `Error at spawn` (ENOENT) — the shared cause of
+  the red `typecheck` and `buck2` jobs. Both tools are now projected from live
+  Nix realizations like the Rust and support tools, so the per-platform maps are
+  gone and cannot go stale. The three host-platform helpers that had drifted
+  apart (one spelled the macOS key `aarch64-darwin`, the projection and the
+  other two `aarch64-macos`) are consolidated into a single exported
+  `host_capability_platform`. Toolchain identity is in the action key, so this
+  invalidates cached TypeScript actions once. `buck2:editor-authority` and
+  `buck2:typescript:materialize-dist` invoke Buck but did not depend on
+  `buck2:capabilities:project`; they now do, so the projection the toolchains
+  read is ordered rather than incidental.
+
+- **@overeng/buck2-tools**: path-containment checks compared a canonicalized
+  path against a non-canonicalized one, so every check failed wherever the
+  repository root is reached through a symlink — including macOS, where `/tmp`
+  is a symlink to `/private/tmp`, which is why `test (macos-arm64)` was red
+  and Linux was green. `editor-view-authority` (authority output),
+  `editor-view` (consumer cache) and `package-tree` (chained symlink targets)
+  and `editor-view` (workspace authority manifest) now canonicalize both sides
+  through a shared helper that resolves the deepest existing ancestor, so it
+  works on paths that do not exist yet. Caller-supplied paths canonicalize
+  everything above the final component and keep that component verbatim, so the
+  later "must not be a symlink" guards still fire. Where no ancestor is a symlink the helper is the identity, so
+  behaviour on a non-symlinked root is unchanged. The materializer shell test
+  likewise states its expectation in the same resolved form the materializer's
+  `pwd -P` produces.
+
+- **buck2 materializer tests**: `assert_no_staging` in
+  `nix/devenv-modules/tasks/shared/tests/typescript-materialize-dist.test.sh`
+  used `compgen -G`, a programmable-completion builtin the non-interactive
+  nixpkgs `bash` is built without. The assertion exited 127 and was a silent
+  no-op on every platform. It now iterates the glob directly and actually
+  fails when the materializer leaves a `.dist-buck2.*` staging directory
+  behind.
+
 ### Changed
 
+- **@overeng/megarepo**: `src/lib/` is gone; its 100 files now sit in
+  responsibility directories (`core/`, `composition/{acquisition,mounts,overlays,capabilities,root,apply}/`,
+  `store/`, `sync/`, `generators/`) per the hierarchy ratified in
+  `context/megarepo/spec.md`. Pure moves plus relative-import rewrites — no
+  behavior change, no public-surface change (`.`, `./buck2-manifest` and
+  `./cli` are unchanged). `core/` provably imports nothing from
+  `composition/`. The `member-mount-r6` and `member-mount-cp-a` module headers
+  now explain their codenames and why they are two modules rather than one.
 - **@overeng/utils, @overeng/tui-core, @overeng/tui-react**: Effect 4 idiom
   adoption. `base64` is now a thin facade over upstream `Encoding` (net -107
   lines; invalid input throws `Encoding.EncodingError` instead of `DOMException`
@@ -40,6 +152,83 @@ All notable changes to this project will be documented in this file.
   ` (name version)` stamps. A JSON-stdout guard (incl. the schema command's
   `--output-mode`) keeps validation help off stdout for JSON/NDJSON modes;
   `resolveCliBuildIdentity` is unchanged.
+- **Buck2 dependency closure**: generate a lockfile-derived, platform-filtered
+  pnpm graph with hash-pinned fetch, safe extraction, patched-package support,
+  and relocatable importer assembly; move tui-core and tui-react to the new
+  provider and delete the ambient-store deploy, normalization, descriptor, and
+  CI cache lanes.
+- **Buck2 composition**: remove generated stub cells, move toolchains under
+  `buck2/`, make hub labels cell-relative, add fail-closed member-root and
+  shared-hub-pin guards, and transactionally prune obsolete generated files.
+- **Buck2 editor views**: enforce whole-workspace authority, content-settled
+  atomic publication, read-only snapshots with external caches, and bounded
+  rollback-safe snapshot retention.
+- **Buck2 tooling**: add the `buck-owned-files/v1` census, remove the final
+  Prelude CPython registration, and export the stable
+  `@overeng/megarepo/buck2-manifest` facade.
+
+- **VRS (megarepo)**: establish the `context/megarepo/` sub-VRS for the
+  megarepo tool (ratified q10, 2026-08-31). Adds `spec.md` (the tool's two
+  responsibilities — repo arrangement and workspace ownership — the composition
+  state machine, the CLI surface, and the ratified target source hierarchy),
+  `ontology.md` (absorbs and supersedes the package's store-GC glossary, adds
+  the workspace-ownership vocabulary, and flags the R6 / `COMP-R06` shorthand
+  collision), and a draft `requirements.md` (MR-A01–A03, MR-T01–T03,
+  MR-R01–R10) derived only from already-ratified sources and pending human
+  ratification. Decision records 0001/0006/0007/0008/0009 migrate from
+  `packages/@overeng/megarepo/docs/decisions` with their numbering and gap
+  preserved; the package's `docs/decisions/*` and `docs/glossary.md` are left
+  as pointer stubs. `context/buck2/05-composition/` remains the buck2-facing
+  composition contract (`COMP-R*`) and is referenced, never restated. No
+  `vision.md`: it is human-authored and not yet written. Docs-only.
+- **VRS (buck2)**: ratify decision 0023 — Rust third-party sources become
+  Buck-fetched `http_archive` targets via non-vendored Reindeer (sha256 from
+  `Cargo.lock`); decisions 0017/0019 amended; two 2026-08-30 experiment
+  records added; roadmap Phase 5 updated.
+- **VRS (buck2)**: ratify decision 0022 — dependency materialization becomes a
+  lockfile-derived declared closure (per-package fetch/extract targets,
+  per-importer assembly, no ambient store, no install step); decision 0015
+  superseded in mechanism; DEPS-A02/T01/R02/R04/R07/R08 re-tensed; roadmap
+  gains Phase 2b; three 2026-08-30 experiment records and open questions added.
+
+- **Buck2 Rust products**: admit all five Cargo workspace members through one
+  strict generated Buck projection, bind native Rust/C++ toolchains to exact
+  Nix capabilities, and prove real `otelite` then `otel-scrape` BuildProducts
+  through independent fail-closed Nix imports. Cargo and source-building Nix
+  producers remain available until a later authority-transfer change.
+
+- **Buck2 Rust graph**: generate one strict non-vendored Reindeer dependency
+  graph from the authoritative five-member Cargo workspace, fetch 126
+  hash-pinned crate archives directly through Buck, and delete the Nix vendor
+  projection and vendored-only fixups.
+- **VRS (buck2)**: ratify BUCK-R15 (net complexity accounting) and BUCK-R16
+  (benchmark evidence): every phase reconciles a build-machinery deletion
+  ledger with amortization rationale, and every admission records warm/cold
+  timings, cache hit rate, and CI wall-clock deltas as widening gates.
+- **@overeng/tui-react**: transfer root typecheck and declaration emit authority
+  to reusable Buck package targets, consuming tui-core through its Buck `dist`
+  boundary, publishing declaration overlays and export type conditions from
+  Buck output, and deleting tui-react from the root TypeScript check/emit
+  producers while preserving source runtime exports and the transitional editor
+  root install.
+
+- **@overeng/megarepo**: cut Buck workspaces over to decision-0020 composition: one acquired writable owned member, canonical clean detached locked sources, immutable verified `cp -a` mounts, secret-free Nix execution and trusted mr-owned TypeScript capability projection, lockfile-preserving exact Nix capabilities, inode-checked owned projection publication, atomic overlays, fresh-root bootstrap plus root-authority-last updates, composition-aware pin/status/orphan/liveness handling, reference-only ignored legacy members, and no bare-member `.buckconfig`.
+
+- **@overeng/megarepo**: make the first real read-only-member composition
+  satisfy its R6 and Buck bootstrap contracts: publish fresh root authority
+  before its first dist overlay, normalize resolved capability projections to
+  immutable source modes with cleanup-safe release, and keep the synthetic
+  `.buck2/capabilities` container outside repository identity.
+
+- **Buck2 cache policy**: materialize `BUCK2_NO_REMOTE_CACHE=1` into the
+  synthesized root before its first overlay action, make execution platforms
+  consume that root policy, and preserve the toggle through the CI composition
+  environment boundary.
+- **CI**: run every devenv, Buck, TypeScript, lint, test, cargo, and Genie lane from a disposable decision-0020 synthesized workspace while retaining the immutable actions checkout for cleanup and checkout-only artifacts; keep pnpm and Nix cache state at stable runner-temporary paths projected into the owned member.
+- **CI admission**: move repeated devenv resolution/repair logic into a prepared
+  runtime script and enforce GitHub's 500 kB workflow limit. The generated CI
+  workflow drops from 518,102 to 466,190 bytes, leaving 33,810 bytes below the
+  enforced admission ceiling.
 
 ### Removed
 
@@ -48,6 +237,9 @@ All notable changes to this project will be documented in this file.
   baseline-collection gate moved to
   `@overeng/utils-dev/check-baseline-test-collection.ts`. The empty
   `utilsPatches` projection registry is gone from genie config.
+- Retire the dormant Buck closure-compiler and package-evidence regime, including
+  its unused Buck rules, Rust tools, Nix capabilities, and projection tests;
+  retain the live archive/product bridge and real tui-core TypeScript actions.
 
 - **@overeng/utils, @overeng/genie, @overeng/notion-md**: apply the watch-recursion
   design study for effect@4.0.0-rc.111 (recursion is opt-in again). New
@@ -90,6 +282,30 @@ All notable changes to this project will be documented in this file.
   malformed ids fail with the new typed `InvalidRequestIdError` instead of
   reaching the wire (`validateRequestId` is exported for direct use). See
   `rpc-request-id-policy` in `context/effect-4/alignment-register.md`.
+- Fix lazy Buck stage-0 recovery to snapshot only its fingerprinted source inputs, keep unrelated Cargo product manifests out of tool derivations, and retain the observability gate when shell-entry setup is disabled.
+
+- Harden Buck foundation review contracts by recording explicit revision and execution-platform receipt identity, redacting password aliases, validating schema-v3 provenance, preserving mutation-free observability checks, narrowing generated-file markings, and leasing in-flight publications against future collection.
+- Preserve pre-identity Buck receipt and dry-run compatibility while hardening dynamic ELF metadata boundaries, inspector failures, and artifact-seam mutation proofs.
+- Parse dynamic ELF dependency delimiters and version-need sections structurally, including non-numeric symbol versions without admitting local definition noise.
+- Preserve fixed-marker PT_INTERP paths and complete whitespace-bearing version-need names when inspecting dynamic ELF artifacts.
+- Bind Buck comparison receipts to the same repository revision and execution platform, preserve delimiter-like ELF version names, and keep the Rust toolchain flake call aligned with its minimal config API.
+
+- **Buck2/devenv fast path**: make shell activation independent of Buck and
+  repository setup, expose the pinned Buck client through a source-mode local
+  launcher, lazily resolve stage-0 tools only for consuming tasks, and classify
+  warm shell versus warm Buck as separate benchmark workloads.
+
+- **Generated Buck contracts**: bind generator and schema identities into
+  semantic projection fingerprints, record exact projection sources, make
+  commentless Genie outputs participate in freshness state, enforce Genie
+  freshness unconditionally in CI, and distinguish immutable benchmark
+  evidence and review-visible Cargo topology from collapsible generated noise.
+- **Generated contract verification**: teach the Buck launcher to verify schema
+  3 provenance fingerprints, cover direct and nested Genie ownership from one
+  Nix input list, make warm fingerprints use exact Git glob semantics, and keep
+  provenance ordering locale-independent. Generated bytes are authoritative;
+  read-only modes remain a local generation guardrail because Git cannot
+  preserve ordinary write bits across checkout.
 - **Repository-wide**: atomic Effect 4 cohort flip to `effect@4.0.0-rc.111`
   (with `@effect/platform-node`, `@effect/vitest`, `@effect/opentelemetry`,
   `@effect/atom-react`, all rc.111). Platform, CLI, RPC, Schema, AI, Cluster,
@@ -287,6 +503,40 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   planner requires external agent-liveness evidence and fails closed on
   uncertain cleanliness, ignore status, or bounded filesystem traversal.
 
+- **Buck2 build-product contract**: add a pure exact validator and canonical
+  descriptor digest for the shared Buck-to-Nix product envelope. Runtime is a
+  required tagged union, invocation evidence is excluded from semantic product
+  identity, and the importer now requires an independently supplied descriptor
+  digest and rejects every runtime until its real inspector exists. This removes
+  the synthetic shell import as evidence of an admitted portable product; the
+  input-plan fixture is now labeled `buck2-package-evidence` rather than
+  masquerading as a build product. Descriptor paths reject CR/LF bytes, fixed
+  canonical conformance vectors guard identity, and archive scanning rejects
+  non-padding bytes or concatenated archives after the first end marker.
+- **Rust workspace authority**: compose `otelite` and `otel-scrape` under one
+  native Cargo workspace, shared lockfile, and repository toolchain declaration.
+  Member manifests inherit only semantically identical requests; the Nix bridge
+  keeps each package's source local while including the exact workspace contract.
+- **Buck2 build foundation**: add generated package-local Buck targets, an exact
+  pnpm closure compiler with content/context/task identities, deterministic
+  package evidence archives, a Nix-exported portable-toolchain boundary, and a
+  hardened Buck-artifact-to-Nix import bridge. A thin Nix-built launcher retains
+  Buck reports and emits fail-closed receipts; devenv exposes local-only E2E and
+  benchmark gates. Remote cache access and remote execution stay disabled until
+  authoritative package materialization, trust, and cross-platform gates pass.
+- **Buck2 system design**: specify sibling foundation slices with explicit
+  product joins, OCI as untrusted product transport, reviewed exact-child Nix
+  pins, sealed admission bundles, independent durability and restore proof,
+  zero-network activation, conservative collection, separate reuse planes, and
+  an admitted on-demand Prelude CPython action-toolchain bootstrap boundary.
+- **Buck2 Rust platform prototype**: add explicit x86_64 Linux glibc-dynamic and
+  musl-static target boundaries plus a local-only, Nix-store Rust toolchain
+  probe that produces and inspects a self-contained static PIE. Bind the probe
+  to an exact Buck execution constraint and one Nix-authored toolchain config
+  so platform claims cannot silently fall back or drift from tool identities.
+  Use nixpkgs' version-matched prebuilt musl Rust toolchain instead of rebuilding
+  the target standard library from source in each uncached CI environment, and
+  retain a task-scoped GC root until all Buck invocations finish.
 - **genie/ci-workflow**: allow CI consumers to select the devenv lock file used
   by the pinned-devenv preparation and Nix-store validation steps.
 - **@overeng/effect-path**: add Effect 3 cross-major baselines for PathInfo schema
@@ -353,6 +603,42 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   generator sources, and reject every helper consumer unless preparation
   follows the final workspace-cleaning checkout and Nix installation.
 
+- **Buck2 pnpm prototype scope**: retain the exact lock-derived contextual
+  dependency plan for `tui-core` while keeping it explicitly non-admitted. The
+  prototype does not fetch, unpack, normalize, or materialize package archives.
+- **Buck2 lazy stage-0 cache**: retain realized Nix tools with per-fingerprint
+  GC roots, validate cached resolver ABI, semantic identity, tool keys, and root
+  bindings before reuse, and bound retries when semantic inputs keep changing.
+- **Buck2 foundation contraction**: run the destructive invalidation RED/GREEN
+  proof in a disposable Buck project instead of mutating a shared tracked
+  fixture. Correct the VRS boundary from rule-load-time CPython to Prelude's
+  on-demand Python action toolchain, make the launcher and synthetic package
+  E2E documentation match their current receipt-only and
+  `admission=not-attempted` behavior, and record the shared-workspace Rust
+  helper contraction gates without claiming a premature admission verdict.
+- **Buck2 Rust stage-0 tools**: replace repository-owned Python action helpers
+  with fine-grained Rust workspace members, independently realize them through
+  Nix, inject immutable executables into Buck action keys, and prove the real
+  Nix-to-Buck staging path under a hostile ambient `PATH`. Cargo's native
+  workspace inventory now drives build, test, clippy, and formatting gates;
+  scratch benchmarks ignore ambient Git hooks while retaining exact detached
+  revision isolation.
+- **genie/weaver**: wrap long generated TypeScript constant declarations so
+  generated registry projections remain formatter-clean without hand edits.
+- **Buck2 evidence safety**: accept generated v2 closure projections, redact
+  prefixed credential assignments, reject duplicate archive members before
+  extraction, insert launcher evidence flags before Buck argument passthrough,
+  reject reused receipt run IDs, and make failed mutation baselines produce
+  no-verdict samples. Prune optional-branch orphans, stream retained-log
+  descriptors, restore in-place mutations across signals, recognize Buck global
+  options including attached numeric verbosity, keep host-stamped package actions
+  local, structurally redact credential-key values and authorization schemes with
+  their CLI credentials, including auth and credential-named key segments,
+  reject invalid materialization counters, require every exported symlink target
+  to use the same portable normalized form as the Buck importer, and reject
+  unknown descriptor fields, duplicate, control-bearing, or non-canonical
+  entrypoints, reserved importer metadata, oversized, non-block-aligned, or sparse
+  portable-tool archives, and bytes after the tar end marker.
 - **devenv pnpm installs**: refresh nixpkgs so pnpm runs on Node 24.18.1,
   avoiding the Darwin Node 24.15 teardown hang after a completed workspace
   materialization.
@@ -696,6 +982,37 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   success, not the child exit code. Pure passthrough stays silent (R04);
   `--trace-link off` / `OTEL_SCRAPE_TRACE_LINK=off` disables it.
 
+- **Buck tui-core editor view**: expose the canonical Stage-1 descriptor and add scoped, fail-closed hardlink snapshot publication and validation without rewiring global consumers or removing the root pnpm install.
+- **oxc-config Nix package**: expose the prepared pnpm dependency boundary, source-owned hash metadata, and Evergreen FOD graph under the canonical `oxc-config` flake package.
+- Add an evidence-derived pnpm 11.8 deploy-tree normalizer that removes nondeterministic metadata, rewrites absolute command shims, prunes dangling dependency links, and fails closed on residual staging paths or symlinks.
+- Record an aarch64-linux Buck-owned Vite development-launch experiment proving
+  exact closure launch, live local and workspace HMR, external writable caches,
+  concurrent instances, signal teardown, restart, and zero application-local
+  `node_modules`, while keeping Vite transformation and process supervision as
+  separate authorities.
+- Harden dynamic ELF metadata boundaries, inspector failures, and artifact-seam
+  mutation proofs, including structural dependency delimiters, version-need
+  sections, fixed-marker `PT_INTERP` paths, and whitespace-bearing version
+  names.
+- **Buck2 gate hermeticity**: resolve every external tool invoked by the
+  capability-projection, projection-test, and foundation graph-check gates via
+  explicit `_BIN` bindings exported from Nix store paths instead of ambient
+  `PATH` lookup, and retain Buck stderr evidence when the foundation
+  platform-mismatch audit fails so the rejection reason stays diagnosable.
+- **Buck2 platform-mismatch proof**: run the local-only host rejection gate as a
+  disposable-probe script instead of against the shared repository tree. The
+  probe builds a throwaway Buck project outside the repository (an ancestor
+  `.buckconfig` otherwise claims the project root), projects simulated
+  aarch64-linux executor capabilities into it from the exact Nix stage0
+  realizations, and asserts that analyzing a package target declared
+  `x86_64-linux` under `--fake-arch aarch64` fails with the exact package_task
+  mismatch diagnostic before any action executes, retaining stderr evidence on
+  any other outcome.
+- **Buck2 foundation identity**: keep the executor-capability cell at a stable
+  daemon-visible path with immutable generations, prove same-daemon capability
+  invalidation, and make root provider loads explicit across cells. Model the
+  affected Genie and CI tools prepared-dependency snapshots as platform-neutral;
+  exact aarch64-linux Genie realization remains pending.
 - **@overeng/notion-md**: `track <page> <existing-directory>` now materializes a
   remote-authoritative child-page tree as separate `.nmd` files plus an authority-tagged workspace
   manifest. Non-recursive directory status plans the same tree engine; ordinary directory sync
@@ -706,6 +1023,7 @@ violations }` (the offending `DiffOp[]`); block ops and page content
   user links remain authored content. Hierarchical tree watch is rejected; `--recursive` remains
   flat file watch. Unicode titles produce stable ASCII paths with German umlaut transliteration.
   File and missing-path tracking is unchanged.
+
 - **genie semantic-conventions generator (M1) / @overeng/genie + @overeng/otel-contract**:
   First genie generator for OpenTelemetry semantic-convention registries.
   - Layer 1 (`@overeng/genie` `src/runtime/weaver`, dep-free): a faithful typed model of the

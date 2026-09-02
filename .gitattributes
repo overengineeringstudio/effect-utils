@@ -20,6 +20,13 @@ genie/weaver-registry/*.yaml linguist-generated=true
 genie/weaver-registry/constants.ts linguist-generated=true
 genie/weaver-registry/constants.rs linguist-generated=true
 
+# Generated CI scripts are projections of adjacent TypeScript sources. Keep
+# handwritten bootstrap and regression scripts review-visible.
+genie/ci-scripts/nix-gc-race-retry.sh linguist-generated=true
+genie/ci-scripts/prepare-job-local-rust-state.sh linguist-generated=true
+genie/ci-scripts/resolve-devenv.sh linguist-generated=true
+genie/ci-scripts/run-with-nix-gc-race-retry.sh linguist-generated=true
+
 # Lock files - collapse in GitHub PR diffs
 *.lock linguist-generated=true
 **/*.lock linguist-generated=true
@@ -27,3 +34,6 @@ genie/weaver-registry/constants.rs linguist-generated=true
 **/*.lockb linguist-generated=true
 pnpm-lock.yaml linguist-generated=true
 **/pnpm-lock.yaml linguist-generated=true
+
+# The root Cargo lock is selected dependency topology and must stay visible.
+rust/Cargo.lock -linguist-generated

@@ -302,8 +302,8 @@ const githubExpressionEnd = '}}'
 // https://docs.github.com/en/actions/reference/limits
 const githubWorkflowMatrixJobLimit = 256
 const githubWorkflowCheckRunsPerSuiteLimit = 50_000
-const githubWorkflowAdmissionSizeLimitBytes = 512 * 1024
-const githubWorkflowAdmissionSizeWarnBytes = 480 * 1024
+const githubWorkflowAdmissionSizeLimitBytes = 500_000
+const githubWorkflowAdmissionSizeWarnBytes = 460_000
 const githubHostedJobTimeoutMinutesLimit = 6 * 60
 const selfHostedJobTimeoutMinutesLimit = 5 * 24 * 60
 const githubHostedRunnerLabels = new Set([

@@ -80,7 +80,7 @@ const decodeChunks = (chunks: ReadonlyArray<Uint8Array>): string => {
 }
 
 const runGenie = Effect.fnUntraced(function* (env: TestEnv, args: ReadonlyArray<string>) {
-  const cliPath = new URL('./mod.ts', import.meta.url).pathname
+  const cliPath = new URL('../../bin/genie.tsx', import.meta.url).pathname
   const command = Command.make('bun', [cliPath, '--cwd', env.root, ...args], {
     cwd: env.root,
     stdout: 'pipe',

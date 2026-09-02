@@ -7,6 +7,9 @@
  * - commitDrift field
  */
 
+import { chmod, lstat, readdir } from 'node:fs/promises'
+import * as NodePath from 'node:path'
+
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Schema } from 'effect'
@@ -16,9 +19,15 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { MegarepoConfig } from '../lib/config.ts'
-import { createLockedMember, LockFile, LOCK_FILE_NAME, writeLockFile } from '../lib/lock.ts'
+import {
+  OWNED_WORKTREE_ROOT_MANIFEST,
+  OwnedWorktreeRootManifest,
+} from '../composition/acquisition/owned-worktree-acquisition-schema.ts'
+import { materializeCpAMemberMount } from '../composition/mounts/member-mount-cp-a.ts'
+import { CompositionGeneratorConfig, MegarepoConfig } from '../core/config.ts'
+import { createLockedMember, LockFile, LOCK_FILE_NAME, writeLockFile } from '../core/lock.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
+import { resolvePinnedCoreutils } from '../test-utils/coreutils.ts'
 import {
   addCommit,
   createRepo,
@@ -26,6 +35,7 @@ import {
   initGitRepo,
   runGitCommand,
 } from '../test-utils/setup.ts'
+import { makeCanonicalTempDirectoryScoped } from '../test-utils/temp-root.ts'
 import { mrCommand } from './mod.ts'
 import { StatusState } from './renderers/StatusOutput/schema.ts'
 
@@ -75,7 +85,7 @@ const createTestWorkspace = (args: {
     const fs = yield* FileSystem.FileSystem
 
     // Create temp directory for workspace
-    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* makeCanonicalTempDirectoryScoped()}/`)
     const workspacePath = EffectPath.ops.join(
       tmpDir,
       EffectPath.unsafe.relativeDir('test-workspace/'),
@@ -146,10 +156,10 @@ describe('mr status --output json', () => {
       'should report syncNeeded=false when workspace is fully synced',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a local repo to symlink to
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'local-lib' },
@@ -267,10 +277,10 @@ describe('mr status --output json', () => {
       'should report symlinkExists=true when symlink is present',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a local repo
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'my-lib' },
@@ -333,10 +343,10 @@ describe('mr status --output json', () => {
       'should report commitDrift when local commit differs from locked commit',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a repo that will have a different commit than the lock
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'drifted-lib' },
@@ -377,10 +387,10 @@ describe('mr status --output json', () => {
       'should not report commitDrift when commits match',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a repo
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'synced-lib' },
@@ -418,10 +428,10 @@ describe('mr status --output json', () => {
       'should not report commitDrift for local path members',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a local repo
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const repoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'local-lib' },
@@ -457,10 +467,10 @@ describe('mr status --output json', () => {
       'should correctly report status for mixed local and remote members',
       Effect.fnUntraced(
         function* () {
-          const fs = yield* FileSystem.FileSystem
-
           // Create a local repo
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const localRepoPath = yield* createRepo({
             basePath: tmpDir,
             fixture: { name: 'local-lib' },
@@ -511,13 +521,167 @@ describe('mr status --output json', () => {
     )
   })
 
+  describe('composition convergence', () => {
+    it.effect(
+      'reports a distinct owned member and platform hub as present and converged after publication',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const workspacePath = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
+          yield* Effect.addFinalizer(() =>
+            Effect.promise(async () => {
+              const makeWritable = async (path: string): Promise<void> => {
+                const info = await lstat(path)
+                if (info.isSymbolicLink() === true || info.isDirectory() === false) return
+                await chmod(path, 0o755)
+                for (const child of await readdir(path)) {
+                  await makeWritable(NodePath.join(path, child))
+                }
+              }
+              await makeWritable(workspacePath).catch(() => undefined)
+            }),
+          )
+          const repos = NodePath.join(workspacePath, 'repos')
+          const owned = EffectPath.unsafe.absoluteDir(`${NodePath.join(repos, 'owner')}/`)
+          const source = NodePath.join(workspacePath, 'store-hub')
+          const capabilities = NodePath.join(workspacePath, 'hub-capabilities')
+          yield* fs.makeDirectory(owned, { recursive: true })
+          yield* initGitRepo(owned)
+          yield* fs.writeFileString(
+            EffectPath.unsafe.absoluteFile(NodePath.join(owned, 'owned.txt')),
+            'owned\n',
+          )
+          yield* addCommit({ repoPath: owned, message: 'Initialize owned member' })
+          const ownedHead = yield* getGitRev(owned)
+
+          const config = new MegarepoConfig({
+            members: { hub: 'example.invalid/public/hub' },
+            generators: {
+              composition: new CompositionGeneratorConfig({ enabled: true, platformHub: 'hub' }),
+            },
+          })
+          const configContent = yield* Schema.encodeEffect(
+            Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+          )(config)
+          yield* fs.writeFileString(
+            EffectPath.unsafe.absoluteFile(NodePath.join(workspacePath, 'megarepo.json')),
+            `${configContent}\n`,
+          )
+          const lockedCommit = 'a'.repeat(40)
+          yield* writeLockFile({
+            lockPath: EffectPath.unsafe.absoluteFile(NodePath.join(workspacePath, LOCK_FILE_NAME)),
+            lockFile: new LockFile({
+              version: 1,
+              members: {
+                hub: createLockedMember({
+                  url: 'https://example.invalid/public/hub',
+                  ref: 'main',
+                  commit: lockedCommit,
+                }),
+              },
+            }),
+          })
+          const rootManifestContent = yield* Schema.encodeEffect(
+            Schema.fromJsonString(OwnedWorktreeRootManifest),
+          )({
+            adminDir: NodePath.join(workspacePath, '.git-admin'),
+            bareRepo: NodePath.join(workspacePath, '.bare'),
+            branchRef: 'refs/heads/main',
+            head: ownedHead,
+            ownedMember: 'owner',
+            statusPorcelainBase64: '',
+            tempPath: NodePath.join(workspacePath, '.owned-temp'),
+            version: 1,
+            workspaceRoot: workspacePath.replace(/\/$/u, ''),
+          })
+          yield* fs.writeFileString(
+            EffectPath.unsafe.absoluteFile(
+              NodePath.join(workspacePath, OWNED_WORKTREE_ROOT_MANIFEST),
+            ),
+            `${rootManifestContent}\n`,
+          )
+
+          yield* fs.makeDirectory(EffectPath.unsafe.absoluteDir(`${source}/`), { recursive: true })
+          yield* fs.makeDirectory(EffectPath.unsafe.absoluteDir(`${capabilities}/`), {
+            recursive: true,
+          })
+          yield* fs.makeDirectory(
+            EffectPath.unsafe.absoluteDir(`${NodePath.join(source, '.buck2/capabilities')}/`),
+            { recursive: true },
+          )
+          yield* fs.writeFileString(
+            EffectPath.unsafe.absoluteFile(NodePath.join(source, 'source.txt')),
+            'source\n',
+          )
+          yield* fs.writeFileString(
+            EffectPath.unsafe.absoluteFile(NodePath.join(source, '.buck2/capabilities/stale.bzl')),
+            'STALE = True\n',
+          )
+          yield* fs.writeFileString(
+            EffectPath.unsafe.absoluteFile(NodePath.join(capabilities, 'defs.bzl')),
+            'CAPABILITY = True\n',
+          )
+          yield* Effect.promise(() =>
+            Promise.all([
+              chmod(NodePath.join(source, 'source.txt'), 0o444),
+              chmod(NodePath.join(source, '.buck2/capabilities/stale.bzl'), 0o444),
+              chmod(NodePath.join(capabilities, 'defs.bzl'), 0o444),
+            ]),
+          )
+          const { cpPath, mvPath } = yield* Effect.promise(() => resolvePinnedCoreutils())
+          yield* materializeCpAMemberMount({
+            request: {
+              workspaceRoot: workspacePath.replace(/\/$/u, ''),
+              member: 'hub',
+              sourcePath: source,
+              capabilitiesPath: capabilities,
+              distOverlays: [],
+              lockedCommit,
+              dryRun: false,
+              allowVerifiedDarwinAdvance: false,
+            },
+            runtime: {
+              cpPath,
+              mvPath,
+              platform: 'linux',
+              nonce: () => 'status-converged',
+              capabilityCheck: async () => {},
+            },
+          })
+
+          const { status, exitCode } = yield* runStatusCommand({ cwd: workspacePath })
+          expect(exitCode).toBe(0)
+          expect(status?.applyNeeded).toBe(false)
+          expect(status?.members).toHaveLength(2)
+          expect(status?.members.map(({ name }) => name).toSorted()).toEqual(['hub', 'owner'])
+          expect(status?.members.find(({ name }) => name === 'owner')).toMatchObject({
+            mountKind: 'owned',
+            symlinkExists: true,
+            writable: true,
+          })
+          expect(status?.members.find(({ name }) => name === 'hub')).toMatchObject({
+            mountKind: 'cp-a',
+            symlinkExists: true,
+            writable: false,
+          })
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  })
+
   describe('--all traversal cycles', () => {
     it.effect(
       'should stop recursive status at repeated real worktree paths',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const tmpDir = EffectPath.unsafe.absoluteDir(
+            `${yield* makeCanonicalTempDirectoryScoped()}/`,
+          )
           const workspaceA = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('a/'))
           const workspaceB = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('b/'))
 
