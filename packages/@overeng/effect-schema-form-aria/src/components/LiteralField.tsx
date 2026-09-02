@@ -104,12 +104,17 @@ const styles = stylex.create({
     borderColor: tokens.border,
     backgroundColor: tokens.input,
     color: tokens.ink,
-    // `outline` is reserved for the focus ring design-system-wide, so the base
-    // only suppresses the user-agent one. React Aria's own focus-visible state
-    // is preferred over `:focus`: it normalises across input modalities, so a
-    // pointer click no longer paints a keyboard focus ring.
-    outline: 'none',
-    boxShadow: { default: null, '[data-focus-visible]': `0 0 0 1px ${tokens.primary}` },
+    // `outline` is reserved for the focus ring design-system-wide, and this is
+    // now that ring rather than a suppression of the user-agent one. React
+    // Aria's own focus-visible state is preferred over `:focus`: it normalises
+    // across input modalities, so a pointer click no longer paints a keyboard
+    // focus ring.
+    //
+    // The `popover` below writes `boxShadow` for a real elevation shadow. That
+    // is a different element today, so the two never met — but a trigger is
+    // exactly the kind of control that later grows a shadow, and this is the
+    // pair that would have silently collided on one property.
+    outline: { default: 'none', '[data-focus-visible]': `1px solid ${tokens.primary}` },
     opacity: { default: 1, ':disabled': 0.5 },
   },
   triggerValue: {

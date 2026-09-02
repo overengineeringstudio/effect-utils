@@ -51,8 +51,15 @@ const styles = stylex.create({
     color: tokens.ink,
     // A plain `<input>`, not a React Aria one, so the native focus-visible
     // pseudo-class is the only focus state available here.
-    outline: 'none',
-    boxShadow: { default: null, ':focus-visible': `0 0 0 1px ${tokens.primary}` },
+    //
+    // This is the one ring site in the package keyed on a PSEUDO-CLASS rather
+    // than an attribute, which makes it the site exposed to the upstream
+    // priority-table defect: `@stylexjs/shared@0.19.0` spells pseudo-classes
+    // camelCase in that table, so `:focus-visible` falls through to the
+    // unknown-pseudo default of 40 while `:hover` sits at 130. Nothing writes
+    // `:hover` on `outline` here, so the two cannot meet — and keeping the ring
+    // on its own property is what guarantees that, rather than luck.
+    outline: { default: 'none', ':focus-visible': `1px solid ${tokens.primary}` },
     opacity: { default: 1, ':disabled': 0.5 },
   },
   toggle: {
@@ -85,8 +92,7 @@ const styles = stylex.create({
     borderColor: tokens.border,
     backgroundColor: tokens.input,
     color: tokens.ink,
-    outline: 'none',
-    boxShadow: { default: null, '[data-focus-visible]': `0 0 0 1px ${tokens.primary}` },
+    outline: { default: 'none', '[data-focus-visible]': `1px solid ${tokens.primary}` },
     opacity: { default: 1, ':disabled': 0.5 },
     cursor: { default: null, ':disabled': 'not-allowed' },
   },
