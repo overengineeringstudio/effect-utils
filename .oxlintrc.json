@@ -1,7 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
   "plugins": ["import", "typescript", "unicorn", "oxc", "react"],
-  "jsPlugins": ["./packages/@overeng/oxc-config/src/mod.ts"],
+  "jsPlugins": [
+    "./packages/@overeng/oxc-config/src/mod.ts",
+    "./packages/@overeng/oxc-config/src/stylex-upstream-plugin.ts"
+  ],
   "ignorePatterns": [
     "**/node_modules/**",
     "**/.pnpm/**",
@@ -83,7 +86,101 @@
     "typescript/no-unnecessary-template-expression": "off",
     "react/react-in-jsx-scope": "off",
     "react/rules-of-hooks": "error",
-    "react/exhaustive-deps": "warn"
+    "react/exhaustive-deps": "warn",
+    "overeng/stylex-no-raw-color": "error",
+    "overeng/stylex-outline-focus-visible-only": "error",
+    "@stylexjs/valid-styles": [
+      "error",
+      {
+        "propLimits": {
+          "accentColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "backgroundColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderBlockColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderBlockEndColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderBlockStartColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderBottomColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderInlineColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderInlineEndColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderInlineStartColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderLeftColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderRightColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "borderTopColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "caretColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "color": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "columnRuleColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "outlineColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "textDecorationColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "textEmphasisColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          },
+          "WebkitTapHighlightColor": {
+            "limit": ["transparent", "currentColor", "currentcolor"],
+            "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
+          }
+        }
+      }
+    ],
+    "@stylexjs/valid-shorthands": "error",
+    "@stylexjs/no-unused": "error",
+    "@stylexjs/no-legacy-contextual-styles": "error",
+    "@stylexjs/no-lookahead-selectors": "error",
+    "@stylexjs/enforce-extension": "error"
   },
   "overrides": [
     {

@@ -5,9 +5,9 @@ import { Vitest } from '@overeng/utils-dev/node-vitest'
 import { shouldNeverHappen } from '../../../isomorphic/core.ts'
 import { createDomStorybookConfig } from './mod.ts'
 
-const runViteFinal = async (stylex: boolean) => {
+const runViteFinal = async () => {
   const existingPlugin = { name: 'existing' }
-  const viteFinal = createDomStorybookConfig({ stylex }).viteFinal
+  const viteFinal = createDomStorybookConfig({}).viteFinal
 
   if (viteFinal === undefined) {
     return shouldNeverHappen('Expected createDomStorybookConfig to define viteFinal')
@@ -21,16 +21,20 @@ const runViteFinal = async (stylex: boolean) => {
 }
 
 Vitest.describe('createDomStorybookConfig', () => {
-  Vitest.it('leaves the plugin list unchanged when StyleX is disabled', async () => {
-    const { existingPlugin, result } = await runViteFinal(false)
+  // The factory used to be able to inject the StyleX plugin itself. It no
+  // longer touches the plugin list at all: the Storybook builder merges the
+  // package's own Vite config, which already registers it, and installing a
+  // second instance produced byte-identical CSS — noise, not a defect.
+  Vitest.it('leaves the plugin list to the merged app config', async () => {
+    const { existingPlugin, result } = await runViteFinal()
 
     expect(result.plugins).toEqual([existingPlugin])
   })
 
-  Vitest.it('prepends the StyleX plugin when explicitly enabled', async () => {
-    const { existingPlugin, result } = await runViteFinal(true)
-
-    expect(result.plugins).toHaveLength(2)
-    expect(result.plugins?.[1]).toBe(existingPlugin)
+  Vitest.it('registers the accessibility addon only when the gate asks for it', () => {
+    expect({
+      off: createDomStorybookConfig({}).addons,
+      on: createDomStorybookConfig({ a11y: true }).addons,
+    }).toEqual({ off: undefined, on: ['@storybook/addon-a11y'] })
   })
 })

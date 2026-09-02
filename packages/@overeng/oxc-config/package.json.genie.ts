@@ -23,6 +23,7 @@ const deps = catalog.compose({
   devDependencies: {
     external: {
       ...catalog.pick(
+        '@stylexjs/eslint-plugin',
         '@types/eslint',
         '@typescript-eslint/parser',
         '@typescript-eslint/rule-tester',
@@ -42,6 +43,9 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       './plugin': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './stylex-upstream-plugin': exportEntry('./src/stylex-upstream-plugin.ts', {
+        environment: 'node',
+      }),
     },
   } satisfies PackageJsonInputData,
   deps,

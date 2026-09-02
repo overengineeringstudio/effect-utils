@@ -13,7 +13,7 @@ import {
 } from 'react-aria-components'
 
 import { formatLiteralLabel } from '@overeng/effect-schema-form'
-import { fontSizes, radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
+import { fontSizes, radii, spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 import { FieldWrapper } from './FieldWrapper.tsx'
@@ -68,24 +68,21 @@ const styles = stylex.create({
     fontSize: fontSizes.sm,
     lineHeight: '1.25rem',
     color: tokens.ink,
-    backgroundColor: tokens.surface,
-    borderRightWidth: 1,
+    backgroundColor: { default: tokens.surface, ':hover': tokens['surface-raised'] },
+    borderRightWidth: { default: 1, ':last-child': 0 },
     borderRightStyle: 'solid',
     borderRightColor: tokens.border,
     transitionProperty: 'background-color, color',
     transitionDuration: '150ms',
-    ':last-child': {
-      borderRightWidth: 0,
-    },
-  },
-  segmentUnselected: {
-    ':hover': {
-      backgroundColor: tokens['surface-raised'],
-    },
   },
   segmentSelected: {
-    backgroundColor: tokens.primary,
-    color: '#ffffff',
+    // Applied as the argument after `segment`, so it is the last write to both
+    // properties and wins by application order rather than by which condition
+    // kind happens to outrank which. The hover value is restated rather than
+    // left to fall through: `segment` sets `backgroundColor` under a `:hover`
+    // key, and a later unconditional `backgroundColor` does not replace that key.
+    backgroundColor: { default: tokens.primary, ':hover': tokens.primary },
+    color: tokens['on-primary'],
   },
   root: {
     display: 'grid',
@@ -107,13 +104,18 @@ const styles = stylex.create({
     borderColor: tokens.border,
     backgroundColor: tokens.input,
     color: tokens.ink,
-    outline: 'none',
-    ':focus': {
-      boxShadow: `0 0 0 1px ${tokens.primary}`,
-    },
-    ':disabled': {
-      opacity: 0.5,
-    },
+    // `outline` is reserved for the focus ring design-system-wide, and this is
+    // now that ring rather than a suppression of the user-agent one. React
+    // Aria's own focus-visible state is preferred over `:focus`: it normalises
+    // across input modalities, so a pointer click no longer paints a keyboard
+    // focus ring.
+    //
+    // The `popover` below writes `boxShadow` for a real elevation shadow. That
+    // is a different element today, so the two never met — but a trigger is
+    // exactly the kind of control that later grows a shadow, and this is the
+    // pair that would have silently collided on one property.
+    outline: { default: 'none', '[data-focus-visible]': `1px solid ${tokens.primary}` },
+    opacity: { default: 1, ':disabled': 0.5 },
   },
   triggerValue: {
     flexGrow: 1,
@@ -131,7 +133,7 @@ const styles = stylex.create({
     borderStyle: 'solid',
     borderColor: tokens.border,
     backgroundColor: tokens.surface,
-    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+    boxShadow: tokens['shadow-raised'],
   },
   listBox: {
     outline: 'none',
@@ -146,11 +148,7 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     cursor: 'pointer',
     borderRadius: radii.default,
-  },
-  optionUnselected: {
-    ':hover': {
-      backgroundColor: tokens['surface-raised'],
-    },
+    backgroundColor: { default: null, ':hover': tokens['surface-raised'] },
   },
   optionMuted: {
     color: tokens['subtle-ink'],
@@ -159,8 +157,9 @@ const styles = stylex.create({
     color: tokens.ink,
   },
   optionSelected: {
-    backgroundColor: tokens.primary,
-    color: '#ffffff',
+    // Same ordering contract as `segmentSelected`.
+    backgroundColor: { default: tokens.primary, ':hover': tokens.primary },
+    color: tokens['on-primary'],
   },
   hint: {
     fontSize: '12px',
@@ -211,10 +210,8 @@ export const LiteralField = ({
                 key={opt.value}
                 id={opt.value}
                 className={({ isSelected }) =>
-                  stylex.props(
-                    styles.segment,
-                    isSelected === true ? styles.segmentSelected : styles.segmentUnselected,
-                  ).className ?? ''
+                  stylex.props(styles.segment, isSelected === true && styles.segmentSelected)
+                    .className ?? ''
                 }
               >
                 {opt.label}
@@ -254,7 +251,7 @@ export const LiteralField = ({
                 stylex.props(
                   styles.option,
                   styles.optionMuted,
-                  isSelected === true ? styles.optionSelected : styles.optionUnselected,
+                  isSelected === true && styles.optionSelected,
                 ).className ?? ''
               }
             >
@@ -270,7 +267,7 @@ export const LiteralField = ({
                 stylex.props(
                   styles.option,
                   styles.optionInk,
-                  isSelected === true ? styles.optionSelected : styles.optionUnselected,
+                  isSelected === true && styles.optionSelected,
                 ).className ?? ''
               }
             >

@@ -69,11 +69,11 @@ export const buck2TypeScriptAdmissions = {
     ],
     editorViewConsumer: false,
   },
-  stylexPreset: {
-    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_stylex_preset_eec8ac17a1d4',
-    packageName: '@overeng/stylex-preset',
-    packagePath: 'packages/@overeng/stylex-preset',
-    projectionSource: 'packages/@overeng/stylex-preset/BUCK.genie.ts',
+  stylexTokens: {
+    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_stylex_tokens_eec8ac17a1d4',
+    packageName: '@overeng/stylex-tokens',
+    packagePath: 'packages/@overeng/stylex-tokens',
+    projectionSource: 'packages/@overeng/stylex-tokens/BUCK.genie.ts',
     sourceRoots: ['src'],
     editorViewConsumer: false,
   },

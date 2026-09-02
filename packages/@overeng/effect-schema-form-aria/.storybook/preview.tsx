@@ -2,7 +2,7 @@ import type { Preview } from '@storybook/react'
 import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 
-import { spacing } from '@overeng/stylex-preset/tokens.stylex'
+import { spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
 import '../src/styles.css'
 

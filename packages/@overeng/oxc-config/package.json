@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./plugin": "./src/mod.ts"
+    "./plugin": "./src/mod.ts",
+    "./stylex-upstream-plugin": "./src/stylex-upstream-plugin.ts"
   },
   "devDependencies": {
+    "@stylexjs/eslint-plugin": "0.19.0",
     "@types/eslint": "9.6.1",
     "@typescript-eslint/parser": "8.61.1",
     "@typescript-eslint/rule-tester": "8.61.1",

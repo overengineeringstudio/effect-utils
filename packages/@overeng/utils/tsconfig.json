@@ -10,7 +10,7 @@
     "rewriteRelativeImportExtensions": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "allowJs": false,
+    "allowJs": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -44,7 +44,8 @@
     "composite": true,
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "types": ["node"]
+    "types": ["node"],
+    "checkJs": true
   },
   "include": ["src/**/*"],
   "references": [
@@ -53,9 +54,6 @@
     },
     {
       "path": "../otel-contract"
-    },
-    {
-      "path": "../stylex-preset"
     },
     {
       "path": "../utils-dev"

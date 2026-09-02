@@ -2,7 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 
 import type { FieldMeta } from '@overeng/effect-schema-form'
-import { radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
+import { radii, spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 

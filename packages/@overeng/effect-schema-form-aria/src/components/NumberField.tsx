@@ -2,7 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 import { NumberField as AriaNumberField, Input, Label, Text } from 'react-aria-components'
 
-import { fontSizes, radii, spacing } from '@overeng/stylex-preset/tokens.stylex'
+import { fontSizes, radii, spacing } from '@overeng/stylex-tokens/tokens.stylex'
 
 import { tokens } from '../tokens.stylex.ts'
 import { FieldWrapper } from './FieldWrapper.tsx'
@@ -49,13 +49,18 @@ const styles = stylex.create({
     borderColor: tokens.border,
     backgroundColor: tokens.input,
     color: tokens.ink,
-    outline: 'none',
-    ':focus': {
-      boxShadow: `0 0 0 1px ${tokens.primary}`,
-    },
-    ':disabled': {
-      opacity: 0.5,
-    },
+    // A plain `<input>`, not a React Aria one, so the native focus-visible
+    // pseudo-class is the only focus state available here.
+    //
+    // This is the one ring site in the package keyed on a PSEUDO-CLASS rather
+    // than an attribute, which makes it the site exposed to the upstream
+    // priority-table defect: `@stylexjs/shared@0.19.0` spells pseudo-classes
+    // camelCase in that table, so `:focus-visible` falls through to the
+    // unknown-pseudo default of 40 while `:hover` sits at 130. Nothing writes
+    // `:hover` on `outline` here, so the two cannot meet — and keeping the ring
+    // on its own property is what guarantees that, rather than luck.
+    outline: { default: 'none', ':focus-visible': `1px solid ${tokens.primary}` },
+    opacity: { default: 1, ':disabled': 0.5 },
   },
   toggle: {
     width: '1rem',
@@ -68,12 +73,8 @@ const styles = stylex.create({
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: tokens.border,
-    ':hover': {
-      backgroundColor: tokens['surface-raised'],
-    },
-    ':disabled': {
-      opacity: 0.5,
-    },
+    backgroundColor: { default: null, ':hover': tokens['surface-raised'] },
+    opacity: { default: 1, ':disabled': 0.5 },
   },
   root: {
     display: 'grid',
@@ -91,14 +92,9 @@ const styles = stylex.create({
     borderColor: tokens.border,
     backgroundColor: tokens.input,
     color: tokens.ink,
-    outline: 'none',
-    ':focus': {
-      boxShadow: `0 0 0 1px ${tokens.primary}`,
-    },
-    ':disabled': {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-    },
+    outline: { default: 'none', '[data-focus-visible]': `1px solid ${tokens.primary}` },
+    opacity: { default: 1, ':disabled': 0.5 },
+    cursor: { default: null, ':disabled': 'not-allowed' },
   },
   description: {
     fontSize: '12px',

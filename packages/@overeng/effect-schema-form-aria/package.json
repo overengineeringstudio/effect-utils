@@ -17,22 +17,28 @@
   "scripts": {
     "build": "tsc --build tsconfig.json && vite build",
     "storybook": "storybook dev -p 6010",
-    "storybook:build": "storybook build"
+    "storybook:build": "storybook build",
+    "gate": "bun node_modules/@overeng/utils/src/node/storybook/gate/cli.ts"
   },
   "dependencies": {
     "@overeng/effect-schema-form": "workspace:^",
-    "@overeng/stylex-preset": "workspace:^",
+    "@overeng/stylex-tokens": "workspace:^",
     "@stylexjs/stylex": "0.19.0"
   },
   "devDependencies": {
     "@overeng/utils": "workspace:^",
-    "@storybook/react": "10.4.6",
-    "@storybook/react-vite": "10.4.6",
+    "@storybook/addon-a11y": "10.5.10",
+    "@storybook/addon-vitest": "10.5.10",
+    "@storybook/react": "10.5.10",
+    "@storybook/react-vite": "10.5.10",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
+    "@vitest/browser": "4.1.9",
+    "@vitest/browser-playwright": "4.1.9",
     "effect": "4.0.0-rc.111",
-    "storybook": "10.4.6",
+    "playwright": "1.61.0",
+    "storybook": "10.5.10",
     "typescript": "6.0.3",
     "vite": "8.0.16",
     "vitest": "4.1.9"
@@ -52,7 +58,7 @@
       "packages/@overeng/effect-schema-form",
       "packages/@overeng/effect-schema-form-aria",
       "packages/@overeng/otel-contract",
-      "packages/@overeng/stylex-preset",
+      "packages/@overeng/stylex-tokens",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

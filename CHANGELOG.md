@@ -4,6 +4,208 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/utils**: `@overeng/utils/node/storybook/gate` — a reusable
+  story-driven visual and accessibility gate. Every story becomes a browser
+  test that renders, plays, checks accessibility and compares a screenshot
+  against a baseline derived from a git ref rather than committed. Three
+  settings are non-default because each ecosystem default fails silently:
+  comparator `threshold: 0` with `includeAA: true` (pixelmatch defaults to a
+  perceptual `0.1` and to ignoring anti-aliased pixels, so a one-pixel radius
+  change passes), `parameters.a11y.test: 'error'` (the default `'todo'` only
+  warns, and the parameter is inert unless `@storybook/addon-a11y` is
+  registered — hence the new `a11y` flag on `createDomStorybookConfig`), and
+  ref-derived baselines, because host fonts move one to three thousand pixels
+  per story and make a committed baseline valid only on the machine that wrote
+  it. The gate reports added, removed and changed stories, and reports failures
+  that already existed at the baseline ref separately so it answers "did this
+  change make it worse" on packages that carry debt. Measured on
+  `effect-schema-form-aria`: 39 stories, clean tree reports zero; a one-pixel
+  border radius is caught on exactly the two affected stories at 85 and 81
+  differing pixels, with no false positives on the other 37. Runnable as
+  `@overeng/utils/node/storybook/gate/cli` — a check every target has to write
+  its own driver for is not the working visual check R08 asks for.
+
+- **@overeng/utils**: the story gate can no longer report success over an
+  unusable baseline. It subtracts failures present at both refs so it answers
+  "did this change make it worse" on packages carrying drift — but with no
+  floor, a run where every story failed at the baseline produced an empty
+  regression list *by construction* and reported no regressions over a total
+  loss of styling. Measured at 212/212 failed on one app and 708/942 on another.
+  Now: missing-reference is detected before the pre-existing skip that swallowed
+  it; stories whose baseline image does not exist are `uncovered`, derived from
+  the filesystem rather than from message text, and force a failure; zero passes
+  at the baseline is a hard failure; and the summary line leads with the
+  baseline pass count, because the defect turned on a summary that said "no
+  regressions" over a report that said otherwise. No fraction threshold: a
+  quarter passing is degraded but still informative, and a badly-set fraction
+  would reject that along with the broken case.
+- **@overeng/utils**: the gate freezes motion before first paint. The screenshot
+  matcher waits for two consecutive identical frames, which a transition firing
+  once on mount straddles — measured, and it is transitions rather than
+  animations: every `Button` variant failed while `Avatar` and `Badge` passed,
+  and Button at rest carries only `transition-colors duration-150`. Confirmed
+  sufficient by an A/B with the accessibility addon disabled, which changed
+  nothing. Stories on surfaces no freeze can settle — a live WebGL canvas never
+  produces two identical frames — declare `parameters.storyGate.unstable` and
+  are reported as `excluded` rather than failing at baseline and silently
+  poisoning the subtraction.
+  Known limitation: on a package with no animations and only 150ms transitions,
+  the freeze makes roughly two runs in five report one to three spurious pixel
+  diffs where the same package was stable at zero before it. Measured across
+  twelve runs and independently controlled at the pre-freeze commit. The failure
+  is a false ALARM rather than a false pass — it never lets a regression
+  through — but the gate is not yet trustworthy enough to gate a merge on
+  unattended, and the cause is unresolved.
+- **@overeng/utils**: `createStylexVitePlugins` now declares a structural return
+  type rather than vite's nominal `Plugin`. Naming vite's own type published
+  effect-utils' bundler major as part of the contract: a consumer on a different
+  Vite major could not accept the value at all, failing on internals as
+  incidental as `PluginContextMeta.rolldownVersion`. Since every plugin member
+  except `name` is optional in both majors, one required `name` stays assignable
+  to `PluginOption` everywhere while imposing nothing.
+- **@overeng/oxc-config**: StyleX enforcement, as two deliberately complementary
+  layers. New first-party rules `overeng/stylex-no-raw-color` (bans raw colour
+  literals as values inside `stylex.create`, including colours embedded in
+  composite values such as `boxShadow` and gradients, while leaving the token
+  layer — `defineConsts`/`defineVars`/`createTheme` — alone) and
+  `overeng/stylex-outline-focus-visible-only` (reserves `outline`,
+  `outlineOffset` and `outlineColor` for the focus-visible state, so a selection
+  or pressed state cannot silently outrank the focus ring). The upstream
+  `@stylexjs/eslint-plugin` rules are adopted alongside them under their
+  documented `@stylexjs/*` names via a new namespace-shim plugin entry;
+  `stylexOxlintRules` in `genie/oxlint-base.ts` is the shared policy, and it
+  enumerates colour properties explicitly because a `*olor*` glob also matches
+  five keyword-valued properties. Upstream value limits are per-property and
+  cannot see inside a composite value, which is why both layers ship.
+  The pilot package `effect-schema-form-aria` — the reference implementation the
+  pattern was derived from — fails the enforcement the pattern produced, in 17
+  places. Each site carries a per-line `oxlint-disable-next-line` with a reason
+  rather than a file-scoped override, so new code there is still gated
+  (issue #1171).
+
+- **@overeng/utils**: `createStylexVitePlugins` takes `useCSSLayers`, and
+  `@overeng/effect-schema-form-aria` turns it on. Unlayered output was never a
+  preference — it is what lets converted code beat a utility framework's
+  layered utilities without any ordering work — so the option defaults OFF and
+  the flip is per target, on the target that has left the framework. Nothing
+  outside this repo changes.
+  The audit that gates the flip, stated in full because the answer was not the
+  expected one. Utility framework: none — no `package.json` in the repo names
+  one. StyleX consumers: exactly one, `@overeng/effect-schema-form-aria`, plus
+  the token package itself. Global stylesheets: five CSS files, of which three
+  (`notion-react`'s katex, vendored-notion and styles) belong to a package that
+  does not use StyleX and never shares a document with one here, one
+  (`effect-schema-form-aria/src/styles.css`) only re-exports the fifth, and the
+  fifth is `@overeng/stylex-tokens/preflight.css`.
+  **That last one is why "Tailwind-free" was not sufficient.** The reset was
+  unlayered and sets `box-sizing`, `margin`, `padding` and `border` on `*`.
+  Layered CSS loses to *any* unlayered CSS, so flipping layers on without
+  touching it would have handed those four properties to the reset on every
+  component in the package — silently, and in the direction the migration is
+  supposed to prevent. The reset now declares itself in `overeng.reset` and the
+  compiler is configured with `before: ['overeng.reset']`, so the emitted
+  `@layer overeng.reset, priority1, ...;` statement fixes the order by
+  declaration rather than by which stylesheet the browser parses first — the
+  same "do not depend on injection order" rule the token layer already follows.
+
+### Fixed
+
+- **@overeng/effect-schema-form-aria**: the pilot package's three independent
+  drift findings are resolved together, because all three were waiting on the
+  same prerequisite — a working visual gate for this package. The seventeen
+  per-line `oxlint-disable` suppressions are gone and all eight StyleX rules
+  gate the package again.
+  **Raw colours become semantic tokens**: `on-primary` for foregrounds drawn on
+  `primary`, and `shadow-raised` for popover elevation, defaulting to the
+  `shadows.lg` scale step. **`primary` moves `blue500` -> `blue600`**, which is
+  the accessibility fix rather than a palette preference: the gate failed ten of
+  thirty-nine stories because white text on the selected segment measured
+  3.76:1 against AA's 4.5:1, and `blue600` measures 5.25:1. Renaming the literal
+  alone would have preserved the violation behind a better name.
+  **Thirteen deprecated top-level pseudo-class sites move into condition
+  objects.** Every site was reviewed for a competing state rather than
+  translated mechanically, because nesting a pseudo-class changes which
+  condition wins. Eleven set a property nothing else touches; the two that
+  compete — the segmented control's and the list option's background under hover
+  versus selection — now resolve by `stylex.props` argument order, with the
+  selected style restating the hover value because a later unconditional
+  `backgroundColor` does not replace an earlier one under a `:hover` key.
+  **Focus moves to the accessible-component library's focus-visible state**
+  (native `:focus-visible` on the one plain `<input>`), so a pointer click no
+  longer paints a keyboard focus ring. The ring is still drawn with `boxShadow`
+  rather than converted to `outline`: the partitioning invariant already holds
+  and no story renders a focused element, so repainting it would be a change the
+  gate structurally cannot adjudicate.
+  **State resolution stops re-deriving what the component knows.** The checkbox
+  read its own `value` prop; selection lives on the CheckboxButton, an ancestor
+  of the styled box, so it now comes from React Aria's render prop. The
+  segmented control and list options applied one of two mutually exclusive style
+  objects, hover rule included, and now apply one additive override.
+  **The eleventh gate failure was structural, not colour**: React Aria's
+  `Header` renders `<header>`, which outside sectioning content is a `banner`
+  landmark, so nested field groups produced two banners. The label is a plain
+  element now and the group carries the accessible name it lacked.
+  Adjudicated against the gate: 20 stories changed, 18 of them the intended
+  `43,127,255 -> 21,93,252` recolour confined to selected segments, checkbox
+  boxes and the accent tick. The other two are the gate's own sub-pixel fringe,
+  proven by recapturing the *unchanged* baseline tree and reproducing both
+  diffs identically (689 and 693 pixels, max channel delta 2). Zero
+  accessibility failures remain, and the condition-nesting, ordered-argument and
+  landmark changes moved no pixels at all. Closes #1171.
+
+- **nix/oxlint-with-plugins.nix**: three fixes to the oxlint wrapper.
+  `jsPlugins` entries other than ours are no longer discarded, so third-party JS
+  plugins can load beside `@overeng/oxc-config` (previously any such plugin
+  failed to resolve, and consumers grew local workarounds). `oxlint --config X`
+  with the config flag FIRST no longer exits 1 with no output at all — the
+  argument-rewrite loop used `((i++))`, which returns status 1 when `i` is 0 and
+  aborted the wrapper under `set -o errexit`, indistinguishable from a lint
+  failure in CI. And `OVERENG_OXC_CONFIG_PLUGIN` now overrides the injected
+  plugin path, so rule development can lint against live plugin source instead of
+  the Nix build-time snapshot (a newly added rule previously reported "not found
+  in plugin 'overeng'"). Covered by
+  `nix/devenv-modules/tasks/shared/tests/oxlint-plugin-injection.test.sh`.
+
+### Changed
+
+- **@overeng/stylex-preset -> @overeng/stylex-tokens**: the shared StyleX
+  package is renamed to say what it durably is — our design-token package — and
+  is now browser-pure. Its generated manifest declares no build-tool dependency
+  at all: `@stylexjs/unplugin`, `unplugin` and `vite` are gone. Third-party
+  attribution for the vendored scales is retained. The package fell out of 16
+  packages' workspace closures as a result (18 -> 2), because `@overeng/utils`
+  needed it only to wire the Storybook factory.
+  **Compiled class names change.** A `defineConsts` value inlines its literal,
+  but the atomic class hash still incorporates the constant's package-qualified
+  identity: after the rename, `font-size:.875rem` moved from `.xox1hw9` to
+  `.x1aa13qb` while the declaration stayed byte-identical. Emitted rules are
+  unchanged as a multiset (92 rules, identical after masking hashed
+  identifiers); only names and intra-priority ordering move. Markup baselines in
+  `effect-schema-form-aria` were regenerated for that reason.
+  If you had a worktree installed before this rename, delete the leftover
+  `packages/@overeng/stylex-preset/` directory. Only its gitignored `dist` and
+  `node_modules` survive, so `git status` stays clean while the labels generator
+  keeps walking it and re-adding a `system:stylex-preset` label, and
+  `lint:check:genie` then fails on drift that is not in the tree.
+- **@overeng/utils**: owns StyleX build integration at
+  `@overeng/utils/node/stylex`, and compiled CSS now enters the bundle as a
+  virtual CSS module imported by each named entry rather than by picking an
+  emitted asset by filename. Upstream's picker tries a caller predicate, then an
+  unhashed `index.css`, then `style.css`, then silently falls back to the first
+  CSS asset and exits zero — which on a route-chunked build can strand every
+  rule in a lazy chunk. Its two asset-picking hooks are dropped; the dev path,
+  which already used a virtual module upstream, is untouched. Side effect of
+  going through the module graph: the rules are minified with everything else
+  (`effect-schema-form-aria` stylesheet 7096 -> 6167 bytes, same 92 rules;
+  Storybook 7084 -> 6155). A build that compiles rules no entry imports now
+  fails instead of shipping unstyled output.
+- **@overeng/utils**: `createDomStorybookConfig` drops its `stylex` option and
+  gains `a11y`. The StyleX flag was redundant wherever the app's own Vite config
+  registers the plugin — the builder merges that config, and enabling the flag
+  as well produced byte-identical CSS from a second plugin instance.
+
 ### Fixed
 
 - **CI performance evidence**: run every gated probe's configured warmup against

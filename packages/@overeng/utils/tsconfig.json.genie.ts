@@ -10,12 +10,15 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     ...nodeTypes,
+    // `src/node/stylex/mod.js` is checked JavaScript so Vite can load it from
+    // `node_modules` without TypeScript stripping. See #1167.
+    allowJs: true,
+    checkJs: true,
   },
   include: ['src/**/*'],
   references: [
     { path: '../effect-distributed-lock' },
     { path: '../otel-contract' },
-    { path: '../stylex-preset' },
     { path: '../utils-dev' },
   ],
 } satisfies TSConfigArgs)

@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/tui-react/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:994a9ffeb0039819f90c648073e9145c46a213beaddee36ebfa5d25d79649a9a
+# Semantic fingerprint: sha256:5f322afa0c4bed527d60516dae7d51c00fc82e57b80006abcb4a1bfb24d35477
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/examples/**/*.cts, packages/@overeng/tui-react/examples/**/*.mts, packages/@overeng/tui-react/examples/**/*.ts, packages/@overeng/tui-react/examples/**/*.tsx, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-react/src/**/*.cts, packages/@overeng/tui-react/src/**/*.mts, packages/@overeng/tui-react/src/**/*.ts, packages/@overeng/tui-react/src/**/*.tsx, packages/@overeng/tui-react/test/**/*.cts, packages/@overeng/tui-react/test/**/*.mts, packages/@overeng/tui-react/test/**/*.ts, packages/@overeng/tui-react/test/**/*.tsx, packages/@overeng/tui-react/tsconfig.buck.json.genie.ts, packages/@overeng/tui-react/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils-dev/src/**/*.cts, packages/@overeng/utils-dev/src/**/*.mts, packages/@overeng/utils-dev/src/**/*.ts, packages/@overeng/utils-dev/src/**/*.tsx, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx
 # Regenerate: devenv tasks run genie:run
 
@@ -333,8 +333,25 @@ package_tree(
                 "src/node/semaphore.contract.ts": "//packages/@overeng/utils:src/node/semaphore.contract.ts",
                 "src/node/storybook/config/mod.ts": "//packages/@overeng/utils:src/node/storybook/config/mod.ts",
                 "src/node/storybook/config/mod.unit.test.ts": "//packages/@overeng/utils:src/node/storybook/config/mod.unit.test.ts",
+                "src/node/storybook/gate/annotations.ts": "//packages/@overeng/utils:src/node/storybook/gate/annotations.ts",
+                "src/node/storybook/gate/cli.ts": "//packages/@overeng/utils:src/node/storybook/gate/cli.ts",
+                "src/node/storybook/gate/constants.ts": "//packages/@overeng/utils:src/node/storybook/gate/constants.ts",
+                "src/node/storybook/gate/mod.ts": "//packages/@overeng/utils:src/node/storybook/gate/mod.ts",
+                "src/node/storybook/gate/project.ts": "//packages/@overeng/utils:src/node/storybook/gate/project.ts",
+                "src/node/storybook/gate/project.unit.test.ts": "//packages/@overeng/utils:src/node/storybook/gate/project.unit.test.ts",
+                "src/node/storybook/gate/run.ts": "//packages/@overeng/utils:src/node/storybook/gate/run.ts",
+                "src/node/storybook/gate/run.unit.test.ts": "//packages/@overeng/utils:src/node/storybook/gate/run.unit.test.ts",
+                "src/node/storybook/gate/settle.ts": "//packages/@overeng/utils:src/node/storybook/gate/settle.ts",
+                "src/node/storybook/gate/settle.unit.test.ts": "//packages/@overeng/utils:src/node/storybook/gate/settle.unit.test.ts",
+                "src/node/storybook/gate/setup.ts": "//packages/@overeng/utils:src/node/storybook/gate/setup.ts",
+                "src/node/storybook/gate/virtual-modules.d.ts": "//packages/@overeng/utils:src/node/storybook/gate/virtual-modules.d.ts",
                 "src/node/storybook/mod.ts": "//packages/@overeng/utils:src/node/storybook/mod.ts",
                 "src/node/storybook/opentui-stub.ts": "//packages/@overeng/utils:src/node/storybook/opentui-stub.ts",
+                "src/node/stylex/focus-order.ts": "//packages/@overeng/utils:src/node/stylex/focus-order.ts",
+                "src/node/stylex/focus-order.unit.test.ts": "//packages/@overeng/utils:src/node/stylex/focus-order.unit.test.ts",
+                "src/node/stylex/mod-types.d.ts": "//packages/@overeng/utils:src/node/stylex/mod-types.d.ts",
+                "src/node/stylex/mod.installed-consumer.test.ts": "//packages/@overeng/utils:src/node/stylex/mod.installed-consumer.test.ts",
+                "src/node/stylex/mod.unit.test.ts": "//packages/@overeng/utils:src/node/stylex/mod.unit.test.ts",
                 "src/node/watch.ts": "//packages/@overeng/utils:src/node/watch.ts",
                 "src/node/watch.unit.test.ts": "//packages/@overeng/utils:src/node/watch.unit.test.ts",
                 "src/node/workspace.ts": "//packages/@overeng/utils:src/node/workspace.ts",

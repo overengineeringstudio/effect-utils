@@ -11,8 +11,6 @@
 import type { StorybookConfig } from '@storybook/react-vite'
 import type { InlineConfig } from 'vite'
 
-import { createStylexVitePlugin } from '@overeng/stylex-preset/vite'
-
 type StorybookViteFinal<TConfig extends object> = (config: TConfig) => TConfig | Promise<TConfig>
 
 /** Options for `createDomStorybookConfig`. */
@@ -23,8 +21,14 @@ export interface DomStorybookConfigOptions {
   addons?: StorybookConfig['addons']
   /** Disable minification (useful for react-inspector to preserve function names) */
   disableMinify?: boolean
-  /** Enable the StyleX Vite plugin for StyleX-based styling */
-  stylex?: boolean
+  /**
+   * Register `@storybook/addon-a11y`.
+   *
+   * Required by the story gate: `parameters.a11y.test` is inert unless the
+   * addon is registered, so without this the gate's per-story accessibility
+   * check silently passes everything.
+   */
+  a11y?: boolean
 }
 
 /** Use when the consuming workspace needs its own local Vite config type for `viteFinal`. */
@@ -112,13 +116,15 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
     stories = ['../src/**/*.stories.@(ts|tsx)'],
     addons,
     disableMinify = false,
-    stylex: enableStylex = false,
+    a11y = false,
     viteFinal,
   } = options
 
+  const resolvedAddons = a11y === true ? [...(addons ?? []), '@storybook/addon-a11y'] : addons
+
   const config = {
     stories,
-    ...(addons !== undefined ? { addons } : {}),
+    ...(resolvedAddons !== undefined ? { addons: resolvedAddons } : {}),
     framework: { name: '@storybook/react-vite', options: {} },
     viteFinal: async (storybookConfig) => {
       const typedConfig = storybookConfig as InlineConfig
@@ -128,10 +134,6 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
         typedConfig.build.minify = false
       } else if (disableMinify === true) {
         typedConfig.build = { minify: false }
-      }
-
-      if (enableStylex === true) {
-        typedConfig.plugins = [createStylexVitePlugin(), ...(typedConfig.plugins ?? [])]
       }
 
       return callUserViteFinal({ config: typedConfig, viteFinal })

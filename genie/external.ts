@@ -354,11 +354,73 @@ export const catalog = defineCatalog({
   '@tailwindcss/vite': '4.3.1',
   '@stylexjs/stylex': '0.19.0',
   '@stylexjs/unplugin': '0.19.0',
+  /** Adopted via oxlint `jsPlugins`; its deps pin `@stylexjs/shared` 0.19.0, so it stays in lockstep with the compiler pins above. */
+  '@stylexjs/eslint-plugin': '0.19.0',
+
+  /**
+   * Transitional Tailwind -> StyleX converter, used only as a first pass on
+   * **application** files. Never point it at a shared component package: it
+   * drops React Aria `data-[*]` state and the variant library's slots, and its
+   * output uses raw values where the token rules require semantic tokens, so a
+   * hand-pass is required regardless.
+   *
+   * Only `tw-to-stylex/sync` (or the default export used as a Babel plugin with
+   * options) can be told to report what it dropped. Always pass
+   * `{ logUnsupported: true }`: it defaults to false, and a silent drop is the
+   * dangerous failure mode. The `tw-to-stylex` CLI takes the default and cannot
+   * be made to log, so do not use it. Even with logging on, `data-[*]` classes
+   * are dropped without a warning — audit those by hand.
+   *
+   * The three `@babel/*` pins are undeclared resolution requirements, not
+   * conveniences. Babel resolves plugin names relative to the *calling*
+   * package, not the plugin's own tree, so the consumer must declare them even
+   * though `tw-to-stylex` lists `@babel/plugin-syntax-typescript` as a
+   * dependency; without them every invocation dies with ERR_MODULE_NOT_FOUND.
+   * Held on Babel 7 because `@babel/plugin-syntax-typescript@7` peers
+   * `@babel/core@^7`, and Babel 8 therefore trips `strictPeerDependencies`.
+   */
+  'tw-to-stylex': '0.1.0-alpha.1',
+  '@babel/core': '7.29.7',
+  '@babel/plugin-syntax-jsx': '7.29.7',
+  '@babel/plugin-syntax-typescript': '7.29.7',
 
   // Storybook
-  storybook: '10.4.6',
-  '@storybook/react': '10.4.6',
-  '@storybook/react-vite': '10.4.6',
+  // 10.5.x is the floor for the visual gate: `storybookTest({ initialGlobals })`
+  // defines one Vitest project per theme, which is how light and dark are both
+  // covered. Verified absent from 10.4.6's plugin options.
+  storybook: '10.5.10',
+  '@storybook/react': '10.5.10',
+  '@storybook/react-vite': '10.5.10',
+  /** Per-story render/interaction/a11y coverage. Peers `storybook@^10.5.10`, so the cohort moves together. */
+  '@storybook/addon-vitest': '10.5.10',
+  /**
+   * Required, not optional: `parameters.a11y.test` has no effect unless this
+   * addon is registered, and it defaults to `'todo'` (warn-only), so the gate
+   * must override it to `'error'`.
+   */
+  '@storybook/addon-a11y': '10.5.10',
+  /**
+   * Browser-mode runner for the story tests.
+   *
+   * WELDED TO THE `vitest` PIN. `@vitest/browser` and `@vitest/browser-playwright`
+   * peer `vitest` at the *exact* version, not a range, so bumping `vitest` is a
+   * four-package move — these two and `playwright` must move with it or the
+   * install fails under `strictPeerDependencies`.
+   *
+   * `playwright` is pinned because `@vitest/browser-playwright` declares it as a
+   * non-optional peer. It is the same version as `@playwright/test` and is
+   * already resolved transitively today, so naming it changes no resolution.
+   * Browsers still come from the Nix closure: the published `playwright` and
+   * `playwright-core` tarballs declare no scripts at all, and `ignoreScripts`
+   * is on fleet-wide regardless.
+   *
+   * The versions matter, not just the names: `@vitest/browser@4.1.9` ships
+   * pixelmatch defaults of `threshold: 0.1` and `includeAA: false`, which pass
+   * real regressions silently. The gate must override both.
+   */
+  '@vitest/browser': '4.1.9',
+  '@vitest/browser-playwright': '4.1.9',
+  playwright: '1.61.0',
 
   // xterm (terminal emulator for browser/testing)
   '@xterm/xterm': '6.0.0',

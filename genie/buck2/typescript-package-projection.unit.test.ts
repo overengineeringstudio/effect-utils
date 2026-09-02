@@ -9,7 +9,7 @@ import contentAddressBuck from '../../packages/@overeng/content-address/BUCK.gen
 import effectDistributedLockBuck from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import otelContractBuck from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
-import stylexPresetBuck from '../../packages/@overeng/stylex-preset/BUCK.genie.ts'
+import stylexTokensBuck from '../../packages/@overeng/stylex-tokens/BUCK.genie.ts'
 import tuiCoreBuck from '../../packages/@overeng/tui-core/BUCK.genie.ts'
 import tuiReactBuck from '../../packages/@overeng/tui-react/BUCK.genie.ts'
 import utilsDevBuck from '../../packages/@overeng/utils-dev/BUCK.genie.ts'
@@ -25,7 +25,7 @@ const outputsByAdmission = {
   contentAddress: contentAddressBuck.stringify(genieContext),
   effectDistributedLock: effectDistributedLockBuck.stringify(genieContext),
   otelContract: otelContractBuck.stringify(genieContext),
-  stylexPreset: stylexPresetBuck.stringify(genieContext),
+  stylexTokens: stylexTokensBuck.stringify(genieContext),
   tuiCore: tuiCoreBuck.stringify(genieContext),
   tuiReact: tuiReactBuck.stringify(genieContext),
   utils: utilsBuck.stringify(genieContext),

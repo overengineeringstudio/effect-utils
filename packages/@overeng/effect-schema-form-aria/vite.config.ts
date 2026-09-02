@@ -1,9 +1,10 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
-import { createStylexVitePlugin } from '@overeng/stylex-preset/vite'
+import { createStylexVitePlugins } from '@overeng/utils/node/stylex'
 
 const publicationEntry = new URL('./src/mod.ts', import.meta.url).pathname
+const storybookPreviewEntry = new URL('./.storybook/preview.tsx', import.meta.url).pathname
 const resetStylesheet = new URL('./src/styles.css', import.meta.url).pathname
 
 const includePublicationReset = {
@@ -18,7 +19,17 @@ const includePublicationReset = {
 } satisfies Plugin
 
 export default defineConfig({
-  plugins: [includePublicationReset, createStylexVitePlugin(), react()],
+  plugins: [
+    includePublicationReset,
+    // Both surfaces are named because the compiled StyleX stylesheet is a
+    // virtual module that only lands in a bundle where an entry imports it, and
+    // the Storybook builder merges this config rather than supplying its own.
+    createStylexVitePlugins({
+      entries: [publicationEntry, storybookPreviewEntry],
+      useCSSLayers: { before: ['overeng.reset'] },
+    }),
+    react(),
+  ],
   build: {
     emptyOutDir: false,
     lib: {

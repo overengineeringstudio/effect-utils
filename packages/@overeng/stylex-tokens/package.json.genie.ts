@@ -9,13 +9,15 @@ import {
 } from '../../../genie/internal.ts'
 
 const peerDepNames = ['@stylexjs/stylex'] as const
+/**
+ * Browser-pure by contract: this package carries design tokens and a reset
+ * stylesheet, and must never grow a build-tool dependency (VRS stylex R11).
+ * StyleX build integration lives in `@overeng/utils/node/stylex`.
+ */
 const runtimeDeps = catalog.compose({
-  workspace: workspaceMember({ memberPath: 'packages/@overeng/stylex-preset' }),
-  dependencies: {
-    external: catalog.pick('@stylexjs/unplugin', 'unplugin'),
-  },
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/stylex-tokens' }),
   devDependencies: {
-    external: catalog.pick(...peerDepNames, 'typescript', 'vite', 'vitest'),
+    external: catalog.pick(...peerDepNames, 'typescript'),
   },
   peerDependencies: {
     external: catalog.pick(...peerDepNames),
@@ -24,26 +26,18 @@ const runtimeDeps = catalog.compose({
 
 export default packageJson(
   {
-    name: '@overeng/stylex-preset',
+    name: '@overeng/stylex-tokens',
     ...privatePackageDefaults,
-    description: 'Shared StyleX design tokens, preflight styles, and Vite integration',
+    description: 'Shared StyleX design-token scales and reset stylesheet (browser-only)',
     exports: {
       './tokens.stylex': exportEntry('./src/tokens.stylex.ts', { environment: 'browser' }),
       './preflight.css': exportEntry('./src/preflight.css', { environment: 'browser' }),
-      './vite': exportEntry(
-        {
-          types: './src/vite-types.d.ts',
-          default: './src/vite.js',
-        },
-        { environment: 'node' },
-      ),
     },
     publishConfig: {
       access: 'public',
       exports: {
         './tokens.stylex': './dist/tokens.stylex.js',
         './preflight.css': './dist/preflight.css',
-        './vite': './dist/vite.js',
       },
     },
   } satisfies PackageJsonInputData,

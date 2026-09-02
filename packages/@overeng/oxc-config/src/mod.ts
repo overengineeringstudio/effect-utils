@@ -10,6 +10,8 @@
  * - no-raw-nondeterminism: Ban raw nondeterminism outside a journaled Restate.run closure
  * - no-non-durable-wait: Ban non-durable Effect.sleep/Effect.timeout outside a journaled Restate.run closure
  * - no-raw-otel-primitives: Ban raw Effect/Stream OTEL span primitives outside contract boundaries
+ * - stylex-no-raw-color: Ban raw colour literals as values inside stylex.create
+ * - stylex-outline-focus-visible-only: Reserve the outline properties for the focus-visible state
  *
  * It also provides native reimplementations of selected Storybook CSF best-practice
  * rules under the `overeng/storybook/*` namespace (reimplemented from
@@ -45,6 +47,8 @@ import { metaSatisfiesTypeRule } from './storybook/meta-satisfies-type.ts'
 import { noRedundantStoryNameRule } from './storybook/no-redundant-story-name.ts'
 import { preferPascalCaseRule } from './storybook/prefer-pascal-case.ts'
 import { storyExportsRule } from './storybook/story-exports.ts'
+import { stylexNoRawColorRule } from './stylex-no-raw-color.ts'
+import { stylexOutlineFocusVisibleOnlyRule } from './stylex-outline-focus-visible-only.ts'
 
 type Rules = {
   'explicit-boolean-compare': typeof explicitBooleanCompareRule
@@ -56,6 +60,8 @@ type Rules = {
   'no-raw-nondeterminism': typeof noRawNondeterminismRule
   'no-raw-otel-primitives': typeof noRawOtelPrimitivesRule
   'otel-contract-in-seam-file': typeof otelContractInSeamFileRule
+  'stylex-no-raw-color': typeof stylexNoRawColorRule
+  'stylex-outline-focus-visible-only': typeof stylexOutlineFocusVisibleOnlyRule
   'storybook/meta-satisfies-type': typeof metaSatisfiesTypeRule
   'storybook/default-exports': typeof defaultExportsRule
   'storybook/story-exports': typeof storyExportsRule
@@ -76,6 +82,8 @@ const rules: Rules = {
   'no-raw-nondeterminism': noRawNondeterminismRule,
   'no-raw-otel-primitives': noRawOtelPrimitivesRule,
   'otel-contract-in-seam-file': otelContractInSeamFileRule,
+  'stylex-no-raw-color': stylexNoRawColorRule,
+  'stylex-outline-focus-visible-only': stylexOutlineFocusVisibleOnlyRule,
 
   // Native storybook rules (use as overeng/storybook/*)
   'storybook/meta-satisfies-type': metaSatisfiesTypeRule,

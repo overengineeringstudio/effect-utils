@@ -16,6 +16,68 @@ const platforms = {
 /** Admitted cpu/os configurations for generated dependency selects. */
 export type PnpmPlatform = keyof typeof platforms
 
+/**
+ * Split a pnpm virtual-store key into package name and version.
+ *
+ * The key encodes a scope with `+` rather than `/`, and any peer suffix follows
+ * the version in parentheses, e.g. `@playwright+test@1.61.0` or
+ * `vitest@4.1.9(vite@8.0.16)`. Returns the name with its scope restored.
+ */
+const parseVirtualStoreKey = (key: string): { name: string; version: string } => {
+  const withoutPeers = key.replace(/\(.*$/, '')
+  const at = withoutPeers.lastIndexOf('@')
+  if (at <= 0) return { name: withoutPeers.replace(/\+/g, '/'), version: '' }
+  return {
+    name: withoutPeers.slice(0, at).replace(/\+/g, '/'),
+    version: withoutPeers.slice(at + 1),
+  }
+}
+
+/** Release-segment version compare; a prerelease sorts below its release. */
+const compareVersions = (a: string, b: string): number => {
+  const parts = (v: string): number[] =>
+    v
+      .split('-')[0]!
+      .split('.')
+      .map((n) => Number.parseInt(n, 10))
+      .map((n) => (Number.isNaN(n) ? 0 : n))
+  const [pa, pb] = [parts(a), parts(b)]
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (diff !== 0) return diff < 0 ? -1 : 1
+  }
+  const prerelease = (v: string): boolean => v.includes('-')
+  if (prerelease(a) !== prerelease(b)) return prerelease(a) ? -1 : 1
+  return 0
+}
+
+/**
+ * Choose which of two packages owns an importer's root `.bin/<binName>`.
+ *
+ * Mirrors pnpm's own conflict order so the projected `.bin` matches the tree
+ * pnpm materialises: a package whose own name (less any scope) equals the bin
+ * name wins; otherwise the lexicographically greater package name; otherwise
+ * the greater version. Ties keep the incumbent, which makes the result
+ * independent of visit order.
+ */
+const pickRootBin = ({
+  binName,
+  challenger,
+  holder,
+}: {
+  binName: string
+  challenger: string
+  holder: string
+}): string => {
+  const parse = (record: string): { name: string; version: string } =>
+    parseVirtualStoreKey(record.split('\t')[0] ?? '')
+  const [c, h] = [parse(challenger), parse(holder)]
+  const owns = (name: string): boolean => name.replace(/^@[^/]+\//, '') === binName
+  if (owns(c.name) !== owns(h.name)) return owns(c.name) ? challenger : holder
+  if (c.name !== h.name) return c.name.localeCompare(h.name) > 0 ? challenger : holder
+  return compareVersions(c.version, h.version) > 0 ? challenger : holder
+}
+
 type PlatformClosure = {
   readonly bins: Readonly<Record<string, string>>
   readonly packageDependencies: Readonly<Record<string, string>>
@@ -265,7 +327,28 @@ const makePlatformClosure = ({
       const record = `${snapshot.virtualStoreName}\t${executable}`
       const existing = bins[binName]
       if (existing !== undefined && existing !== record) {
-        return fail(`importer bin ${binName} is ambiguous between ${existing} and ${record}`)
+        // The importer's root `.bin` is a FLAT filesystem directory with one
+        // entry per name, so two direct dependencies declaring the same bin
+        // need a winner rather than a diagnostic. Failing here made the
+        // projection unable to reproduce a tree pnpm materialises without
+        // complaint, and parity with the pnpm tree is the ratified requirement
+        // while collision rejection is not stated anywhere in the VRS.
+        //
+        // Package-qualified identity — the model rules_js and rules_nodejs both
+        // use — already exists in this projection: every package target carries
+        // its own bins through `PnpmPackageInfo`, and `_nested_bins` keys nested
+        // links by `<owner>\t<name>`. Only this flat root view lacked a policy,
+        // and a flat directory cannot be made collision-free by requalifying a
+        // key, so a policy is the missing piece rather than an alternative.
+        //
+        // Winner order is pnpm's own, so the projected `.bin` matches what pnpm
+        // links: a package that OWNS the bin name (its own name, less any
+        // scope, equals the bin name) beats one that does not; otherwise the
+        // lexicographically greater package name wins; otherwise the greater
+        // version. Verified against this workspace's single collision --
+        // `playwright` vs `@playwright/test` in `@overeng/utils` -- where pnpm
+        // links bare `playwright`, read from the shim in the installed tree.
+        if (pickRootBin({ challenger: record, holder: existing, binName }) === existing) continue
       }
       bins[binName] = record
     }

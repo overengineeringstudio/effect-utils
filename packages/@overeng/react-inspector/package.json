@@ -28,8 +28,8 @@
     "is-dom": "1.1.0"
   },
   "devDependencies": {
-    "@storybook/react": "10.4.6",
-    "@storybook/react-vite": "10.4.6",
+    "@storybook/react": "10.5.10",
+    "@storybook/react-vite": "10.5.10",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
     "@types/is-dom": "1.1.2",
@@ -39,7 +39,7 @@
     "happy-dom": "20.10.6",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "storybook": "10.4.6",
+    "storybook": "10.5.10",
     "typescript": "6.0.3",
     "vite": "8.0.16",
     "vitest": "4.1.9"

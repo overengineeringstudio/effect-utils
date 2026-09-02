@@ -34,7 +34,7 @@ packages:
   - packages/@overeng/pty-effect
   - packages/@overeng/react-inspector
   - packages/@overeng/restate-effect
-  - packages/@overeng/stylex-preset
+  - packages/@overeng/stylex-tokens
   - packages/@overeng/tui-core
   - packages/@overeng/tui-react
   - packages/@overeng/tui-stories
@@ -49,7 +49,7 @@ allowUnusedPatches: true
 packageExtensions:
   storybook:
     dependencies:
-      '@storybook/react-vite': 10.4.6
+      '@storybook/react-vite': 10.5.10
 
 peerDependencyRules:
   allowedVersions:

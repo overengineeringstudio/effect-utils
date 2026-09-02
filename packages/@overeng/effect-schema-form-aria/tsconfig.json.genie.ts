@@ -17,7 +17,7 @@ export default tsconfigJson({
   include: ['src/**/*'],
   references: [
     { path: '../effect-schema-form' },
-    { path: '../stylex-preset' },
+    { path: '../stylex-tokens' },
     { path: '../utils' },
   ],
 } satisfies TSConfigArgs)
