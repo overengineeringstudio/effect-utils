@@ -14,8 +14,9 @@ All notable changes to this project will be documented in this file.
 - **Megarepo devenv tasks**: select commit worktrees for lock-based bootstrap
   and tracking worktrees for shared branch mutation tasks. The source-mode `mr`
   wrapper now receives the same pinned composition runtime as the packaged CLI.
-  Buck TypeScript materialization waits for workspace reconciliation, so forced
-  CI task graphs cannot start Buck while `mr` holds the workspace update lock.
+  Buck capability projection and TypeScript materialization wait for workspace
+  reconciliation, so forced CI task graphs cannot project stale capabilities or
+  start Buck while `mr` holds the workspace update lock.
 
 - **@overeng/megarepo**: macOS refused cp-a first-publish and exchange renames
   while the staged and published R6 roots were protected as `0555`, even though

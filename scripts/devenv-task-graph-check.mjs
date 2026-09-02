@@ -143,6 +143,10 @@ ok({
   condition: reaches({ start: materializer, target: 'mr:check' }),
   name: `${materializer} waits for workspace reconciliation`,
 })
+ok({
+  condition: reaches({ start: 'buck2:capabilities:project', target: 'mr:check' }),
+  name: 'Buck capability projection waits for workspace reconciliation',
+})
 
 const source = readFileSync(`${root}/devenv.nix`, 'utf8')
 const taskSource = (name) => {

@@ -973,6 +973,7 @@ in
 
   tasks."buck2:capabilities:project" = {
     description = "Atomically project exact Nix support capabilities for Buck2 analysis";
+    after = [ "mr:check" ];
     exec = trace.exec "buck2:capabilities:project" ''
       set -euo pipefail
       export BUCK2_BIN=${buck2Machine}/bin/buck2
@@ -1114,7 +1115,6 @@ in
   tasks."buck2:typescript:materialize-dist" = {
     description = "Atomically materialize all Buck-owned TypeScript declarations";
     after = [
-      "mr:check"
       "buck2:capabilities:project"
       "genie:run"
     ];
