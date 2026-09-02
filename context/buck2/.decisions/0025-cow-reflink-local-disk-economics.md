@@ -43,10 +43,10 @@ placement between this repository and the fleet.
 
 ## Options
 
-| Decision              | Selected                                              | Alternatives rejected                                                                                                        |
-| --------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Local-disk strategy   | Reflink-first CoW assembly                            | Accept per-root duplication (bounded by GC); machine-level shared extract store (reintroduces the ambient state 0022 deletes) |
-| Requirement placement | DEPS-R04 rewrite + fleet-VRS filesystem requirement   | Top-level BUCK-R17 (binds an actor outside repo authority); non-normative note only (intent evaporates at refresh time)       |
+| Decision              | Selected                                            | Alternatives rejected                                                                                                         |
+| --------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Local-disk strategy   | Reflink-first CoW assembly                          | Accept per-root duplication (bounded by GC); machine-level shared extract store (reintroduces the ambient state 0022 deletes) |
+| Requirement placement | DEPS-R04 rewrite + fleet-VRS filesystem requirement | Top-level BUCK-R17 (binds an actor outside repo authority); non-normative note only (intent evaporates at refresh time)       |
 
 ## Decision
 
