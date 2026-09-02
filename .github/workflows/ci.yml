@@ -3403,6 +3403,36 @@ jobs:
               done
 
               local base_ran_before_head=0 base_stdout base_stderr base_started base_ended base_status base_duration_ms
+              if [ "$phase" = "warmup" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$paired_baseline_enabled" -eq 1 ]; then
+                base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
+                base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
+                base_started="$(date +%s%3N)"
+                set +e
+                (cd "$CI_MEASUREMENT_BASE_DIR" && "${expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+                base_status=$?
+                set -e
+                base_ended="$(date +%s%3N)"
+                base_duration_ms=$((base_ended - base_started))
+
+                if [ "$sample_first" -eq 0 ]; then
+                  printf ',' >>"$samples_file"
+                fi
+                sample_first=0
+                jq -cn \
+                  --argjson index "$sample_index" \
+                  --argjson status "$base_status" \
+                  --argjson durationMs "$base_duration_ms" \
+                  --arg stdout "$base_stdout" \
+                  --arg stderr "$base_stderr" \
+                  '{index:$index,measuredIndex:null,pairIndex:null,subject:"base",phase:"warmup",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:null,orderSeed:null}' \
+                  >>"$samples_file"
+
+                if [ "$base_status" -ne 0 ]; then
+                  echo "::warning::$id paired baseline warmup failed after ${base_duration_ms}ms; measured pairs will still determine gate readiness"
+                  tail -40 "$base_stderr" || true
+                fi
+              fi
+
               if [ "$phase" = "measured" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$paired_baseline_enabled" -eq 1 ] && [ $(((measured_index + order_offset) % 2)) -eq 0 ]; then
                 base_ran_before_head=1
                 base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
@@ -3739,9 +3769,23 @@ jobs:
             {
               echo "### Devenv perf"
               echo ""
-              echo "| Probe | Status | Duration |"
-              echo "| --- | ---: | ---: |"
-              jq -r '.[] | "| \(.label // .id) | \(.status) | \(.durationMs) ms |"' "$ARTIFACT_DIR/timings.json"
+              echo "| Probe | Runs | Head total | Base total | Head median | Paired delta | Measured share |"
+              echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
+              jq -r '
+                def seconds:
+                  if . == null then "n/a" else ((. / 100 | round) / 10 | tostring) + " s" end;
+                (map([.samples[]?.durationMs] | add // 0) | add) as $allDurationMs
+                | .[]
+                | ([.samples[]? | select((.subject // "head") == "head") | .durationMs] | add // 0) as $headDurationMs
+                | ([.samples[]? | select(.subject == "base") | .durationMs] | add // 0) as $baseDurationMs
+                | ($headDurationMs + $baseDurationMs) as $probeDurationMs
+                | (
+                    if $allDurationMs == 0 then "0%"
+                    else (($probeDurationMs / $allDurationMs * 1000 | round) / 10 | tostring) + "%"
+                    end
+                  ) as $share
+                | "| \(.label // .id) | \(.samples | length) | \($headDurationMs | seconds) | \($baseDurationMs | seconds) | \(.statistics.medianDurationMs | seconds) | \(.statistics.pairedDeltaMedianDurationMs | seconds) | \($share) |"
+              ' "$ARTIFACT_DIR/timings.json"
               echo ""
               echo "- Artifact directory: \`$ARTIFACT_DIR\`"
               echo "- OTEL service: \`${OTEL_SERVICE_NAME:-unknown}\`"
