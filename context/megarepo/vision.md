@@ -50,8 +50,10 @@
 ## Success Criteria
 
 1. Two workspaces built from the same `megarepo.kdl` and `megarepo.lock` on
-   any host have identical arrangement: every member at its locked revision,
-   every mount matching its verified content identity.
+   any host have identical arrangement for every locked remote member: each is
+   at its locked revision, and every corresponding mount matches its verified
+   content identity. Local-path members are host-local inputs and are outside
+   this cross-host criterion.
 2. `mr apply` completes with the workspace exactly at the lock or fails
    naming the drift; no consumer ever observes an intermediate state.
 3. No store operation deletes work that is not recoverable: every deletion
