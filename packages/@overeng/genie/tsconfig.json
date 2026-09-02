@@ -47,13 +47,5 @@
     "types": ["node", "bun"],
     "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "bin/**/*.ts", "bin/**/*.tsx"],
-  "references": [
-    {
-      "path": "../otel-contract"
-    },
-    {
-      "path": "../utils"
-    }
-  ]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "bin/**/*.ts", "bin/**/*.tsx"]
 }

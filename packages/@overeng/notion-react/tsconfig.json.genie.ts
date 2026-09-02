@@ -21,7 +21,5 @@ export default tsconfigJson({
     { path: '../notion-effect-client' },
     { path: '../notion-effect-schema' },
     { path: '../notion-md' },
-    { path: '../otel-contract' },
-    { path: '../utils' },
   ],
 } satisfies TSConfigArgs)

@@ -8,7 +8,18 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/effect-distributed-lock',
   projectionSource: 'packages/@overeng/effect-distributed-lock/BUCK.genie.ts',
   sourceRoots: ['src'],
+  workspaceSiblings: [
+    {
+      packageName: '@overeng/utils-dev',
+      packagePath: 'packages/@overeng/utils-dev',
+      distTarget: '//packages/@overeng/utils-dev:dist',
+    },
+  ],
   editorViewConsumer: false,
+  authority: {
+    declarationEntrypoint: 'src/mod.d.ts',
+    projectFile: 'tsconfig.json',
+  },
 } as const satisfies Buck2TypeScriptAdmission
 
 export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

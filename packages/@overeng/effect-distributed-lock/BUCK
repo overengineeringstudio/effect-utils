@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/effect-distributed-lock/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:4009e76f6c1f767d7eac57d7854eced4c073e0b3b95ba8a9acdbae800c840149
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/src/**/*.cts, packages/@overeng/effect-distributed-lock/src/**/*.mts, packages/@overeng/effect-distributed-lock/src/**/*.ts, packages/@overeng/effect-distributed-lock/src/**/*.tsx, packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts
+# Semantic fingerprint: sha256:03391cddd1eb07832b8a55c6fd42d071310338d9eaddbb3e0469abf27ebd3603
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/src/**/*.cts, packages/@overeng/effect-distributed-lock/src/**/*.mts, packages/@overeng/effect-distributed-lock/src/**/*.ts, packages/@overeng/effect-distributed-lock/src/**/*.tsx, packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
@@ -51,7 +51,15 @@ package_tree(
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
-    workspace_siblings = {},
+    workspace_siblings = {
+        "@overeng/utils-dev": {
+            "files": {
+                "dist": "//packages/@overeng/utils-dev:dist",
+                "package.json": "//packages/@overeng/utils-dev:package.json",
+            },
+            "links": ["@overeng/utils-dev"],
+        },
+    },
     visibility = ["PUBLIC"],
 )
 
@@ -66,5 +74,6 @@ tsgo_emit(
     package_tree = ":package_tree",
     declaration_sources = {
     },
+    declaration_entrypoint = "src/mod.d.ts",
     visibility = ["PUBLIC"],
 )

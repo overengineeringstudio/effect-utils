@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:e8c96ea64a7a5cd430cea6d96bc564ad0e4dcdb06c7ca3fdff4674872ed30077
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/tsconfig.json.genie.ts
+# Semantic fingerprint: sha256:706c0c7f83149622eaa2f5a6e6718cecfaaf55d76044033eee3db60a7e53c7a9
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
@@ -245,7 +245,29 @@ package_tree(
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
-    workspace_siblings = {},
+    workspace_siblings = {
+        "@overeng/effect-distributed-lock": {
+            "files": {
+                "dist": "//packages/@overeng/effect-distributed-lock:dist",
+                "package.json": "//packages/@overeng/effect-distributed-lock:package.json",
+            },
+            "links": ["@overeng/effect-distributed-lock"],
+        },
+        "@overeng/otel-contract": {
+            "files": {
+                "dist": "//packages/@overeng/otel-contract:dist",
+                "package.json": "//packages/@overeng/otel-contract:package.json",
+            },
+            "links": ["@overeng/otel-contract"],
+        },
+        "@overeng/utils-dev": {
+            "files": {
+                "dist": "//packages/@overeng/utils-dev:dist",
+                "package.json": "//packages/@overeng/utils-dev:package.json",
+            },
+            "links": ["@overeng/utils-dev"],
+        },
+    },
     visibility = ["PUBLIC"],
 )
 
@@ -262,5 +284,6 @@ tsgo_emit(
         "src/node/storybook/gate/virtual-modules.d.ts": "src/node/storybook/gate/virtual-modules.d.ts",
         "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",
     },
+    declaration_entrypoint = "src/isomorphic/mod.d.ts",
     visibility = ["PUBLIC"],
 )

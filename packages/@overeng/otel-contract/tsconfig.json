@@ -44,13 +44,9 @@
     "composite": true,
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "types": ["node"]
+    "types": ["node"],
+    "noEmit": true
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.genie.ts"],
-  "references": [
-    {
-      "path": "../content-address"
-    }
-  ]
+  "exclude": ["src/**/*.genie.ts"]
 }

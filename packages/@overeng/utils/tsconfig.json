@@ -45,15 +45,9 @@
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "types": ["node"],
-    "checkJs": true
+    "checkJs": true,
+    "noEmit": true
   },
   "include": ["src/**/*"],
-  "references": [
-    {
-      "path": "../effect-distributed-lock"
-    },
-    {
-      "path": "../otel-contract"
-    }
-  ]
+  "references": []
 }

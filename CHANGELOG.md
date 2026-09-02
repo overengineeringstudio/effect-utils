@@ -317,6 +317,17 @@ publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
 
 ### Changed
 
+- **@overeng/utils**: transfer TypeScript typecheck and declaration emit to
+  Buck. All 13 public type conditions consume Buck declarations, 16 legacy
+  project references are removed, and tui-react consumes utils through its
+  Buck dist instead of a source-sibling copy.
+
+- **@overeng/content-address, @overeng/effect-distributed-lock,
+  @overeng/otel-contract**: transfer TypeScript typecheck and declaration emit
+  to Buck as one dependency-closed layer. Their package trees consume
+  authoritative workspace declarations through Buck dist edges, and 17 legacy
+  project references are removed.
+
 - **@overeng/utils-dev, @overeng/stylex-preset**: transfer TypeScript
   typecheck and declaration emit to Buck as the first dependency-layer
   admission. Public type conditions consume Buck declarations, explicit
