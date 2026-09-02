@@ -1,0 +1,360 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`megarepo wire baselines (cross-major invariant) > captures megarepo config JSON bytes and failure partition 1`] = `
+{
+  "byteIdentical": true,
+  "decoded": MegarepoConfig {
+    "$schema": "https://example.invalid/megarepo.schema.json",
+    "generators": GeneratorsConfig {
+      "composition": CompositionGeneratorConfig {
+        "enabled": true,
+        "isolationDir": "fleet-buck",
+        "platformHub": "unicode-hub",
+      },
+      "vscode": VscodeGeneratorConfig {
+        "color": "#123abc",
+        "colorEnvVar": "MEGAREPO_COLOR",
+        "enabled": true,
+        "exclude": [
+          "tmp",
+          "unicode-ß",
+        ],
+        "settings": {
+          "editor.formatOnSave": true,
+          "nullable": null,
+          "terminal.integrated.defaultProfile.linux": "bash
+zsh",
+        },
+      },
+    },
+    "lockSync": LockSyncConfig {
+      "enabled": false,
+      "exclude": [
+        "unicode-ß",
+      ],
+      "sharedInputSource": "nixpkgs",
+    },
+    "members": {
+      "": "./empty-name",
+      "unicode-ß": "https://github.com/example/unicode#feature/ß",
+      "windows": "../windows
+path",
+    },
+  },
+  "encoded": "{
+  "$schema": "https://example.invalid/megarepo.schema.json",
+  "members": {
+    "": "./empty-name",
+    "unicode-ß": "https://github.com/example/unicode#feature/ß",
+    "windows": "../windows\\r\\npath"
+  },
+  "generators": {
+    "vscode": {
+      "enabled": true,
+      "exclude": [
+        "tmp",
+        "unicode-ß"
+      ],
+      "color": "#123abc",
+      "colorEnvVar": "MEGAREPO_COLOR",
+      "settings": {
+        "editor.formatOnSave": true,
+        "terminal.integrated.defaultProfile.linux": "bash\\r\\nzsh",
+        "nullable": null
+      }
+    },
+    "composition": {
+      "enabled": true,
+      "platformHub": "unicode-hub",
+      "isolationDir": "fleet-buck"
+    }
+  },
+  "lockSync": {
+    "enabled": false,
+    "exclude": [
+      "unicode-ß"
+    ],
+    "sharedInputSource": "nixpkgs"
+  }
+}",
+  "reencoded": "{
+  "$schema": "https://example.invalid/megarepo.schema.json",
+  "members": {
+    "": "./empty-name",
+    "unicode-ß": "https://github.com/example/unicode#feature/ß",
+    "windows": "../windows\\r\\npath"
+  },
+  "generators": {
+    "vscode": {
+      "enabled": true,
+      "exclude": [
+        "tmp",
+        "unicode-ß"
+      ],
+      "color": "#123abc",
+      "colorEnvVar": "MEGAREPO_COLOR",
+      "settings": {
+        "editor.formatOnSave": true,
+        "terminal.integrated.defaultProfile.linux": "bash\\r\\nzsh",
+        "nullable": null
+      }
+    },
+    "composition": {
+      "enabled": true,
+      "platformHub": "unicode-hub",
+      "isolationDir": "fleet-buck"
+    }
+  },
+  "lockSync": {
+    "enabled": false,
+    "exclude": [
+      "unicode-ß"
+    ],
+    "sharedInputSource": "nixpkgs"
+  }
+}",
+}
+`;
+
+exports[`megarepo wire baselines (cross-major invariant) > captures megarepo config JSON bytes and failure partition 2`] = `
+{
+  "missingMembers": {
+    "_tag": "failed",
+    "error": "SchemaError(Missing key
+  at ["members"])",
+  },
+  "nullDocument": {
+    "_tag": "failed",
+    "error": "SchemaError(Expected object)",
+  },
+  "nullMemberSource": {
+    "_tag": "failed",
+    "error": "SchemaError(Expected string
+  at ["members"]["bad"])",
+  },
+}
+`;
+
+exports[`megarepo wire baselines (cross-major invariant) > captures megarepo lock JSON bytes and failure partition 1`] = `
+{
+  "byteIdentical": true,
+  "decoded": LockFile {
+    "members": {
+      "out-of-range-date-string": LockedMember {
+        "commit": "ffffffffffffffffffffffffffffffffffffffff",
+        "lockedAt": "99999-99-99T99:99:99.999Z",
+        "pinned": false,
+        "ref": "main",
+        "url": "git@github.com:example/out-of-range.git",
+      },
+      "unicode-ß": LockedMember {
+        "commit": "0123456789abcdef0123456789abcdef01234567",
+        "lockedAt": "2026-07-28T11:50:00.000Z",
+        "pinned": true,
+        "ref": "feature/ß",
+        "url": "https://github.com/example/unicode",
+      },
+    },
+    "version": 1,
+  },
+  "encoded": "{
+  "version": 1,
+  "members": {
+    "unicode-ß": {
+      "url": "https://github.com/example/unicode",
+      "ref": "feature/ß",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "pinned": true,
+      "lockedAt": "2026-07-28T11:50:00.000Z"
+    },
+    "out-of-range-date-string": {
+      "url": "git@github.com:example/out-of-range.git",
+      "ref": "main",
+      "commit": "ffffffffffffffffffffffffffffffffffffffff",
+      "pinned": false,
+      "lockedAt": "99999-99-99T99:99:99.999Z"
+    }
+  }
+}",
+  "reencoded": "{
+  "version": 1,
+  "members": {
+    "unicode-ß": {
+      "url": "https://github.com/example/unicode",
+      "ref": "feature/ß",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "pinned": true,
+      "lockedAt": "2026-07-28T11:50:00.000Z"
+    },
+    "out-of-range-date-string": {
+      "url": "git@github.com:example/out-of-range.git",
+      "ref": "main",
+      "commit": "ffffffffffffffffffffffffffffffffffffffff",
+      "pinned": false,
+      "lockedAt": "99999-99-99T99:99:99.999Z"
+    }
+  }
+}",
+}
+`;
+
+exports[`megarepo wire baselines (cross-major invariant) > captures megarepo lock JSON bytes and failure partition 2`] = `
+{
+  "missingPinned": {
+    "_tag": "failed",
+    "error": "SchemaError(Missing key
+  at ["members"]["repo"]["pinned"])",
+  },
+  "nullDocument": {
+    "_tag": "failed",
+    "error": "SchemaError(Expected object)",
+  },
+  "nullMembers": {
+    "_tag": "failed",
+    "error": "SchemaError(Expected object
+  at ["members"])",
+  },
+}
+`;
+
+exports[`megarepo wire baselines (cross-major invariant) > captures megarepo store state JSON bytes and failure partition 1`] = `
+{
+  "byteIdentical": true,
+  "decoded": {
+    "_tag": "Gc",
+    "activeWorktreeCount": 1,
+    "basePath": "/store/root",
+    "completedRepoCount": 1,
+    "discoveredWorktreeCount": 3,
+    "done": true,
+    "dryRun": true,
+    "interrupted": false,
+    "processedCount": 2,
+    "repoCount": 2,
+    "results": [
+      {
+        "message": "protected by workspace registry",
+        "path": "/store/root/github.com/example/unicode/refs/heads/feature/ß",
+        "reason": "live",
+        "ref": "feature/ß",
+        "refType": "heads",
+        "repo": "example/unicode",
+        "status": "kept",
+      },
+      {
+        "actualHeadBranch": "feature/old",
+        "path": "/store/root/github.com/example/commit/refs/commits/0123456789abcdef0123456789abcdef01234567",
+        "pathRef": "main",
+        "recoverPath": "/store/root/.archive/example-commit",
+        "ref": "0123456789abcdef0123456789abcdef01234567",
+        "refType": "commits",
+        "repo": "example/commit",
+        "status": "archived",
+      },
+    ],
+    "showForceHint": false,
+    "statusMessage": "gc complete",
+    "warning": {
+      "message": "line one
+line two",
+      "type": "custom",
+    },
+  },
+  "encoded": "{
+  "_tag": "Gc",
+  "basePath": "/store/root",
+  "results": [
+    {
+      "repo": "example/unicode",
+      "ref": "feature/ß",
+      "refType": "heads",
+      "path": "/store/root/github.com/example/unicode/refs/heads/feature/ß",
+      "status": "kept",
+      "message": "protected by workspace registry",
+      "reason": "live"
+    },
+    {
+      "repo": "example/commit",
+      "ref": "0123456789abcdef0123456789abcdef01234567",
+      "refType": "commits",
+      "path": "/store/root/github.com/example/commit/refs/commits/0123456789abcdef0123456789abcdef01234567",
+      "status": "archived",
+      "recoverPath": "/store/root/.archive/example-commit",
+      "pathRef": "main",
+      "actualHeadBranch": "feature/old"
+    }
+  ],
+  "dryRun": true,
+  "warning": {
+    "type": "custom",
+    "message": "line one\\r\\nline two"
+  },
+  "showForceHint": false,
+  "processedCount": 2,
+  "repoCount": 2,
+  "completedRepoCount": 1,
+  "discoveredWorktreeCount": 3,
+  "activeWorktreeCount": 1,
+  "statusMessage": "gc complete",
+  "done": true,
+  "interrupted": false
+}",
+  "reencoded": "{
+  "_tag": "Gc",
+  "basePath": "/store/root",
+  "results": [
+    {
+      "repo": "example/unicode",
+      "ref": "feature/ß",
+      "refType": "heads",
+      "path": "/store/root/github.com/example/unicode/refs/heads/feature/ß",
+      "status": "kept",
+      "message": "protected by workspace registry",
+      "reason": "live"
+    },
+    {
+      "repo": "example/commit",
+      "ref": "0123456789abcdef0123456789abcdef01234567",
+      "refType": "commits",
+      "path": "/store/root/github.com/example/commit/refs/commits/0123456789abcdef0123456789abcdef01234567",
+      "status": "archived",
+      "recoverPath": "/store/root/.archive/example-commit",
+      "pathRef": "main",
+      "actualHeadBranch": "feature/old"
+    }
+  ],
+  "dryRun": true,
+  "warning": {
+    "type": "custom",
+    "message": "line one\\r\\nline two"
+  },
+  "showForceHint": false,
+  "processedCount": 2,
+  "repoCount": 2,
+  "completedRepoCount": 1,
+  "discoveredWorktreeCount": 3,
+  "activeWorktreeCount": 1,
+  "statusMessage": "gc complete",
+  "done": true,
+  "interrupted": false
+}",
+}
+`;
+
+exports[`megarepo wire baselines (cross-major invariant) > captures megarepo store state JSON bytes and failure partition 2`] = `
+{
+  "nullDocument": {
+    "_tag": "failed",
+    "error": "SchemaError(Expected { readonly "_tag": "Ls", ... } | { readonly "_tag": "Status", ... } | { readonly "_tag": "Fetch", ... } | { readonly "_tag": "Gc", ... } | { readonly "_tag": "Add", ... } | { readonly "_tag": "WorktreeNew", ... } | { readonly "_tag": "Fix", ... } | { readonly "_tag": "Error", ... } | { readonly "_tag": "Interrupted", ... })",
+  },
+  "nullOptionalMessage": {
+    "_tag": "failed",
+    "error": "SchemaError(Expected string
+  at ["message"])",
+  },
+  "unknownTag": {
+    "_tag": "failed",
+    "error": "SchemaError(Expected { readonly "_tag": "Ls", ... } | { readonly "_tag": "Status", ... } | { readonly "_tag": "Fetch", ... } | { readonly "_tag": "Gc", ... } | { readonly "_tag": "Add", ... } | { readonly "_tag": "WorktreeNew", ... } | { readonly "_tag": "Fix", ... } | { readonly "_tag": "Error", ... } | { readonly "_tag": "Interrupted", ... })",
+  },
+}
+`;

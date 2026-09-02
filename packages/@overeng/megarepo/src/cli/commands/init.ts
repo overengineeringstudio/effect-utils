@@ -16,8 +16,8 @@ import {
   MegarepoConfig,
   findConfigPath,
   writeMegarepoConfig,
-} from '../../lib/config.ts'
-import * as Git from '../../lib/git.ts'
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
 import { Cwd, outputOption, outputModeLayer } from '../context.ts'
 import * as Observability from '../observability.ts'
 import { InitApp, InitView } from '../renderers/InitOutput/mod.ts'

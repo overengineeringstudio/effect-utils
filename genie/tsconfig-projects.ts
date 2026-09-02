@@ -1,7 +1,9 @@
+/* oxlint-disable overeng/exports-first -- Exported project registries are derived only after the private path map and coverage assertion are initialized. */
 import effectSocketTsconfig from '../context/effect/socket/tsconfig.json.genie.ts'
 import opentuiTsconfig from '../context/opentui/tsconfig.json.genie.ts'
 import { rootWorkspacePackages } from '../package.json.genie.ts'
 import agentSessionIngestTsconfig from '../packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts'
+import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.genie.ts'
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
 import effectAiClaudeCliTsconfig from '../packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts'
@@ -38,49 +40,81 @@ import tuiStoriesTsconfig from '../packages/@overeng/tui-stories/tsconfig.json.g
 import utilsDevTsconfig from '../packages/@overeng/utils-dev/tsconfig.json.genie.ts'
 import utilsTsconfig from '../packages/@overeng/utils/tsconfig.json.genie.ts'
 
-export type RootTsconfigProject = {
-  path: string
-  tsconfig: GenieOutput<TSConfigArgs>
+export type Buck2TypeScriptAuthority = {
+  readonly _tag: 'Buck2TypeScriptAuthority'
+  readonly typecheckTarget?: `//${string}`
+  readonly emitTarget?: `//${string}`
 }
 
+export type RootTsconfigProject = {
+  readonly path: string
+  readonly tsconfig: GenieOutput<TSConfigArgs>
+  readonly buck2Authority?: Buck2TypeScriptAuthority
+}
+
+type RootTsconfigProjectDefinition = Omit<RootTsconfigProject, 'path'>
+
+export const isRootTsconfigCheckProject = (project: RootTsconfigProject): boolean =>
+  project.buck2Authority?.typecheckTarget === undefined
+
+export const isRootTsconfigEmitProject = (project: RootTsconfigProject): boolean =>
+  project.buck2Authority?.emitTarget === undefined
+
 export const rootWorkspaceTsconfigProjects = (() => {
-  const workspaceTsconfigsByPath: Record<string, GenieOutput<TSConfigArgs>> = {
-    'context/effect/socket': effectSocketTsconfig,
-    'context/opentui': opentuiTsconfig,
-    'packages/@overeng/agent-session-ingest': agentSessionIngestTsconfig,
-    'packages/@overeng/ci-tools': ciToolsTsconfig,
-    'packages/@overeng/content-address': contentAddressTsconfig,
-    'packages/@overeng/effect-ai-claude-cli': effectAiClaudeCliTsconfig,
-    'packages/@overeng/effect-distributed-lock': effectDistributedLockTsconfig,
-    'packages/@overeng/effect-path': effectPathTsconfig,
-    'packages/@overeng/effect-react': effectReactTsconfig,
-    'packages/@overeng/effect-rpc-tanstack': effectRpcTanstackTsconfig,
-    'packages/@overeng/effect-rpc-tanstack/examples/basic': effectRpcTanstackBasicTsconfig,
-    'packages/@overeng/effect-schema-form': effectSchemaFormTsconfig,
-    'packages/@overeng/effect-schema-form-aria': effectSchemaFormAriaTsconfig,
-    'packages/@overeng/genie': genieTsconfig,
-    'packages/@overeng/kdl': kdlTsconfig,
-    'packages/@overeng/kdl-effect': kdlEffectTsconfig,
-    'packages/@overeng/megarepo': megarepoTsconfig,
-    'packages/@overeng/notion-cli': notionCliTsconfig,
-    'packages/@overeng/npm-release': npmReleaseTsconfig,
-    'packages/@overeng/notion-core': notionCoreTsconfig,
-    'packages/@overeng/notion-datasource-sync': notionDatasourceSyncTsconfig,
-    'packages/@overeng/notion-effect-client': notionEffectClientTsconfig,
-    'packages/@overeng/notion-effect-schema': notionEffectSchemaTsconfig,
-    'packages/@overeng/notion-md': notionMdTsconfig,
-    'packages/@overeng/notion-property-write': notionPropertyWriteTsconfig,
-    'packages/@overeng/notion-react': notionReactTsconfig,
-    'packages/@overeng/otel-contract': otelContractTsconfig,
-    'packages/@overeng/oxc-config': oxcConfigTsconfig,
-    'packages/@overeng/pty-effect': ptyEffectTsconfig,
-    'packages/@overeng/react-inspector': reactInspectorTsconfig,
-    'packages/@overeng/restate-effect': restateEffectTsconfig,
-    'packages/@overeng/tui-core': tuiCoreTsconfig,
-    'packages/@overeng/tui-react': tuiReactTsconfig,
-    'packages/@overeng/tui-stories': tuiStoriesTsconfig,
-    'packages/@overeng/utils': utilsTsconfig,
-    'packages/@overeng/utils-dev': utilsDevTsconfig,
+  const workspaceTsconfigsByPath: Record<string, RootTsconfigProjectDefinition> = {
+    'context/effect/socket': { tsconfig: effectSocketTsconfig },
+    'context/opentui': { tsconfig: opentuiTsconfig },
+    'packages/@overeng/agent-session-ingest': { tsconfig: agentSessionIngestTsconfig },
+    'packages/@overeng/buck2-tools': { tsconfig: buck2ToolsTsconfig },
+    'packages/@overeng/ci-tools': { tsconfig: ciToolsTsconfig },
+    'packages/@overeng/content-address': { tsconfig: contentAddressTsconfig },
+    'packages/@overeng/effect-ai-claude-cli': { tsconfig: effectAiClaudeCliTsconfig },
+    'packages/@overeng/effect-distributed-lock': { tsconfig: effectDistributedLockTsconfig },
+    'packages/@overeng/effect-path': { tsconfig: effectPathTsconfig },
+    'packages/@overeng/effect-react': { tsconfig: effectReactTsconfig },
+    'packages/@overeng/effect-rpc-tanstack': { tsconfig: effectRpcTanstackTsconfig },
+    'packages/@overeng/effect-rpc-tanstack/examples/basic': {
+      tsconfig: effectRpcTanstackBasicTsconfig,
+    },
+    'packages/@overeng/effect-schema-form': { tsconfig: effectSchemaFormTsconfig },
+    'packages/@overeng/effect-schema-form-aria': { tsconfig: effectSchemaFormAriaTsconfig },
+    'packages/@overeng/genie': { tsconfig: genieTsconfig },
+    'packages/@overeng/kdl': { tsconfig: kdlTsconfig },
+    'packages/@overeng/kdl-effect': { tsconfig: kdlEffectTsconfig },
+    'packages/@overeng/megarepo': { tsconfig: megarepoTsconfig },
+    'packages/@overeng/notion-cli': { tsconfig: notionCliTsconfig },
+    'packages/@overeng/npm-release': { tsconfig: npmReleaseTsconfig },
+    'packages/@overeng/notion-core': { tsconfig: notionCoreTsconfig },
+    'packages/@overeng/notion-datasource-sync': { tsconfig: notionDatasourceSyncTsconfig },
+    'packages/@overeng/notion-effect-client': { tsconfig: notionEffectClientTsconfig },
+    'packages/@overeng/notion-effect-schema': { tsconfig: notionEffectSchemaTsconfig },
+    'packages/@overeng/notion-md': { tsconfig: notionMdTsconfig },
+    'packages/@overeng/notion-property-write': { tsconfig: notionPropertyWriteTsconfig },
+    'packages/@overeng/notion-react': { tsconfig: notionReactTsconfig },
+    'packages/@overeng/otel-contract': { tsconfig: otelContractTsconfig },
+    'packages/@overeng/oxc-config': { tsconfig: oxcConfigTsconfig },
+    'packages/@overeng/pty-effect': { tsconfig: ptyEffectTsconfig },
+    'packages/@overeng/react-inspector': { tsconfig: reactInspectorTsconfig },
+    'packages/@overeng/restate-effect': { tsconfig: restateEffectTsconfig },
+    'packages/@overeng/tui-core': {
+      tsconfig: tuiCoreTsconfig,
+      buck2Authority: {
+        _tag: 'Buck2TypeScriptAuthority',
+        typecheckTarget: '//packages/@overeng/tui-core:typecheck',
+        emitTarget: '//packages/@overeng/tui-core:dist',
+      },
+    },
+    'packages/@overeng/tui-react': {
+      tsconfig: tuiReactTsconfig,
+      buck2Authority: {
+        _tag: 'Buck2TypeScriptAuthority',
+        typecheckTarget: '//packages/@overeng/tui-react:typecheck',
+        emitTarget: '//packages/@overeng/tui-react:dist',
+      },
+    },
+    'packages/@overeng/tui-stories': { tsconfig: tuiStoriesTsconfig },
+    'packages/@overeng/utils': { tsconfig: utilsTsconfig },
+    'packages/@overeng/utils-dev': { tsconfig: utilsDevTsconfig },
   }
   const rootWorkspacePackagePaths = rootWorkspacePackages.map(
     (pkg) => pkg.meta.workspace.memberPath,
@@ -107,11 +141,11 @@ export const rootWorkspaceTsconfigProjects = (() => {
     )
   }
   return rootWorkspacePackagePaths.map((path): RootTsconfigProject => {
-    const tsconfig = workspaceTsconfigsByPath[path]
-    if (tsconfig === undefined) {
+    const definition = workspaceTsconfigsByPath[path]
+    if (definition === undefined) {
       throw new Error(`missing tsconfig data for workspace package: ${path}`)
     }
-    return { path, tsconfig }
+    return { path, ...definition }
   })
 })()
 

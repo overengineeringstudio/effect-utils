@@ -44,7 +44,7 @@ echo "Running otel-run test..."
 # --- build otel-run from the on-disk file (untracked-safe) ---
 nix build --impure --no-link --print-out-paths --expr "
   let
-    flake = builtins.getFlake (toString $ROOT);
+    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
   in import $ROOT/nix/devenv-modules/otel/otel-run.nix { inherit pkgs; }
 " > "$tmpdir/otel-run-path" || { echo "FAIL: nix build otel-run" >&2; exit 1; }
@@ -170,7 +170,7 @@ set -e
 eval_check_exec() {
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       mod = (import $ROOT/nix/devenv-modules/tasks/shared/check.nix { }) { lib = pkgs.lib; };
     in mod.tasks.\"$1\".exec

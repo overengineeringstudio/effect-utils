@@ -4,10 +4,22 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.tsx",
-    "./node": "./src/node/mod.ts",
-    "./opentui": "./src/effect/opentui/mod.tsx",
-    "./storybook": "./src/storybook/mod.tsx"
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.tsx"
+    },
+    "./node": {
+      "types": "./dist/src/node/mod.d.ts",
+      "default": "./src/node/mod.ts"
+    },
+    "./opentui": {
+      "types": "./dist/src/effect/opentui/mod.d.ts",
+      "default": "./src/effect/opentui/mod.tsx"
+    },
+    "./storybook": {
+      "types": "./dist/src/storybook/mod.d.ts",
+      "default": "./src/storybook/mod.tsx"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -45,6 +57,8 @@
     "@effect/atom-react": "4.0.0-rc.111",
     "@effect/platform-node": "4.0.0-rc.111",
     "@effect/vitest": "4.0.0-rc.111",
+    "@noble/hashes": "2.2.0",
+    "@opentelemetry/api": "1.9.1",
     "@opentui/core": "0.4.1",
     "@opentui/react": "0.4.1",
     "@overeng/utils-dev": "workspace:^",

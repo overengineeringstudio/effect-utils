@@ -1,0 +1,110 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/otelite/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:9ebac3409331ba89087bc80204067dae41038b92415d07fc0ba4d911dba5a504
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/BUCK.genie.ts, packages/@overeng/otelite/Cargo.toml, packages/@overeng/otelite/src/**/*.rs, packages/@overeng/otelite/tests/**/*.rs, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/product/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2/products:defs.bzl", "build_product")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
+load("//buck2/rust:defs.bzl", "rust_product_executable")
+native.rust_library(
+    name = "lib",
+    crate = "otelite",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/derive_spanmetrics.rs",
+        "src/inspect/canonical.rs",
+        "src/inspect/mod.rs",
+        "src/inspect/model.rs",
+        "src/inspect/parse.rs",
+        "src/inspect/summarize.rs",
+        "src/inspect_cmd.rs",
+        "src/inspect_logs.rs",
+        "src/inspect_metrics.rs",
+        "src/lib.rs",
+        "src/otlp_json.rs",
+        "src/receiver.rs",
+        "src/run.rs",
+        "src/sink.rs",
+    ],
+    deps = [
+        "//rust/third-party:axum",
+        "//rust/third-party:opentelemetry-proto",
+        "//rust/third-party:prost",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:tokio",
+        "//rust/third-party:tonic",
+    ] + select({
+        "prelude//os/constraints:linux": [
+            "//rust/third-party:libc",
+        ],
+        "prelude//os/constraints:macos": [
+            "//rust/third-party:libc",
+        ],
+        "DEFAULT": [],
+    }),
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "otelite",
+        "CARGO_PKG_VERSION": "0.0.0",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "otelite",
+    crate = "otelite",
+    crate_root = "src/main.rs",
+    srcs = [
+        "src/main.rs",
+    ],
+    deps = [
+        "//rust/third-party:axum",
+        "//rust/third-party:opentelemetry-proto",
+        "//rust/third-party:prost",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:tokio",
+        "//rust/third-party:tonic",
+        ":lib",
+    ] + select({
+        "prelude//os/constraints:linux": [
+            "//rust/third-party:libc",
+        ],
+        "prelude//os/constraints:macos": [
+            "//rust/third-party:libc",
+        ],
+        "DEFAULT": [],
+    }),
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "otelite",
+        "CARGO_PKG_VERSION": "0.0.0",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+rust_product_executable(
+    name = "otelite-product-executable",
+    binary = ":otelite",
+    recipe = "cargo-workspace:otelite@0.0.0",
+    target_platform = host_platform_label(),
+)
+
+build_product(
+    name = "otelite-product",
+    entrypoint = "bin/otelite",
+    executable = ":otelite-product-executable",
+    product_name = "otelite",
+    target_platform = host_platform_label(),
+)

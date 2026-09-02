@@ -32,7 +32,11 @@ import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng
 import { attr, metricValue, OteliteTestHarness, telemetryAttr } from '@overeng/utils-dev/otelite'
 import { OtelConfig } from '@overeng/utils/node/otel'
 
-import { makeStubPrStateResolverLayer, type GhPr, type StubPrRepo } from '../lib/store-pr-state.ts'
+import {
+  makeStubPrStateResolverLayer,
+  type GhPr,
+  type StubPrRepo,
+} from '../store/store-pr-state.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { createStoreFixture, getWorktreeCommit } from '../test-utils/store-setup.ts'
 import { Cwd } from './context.ts'

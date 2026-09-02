@@ -11,12 +11,14 @@ let
   cfg = config.effectUtils.workflowReport;
   trace = import ../lib/trace.nix { inherit lib; };
   root = ../../../..;
-  pinnedPkgs = import (builtins.getFlake (toString root)).inputs.nixpkgs {
+  repoFlake = builtins.getFlake "git+file://${toString root}";
+  repoSource = repoFlake.outPath;
+  pinnedPkgs = import repoFlake.inputs.nixpkgs {
     system = builtins.currentSystem;
   };
-  ciToolsPkg = import (root + "/packages/@overeng/ci-tools/nix/build.nix") {
+  ciToolsPkg = import (repoSource + "/packages/@overeng/ci-tools/nix/build.nix") {
     pkgs = pinnedPkgs;
-    src = root;
+    src = repoSource;
     dirty = true;
   };
   resolvedCiToolsBin =

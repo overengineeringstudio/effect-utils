@@ -12,7 +12,7 @@ import React from 'react'
 import { isTTY } from '@overeng/tui-react'
 import { tty, layer as outputModeLayer } from '@overeng/tui-react'
 
-import type { MemberSyncResult } from '../../../lib/sync/schema.ts'
+import type { MemberSyncResult } from '../../../sync/schema.ts'
 import { SyncApp } from './app.ts'
 import type { SyncState } from './schema.ts'
 import { SyncView } from './view.tsx'

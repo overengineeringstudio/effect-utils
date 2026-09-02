@@ -56,7 +56,7 @@ extract_task_script() {
 
   nix-instantiate --eval --strict --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       pkgsForTest = pkgs // {
         # The smoke test extracts task shell code directly via nix eval instead
@@ -83,7 +83,7 @@ extract_task_script() {
 eval_pnpm_package_count() {
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
         packages = [ ];
@@ -102,7 +102,7 @@ eval_versioned_lock_mutator() {
 
   nix-instantiate --eval --strict --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       affected = (pkgs.writeShellScriptBin \"pnpm\" \"exit 0\").overrideAttrs (_: {
         version = \"$version\";
@@ -122,7 +122,7 @@ eval_versioned_lock_mutator() {
 eval_unversioned_lock_mutator() {
   nix-instantiate --eval --strict --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
         packages = [ ];
@@ -145,7 +145,7 @@ extract_shared_task_script() {
 
   nix-instantiate --eval --strict --json --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       pkgsForTest = pkgs // {
         writeText = name: text: builtins.toFile name text;

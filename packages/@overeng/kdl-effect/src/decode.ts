@@ -119,7 +119,13 @@ export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown =>
       // we pick the first member that is an Arrays or Objects node
       // and apply normalization based on it.
       for (const member of ast.types) {
-        if (member._tag === 'Arrays' || member._tag === 'Objects') {
+        if (
+          member._tag === 'Arrays' ||
+          member._tag === 'Objects' ||
+          member._tag === 'Suspend' ||
+          (member._tag === 'Declaration' &&
+            (member.encoding !== undefined || member.typeParameters.length > 0))
+        ) {
           return normalizeForSchema(obj, member)
         }
       }

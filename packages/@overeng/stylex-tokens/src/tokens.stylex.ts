@@ -522,11 +522,58 @@ export const easings = stylex.defineConsts({
   inOut: 'cubic-bezier(.4, 0, .2, 1)',
 })
 
-export const animations = stylex.defineConsts({
-  spin: `${spin} 1s linear infinite`,
-  ping: `${ping} 1s cubic-bezier(0, 0, .2, 1) infinite`,
-  pulse: `${pulse} 2s cubic-bezier(.4, 0, .6, 1) infinite`,
-  bounce: `${bounce} 1s infinite`,
+/*
+ * Animation longhands, one constant group per CSS property. Deliberately NOT
+ * the upstream `animation` shorthand, and the four groups are not a style
+ * preference — a shorthand here compiles to nothing at all.
+ *
+ * Measured against @stylexjs/babel-plugin@0.19.0. Compiling
+ * `stylex.create({ loader: { animation: `${spin} 1s linear infinite` } })`
+ * emits the `@keyframes` rule and then this:
+ *
+ *   export const styles = { loader: { $$css: true } }
+ *
+ * An empty style object. No `animation` declaration, no `animation-name`, no
+ * warning, no error. `tsc` is happy, the linter is happy, review is happy, and
+ * the animation simply never runs — a pulse in one consuming app had stopped
+ * and nobody noticed until a computed-style diff caught it. The same input as
+ * longhands emits all four declarations with the keyframes name resolved.
+ *
+ * The shorthand export is removed rather than deprecated, because removal is
+ * the only mechanism that turns this into a type error: `animations.spin` no
+ * longer resolves, so every call site fails `tsc` instead of silently
+ * rendering nothing. There is no way to make a *value* of type `string` reject
+ * a shorthand at the StyleX API boundary.
+ *
+ * `bounce` carries no timing function upstream, so it keeps the CSS initial
+ * `ease` rather than acquiring one here.
+ */
+export const animationNames = stylex.defineConsts({
+  spin,
+  ping,
+  pulse,
+  bounce,
+})
+
+export const animationDurations = stylex.defineConsts({
+  spin: '1s',
+  ping: '1s',
+  pulse: '2s',
+  bounce: '1s',
+})
+
+export const animationTimingFunctions = stylex.defineConsts({
+  spin: 'linear',
+  ping: 'cubic-bezier(0, 0, .2, 1)',
+  pulse: 'cubic-bezier(.4, 0, .6, 1)',
+  bounce: 'ease',
+})
+
+export const animationIterationCounts = stylex.defineConsts({
+  spin: 'infinite',
+  ping: 'infinite',
+  pulse: 'infinite',
+  bounce: 'infinite',
 })
 
 export const blurs = stylex.defineConsts({

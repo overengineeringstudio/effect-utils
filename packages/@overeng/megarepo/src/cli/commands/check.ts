@@ -3,12 +3,13 @@ import * as Cli from 'effect/unstable/cli'
 
 import { EffectPath } from '@overeng/effect-path'
 
-import { readMegarepoConfig } from '../../lib/config.ts'
-import { LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
-import { checkSourcePolicy, formatSourcePolicyViolation } from '../../lib/source-policy.ts'
+import { readMegarepoConfig } from '../../core/config.ts'
+import { LOCK_FILE_NAME, readLockFile } from '../../core/lock.ts'
+import { checkSourcePolicy, formatSourcePolicyViolation } from '../../core/source-policy.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
 import { CheckCommandError, LockFileRequiredError, NotInMegarepoError } from '../errors.ts'
 import * as Observability from '../observability.ts'
+import { loadOwnedIdentity, readCompositionLockFile } from './composition.ts'
 
 /** Encodes the structured check result as pretty-printed JSON for `--json` output. */
 const CheckReportJson = Schema.fromJsonString(Schema.Unknown, { space: 2 })
@@ -36,8 +37,18 @@ export const checkCommand = Cli.Command.make(
 
       const root = rootOpt.value
       const { config } = yield* readMegarepoConfig(root)
-      const lockPath = EffectPath.ops.join(root, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME))
-      const lockFileOpt = yield* readLockFile(lockPath)
+      const rootLockPath = EffectPath.ops.join(root, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME))
+      const lockFileOpt =
+        config.generators?.composition?.enabled === true
+          ? yield* Effect.gen(function* () {
+              const identity = yield* Effect.option(loadOwnedIdentity({ workspaceRoot: root }))
+              return yield* readCompositionLockFile({
+                workspaceRoot: root,
+                ownedMemberPath:
+                  Option.isSome(identity) === true ? identity.value.ownedSourcePath : root,
+              })
+            })
+          : yield* readLockFile(rootLockPath)
 
       if (Option.isNone(lockFileOpt) === true) {
         return yield* new LockFileRequiredError({

@@ -93,6 +93,12 @@ export default packageJson(
         },
         { environment: 'node' },
       ),
+      // Audits a BUILT stylesheet for the StyleX `:focus-visible` priority
+      // defect. Its own entry because it is a check to be run, in CI or by
+      // hand, and a validated detector left in a docs folder never gets run.
+      './node/stylex/focus-order': exportEntry('./src/node/stylex/focus-order.ts', {
+        environment: 'node',
+      }),
       './node/storybook': exportEntry('./src/node/storybook/mod.ts', { environment: 'node' }),
       './node/storybook/config': exportEntry('./src/node/storybook/config/mod.ts', {
         environment: 'node',
@@ -132,6 +138,7 @@ export default packageJson(
         './node/playwright': './dist/node/playwright/mod.js',
         './node/playwright/config': './dist/node/playwright/config/mod.js',
         './node/stylex': './dist/node/stylex/mod.js',
+        './node/stylex/focus-order': './dist/node/stylex/focus-order.js',
         './node/storybook': './dist/node/storybook/mod.js',
         './node/storybook/config': './dist/node/storybook/config/mod.js',
         './node/storybook/gate': './dist/node/storybook/gate/mod.js',

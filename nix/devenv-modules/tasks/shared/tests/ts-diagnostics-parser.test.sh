@@ -30,7 +30,7 @@ mkdir -p "$tmpdir/bin"
 # Extract the real ts:check exec script so we test the shipped parser, not a copy.
 nix eval --impure --raw --expr "
   let
-    flake = builtins.getFlake (toString $ROOT);
+    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     evaluated = pkgs.lib.evalModules {
       modules = [

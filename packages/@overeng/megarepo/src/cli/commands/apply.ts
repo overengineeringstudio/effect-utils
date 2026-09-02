@@ -50,7 +50,7 @@ export const applyCommand = Cli.Command.make(
     ),
     worktreeMode: Cli.Flag.choice('worktree-mode', ['commit', 'tracking', 'auto']).pipe(
       Cli.Flag.withDescription(
-        'Worktree strategy: commit (deterministic), tracking (branch worktrees), auto (commit in CI, tracking otherwise)',
+        'Worktree strategy: commit (deterministic), tracking (branch worktrees), auto (tracking outside CI; rejected in CI)',
       ),
       Cli.Flag.withDefault('auto' as const),
     ),

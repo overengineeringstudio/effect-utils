@@ -261,6 +261,16 @@ export type TSNodeOptions = {
   transpiler?: string
 }
 
+/** Validation policy for workspace dependencies in a generated TypeScript project. */
+export type TSConfigJsonOptions = {
+  /**
+   * How workspace packages enter this TypeScript project. Normal workspace
+   * configs use project references; hermetic package projections may instead
+   * resolve the same packages from their materialized node_modules tree.
+   */
+  readonly workspaceDependencyResolution?: 'project-references' | 'node-modules'
+}
+
 /** Arguments for generating a tsconfig.json file */
 export type TSConfigArgs = {
   /** Files to include (glob patterns) */
@@ -281,27 +291,13 @@ export type TSConfigArgs = {
   ts_node?: TSNodeOptions
 }
 
-/**
- * Creates a tsconfig.json configuration.
- *
- * Returns a `GenieOutput` with the structured data accessible via `.data`
- * for composition with other genie files.
- *
- * @example
- * ```ts
- * export default tsconfigJson({
- *   compilerOptions: {
- *     ...baseTsconfigCompilerOptions,
- *     rootDir: ".",
- *     outDir: "dist"
- *   },
- *   include: ["src/**\/*.ts"]
- * })
- * ```
- */
-export const tsconfigJson = <const T extends TSConfigArgs>(
-  args: Strict<T, TSConfigArgs>,
-): GenieOutput<T> => {
+const createTsconfigJson = <const T extends TSConfigArgs>({
+  args,
+  options,
+}: {
+  readonly args: Strict<T, TSConfigArgs>
+  readonly options: TSConfigJsonOptions
+}): GenieOutput<T> => {
   if (args.extends !== undefined) {
     warn(
       `[genie] tsconfig.json uses "extends" which is not recommended with Genie.\n` +
@@ -314,6 +310,26 @@ export const tsconfigJson = <const T extends TSConfigArgs>(
     data: args,
     stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
     validate: (ctx: GenieContext) =>
-      validateTsconfigReferences({ ctx, references: args.references }),
+      options.workspaceDependencyResolution === 'node-modules'
+        ? []
+        : validateTsconfigReferences({ ctx, references: args.references }),
   }
 }
+
+/** Creates a tsconfig with normal workspace project-reference validation. */
+export const tsconfigJson = <const T extends TSConfigArgs>(
+  args: Strict<T, TSConfigArgs>,
+): GenieOutput<T> =>
+  createTsconfigJson({
+    args,
+    options: { workspaceDependencyResolution: 'project-references' },
+  })
+
+/** Creates a hermetic tsconfig whose workspace packages resolve from node_modules. */
+export const tsconfigJsonForNodeModules = <const T extends TSConfigArgs>(
+  args: Strict<T, TSConfigArgs>,
+): GenieOutput<T> =>
+  createTsconfigJson({
+    args,
+    options: { workspaceDependencyResolution: 'node-modules' },
+  })

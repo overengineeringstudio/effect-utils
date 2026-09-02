@@ -133,7 +133,7 @@ const versionInputs = {
 /** Identity = the exact names the TS/Rust const targets encode (no doc prose). */
 const identityKeys = registry.groups
   .flatMap((g) => g.attributes.map((a) => a.id))
-  .toSorted((a, b) => a.localeCompare(b))
+  .toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 const identityNames = {
   attributeKeys: identityKeys,
   ...signalNames(registry),

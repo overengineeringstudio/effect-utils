@@ -1,0 +1,86 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/otel-contract/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:977f7bdf344a3cc7ebf3adcec113a855004a6e44dbe25849c7ada0ca8f6324f4
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/src/**/*.cts, packages/@overeng/otel-contract/src/**/*.mts, packages/@overeng/otel-contract/src/**/*.ts, packages/@overeng/otel-contract/src/**/*.tsx, packages/@overeng/otel-contract/tsconfig.json.genie.ts
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/mod.ts",
+    "src/mod.unit.test.ts",
+    "src/otel-scrape/profile-link.ts",
+    "src/otel-scrape/profile-link.unit.test.ts",
+    "src/otel-scrape/registry.gen.ts",
+    "src/otel-scrape/registry.gen.ts.genie.ts",
+    "src/otel-scrape/registry.gen.unit.test.ts",
+    "src/raw-otel-boundary.unit.test.ts",
+    "src/registry-demo.contract.ts",
+    "src/registry-equivalence.property.unit.test.ts",
+    "src/registry-live-check.integration.test.ts",
+    "src/registry-seam.unit.test.ts",
+    "src/registry.ts",
+    "src/registry.unit.test.ts",
+])
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:importer_packages_overeng_otel_contract_071b3792a33c",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_tree(
+    name = "package_tree",
+    node_modules = ":node_modules",
+    files = {
+        "package.json": "package.json",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "src/otel-scrape/profile-link.ts": "src/otel-scrape/profile-link.ts",
+        "src/otel-scrape/profile-link.unit.test.ts": "src/otel-scrape/profile-link.unit.test.ts",
+        "src/otel-scrape/registry.gen.ts": "src/otel-scrape/registry.gen.ts",
+        "src/otel-scrape/registry.gen.ts.genie.ts": "src/otel-scrape/registry.gen.ts.genie.ts",
+        "src/otel-scrape/registry.gen.unit.test.ts": "src/otel-scrape/registry.gen.unit.test.ts",
+        "src/raw-otel-boundary.unit.test.ts": "src/raw-otel-boundary.unit.test.ts",
+        "src/registry-demo.contract.ts": "src/registry-demo.contract.ts",
+        "src/registry-equivalence.property.unit.test.ts": "src/registry-equivalence.property.unit.test.ts",
+        "src/registry-live-check.integration.test.ts": "src/registry-live-check.integration.test.ts",
+        "src/registry-seam.unit.test.ts": "src/registry-seam.unit.test.ts",
+        "src/registry.ts": "src/registry.ts",
+        "src/registry.unit.test.ts": "src/registry.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    runtime = "//:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    workspace_siblings = {},
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)

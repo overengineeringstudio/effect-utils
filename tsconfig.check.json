@@ -13,6 +13,9 @@
       "path": "./packages/@overeng/agent-session-ingest"
     },
     {
+      "path": "./packages/@overeng/buck2-tools"
+    },
+    {
       "path": "./packages/@overeng/ci-tools"
     },
     {
@@ -98,12 +101,6 @@
     },
     {
       "path": "./packages/@overeng/restate-effect"
-    },
-    {
-      "path": "./packages/@overeng/tui-core"
-    },
-    {
-      "path": "./packages/@overeng/tui-react"
     },
     {
       "path": "./packages/@overeng/tui-stories"

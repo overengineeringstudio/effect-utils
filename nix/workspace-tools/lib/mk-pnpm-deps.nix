@@ -5,11 +5,11 @@
 # | Aspect              | nixpkgs `fetchPnpmDeps` + `pnpmConfigHook`         | This helper                                  |
 # |---------------------|----------------------------------------------------|----------------------------------------------|
 # | Cached artifact     | Normalized pnpm store tarball                      | Prepared workspace directory                 |
-# | Downstream behavior | Restores store, then runs `pnpm install --offline` | Restores prepared tree, skips pnpm entirely  |
+# | Downstream behavior | Restores store, then runs `pnpm install --offline` | Restores data, then purely projects bins     |
 # | Primary goal        | Generic packaging and broad cache reuse            | Fast downstream CLI builds in staged workspaces |
 # | Monorepo model      | Generic pnpm workspace filters                     | Custom staged workspace + install-root model |
 # | Cache reuse         | Better across packages sharing one store           | Worse, because prepared trees are more specific |
-# | Determinism surface | Mostly pnpm store contents                         | Store contents plus pnpm metadata and shims  |
+# | Determinism surface | Mostly pnpm store contents                         | Normalized materialized dependency graph     |
 # | Complexity          | Lower, upstream-maintained                         | Higher, repo-specific normalization logic    |
 #
 # We choose the second column because this repo's staged megarepo workspace is
@@ -39,7 +39,12 @@ let
   # advances first. pnpm dependency preparation is build tooling, not the app
   # runtime, and this keeps FOD behavior stable across nixpkgs release bumps.
   pnpmNodejs = pkgs.nodejs_24 or pkgs.nodejs;
-  preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
+  preparedPnpmTreeScript = pkgs.writeText "prepared-pnpm-tree.cjs" (
+    builtins.readFile ./prepared-pnpm-tree.cjs
+  );
+  pnpmBinProjectorScript = pkgs.writeText "pnpm-bin-projector.cjs" (
+    builtins.readFile ./pnpm-bin-projector.cjs
+  );
   nixClosureBytesScript = pkgs.writeText "nix-closure-bytes.cjs" ''
     const fs = require("fs");
     const raw = fs.readFileSync(0, "utf8");
@@ -103,81 +108,13 @@ let
 
     walk(process.argv[2]);
   '';
-  normalizePreparedTreeScript = pkgs.writeText "normalize-prepared-tree.cjs" ''
-    const fs = require("fs");
-    const path = require("path");
-
-    const shouldDelete = (relativePath) =>
-      relativePath === "node_modules/.modules.yaml" ||
-      relativePath.endsWith("/node_modules/.modules.yaml") ||
-      relativePath.startsWith("node_modules/.pnpm-workspace-state-") ||
-      relativePath.includes("/node_modules/.pnpm-workspace-state-") ||
-      relativePath === "node_modules/.pnpm/lock.yaml" ||
-      relativePath.endsWith("/node_modules/.pnpm/lock.yaml");
-
-    const normalize = (dirPath, root) => {
-      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-        const entryPath = path.join(dirPath, entry.name);
-        const relativePath = path.relative(root, entryPath);
-
-        if (entry.isDirectory()) {
-          normalize(entryPath, root);
-          fs.chmodSync(entryPath, 0o755);
-        } else if (entry.isSymbolicLink()) {
-          const target = fs.readlinkSync(entryPath);
-          if (target.includes(".devenv/pnpm-source-inputs")) {
-            throw new Error(`prepared workspace retained a transient source-input alias reference: ''${relativePath} -> ''${target}`);
-          }
-        } else if (entry.isFile()) {
-          if (shouldDelete(relativePath)) {
-            fs.rmSync(entryPath, { force: true });
-            continue;
-          }
-          const mode = fs.statSync(entryPath).mode;
-          fs.chmodSync(entryPath, (mode & 0o111) === 0 ? 0o444 : 0o555);
-        }
-      }
-    };
-
-    const root = process.argv[2];
-    normalize(root, root);
-    fs.chmodSync(root, 0o755);
-  '';
-  chmodBinScriptsWritableScript = pkgs.writeText "chmod-bin-scripts-writable.cjs" ''
-    const fs = require("fs");
-    const path = require("path");
-
-    const walk = (dirPath) => {
-      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-        const entryPath = path.join(dirPath, entry.name);
-        if (entry.isDirectory()) {
-          walk(entryPath);
-        } else if (entry.isFile() && dirPath.endsWith(`''${path.sep}.bin`)) {
-          const mode = fs.statSync(entryPath).mode;
-          fs.chmodSync(entryPath, mode | 0o200);
-        }
-      }
-    };
-
-    walk(process.argv[2]);
-  '';
   rewritePreparedWorkspaceScript = pkgs.writeText "rewrite-prepared-workspace.cjs" ''
     const fs = require("fs");
     const path = require("path");
     const { execFileSync } = require("child_process");
 
     const workspaceRoot = process.cwd();
-    const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
     const sourceInputLocatorPrefix = "file:.devenv/pnpm-source-inputs/current/";
-
-    const rewriteTextFile = (filePath, transform) => {
-      if (!fs.existsSync(filePath)) {
-        return;
-      }
-
-      const next = transform(fs.readFileSync(filePath, "utf8"));
-      fs.writeFileSync(filePath, next);
-    };
 
     const sortedDirEntries = (dirPath) =>
       fs.readdirSync(dirPath, { withFileTypes: true }).sort((left, right) =>
@@ -358,140 +295,8 @@ let
     };
 
     relinkLocalSourcePackages(workspaceRoot);
-
-    const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-      let realDirPath;
-      try {
-        realDirPath = fs.realpathSync(dirPath);
-      } catch (error) {
-        // pnpm's virtual store may contain package-edge symlinks that are not
-        // materialized in a narrowed FOD projection. Those are dependency
-        // edges, not directories that can contain .bin scripts.
-        if (error && error.code === "ENOENT") {
-          return;
-        }
-        throw error;
-      }
-      if (visitedRealPaths.has(realDirPath)) {
-        return;
-      }
-      visitedRealPaths.add(realDirPath);
-
-      for (const entry of sortedDirEntries(dirPath)) {
-        const entryPath = path.join(dirPath, entry.name);
-        const isDirectory = (() => {
-          if (entry.isDirectory()) {
-            return true;
-          }
-          if (!entry.isSymbolicLink()) {
-            return false;
-          }
-          try {
-            return fs.statSync(entryPath).isDirectory();
-          } catch (error) {
-            if (error && error.code === "ENOENT") {
-              return false;
-            }
-            throw error;
-          }
-        })();
-
-        if (!isDirectory) {
-          continue;
-        }
-
-        if (entry.name === ".bin") {
-          for (const binEntry of sortedDirEntries(entryPath)) {
-            if (!binEntry.isFile()) {
-              continue;
-            }
-            rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
-              script.split(workspaceRoot).join(workspacePlaceholder)
-            );
-          }
-          continue;
-        }
-
-        rewriteBinScripts(entryPath, visitedRealPaths);
-      }
-    };
-
-    rewriteBinScripts(workspaceRoot);
   '';
-  restorePreparedWorkspaceScript = pkgs.writeText "restore-prepared-workspace.cjs" ''
-    const fs = require("fs");
-    const path = require("path");
 
-    const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
-    const workspaceTarget = process.env.PREPARED_WORKSPACE_TARGET;
-
-    const rewriteTextFile = (filePath) => {
-      if (!fs.existsSync(filePath)) {
-        return;
-      }
-
-      const current = fs.readFileSync(filePath, "utf8");
-      const next = current.split(workspacePlaceholder).join(workspaceTarget);
-      if (next !== current) {
-        fs.writeFileSync(filePath, next);
-      }
-    };
-
-    const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-      let realDirPath;
-      try {
-        realDirPath = fs.realpathSync(dirPath);
-      } catch (error) {
-        // Prepared workspace restores can see the same narrowed pnpm graph as
-        // the FOD builder. Dangling package-edge symlinks are not script dirs.
-        if (error && error.code === "ENOENT") {
-          return;
-        }
-        throw error;
-      }
-      if (visitedRealPaths.has(realDirPath)) {
-        return;
-      }
-      visitedRealPaths.add(realDirPath);
-
-      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-        const entryPath = path.join(dirPath, entry.name);
-        const isDirectory = (() => {
-          if (entry.isDirectory()) {
-            return true;
-          }
-          if (!entry.isSymbolicLink()) {
-            return false;
-          }
-          try {
-            return fs.statSync(entryPath).isDirectory();
-          } catch (error) {
-            if (error && error.code === "ENOENT") {
-              return false;
-            }
-            throw error;
-          }
-        })();
-
-        if (!isDirectory) {
-          continue;
-        }
-
-        if (entry.name === ".bin") {
-          for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
-            if (binEntry.isFile()) {
-              rewriteTextFile(path.join(entryPath, binEntry.name));
-            }
-          }
-          continue;
-        }
-
-        rewriteBinScripts(entryPath, visitedRealPaths);
-      }
-    };
-
-    rewriteBinScripts(workspaceTarget);
-  '';
 in
 {
   # Create a fixed-output derivation that prepares a workspace install tree.
@@ -816,12 +621,11 @@ in
                   log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
                 done < .pnpm-install-roots.txt
 
-                export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
-                rewriteStartedAt=$(timer_now)
+                relinkStartedAt=$(timer_now)
                 ${pnpmNodejs}/bin/node ${lib.escapeShellArg rewritePreparedWorkspaceScript}
-                rewriteDuration=$(timer_elapsed "$rewriteStartedAt")
-                log_prep_phase "rewrite" "duration=''${rewriteDuration}s"
-                log_prep_event "rewrite" "$rewriteDuration" "kind=prepared-workspace"
+                relinkDuration=$(timer_elapsed "$relinkStartedAt")
+                log_prep_phase "relink-local-sources" "duration=''${relinkDuration}s"
+                log_prep_event "relink-local-sources" "$relinkDuration" "kind=prepared-workspace"
 
                 # These pnpm bookkeeping files are only needed for future pnpm
                 # operations. Downstream builders restore a prepared tree and go
@@ -846,7 +650,11 @@ in
                   -prune -exec rm -rf {} +
                 rm -f .pnpm-install-roots.txt
 
-                ${pnpmNodejs}/bin/node ${lib.escapeShellArg normalizePreparedTreeScript} .
+                # Projection state is never part of immutable prepared dependency
+                # data. Normalize it away, then scan independently so any future
+                # normalizer regression fails closed before the archive boundary.
+                ${pnpmNodejs}/bin/node ${lib.escapeShellArg preparedPnpmTreeScript} normalize .
+                ${pnpmNodejs}/bin/node ${lib.escapeShellArg preparedPnpmTreeScript} scan .
 
                 leaked_path=$(
                   find "$SOURCE_DIR" \
@@ -898,7 +706,11 @@ in
       outputHash = pnpmDepsHash;
 
       passthru = {
-        inherit rewritePreparedWorkspaceScript;
+        inherit
+          pnpmBinProjectorScript
+          preparedPnpmTreeScript
+          rewritePreparedWorkspaceScript
+          ;
       };
     };
 
@@ -966,8 +778,14 @@ in
         )
       fi
 
+        # The store payload is immutable dependency data; the restored build
+        # tree is its mutable projection workspace. Encode owner-write
+        # permission in the transfer stream so every nested node_modules root
+        # is writable before the projector takes authority, while preserving
+        # executable bits from normalization.
       ${pkgs.gnutar}/bin/tar \
         --create \
+        --mode='u+w' \
         --file - \
         --directory ${deps} \
         . \
@@ -977,11 +795,11 @@ in
         --directory ${lib.escapeShellArg target} \
         --delay-directory-restore
 
-      export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
       export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
 
-      ${pkgs.nodejs}/bin/node ${lib.escapeShellArg chmodBinScriptsWritableScript} "$PREPARED_WORKSPACE_TARGET"
-          ${pnpmNodejs}/bin/node ${lib.escapeShellArg restorePreparedWorkspaceScript}
+      # Prepared artifacts contain dependency data only. Recreate every .bin
+      # projection from the restored immutable package manifests.
+      ${pnpmNodejs}/bin/node ${lib.escapeShellArg pnpmBinProjectorScript} "$PREPARED_WORKSPACE_TARGET"
 
       restored_payload_bytes=$(restore_path_bytes ${deps})
       echo "workspace-restore: phase=restore label=${label} target=$PREPARED_WORKSPACE_TARGET duration=$(restore_timer_elapsed "$restoreStartedAt")s payload_size=$(restore_format_bytes "$restored_payload_bytes") mode=tar-stream-tree"

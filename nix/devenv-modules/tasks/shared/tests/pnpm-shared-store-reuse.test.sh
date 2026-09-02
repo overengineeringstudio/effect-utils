@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
 PNPM_OUT="$({
   nix build --no-link --print-out-paths --impure --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     in flake.lib.mkPnpm { inherit pkgs; }
   "

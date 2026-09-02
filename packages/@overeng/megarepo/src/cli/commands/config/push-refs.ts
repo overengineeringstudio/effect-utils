@@ -22,7 +22,7 @@ import {
   parseSourceString,
   readMegarepoConfig,
   writeMegarepoConfig,
-} from '../../../lib/config.ts'
+} from '../../../core/config.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { NotInMegarepoError } from '../../errors.ts'
 import * as Observability from '../../observability.ts'
