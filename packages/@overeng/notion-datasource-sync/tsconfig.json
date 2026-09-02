@@ -63,9 +63,6 @@
     },
     {
       "path": "../notion-property-write"
-    },
-    {
-      "path": "../utils"
     }
   ]
 }

@@ -53,9 +53,6 @@
     },
     {
       "path": "../notion-effect-schema"
-    },
-    {
-      "path": "../utils"
     }
   ]
 }

@@ -54,26 +54,75 @@ export default packageJson(
     name: '@overeng/utils',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry('./src/isomorphic/mod.ts', { environment: 'node' }),
-      './node': exportEntry('./src/node/mod.ts', { environment: 'node' }),
-      './node/cli-help-rewrite': exportEntry('./src/node/cli-help-rewrite.ts', {
-        environment: 'node',
-      }),
-      './node/cli-version': exportEntry('./src/node/cli-version.ts', { environment: 'node' }),
-      './node/otel': exportEntry('./src/node/otel.ts', { environment: 'node' }),
-      './node/otel-attrs': exportEntry('./src/node/otel-attrs.ts', { environment: 'node' }),
-      './node/playwright': exportEntry('./src/node/playwright/mod.ts', { environment: 'node' }),
-      './node/playwright/config': exportEntry('./src/node/playwright/config/mod.ts', {
-        environment: 'node',
-      }),
-      './node/storybook': exportEntry('./src/node/storybook/mod.ts', { environment: 'node' }),
-      './node/storybook/config': exportEntry('./src/node/storybook/config/mod.ts', {
-        environment: 'node',
-      }),
-      './lock': exportEntry('./src/lock/mod.ts', { environment: 'node' }),
-      './browser': exportEntry('./src/browser/mod.ts', { environment: 'browser' }),
+      '.': exportEntry(
+        { types: './dist/src/isomorphic/mod.d.ts', default: './src/isomorphic/mod.ts' },
+        { environment: 'node' },
+      ),
+      './node': exportEntry(
+        { types: './dist/src/node/mod.d.ts', default: './src/node/mod.ts' },
+        { environment: 'node' },
+      ),
+      './node/cli-help-rewrite': exportEntry(
+        {
+          types: './dist/src/node/cli-help-rewrite.d.ts',
+          default: './src/node/cli-help-rewrite.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/cli-version': exportEntry(
+        {
+          types: './dist/src/node/cli-version.d.ts',
+          default: './src/node/cli-version.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/otel': exportEntry(
+        { types: './dist/src/node/otel.d.ts', default: './src/node/otel.ts' },
+        { environment: 'node' },
+      ),
+      './node/otel-attrs': exportEntry(
+        { types: './dist/src/node/otel-attrs.d.ts', default: './src/node/otel-attrs.ts' },
+        { environment: 'node' },
+      ),
+      './node/playwright': exportEntry(
+        {
+          types: './dist/src/node/playwright/mod.d.ts',
+          default: './src/node/playwright/mod.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/playwright/config': exportEntry(
+        {
+          types: './dist/src/node/playwright/config/mod.d.ts',
+          default: './src/node/playwright/config/mod.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/storybook': exportEntry(
+        {
+          types: './dist/src/node/storybook/mod.d.ts',
+          default: './src/node/storybook/mod.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/storybook/config': exportEntry(
+        {
+          types: './dist/src/node/storybook/config/mod.d.ts',
+          default: './src/node/storybook/config/mod.ts',
+        },
+        { environment: 'node' },
+      ),
+      './lock': exportEntry(
+        { types: './dist/src/lock/mod.d.ts', default: './src/lock/mod.ts' },
+        { environment: 'node' },
+      ),
+      './browser': exportEntry(
+        { types: './dist/src/browser/mod.d.ts', default: './src/browser/mod.ts' },
+        { environment: 'browser' },
+      ),
       './cuid': exportEntry(
         {
+          types: './dist/src/cuid/mod.d.ts',
           browser: './src/cuid/cuid.browser.ts',
           node: './src/cuid/cuid.node.ts',
           default: './src/cuid/mod.ts',

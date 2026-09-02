@@ -95,9 +95,6 @@
     },
     {
       "path": "./packages/@overeng/tui-stories"
-    },
-    {
-      "path": "./packages/@overeng/utils"
     }
   ]
 }

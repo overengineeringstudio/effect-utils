@@ -57,9 +57,6 @@
     },
     {
       "path": "../kdl-effect"
-    },
-    {
-      "path": "../utils"
     }
   ]
 }
