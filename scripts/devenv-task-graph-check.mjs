@@ -139,6 +139,10 @@ for (const name of ['ts:check', 'ts:check:strict', 'ts:build', 'ts:build-watch',
     name: `${name} reaches ${materializer}`,
   })
 }
+ok({
+  condition: reaches({ start: materializer, target: 'mr:check' }),
+  name: `${materializer} waits for workspace reconciliation`,
+})
 
 const source = readFileSync(`${root}/devenv.nix`, 'utf8')
 const taskSource = (name) => {

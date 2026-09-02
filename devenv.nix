@@ -1114,6 +1114,7 @@ in
   tasks."buck2:typescript:materialize-dist" = {
     description = "Atomically materialize all Buck-owned TypeScript declarations";
     after = [
+      "mr:check"
       "buck2:capabilities:project"
       "genie:run"
     ];
