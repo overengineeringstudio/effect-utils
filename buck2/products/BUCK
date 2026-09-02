@@ -1,0 +1,8 @@
+load("//buck2/products:defs.bzl", "build_product")
+
+# Public rule API lives in defs.bzl; concrete products belong to repository adapters.
+export_file(
+    name = "fixture_executable",
+    src = "defs.bzl",
+    visibility = ["PUBLIC"],
+)

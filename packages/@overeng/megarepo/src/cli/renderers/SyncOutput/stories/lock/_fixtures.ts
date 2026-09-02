@@ -4,7 +4,7 @@
  * @internal
  */
 
-import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import type { MemberSyncResult } from '../../../../../sync/schema.ts'
 import { COMMITS, MEMBERS } from '../../../_story-constants.ts'
 
 // =============================================================================

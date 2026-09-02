@@ -236,9 +236,7 @@ const runProjectionHash = () => {
       target = fs.readlinkSync(entryPath)
     } catch {}
 
-    appendLine(
-      `${fs.existsSync(entryPath) ? 'link' : 'broken-link'} ${entryPath} -> ${target}`,
-    )
+    appendLine(`${fs.existsSync(entryPath) ? 'link' : 'broken-link'} ${entryPath} -> ${target}`)
   }
 
   const appendPackageContentEvidence = (entryPath) => {

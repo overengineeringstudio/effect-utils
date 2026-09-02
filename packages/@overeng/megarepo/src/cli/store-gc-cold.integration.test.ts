@@ -37,10 +37,14 @@ import { expect, vi } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
-import * as Git from '../lib/git.ts'
-import { refreshWorkspaceRegistry } from '../lib/store-liveness.ts'
-import { makeStubPrStateResolverLayer, type GhPr, type StubPrRepo } from '../lib/store-pr-state.ts'
-import { makeStoreLayer, Store } from '../lib/store.ts'
+import * as Git from '../core/git.ts'
+import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
+import {
+  makeStubPrStateResolverLayer,
+  type GhPr,
+  type StubPrRepo,
+} from '../store/store-pr-state.ts'
+import { makeStoreLayer, Store } from '../store/store.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   createArchiveEntry,
@@ -379,7 +383,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
           'local-only\n',
         )
         yield* git(worktreePath, 'add', '-A')
-        yield* git(worktreePath, 'commit', '--no-verify', '-m', 'local only')
+        yield* git(worktreePath, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'local only')
         const commit = yield* getWorktreeCommit(worktreePath)
         yield* materializeBranchRef({ bareRepoPath, branch: 'feature/unpushed', commit })
 

@@ -36,7 +36,7 @@ extract_ts_emit_script() {
 
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       evaluated = pkgs.lib.evalModules {
         modules = [
@@ -63,7 +63,7 @@ extract_ts_emit_script() {
 eval_ts_package_count() {
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
         tsBinPkg = pkgs.writeShellScriptBin \"tsgo\" \"exit 0\";

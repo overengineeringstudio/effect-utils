@@ -10,6 +10,7 @@
  */
 export const internalPackages = [
   'agent-session-ingest',
+  'buck2-tools',
   'content-address',
   'effect-ai-claude-cli',
   'effect-distributed-lock',

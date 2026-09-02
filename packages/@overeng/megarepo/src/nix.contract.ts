@@ -3,13 +3,13 @@
  * catalog for megarepo's nix flake-metadata / nix-lock spans, authored via the Layer-2
  * `@overeng/otel-contract/registry` surface. This is the single home for the `nix.*` attribute
  * catalog: the Weaver registry projection derives from it, and megarepo's runtime nix bridges
- * (`src/lib/observability.ts`) rebuild from the IMPORTED schemas below (SC-R13/R14).
+ * (`src/core/observability.ts`) rebuild from the IMPORTED schemas below (SC-R13/R14).
  *
  * This is a `*.contract.ts` seam file, so it is exempt from the `otel-contract-in-seam-file` lint
  * and MUST be registered in the root aggregator's `memberSeamPaths` (a colocated no-orphan-seam
  * test asserts this).
  *
- * Placement: `src/` (megarepo has no dependency-free zone; `lib/observability.ts` already imports
+ * Placement: `src/` (megarepo has no dependency-free zone; `core/observability.ts` already imports
  * `@overeng/otel-contract` at runtime, so this file's `./registry` import is runtime-safe).
  *
  * ATTRS-ONLY MEMBER (no `signals`). Every `nix.*` key reaches telemetry through a nix bridge span

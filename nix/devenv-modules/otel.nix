@@ -41,6 +41,9 @@
   portRangeEnd ? 60000,
   # Mode: "auto" detects system stack, "local" always uses local, "system" always uses system
   mode ? "auto",
+  # Native devenv tracing owns shell activation when false. Task and process
+  # observability remain available without adding work to every shell entry.
+  traceShellEntry ? true,
   # Pre-compiled project-specific dashboards to provision alongside built-in ones.
   # Only used for local Grafana provisioning. OTEL_MODE=system uses the shared
   # stack and refreshes dashboards only when a compatible legacy otel CLI exists.
@@ -542,42 +545,44 @@ in
   # export env vars and emit the post-init shell message via devenv.messages.
   # The shell root span is emitted in a dedicated task after setup work, so
   # enterShell only consumes exported state and marks the interactive handoff.
-  enterShell = lib.mkAfter ''
-    # `otel-trace` remains as a cheap on-demand way to reopen the current link,
-    # but the user-visible shell-entry message now comes from `otel:shell-env`.
-    otel_trace() {
-      local _url="''${OTEL_GRAFANA_LINK_URL:-''${OTEL_GRAFANA_URL:-}}"
-      if [ -z "$_url" ]; then
-        echo "[otel] No OTEL grafana link available"
-        return 1
-      fi
-      if [ -n "''${TRACEPARENT:-}" ]; then
-        IFS='-' read -r _ _tid _ _ <<< "$TRACEPARENT"
-        local _label="trace:$_tid"
-        if [ -t 1 ]; then
-          printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "$_label"
-        else
-          echo "$_label $_url"
+  enterShell = lib.mkIf traceShellEntry (
+    lib.mkAfter ''
+      # `otel-trace` remains as a cheap on-demand way to reopen the current link,
+      # but the user-visible shell-entry message now comes from `otel:shell-env`.
+      otel_trace() {
+        local _url="''${OTEL_GRAFANA_LINK_URL:-''${OTEL_GRAFANA_URL:-}}"
+        if [ -z "$_url" ]; then
+          echo "[otel] No OTEL grafana link available"
+          return 1
         fi
-      else
-        if [ -t 1 ]; then
-          printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "grafana"
+        if [ -n "''${TRACEPARENT:-}" ]; then
+          IFS='-' read -r _ _tid _ _ <<< "$TRACEPARENT"
+          local _label="trace:$_tid"
+          if [ -t 1 ]; then
+            printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "$_label"
+          else
+            echo "$_label $_url"
+          fi
         else
-          echo "grafana $_url"
+          if [ -t 1 ]; then
+            printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "grafana"
+          else
+            echo "grafana $_url"
+          fi
         fi
-      fi
-    }
-    alias otel-trace=otel_trace
+      }
+      alias otel-trace=otel_trace
 
-    # setup:gate seeds shell-root trace IDs for setup tasks. Clear the
-    # task-scoped context markers before handing control to the interactive
-    # shell so later task runs do not accidentally reuse shell bootstrap state.
-    unset OTEL_TASK_TRACEPARENT OTEL_SHELL_ENTRY_NS
+      # setup:gate seeds shell-root trace IDs for setup tasks. Clear the
+      # task-scoped context markers before handing control to the interactive
+      # shell so later task runs do not accidentally reuse shell bootstrap state.
+      unset OTEL_TASK_TRACEPARENT OTEL_SHELL_ENTRY_NS
 
-        # Mark the moment the shell becomes interactive (after all setup + OTEL work).
-        # Consumed by shell-entry diagnostics.
-        export SHELL_ENTRY_TIME_NS=$(date +%s%N)
-  '';
+          # Mark the moment the shell becomes interactive (after all setup + OTEL work).
+          # Consumed by shell-entry diagnostics.
+          export SHELL_ENTRY_TIME_NS=$(date +%s%N)
+    ''
+  );
 
   # =========================================================================
   # Processes (started via `devenv up`)
@@ -642,7 +647,7 @@ in
   # Tasks
   # =========================================================================
 
-  tasks."otel:shell-env" = {
+  tasks."otel:shell-env" = lib.mkIf traceShellEntry {
     description = "Resolve OTEL shell env and shell-entry message";
     exports = [
       "OTEL_MODE"
@@ -683,7 +688,7 @@ in
     after = lib.optionals (builtins.hasAttr "setup:gate" config.tasks) [ "setup:gate" ];
   };
 
-  tasks."otel:shell-entry" = {
+  tasks."otel:shell-entry" = lib.mkIf traceShellEntry {
     description = "Emit the shell-entry root trace span after setup completes";
     exec = ''
       set -euo pipefail

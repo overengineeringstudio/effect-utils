@@ -33,6 +33,16 @@ export class MemberNotFoundError extends Schema.TaggedError<MemberNotFoundError>
   },
 ) {}
 
+/** Error when a member mount is a foreign real path rather than a managed symlink */
+export class ForeignMemberMountError extends Schema.TaggedError<ForeignMemberMountError>()(
+  'ForeignMemberMountError',
+  {
+    message: Schema.String,
+    member: Schema.String,
+    path: Schema.String,
+  },
+) {}
+
 // =============================================================================
 // Lock File Errors
 // =============================================================================

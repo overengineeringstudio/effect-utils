@@ -33,7 +33,7 @@ resolve_otel_span() {
   else
     nix build --no-link --print-out-paths --impure --expr "
       let
-        flake = builtins.getFlake (toString $ROOT);
+        flake = builtins.getFlake \"$NIX_FLAKE_REF\";
         pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       in import $ROOT/nix/devenv-modules/otel/otel-span.nix { inherit pkgs; }
     " | sed 's|$|/bin/otel-span|'
@@ -53,7 +53,7 @@ resolve_otel_scrape() {
 extract_ts_check_exec() {
   nix eval --impure --raw --expr "
     let
-      flake = builtins.getFlake (toString $ROOT);
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       evaluated = pkgs.lib.evalModules {
         modules = [

@@ -9,7 +9,7 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import * as Git from '../lib/git.ts'
+import * as Git from '../core/git.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'

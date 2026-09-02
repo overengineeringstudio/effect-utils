@@ -5,7 +5,7 @@ let
   devenvModuleTestsScript = pkgs.writeShellScript "devenv-module-tests" ''
     set -euo pipefail
 
-    testDir="${toString ../shared/tests}"
+    testDir="$PWD/nix/devenv-modules/tasks/shared/tests"
     if [ ! -d "$testDir" ]; then
       echo "No devenv module tests found (missing $testDir)"
       exit 1
@@ -16,7 +16,7 @@ let
       [ -f "$testFile" ] || continue
       found=true
       echo "Running $testFile"
-      bash "$testFile"
+      NIX_FLAKE_REF="git+file://$PWD" BASH_BIN=${pkgs.bashNonInteractive}/bin/bash ${pkgs.bashNonInteractive}/bin/bash "$testFile"
     done
 
     if [ "$found" != true ]; then

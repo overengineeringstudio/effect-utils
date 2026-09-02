@@ -7,7 +7,6 @@ import {
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 import megarepoPkg from '../megarepo/package.json.genie.ts'
-import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -17,7 +16,7 @@ const ownPeerDepNames = ['effect'] as const
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/tui-stories' }),
   dependencies: {
-    workspace: [tuiCorePkg, tuiReactPkg, utilsPkg],
+    workspace: [tuiReactPkg, utilsPkg],
   },
   devDependencies: {
     workspace: [megarepoPkg, utilsDevPkg],

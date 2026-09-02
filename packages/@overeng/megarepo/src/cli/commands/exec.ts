@@ -13,7 +13,7 @@ import React from 'react'
 
 import { run } from '@overeng/tui-react'
 
-import { getMemberPath, readMegarepoConfig } from '../../lib/config.ts'
+import { getMemberPath, readMegarepoConfig } from '../../core/config.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer, verboseOption } from '../context.ts'
 import * as Observability from '../observability.ts'
 import { ExecApp, ExecView } from '../renderers/ExecOutput/mod.ts'

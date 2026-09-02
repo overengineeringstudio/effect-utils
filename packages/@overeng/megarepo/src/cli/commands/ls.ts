@@ -18,9 +18,9 @@ import {
   findConfigPath,
   getMemberPath,
   readMegarepoConfig,
-} from '../../lib/config.ts'
-import * as Git from '../../lib/git.ts'
-import { type MegarepoTraversal, withMegarepoTraversal } from '../../lib/megarepo-traversal.ts'
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
+import { type MegarepoTraversal, withMegarepoTraversal } from '../../core/megarepo-traversal.ts'
 import {
   Cwd,
   detectCurrentMemberPath,

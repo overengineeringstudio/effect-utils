@@ -17,6 +17,10 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
+  foreignMemberMountMessage,
+  inspectMemberMount,
+} from '../../composition/mounts/member-mount.ts'
+import {
   type ConfigNotFoundError,
   findConfigPath,
   getMemberPath,
@@ -25,9 +29,8 @@ import {
   isRemoteSource,
   parseSourceString,
   readMegarepoConfig,
-} from '../../lib/config.ts'
-import { generateAll, getEnabledGenerators } from '../../lib/generators/mod.ts'
-import * as Git from '../../lib/git.ts'
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
 import {
   checkLockStaleness,
   createEmptyLockFile,
@@ -36,12 +39,13 @@ import {
   syncLockWithConfig,
   upsertLockedMember,
   writeLockFile,
-} from '../../lib/lock.ts'
-import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
-import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
-import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
-import type { StoreLock } from '../../lib/store-lock.ts'
-import { Store, StoreLayer } from '../../lib/store.ts'
+} from '../../core/lock.ts'
+import { syncNixLocks, type NixLockSyncResult } from '../../core/nix-lock/mod.ts'
+import { generateAll, getEnabledGenerators } from '../../generators/mod.ts'
+import { runPreflightChecks, type StoreHygieneError } from '../../store/store-hygiene.ts'
+import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
+import type { StoreLock } from '../../store/store-lock.ts'
+import { Store, StoreLayer } from '../../store/store.ts'
 import {
   type GitProtocol,
   type MissingRefAction,
@@ -51,8 +55,8 @@ import {
   type MegarepoSyncResult,
   type MemberSyncResult,
   type SyncMode,
-} from '../../lib/sync/mod.ts'
-import type { MegarepoSyncTree as MegarepoSyncTreeType } from '../../lib/sync/schema.ts'
+} from '../../sync/mod.ts'
+import type { MegarepoSyncTree as MegarepoSyncTreeType } from '../../sync/schema.ts'
 import { Cwd, findMegarepoRoot, outputModeLayer, type OutputModeValue } from '../context.ts'
 import {
   NotInMegarepoError,
@@ -74,6 +78,7 @@ import type {
   LockSharedSourceUpdate,
   SyncAction,
 } from '../renderers/SyncOutput/schema.ts'
+import { readCompositionLockFile, runCompositionApply } from './composition.ts'
 
 /** Policy for apply-time lock-file rewrites. */
 export type LockSyncMode = 'auto' | 'off' | 'direct' | 'recursive'
@@ -157,7 +162,7 @@ export const syncMegarepo = <R = never>({
     visited.add(resolvedRoot)
 
     // Load config
-    const { config } = yield* readMegarepoConfig(megarepoRoot)
+    const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
 
     if (dryRun === false) {
       const membersRoot = getMembersRoot(megarepoRoot)
@@ -165,8 +170,11 @@ export const syncMegarepo = <R = never>({
     }
 
     // Load lock file (optional unless apply)
+    const physicalConfigPath = yield* fs.realPath(configPath)
+    const configOwner =
+      EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? megarepoRoot
     const lockPath = EffectPath.ops.join(
-      megarepoRoot,
+      configOwner,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
     )
     const lockFileOpt = yield* readLockFile(lockPath)
@@ -319,17 +327,26 @@ export const syncMegarepo = <R = never>({
               EffectPath.unsafe.relativeFile(entry),
             )
 
-            // Only remove symlinks (not directories that might be local repos)
-            const linkTarget = yield* fs.readLink(entryPath).pipe(Effect.orElseSucceed(() => null))
-
-            if (linkTarget !== null) {
+            const memberMount = yield* inspectMemberMount(entryPath)
+            if (memberMount._tag === 'Foreign') {
+              return {
+                name: entry,
+                status: 'error' as const,
+                message: foreignMemberMountMessage({
+                  name: entry,
+                  path: entryPath,
+                  operation: 'remove',
+                }),
+              }
+            }
+            if (memberMount._tag === 'Symlink') {
               if (dryRun === false) {
                 yield* fs.remove(entryPath).pipe(Effect.catch(() => Effect.void))
               }
               return {
                 name: entry,
                 status: 'removed' as const,
-                message: linkTarget,
+                message: memberMount.target,
               }
             }
             return undefined
@@ -623,7 +640,7 @@ export const runCommand = ({
   verbose: boolean
   /** When true, runs fetch first (silently), then apply with output rendering. Used by `mr fetch --apply`. */
   applyAfterFetch?: boolean
-  /** Worktree strategy for apply mode: 'commit', 'tracking', or 'auto' (default). */
+  /** Worktree strategy for apply mode. Auto tracks outside CI and is rejected in CI. */
   worktreeMode?: 'commit' | 'tracking' | 'auto'
   /** Controls whether apply also rewrites Nix/nested megarepo lock files. */
   lockSyncMode?: LockSyncMode
@@ -631,11 +648,17 @@ export const runCommand = ({
   Effect.gen(function* () {
     const json = output === 'json' || output === 'ndjson'
 
-    // Resolve worktree mode: 'auto' → commit in CI, tracking otherwise
     const resolvedWorktreeMode = worktreeMode ?? 'auto'
-    const commitMode =
-      resolvedWorktreeMode === 'commit' ||
-      (resolvedWorktreeMode === 'auto' && process.env.CI === 'true')
+    const appliesWorkspace = mode === 'apply' || applyAfterFetch === true
+
+    if (appliesWorkspace === true && resolvedWorktreeMode === 'auto' && process.env.CI === 'true') {
+      return yield* new InvalidOptionsError({
+        message:
+          'CI requires an explicit worktree strategy; pass --worktree-mode commit for deterministic detached worktrees or --worktree-mode tracking for branch worktrees',
+      })
+    }
+
+    const commitMode = resolvedWorktreeMode === 'commit'
 
     const cwd = yield* Cwd
     const root = yield* findMegarepoRoot(cwd)
@@ -656,6 +679,22 @@ export const runCommand = ({
     const workspaceName = yield* Git.deriveMegarepoName(root.value)
     const { config } = yield* readMegarepoConfig(root.value)
     const memberNames = Object.keys(config.members)
+    const compositionEnabled = config.generators?.composition?.enabled === true
+
+    if (compositionEnabled === true && appliesWorkspace === true) {
+      if (all === true || onlyMembers !== undefined || skipMembers !== undefined) {
+        return yield* new InvalidOptionsError({
+          message:
+            'Composition apply owns the complete member set; --all, --only, and --skip are unavailable',
+        })
+      }
+      if (commitMode === true) {
+        return yield* new InvalidOptionsError({
+          message:
+            'Composition apply requires the owned branch worktree; --worktree-mode commit is unavailable',
+        })
+      }
+    }
 
     const skippedMembers = memberNames.filter((memberName) => {
       if (onlyMembers !== undefined && onlyMembers.length > 0) {
@@ -706,24 +745,73 @@ export const runCommand = ({
     const effectiveMode = applyAfterFetch === true ? 'apply' : mode
 
     const doSync = (progressHandle?: SyncUIHandle) =>
-      syncMegarepo({
-        megarepoRoot: root.value,
-        options: {
-          mode: effectiveMode,
-          dryRun,
-          force,
-          all,
-          only: onlyMembers,
-          skip: skipMembers,
-          gitProtocol,
-          createBranches,
-          ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
-          ...(commitMode === true ? { commitMode: true } : {}),
-          ...(lockSyncMode !== undefined ? { lockSyncMode } : {}),
-        },
-        ...(progressHandle !== undefined ? { progressHandle } : {}),
-        ...(onMissingRef !== undefined ? { onMissingRef } : {}),
-      })
+      effectiveMode === 'apply' && compositionEnabled === true
+        ? Effect.gen(function* () {
+            const composition = yield* runCompositionApply({
+              workspaceRoot: root.value,
+              dryRun,
+              callerCwd: cwd,
+            })
+            const ignoredMembers = config.generators?.composition?.ignoredMembers ?? []
+            const ignoredLock = yield* readCompositionLockFile({
+              workspaceRoot: root.value,
+              ownedMemberPath: composition.defaultCwd,
+            })
+            const legacyResults = yield* Effect.forEach(ignoredMembers, (name) =>
+              syncMember({
+                name,
+                sourceString: config.members[name]!,
+                megarepoRoot: root.value,
+                lockFile: Option.getOrUndefined(ignoredLock),
+                mode: 'apply',
+                dryRun,
+                force,
+                gitProtocol,
+                createBranches,
+                commitMode: true,
+              }),
+            )
+            const appliedMembers =
+              composition.composition._tag === 'Applied'
+                ? composition.composition.members.map((member) => member.memberKey)
+                : composition.composition.steps
+                    .filter((step) => step._tag === 'Capability')
+                    .map((step) => step.memberKey)
+            return {
+              root: root.value,
+              results: [
+                ...legacyResults,
+                ...[...new Set(appliedMembers)].map((name) => ({
+                  name,
+                  status: 'applied' as const,
+                  message: dryRun === true ? 'planned composition update' : undefined,
+                })),
+              ],
+              nestedMegarepos: [],
+              nestedResults: [],
+              lockSyncResults: undefined,
+              defaultCwd: composition.defaultCwd,
+              composition,
+            } satisfies MegarepoSyncResult
+          })
+        : syncMegarepo({
+            megarepoRoot: root.value,
+            options: {
+              mode: effectiveMode,
+              dryRun,
+              force,
+              all,
+              only: onlyMembers,
+              skip: skipMembers,
+              gitProtocol,
+              createBranches,
+              ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
+              ...(commitMode === true ? { commitMode: true } : {}),
+              ...(lockSyncMode !== undefined ? { lockSyncMode } : {}),
+            },
+            ...(progressHandle !== undefined ? { progressHandle } : {}),
+            ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+          })
 
     /** Merge fetch errors into apply results so errors from the fetch phase are visible.
      * - Replace apply error results with fetch errors (fetch has the actual git error, apply only knows "not in lock file")
@@ -834,7 +922,11 @@ export const runCommand = ({
         _tag: 'SetState',
         state: {
           _tag: syncErrorItems.length > 0 ? 'Error' : 'Success',
-          workspace: { name: workspaceName, root: root.value },
+          workspace: {
+            name: workspaceName,
+            root: root.value,
+            ...(syncResult.defaultCwd === undefined ? {} : { defaultCwd: syncResult.defaultCwd }),
+          },
           options: syncDisplayOptions,
           members: memberNames,
           activeMembers: [],
@@ -849,6 +941,7 @@ export const runCommand = ({
           syncErrors: syncErrorItems,
           syncErrorCount: syncErrorItems.length,
           preflightIssues: [],
+          ...(syncResult.composition === undefined ? {} : { composition: syncResult.composition }),
         },
       })
     }

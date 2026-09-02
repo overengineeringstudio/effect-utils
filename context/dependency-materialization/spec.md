@@ -13,7 +13,7 @@ This spec defines:
 - the separation between dependency data, executable projections, and native
   build outputs;
 - the prepared dependency FOD purity boundary;
-- the prepared dependency profile shape shared by Nix and Buck2 evidence;
+- the prepared dependency profile shape available to declared consumers;
 - the repair, doctor, and benchmark gates for changing the policy.
 
 This spec does not define package-specific native integrations. Those belong in
@@ -30,7 +30,6 @@ dependency-materialization/
     01-fod-hash-evidence/   cross-system FOD hash evidence
     02-native-node-packages/ native package classification and grafting
   04-store-authority/        shared content, repair, prune, and GC authority
-  05-buck2-evidence/         Buck2 evidence-only boundary
   06-observability/          producer facts and build-log bridge records
   07-verification/           proof, benchmark, and regression architecture
   08-ci-store-cache/         CI-profile pnpm store persistence and write coordination
@@ -182,9 +181,9 @@ native/build integration work.
 
 ## Prepared Profile Evidence
 
-Nix prepared-dependency and Buck2 evidence retain the existing `profileKey`
-compatibility boundary. It describes immutable dependency work and excludes
-live storage placement and operational authority:
+Nix prepared-dependency producers and declared external build adapters may use
+the existing `profileKey` compatibility boundary. It describes immutable
+dependency work and excludes live storage placement and operational authority:
 
 ```json
 {

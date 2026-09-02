@@ -96,7 +96,11 @@ let
 
   # Optional: build the @overeng/oxc-config plugin bundle when src is provided
   hasPlugin = src != null;
-  pluginBundle = if hasPlugin then import ./oxc-config-plugin.nix { inherit pkgs bun src; } else null;
+  pluginBundle =
+    if hasPlugin then
+      import (../. + "/packages/@overeng/oxc-config/nix/build.nix") { inherit pkgs bun src; }
+    else
+      null;
 
 in
 pkgs.stdenv.mkDerivation {

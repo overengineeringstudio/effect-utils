@@ -1,7 +1,8 @@
 // Generated file - DO NOT EDIT
 // Source: constants.ts.genie.ts
 // registry-source: genie/weaver-registry/registry.ts
-// fingerprint: sha256:54d16d8ac5c1bacac63c7775d4927fcc09883fa10c97b17c3cbcbc75b4f82215
+// fingerprint: sha256:c9c5d586d6712e7fcf1417af0b24745494b07f5e4c23e89a5de619bc83b83f8c
+// regen: devenv tasks run genie:run
 
 export const AcmeAttempt = 'acme.attempt' as const
 export const AcmeProbeLabel = 'acme.probe.label' as const
@@ -37,7 +38,8 @@ export const GeniePath = 'genie.path' as const
 export const GenieRead_only = 'genie.read_only' as const
 export const GenieValidationFile_count = 'genie.validation.file_count' as const
 export const GenieValidationPreloaded_file_count = 'genie.validation.preloaded_file_count' as const
-export const GenieValidationRequire_package_json_validate = 'genie.validation.require_package_json_validate' as const
+export const GenieValidationRequire_package_json_validate =
+  'genie.validation.require_package_json_validate' as const
 export const GitBare = 'git.bare' as const
 export const GitBranch = 'git.branch' as const
 export const GitCommit = 'git.commit' as const
@@ -76,17 +78,21 @@ export const MegarepoStoreGcResult_kept = 'megarepo.store.gc.result_kept' as con
 export const MegarepoStoreGcResult_reaped = 'megarepo.store.gc.result_reaped' as const
 export const MegarepoStoreGcResult_removed = 'megarepo.store.gc.result_removed' as const
 export const MegarepoStoreGcResult_skipped_dirty = 'megarepo.store.gc.result_skipped_dirty' as const
-export const MegarepoStoreGcResult_skipped_in_use = 'megarepo.store.gc.result_skipped_in_use' as const
+export const MegarepoStoreGcResult_skipped_in_use =
+  'megarepo.store.gc.result_skipped_in_use' as const
 export const MegarepoStoreGcResult_total = 'megarepo.store.gc.result_total' as const
-export const MegarepoStoreGcRoot_set_workspace_count = 'megarepo.store.gc.root_set_workspace_count' as const
+export const MegarepoStoreGcRoot_set_workspace_count =
+  'megarepo.store.gc.root_set_workspace_count' as const
 export const MegarepoStoreGcWorktree_count = 'megarepo.store.gc.worktree_count' as const
 export const MegarepoStoreGcWorktree_discovered = 'megarepo.store.gc.worktree_discovered' as const
-export const MegarepoStoreGit_worktree_list_failed = 'megarepo.store.git_worktree_list_failed' as const
+export const MegarepoStoreGit_worktree_list_failed =
+  'megarepo.store.git_worktree_list_failed' as const
 export const MegarepoStoreHas_current_workspace = 'megarepo.store.has_current_workspace' as const
 export const MegarepoStorePrune_stale_registry = 'megarepo.store.prune_stale_registry' as const
 export const MegarepoStoreRef = 'megarepo.store.ref' as const
 export const MegarepoStoreRef_type = 'megarepo.store.ref_type' as const
-export const MegarepoStoreRefresh_current_workspace = 'megarepo.store.refresh_current_workspace' as const
+export const MegarepoStoreRefresh_current_workspace =
+  'megarepo.store.refresh_current_workspace' as const
 export const MegarepoStoreRepo = 'megarepo.store.repo' as const
 export const MegarepoStoreSource = 'megarepo.store.source' as const
 export const MegarepoStoreWorktree_broken = 'megarepo.store.worktree_broken' as const
@@ -100,13 +106,16 @@ export const MegarepoSyncMemberRef_type = 'megarepo.sync.member.ref_type' as con
 export const MegarepoSyncMemberResult_status = 'megarepo.sync.member.result_status' as const
 export const MegarepoSyncMemberSource = 'megarepo.sync.member.source' as const
 export const MegarepoSyncMode = 'megarepo.sync.mode' as const
-export const MegarepoTestStore_fixtureBranch_count = 'megarepo.test.store_fixture.branch_count' as const
-export const MegarepoTestStore_fixtureCommit_count = 'megarepo.test.store_fixture.commit_count' as const
+export const MegarepoTestStore_fixtureBranch_count =
+  'megarepo.test.store_fixture.branch_count' as const
+export const MegarepoTestStore_fixtureCommit_count =
+  'megarepo.test.store_fixture.commit_count' as const
 export const MegarepoTestStore_fixturePhase = 'megarepo.test.store_fixture.phase' as const
 export const MegarepoTestStore_fixtureRepo = 'megarepo.test.store_fixture.repo' as const
 export const MegarepoTestStore_fixtureRepo_count = 'megarepo.test.store_fixture.repo_count' as const
 export const MegarepoTestStore_fixtureTag_count = 'megarepo.test.store_fixture.tag_count' as const
-export const MegarepoTestStore_fixtureWith_remote = 'megarepo.test.store_fixture.with_remote' as const
+export const MegarepoTestStore_fixtureWith_remote =
+  'megarepo.test.store_fixture.with_remote' as const
 export const MegarepoTraversalAll = 'megarepo.traversal.all' as const
 export const MegarepoTraversalCycles_skipped = 'megarepo.traversal.cycles_skipped' as const
 export const MegarepoTraversalMax_depth = 'megarepo.traversal.max_depth' as const
@@ -147,19 +156,25 @@ export const Notion_datasourceEnqueued_commands = 'notion_datasource.enqueued_co
 export const Notion_datasourceEvent_count = 'notion_datasource.event_count' as const
 export const Notion_datasourceExecutor_steps = 'notion_datasource.executor_steps' as const
 export const Notion_datasourceGuard = 'notion_datasource.guard' as const
-export const Notion_datasourceIncomplete_property_count = 'notion_datasource.incomplete_property_count' as const
+export const Notion_datasourceIncomplete_property_count =
+  'notion_datasource.incomplete_property_count' as const
 export const Notion_datasourceLease_duration_ms = 'notion_datasource.lease_duration_ms' as const
-export const Notion_datasourceLocal_observation_count = 'notion_datasource.local_observation_count' as const
+export const Notion_datasourceLocal_observation_count =
+  'notion_datasource.local_observation_count' as const
 export const Notion_datasourceMax_cycles = 'notion_datasource.max_cycles' as const
 export const Notion_datasourceMax_executor_steps = 'notion_datasource.max_executor_steps' as const
 export const Notion_datasourceMax_steps_reached = 'notion_datasource.max_steps_reached' as const
 export const Notion_datasourceMode = 'notion_datasource.mode' as const
 export const Notion_datasourceOperation = 'notion_datasource.operation' as const
-export const Notion_datasourceOutbox_ambiguous_count = 'notion_datasource.outbox_ambiguous_count' as const
-export const Notion_datasourceOutbox_blocked_count = 'notion_datasource.outbox_blocked_count' as const
+export const Notion_datasourceOutbox_ambiguous_count =
+  'notion_datasource.outbox_ambiguous_count' as const
+export const Notion_datasourceOutbox_blocked_count =
+  'notion_datasource.outbox_blocked_count' as const
 export const Notion_datasourceOutbox_queued_count = 'notion_datasource.outbox_queued_count' as const
-export const Notion_datasourceOutbox_retryable_count = 'notion_datasource.outbox_retryable_count' as const
-export const Notion_datasourceOutbox_running_count = 'notion_datasource.outbox_running_count' as const
+export const Notion_datasourceOutbox_retryable_count =
+  'notion_datasource.outbox_retryable_count' as const
+export const Notion_datasourceOutbox_running_count =
+  'notion_datasource.outbox_running_count' as const
 export const Notion_datasourcePage_id = 'notion_datasource.page_id' as const
 export const Notion_datasourceProcessRole = 'notion_datasource.process.role' as const
 export const Notion_datasourceProperty_id = 'notion_datasource.property_id' as const
@@ -173,24 +188,29 @@ export const Notion_datasourceStatusState = 'notion_datasource.status.state' as 
 export const Notion_datasourceWake_source = 'notion_datasource.wake_source' as const
 export const Notion_datasourceWebhookEvent_type = 'notion_datasource.webhook.event_type' as const
 export const Notion_datasourceWebhookOutcome = 'notion_datasource.webhook.outcome' as const
-export const Notion_datasourceWebhookRejection_reason = 'notion_datasource.webhook.rejection_reason' as const
+export const Notion_datasourceWebhookRejection_reason =
+  'notion_datasource.webhook.rejection_reason' as const
 export const Notion_mdBatch = 'notion_md.batch' as const
 export const Notion_mdBatchPath_count = 'notion_md.batch.path_count' as const
 export const Notion_mdBatchRecursive = 'notion_md.batch.recursive' as const
 export const Notion_mdBatchTarget_count = 'notion_md.batch.target_count' as const
 export const Notion_mdCommand = 'notion_md.command' as const
-export const Notion_mdComment_boundaryComment_count = 'notion_md.comment_boundary.comment_count' as const
+export const Notion_mdComment_boundaryComment_count =
+  'notion_md.comment_boundary.comment_count' as const
 export const Notion_mdComment_boundaryGuard = 'notion_md.comment_boundary.guard' as const
 export const Notion_mdComment_boundaryOperation = 'notion_md.comment_boundary.operation' as const
 export const Notion_mdComment_boundaryVerdict = 'notion_md.comment_boundary.verdict' as const
 export const Notion_mdData_source_id = 'notion_md.data_source_id' as const
-export const Notion_mdDestructive_bodyBlock_count = 'notion_md.destructive_body.block_count' as const
+export const Notion_mdDestructive_bodyBlock_count =
+  'notion_md.destructive_body.block_count' as const
 export const Notion_mdDestructive_bodyGuard = 'notion_md.destructive_body.guard' as const
 export const Notion_mdDestructive_bodyVerdict = 'notion_md.destructive_body.verdict' as const
 export const Notion_mdEditOutcome = 'notion_md.edit.outcome' as const
 export const Notion_mdEditorMode = 'notion_md.editor.mode' as const
-export const Notion_mdMarkdown_updateAllow_deleting_content = 'notion_md.markdown_update.allow_deleting_content' as const
-export const Notion_mdMarkdown_updateContent_update_count = 'notion_md.markdown_update.content_update_count' as const
+export const Notion_mdMarkdown_updateAllow_deleting_content =
+  'notion_md.markdown_update.allow_deleting_content' as const
+export const Notion_mdMarkdown_updateContent_update_count =
+  'notion_md.markdown_update.content_update_count' as const
 export const Notion_mdMarkdown_updateType = 'notion_md.markdown_update.type' as const
 export const Notion_mdMedia_boundaryFile_count = 'notion_md.media_boundary.file_count' as const
 export const Notion_mdMedia_boundaryGuard = 'notion_md.media_boundary.guard' as const
@@ -210,7 +230,8 @@ export const Notion_mdPage_metadataTitle = 'notion_md.page_metadata.title' as co
 export const Notion_mdParent_page_id = 'notion_md.parent_page_id' as const
 export const Notion_mdPathBasename = 'notion_md.path.basename' as const
 export const Notion_mdPathRecursive = 'notion_md.path.recursive' as const
-export const Notion_mdPushAllow_delete_unknown_blocks = 'notion_md.push.allow_delete_unknown_blocks' as const
+export const Notion_mdPushAllow_delete_unknown_blocks =
+  'notion_md.push.allow_delete_unknown_blocks' as const
 export const Notion_mdPushDecision = 'notion_md.push.decision' as const
 export const Notion_mdPushForce = 'notion_md.push.force' as const
 export const Notion_mdPushMarkdown_command = 'notion_md.push.markdown_command' as const
@@ -220,11 +241,14 @@ export const Notion_mdPutForce = 'notion_md.put.force' as const
 export const Notion_mdPutTitle_written = 'notion_md.put.title_written' as const
 export const Notion_mdStateOperation = 'notion_md.state.operation' as const
 export const Notion_mdStatusLocal_changed = 'notion_md.status.local_changed' as const
-export const Notion_mdStatusLocal_page_metadata_changed = 'notion_md.status.local_page_metadata_changed' as const
-export const Notion_mdStatusLocal_properties_changed = 'notion_md.status.local_properties_changed' as const
+export const Notion_mdStatusLocal_page_metadata_changed =
+  'notion_md.status.local_page_metadata_changed' as const
+export const Notion_mdStatusLocal_properties_changed =
+  'notion_md.status.local_properties_changed' as const
 export const Notion_mdStatusRemote_body_changed = 'notion_md.status.remote_body_changed' as const
 export const Notion_mdStatusRemote_changed = 'notion_md.status.remote_changed' as const
-export const Notion_mdStatusRemote_page_metadata_changed = 'notion_md.status.remote_page_metadata_changed' as const
+export const Notion_mdStatusRemote_page_metadata_changed =
+  'notion_md.status.remote_page_metadata_changed' as const
 export const Notion_mdStatusUnknown_block_count = 'notion_md.status.unknown_block_count' as const
 export const Notion_mdSyncError = 'notion_md.sync.error' as const
 export const Notion_mdSyncError_tag = 'notion_md.sync.error_tag' as const
@@ -329,7 +353,8 @@ export const SPAN_CiToolsDeployVerify = 'ci-tools.deploy.verify' as const
 export const SPAN_CmdCollect = 'cmd.collect' as const
 export const SPAN_CmdRun = 'cmd.run' as const
 export const SPAN_CmdRunWithLogging = 'cmd.run-with-logging' as const
-export const SPAN_FileSystemBackingSemaphoreForceRevoke = 'FileSystemBacking.semaphore.forceRevoke' as const
+export const SPAN_FileSystemBackingSemaphoreForceRevoke =
+  'FileSystemBacking.semaphore.forceRevoke' as const
 export const SPAN_FileSystemBackingSemaphoreKey = 'FileSystemBacking.semaphore.key' as const
 export const SPAN_GenieCommand = 'genie/command' as const
 export const SPAN_GenieFile = 'genie/file' as const
@@ -346,7 +371,8 @@ export const SPAN_MegarepoStoreGcColdReclaimRepo = 'megarepo/store/gc/cold-recla
 export const SPAN_MegarepoStoreGcReapArchive = 'megarepo/store/gc/reap-archive' as const
 export const SPAN_MegarepoStoreGcResolvePrState = 'megarepo/store/gc/resolve-pr-state' as const
 export const SPAN_MegarepoStoreGcScanArchives = 'megarepo/store/gc/scan-archives' as const
-export const SPAN_MegarepoStoreGcUnpushedCommitCount = 'megarepo/store/gc/unpushed-commit-count' as const
+export const SPAN_MegarepoStoreGcUnpushedCommitCount =
+  'megarepo/store/gc/unpushed-commit-count' as const
 export const SPAN_MegarepoSync = 'megarepo/sync' as const
 export const SPAN_MegarepoSyncMember = 'megarepo/sync/member' as const
 export const SPAN_MegarepoSyncMemberCloneOrFetch = 'megarepo/sync/member/clone-or-fetch' as const
@@ -366,10 +392,13 @@ export const SPAN_NotionMdGatewayCreatePage = 'notion-md.gateway.create-page' as
 export const SPAN_NotionMdGatewayListChildPages = 'notion-md.gateway.list-child-pages' as const
 export const SPAN_NotionMdGatewayMovePage = 'notion-md.gateway.move-page' as const
 export const SPAN_NotionMdGatewayPullPage = 'notion-md.gateway.pull-page' as const
-export const SPAN_NotionMdGatewayRetrieveDataSource = 'notion-md.gateway.retrieve-data-source' as const
+export const SPAN_NotionMdGatewayRetrieveDataSource =
+  'notion-md.gateway.retrieve-data-source' as const
 export const SPAN_NotionMdGatewayUpdateMarkdown = 'notion-md.gateway.update-markdown' as const
-export const SPAN_NotionMdGatewayUpdatePageMetadata = 'notion-md.gateway.update-page-metadata' as const
-export const SPAN_NotionMdGatewayUpdatePageProperties = 'notion-md.gateway.update-page-properties' as const
+export const SPAN_NotionMdGatewayUpdatePageMetadata =
+  'notion-md.gateway.update-page-metadata' as const
+export const SPAN_NotionMdGatewayUpdatePageProperties =
+  'notion-md.gateway.update-page-properties' as const
 export const SPAN_NotionMdMediaBoundary = 'notion-md.media-boundary' as const
 export const SPAN_NotionMdObjectGc = 'notion-md.object-gc' as const
 export const SPAN_NotionMdPlanPath = 'notion-md.plan-path' as const

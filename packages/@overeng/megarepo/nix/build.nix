@@ -16,6 +16,8 @@ let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
+  buck2 = import ../../../../nix/buck2.nix { inherit pkgs; };
+  compositionPlatform = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux";
   base = mkPnpmCli {
     name = "megarepo";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
@@ -24,7 +26,7 @@ let
     workspaceRoot = src;
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
-      "." = mkSharedHash "sha256-VMaUfl3HQnFMFHkUe242+vSNt/AFSG9h7jURaWCNbHY=";
+      "." = mkSharedHash "sha256-WxB5Gs1lmzYY9gJwzbw+sveE63+v64B5uiznn2l52gQ=";
     };
     nativeNodePackages = opentuiCoreNative.packages;
     smokeTestArgs = [ "--help" ];
@@ -44,11 +46,21 @@ pkgs.stdenv.mkDerivation {
       ;
   };
 
+  nativeBuildInputs = [ pkgs.makeWrapper ];
   phases = [ "installPhase" ];
 
   installPhase = ''
     mkdir -p $out/bin
-    cp ${base}/bin/mr $out/bin/mr
+    makeWrapper ${base}/bin/mr $out/bin/mr \
+      --set MR_COMPOSITION_CP_BIN ${pkgs.coreutils}/bin/cp \
+      --set MR_COMPOSITION_BUCK2_BIN ${buck2}/bin/buck2 \
+      --set MR_COMPOSITION_BUCK2_PROTOCOL facebook/buck2-cli/2026-08-22 \
+      --set MR_COMPOSITION_SYSTEM ${pkgs.stdenv.hostPlatform.system} \
+      --set MR_COMPOSITION_PLATFORM ${compositionPlatform} \
+      --set MR_COMPOSITION_GIT_BIN ${pkgs.git}/bin/git \
+      --set MR_CAPABILITY_NIX_BIN ${pkgs.nix}/bin/nix \
+      --set MR_CAPABILITY_MV_BIN ${pkgs.coreutils}/bin/mv \
+      --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.watchman ]}
 
     # Generate shell completions
     # TODO: Move this into mkBunCli helper

@@ -10,6 +10,7 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     ...nodeTypes,
+    noEmit: true,
     lib: ['ES2024'],
   },
   include: ['src/**/*', 'test/**/*'],

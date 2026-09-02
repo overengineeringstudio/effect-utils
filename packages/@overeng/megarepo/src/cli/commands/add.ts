@@ -15,10 +15,10 @@ import {
   parseSourceString,
   readMegarepoConfig,
   writeMegarepoConfig,
-} from '../../lib/config.ts'
-import * as Git from '../../lib/git.ts'
-import { StoreLayer } from '../../lib/store.ts'
-import { syncMember } from '../../lib/sync/mod.ts'
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
+import { StoreLayer } from '../../store/store.ts'
+import { syncMember } from '../../sync/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import { AddCommandError } from '../errors.ts'
 import * as Observability from '../observability.ts'
