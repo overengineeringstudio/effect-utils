@@ -64,3 +64,7 @@
    imports a valid product without rebuilding repository sources.
 8. Dependency drift is impossible silently: a stale dependency surface fails
    loudly before it can produce a wrong green result.
+9. Identical materialized bytes on one machine are stored once where the
+   filesystem permits: assembled and materialized trees share storage through
+   copy-on-write, and full duplication is confined to filesystems that cannot
+   express it.
