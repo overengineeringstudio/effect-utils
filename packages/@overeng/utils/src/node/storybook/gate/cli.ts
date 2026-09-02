@@ -93,6 +93,11 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
     `=== capture stability (baseline captured ${report.stability.captures}x) ===`,
     `  reproduced across all ${report.stability.captures}      ${report.stability.reproduced}`,
     `  differed on capture 2       ${report.stability.differedOnSecond.length}  (a two-capture probe catches these)`,
+    // Reported unconditionally, including as a zero, because this class used to
+    // be silently dropped: a story that captured on one probe of a tree and not
+    // on another entered no list at all. `?? []` covers a cache entry written
+    // before the field existed, not a probe that never ran.
+    `  captured on some, not all  ${(report.stability.inconsistentPresence ?? []).length}  (present in one capture of the tree, absent from another)`,
     ...(report.stability.thirdCaptureMs === undefined
       ? [
           '  differed only on capture 3  NOT MEASURED — this run passed --skip-third-capture, so a story that reproduces across a pair and differs on a third was counted as stable. That is not a zero.',
@@ -184,6 +189,10 @@ export const runStoryGateCli = async (argv: readonly string[]): Promise<number> 
     ),
     ...report.stability.differedOnThird.map(
       (key) => `  third-capture only ${key} (reproduced on captures 1-2, differed on 3)`,
+    ),
+    ...(report.stability.inconsistentPresence ?? []).map(
+      (key) =>
+        `  presence varies ${key} (captured on some captures of the identical tree, absent from others)`,
     ),
   ]
   process.stdout.write(`${lines.join('\n')}\n`)

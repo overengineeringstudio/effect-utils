@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  assertionStoryKey,
+  baselineCacheKey,
   classifyStability,
   isStoryGateOk,
   selfInconsistentStoryKeys,
@@ -15,6 +17,17 @@ const clean = {
   uncovered: [],
   unsettled: [],
   baseline: { total: 39, passed: 28, failed: 11 },
+  // A live harness: the browser emitted a settled marker per story. Every other
+  // field here is a list, so this is the only one that says the run happened.
+  settle: {
+    settledStories: 39,
+    unsettledStories: 0,
+    boundMs: 2000,
+    minMs: 30,
+    medianMs: 45,
+    maxMs: 120,
+    totalMs: 1800,
+  },
   themeAxis: { projects: ['story-gate-light', 'story-gate-dark'], comparable: 39, differing: 38 },
 } as const
 
@@ -33,6 +46,20 @@ describe('isStoryGateOk', () => {
     expect(isStoryGateOk({ ...clean, baseline: { total: 212, passed: 0, failed: 212 } })).toBe(
       false,
     )
+  })
+
+  it('refuses to pass when nothing settled, even with every other term clean', () => {
+    // The pass-as-absence defect: if the gate annotations stop firing while
+    // ordinary Storybook assertions still pass, no story is captured, so
+    // added/removed/changed/uncovered/unsettled are ALL empty and
+    // `baseline.passed` stays positive. Every other term in the verdict is
+    // satisfied by a run that compared nothing, and the CLI prints "NOTHING
+    // SETTLED — every number below is meaningless" while exiting 0.
+    //
+    // `settledStories` is emitted per story by the browser, so a harness that
+    // never launched cannot fake it. Note `baseline.passed` is deliberately
+    // left positive here: that is exactly why it does not cover this case.
+    expect(isStoryGateOk({ ...clean, settle: { ...clean.settle, settledStories: 0 } })).toBe(false)
   })
 
   it('refuses to pass when a story has no baseline image', () => {
@@ -220,12 +247,18 @@ describe('classifyStability', () => {
     }).toEqual({ reproduced: 1, differedOnThird: [], thirdCaptureMs: undefined })
   })
 
-  it('leaves a capture missing from any set unclassified rather than counting it unstable', () => {
-    // A key present in one capture and absent from another is a coverage
-    // defect, not an instability one, and `added`/`removed`/`uncovered` already
-    // carry it. Folding it in here would inflate the instability count with a
-    // different problem and send whoever reads it looking for a race that is
-    // not there.
+  it('names a capture missing from some of the set as non-reproducible', () => {
+    // This test previously asserted the OPPOSITE — that such a key is left
+    // unclassified — on the grounds that `added`/`removed`/`uncovered` already
+    // carry it. That reasoning holds only for the KEPT capture: those three
+    // compare the retained baseline directory against the compare run, and the
+    // intermediate probes are deleted before that comparison ever happens.
+    //
+    // So a story that captured in probe 1 but not in probes 2 and 3 was watched
+    // failing to reproduce ON THE SAME TREE and then reported by nothing. It is
+    // an instability, not a coverage gap, and it is the one kind no comparison
+    // of hashes can express because the disagreement is about the capture
+    // existing at all.
     const outcome = classifyStability({
       captures: [
         new Map([
@@ -241,6 +274,114 @@ describe('classifyStability', () => {
       reproduced: outcome.reproduced,
       differedOnSecond: outcome.differedOnSecond,
       differedOnThird: outcome.differedOnThird,
-    }).toEqual({ reproduced: 1, differedOnSecond: [], differedOnThird: [] })
+      inconsistentPresence: outcome.inconsistentPresence,
+    }).toEqual({
+      reproduced: 1,
+      // Kept empty on purpose: a presence disagreement must not be reported as
+      // a byte disagreement, or whoever reads it goes looking for a race in the
+      // render when the capture never happened.
+      differedOnSecond: [],
+      differedOnThird: [],
+      inconsistentPresence: ['light/vanishes.png'],
+    })
+  })
+
+  it('sees a capture that appears only after the first probe', () => {
+    // The same blind spot in the other direction: iteration used to be over
+    // capture 1's keys, so a story that rendered nothing on the first capture
+    // and then appeared on the second and third was never even examined.
+    const outcome = classifyStability({
+      captures: [
+        new Map([['light/present.png', 'a']]),
+        new Map([
+          ['light/present.png', 'a'],
+          ['light/appears-late.png', 'a'],
+        ]),
+        new Map([
+          ['light/present.png', 'a'],
+          ['light/appears-late.png', 'a'],
+        ]),
+      ],
+      captureMs: [1000, 1100, 1200],
+    })
+    expect({
+      reproduced: outcome.reproduced,
+      inconsistentPresence: outcome.inconsistentPresence,
+    }).toEqual({ reproduced: 1, inconsistentPresence: ['light/appears-late.png'] })
+  })
+})
+
+describe('assertionStoryKey', () => {
+  it('does not let one file\u2019s baseline debt subtract another file\u2019s regression', () => {
+    // The false green this removes. `preExisting` was built from the bare
+    // `fullName`, so a baseline failure called `Default` in Book.stories.tsx
+    // matched a NEWLY failing `Default` in Avatar.stories.tsx and the real
+    // regression was skipped as somebody else's debt.
+    const baselineDebt = new Set(
+      [{ file: 'Book.stories.tsx', fullName: 'Default', status: 'failed' }].map(assertionStoryKey),
+    )
+    expect({
+      sameFile: baselineDebt.has(
+        assertionStoryKey({ file: 'Book.stories.tsx', fullName: 'Default' }),
+      ),
+      otherFile: baselineDebt.has(
+        assertionStoryKey({ file: 'Avatar.stories.tsx', fullName: 'Default' }),
+      ),
+    }).toEqual({ sameFile: true, otherFile: false })
+  })
+
+  it('joins against a capture key for the same story', () => {
+    // Both sides of the subtraction must land on one identity: the capture key
+    // ends in the story ID, the assertion carries the bare story NAME.
+    const captures = selfInconsistentStoryKeys([
+      'story-gate/src/stories/NumberField.stories.tsx/components-numberfield--with-hint.png',
+    ])
+    expect(
+      captures.has(assertionStoryKey({ file: 'NumberField.stories.tsx', fullName: 'With Hint' })),
+    ).toBe(true)
+  })
+})
+
+describe('baselineCacheKey', () => {
+  const base = {
+    baselineSha: 'abc123',
+    packagePath: 'packages/@overeng/effect-schema-form-aria',
+    configFile: 'vitest.gate.config.ts',
+    sourceRoots: ['src', 'stories', '.storybook'],
+    baselineCaptures: 3,
+  }
+
+  it('gives two packages at the same commit different baselines', () => {
+    // The defect: the cache root is shared by the whole repository and the entry
+    // was keyed by commit alone, so the first package to write `<sha>/.complete`
+    // handed its own screenshots, settle records and theme matrix to every other
+    // package's gate at that ref. The completeness check cannot see it — the
+    // entry IS complete, it is just a baseline of something else.
+    expect(baselineCacheKey(base)).not.toBe(
+      baselineCacheKey({ ...base, packagePath: 'packages/@overeng/tui-react' }),
+    )
+  })
+
+  it('separates entries that captured different things at the same commit', () => {
+    expect({
+      config: baselineCacheKey({ ...base, configFile: 'vitest.other.config.ts' }),
+      roots: baselineCacheKey({ ...base, sourceRoots: ['src'] }),
+      captures: baselineCacheKey({ ...base, baselineCaptures: 2 }),
+    }).toEqual({
+      config: expect.not.stringMatching(baselineCacheKey(base)),
+      roots: expect.not.stringMatching(baselineCacheKey(base)),
+      captures: expect.not.stringMatching(baselineCacheKey(base)),
+    })
+  })
+
+  it('keeps the commit readable and ignores sourceRoots order', () => {
+    // The sha stays a prefix so a cache directory is still greppable by ref, and
+    // argument ORDER must not invalidate an otherwise identical entry.
+    expect({
+      prefixed: baselineCacheKey(base).startsWith('abc123-'),
+      orderStable:
+        baselineCacheKey(base) ===
+        baselineCacheKey({ ...base, sourceRoots: ['.storybook', 'stories', 'src'] }),
+    }).toEqual({ prefixed: true, orderStable: true })
   })
 })

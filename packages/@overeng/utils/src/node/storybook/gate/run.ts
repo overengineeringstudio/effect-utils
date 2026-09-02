@@ -215,6 +215,21 @@ export interface StoryGateReport {
      */
     readonly differedOnThird: readonly string[]
     /**
+     * Captured in some of the same-tree captures and absent from others.
+     *
+     * A third non-reproducible class, and the only one no pair or triple of
+     * HASHES can express, because the disagreement is about the capture
+     * EXISTING rather than about its bytes. A story here rendered a screenshot
+     * on one capture of a tree and none on another capture of that same tree.
+     *
+     * Named rather than skipped. `added`/`removed`/`uncovered` cannot cover it:
+     * they compare the retained baseline directory with the compare run, and
+     * the intermediate probes are deleted before that comparison, so an absence
+     * confined to a probe is invisible to all three. Left unnamed it became a
+     * story the harness watched fail to reproduce and then reported nowhere.
+     */
+    readonly inconsistentPresence: readonly string[]
+    /**
      * Wall time of the third capture alone, or `undefined` if it was skipped.
      *
      * Separated from the rest because the third capture is the marginal cost
@@ -331,6 +346,22 @@ export interface StoryGateReport {
  * gate reporting green over a story it did not compare. The remedy is visible
  * and cheap — fix the story, or declare it unstable and put the decision on the
  * record — which is exactly the choice `uncovered` already forces.
+ *
+ * A zero settled count is refused, and it is the one condition here that is not
+ * about a story at all — it is about whether the harness ran. Every other term
+ * is a list, and a list is empty both when there is nothing wrong and when
+ * nothing was examined. If the gate annotations stop firing while ordinary
+ * Storybook assertions still pass, `added`/`removed`/`changed`/`uncovered`/
+ * `unsettled` are all empty by construction and `baseline.passed` is positive,
+ * so every term above is satisfied by a run that compared nothing. The CLI
+ * already prints "NOTHING SETTLED — every number below is meaningless" in that
+ * state; this is the term that makes the verdict agree with the banner instead
+ * of exiting 0 underneath it.
+ *
+ * `baseline.passed > 0` does NOT cover it: that counts Vitest assertions, which
+ * a harness with no captures still produces. `settle.settledStories` is emitted
+ * per story by the browser itself, so it is the only term here a harness that
+ * never launched cannot fake.
  */
 export const isStoryGateOk = ({
   added,
@@ -339,11 +370,12 @@ export const isStoryGateOk = ({
   uncovered,
   unsettled,
   baseline,
+  settle,
   themeAxis,
   themeVaries = true,
 }: Pick<
   StoryGateReport,
-  'added' | 'removed' | 'changed' | 'uncovered' | 'unsettled' | 'baseline' | 'themeAxis'
+  'added' | 'removed' | 'changed' | 'uncovered' | 'unsettled' | 'baseline' | 'settle' | 'themeAxis'
 > & {
   readonly themeVaries?: boolean
 }): boolean =>
@@ -353,6 +385,7 @@ export const isStoryGateOk = ({
   uncovered.length === 0 &&
   unsettled.length === 0 &&
   baseline.passed > 0 &&
+  settle.settledStories > 0 &&
   (themeVaries === false ||
     themeAxis.projects.length < 2 ||
     themeAxis.comparable === 0 ||
@@ -506,10 +539,18 @@ const countThemeVariation = ({
  * alternating between two frames at ~50/50 the chance of N captures agreeing is
  * 2^-(N-1), so three captures still miss it a quarter of the time.
  *
- * Only keys present in EVERY capture are classified. A key in one capture and
- * missing from another is a different defect that `added`/`removed`/`uncovered`
- * already carry, and folding it in here would inflate an instability count with
- * a coverage problem.
+ * A key that is not in EVERY capture is named in `inconsistentPresence` rather
+ * than skipped. The earlier reasoning here — that `added`/`removed`/`uncovered`
+ * already carry it — is true only of the KEPT capture: those three compare the
+ * retained baseline directory against the later compare run, and the
+ * intermediate probes are deleted without ever entering that comparison. So a
+ * story that captured in probes 1 and 3 and in the comparison, but not in probe
+ * 2, was directly observed failing to reproduce and then reported by nothing.
+ * Skipping it is the same false green as a two-capture "agreed".
+ *
+ * Iteration is over the UNION of every capture's keys, not the first capture's,
+ * because keying off capture 1 cannot see a story that appears only later — the
+ * same blind spot in the other direction.
  */
 export const classifyStability = ({
   captures,
@@ -518,24 +559,22 @@ export const classifyStability = ({
   captures: readonly Map<string, string>[]
   captureMs: readonly number[]
 }): StoryGateReport['stability'] => {
-  const first = captures[0] ?? new Map<string, string>()
-  const rest = captures.slice(1)
+  const keys = new Set(captures.flatMap((capture) => [...capture.keys()]))
   const differedOnSecond: string[] = []
   const differedOnThird: string[] = []
+  const inconsistentPresence: string[] = []
   let reproduced = 0
 
-  for (const [key, hash] of first) {
-    let firstDiffering = -1
-    let missing = false
-    for (const [index, capture] of rest.entries()) {
-      const other = capture.get(key)
-      if (other === undefined) {
-        missing = true
-        break
-      }
-      if (other !== hash && firstDiffering === -1) firstDiffering = index
+  for (const key of keys) {
+    if (captures.every((capture) => capture.has(key)) === false) {
+      inconsistentPresence.push(key)
+      continue
     }
-    if (missing === true) continue
+    const hash = captures[0]?.get(key)
+    let firstDiffering = -1
+    for (const [index, capture] of captures.slice(1).entries()) {
+      if (capture.get(key) !== hash && firstDiffering === -1) firstDiffering = index
+    }
     if (firstDiffering === -1) reproduced += 1
     else if (firstDiffering === 0) differedOnSecond.push(key)
     else differedOnThird.push(key)
@@ -546,6 +585,7 @@ export const classifyStability = ({
     reproduced,
     differedOnSecond,
     differedOnThird,
+    inconsistentPresence,
     // `undefined` rather than 0: a skipped capture has no cost AND no result,
     // and this field is what says which of those an empty third-capture list
     // means.
@@ -700,6 +740,70 @@ export const slugStoryName = (name: string): string =>
  */
 export const storyKey = ({ file, slug }: { file: string; slug: string }): string =>
   `${file}::${slug}`
+
+/**
+ * Key a Vitest assertion the same way a capture is keyed, so the baseline and
+ * compare sides of every subtraction join on the same identity.
+ *
+ * Exported because keying this wrong is a FALSE GREEN rather than noise, and a
+ * closure inside the run function could not be tested. `preExisting` used the
+ * bare `fullName`, so a baseline failure called `Default` in one story file
+ * subtracted the compare-side failure of `Default` in every other file — the
+ * real regression skipped as somebody else's debt.
+ *
+ * `<unknown>` for a missing file is deliberate and still SAFE: assertions with
+ * no file all collapse to one bucket, which can only ever over-report a
+ * regression, never suppress one. Vitest supplies the file for every assertion
+ * this gate reads; the fallback exists so a shape change degrades loudly rather
+ * than silently widening the match.
+ */
+export const assertionStoryKey = (assertion: {
+  readonly file?: string
+  readonly fullName?: string
+  readonly title?: string
+}): string =>
+  storyKey({
+    file: assertion.file ?? '<unknown>',
+    slug: slugStoryName(assertion.fullName ?? assertion.title ?? '<unnamed>'),
+  })
+
+/**
+ * Identity of a baseline capture set: which commit, of which package, under
+ * which configuration.
+ *
+ * The commit alone is NOT the identity, and treating it as one meant the first
+ * package to write `<sha>/.complete` handed its own report, screenshots, settle
+ * records and theme matrix to every other package's gate at that ref. The
+ * completeness check cannot catch that — the entry is complete, it is just a
+ * baseline of a different package.
+ *
+ * `sourceRoots` is sorted so the caller's argument ORDER cannot invalidate an
+ * otherwise identical cache entry, and `baselineCaptures` is included because
+ * it changes how many captures the stability record was taken over.
+ */
+export const baselineCacheKey = ({
+  baselineSha,
+  packagePath,
+  configFile,
+  sourceRoots,
+  baselineCaptures,
+}: {
+  readonly baselineSha: string
+  readonly packagePath: string
+  readonly configFile: string
+  readonly sourceRoots: readonly string[]
+  readonly baselineCaptures: number
+}): string => {
+  const scope = createHash('sha1')
+    .update(
+      [packagePath, configFile, sourceRoots.toSorted().join(','), String(baselineCaptures)].join(
+        '\n',
+      ),
+    )
+    .digest('hex')
+    .slice(0, 12)
+  return `${baselineSha}-${scope}`
+}
 
 /**
  * The stories the baseline probe already proved nondeterministic, keyed to join
@@ -970,7 +1074,31 @@ export const runStoryGate = async ({
   const repoRoot = runGit({ args: ['rev-parse', '--show-toplevel'], cwd: packageRoot })
   const baselineSha = runGit({ args: ['rev-parse', `${baselineRef}^{commit}`], cwd: packageRoot })
   const cacheRoot = cacheDir ?? join(repoRoot, 'node_modules', '.cache', 'overeng-story-gate')
-  const baselineDir = join(cacheRoot, baselineSha)
+  // Keyed by WHAT was captured as well as by which commit. A baseline is a set
+  // of screenshots of one package under one Storybook/Vitest configuration, so
+  // the commit alone does not identify it: with a repo-wide default cache root,
+  // the first package to write `<sha>/.complete` made every other package's
+  // gate at that ref read back the first one's report, screenshots, settle
+  // records and theme matrix. That is not a stale baseline, which the
+  // completeness check would catch — it is a baseline of a DIFFERENT package
+  // being compared against this one.
+  //
+  // `sourceRoots` and `baselineCaptures` are in the key for the same reason:
+  // both change which files the capture observed, and neither is recoverable
+  // from the contents afterwards.
+  const baselineDir = join(
+    cacheRoot,
+    baselineCacheKey({
+      baselineSha,
+      packagePath: relative(repoRoot, packageRoot),
+      configFile,
+      sourceRoots,
+      baselineCaptures,
+    }),
+  )
+  // The worktree is deliberately NOT scoped: it is a checkout of the whole repo
+  // at that commit, identical for every package, and sharing it is what keeps
+  // the second package's run cheap.
   const worktreeDir = join(cacheRoot, `tree-${baselineSha}`)
   const completeMarker = join(baselineDir, '.complete')
   const identityPath = join(baselineDir, 'tree-identity.json')
@@ -1147,9 +1275,13 @@ export const runStoryGate = async ({
     passed: baselineAssertions.length - baselineFailures.length,
     failed: baselineFailures.length,
   }
-  const preExisting = new Set(
-    baselineFailures.map((assertion) => assertion.fullName ?? assertion.title ?? '<unnamed>'),
-  )
+  // Keyed by story FILE and slug, never by name alone. `fullName` is the bare
+  // story name, so a name-only set makes a baseline failure called `Default` in
+  // one story file subtract the compare-side failure of `Default` in EVERY
+  // other file — a real regression silently skipped as somebody else's debt.
+  // This is the same join `selfInconsistentKeys` already uses below, and
+  // `preExisting` was the one set still keyed on the name.
+  const preExisting = new Set(baselineFailures.map(assertionStoryKey))
 
   // Read back rather than recomputed, because the baseline is cached across
   // runs and the captures that produced this only happen when the cache is
@@ -1157,10 +1289,20 @@ export const runStoryGate = async ({
   // record, or one taken with fewer captures than this run asked for, so this
   // read cannot silently serve a two-capture answer to a three-capture run.
   const stability = JSON.parse(readFileSync(stabilityPath, 'utf8')) as StoryGateReport['stability']
-  // Both classes are non-reproducible and both are subtracted from `changed`.
-  // The split exists so the report can say which kind each was, not so one of
-  // them can be treated as acceptable.
-  const selfInconsistent = [...stability.differedOnSecond, ...stability.differedOnThird]
+  // All THREE classes are non-reproducible and all three are subtracted from
+  // `changed`. The split exists so the report can say which kind each was, not
+  // so one of them can be treated as acceptable.
+  //
+  // `inconsistentPresence` is read off disk with a `?? []` because a stability
+  // record written before that field existed has no key for it. Defaulting is
+  // safe HERE and only here: the completeness check refuses a cached entry
+  // taken with fewer captures than this run asked for, so the fallback covers
+  // the field's absence rather than a probe that never ran.
+  const selfInconsistent = [
+    ...stability.differedOnSecond,
+    ...stability.differedOnThird,
+    ...(stability.inconsistentPresence ?? []),
+  ]
   const themeAxis = countThemeVariation({
     captures: hashCaptures(baselineDir),
     selfInconsistent: new Set(selfInconsistent),
@@ -1268,7 +1410,7 @@ export const runStoryGate = async ({
     if (detail.includes('No existing reference screenshot found') === true) {
       if (unsettledNames.has(story) === true) continue
       added.push(story)
-    } else if (preExisting.has(story) === true) {
+    } else if (preExisting.has(assertionStoryKey(failure)) === true) {
       continue
     } else if (
       failure.file !== undefined &&
@@ -1328,6 +1470,7 @@ export const runStoryGate = async ({
       uncovered,
       unsettled,
       baseline,
+      settle,
       themeAxis,
       themeVaries,
     }),

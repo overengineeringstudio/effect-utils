@@ -183,6 +183,74 @@ ruleTester.run('stylex-no-raw-color: colours embedded in composite values', rule
   ],
 })
 
+/** The exact rendered message for the named colour a composite value hid. */
+const namedColorMessage =
+  'Raw colour `red` in `boxShadow`. Component styles must read colours from a semantic token exported by a `*.stylex.ts` module — a raw colour is an inlined constant and silently ignores the colour scheme. Move the value into the token layer and reference the token here.'
+
+ruleTester.run('stylex-no-raw-color: CSS named colours', rule, {
+  valid: [
+    // `transparent` pins no hue and `currentColor` follows the inherited colour,
+    // so both track the scheme that a raw literal ignores.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { backgroundColor: 'transparent', borderColor: 'currentColor' } })`,
+    },
+    // A named colour must match as a whole CSS token. `Tangerine` merely STARTS
+    // with `tan`, and a font stack is the realistic way that happens.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { fontFamily: 'Tangerine, serif' } })`,
+    },
+    // Hyphen-joined identifiers are token names, not colour keywords: `border-color`
+    // ends in `color`, and a custom property can end in any colour word.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { transition: 'border-color 200ms', color: 'var(--brand-red)' } })`,
+    },
+    // `light`/`dark` are not named colours; only the compounds are.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { colorScheme: 'light dark' } })`,
+    },
+  ],
+  invalid: [
+    // The decisive case from review: neither the hex nor the functional pattern
+    // matches this, and `boxShadow` is composite so upstream `propLimits` cannot
+    // reach it either. Before named colours were detected this was permitted.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { boxShadow: '0 0 4px red' } })`,
+      errors: [{ message: namedColorMessage }],
+    },
+    // Case-insensitive, and inside another composite value.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { border: '1px solid MidnightBlue' } })`,
+      errors: [{ messageId: 'rawColor' }],
+    },
+    // A bare named colour on a pure colour property.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { color: 'rebeccapurple' } })`,
+      errors: [{ messageId: 'rawColor' }],
+    },
+    // Reported whole rather than as a shorter colour's suffix.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { color: 'lightgreen' } })`,
+      errors: [
+        {
+          message: namedColorMessage
+            .replace('`red`', '`lightgreen`')
+            .replace('`boxShadow`', '`color`'),
+        },
+      ],
+    },
+    // A named colour among a derivation's arguments is still raw.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { backgroundImage: 'linear-gradient(to right, white, teal)' } })`,
+      errors: [{ messageId: 'rawColor' }],
+    },
+    // Inside a nested condition, where the token layer is not in play.
+    {
+      code: `${IMPORT}const styles = stylex.create({ box: { color: { default: tokens.text, ':hover': 'salmon' } } })`,
+      errors: [{ messageId: 'rawColor' }],
+    },
+  ],
+})
+
 ruleTester.run('stylex-no-raw-color: nested and dynamic positions', rule, {
   valid: [],
   invalid: [

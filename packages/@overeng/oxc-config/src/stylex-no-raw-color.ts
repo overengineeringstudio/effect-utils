@@ -84,6 +84,188 @@ const COLOR_FUNCTION_PATTERN =
   /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|device-cmyk)\((?!\s*from\b)/i
 
 /**
+ * The CSS named colours, longest first so `lightgreen` reports whole rather than
+ * as a `green` suffix.
+ *
+ * Needed because a named colour is a fixed sRGB value exactly like a hex one, and
+ * the two ways it can reach a component both bypass every other guard here:
+ * `boxShadow: '0 0 4px red'` is a composite value, which upstream `propLimits`
+ * structurally cannot inspect, and it matches neither the hex nor the functional
+ * pattern. Without this the rule permitted precisely the scheme-insensitive
+ * literal its message says it bans.
+ *
+ * `transparent` and `currentColor` are deliberately ABSENT and are not
+ * omissions: neither pins a colour. `transparent` has no hue in either scheme,
+ * and `currentColor` resolves to the inherited `color`, so it FOLLOWS the scheme
+ * that a raw literal ignores. Banning them would push callers toward a token
+ * that means less than the keyword does.
+ */
+const NAMED_COLORS = [
+  'lightgoldenrodyellow',
+  'mediumspringgreen',
+  'mediumaquamarine',
+  'mediumslateblue',
+  'mediumturquoise',
+  'mediumvioletred',
+  'blanchedalmond',
+  'cornflowerblue',
+  'darkolivegreen',
+  'lightslategray',
+  'lightslategrey',
+  'lightsteelblue',
+  'mediumseagreen',
+  'darkgoldenrod',
+  'darkslateblue',
+  'darkslategray',
+  'darkslategrey',
+  'darkturquoise',
+  'lavenderblush',
+  'lightseagreen',
+  'palegoldenrod',
+  'paleturquoise',
+  'palevioletred',
+  'rebeccapurple',
+  'antiquewhite',
+  'darkseagreen',
+  'lemonchiffon',
+  'lightskyblue',
+  'mediumorchid',
+  'mediumpurple',
+  'midnightblue',
+  'darkmagenta',
+  'deepskyblue',
+  'floralwhite',
+  'forestgreen',
+  'greenyellow',
+  'lightsalmon',
+  'lightyellow',
+  'navajowhite',
+  'saddlebrown',
+  'springgreen',
+  'yellowgreen',
+  'aquamarine',
+  'blueviolet',
+  'chartreuse',
+  'darkorange',
+  'darkorchid',
+  'darksalmon',
+  'darkviolet',
+  'dodgerblue',
+  'ghostwhite',
+  'lightcoral',
+  'lightgreen',
+  'mediumblue',
+  'papayawhip',
+  'powderblue',
+  'sandybrown',
+  'whitesmoke',
+  'aliceblue',
+  'burlywood',
+  'cadetblue',
+  'chocolate',
+  'darkgreen',
+  'darkkhaki',
+  'firebrick',
+  'gainsboro',
+  'goldenrod',
+  'indianred',
+  'lawngreen',
+  'lightblue',
+  'lightcyan',
+  'lightgray',
+  'lightgrey',
+  'lightpink',
+  'limegreen',
+  'mintcream',
+  'mistyrose',
+  'olivedrab',
+  'orangered',
+  'palegreen',
+  'peachpuff',
+  'rosybrown',
+  'royalblue',
+  'slateblue',
+  'slategray',
+  'slategrey',
+  'steelblue',
+  'turquoise',
+  'cornsilk',
+  'darkblue',
+  'darkcyan',
+  'darkgray',
+  'darkgrey',
+  'deeppink',
+  'honeydew',
+  'lavender',
+  'moccasin',
+  'seagreen',
+  'seashell',
+  'crimson',
+  'darkred',
+  'dimgray',
+  'dimgrey',
+  'fuchsia',
+  'hotpink',
+  'magenta',
+  'oldlace',
+  'skyblue',
+  'thistle',
+  'bisque',
+  'indigo',
+  'maroon',
+  'orange',
+  'orchid',
+  'purple',
+  'salmon',
+  'sienna',
+  'silver',
+  'tomato',
+  'violet',
+  'yellow',
+  'azure',
+  'beige',
+  'black',
+  'brown',
+  'coral',
+  'green',
+  'ivory',
+  'khaki',
+  'linen',
+  'olive',
+  'wheat',
+  'white',
+  'aqua',
+  'blue',
+  'cyan',
+  'gold',
+  'gray',
+  'grey',
+  'lime',
+  'navy',
+  'peru',
+  'pink',
+  'plum',
+  'snow',
+  'teal',
+  'red',
+  'tan',
+] as const
+
+/**
+ * Word-bounded so a named colour is only matched as a whole CSS token: `tan`
+ * must not fire on `tangerine`, and `red` must not fire on `border` or on the
+ * `-red` half of a custom property.
+ *
+ * `-` counts as a boundary in CSS but not to `\b`, so the class is widened by
+ * hand on both sides. That is what keeps `--brand-red` and `var(--x-tan)` out:
+ * a hyphen-joined identifier is a token NAME, never a bare colour keyword.
+ */
+const NAMED_COLOR_PATTERN = new RegExp(
+  String.raw`(?<![\w-])(?:${NAMED_COLORS.join('|')})(?![\w-])`,
+  'i',
+)
+
+/**
  * `content` holds text, never a colour, so a quoted hash such as `content: '"#"'`
  * or `content: '"#fff"'` is legal.
  */
@@ -97,20 +279,25 @@ const rawColorIn = (value: string): string | undefined => {
   if (hex !== null) return hex[0]
 
   const fn = COLOR_FUNCTION_PATTERN.exec(scrubbed)
-  if (fn === null) return undefined
-
-  // Report the whole colour function call, not just its name, by scanning to the
-  // balanced closing paren.
-  let depth = 0
-  for (let index = fn.index; index < scrubbed.length; index++) {
-    const char = scrubbed[index]
-    if (char === '(') depth = depth + 1
-    else if (char === ')') {
-      depth = depth - 1
-      if (depth === 0) return scrubbed.slice(fn.index, index + 1)
+  if (fn !== null) {
+    // Report the whole colour function call, not just its name, by scanning to the
+    // balanced closing paren.
+    let depth = 0
+    for (let index = fn.index; index < scrubbed.length; index++) {
+      const char = scrubbed[index]
+      if (char === '(') depth = depth + 1
+      else if (char === ')') {
+        depth = depth - 1
+        if (depth === 0) return scrubbed.slice(fn.index, index + 1)
+      }
     }
+    return scrubbed.slice(fn.index)
   }
-  return scrubbed.slice(fn.index)
+
+  // Checked LAST so the hex and functional reports keep their exact wording; a
+  // value carrying both forms is still one report either way.
+  const named = NAMED_COLOR_PATTERN.exec(scrubbed)
+  return named?.[0]
 }
 
 type ValueWalk = {
