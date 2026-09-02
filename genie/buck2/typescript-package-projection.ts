@@ -21,7 +21,6 @@ const commonSemanticInputs = [
   'buck2/dependencies/BUCK.genie.ts',
   'buck2/dependencies/pnpm-lock.sha256.json.genie.ts',
   'genie/buck2/mod.ts',
-  'genie/buck2/typescript-admissions.ts',
   'genie/buck2/typescript-package-projection.ts',
   'package.json.genie.ts',
   // The package-tree runner and every module staged with it: a change to any of
@@ -103,14 +102,19 @@ export type Buck2WorkspaceSibling = {
   readonly sourceRoots?: readonly string[]
 }
 
+export type Buck2TypeScriptAuthorityMetadata = {
+  readonly declarationEntrypoint: string
+  readonly projectFile: string
+}
+
 export type Buck2TypeScriptPackageProjection = {
   readonly dependencyImporter: `//buck2/dependencies:importer_${string}`
   readonly packageName: string
   readonly packagePath: string
   readonly projectionSource: string
-  readonly projectFile?: string
   readonly sourceRoots: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
+  readonly authority?: Buck2TypeScriptAuthorityMetadata
 }
 
 export const buck2TypeScriptPackageProjection = ({
@@ -118,10 +122,11 @@ export const buck2TypeScriptPackageProjection = ({
   packageName,
   packagePath,
   projectionSource,
-  projectFile = 'tsconfig.json',
   sourceRoots,
   workspaceSiblings = [],
+  authority,
 }: Buck2TypeScriptPackageProjection): GenieOutput<unknown> => {
+  const projectFile = authority?.projectFile ?? 'tsconfig.json'
   if (safeSourceSegment(projectFile) === false) {
     throw new Error(`Unsafe package project file: ${projectFile}`)
   }
@@ -305,6 +310,11 @@ export const buck2TypeScriptPackageProjection = ({
       '    name = "dist",',
       '    package_tree = ":package_tree",',
       ...(projectFile === 'tsconfig.json' ? [] : [`    project = ${starlarkString(projectFile)},`]),
+      ...(authority === undefined
+        ? []
+        : [
+            `    declaration_entrypoint = ${starlarkString(authority.declarationEntrypoint)},`,
+          ]),
       renderBuck2Visibility({ visibility }),
       ')',
       '',

@@ -1,4 +1,14 @@
-import { buck2TypeScriptAdmissions } from '../../../genie/buck2/typescript-admissions.ts'
+import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-admissions.ts'
 import { buck2TypeScriptPackageProjection } from '../../../genie/buck2/typescript-package-projection.ts'
 
-export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmissions.effectDistributedLock)
+export const buck2TypeScriptAdmission = {
+  dependencyImporter:
+    '//buck2/dependencies:importer_packages_overeng_effect_distributed_lock_f36a75b36a62',
+  packageName: '@overeng/effect-distributed-lock',
+  packagePath: 'packages/@overeng/effect-distributed-lock',
+  projectionSource: 'packages/@overeng/effect-distributed-lock/BUCK.genie.ts',
+  sourceRoots: ['src'],
+  editorViewConsumer: false,
+} as const satisfies Buck2TypeScriptAdmission
+
+export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

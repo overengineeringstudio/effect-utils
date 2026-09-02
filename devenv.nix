@@ -1136,11 +1136,8 @@ in
         export TSGO_BIN=${effectTsgo}/bin/tsgo
         export DIFF_BIN=${pkgs.diffutils}/bin/diff
       fi
-      materializer="$root/scripts/typescript-materialize-dist.sh"
-      ${pkgs.bash}/bin/bash "$materializer" "$root" \
-        packages/@overeng/tui-core effect_utils//packages/@overeng/tui-core:dist src/mod.d.ts tsconfig.json
-      ${pkgs.bash}/bin/bash "$materializer" "$root" \
-        packages/@overeng/tui-react effect_utils//packages/@overeng/tui-react:dist src/mod.d.ts tsconfig.buck.json
+      exec ${pkgs.bun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
+        materialize-dist "$root" ${pkgs.bash}/bin/bash
     '';
   };
 
@@ -1184,12 +1181,8 @@ in
         --target-platforms effect_utils//buck2/platforms:host_platform \
         effect_utils//buck2/toolchains:cross_cell_provider_identity \
         effect_utils//buck2/toolchains:cross_cell_product_identity
-      exec "$buck" build \
-        effect_utils//packages/@overeng/tui-core:typecheck \
-        effect_utils//packages/@overeng/tui-react:typecheck \
-        effect_utils//buck2/toolchains:archive_tool \
-        effect_utils//buck2/toolchains:product_tool \
-        --local-only
+      exec ${pkgs.bun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
+        build "$buck"
     '';
   };
 
