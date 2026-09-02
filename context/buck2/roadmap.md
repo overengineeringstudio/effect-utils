@@ -201,6 +201,25 @@ RENAME_EXCHANGE advance.
   CLI path, dependency writers, and live cross-workspace mutation paths; until
   then symlink compositions remain no-upload.
 
+## Cross-phase commitments (ratified 2026-09-01)
+
+- Composed-by-default worktrees after the #1056 stack lands, at full
+  normative depth (decision
+  [0027](./.decisions/0027-composed-default-worktrees.md), MR-R11, agent
+  workflow contract rev 4); stale experimental composition roots are GC'd.
+- Reflink-first assembly and the CoW filesystem split per decision
+  [0025](./.decisions/0025-cow-reflink-local-disk-economics.md): assembler
+  change spike-gated; fleet filesystem requirement lives in dotfiles; hygiene
+  pass (stale buck-out GC, contaminated store-commit purge + guard, orphaned
+  editor snapshots) is owed regardless of filesystem.
+- Unit-test admission per decision
+  [0026](./.decisions/0026-buck-owned-unit-tests.md): hermeticity spike, then
+  per-package test admissions after the first Phase-3 admissions;
+  integration/live lanes are explicitly legacy.
+- CI Buck cache: tailnet read-only lane — bazel-remote alerting first, then
+  an ephemeral-tailscale spike on a CI runner, then the lane with fail-open
+  fallback (03-materialization DQ1 records the lane and its fallback).
+
 ## Deferred / parked
 
 - Remote execution workers (NativeLink is the designated candidate if RE enters
@@ -208,8 +227,13 @@ RENAME_EXCHANGE advance.
 - OCI product distribution durability machinery: parked per
   [decision 0013](./.decisions/0013-shared-cache-foundation.md) partial
   supersession of decision 0008.
-- pnpm store consolidation on dev3 — moot under decision 0022 (no ambient
-  store); the developer-time pnpm store is not a Buck concern.
+- pnpm store consolidation on dev3 — **un-parked** (decision
+  [0025](./.decisions/0025-cow-reflink-local-disk-economics.md) hygiene):
+  measured 90% hardlink dedup where the store is shared versus zero on
+  private stores (~95 GB reclaim) makes the former "moot under 0022" parking
+  premature while 36 of 38 projects still require the root install.
+  Consolidation stays live until Phase 4 deletes the root install, then the
+  developer-time store leaves Buck scope again.
 - pnpm 12: revisit when it is the `latest` dist-tag and packaged in nixpkgs;
   under decision 0022 pnpm runs only at developer resolution time.
 - Bun as installer: revisit only if a released Bun emits per-package
