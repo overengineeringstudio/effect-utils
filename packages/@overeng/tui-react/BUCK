@@ -386,5 +386,6 @@ tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
     project = "tsconfig.buck.json",
+    declaration_entrypoint = "src/mod.d.ts",
     visibility = ["PUBLIC"],
 )

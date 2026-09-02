@@ -310,6 +310,11 @@ export const buck2TypeScriptPackageProjection = ({
       '    name = "dist",',
       '    package_tree = ":package_tree",',
       ...(projectFile === 'tsconfig.json' ? [] : [`    project = ${starlarkString(projectFile)},`]),
+      ...(authority === undefined
+        ? []
+        : [
+            `    declaration_entrypoint = ${starlarkString(authority.declarationEntrypoint)},`,
+          ]),
       renderBuck2Visibility({ visibility }),
       ')',
       '',
