@@ -64,12 +64,14 @@ export default packageJson(
     },
     exports: {
       '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './buck2-manifest': exportEntry('./src/buck2-manifest.ts', { environment: 'node' }),
       './cli': exportEntry('./src/cli/mod.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': './dist/mod.js',
+        './buck2-manifest': './dist/buck2-manifest.js',
         './cli': './dist/cli.js',
       },
     },

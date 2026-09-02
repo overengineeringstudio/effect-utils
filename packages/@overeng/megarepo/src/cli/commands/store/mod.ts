@@ -24,50 +24,50 @@ import {
   isRemoteSource,
   getSourceRef,
   readMegarepoConfig,
-} from '../../../lib/config.ts'
-import * as Git from '../../../lib/git.ts'
-import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
-import * as LibObservability from '../../../lib/observability.ts'
-import { classifyRef } from '../../../lib/ref.ts'
+} from '../../../core/config.ts'
+import * as Git from '../../../core/git.ts'
+import { LOCK_FILE_NAME, readLockFile } from '../../../core/lock.ts'
+import * as LibObservability from '../../../core/observability.ts'
+import { classifyRef } from '../../../core/ref.ts'
 import {
   archiveRefMismatchWorktree,
   archiveWorktree,
   reapArchive,
   scanArchives,
-} from '../../../lib/store-archive.ts'
+} from '../../../store/store-archive.ts'
 import {
   loadStoreGcConfig,
   type StoreGcConfig,
   type StoreGcGeneratedArtifact,
-} from '../../../lib/store-gc-config.ts'
+} from '../../../store/store-gc-config.ts'
 import {
   coldSinceMs as coldSinceMsFor,
   nextObservationLedger,
   readObservationLedger,
   recordObservations,
-} from '../../../lib/store-gc-observations.ts'
-import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
+} from '../../../store/store-gc-observations.ts'
+import { validateStoreMembers, fixStoreIssues } from '../../../store/store-hygiene.ts'
 import {
   collectStoreLiveSet,
   isPathProtected,
   type StoreLiveSet,
-} from '../../../lib/store-liveness.ts'
-import { StoreLock } from '../../../lib/store-lock.ts'
-import { assessLossless } from '../../../lib/store-lossless.ts'
+} from '../../../store/store-liveness.ts'
+import { StoreLock } from '../../../store/store-lock.ts'
+import { assessLossless } from '../../../store/store-lossless.ts'
 import {
   makePrStateResolverLayer,
   PrStateResolver,
   type PrStateInfo,
   type PrStateResolverService,
-} from '../../../lib/store-pr-state.ts'
+} from '../../../store/store-pr-state.ts'
 import {
   classifyColdWorktree,
   isNamedRefWorktree,
   type ColdWorktreeDecision,
-} from '../../../lib/store-worktree-policy.ts'
-import { classifyStoreWorktreePolicy } from '../../../lib/store-worktree-policy.ts'
-import { Store, StoreLayer } from '../../../lib/store.ts'
-import { getCloneUrl } from '../../../lib/sync/mod.ts'
+} from '../../../store/store-worktree-policy.ts'
+import { classifyStoreWorktreePolicy } from '../../../store/store-worktree-policy.ts'
+import { Store, StoreLayer } from '../../../store/store.ts'
+import { getCloneUrl } from '../../../sync/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { StoreCommandError } from '../../errors.ts'
 import * as Observability from '../../observability.ts'

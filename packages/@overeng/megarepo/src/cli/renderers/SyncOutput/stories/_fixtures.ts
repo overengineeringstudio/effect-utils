@@ -4,7 +4,7 @@
  * @internal
  */
 
-import type { MegarepoSyncTree, MemberSyncResult } from '../../../../lib/sync/schema.ts'
+import type { MegarepoSyncTree, MemberSyncResult } from '../../../../sync/schema.ts'
 import { COMMITS, MEMBERS, PINNED_MEMBERS, WORKSPACE } from '../../_story-constants.ts'
 import type { SyncState as SyncStateType } from '../mod.ts'
 import type {

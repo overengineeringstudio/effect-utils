@@ -14,6 +14,11 @@ import React from 'react'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
+import { teardownCpAMemberMount } from '../../composition/mounts/member-mount-cp-a.ts'
+import {
+  readOwnedCpAMountMetadata,
+  type OwnedCpAMountMetadataError,
+} from '../../composition/mounts/member-mount-r6.ts'
 import {
   ConfigNotFoundError,
   findConfigPath,
@@ -21,14 +26,14 @@ import {
   isRemoteSource,
   parseSourceString,
   readMegarepoConfig,
-} from '../../lib/config.ts'
-import * as Git from '../../lib/git.ts'
-import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
-import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
-import { type MegarepoTraversal, withMegarepoTraversal } from '../../lib/megarepo-traversal.ts'
-import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
-import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
-import { Store, StoreLayer } from '../../lib/store.ts'
+} from '../../core/config.ts'
+import * as Git from '../../core/git.ts'
+import { detectRefMismatch, type RefMismatch } from '../../core/issues.ts'
+import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../core/lock.ts'
+import { type MegarepoTraversal, withMegarepoTraversal } from '../../core/megarepo-traversal.ts'
+import { extractRefFromSymlinkPath } from '../../core/ref.ts'
+import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
+import { Store, StoreLayer } from '../../store/store.ts'
 import {
   Cwd,
   detectCurrentMemberPath,
@@ -46,6 +51,7 @@ import type {
   StaleLock,
   SymlinkDrift,
 } from '../renderers/StatusOutput/mod.ts'
+import { loadOwnedIdentity, type CompositionCutoverError } from './composition.ts'
 
 /**
  * Recursively scan members and build status tree.
@@ -65,7 +71,11 @@ const scanMembersRecursive = ({
   depth?: number
 }): Effect.Effect<
   MemberStatus[],
-  PlatformError | Schema.SchemaError | Error,
+  | PlatformError
+  | Schema.SchemaError
+  | Git.GitCommandError
+  | OwnedCpAMountMetadataError
+  | CompositionCutoverError,
   FileSystem.FileSystem | ChildProcessSpawner | Store
 > =>
   Effect.gen(function* () {
@@ -86,11 +96,20 @@ const scanMembersRecursive = ({
     if (configResult === undefined) {
       return []
     }
-    const { config } = configResult
+    const { config, path: configPath } = configResult
+    const compositionEnabled = config.generators?.composition?.enabled === true
+    const ignoredMembers = new Set(config.generators?.composition?.ignoredMembers ?? [])
+    const ownedMemberKey =
+      compositionEnabled === true
+        ? (yield* loadOwnedIdentity({ workspaceRoot: megarepoRoot })).ownedMemberKey
+        : undefined
 
     // Load lock file (optional)
+    const physicalConfigPath = yield* fs.realPath(configPath)
+    const configOwner =
+      EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? megarepoRoot
     const lockPath = EffectPath.ops.join(
-      megarepoRoot,
+      configOwner,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
     )
     const lockFileOpt = yield* readLockFile(lockPath)
@@ -98,26 +117,48 @@ const scanMembersRecursive = ({
 
     // Build member status list
     const members: MemberStatus[] = []
-    for (const [memberName, sourceString] of Object.entries(config.members)) {
+    const effectiveMembers: ReadonlyArray<readonly [string, string]> = [
+      ...(ownedMemberKey === undefined ? [] : [[ownedMemberKey, 'owned:branch'] as const]),
+      ...Object.entries(config.members),
+    ]
+    for (const [memberName, sourceString] of effectiveMembers) {
+      const isOwned = memberName === ownedMemberKey
+      const compositionManaged =
+        compositionEnabled === true && ignoredMembers.has(memberName) === false
       const memberPath = getMemberPath({ megarepoRoot, name: memberName })
-      const source = parseSourceString(sourceString)
+      const source = isOwned === true ? undefined : parseSourceString(sourceString)
       const isLocal = source?.type === 'path'
       const lockedMember = lockFile?.members[memberName]
 
-      // Check if symlink exists in repos/<member>
       const symlinkPath = memberPath.replace(/\/$/, '')
-      const symlinkExists = yield* fs.exists(symlinkPath)
-
-      // For remote members, also check if the underlying worktree exists
-      // (symlink might exist but point to non-existent worktree)
-      let memberExists = symlinkExists
-      if (symlinkExists === true && isLocal === false) {
-        // Check if symlink target exists
+      const pathExists = yield* fs.exists(symlinkPath)
+      let symlinkExists = compositionManaged === false ? pathExists : isOwned === true && pathExists
+      let memberExists = pathExists
+      let mountKind: MemberStatus['mountKind'] = isOwned === true ? 'owned' : undefined
+      let mountedCommit: string | undefined
+      if (compositionManaged === true && isOwned === false && pathExists === true) {
+        const verification = yield* teardownCpAMemberMount({
+          request: { workspaceRoot: megarepoRoot, member: memberName, dryRun: true },
+        }).pipe(Effect.result)
+        if (verification._tag === 'Success') {
+          symlinkExists = true
+          mountKind = 'cp-a'
+          mountedCommit = (yield* readOwnedCpAMountMetadata({
+            workspaceRoot: megarepoRoot,
+            member: memberName,
+            publishedPath: symlinkPath,
+          })).lockedCommit
+        } else {
+          mountKind = 'foreign'
+        }
+      } else if (compositionManaged === false && pathExists === true && isLocal === false) {
         const targetExists = yield* fs.readLink(symlinkPath).pipe(
           Effect.flatMap((target) => fs.exists(target)),
           Effect.orElseSucceed(() => false),
         )
+        symlinkExists = targetExists
         memberExists = targetExists
+        mountKind = 'symlink'
       }
 
       // Check if this member is itself a megarepo
@@ -145,7 +186,7 @@ const scanMembersRecursive = ({
       let gitStatus: GitStatus | undefined = undefined
       let currentBranch: string | undefined = undefined
       let fullCommit: string | undefined = undefined
-      if (memberExists === true) {
+      if (memberExists === true && (isOwned === true || compositionManaged === false)) {
         // Check if it's a git repo first
         const isGit = yield* Git.isGitRepo(memberPath)
         if (isGit === true) {
@@ -180,9 +221,11 @@ const scanMembersRecursive = ({
         }
       }
 
+      if (mountedCommit !== undefined) fullCommit = mountedCommit
+
       // Read symlink target for drift detection
       const symlinkTarget =
-        memberExists === true && isLocal === false
+        compositionManaged === false && memberExists === true && isLocal === false
           ? yield* fs.readLink(memberPath.replace(/\/$/, '')).pipe(Effect.orElseSucceed(() => null))
           : null
 
@@ -260,6 +303,8 @@ const scanMembersRecursive = ({
         symlinkExists,
         source: sourceString,
         isLocal,
+        mountKind,
+        writable: isOwned === true,
         lockInfo:
           lockedMember !== undefined
             ? {
@@ -305,7 +350,7 @@ export const statusCommand = Cli.Command.make(
       const store = yield* Store
 
       // Load config
-      const { config } = yield* readMegarepoConfig(root.value)
+      const { config, path: configPath } = yield* readMegarepoConfig(root.value)
 
       // Scan members (recursively if --all)
       const members = yield* withMegarepoTraversal({
@@ -321,8 +366,11 @@ export const statusCommand = Cli.Command.make(
       })
 
       // Get last sync time and lock staleness from lock file
+      const physicalConfigPath = yield* fs.realPath(configPath)
+      const configOwner =
+        EffectPath.ops.parent(EffectPath.unsafe.absoluteFile(physicalConfigPath)) ?? root.value
       const lockPath = EffectPath.ops.join(
-        root.value,
+        configOwner,
         EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
       )
       const lockFileOpt = yield* readLockFile(lockPath)

@@ -48,7 +48,6 @@
     "@effect/atom-react": "4.0.0-rc.111",
     "@effect/platform-node": "4.0.0-rc.111",
     "@effect/vitest": "4.0.0-rc.111",
-    "@overeng/tui-core": "workspace:^",
     "@overeng/tui-react": "workspace:^",
     "@overeng/utils": "workspace:^",
     "@overeng/utils-dev": "workspace:^",

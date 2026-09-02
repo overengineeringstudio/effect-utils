@@ -1,0 +1,6 @@
+{
+  "name": "published-tool",
+  "bin": {
+    "published-tool": "cli.js"
+  }
+}

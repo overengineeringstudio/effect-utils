@@ -13,7 +13,7 @@ import * as Cli from 'effect/unstable/cli'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAMES, MEMBER_ROOT_DIR } from '../lib/config.ts'
+import { CONFIG_FILE_NAMES, MEMBER_ROOT_DIR } from '../core/config.ts'
 import { InvalidCwdError } from './errors.ts'
 
 // =============================================================================

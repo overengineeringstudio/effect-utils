@@ -14,7 +14,7 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME_JSON, MegarepoConfig, validateMemberName } from '../lib/config.ts'
+import { CONFIG_FILE_NAME_JSON, MegarepoConfig, validateMemberName } from '../core/config.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { initGitRepo, readConfig } from '../test-utils/setup.ts'
 import { mrCommand } from './mod.ts'

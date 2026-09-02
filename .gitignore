@@ -15,6 +15,27 @@ node_modules
 *.tsbuildinfo
 dist
 
+# Python
+__pycache__/
+*.pyc
+
+# Rust workspace build state
+/rust/target/
+
+# Buck2 daemon and materialized build state
+buck-out/
+# Scoped generated editor snapshots for packages/@overeng/*
+/packages/.editor-view/
+# Machine-local cache client wiring (devenv-generated from the fleet default in
+# devenv.nix; hand-edited overrides stay local)
+/.buckconfig.local
+# Executor-local, Nix-realized Buck capability projection
+/.buck2/capabilities/
+/.buck2/capabilities
+/.buck2/capabilities.candidate.*
+/.buck2/capabilities.lock
+/.buck2/capability-generations/
+
 # Direnv
 repos/
 
@@ -48,7 +69,7 @@ blob-report
 
 devenv.local.*
 
-# Transient plugin-injected oxlint config (written by nix/oxlint-with-plugins.nix during lint)
+# Deterministic plugin-injected oxlint config cache (written by nix/oxlint-with-plugins.nix)
 .oxlint-with-plugins.*
 
 # Agent-session MCP server config (e.g. coord/smalltalk); regenerated per session, not tracked

@@ -10,7 +10,7 @@ import React from 'react'
 
 import { run } from '@overeng/tui-react'
 
-import * as Git from '../../lib/git.ts'
+import * as Git from '../../core/git.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import * as Observability from '../observability.ts'
 import { RootApp, RootView } from '../renderers/RootOutput/mod.ts'

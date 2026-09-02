@@ -3,6 +3,7 @@
 
 # registry-source: genie/weaver-registry/registry.ts
 # fingerprint: sha256:fec96ac4bcb2db312b9c5e5e216a38aad2de6db3cf2c79048daad2df9642ef6e
+# regen: devenv tasks run genie:run
 groups:
   - id: metric.acme.probe.duration
     type: metric

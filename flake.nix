@@ -66,6 +66,14 @@
             dirty
             ;
         };
+        buck2 = import ./nix/buck2.nix { inherit pkgs; };
+        buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
+        buck2-rust-toolchain-capability =
+          import ./nix/workspace-tools/lib/buck2-rust-toolchain-capability.nix
+            {
+              inherit pkgs;
+              nixpkgsRevision = nixpkgs.rev;
+            };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -187,7 +195,27 @@
           cliPackages
           // providerCliPackages
           // {
-            inherit otelite otel-scrape;
+            inherit
+              buck2
+              otelite
+              otel-scrape
+              ;
+            buck2-archive-tool = buck2-stage0-tools.archive-tool;
+            buck2-product = buck2-stage0-tools.product;
+            buck2-rust-compiler = buck2-rust-toolchain-capability.packages.rust-compiler;
+            buck2-rust-rustdoc = buck2-rust-toolchain-capability.packages.rust-rustdoc;
+            buck2-rust-clippy-driver = buck2-rust-toolchain-capability.packages.rust-clippy-driver;
+            buck2-rust-c-compiler = buck2-rust-toolchain-capability.packages.rust-c-compiler;
+            buck2-rust-cxx-compiler = buck2-rust-toolchain-capability.packages.rust-cxx-compiler;
+            buck2-rust-linker = buck2-rust-toolchain-capability.packages.rust-linker;
+            buck2-rust-archiver = buck2-rust-toolchain-capability.packages.rust-archiver;
+            buck2-rust-dwp = buck2-rust-toolchain-capability.packages.rust-dwp;
+            buck2-rust-nm = buck2-rust-toolchain-capability.packages.rust-nm;
+            buck2-rust-objcopy = buck2-rust-toolchain-capability.packages.rust-objcopy;
+            buck2-rust-objdump = buck2-rust-toolchain-capability.packages.rust-objdump;
+            buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
+            buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
+            buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
@@ -211,7 +239,8 @@
             npm-release = cliPackages.npm-release;
             npm-release-dirty = cliPackagesDirty.npm-release;
             "npm-release-pnpm-deps" = cliPackages.npm-release.passthru.depsBuildsByInstallRoot.root;
-            "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
+            oxc-config = oxlintNpm.pluginBundle;
+            "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.depsBuildsByInstallRoot.root;
             # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
             oxlint-npm = oxlintNpm;
             # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
@@ -219,6 +248,8 @@
               inherit pkgs oxlintNpm;
             };
             node-pty-native = nodePtyNative;
+          }
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
           };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
@@ -296,6 +327,11 @@
 
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
+
+      # Verify and import a published Buck artifact into a normal Nix output for
+      # wrapping and later Home Manager/system activation.
+      lib.mkBuck2ArtifactImport =
+        { pkgs }: import ./nix/workspace-tools/lib/buck2-artifact-import.nix { inherit pkgs; };
 
       # Shell helper for runtime CLI build stamps.
       lib.cliBuildStamp =

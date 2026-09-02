@@ -13,7 +13,7 @@ import { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { MegarepoConfig } from '../lib/config.ts'
+import { MegarepoConfig } from '../core/config.ts'
 
 // =============================================================================
 // Types
@@ -71,7 +71,7 @@ export const initGitRepo = (path: AbsoluteDirPath) =>
     const existing = yield* fs.readFileString(configPath)
     yield* fs.writeFileString(
       configPath,
-      `${existing}[user]\n\temail = test@example.com\n\tname = Test User\n`,
+      `${existing}[user]\n\temail = test@example.com\n\tname = Test User\n[commit]\n\tgpgsign = false\n`,
     )
   })
 

@@ -16,7 +16,7 @@ import {
 import { makeOtelCliLayer, otelEndpointFromConfig } from '@overeng/utils/node/otel'
 
 import { mrCommand } from '../src/cli/mod.ts'
-import { MR_VERSION } from '../src/lib/version.ts'
+import { MR_VERSION } from '../src/core/version.ts'
 
 /**
  * Clear git environment variables that leak when `mr` runs inside a git hook
