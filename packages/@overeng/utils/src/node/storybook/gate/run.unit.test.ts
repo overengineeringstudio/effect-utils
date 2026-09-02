@@ -148,12 +148,8 @@ describe('selfInconsistentStoryKeys', () => {
       'story-gate/src/stories/Book.stories.tsx/components-book--default.png',
     ])
     expect({
-      sameFile: keys.has(
-        storyKey({ file: 'Book.stories.tsx', slug: slugStoryName('Default') }),
-      ),
-      otherFile: keys.has(
-        storyKey({ file: 'Avatar.stories.tsx', slug: slugStoryName('Default') }),
-      ),
+      sameFile: keys.has(storyKey({ file: 'Book.stories.tsx', slug: slugStoryName('Default') })),
+      otherFile: keys.has(storyKey({ file: 'Avatar.stories.tsx', slug: slugStoryName('Default') })),
     }).toEqual({ sameFile: true, otherFile: false })
   })
 

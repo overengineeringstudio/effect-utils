@@ -101,7 +101,7 @@ const parseRules = (css: string): readonly EmittedRule[] => {
   for (const match of css.matchAll(/([^{}@]+)\{([^{}]*)\}/g)) {
     const selector = (match[1] ?? '').trim()
     const body = (match[2] ?? '').trim()
-    if (selector.startsWith('@') || body === '') continue
+    if (selector.startsWith('@') === true || body === '') continue
     const properties = body
       .split(';')
       .map((declaration) => declaration.split(':')[0]?.trim() ?? '')
@@ -110,6 +110,12 @@ const parseRules = (css: string): readonly EmittedRule[] => {
   }
   return rules
 }
+
+/**
+ * Attribute conditions such as `[data-focus-visible]` are a different condition
+ * kind and never reach the priority table, so they are not part of this defect.
+ */
+const isAttribute = (selector: string): boolean => /\[data-/.test(selector)
 
 /**
  * Audit an emitted stylesheet for the ordering that makes the defect reachable.
@@ -121,10 +127,6 @@ const parseRules = (css: string): readonly EmittedRule[] => {
  */
 export const auditFocusOrder = (css: string): FocusOrderReport => {
   const rules = parseRules(css)
-  // Attribute conditions such as `[data-focus-visible]` are a different
-  // condition kind and never reach the priority table, so they are not part of
-  // this defect.
-  const isAttribute = (selector: string): boolean => /\[data-/.test(selector)
   const hover = rules.filter(
     (rule) => /:hover(?![\w-])/.test(rule.selector) && isAttribute(rule.selector) === false,
   )
@@ -220,8 +222,8 @@ export const formatFocusOrderReport = ({
     'most pairs are cross-component noise, and pair count is not severity.',
     '',
     'Two sound fixes. Both work because their correctness is INVARIANT UNDER THE PRIORITY',
-    "TABLE'S VALUES, which is the property to aim for. Note it is NOT \"specificity instead",
-    'of priority\": the compiler materialises priority AS specificity by repeating',
+    'TABLE\'S VALUES, which is the property to aim for. Note it is NOT "specificity instead',
+    'of priority": the compiler materialises priority AS specificity by repeating',
     ':not(#\\#), so those are one axis, not two competing ones.',
     "  1. Add `':hover:focus-visible': <focus value>` to the same object. A compound key",
     '     sums its parts and all priorities are positive, so it always exceeds either',

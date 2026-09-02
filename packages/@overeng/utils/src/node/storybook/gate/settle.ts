@@ -119,8 +119,7 @@ export const outstandingWork = ({
   environment: SettleEnvironment
   workQuietMs: number
 }): number =>
-  environment.incompleteImages() +
-  (environment.msSinceLastResource() < workQuietMs ? 1 : 0)
+  environment.incompleteImages() + (environment.msSinceLastResource() < workQuietMs ? 1 : 0)
 
 /**
  * Poll the captured subtree until its shape repeats `quietPolls` times running
@@ -174,6 +173,16 @@ export const settle = async ({
         reason: pending > 0 ? 'work-never-drained' : 'shape-never-quiet',
       }
     }
+    // Sequential BY DESIGN. This is a poll: each iteration must observe the DOM
+    // only after the previous wait elapsed, so the awaits cannot be gathered.
+    // Concurrency here would sample the same frame repeatedly and satisfy
+    // `quietPolls` without any time passing, which is precisely the
+    // false-settled reading the shape count exists to prevent.
+    //
+    // The directive has to sit immediately above the statement: it is
+    // `disable-next-line`, and with the explanation below it the "next line"
+    // was another comment, so the suppression silently did nothing.
+    // oxlint-disable-next-line eslint/no-await-in-loop
     await environment.sleep(config.pollIntervalMs)
   }
 }

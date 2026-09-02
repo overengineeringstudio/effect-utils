@@ -425,7 +425,7 @@ const runGit = ({ args, cwd }: { args: readonly string[]; cwd: string }): string
 const listPngs = (root: string): string[] => {
   if (existsSync(root) === false) return []
   return readdirSync(root, { withFileTypes: true, recursive: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.png'))
+    .filter((entry) => entry.isFile() === true && entry.name.endsWith('.png') === true)
     .map((entry) => join(entry.parentPath, entry.name))
 }
 
@@ -664,11 +664,15 @@ const parseAssertions = ({
       readonly assertionResults?: readonly VitestJsonAssertion[]
     }[]
   }
-  return (report.testResults ?? []).flatMap((file) =>
-    (file.assertionResults ?? []).map((assertion) =>
-      file.name === undefined ? assertion : { ...assertion, file: basename(file.name) },
-    ),
-  )
+  return (report.testResults ?? []).flatMap((file) => {
+    if (file.name === undefined) return file.assertionResults ?? []
+    // Hoisted: one basename per FILE rather than per assertion, and assigning
+    // onto a fresh object keeps the source assertion untouched.
+    const fileName = basename(file.name)
+    return (file.assertionResults ?? []).map((assertion) =>
+      Object.assign({}, assertion, { file: fileName }),
+    )
+  })
 }
 
 /**
@@ -694,7 +698,8 @@ export const slugStoryName = (name: string): string =>
  * self-inconsistency suppress a DIFFERENT story's real regression — a false
  * green, which is worse than the noise this subtraction removes.
  */
-export const storyKey = ({ file, slug }: { file: string; slug: string }): string => `${file}::${slug}`
+export const storyKey = ({ file, slug }: { file: string; slug: string }): string =>
+  `${file}::${slug}`
 
 /**
  * The stories the baseline probe already proved nondeterministic, keyed to join
@@ -714,7 +719,7 @@ export const selfInconsistentStoryKeys = (captureKeys: readonly string[]): Reado
     const id = png.replace(/\.png$/, '')
     // The id is `<title-slug>--<name-slug>`; only the name half can be
     // reconstructed from a Vitest assertion, so that is what is keyed.
-    const slug = id.includes('--') ? (id.split('--').at(-1) ?? id) : id
+    const slug = id.includes('--') === true ? (id.split('--').at(-1) ?? id) : id
     keys.add(storyKey({ file, slug }))
   }
   return keys
@@ -784,7 +789,7 @@ const summariseSettle = ({
   settled: readonly StorySettleRecord[]
   unsettled: readonly StorySettleRecord[]
 }): StoryGateReport['settle'] => {
-  const durations = settled.map((record) => record.elapsedMs).sort((a, b) => a - b)
+  const durations = settled.map((record) => record.elapsedMs).toSorted((a, b) => a - b)
   const median = durations.length === 0 ? 0 : (durations[durations.length >> 1] ?? 0)
   return {
     settledStories: settled.length,
@@ -860,15 +865,16 @@ const readTreeIdentity = ({
 
   for (const path of untrackedSourceFiles({ repoRoot, packageRoot, sourceRoots })) {
     const absolute = join(repoRoot, path)
-    entries[`untracked:${path}`] = existsSync(absolute)
-      ? createHash('sha1').update(readFileSync(absolute)).digest('hex')
-      : 'absent'
+    entries[`untracked:${path}`] =
+      existsSync(absolute) === true
+        ? createHash('sha1').update(readFileSync(absolute)).digest('hex')
+        : 'absent'
   }
 
   const digest = createHash('sha1')
     .update(
       Object.keys(entries)
-        .sort()
+        .toSorted()
         .map((key) => `${key}=${entries[key]}`)
         .join('\n'),
     )
@@ -898,7 +904,9 @@ const describeIdentityDrift = ({
   before: TreeIdentity
   after: TreeIdentity
 }): string => {
-  const keys = [...new Set([...Object.keys(before.entries), ...Object.keys(after.entries)])].sort()
+  const keys = [
+    ...new Set([...Object.keys(before.entries), ...Object.keys(after.entries)]),
+  ].toSorted()
   const drifted = keys
     .filter((key) => before.entries[key] !== after.entries[key])
     .map(
@@ -1003,9 +1011,10 @@ export const runStoryGate = async ({
   // `differedOnThird: []` off disk and report the class as a measured zero when
   // nothing measured it. Fail toward re-deriving — that costs time, the other
   // way costs a false green.
-  const cachedStability = existsSync(stabilityPath)
-    ? (JSON.parse(readFileSync(stabilityPath, 'utf8')) as StoryGateReport['stability'])
-    : undefined
+  const cachedStability =
+    existsSync(stabilityPath) === true
+      ? (JSON.parse(readFileSync(stabilityPath, 'utf8')) as StoryGateReport['stability'])
+      : undefined
   if (
     existsSync(completeMarker) === false ||
     cachedStability === undefined ||
@@ -1224,9 +1233,10 @@ export const runStoryGate = async ({
   // new, which is a wrong verdict rather than a noisy one. Named for what it is
   // instead. This is also the racy-settler case: a story that settles on one
   // run and not the other is non-comparable, and saying so is the honest answer.
-  const unsettledAtBaseline: readonly StorySettleRecord[] = existsSync(settlePath)
-    ? (JSON.parse(readFileSync(settlePath, 'utf8')) as StorySettleRecord[])
-    : []
+  const unsettledAtBaseline: readonly StorySettleRecord[] =
+    existsSync(settlePath) === true
+      ? (JSON.parse(readFileSync(settlePath, 'utf8')) as StorySettleRecord[])
+      : []
   const unsettledNames = new Set(
     [...unsettled, ...unsettledAtBaseline].flatMap((record) => [record.id, record.name]),
   )
@@ -1300,9 +1310,15 @@ export const runStoryGate = async ({
     themeAxis,
     captureSets: { baselineDir, baselineCaptures, compareCaptures: 1 },
     treeIdentity: {
-      baseline: existsSync(identityPath)
-        ? (JSON.parse(readFileSync(identityPath, 'utf8')) as TreeIdentity)
-        : { head: baselineSha, digest: 'unrecorded', scope: 'not recorded by this cache entry', entries: {} },
+      baseline:
+        existsSync(identityPath) === true
+          ? (JSON.parse(readFileSync(identityPath, 'utf8')) as TreeIdentity)
+          : {
+              head: baselineSha,
+              digest: 'unrecorded',
+              scope: 'not recorded by this cache entry',
+              entries: {},
+            },
       compare: compareIdentity,
     },
     ok: isStoryGateOk({

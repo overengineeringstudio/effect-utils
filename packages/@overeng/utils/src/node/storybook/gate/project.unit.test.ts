@@ -60,7 +60,10 @@ beforeAll(() => {
 
 describe('createStoryGateConfig plugin threading', () => {
   it('puts caller plugins on the single project when there are no themes', () => {
-    const config = createStoryGateConfig({ plugins: [marker], storybookPluginFor: fakeStorybookPluginFor })
+    const config = createStoryGateConfig({
+      plugins: [marker],
+      storybookPluginFor: fakeStorybookPluginFor,
+    })
 
     // No themes returns a bare project config rather than a projects array, so
     // the plugins belong at this level.
@@ -96,7 +99,9 @@ describe('createStoryGateConfig plugin threading', () => {
   it('orders caller plugins before the Storybook plugin', () => {
     // A compiler transform has to see the source before the Storybook plugin
     // turns it into a test module. Order is behaviour here, not style.
-    const names = pluginNames(createStoryGateConfig({ plugins: [marker], storybookPluginFor: fakeStorybookPluginFor }))
+    const names = pluginNames(
+      createStoryGateConfig({ plugins: [marker], storybookPluginFor: fakeStorybookPluginFor }),
+    )
 
     const markerIndex = names.indexOf(marker.name)
     const storybookIndex = names.findIndex((name) => name.includes('storybook'))

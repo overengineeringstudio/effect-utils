@@ -34,10 +34,7 @@ const fakeEnvironment = ({
  * attribution control mounts hidden and EMPTY, then populates from network
  * metadata at +1873ms, +8573ms, or not within 3300ms across three runs.
  */
-const lateArrivingRoot = (
-  environment: { now: () => number },
-  arrivesAtMs: number,
-): SettleRoot => ({
+const lateArrivingRoot = (environment: { now: () => number }, arrivesAtMs: number): SettleRoot => ({
   get innerHTML() {
     return environment.now() >= arrivesAtMs ? 'x'.repeat(2400) : 'x'.repeat(120)
   },

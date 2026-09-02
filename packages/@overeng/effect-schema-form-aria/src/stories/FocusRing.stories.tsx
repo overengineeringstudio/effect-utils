@@ -31,10 +31,15 @@ import { TextField } from '../components/TextField.tsx'
  *    picture. It fails loudly if the modality trick ever stops working.
  */
 export default {
+  // Three components paint a ring and each gets its own story, so no single one
+  // is "the" subject. `TextField` is named because a CSF meta needs a component
+  // and it is the one whose ring every other site copies -- not because the
+  // other stories render it.
+  component: TextField,
   title: 'Components/FocusRing',
-} satisfies Meta
+} satisfies Meta<typeof TextField>
 
-type Story = StoryObj
+type Story = StoryObj<typeof TextField>
 
 /** These stories never change a value; the ring is the subject. */
 const noop = (): void => undefined
