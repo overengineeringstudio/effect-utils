@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otel-contract/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:977f7bdf344a3cc7ebf3adcec113a855004a6e44dbe25849c7ada0ca8f6324f4
+# Semantic fingerprint: sha256:42878eb4db4e5a1025eed0d7b374c82c29f3b6fee67a340ded33771c5e41d9a5
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/src/**/*.cts, packages/@overeng/otel-contract/src/**/*.mts, packages/@overeng/otel-contract/src/**/*.ts, packages/@overeng/otel-contract/src/**/*.tsx, packages/@overeng/otel-contract/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -82,5 +82,7 @@ tsgo_typecheck(
 tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
+    declaration_sources = {
+    },
     visibility = ["PUBLIC"],
 )

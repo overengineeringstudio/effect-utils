@@ -11,7 +11,7 @@
       "default": "./src/tokens.stylex.ts"
     },
     "./vite": {
-      "types": "./src/vite-types.d.ts",
+      "types": "./dist/src/vite-types.d.ts",
       "default": "./src/vite.js"
     }
   },

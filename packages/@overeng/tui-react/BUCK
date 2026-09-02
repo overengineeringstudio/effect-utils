@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/tui-react/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:9ee40ab9d6570de7b416721422e2473f56cf2209ccc3d57541b675bc65f70a17
+# Semantic fingerprint: sha256:0c4a29b58f6d772876e7402be60c62cb0a9fc81658e81095fd7297130aacf7dc
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/examples/**/*.cts, packages/@overeng/tui-react/examples/**/*.mts, packages/@overeng/tui-react/examples/**/*.ts, packages/@overeng/tui-react/examples/**/*.tsx, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-react/src/**/*.cts, packages/@overeng/tui-react/src/**/*.mts, packages/@overeng/tui-react/src/**/*.ts, packages/@overeng/tui-react/src/**/*.tsx, packages/@overeng/tui-react/test/**/*.cts, packages/@overeng/tui-react/test/**/*.mts, packages/@overeng/tui-react/test/**/*.ts, packages/@overeng/tui-react/test/**/*.tsx, packages/@overeng/tui-react/tsconfig.buck.json.genie.ts, packages/@overeng/tui-react/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx
 # Regenerate: devenv tasks run genie:run
 
@@ -362,6 +362,9 @@ tsgo_typecheck(
 tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
+    declaration_sources = {
+        "src/storybook/asset-modules.d.ts": "src/storybook/asset-modules.d.ts",
+    },
     project = "tsconfig.buck.json",
     declaration_entrypoint = "src/mod.d.ts",
     visibility = ["PUBLIC"],

@@ -35,7 +35,7 @@ export default packageJson(
       './preflight.css': exportEntry('./src/preflight.css', { environment: 'browser' }),
       './vite': exportEntry(
         {
-          types: './src/vite-types.d.ts',
+          types: './dist/src/vite-types.d.ts',
           default: './src/vite.js',
         },
         { environment: 'node' },

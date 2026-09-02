@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/stylex-preset/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:cb268f2d4c2603f6be872c75120e8065f3ef6350ff34112ca1423ee24ec74f08
+# Semantic fingerprint: sha256:58e302c7e082880af89b0c49c8d887d0ad5afd2fed58f8d95f22bcfdbba9f276
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/stylex-preset/BUCK.genie.ts, packages/@overeng/stylex-preset/BUCK.genie.ts, packages/@overeng/stylex-preset/package.json.genie.ts, packages/@overeng/stylex-preset/src/**/*.cts, packages/@overeng/stylex-preset/src/**/*.mts, packages/@overeng/stylex-preset/src/**/*.ts, packages/@overeng/stylex-preset/src/**/*.tsx, packages/@overeng/stylex-preset/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -60,6 +60,9 @@ tsgo_typecheck(
 tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
+    declaration_sources = {
+        "src/vite-types.d.ts": "src/vite-types.d.ts",
+    },
     declaration_entrypoint = "src/tokens.stylex.d.ts",
     visibility = ["PUBLIC"],
 )

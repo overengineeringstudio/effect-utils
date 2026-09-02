@@ -112,7 +112,8 @@ publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
 
 - **@overeng/utils-dev, @overeng/stylex-preset**: transfer TypeScript
   typecheck and declaration emit to Buck as the first dependency-layer
-  admission. Public type conditions consume Buck declarations, legacy project
+  admission. Public type conditions consume Buck declarations, explicit
+  handwritten declarations are copied as action inputs, legacy project
   references are removed, and tui-react consumes utils-dev through its Buck
   dist instead of a source-sibling copy.
 
