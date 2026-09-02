@@ -138,12 +138,16 @@ RENAME_EXCHANGE advance.
 
 ## Phase 3 — TypeScript surface widening
 
-- Remaining TS package checks/builds admitted in value order; per-package
-  devenv/pnpm build-path consumers deleted per admission.
+- Remaining TS package checks/builds are admitted in dependency order, with one
+  PR per dependency layer rather than one PR per package. Within each layer,
+  every package retains its own authority flip, deletion-ledger entry, and
+  package-specific evidence; its devenv/pnpm build-path consumers are deleted
+  with that package's admission.
 - Workspace-sibling live links (symlink-back) are part of the standard rule.
 - The coverage-asserted registry in `genie/tsconfig-projects.ts` has 38 root
   projects. tui-core and tui-react are admitted; 36 projects remain in both
-  root solutions and leave them one deletion-ledger entry at a time.
+  root solutions and leave them one package-scoped deletion-ledger entry at a
+  time, grouped by dependency layer for review and landing.
 
 - Admission 2 transfers `@overeng/tui-react` typecheck and declaration emit to
   `//packages/@overeng/tui-react:typecheck` and

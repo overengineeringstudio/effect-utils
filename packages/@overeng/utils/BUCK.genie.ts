@@ -1,4 +1,13 @@
-import { buck2TypeScriptAdmissions } from '../../../genie/buck2/typescript-admissions.ts'
+import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-admissions.ts'
 import { buck2TypeScriptPackageProjection } from '../../../genie/buck2/typescript-package-projection.ts'
 
-export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmissions.utils)
+export const buck2TypeScriptAdmission = {
+  dependencyImporter: '//buck2/dependencies:importer_packages_overeng_utils_07fe64e7b8ad',
+  packageName: '@overeng/utils',
+  packagePath: 'packages/@overeng/utils',
+  projectionSource: 'packages/@overeng/utils/BUCK.genie.ts',
+  sourceRoots: ['src'],
+  editorViewConsumer: false,
+} as const satisfies Buck2TypeScriptAdmission
+
+export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

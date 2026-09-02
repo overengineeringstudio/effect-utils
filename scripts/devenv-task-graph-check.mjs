@@ -157,13 +157,26 @@ const taskSource = (name) => {
 }
 
 const materializerSource = taskSource(materializer)
+const typescriptAuthorityRuntimePath = 'genie/buck2/typescript-authority-runtime.ts'
+const typescriptAuthorityRuntimeSource = readFileSync(
+  `${root}/${typescriptAuthorityRuntimePath}`,
+  'utf8',
+)
 ok({
   condition:
-    materializerSource.includes('typescript-materialize-dist.sh') === true &&
-    materializerSource.includes('effect_utils//packages/@overeng/tui-core:dist') === true &&
-    materializerSource.includes('effect_utils//packages/@overeng/tui-react:dist') === true &&
+    materializerSource.includes(typescriptAuthorityRuntimePath) === true &&
+    materializerSource.includes('materialize-dist "$root"') === true &&
     materializerSource.includes('BUCK2_BIN=') === true,
-  name: 'materializer dispatches the tested Buck publication helper',
+  name: 'materializer dispatches the registry-backed TypeScript authority runtime',
+})
+ok({
+  condition:
+    typescriptAuthorityRuntimeSource.includes('authoritativeBuck2TypeScriptAdmissions') === true &&
+    typescriptAuthorityRuntimeSource.includes('admissions.map(') === true &&
+    typescriptAuthorityRuntimeSource.includes('scripts/typescript-materialize-dist.sh') === true &&
+    typescriptAuthorityRuntimeSource.includes('packages/@overeng/tui-core') === false &&
+    typescriptAuthorityRuntimeSource.includes('packages/@overeng/tui-react') === false,
+  name: 'TypeScript authority runtime derives materialization from the registry',
 })
 ok({
   condition:
@@ -189,8 +202,10 @@ const buckCheckSource = taskSource('buck2:check')
 ok({
   condition:
     buckCheckSource.includes('realpath "$root/../.."') === true &&
-    buckCheckSource.includes('$workspace_root/.megarepo/bin/buck2') === true,
-  name: 'buck2:check resolves the composition root wrapper from the owned member',
+    buckCheckSource.includes('$workspace_root/.megarepo/bin/buck2') === true &&
+    buckCheckSource.includes(typescriptAuthorityRuntimePath) === true &&
+    buckCheckSource.includes('build "$buck"') === true,
+  name: 'buck2:check resolves the composition wrapper and dispatches the authority runtime',
 })
 const buckToolchainSource = readFileSync(`${root}/buck2/toolchains/BUCK`, 'utf8')
 ok({

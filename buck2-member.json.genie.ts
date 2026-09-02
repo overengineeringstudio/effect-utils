@@ -1,4 +1,5 @@
 import { projectionArtifact } from './packages/@overeng/genie/src/runtime/mod.ts'
+import { buck2TypeScriptDistOverlays } from './genie/buck2/typescript-admissions.ts'
 import {
   COMPOSITION_ROOT_SCHEMA_VERSION,
   decodeBuckMemberManifest,
@@ -27,16 +28,7 @@ const manifestProjection = {
     'target',
     'tmp',
   ],
-  distOverlays: [
-    {
-      target: '//packages/@overeng/tui-core:dist',
-      destination: 'packages/@overeng/tui-core/dist',
-    },
-    {
-      target: '//packages/@overeng/tui-react:dist',
-      destination: 'packages/@overeng/tui-react/dist',
-    },
-  ],
+  distOverlays: buck2TypeScriptDistOverlays,
   capabilities: [
     {
       _tag: 'ToolchainAuthority',
