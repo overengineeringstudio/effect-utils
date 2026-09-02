@@ -50,6 +50,24 @@ export interface StoryGateConfigOptions {
   readonly themes?: readonly StoryGateTheme[]
   /** @default true */
   readonly headless?: boolean
+  /**
+   * Vite plugins the stories need in order to load, e.g. a compiler transform.
+   *
+   * These MUST arrive here rather than being merged into the returned config,
+   * because **Vitest projects do not inherit root-level `plugins`** — each
+   * project is its own Vite config. Merging at the root works only by accident
+   * in the single-theme case, where this factory returns a bare project config
+   * and the caller's merge target *is* the project. Add a second theme and the
+   * same merge silently stops applying: the return shape becomes
+   * `{ test: { projects } }`, the plugins land beside `test` where nothing reads
+   * them, and every story fails to load with a runtime error from the
+   * untransformed source.
+   *
+   * Measured end to end: a one-theme consumer ran 4 stories while a two-theme
+   * consumer reported `Tests no tests`, and threading the same plugins through
+   * this option moved it to 10 stories executed.
+   */
+  readonly plugins?: ViteUserConfig['plugins']
 }
 
 const readBaselineRoot = (): string => {
@@ -179,28 +197,50 @@ const pinReactToConsumer = (): Plugin => ({
   }),
 })
 
+/**
+ * Build the Storybook test plugin for one project.
+ *
+ * Injected rather than called inline so the plugin-placement invariant is
+ * unit-testable. `storybookTest` eagerly loads a real Storybook config
+ * directory, so a test that invoked it would need a Storybook install and a
+ * fixture `main.ts` in a package that has neither — and the thing worth
+ * guarding is *where the plugins land*, which is independent of what they are.
+ */
+export type StorybookPluginFor = (args: {
+  configDir: string
+  theme: StoryGateTheme | undefined
+}) => NonNullable<ViteUserConfig['plugins']>[number]
+
+const defaultStorybookPluginFor: StorybookPluginFor = ({ configDir, theme }) =>
+  storybookTest({
+    configDir,
+    ...(theme === undefined ? {} : { initialGlobals: { [theme.name]: theme.value } }),
+  })
+
 const createProject = ({
   configDir,
   theme,
   headless,
   baselineRoot,
+  plugins,
+  storybookPluginFor,
 }: {
   configDir: string
   theme: StoryGateTheme | undefined
   headless: boolean
   baselineRoot: string
+  plugins: ViteUserConfig['plugins']
+  storybookPluginFor: StorybookPluginFor
 }): ViteUserConfig => {
   const projectName = theme === undefined ? 'story-gate' : `story-gate-${theme.value}`
   const baselineDir = join(baselineRoot, projectName)
 
   return {
-    plugins: [
-      pinReactToConsumer(),
-      storybookTest({
-        configDir,
-        ...(theme === undefined ? {} : { initialGlobals: { [theme.name]: theme.value } }),
-      }),
-    ],
+    // Caller plugins come after the React pin and before the Storybook plugin:
+    // a compiler transform has to see the source before Storybook turns it into
+    // a test module, and the React pin must stay first so its alias applies to
+    // whatever the transform emits.
+    plugins: [pinReactToConsumer(), ...(plugins ?? []), storybookPluginFor({ configDir, theme })],
     // The baseline half of a run happens inside a git worktree that borrows the
     // main tree's `node_modules` by symlink, so workspace sources — this gate's
     // own setup file among them — resolve to paths outside the served root and
@@ -303,10 +343,15 @@ export const createStoryGateConfig = ({
   configDir = '.storybook',
   themes,
   headless = true,
-}: StoryGateConfigOptions = {}): ViteUserConfig => {
+  plugins,
+  storybookPluginFor = defaultStorybookPluginFor,
+}: StoryGateConfigOptions & {
+  /** Seam for unit tests; production callers never pass this. */
+  readonly storybookPluginFor?: StorybookPluginFor
+} = {}): ViteUserConfig => {
   const baselineRoot = readBaselineRoot()
   const projects = (themes ?? [undefined]).map((theme) =>
-    createProject({ configDir, theme, headless, baselineRoot }),
+    createProject({ configDir, theme, headless, baselineRoot, plugins, storybookPluginFor }),
   )
 
   if (projects.length === 1 && projects[0] !== undefined) return projects[0]

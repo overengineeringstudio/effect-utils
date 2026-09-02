@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:48ae025c3e6d9344fb57d729cc1bb4ce59f3ebaed9fd78dcd536c1dfbd760deb
+# Semantic fingerprint: sha256:f88542dad30e7f84aa72d184758742593c0b0025b46ffc6145a47db9c55b3b0f
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -103,6 +103,7 @@ export_materialization_inputs([
     "src/node/storybook/gate/constants.ts",
     "src/node/storybook/gate/mod.ts",
     "src/node/storybook/gate/project.ts",
+    "src/node/storybook/gate/project.unit.test.ts",
     "src/node/storybook/gate/run.ts",
     "src/node/storybook/gate/run.unit.test.ts",
     "src/node/storybook/gate/settle.ts",
@@ -223,6 +224,7 @@ package_tree(
         "src/node/storybook/gate/constants.ts": "src/node/storybook/gate/constants.ts",
         "src/node/storybook/gate/mod.ts": "src/node/storybook/gate/mod.ts",
         "src/node/storybook/gate/project.ts": "src/node/storybook/gate/project.ts",
+        "src/node/storybook/gate/project.unit.test.ts": "src/node/storybook/gate/project.unit.test.ts",
         "src/node/storybook/gate/run.ts": "src/node/storybook/gate/run.ts",
         "src/node/storybook/gate/run.unit.test.ts": "src/node/storybook/gate/run.unit.test.ts",
         "src/node/storybook/gate/settle.ts": "src/node/storybook/gate/settle.ts",
