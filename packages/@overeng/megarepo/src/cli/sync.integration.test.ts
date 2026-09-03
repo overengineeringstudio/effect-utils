@@ -2,14 +2,18 @@ import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit, Option, Schema } from 'effect'
+import { Cause, Effect, Exit, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Cli from 'effect/unstable/cli'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME_JSON, MegarepoConfig } from '../core/config.ts'
+import {
+  CONFIG_FILE_NAME_JSON,
+  CompositionGeneratorConfig,
+  MegarepoConfig,
+} from '../core/config.ts'
 import {
   LockFile,
   LOCK_FILE_NAME,
@@ -272,6 +276,95 @@ describe('worktree mode selection', () => {
             EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/lib')),
           )
           expect(memberLink, testCase.name).toContain(testCase.expectedTarget)
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+})
+
+describe('composition apply option policy', () => {
+  const createCompositionWorkspace = Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const { workspacePath } = yield* createWorkspace({ name: 'composition-workspace' })
+    const config = new MegarepoConfig({
+      members: {},
+      generators: {
+        composition: new CompositionGeneratorConfig({ enabled: true, platformHub: 'hub' }),
+      },
+    })
+    const configContent = yield* Schema.encodeEffect(
+      Schema.fromJsonString(MegarepoConfig, { space: 2 }),
+    )(config)
+    yield* fs.writeFileString(
+      EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
+      `${configContent}\n`,
+    )
+    return workspacePath
+  })
+
+  it.effect(
+    'accepts redundant --all with implicit auto in CI before entering composition apply',
+    Effect.fnUntraced(
+      function* () {
+        const workspacePath = yield* createCompositionWorkspace
+        const result = yield* runApplyCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json', '--all'],
+          env: { CI: 'true' },
+        })
+
+        const failure = Exit.isFailure(result.exit) === true ? Cause.pretty(result.exit.cause) : ''
+        const diagnostic = `${result.stdout}\n${result.stderr}\n${failure}`
+        expect(Exit.isFailure(result.exit)).toBe(true)
+        expect(diagnostic).toContain('Could not establish owned composition identity')
+        expect(diagnostic).not.toContain(
+          'Composition apply owns the complete member set; --only and --skip are unavailable',
+        )
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'rejects selectors and explicit commit mode that conflict with composition ownership',
+    Effect.fnUntraced(
+      function* () {
+        const cases = [
+          {
+            name: '--only',
+            args: ['--only', 'hub'],
+            expected:
+              'Composition apply owns the complete member set; --only and --skip are unavailable',
+          },
+          {
+            name: '--skip',
+            args: ['--skip', 'hub'],
+            expected:
+              'Composition apply owns the complete member set; --only and --skip are unavailable',
+          },
+          {
+            name: '--worktree-mode commit',
+            args: ['--worktree-mode', 'commit'],
+            expected:
+              'Composition apply requires the owned branch worktree; --worktree-mode commit is unavailable',
+          },
+        ] as const
+
+        for (const testCase of cases) {
+          const workspacePath = yield* createCompositionWorkspace
+          const result = yield* runApplyCommand({
+            cwd: workspacePath,
+            args: ['--output', 'json', ...testCase.args],
+            env: { CI: 'true' },
+          })
+          const failure = Exit.isFailure(result.exit) === true ? Cause.pretty(result.exit.cause) : ''
+          expect(Exit.isFailure(result.exit), testCase.name).toBe(true)
+          expect(`${result.stdout}\n${result.stderr}\n${failure}`, testCase.name).toContain(
+            testCase.expected,
+          )
         }
       },
       Effect.provide(NodeServices.layer),

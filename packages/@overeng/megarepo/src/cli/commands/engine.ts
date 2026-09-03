@@ -676,10 +676,10 @@ export const runCommand = ({
       (resolvedWorktreeMode === 'auto' && process.env.CI === 'true' && compositionEnabled === false)
 
     if (compositionEnabled === true && appliesWorkspace === true) {
-      if (all === true || onlyMembers !== undefined || skipMembers !== undefined) {
+      if (onlyMembers !== undefined || skipMembers !== undefined) {
         return yield* new InvalidOptionsError({
           message:
-            'Composition apply owns the complete member set; --all, --only, and --skip are unavailable',
+            'Composition apply owns the complete member set; --only and --skip are unavailable',
         })
       }
       if (commitMode === true) {
