@@ -640,7 +640,7 @@ export const runCommand = ({
   verbose: boolean
   /** When true, runs fetch first (silently), then apply with output rendering. Used by `mr fetch --apply`. */
   applyAfterFetch?: boolean
-  /** Worktree strategy for apply mode. Auto tracks outside CI and is rejected in CI. */
+  /** Worktree strategy for apply mode. Auto selects tracking locally or for composition, commit otherwise in CI. */
   worktreeMode?: 'commit' | 'tracking' | 'auto'
   /** Controls whether apply also rewrites Nix/nested megarepo lock files. */
   lockSyncMode?: LockSyncMode
@@ -650,15 +650,6 @@ export const runCommand = ({
 
     const resolvedWorktreeMode = worktreeMode ?? 'auto'
     const appliesWorkspace = mode === 'apply' || applyAfterFetch === true
-
-    if (appliesWorkspace === true && resolvedWorktreeMode === 'auto' && process.env.CI === 'true') {
-      return yield* new InvalidOptionsError({
-        message:
-          'CI requires an explicit worktree strategy; pass --worktree-mode commit for deterministic detached worktrees or --worktree-mode tracking for branch worktrees',
-      })
-    }
-
-    const commitMode = resolvedWorktreeMode === 'commit'
 
     const cwd = yield* Cwd
     const root = yield* findMegarepoRoot(cwd)
@@ -680,6 +671,9 @@ export const runCommand = ({
     const { config } = yield* readMegarepoConfig(root.value)
     const memberNames = Object.keys(config.members)
     const compositionEnabled = config.generators?.composition?.enabled === true
+    const commitMode =
+      resolvedWorktreeMode === 'commit' ||
+      (resolvedWorktreeMode === 'auto' && process.env.CI === 'true' && compositionEnabled === false)
 
     if (compositionEnabled === true && appliesWorkspace === true) {
       if (all === true || onlyMembers !== undefined || skipMembers !== undefined) {

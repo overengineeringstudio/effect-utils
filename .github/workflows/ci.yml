@@ -497,7 +497,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -706,7 +706,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -903,7 +903,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -1097,7 +1097,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -1294,7 +1294,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -1620,7 +1620,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -1865,7 +1865,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -2061,7 +2061,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -2255,7 +2255,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -2449,7 +2449,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -2643,7 +2643,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -2844,7 +2844,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -3049,7 +3049,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -3886,7 +3886,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -7324,7 +7324,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -7527,7 +7527,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -7721,7 +7721,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
@@ -7966,7 +7966,7 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'' ''devenv.lock'''
+        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && ''${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'' ''devenv.lock'''
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash

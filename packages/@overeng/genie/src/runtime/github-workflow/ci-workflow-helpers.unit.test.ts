@@ -13,6 +13,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -181,17 +182,12 @@ const validateNixStoreStepSource = extractSourceBlock(
   '/**\n * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.',
 )
 
-const resolveDevenvFnScript = readFileSync(
-  new URL(['../../../../../../genie/ci-scripts', 'resolve-devenv.sh'].join('/'), import.meta.url),
-  'utf8',
+const resolveDevenvScriptUrl = new URL(
+  ['../../../../../../genie/ci-scripts', 'resolve-devenv.sh'].join('/'),
+  import.meta.url,
 )
-const resolveDevenvCiScript = readFileSync(
-  new URL(
-    ['../../../../../../genie/ci-scripts', 'resolve-devenv-ci.sh'].join('/'),
-    import.meta.url,
-  ),
-  'utf8',
-)
+const resolveDevenvScriptPath = fileURLToPath(resolveDevenvScriptUrl)
+const resolveDevenvScript = readFileSync(resolveDevenvScriptUrl, 'utf8')
 
 const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
@@ -433,7 +429,7 @@ describe('ci workflow pnpm cache defaults', () => {
   })
 
   it('purges nix eval cache from the active XDG cache root during repair', () => {
-    expect(resolveDevenvCiScript).toContain(
+    expect(resolveDevenvScript).toContain(
       'rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
     )
   })
@@ -448,11 +444,11 @@ describe('ci workflow pnpm cache defaults', () => {
   })
 
   it('retries initial devenv resolution once only for an extracted invalid store path', () => {
-    expect(resolveDevenvFnScript).toContain('[ -n "$invalid_path" ] || return "$rc"')
-    expect(resolveDevenvFnScript.match(/resolve_devenv_once/g)).toHaveLength(3)
-    expect(resolveDevenvFnScript).toContain('nix-store --repair-path "$invalid_path"')
-    expect(resolveDevenvFnScript).not.toContain('Failed to convert config.cachix to JSON')
-    expect(resolveDevenvFnScript).not.toContain('Truncated tar archive')
+    expect(resolveDevenvScript).toContain('[ -n "$invalid_path" ] || return "$rc"')
+    expect(resolveDevenvScript.match(/resolve_devenv_once/g)).toHaveLength(3)
+    expect(resolveDevenvScript).toContain('nix-store --repair-path "$invalid_path"')
+    expect(resolveDevenvScript).not.toContain('Failed to convert config.cachix to JSON')
+    expect(resolveDevenvScript).not.toContain('Truncated tar archive')
   })
 
   it('preserves a non-signature resolution failure status without retrying', () => {
@@ -474,7 +470,7 @@ describe('ci workflow pnpm cache defaults', () => {
     try {
       const result = spawnSync(
         'bash',
-        ['-c', `${resolveDevenvFnScript}\nDEVENV_REV=fixture\nresolve_devenv`],
+        ['-c', '. "$RESOLVE_DEVENV_SCRIPT"; DEVENV_REV=fixture; resolve_devenv'],
         {
           encoding: 'utf8',
           env: {
@@ -484,6 +480,7 @@ describe('ci workflow pnpm cache defaults', () => {
             GITHUB_RUN_ID: 'no-retry',
             NIX_ATTEMPTS: attempts,
             PATH: `${bin}:${process.env.PATH ?? ''}`,
+            RESOLVE_DEVENV_SCRIPT: resolveDevenvScriptPath,
             RUNNER_TEMP: root,
           },
         },
@@ -535,7 +532,7 @@ printf '%s\\n' "$NIX_OUTPUT"
     try {
       const result = spawnSync(
         'bash',
-        ['-c', `${resolveDevenvFnScript}\nDEVENV_REV=fixture\nresolve_devenv`],
+        ['-c', '. "$RESOLVE_DEVENV_SCRIPT"; DEVENV_REV=fixture; resolve_devenv'],
         {
           encoding: 'utf8',
           env: {
@@ -549,6 +546,7 @@ printf '%s\\n' "$NIX_OUTPUT"
             NIX_REPAIRS: repairs,
             NIX_ROOTS: roots,
             PATH: `${bin}:${process.env.PATH ?? ''}`,
+            RESOLVE_DEVENV_SCRIPT: resolveDevenvScriptPath,
             RUNNER_TEMP: root,
           },
         },
@@ -570,20 +568,28 @@ printf '%s\\n' "$NIX_OUTPUT"
   })
 
   it('roots the resolved devenv closure in runner job scratch space', () => {
-    expect(resolveDevenvFnScript).toContain('${RUNNER_TEMP:-/tmp}/genie-nix-gc-roots')
-    expect(resolveDevenvFnScript).toContain('--out-link "$DEVENV_GC_ROOT"')
-    expect(resolveDevenvFnScript).not.toContain('rm -f "$DEVENV_GC_ROOT"')
-    expect(resolveDevenvFnScript).toContain(
+    expect(resolveDevenvScript).toContain('${RUNNER_TEMP:-/tmp}/genie-nix-gc-roots')
+    expect(resolveDevenvScript).toContain('--out-link "$DEVENV_GC_ROOT"')
+    expect(resolveDevenvScript).not.toContain('rm -f "$DEVENV_GC_ROOT"')
+    expect(resolveDevenvScript).toContain(
       '${GITHUB_RUN_ID:-local-$$}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}',
     )
-    expect(resolveDevenvCiScript).toContain('[ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]')
-    expect(resolveDevenvCiScript).not.toContain('readlink -e')
-    expect(resolveDevenvCiScript).toContain('. "$script_dir/resolve-devenv.sh"')
-    expect(validateNixStoreStepSource).toContain('resolve-devenv-ci.sh')
+    expect(resolveDevenvScript).toContain('[ ! "$DEVENV_GC_ROOT" -ef "$DEVENV_OUT" ]')
+    expect(resolveDevenvScript).not.toContain('readlink -e')
+    expect(validateNixStoreStepSource).toContain('resolve-devenv.sh')
+    expect(validateNixStoreStepSource).not.toContain('resolve-devenv-ci.sh')
     expect(generatedCiWorkflowYamlSource).toContain(
-      "'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv-ci.sh'",
+      "'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'",
     )
     expect(generatedCiWorkflowYamlSource).not.toContain('resolve_devenv_once()')
+    expect(
+      existsSync(
+        new URL(
+          ['../../../../../../genie/ci-scripts', 'resolve-devenv-ci.sh'].join('/'),
+          import.meta.url,
+        ),
+      ),
+    ).toBe(false)
   })
 
   it('resolves the locked megarepo CLI through a git flake URL', () => {

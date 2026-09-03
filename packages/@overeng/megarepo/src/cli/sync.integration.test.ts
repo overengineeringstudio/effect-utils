@@ -210,91 +210,7 @@ const runFetchApplyCommand = ({
 
 describe('worktree mode selection', () => {
   it.effect(
-    'refuses default and explicit auto in CI before reading config or mutating workspace/store',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const workspacePath = EffectPath.ops.join(
-          tmpDir,
-          EffectPath.unsafe.relativeDir('workspace/'),
-        )
-        const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('store/'))
-        yield* fs.makeDirectory(workspacePath, { recursive: true })
-        yield* fs.makeDirectory(storePath, { recursive: true })
-
-        const configPath = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
-        )
-        const workspaceSentinelPath = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeFile('workspace-sentinel.txt'),
-        )
-        const storeSentinelPath = EffectPath.ops.join(
-          storePath,
-          EffectPath.unsafe.relativeFile('store-sentinel.txt'),
-        )
-        yield* fs.writeFileString(configPath, '{ invalid config\n')
-        yield* fs.writeFileString(workspaceSentinelPath, 'workspace unchanged\n')
-        yield* fs.writeFileString(storeSentinelPath, 'store unchanged\n')
-
-        const workspaceEntriesBefore = yield* fs.readDirectory(workspacePath)
-        const storeEntriesBefore = yield* fs.readDirectory(storePath)
-        const env = { CI: 'true', MEGAREPO_STORE: storePath.slice(0, -1) }
-        const cases = [
-          { name: 'apply default auto', run: runApplyCommand, args: [] },
-          {
-            name: 'apply explicit auto',
-            run: runApplyCommand,
-            args: ['--worktree-mode', 'auto'],
-          },
-          { name: 'fetch --apply default auto', run: runFetchApplyCommand, args: [] },
-          {
-            name: 'fetch --apply explicit auto',
-            run: runFetchApplyCommand,
-            args: ['--worktree-mode', 'auto'],
-          },
-        ] as const
-
-        for (const testCase of cases) {
-          const result = yield* testCase.run({
-            cwd: workspacePath,
-            args: testCase.args,
-            env,
-          })
-          expect(result.exitCode, testCase.name).toBe(1)
-          expect(Exit.isFailure(result.exit), testCase.name).toBe(true)
-          const failureText =
-            Exit.isFailure(result.exit) === true
-              ? result.exit.cause.reasons
-                  .filter((reason) => reason._tag === 'Fail')
-                  .map((reason) => String(reason.error))
-                  .join('\n')
-              : ''
-          const diagnostic = `${result.stdout}\n${result.stderr}\n${failureText}`
-          expect(diagnostic, testCase.name).toContain('--worktree-mode commit')
-          expect(diagnostic, testCase.name).toContain('--worktree-mode tracking')
-          expect(yield* fs.readDirectory(workspacePath), testCase.name).toEqual(
-            workspaceEntriesBefore,
-          )
-          expect(yield* fs.readDirectory(storePath), testCase.name).toEqual(storeEntriesBefore)
-          expect(yield* fs.readFileString(configPath), testCase.name).toBe('{ invalid config\n')
-          expect(yield* fs.readFileString(workspaceSentinelPath), testCase.name).toBe(
-            'workspace unchanged\n',
-          )
-          expect(yield* fs.readFileString(storeSentinelPath), testCase.name).toBe(
-            'store unchanged\n',
-          )
-        }
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'allows explicit modes in CI and keeps auto on tracking worktrees outside CI',
+    'selects deterministic CI worktrees without requiring every caller to repeat the policy',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -319,6 +235,13 @@ describe('worktree mode selection', () => {
             expectedTarget: '/refs/heads/main',
           },
           {
+            name: 'fetch --apply auto under CI',
+            args: ['--output', 'json'],
+            env: { CI: 'true', MEGAREPO_STORE: storeEnv },
+            expectedTarget: `/refs/commits/${lockedCommit}`,
+            fetchApply: true,
+          },
+          {
             name: 'auto outside CI',
             args: ['--output', 'json'],
             env: { CI: 'false', MEGAREPO_STORE: storeEnv },
@@ -337,7 +260,8 @@ describe('worktree mode selection', () => {
               },
             },
           })
-          const result = yield* runApplyCommand({
+          const run = 'fetchApply' in testCase ? runFetchApplyCommand : runApplyCommand
+          const result = yield* run({
             cwd: workspacePath,
             args: testCase.args,
             env: testCase.env,
