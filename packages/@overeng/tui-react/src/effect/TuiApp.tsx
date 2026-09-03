@@ -710,7 +710,7 @@ const setupFinalJsonWithAtom = <S,>({
     Effect.gen(function* () {
       const finalState = registry.get(stateAtom)
       const jsonString = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(finalState)
-      writeStdoutLineSync(jsonString)
+      yield* Console.log(jsonString)
     }).pipe(Effect.orDie),
   )
 
@@ -738,13 +738,13 @@ const setupProgressiveJsonWithAtom = <S,>({
     const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
       initialState,
     ).pipe(Effect.orDie)
-    writeStdoutLineSync(initialJson)
+    yield* Console.log(initialJson)
 
     // Subscribe to subsequent state changes.
     const unsubscribe = registry.subscribe(stateAtom, (state) => {
       Effect.runSyncWith(runtime)(
         Schema.encodeEffect(Schema.fromJsonString(stateSchema))(state).pipe(
-          Effect.flatMap((jsonString) => Effect.sync(() => writeStdoutLineSync(jsonString))),
+          Effect.flatMap((jsonString) => Console.log(jsonString)),
           Effect.orDie,
         ),
       )
@@ -782,14 +782,14 @@ const setupProgressiveJsonWithEvents = <S, E>({
     const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
       initialState,
     ).pipe(Effect.orDie)
-    writeStdoutLineSync(initialJson)
+    yield* Console.log(initialJson)
 
     const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
       const events = fromAction({ action, prevState })
       for (const event of events) {
         Effect.runSyncWith(runtime)(
           Schema.encodeEffect(Schema.fromJsonString(eventSchema))(event).pipe(
-            Effect.flatMap((jsonString) => Effect.sync(() => writeStdoutLineSync(jsonString))),
+            Effect.flatMap((jsonString) => Console.log(jsonString)),
             Effect.orDie,
           ),
         )

@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/tui-react/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b30b4181f5d7e51abb7616f8b424b630ee7e07c825ff66ffd8a24d1646a4d75d
+# Semantic fingerprint: sha256:d06701912253f46216334f9ffd268fb1ed2fc53f836b549c97be22e0d5cf2602
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/examples/**/*.cts, packages/@overeng/tui-react/examples/**/*.js, packages/@overeng/tui-react/examples/**/*.mts, packages/@overeng/tui-react/examples/**/*.ts, packages/@overeng/tui-react/examples/**/*.tsx, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/tui-react/src/**/*.cts, packages/@overeng/tui-react/src/**/*.js, packages/@overeng/tui-react/src/**/*.mts, packages/@overeng/tui-react/src/**/*.ts, packages/@overeng/tui-react/src/**/*.tsx, packages/@overeng/tui-react/test/**/*.cts, packages/@overeng/tui-react/test/**/*.js, packages/@overeng/tui-react/test/**/*.mts, packages/@overeng/tui-react/test/**/*.ts, packages/@overeng/tui-react/test/**/*.tsx, packages/@overeng/tui-react/tsconfig.buck.json.genie.ts, packages/@overeng/tui-react/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -71,6 +71,7 @@ export_materialization_inputs([
     "src/effect/opentui/components.tsx",
     "src/effect/opentui/hooks.tsx",
     "src/effect/opentui/mod.tsx",
+    "src/effect/stdout.node.ts",
     "src/effect/testing.tsx",
     "src/hooks/useSymbols.tsx",
     "src/hooks/useViewport.tsx",
@@ -94,14 +95,17 @@ export_materialization_inputs([
     "src/truncate.ts",
     "test/helpers/mock-terminal.ts",
     "test/helpers/mod.ts",
+    "test/helpers/stdout-capture.ts",
     "test/helpers/virtual-terminal.ts",
     "test/integration/cli-integration.test.tsx",
     "test/integration/cli-shutdown-flush.test.ts",
     "test/integration/fixtures/runResult-cli.tsx",
+    "test/integration/fixtures/stdout-drain-cli.ts",
     "test/integration/inline-renderer.test.ts",
     "test/integration/long-lines.test.ts",
     "test/integration/reconciler-host-config.test.tsx",
     "test/integration/runResult-stdout-contract.test.ts",
+    "test/integration/stdout-drain.test.ts",
     "test/integration/viewport-safety-net.test.tsx",
     "test/integration/virtual-terminal-basic.test.ts",
     "test/unit/LogCapture.test.tsx",
@@ -190,6 +194,7 @@ package_tree(
         "src/effect/opentui/components.tsx": "src/effect/opentui/components.tsx",
         "src/effect/opentui/hooks.tsx": "src/effect/opentui/hooks.tsx",
         "src/effect/opentui/mod.tsx": "src/effect/opentui/mod.tsx",
+        "src/effect/stdout.node.ts": "src/effect/stdout.node.ts",
         "src/effect/testing.tsx": "src/effect/testing.tsx",
         "src/hooks/useSymbols.tsx": "src/hooks/useSymbols.tsx",
         "src/hooks/useViewport.tsx": "src/hooks/useViewport.tsx",
@@ -213,14 +218,17 @@ package_tree(
         "src/truncate.ts": "src/truncate.ts",
         "test/helpers/mock-terminal.ts": "test/helpers/mock-terminal.ts",
         "test/helpers/mod.ts": "test/helpers/mod.ts",
+        "test/helpers/stdout-capture.ts": "test/helpers/stdout-capture.ts",
         "test/helpers/virtual-terminal.ts": "test/helpers/virtual-terminal.ts",
         "test/integration/cli-integration.test.tsx": "test/integration/cli-integration.test.tsx",
         "test/integration/cli-shutdown-flush.test.ts": "test/integration/cli-shutdown-flush.test.ts",
         "test/integration/fixtures/runResult-cli.tsx": "test/integration/fixtures/runResult-cli.tsx",
+        "test/integration/fixtures/stdout-drain-cli.ts": "test/integration/fixtures/stdout-drain-cli.ts",
         "test/integration/inline-renderer.test.ts": "test/integration/inline-renderer.test.ts",
         "test/integration/long-lines.test.ts": "test/integration/long-lines.test.ts",
         "test/integration/reconciler-host-config.test.tsx": "test/integration/reconciler-host-config.test.tsx",
         "test/integration/runResult-stdout-contract.test.ts": "test/integration/runResult-stdout-contract.test.ts",
+        "test/integration/stdout-drain.test.ts": "test/integration/stdout-drain.test.ts",
         "test/integration/viewport-safety-net.test.tsx": "test/integration/viewport-safety-net.test.tsx",
         "test/integration/virtual-terminal-basic.test.ts": "test/integration/virtual-terminal-basic.test.ts",
         "test/unit/LogCapture.test.tsx": "test/unit/LogCapture.test.tsx",

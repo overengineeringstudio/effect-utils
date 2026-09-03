@@ -16,7 +16,6 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
 import { createTuiApp, createRoot, Box, Text, testModeLayer } from '../../src/mod.tsx'
 import { createMockTerminal } from '../helpers/mock-terminal.ts'
-import { captureStdoutLines, type RestoreStdoutCapture } from '../helpers/stdout-capture.ts'
 import { createVirtualTerminal } from '../helpers/virtual-terminal.ts'
 
 // =============================================================================
@@ -292,16 +291,19 @@ describe('ExitMode', () => {
 // =============================================================================
 
 describe('Interrupt Handling', () => {
-  let restoreStdout: RestoreStdoutCapture
+  let originalLog: typeof console.log
   let capturedOutput: string[]
 
   beforeEach(() => {
+    originalLog = console.log
     capturedOutput = []
-    restoreStdout = captureStdoutLines(capturedOutput)
+    console.log = (msg: string) => {
+      capturedOutput.push(msg)
+    }
   })
 
   afterEach(() => {
-    restoreStdout()
+    console.log = originalLog
   })
 
   describe('Interrupted action detection', () => {
@@ -408,16 +410,19 @@ describe('TuiAppApi.unmount()', () => {
 // =============================================================================
 
 describe('Final state output', () => {
-  let restoreStdout: RestoreStdoutCapture
+  let originalLog: typeof console.log
   let capturedOutput: string[]
 
   beforeEach(() => {
+    originalLog = console.log
     capturedOutput = []
-    restoreStdout = captureStdoutLines(capturedOutput)
+    console.log = (msg: string) => {
+      capturedOutput.push(msg)
+    }
   })
 
   afterEach(() => {
-    restoreStdout()
+    console.log = originalLog
   })
 
   it.effect('json mode outputs final raw state on normal completion', () =>
@@ -488,16 +493,19 @@ describe('Final state output', () => {
 })
 
 describe('tui-react JSON/NDJSON wire baselines (cross-major invariant)', () => {
-  let restoreStdout: RestoreStdoutCapture
+  let originalLog: typeof console.log
   let capturedOutput: string[]
 
   beforeEach(() => {
+    originalLog = console.log
     capturedOutput = []
-    restoreStdout = captureStdoutLines(capturedOutput)
+    console.log = (msg: string) => {
+      capturedOutput.push(msg)
+    }
   })
 
   afterEach(() => {
-    restoreStdout()
+    console.log = originalLog
   })
 
   it.effect('emits final JSON as byte-identical raw state', () =>

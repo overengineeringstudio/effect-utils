@@ -11,7 +11,6 @@ import { describe, expect, beforeEach, afterEach } from 'vitest'
 
 import { detectOutputMode } from '../../src/effect/OutputMode.node.ts'
 import { createTuiApp, run, useTuiAtomValue, Box, Text, testModeLayer } from '../../src/mod.tsx'
-import { captureStdoutLines, type RestoreStdoutCapture } from '../helpers/stdout-capture.ts'
 
 const parseJson = (json: string) =>
   Schema.decodeSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(json)
@@ -204,7 +203,6 @@ const runDeploy = (services: string[]) =>
 describe('CLI Integration', () => {
   let originalLog: typeof console.log
   let originalStdoutWrite: typeof process.stdout.write
-  let restoreStdout: RestoreStdoutCapture
   let capturedOutput: string[]
 
   beforeEach(() => {
@@ -214,8 +212,6 @@ describe('CLI Integration', () => {
     console.log = (msg: string) => {
       capturedOutput.push(msg)
     }
-    // JSON/NDJSON payloads go to the fd-1 data channel, below `console.log`.
-    restoreStdout = captureStdoutLines(capturedOutput)
     // Final visual modes (e.g. `pipe`) write directly to the view stream, not
     // via `console.log`. Capture both so the assertions still see one entry per
     // logical output.
@@ -227,7 +223,6 @@ describe('CLI Integration', () => {
   })
 
   afterEach(() => {
-    restoreStdout()
     console.log = originalLog
     process.stdout.write = originalStdoutWrite
   })

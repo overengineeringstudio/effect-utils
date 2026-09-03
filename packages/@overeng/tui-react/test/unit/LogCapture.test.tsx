@@ -11,7 +11,6 @@ import type { LogCaptureHandle } from '../../src/effect/LogCapture.ts'
 import { testModeLayer } from '../../src/effect/testing.tsx'
 import type { TuiLogEntry } from '../../src/effect/TuiLogger.ts'
 import { createTuiApp } from '../../src/mod.tsx'
-import { captureStdoutLines, type RestoreStdoutCapture } from '../helpers/stdout-capture.ts'
 
 const CountState = Schema.Struct({ count: Schema.Finite })
 
@@ -218,16 +217,19 @@ describe('createLogCapture', () => {
 // =============================================================================
 
 describe('log capture integration', () => {
-  let restoreStdout: RestoreStdoutCapture
+  let originalLog: typeof console.log
   let capturedOutput: string[]
 
   beforeEach(() => {
+    originalLog = console.log
     capturedOutput = []
-    restoreStdout = captureStdoutLines(capturedOutput)
+    console.log = (msg: string) => {
+      capturedOutput.push(msg)
+    }
   })
 
   afterEach(() => {
-    restoreStdout()
+    console.log = originalLog
   })
 
   it.effect('json mode is unaffected by log capture', () =>

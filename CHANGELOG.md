@@ -112,18 +112,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **@overeng/tui-react**: stop truncating stdout when a CLI exits non-zero. Every
-  result/JSON/NDJSON payload now goes through a single `writeStdoutSync` helper
-  that writes straight to fd 1, because `runMain` calls `process.exit(code)` on a
-  non-zero exit and that discards whatever is still queued behind
-  `process.stdout`. A 949834-byte `--output json` payload piped into a consumer
-  arrived as 393216 bytes and failed `jq` with `unterminated string`; measured
-  through the real `runResult` path it is now 970901 of 970901 bytes and parses.
-  The write loop honours short writes and `EAGAIN` (instantiating
-  `process.stdout` puts fd 1 into non-blocking mode, so a bare `fs.writeSync`
-  silently stops at 65536 bytes) and treats `EPIPE` as a clean stop so
-  `cmd | head` stays quiet. Draining before exit is not an alternative: bun's
-  write callback fires before the bytes reach the pipe.
+- **@overeng/tui-react**: stop truncating `runResult` values and JSON error
+  payloads when a CLI exits non-zero. These exit-path writes now go straight to
+  fd 1 through a synchronous writer that handles short writes, `EAGAIN`, and
+  `EPIPE`. This avoids the asynchronous stdout queue that `process.exit` can
+  discard while preserving the existing `Console`-based state-output contract.
 - **@overeng/tui-react**: JSON-mode logs no longer land on stdout followed by a
   stray `undefined` line on stderr. `Logger.consolePretty()` prints by itself and
   returns `void`, so wrapping it in `Logger.withConsoleError` logged the pretty
