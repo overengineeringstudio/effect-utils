@@ -360,7 +360,8 @@ describe('composition apply option policy', () => {
             args: ['--output', 'json', ...testCase.args],
             env: { CI: 'true' },
           })
-          const failure = Exit.isFailure(result.exit) === true ? Cause.pretty(result.exit.cause) : ''
+          const failure =
+            Exit.isFailure(result.exit) === true ? Cause.pretty(result.exit.cause) : ''
           expect(Exit.isFailure(result.exit), testCase.name).toBe(true)
           expect(`${result.stdout}\n${result.stderr}\n${failure}`, testCase.name).toContain(
             testCase.expected,
