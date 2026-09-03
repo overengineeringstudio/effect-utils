@@ -8,10 +8,14 @@ import dependencyBuck from '../../buck2/dependencies/BUCK.genie.ts'
 import contentAddressBuck from '../../packages/@overeng/content-address/BUCK.genie.ts'
 import effectDistributedLockBuck from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import notionCliBuck from '../../packages/@overeng/notion-cli/BUCK.genie.ts'
 import notionCoreBuck from '../../packages/@overeng/notion-core/BUCK.genie.ts'
+import notionDatasourceSyncBuck from '../../packages/@overeng/notion-datasource-sync/BUCK.genie.ts'
 import notionEffectClientBuck from '../../packages/@overeng/notion-effect-client/BUCK.genie.ts'
 import notionEffectSchemaBuck from '../../packages/@overeng/notion-effect-schema/BUCK.genie.ts'
+import notionMdBuck from '../../packages/@overeng/notion-md/BUCK.genie.ts'
 import notionPropertyWriteBuck from '../../packages/@overeng/notion-property-write/BUCK.genie.ts'
+import notionReactBuck from '../../packages/@overeng/notion-react/BUCK.genie.ts'
 import otelContractBuck from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
 import stylexTokensBuck from '../../packages/@overeng/stylex-tokens/BUCK.genie.ts'
 import tuiCoreBuck from '../../packages/@overeng/tui-core/BUCK.genie.ts'
@@ -29,10 +33,14 @@ const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
 const outputsByAdmission = {
   contentAddress: contentAddressBuck.stringify(genieContext),
   effectDistributedLock: effectDistributedLockBuck.stringify(genieContext),
+  notionCli: notionCliBuck.stringify(genieContext),
   notionCore: notionCoreBuck.stringify(genieContext),
+  notionDatasourceSync: notionDatasourceSyncBuck.stringify(genieContext),
   notionEffectClient: notionEffectClientBuck.stringify(genieContext),
   notionEffectSchema: notionEffectSchemaBuck.stringify(genieContext),
+  notionMd: notionMdBuck.stringify(genieContext),
   notionPropertyWrite: notionPropertyWriteBuck.stringify(genieContext),
+  notionReact: notionReactBuck.stringify(genieContext),
   otelContract: otelContractBuck.stringify(genieContext),
   stylexTokens: stylexTokensBuck.stringify(genieContext),
   tuiCore: tuiCoreBuck.stringify(genieContext),
