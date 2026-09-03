@@ -156,15 +156,44 @@
     },
     {
       "_tag": "ToolchainAuthority",
-      "toolchain": "bun"
+      "toolchain": "bun",
+      "provides": [
+        {
+          "toolId": "bun",
+          "protocol": "effect-utils/buck2-bun/v1",
+          "flakePackage": "bun",
+          "executable": "bin/bun"
+        }
+      ]
     },
     {
       "_tag": "ToolchainAuthority",
-      "toolchain": "pnpm"
+      "toolchain": "pnpm",
+      "provides": []
     },
     {
       "_tag": "ToolchainAuthority",
-      "toolchain": "tsgo"
+      "toolchain": "python-bootstrap",
+      "provides": [
+        {
+          "toolId": "python-bootstrap",
+          "protocol": "effect-utils/buck2-python-bootstrap/v1",
+          "flakePackage": "buck2-python-bootstrap",
+          "executable": "bin/python3"
+        }
+      ]
+    },
+    {
+      "_tag": "ToolchainAuthority",
+      "toolchain": "tsgo",
+      "provides": [
+        {
+          "toolId": "effect-tsgo",
+          "protocol": "effect-utils/buck2-effect-tsgo/v1",
+          "flakePackage": "effect-tsgo",
+          "executable": "bin/tsgo"
+        }
+      ]
     }
   ]
 }

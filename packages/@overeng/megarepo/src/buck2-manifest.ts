@@ -15,6 +15,7 @@ export {
   BuckMemberToolchainRequirementSchema,
   COMPOSITION_ROOT_SCHEMA_VERSION,
   buckMemberCapabilityByToolId,
+  buckMemberProjectedCapabilities,
   decodeBuckMemberManifest,
   decodeBuckMemberManifestJson,
   encodeBuckMemberManifest,

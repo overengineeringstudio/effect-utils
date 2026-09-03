@@ -139,14 +139,22 @@ for (const name of ['ts:check', 'ts:check:strict', 'ts:build', 'ts:build-watch',
     name: `${name} reaches ${materializer}`,
   })
 }
-ok({
-  condition: reaches({ start: materializer, target: 'mr:check' }),
-  name: `${materializer} waits for workspace reconciliation`,
-})
-ok({
-  condition: reaches({ start: 'buck2:capabilities:project', target: 'mr:check' }),
-  name: 'Buck capability projection waits for workspace reconciliation',
-})
+// `mr apply` both reconciles the workspace and installs the `.buck2/capabilities`
+// projection that Buck analysis of `//buck2/toolchains` reads, so it is the single
+// ordering barrier for every task that invokes Buck.
+for (const name of [
+  materializer,
+  'buck2:check',
+  'buck2:editor-authority',
+  'buck2:tui-core:publish-editor',
+  'buck2:tui-core:check-editor',
+  'buck2:nix-bridge:check',
+]) {
+  ok({
+    condition: reaches({ start: name, target: 'mr:apply' }),
+    name: `${name} waits for workspace reconciliation and the capability projection`,
+  })
+}
 
 const source = readFileSync(`${root}/devenv.nix`, 'utf8')
 const taskSource = (name) => {

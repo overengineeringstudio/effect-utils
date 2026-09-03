@@ -200,6 +200,12 @@
               otelite
               otel-scrape
               ;
+            # Hub toolchain authority realization: the exact Bun every Buck JS/TS action uses.
+            bun = pkgs.bun;
+            # Hub toolchain authority realization: prelude's bootstrap interpreter.
+            buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
+              exec ${pkgs.python3}/bin/python3 "$@"
+            '';
             buck2-archive-tool = buck2-stage0-tools.archive-tool;
             buck2-product = buck2-stage0-tools.product;
             buck2-rust-compiler = buck2-rust-toolchain-capability.packages.rust-compiler;

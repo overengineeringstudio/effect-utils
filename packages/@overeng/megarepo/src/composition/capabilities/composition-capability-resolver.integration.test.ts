@@ -13,7 +13,6 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -27,9 +26,12 @@ import {
   type CompositionCapabilityRuntime,
 } from './composition-capability-resolver.ts'
 
-const trackedProjectorPath = fileURLToPath(
-  new URL('../../../../../../scripts/buck2-capability-project.sh', import.meta.url),
-)
+/**
+ * A member that ships its own capability projector under `scripts/`. mr is the sole
+ * projector, so such a file is inert data the resolver must never read or execute.
+ */
+const MEMBER_PROJECTOR_FIXTURE = '#!/bin/sh\nexit 1\n'
+const MEMBER_PROJECTOR_NAME = 'member-capability-projector.sh'
 
 const rawShell = execFileSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).trim()
 const shell = realpathSync(rawShell)
@@ -105,8 +107,8 @@ const makeFixture = async ({
     { mode: 0o755 },
   )
   await writeFile(
-    NodePath.join(scripts, 'buck2-capability-project.sh'),
-    projector ?? (await readFile(trackedProjectorPath, 'utf8')),
+    NodePath.join(scripts, MEMBER_PROJECTOR_NAME),
+    projector ?? MEMBER_PROJECTOR_FIXTURE,
     { mode: 0o644 },
   )
   return {
@@ -360,7 +362,7 @@ describe('composition capability resolver', () => {
   it('does not require a member projector file', async () => {
     const fixture = await makeFixture()
     try {
-      await rm(NodePath.join(fixture.memberRoot, 'scripts', 'buck2-capability-project.sh'))
+      await rm(NodePath.join(fixture.memberRoot, 'scripts', MEMBER_PROJECTOR_NAME))
       const result = await resolve(fixture)
       expect(result._tag).toBe('Resolved')
       if (result._tag === 'Resolved') await result.release()
@@ -447,7 +449,7 @@ describe('composition capability resolver', () => {
     }
   })
 
-  it('resolves only member-owned executables and never treats toolchain metadata as Nix pins', async () => {
+  it('never treats a toolchain kind itself as a Nix pin', async () => {
     const fixture = await makeFixture()
     try {
       const result = await resolve(fixture, {
@@ -456,7 +458,8 @@ describe('composition capability resolver', () => {
           capabilities: [
             {
               _tag: 'ToolchainAuthority',
-              toolchain: 'bun',
+              toolchain: 'pnpm',
+              provides: [],
             },
             {
               _tag: 'ToolchainRequirement',
@@ -473,6 +476,43 @@ describe('composition capability resolver', () => {
       })
       expect(result.nixCommands).toHaveLength(1)
       expect(result.nixCommands[0]?.args.at(-1)).toBe(`${fixture.memberRoot}#buck2^out`)
+    } finally {
+      await clean(fixture)
+    }
+  })
+
+  it('pins every executable a hub toolchain authority provides', async () => {
+    const fixture = await makeFixture()
+    try {
+      const result = await resolve(fixture, {
+        dryRun: true,
+        manifest: manifest({
+          capabilities: [
+            {
+              _tag: 'ToolchainAuthority',
+              toolchain: 'tsgo',
+              provides: [
+                {
+                  toolId: 'effect-tsgo',
+                  protocol: 'effect-utils/buck2-effect-tsgo/v1',
+                  flakePackage: 'effect-tsgo',
+                  executable: 'bin/bash',
+                },
+              ],
+            },
+            {
+              toolId: 'buck2',
+              protocol: 'facebook/buck2-cli/test',
+              flakePackage: 'buck2',
+              executable: 'bin/bash',
+            },
+          ],
+        }),
+      })
+      expect(result.nixCommands.map(({ args }) => args.at(-1))).toEqual([
+        `${fixture.memberRoot}#buck2^out`,
+        `${fixture.memberRoot}#effect-tsgo^out`,
+      ])
     } finally {
       await clean(fixture)
     }

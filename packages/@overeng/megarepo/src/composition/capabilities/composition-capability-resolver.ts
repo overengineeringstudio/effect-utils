@@ -24,6 +24,7 @@ import { promisify } from 'node:util'
 import { Schema } from 'effect'
 
 import {
+  buckMemberProjectedCapabilities,
   decodeBuckMemberManifest,
   type BuckMemberCapability,
   type BuckMemberManifest,
@@ -947,11 +948,9 @@ const resolveCompositionCapabilitiesInternal = async (
     )(input.system)
     await validateRuntime(input.runtime)
     const roots = await validateMember(input)
-    const capabilities = manifest.capabilities
-      .filter((capability): capability is BuckMemberCapability => 'toolId' in capability)
-      .toSorted((left, right) =>
-        left.toolId < right.toolId ? -1 : left.toolId > right.toolId ? 1 : 0,
-      )
+    const capabilities = buckMemberProjectedCapabilities(manifest).toSorted((left, right) =>
+      left.toolId < right.toolId ? -1 : left.toolId > right.toolId ? 1 : 0,
+    )
     const nonce = (input.runtime.nonce ?? randomUUID)()
     if (/^[A-Za-z0-9._-]+$/u.test(nonce) === false) {
       throw invalidInput({
