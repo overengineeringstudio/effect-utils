@@ -958,11 +958,14 @@ const runResultImpl = <S, A, O, E, R>(
     //
     // The stderr bindings are provided locally so callers don't need extra
     // plumbing at the main site — `runResult`'s contract is self-contained.
+    // `Logger.LogToStderr` is what actually moves `consolePretty` output off
+    // stdout; it prints itself and returns `void`, so wrapping it in
+    // `Logger.withConsoleError` would leave the pretty line on stdout and add a
+    // stray `undefined` line on stderr.
     const stderrSideChannelLayer = Layer.mergeAll(
       Layer.succeed(ViewOutputStreamTag, process.stderr),
-      Logger.layer([Logger.consolePretty().pipe(Logger.withConsoleError)], {
-        mergeWithExisting: false,
-      }),
+      Logger.layer([Logger.consolePretty()], { mergeWithExisting: false }),
+      Layer.succeed(Logger.LogToStderr, true),
       Layer.succeed(Console.Console, consoleOnStream(process.stderr)),
     )
 

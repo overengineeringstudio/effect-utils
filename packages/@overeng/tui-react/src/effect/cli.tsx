@@ -120,10 +120,20 @@ const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
  *
  * This is used in JSON modes to ensure all log output goes to stderr,
  * keeping stdout clean for JSON data only.
+ *
+ * `Logger.consolePretty()` prints by itself and returns `void`, so it must not
+ * be wrapped in `Logger.withConsoleError` — that wrapper would print the line
+ * to stdout and then hand the `void` result to `console.error`, emitting a
+ * stray `undefined` on stderr after every log.
+ *
+ * The stdout/stderr choice is made by the `Logger.LogToStderr` reference, which
+ * `consolePretty` reads on each log call. (`consolePretty({ stderr: true })` is
+ * declared in the typings but ignored by the implementation in this Effect
+ * version, so the reference is the only switch that actually takes effect.)
  */
-const stderrLoggerLayer: Layer.Layer<never> = Logger.layer(
-  [Logger.consolePretty().pipe(Logger.withConsoleError)],
-  { mergeWithExisting: false },
+const stderrLoggerLayer: Layer.Layer<never> = Layer.merge(
+  Logger.layer([Logger.consolePretty()], { mergeWithExisting: false }),
+  Layer.succeed(Logger.LogToStderr, true),
 )
 
 /**
