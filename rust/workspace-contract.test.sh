@@ -48,6 +48,36 @@ mapfile -t workspace_members < <(jq -r '.workspace_members[]' "$metadata" | sort
 [ "${#workspace_members[@]}" -eq "$(jq 'length' <<<"$expected_packages")" ] ||
   fail "workspace metadata omitted a declared member"
 
+# Decision 0024 admission correspondence: every Cargo workspace member must
+# project exactly one Buck package, and only the two application members may
+# emit BuildProducts (the three support crates are toolchain surface, not
+# products). The projection generator fails loudly on member drift at
+# genie:run time; these assertions keep the cargo:check lane proving that
+# admission still matches the workspace.
+while IFS= read -r manifest; do
+  member_dir="$(dirname "$manifest")"
+  case "$member_dir" in
+    "$repo_root"/*) ;;
+    *) fail "workspace member is outside the repository: $manifest" ;;
+  esac
+  [ -f "$member_dir/BUCK.genie.ts" ] || fail "workspace member has no Buck projection: $manifest"
+  [ -f "$member_dir/BUCK" ] || fail "workspace member has no generated Buck package: $manifest"
+  echo "rust-workspace-contract: GREEN buck admission for ${member_dir#"$repo_root"/}"
+done < <(jq -r '.packages[].manifest_path' "$metadata")
+
+for product_member in packages/@overeng/otelite packages/@overeng/otel-scrape; do
+  product_name="$(basename "$product_member")-product"
+  grep -Fq "name = \"$product_name\"" "$repo_root/$product_member/BUCK" ||
+    fail "$product_member/BUCK does not emit its BuildProduct target $product_name"
+  echo "rust-workspace-contract: GREEN $product_member emits $product_name"
+done
+for tool_member in rust/buck2-tools/archive-tool rust/buck2-tools/core rust/buck2-tools/product; do
+  if grep -Fq 'build_product(' "$repo_root/$tool_member/BUCK"; then
+    fail "$tool_member/BUCK must not emit a BuildProduct target"
+  fi
+  echo "rust-workspace-contract: GREEN $tool_member stays product-free"
+done
+
 mkdir -p "$fixture_root/inheritance/packages/@overeng/otel-scrape/src"
 mkdir -p "$fixture_root/inheritance/rust"
 cp "$workspace_manifest" "$fixture_root/inheritance/rust/Cargo.toml"
