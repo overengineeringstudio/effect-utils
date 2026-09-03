@@ -83,10 +83,10 @@ both are proven. `elf-static/v1` covers Go on Linux with zero added lines, which
 makes the second consumer of that contract free and strengthens the case for one
 Linux runtime contract rather than two. And the Go toolchain is the first
 capability that cannot be `pkgs.<lang>` unmodified, because its stdlib patches
-put store paths into every product it compiles; that question — nixpkgs Go with
-`nix-closure/v1`, a patch-stripped Go, or the official distribution as a
-hash-pinned archive — gates the first Go product import and is recorded as
-unresolved in the proposed decision.
+put store paths into every product it compiles; that question is now settled by
+[decision 0029](../.decisions/0029-official-go-release-toolchain.md) in favour of
+the official release archive, pinned per platform by the `sha256` go.dev
+publishes.
 
 Two hub gaps surfaced and neither is Go-specific: the `cxx` toolchain declares no
 assembler, so any cgo-enabled Go package (and any Rust crate with `.S` sources)

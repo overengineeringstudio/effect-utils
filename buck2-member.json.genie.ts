@@ -49,7 +49,7 @@ const manifestProjection = {
         {
           toolId: 'go',
           protocol: 'effect-utils/buck2-go/v1',
-          flakePackage: 'go',
+          flakePackage: 'buck2-go',
           executable: 'bin/go',
         },
       ],

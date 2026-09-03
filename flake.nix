@@ -67,6 +67,7 @@
             ;
         };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
+        buck2-go = import ./nix/go.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         buck2-rust-toolchain-capability =
           import ./nix/workspace-tools/lib/buck2-rust-toolchain-capability.nix
@@ -203,10 +204,12 @@
             # Hub toolchain authority realization: the exact Bun every Buck JS/TS action uses.
             bun = pkgs.bun;
             # Hub toolchain authority realization: the exact Go distribution every
-            # Buck Go action compiles with. `bin/go` is a symlink into
-            # `share/go/bin/go` of the SAME realization, so the resolver's realpath
-            # still lands on /nix/store/<realization>/…/bin/go and no wrapper is needed.
-            go = pkgs.go;
+            # Buck Go action compiles with — the OFFICIAL release archive, not
+            # `pkgs.go`, whose patched stdlib puts three absolute store paths into
+            # every product it compiles (decision 0029, `nix/go.nix`). `bin/go` is a
+            # real file in that archive, so the resolver's realpath lands on
+            # /nix/store/<realization>/bin/go and no wrapper is needed.
+            inherit buck2-go;
             # Hub toolchain authority realization: prelude's bootstrap interpreter.
             buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
               exec ${pkgs.python3}/bin/python3 "$@"

@@ -1,6 +1,6 @@
 load("//.buck2/capabilities:defs.bzl", "CAPABILITIES", "GENERATION")
 load("//buck2/platforms:defs.bzl", "host_platform_label")
-load("//buck2/toolchains:defs.bzl", "bun_toolchain", "configured_rust_toolchain", "effect_tsgo_toolchain", "host_rust_target_triple", "nix_go_bootstrap_toolchain", "nix_go_toolchain", "nix_python_bootstrap_toolchain")
+load("//buck2/toolchains:defs.bzl", "bun_toolchain", "configured_rust_toolchain", "effect_tsgo_toolchain", "host_rust_target_triple", "nix_go_bootstrap_toolchain", "nix_python_bootstrap_toolchain")
 load("//buck2/rust:toolchains.bzl", "native_rust_toolchains")
 load(":configured.bzl", "support_tool")
 load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
@@ -31,23 +31,16 @@ nix_python_bootstrap_toolchain(
     visibility = ["PUBLIC"],
 )
 
-# Go, in two shapes. `go_bootstrap` is the `go build` driver every
-# `buck2/go/defs.bzl:go_vendored_binary` action uses; `go` is prelude's
-# per-package compile/link graph, which additionally needs GOROOT materialized as
-# a Buck artifact (`prelude//go:go_stdlib.bzl`).
+# `go_bootstrap` is the `go build` driver every
+# `buck2/go/defs.bzl:go_vendored_binary` action uses. Prelude's per-package
+# compile/link graph (`GoToolchainInfo`) is deliberately not declared: it needs
+# GOROOT as a Buck `Artifact` (`prelude//go:go_stdlib.bzl`), which for a Nix
+# realization means an action-language helper decision 0028 does not admit and a
+# 250 MB copy per configuration. See decision 0029.
 nix_go_bootstrap_toolchain(
     name = "go_bootstrap",
     capabilities = CAPABILITIES,
     generation = GENERATION,
-    visibility = ["PUBLIC"],
-)
-
-nix_go_toolchain(
-    name = "go",
-    capabilities = CAPABILITIES,
-    copy_goroot = "//buck2/go:copy_goroot",
-    generation = GENERATION,
-    version = "1.26.5",
     visibility = ["PUBLIC"],
 )
 

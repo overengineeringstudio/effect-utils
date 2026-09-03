@@ -205,6 +205,33 @@ All notable changes to this project will be documented in this file.
   on `downloadPreviousGitHubArtifactStep` instead of `push` runs. Per-admission
   benchmark evidence moves to a targeted probe recorded with the admission; see
   `context/ci-measurements.md` "Lane Cadence".
+- **buck2 hub**: a Go toolchain and a content-addressed Go module supply. The
+  hub declares a `go` `ToolchainAuthority` and `toolchains//:go_bootstrap`, and
+  third-party Go code arrives as one `sha256`-pinned `http_archive` per module
+  version over the immutable module-proxy zip — no `vendorHash` fixed-output
+  derivation, no `go mod download` in an action, `GOPROXY=off` as the
+  fail-closed term. Measured on a real ~16 MB service: cold build 9.8 s,
+  `Commands: 32`, 100 % cross-root cache reuse with a byte-identical artifact,
+  and a binary within 0.05 % of the `buildGoModule` output it replaces.
+  The Go distribution is the **official release archive** (`nix/go.nix`:
+  `fetchurl` per platform against the `sha256` go.dev publishes, statically
+  linked, no patchelf, no strip), not `pkgs.go`. nixpkgs patches Go's own stdlib
+  sources with absolute store paths, so every product it compiles inherits them
+  and the artifact scan rejects it at import. Measured on one program, identical
+  sources and flags, Go 1.26.5 both ways:
+
+      pkgs.go            2 store refs (mailcap/etc/mime.types, tzdata/share/zoneinfo/)   3,026,743 B
+      official archive   0 store refs                                                    3,026,751 B
+
+  Removing nixpkgs' store paths removes the guarantee they provided, so
+  `go_vendored_binary` now takes a required, defaultless `host_data`: `"embedded"`
+  appends the `timetzdata` build tag (zone database linked in, +411 KB) and
+  asserts the product owns its MIME table; `"unused"` asserts it does neither.
+  Measured reason: with the unpatched stdlib, zone lookup succeeds only by
+  accident of NixOS shipping `/etc/zoneinfo`, while
+  `mime.TypeByExtension(".woff2")` returns `""`. Ratified as
+  [decision 0029](./context/buck2/.decisions/0029-official-go-release-toolchain.md).
+
 - **buck2 hub / @overeng/megarepo**: a consumer cell can now use plain prelude
   rules against the hub's capability-backed tools, and the hub's own toolchain
   package parses inside a read-only mount. The hub's root package declares

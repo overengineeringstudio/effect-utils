@@ -1,7 +1,0 @@
-# Hermetic GOROOT materializer for the prelude-native Go graph. Runs under the
-# hub's projected bootstrap-Python capability, so nothing is read off PATH.
-python_bootstrap_binary(
-    name = "copy_goroot",
-    main = "copy_goroot.py",
-    visibility = ["PUBLIC"],
-)
