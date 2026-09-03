@@ -503,11 +503,11 @@ lib  ref changed but old worktree has 1 uncommitted changes (use --force to over
 | ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `commit`   | `refs/commits/<sha>/`  | Deterministic, isolated — exact locked commit guaranteed                                                      |
 | `tracking` | `refs/heads/<branch>/` | Branch worktrees for dev convenience; falls back to commit worktree if branch has advanced past locked commit |
-| `auto`     | (depends)              | `commit` when `CI=true`, `tracking` otherwise                                                                 |
+| `auto`     | (depends)              | `commit` in CI for standard workspaces; `tracking` locally and for composition workspaces                     |
 
 In `tracking` mode, if the branch worktree is behind the locked commit, it is fast-forwarded. If the branch has advanced past the locked commit (fast-forward not possible), `mr apply` falls back to a commit worktree to ensure correct content without detaching the branch worktree.
 
-**CI usage:** In CI environments (`CI=true`), `mr apply` defaults to `commit` mode, creating `refs/commits/<sha>/` worktrees for deterministic builds. The lock file is never modified.
+**CI usage:** In CI environments (`CI=true`), `mr apply` defaults to `commit` mode for standard workspaces, creating `refs/commits/<sha>/` worktrees for deterministic builds. Composition workspaces default to `tracking` mode because composition operates on branch worktrees. Composition apply always owns the complete member set: redundant `--all` is accepted, while filtering with `--only` or `--skip` and explicit `--worktree-mode commit` are rejected. The lock file is never modified.
 
 #### `mr pin <member> [-c <ref>]`
 

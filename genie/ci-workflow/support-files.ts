@@ -48,6 +48,72 @@ export const ciWorkflowJobLocalRustStateScriptPath =
   'genie/ci-scripts/prepare-job-local-rust-state.sh'
 export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'
 
+export const ciWorkflowResolveDevenvScript = String.raw`#!/usr/bin/env bash
+set -euo pipefail
+
+${resolveDevenvFnScript}
+
+main() {
+  local lock_file="${dollar}{1:-devenv.lock}"
+  if [ ! -f "${dollar}lock_file" ]; then
+    echo "::error::${dollar}lock_file is missing" >&2
+    exit 1
+  fi
+  DEVENV_REV="${dollar}(jq -r .nodes.devenv.locked.rev "${dollar}lock_file")"
+  if [ -z "${dollar}DEVENV_REV" ] || [ "${dollar}DEVENV_REV" = null ]; then
+    echo "::error::${dollar}lock_file missing .nodes.devenv.locked.rev" >&2
+    exit 1
+  fi
+
+  local state_root="${dollar}{RUNNER_TEMP:?RUNNER_TEMP not set}/composition-state"
+  DIAG_ROOT="${dollar}state_root/nix-store-diagnostics/${dollar}{GITHUB_JOB:-job}-${dollar}{RUNNER_OS:-unknown}-${dollar}{GITHUB_RUN_ATTEMPT:-0}"
+  mkdir -p "${dollar}DIAG_ROOT"
+  printf 'NIX_STORE_DIAGNOSTICS_DIR=%s\n' "${dollar}DIAG_ROOT" >> "${dollar}GITHUB_ENV"
+
+  {
+    echo "timestamp_utc=${dollar}(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "runner_name=${dollar}{RUNNER_NAME:-unknown}"
+    echo "runner_os=${dollar}{RUNNER_OS:-unknown}"
+    echo "runner_arch=${dollar}{RUNNER_ARCH:-unknown}"
+    echo "github_job=${dollar}{GITHUB_JOB:-unknown}"
+    echo "github_run_id=${dollar}{GITHUB_RUN_ID:-unknown}"
+    echo "nix_user_conf_files=${dollar}{NIX_USER_CONF_FILES:-}"
+    nix --version || true
+  } > "${dollar}DIAG_ROOT/environment.txt" 2>&1
+
+  if ! DEVENV_OUT="${dollar}(resolve_devenv 2> >(tee "${dollar}DIAG_ROOT/resolve-devenv.log" >&2))"; then
+    echo "::error::resolve_devenv failed. Last 30 lines of log:" >&2
+    tail -30 "${dollar}DIAG_ROOT/resolve-devenv.log" >&2 || true
+    exit 1
+  fi
+  DEVENV_BIN="${dollar}DEVENV_OUT/bin/devenv"
+
+  if ! nix-store --check-validity "${dollar}DEVENV_OUT" 2>/dev/null; then
+    echo "::warning::devenv store path invalid, repairing targeted path..." >&2
+    nix-store --repair-path "${dollar}DEVENV_OUT" > "${dollar}DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+    rm -rf "${dollar}{XDG_CACHE_HOME:-${dollar}HOME/.cache}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*
+    if ! DEVENV_OUT="${dollar}(resolve_devenv 2> >(tee "${dollar}DIAG_ROOT/resolve-devenv-post-repair.log" >&2))"; then
+      echo "::error::resolve_devenv failed after repair. Last 30 lines of log:" >&2
+      tail -30 "${dollar}DIAG_ROOT/resolve-devenv-post-repair.log" >&2 || true
+      exit 1
+    fi
+    DEVENV_BIN="${dollar}DEVENV_OUT/bin/devenv"
+  fi
+
+  if [ ! -L "${dollar}DEVENV_GC_ROOT" ] || [ ! "${dollar}DEVENV_GC_ROOT" -ef "${dollar}DEVENV_OUT" ]; then
+    echo "::error::devenv resolution did not publish the expected job-scoped GC root: ${dollar}DEVENV_GC_ROOT" >&2
+    exit 1
+  fi
+
+  printf 'DEVENV_REV=%s\nDEVENV_GC_ROOT=%s\nDEVENV_BIN=%s\n' \
+    "${dollar}DEVENV_REV" "${dollar}DEVENV_GC_ROOT" "${dollar}DEVENV_BIN" >> "${dollar}GITHUB_ENV"
+  "${dollar}DEVENV_BIN" version | tee "${dollar}DIAG_ROOT/devenv-version.txt"
+}
+
+if [[ "${dollar}{BASH_SOURCE[0]}" == "${dollar}0" ]]; then
+  main "${dollar}@"
+fi`
+
 export const ciWorkflowNixGcRaceRetryScript = String.raw`#!/usr/bin/env bash
 
 run_nix_gc_race_retry() {
@@ -217,7 +283,7 @@ export const ciWorkflowSupportFiles = {
   },
   resolveDevenv: {
     path: ciWorkflowResolveDevenvScriptPath,
-    output: textArtifact(`#!/usr/bin/env bash\n\n${resolveDevenvFnScript}`),
+    output: textArtifact(ciWorkflowResolveDevenvScript),
   },
   nixGcRaceRetry: {
     path: ciWorkflowNixGcRaceRetryScriptPath,

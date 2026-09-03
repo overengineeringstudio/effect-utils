@@ -124,6 +124,13 @@ All notable changes to this project will be documented in this file.
   routing now uses the `Logger.LogToStderr` reference, which is what
   `consolePretty` actually reads — the documented `{ stderr: true }` option is
   inert in `effect@4.0.0-rc.111`.
+- **@overeng/megarepo**: `--worktree-mode auto` once again selects the mode from
+  workspace context: deterministic commit worktrees in standard CI jobs, and
+  tracking worktrees locally or for composition. Composition apply accepts a
+  redundant `--all` while continuing to reject member filters and explicit
+  commit mode. Shared CI callers no longer need to repeat this CLI policy. The
+  generated devenv resolver is also consolidated into one runtime script
+  without changing its repair or diagnostics behavior.
 - **@overeng/effect-schema-form-aria**: the pilot package's three independent
   drift findings are resolved together, because all three were waiting on the
   same prerequisite — a working visual gate for this package. The seventeen

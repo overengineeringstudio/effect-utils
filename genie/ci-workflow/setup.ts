@@ -1037,7 +1037,7 @@ export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>
   ({
     name: 'Resolve devenv',
     run: withCiSourceRoot(
-      `${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv-ci.sh`)} ${shellSingleQuote(lockFile)}`,
+      `${shellSingleQuote(`${preparedCiRuntimeScriptsDir}/resolve-devenv.sh`)} ${shellSingleQuote(lockFile)}`,
     ),
     shell: 'bash',
   }) as const
