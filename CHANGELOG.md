@@ -109,6 +109,20 @@ All notable changes to this project will be documented in this file.
   `@layer overeng.reset, priority1, ...;` statement fixes the order by
   declaration rather than by which stylesheet the browser parses first — the
   same "do not depend on injection order" rule the token layer already follows.
+- **genie**: the CI workflow generator proves that every helper script a
+  generated step invokes is a script it actually emits. `prepareCiScriptsStep`
+  copies the *consuming* repository's `genie/ci-scripts/` into the job-local
+  `composition-state/ci-runtime/`, and only `ciWorkflowSupportFiles` puts files
+  there, so a step naming a script that merely happens to be hand-committed in
+  this repo resolves here and exits 127 in every consumer. That is how
+  `.../ci-runtime/resolve-devenv-ci.sh` failed 14 of 15 jobs on
+  schickling/schickling.dev#178 (run 33752627726) while this repo's own CI
+  stayed green: the assertion that existed checked the step *mentioned* the
+  script, never that a consumer could resolve it. Three scans now close the
+  class — generator-source references through any `*ScriptsDir`,
+  `composition-state/ci-runtime/...` references in the generated workflows, and
+  `$script_dir/...` siblings sourced by an emitted script — and each failure
+  names the unavailable script together with the file that asks for it.
 
 ### Fixed
 
