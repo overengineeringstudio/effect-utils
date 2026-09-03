@@ -50,7 +50,10 @@ export default packageJson(
     name: '@overeng/notion-effect-client',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      '.': exportEntry(
+        { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
+        { environment: 'node' },
+      ),
       './test': exportEntry('./src/test/integration/setup.ts', {
         environment: 'node',
         published: false,

@@ -27,6 +27,22 @@
       "destination": "packages/@overeng/effect-distributed-lock/dist"
     },
     {
+      "target": "//packages/@overeng/notion-core:dist",
+      "destination": "packages/@overeng/notion-core/dist"
+    },
+    {
+      "target": "//packages/@overeng/notion-effect-client:dist",
+      "destination": "packages/@overeng/notion-effect-client/dist"
+    },
+    {
+      "target": "//packages/@overeng/notion-effect-schema:dist",
+      "destination": "packages/@overeng/notion-effect-schema/dist"
+    },
+    {
+      "target": "//packages/@overeng/notion-property-write:dist",
+      "destination": "packages/@overeng/notion-property-write/dist"
+    },
+    {
       "target": "//packages/@overeng/otel-contract:dist",
       "destination": "packages/@overeng/otel-contract/dist"
     },

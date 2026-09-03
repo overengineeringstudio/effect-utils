@@ -12,10 +12,14 @@ export const buck2TypeScriptAdmission = {
     {
       packageName: '@overeng/notion-effect-schema',
       packagePath: 'packages/@overeng/notion-effect-schema',
-      sourceRoots: ['src'],
+      distTarget: '//packages/@overeng/notion-effect-schema:dist',
     },
   ],
   editorViewConsumer: false,
+  authority: {
+    declarationEntrypoint: 'src/mod.d.ts',
+    projectFile: 'tsconfig.json',
+  },
 } as const satisfies Buck2TypeScriptAdmission
 
 export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

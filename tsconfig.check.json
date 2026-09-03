@@ -55,22 +55,10 @@
       "path": "./packages/@overeng/notion-cli"
     },
     {
-      "path": "./packages/@overeng/notion-core"
-    },
-    {
       "path": "./packages/@overeng/notion-datasource-sync"
     },
     {
-      "path": "./packages/@overeng/notion-effect-client"
-    },
-    {
-      "path": "./packages/@overeng/notion-effect-schema"
-    },
-    {
       "path": "./packages/@overeng/notion-md"
-    },
-    {
-      "path": "./packages/@overeng/notion-property-write"
     },
     {
       "path": "./packages/@overeng/notion-react"

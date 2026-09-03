@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/notion-effect-schema/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:bc96640f19512e57cd47b58507cf9438c0ae5c381f6ac2ced35b799056f20461
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-core/src/**/*.cts, packages/@overeng/notion-core/src/**/*.js, packages/@overeng/notion-core/src/**/*.mts, packages/@overeng/notion-core/src/**/*.ts, packages/@overeng/notion-core/src/**/*.tsx, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-effect-schema/src/**/*.cts, packages/@overeng/notion-effect-schema/src/**/*.js, packages/@overeng/notion-effect-schema/src/**/*.mts, packages/@overeng/notion-effect-schema/src/**/*.ts, packages/@overeng/notion-effect-schema/src/**/*.tsx, packages/@overeng/notion-effect-schema/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
+# Semantic fingerprint: sha256:09ccd1a70f0d546fb29880d421fb9733e1b296656272465978c23c410c11c0dc
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-effect-schema/src/**/*.cts, packages/@overeng/notion-effect-schema/src/**/*.js, packages/@overeng/notion-effect-schema/src/**/*.mts, packages/@overeng/notion-effect-schema/src/**/*.ts, packages/@overeng/notion-effect-schema/src/**/*.tsx, packages/@overeng/notion-effect-schema/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
@@ -102,20 +102,8 @@ package_tree(
     workspace_siblings = {
         "@overeng/notion-core": {
             "files": {
+                "dist": "//packages/@overeng/notion-core:dist",
                 "package.json": "//packages/@overeng/notion-core:package.json",
-                "src/body-fidelity.ts": "//packages/@overeng/notion-core:src/body-fidelity.ts",
-                "src/body-fidelity.unit.test.ts": "//packages/@overeng/notion-core:src/body-fidelity.unit.test.ts",
-                "src/colors.ts": "//packages/@overeng/notion-core:src/colors.ts",
-                "src/colors.unit.test.ts": "//packages/@overeng/notion-core:src/colors.unit.test.ts",
-                "src/constants.ts": "//packages/@overeng/notion-core:src/constants.ts",
-                "src/constants.unit.test.ts": "//packages/@overeng/notion-core:src/constants.unit.test.ts",
-                "src/ids.ts": "//packages/@overeng/notion-core:src/ids.ts",
-                "src/ids.unit.test.ts": "//packages/@overeng/notion-core:src/ids.unit.test.ts",
-                "src/mod.ts": "//packages/@overeng/notion-core:src/mod.ts",
-                "src/properties.ts": "//packages/@overeng/notion-core:src/properties.ts",
-                "src/properties.unit.test.ts": "//packages/@overeng/notion-core:src/properties.unit.test.ts",
-                "src/rich-text.ts": "//packages/@overeng/notion-core:src/rich-text.ts",
-                "src/rich-text.unit.test.ts": "//packages/@overeng/notion-core:src/rich-text.unit.test.ts",
             },
             "links": ["@overeng/notion-core"],
         },
@@ -141,5 +129,6 @@ tsgo_emit(
     package_tree = ":package_tree",
     declaration_sources = {
     },
+    declaration_entrypoint = "src/mod.d.ts",
     visibility = ["PUBLIC"],
 )

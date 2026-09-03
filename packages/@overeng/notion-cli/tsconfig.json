@@ -52,16 +52,10 @@
       "path": "../effect-path"
     },
     {
-      "path": "../notion-effect-client"
-    },
-    {
       "path": "../notion-datasource-sync"
     },
     {
       "path": "../notion-md"
-    },
-    {
-      "path": "../notion-effect-schema"
     }
   ]
 }

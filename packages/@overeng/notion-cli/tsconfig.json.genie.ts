@@ -14,9 +14,7 @@ export default tsconfigJson({
   include: ['src/**/*', 'bin/**/*.ts'],
   references: [
     { path: '../effect-path' },
-    { path: '../notion-effect-client' },
     { path: '../notion-datasource-sync' },
     { path: '../notion-md' },
-    { path: '../notion-effect-schema' },
   ],
 } satisfies TSConfigArgs)

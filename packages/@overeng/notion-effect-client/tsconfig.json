@@ -44,15 +44,9 @@
     "composite": true,
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
-    "types": ["node"]
+    "types": ["node"],
+    "noEmit": true
   },
   "include": ["src/**/*"],
-  "references": [
-    {
-      "path": "../notion-core"
-    },
-    {
-      "path": "../notion-effect-schema"
-    }
-  ]
+  "references": []
 }
