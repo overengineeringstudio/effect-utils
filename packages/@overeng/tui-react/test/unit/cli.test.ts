@@ -5,7 +5,7 @@
 import { Effect, Exit } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { runTuiMain, type TuiRuntime } from '../../src/effect/cli.tsx'
+import { outputModeLayer, runTuiMain, type TuiRuntime } from '../../src/effect/cli.tsx'
 
 describe('runTuiMain', () => {
   test('sets exit code 130 for interrupt-only failures', async () => {
@@ -34,5 +34,44 @@ describe('runTuiMain', () => {
     } finally {
       process.exitCode = previousExitCode
     }
+  })
+})
+
+describe('outputModeLayer json mode', () => {
+  test('logs go to stderr only, with no stray undefined line', async () => {
+    // `consolePretty` writes through the Effect `Console` service, which
+    // defaults to the global console — so the two globals are the observation
+    // point for the stdout/stderr split. Colors are off because vitest's
+    // stdout is not a TTY, keeping the rendered line deterministic.
+    const stdoutArgs: unknown[][] = []
+    const stderrArgs: unknown[][] = []
+    const originalLog = console.log
+    const originalError = console.error
+    console.log = (...args: unknown[]) => {
+      stdoutArgs.push(args)
+    }
+    console.error = (...args: unknown[]) => {
+      stderrArgs.push(args)
+    }
+
+    try {
+      await Effect.runPromise(
+        Effect.log('No active session').pipe(Effect.provide(outputModeLayer('json'))),
+      )
+    } finally {
+      console.log = originalLog
+      console.error = originalError
+    }
+
+    // stdout stays reserved for JSON data.
+    expect(stdoutArgs).toEqual([])
+
+    expect(stderrArgs).toHaveLength(1)
+    const stderrLine = stderrArgs[0]!.map(String).join(' ')
+    expect(stderrLine).toContain('No active session')
+    // Wrapping the self-printing `consolePretty` in `Logger.withConsoleError`
+    // used to pass its `void` result to `console.error`, logging `undefined`.
+    expect(stderrArgs[0]).not.toContain(undefined)
+    expect(stderrLine).not.toContain('undefined')
   })
 })

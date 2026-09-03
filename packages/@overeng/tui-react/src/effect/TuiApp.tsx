@@ -69,6 +69,7 @@ import {
   ViewOutputStreamTag,
   stripAnsi,
 } from './OutputMode.tsx'
+import { writeStdoutLineSync, writeStdoutSync } from './stdout.node.ts'
 
 // =============================================================================
 // TuiApp TypeId (for dual API dispatch)
@@ -898,10 +899,11 @@ const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console =>
 /** Write a value to stdout using the appropriate format for its schema type.
  *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded.
  *
- *  Writes directly to `process.stdout` rather than going through the Effect
- *  `Console` service, since `runResult` rebinds that service to stderr for
- *  handler-emitted logs — we need the result itself to land on stdout
- *  regardless.
+ *  Writes straight to fd 1 via {@link writeStdoutSync} rather than going through
+ *  the Effect `Console` service, since `runResult` rebinds that service to
+ *  stderr for handler-emitted logs — we need the result itself to land on stdout
+ *  regardless. The synchronous write also keeps the result intact when the CLI
+ *  exits non-zero; see {@link writeStdoutSync} for why buffered writes truncate.
  */
 const writeResult = <O,>({
   value,
@@ -913,16 +915,10 @@ const writeResult = <O,>({
   isStringSchema(schema as Schema.Schema<unknown>) === true
     ? Effect.sync(() => {
         const str = String(value)
-        process.stdout.write(str)
-        if (str.length > 0 && str.endsWith('\n') === false) process.stdout.write('\n')
+        writeStdoutSync(str.length > 0 && str.endsWith('\n') === false ? `${str}\n` : str)
       })
     : Schema.encodeEffect(Schema.fromJsonString(schema))(value).pipe(
-        Effect.flatMap((json) =>
-          Effect.sync(() => {
-            process.stdout.write(json)
-            process.stdout.write('\n')
-          }),
-        ),
+        Effect.flatMap((json) => Effect.sync(() => writeStdoutLineSync(json))),
         Effect.orDie,
       )
 
@@ -958,11 +954,14 @@ const runResultImpl = <S, A, O, E, R>(
     //
     // The stderr bindings are provided locally so callers don't need extra
     // plumbing at the main site — `runResult`'s contract is self-contained.
+    // `Logger.LogToStderr` is what actually moves `consolePretty` output off
+    // stdout; it prints itself and returns `void`, so wrapping it in
+    // `Logger.withConsoleError` would leave the pretty line on stdout and add a
+    // stray `undefined` line on stderr.
     const stderrSideChannelLayer = Layer.mergeAll(
       Layer.succeed(ViewOutputStreamTag, process.stderr),
-      Logger.layer([Logger.consolePretty().pipe(Logger.withConsoleError)], {
-        mergeWithExisting: false,
-      }),
+      Logger.layer([Logger.consolePretty()], { mergeWithExisting: false }),
+      Layer.succeed(Logger.LogToStderr, true),
       Layer.succeed(Console.Console, consoleOnStream(process.stderr)),
     )
 

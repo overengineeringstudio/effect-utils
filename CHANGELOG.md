@@ -112,6 +112,18 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/tui-react**: stop truncating `runResult` values and JSON error
+  payloads when a CLI exits non-zero. These exit-path writes now go straight to
+  fd 1 through a synchronous writer that handles short writes, `EAGAIN`, and
+  `EPIPE`. This avoids the asynchronous stdout queue that `process.exit` can
+  discard while preserving the existing `Console`-based state-output contract.
+- **@overeng/tui-react**: JSON-mode logs no longer land on stdout followed by a
+  stray `undefined` line on stderr. `Logger.consolePretty()` prints by itself and
+  returns `void`, so wrapping it in `Logger.withConsoleError` logged the pretty
+  line to stdout and then passed `undefined` to `console.error`. The stderr
+  routing now uses the `Logger.LogToStderr` reference, which is what
+  `consolePretty` actually reads — the documented `{ stderr: true }` option is
+  inert in `effect@4.0.0-rc.111`.
 - **@overeng/effect-schema-form-aria**: the pilot package's three independent
   drift findings are resolved together, because all three were waiting on the
   same prerequisite — a working visual gate for this package. The seventeen

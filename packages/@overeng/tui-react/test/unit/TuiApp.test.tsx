@@ -9,6 +9,7 @@ import { describe, expect, beforeEach, afterEach, test } from 'vitest'
 
 import { testModeLayer } from '../../src/effect/testing.tsx'
 import { createTuiApp, run, runResult, useTuiAtomValue, Box, Text } from '../../src/mod.tsx'
+import { captureStdoutRaw, type RestoreStdoutCapture } from '../helpers/stdout-capture.ts'
 
 const decodeJson = <A,>(schema: Schema.Codec<A>, json: string): A =>
   Schema.decodeSync(Schema.fromJsonString(schema))(json)
@@ -667,6 +668,7 @@ describe('run (standalone dual API)', () => {
 // =============================================================================
 
 describe('runResult', () => {
+  let restoreStdout: RestoreStdoutCapture
   let originalLog: typeof console.log
   let originalStdoutWrite: typeof process.stdout.write
   let originalStderrWrite: typeof process.stderr.write
@@ -681,6 +683,7 @@ describe('runResult', () => {
     capturedConsole = []
     capturedStdout = []
     capturedStderr = []
+    restoreStdout = captureStdoutRaw(capturedStdout)
     console.log = (msg: string) => {
       capturedConsole.push(msg)
     }
@@ -695,6 +698,7 @@ describe('runResult', () => {
   })
 
   afterEach(() => {
+    restoreStdout()
     console.log = originalLog
     process.stdout.write = originalStdoutWrite
     process.stderr.write = originalStderrWrite
