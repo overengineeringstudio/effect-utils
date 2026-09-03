@@ -47,36 +47,93 @@ const findWorkspaceRoot = Effect.fn('workspace/findWorkspaceRoot')(function* ({
   }
 })
 
-const findPackageJsonDirs = Effect.fn('workspace/findPackageJsonDirs')(function* ({
-  root,
-}: {
-  root: string
-}) {
-  yield* Observability.annotatePath({ label: 'packages', path: root })
+/** Directory listings are I/O bound, so the few levels a pattern needs are listed in parallel. */
+const LISTING_CONCURRENCY = 32
+
+/**
+ * A workspace pattern reduced to the filesystem work it needs: the leading literal segments,
+ * which are joined without touching the disk, plus the number of directory-listing levels that
+ * follow (`'any'` when the pattern contains `**`).
+ */
+type PatternPlan = {
+  readonly prefix: ReadonlyArray<string>
+  readonly levels: number | 'any'
+}
+
+/**
+ * The cost model of discovery: a pattern's plan says how many directory listings it takes to
+ * resolve. `undefined` when the pattern names a skipped directory and is therefore unreachable.
+ */
+export const planPattern = (pattern: string): PatternPlan | undefined => {
+  const segments = normalizePath(pattern)
+    .split('/')
+    .filter((segment) => segment !== '' && segment !== '.')
+  const firstGlob = segments.findIndex((segment) => segment.includes('*') === true)
+  const prefix = firstGlob === -1 ? segments : segments.slice(0, firstGlob)
+  if (prefix.some((segment) => shouldSkipDir(segment) === true) === true) return undefined
+  if (firstGlob === -1) return { prefix, levels: 0 }
+  const rest = segments.slice(firstGlob)
+  if (rest.some((segment) => segment.includes('**') === true) === true)
+    return { prefix, levels: 'any' }
+  return { prefix, levels: rest.length }
+}
+
+/**
+ * One listing level: the non-skipped entries of every directory in `dirs`, plus the directories
+ * among them that hold a `package.json`. Both answers come out of the same `readDirectory`, so
+ * neither directory-ness nor manifest presence costs an extra `stat`.
+ */
+const listLevel = Effect.fnUntraced(function* (dirs: ReadonlyArray<string>) {
   const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
-  const results: string[] = []
 
-  const walk: (dir: string) => Effect.Effect<void, Error, FileSystem.FileSystem | Path.Path> =
-    Effect.fnUntraced(function* (dir) {
-      const entries = yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed(() => []))
-      for (const entry of entries) {
-        if (shouldSkipDir(entry) === true) continue
-        const fullPath = pathService.join(dir, entry)
-        const stat = yield* fs.stat(fullPath).pipe(Effect.catch(() => Effect.void))
-        if (stat === undefined) continue
-        if (stat.type === 'Directory') {
-          yield* walk(fullPath)
-          continue
-        }
-        if (entry === 'package.json') {
-          results.push(pathService.dirname(fullPath))
-        }
-      }
-    })
+  const listings = yield* Effect.forEach(
+    dirs,
+    (dir) =>
+      // A file, or a path that does not exist, simply has no entries.
+      fs.readDirectory(dir).pipe(
+        Effect.orElseSucceed((): ReadonlyArray<string> => []),
+        Effect.map((entries) => ({ dir, entries })),
+      ),
+    { concurrency: LISTING_CONCURRENCY },
+  )
 
-  yield* walk(root)
-  return results
+  return {
+    children: listings.flatMap(({ dir, entries }) =>
+      entries
+        .filter((entry) => shouldSkipDir(entry) === false)
+        .map((entry) => pathService.join(dir, entry)),
+    ),
+    packageDirs: listings
+      .filter(({ entries }) => entries.includes('package.json') === true)
+      .map(({ dir }) => dir),
+  }
+})
+
+/**
+ * Directories a pattern could name that hold a `package.json`. A superset of the pattern's
+ * matches — `*` levels list siblings the pattern may reject — so the caller still matches.
+ */
+const expandPlan = Effect.fnUntraced(function* (root: string, plan: PatternPlan) {
+  const pathService = yield* Path.Path
+  const start = plan.prefix.length === 0 ? root : pathService.join(root, ...plan.prefix)
+
+  if (plan.levels === 'any') {
+    const packageDirs: string[] = []
+    let frontier: ReadonlyArray<string> = [start]
+    while (frontier.length > 0) {
+      const level = yield* listLevel(frontier)
+      packageDirs.push(...level.packageDirs)
+      frontier = level.children
+    }
+    return packageDirs
+  }
+
+  let frontier: ReadonlyArray<string> = [start]
+  for (let level = 0; level < plan.levels; level++) {
+    frontier = (yield* listLevel(frontier)).children
+  }
+  return (yield* listLevel(frontier)).packageDirs
 })
 
 const parsePnpmWorkspacePackages = (content: string): string[] => {
@@ -122,21 +179,26 @@ const discoverPnpmPackageJsonPaths = Effect.fn('workspace/discoverPnpmPackageJso
     if (workspaceRoot === undefined) return []
 
     const workspaceFile = pathService.join(workspaceRoot, 'pnpm-workspace.yaml')
-    const packageDirs = yield* findPackageJsonDirs({ root: workspaceRoot })
-    const matched = new Set<string>()
-
     const content = yield* fs.readFileString(workspaceFile).pipe(Effect.orElseSucceed(() => ''))
     const patterns = parsePnpmWorkspacePackages(content)
     if (patterns.length === 0) return []
 
-    for (const packageDir of packageDirs) {
-      const relPath = normalizePath(pathService.relative(workspaceRoot, packageDir)) || '.'
-      if (matchesAnyPattern({ name: relPath, patterns }) === true) {
-        matched.add(pathService.join(packageDir, 'package.json'))
-      }
+    // Discovery is `pnpm-workspace.yaml` composed with the directories its patterns can name, so
+    // only those are listed — never the whole tree.
+    const packageDirs = new Set<string>()
+    for (const pattern of patterns) {
+      const plan = planPattern(pattern)
+      if (plan === undefined) continue
+      for (const packageDir of yield* expandPlan(workspaceRoot, plan)) packageDirs.add(packageDir)
     }
 
-    return Array.from(matched)
+    return Array.from(packageDirs)
+      .filter((packageDir) => {
+        const relPath = normalizePath(pathService.relative(workspaceRoot, packageDir)) || '.'
+        return matchesAnyPattern({ name: relPath, patterns }) === true
+      })
+      .map((packageDir) => pathService.join(packageDir, 'package.json'))
+      .toSorted()
   },
 )
 
@@ -144,8 +206,9 @@ const discoverManualPackageJsonPaths = Effect.fn('workspace/discoverManualPackag
   function* ({ cwd }: { cwd: string }) {
     yield* Observability.annotatePath({ label: 'manual', path: cwd })
     const pathService = yield* Path.Path
-    const packageDirs = yield* findPackageJsonDirs({ root: cwd })
-    return packageDirs.map((dir) => pathService.join(dir, 'package.json'))
+    // No manifest declares the package set here, so every non-skipped directory is a candidate.
+    const packageDirs = yield* expandPlan(cwd, { prefix: [], levels: 'any' })
+    return packageDirs.map((packageDir) => pathService.join(packageDir, 'package.json')).toSorted()
   },
 )
 
