@@ -30,9 +30,10 @@ semantics match:
 
 Historical comparison is not a substitute for paired wall-clock evidence.
 Budget comparison is not a substitute for owner-approved semantic budgets.
-Branch protection may still require the measurement-producing job to complete
+Branch protection may require the measurement-producing job to complete
 successfully; that requires evidence production, not a red/yellow measurement
-verdict.
+verdict. It may only require a lane that runs on every pull request — see
+[Lane Cadence](#lane-cadence).
 
 ## Observation Contract
 
@@ -229,6 +230,39 @@ Required measurement jobs and required measurement verdicts are separate
 decisions. A repo may require the measurement lane so artifact production and
 comparison code stay healthy while the observations inside that lane remain
 advisory.
+
+## Lane Cadence
+
+A lane's cost is paid on every event it fires on, so cadence is part of its
+design rather than a deployment detail. Three cadences are in use:
+
+| Cadence            | Fits                                                                                 | Merge-blocking |
+| ------------------ | ------------------------------------------------------------------------------------ | -------------- |
+| every pull request | Cheap measurement whose value is attributable to the diff under review               | Yes.           |
+| `schedule`         | Expensive wall-clock measurement whose value is a trend series on the trunk          | No.            |
+| opt-in label       | The same expensive measurement, when one pull request needs the numbers before merge | No.            |
+
+Two rules follow.
+
+**A lane that does not run on every pull request cannot be a required status
+check.** A skipped job reports no check run at all, so branch protection would
+wait for a status that never arrives. Cadence and required-check membership are
+therefore one decision, not two.
+
+**Per-admission evidence is a targeted probe, not a lane.** When a requirement
+asks for a measurement per change — warm no-op time, fresh-context time,
+cache-hit rate, CI wall-clock delta — that evidence is produced by a probe
+scoped to the change and recorded with the change. A standing lane on every
+pull request measures the whole surface repeatedly to answer a question about
+one part of it, and pays full wall-clock cost each time to do so.
+
+In this repo: `nix-closure-sizes` and `source-shape` are per-pull-request
+deterministic lanes and are required. `devenv-perf` is the paired wall-clock
+lane — a nightly `schedule` run against `main` supplies the trend series, and
+the `ci:perf` label opts a single pull request in. Its baseline candidate scan
+reads `schedule` runs rather than `push` runs, because that is where its
+artifacts now exist. `ci/measurements-report` aggregates whichever lanes ran in
+the event that produced it and is advisory in every case.
 
 ## Baseline Model
 

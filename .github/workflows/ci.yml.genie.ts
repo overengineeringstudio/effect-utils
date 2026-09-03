@@ -41,11 +41,8 @@ import {
   withCiSourceRoot,
   defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
-import { type CoreCIJobName } from '../../genie/ci.ts'
-import {
-  githubWorkflowEvent,
-  type GitHubWorkflowArgs,
-} from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { type CoreCIJobName, perfLaneLabel } from '../../genie/ci.ts'
+import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -291,8 +288,57 @@ const nixDiagnosticsSummaryStep = {
 } as const
 
 const jobTimeoutMinutes = 30
-const normalCiIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
+
+/**
+ * The `labeled` pull-request activity type exists only so `ci:perf` can opt one pull
+ * request into the paired wall-clock lane. It does not change the commit under test, so
+ * every other lane ignores it — a label must never re-run product CI or duplicate a
+ * measurement artifact for a SHA that was already measured.
+ */
+const notPerfLabelEventIf =
+  "!(github.event_name == 'pull_request' && github.event.action == 'labeled')"
+
+/**
+ * `schedule` exists only for the nightly measurement snapshot of `main`: the paired
+ * `devenv-perf` lane, the two deterministic measurement lanes, and the aggregate report.
+ * Product lanes carry this guard so a cron never re-runs the product matrix.
+ */
+const notNightlyMeasurementIf = "github.event_name != 'schedule'"
+
+const normalCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ${notNightlyMeasurementIf} && ${notPerfLabelEventIf} }}`
 const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
+
+/** Deterministic measurement lanes: like `normalCiIf`, but they also feed the nightly snapshot. */
+const measurementLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ${notPerfLabelEventIf} }}`
+
+/**
+ * `source-shape` also produces the subject artifact for a measurement baseline backfill,
+ * so unlike the other measurement lanes it keeps the backfill dispatch path.
+ */
+const sourceShapeLaneIf = `\${{ ${notPerfLabelEventIf} }}`
+
+/**
+ * The paired wall-clock lane. Nightly trend telemetry on `main`, an operator dispatch
+ * (including a measurement baseline backfill), or a pull request that carries `ci:perf`.
+ * Deliberately not on every push: 35 advisory minutes per run bought nothing that a
+ * targeted per-admission probe plus a daily trend series does not.
+ */
+const devenvPerfLaneIf = `\${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, '${perfLaneLabel}')) }}`
+
+/**
+ * The report aggregates whichever measurement lanes ran on `main`: all three nightly, the
+ * two deterministic ones on a push. A skipped `devenv-perf` must not skip the report, so
+ * the condition inspects `needs` results instead of relying on implicit success.
+ */
+const measurementReportIf = [
+  '${{ !cancelled()',
+  `&& (${ciMeasurementNotBaselineBackfillPredicate})`,
+  "&& github.ref == 'refs/heads/main'",
+  "&& (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')",
+  "&& needs.devenv-perf.result != 'failure'",
+  "&& needs.nix-closure-sizes.result != 'failure'",
+  "&& needs.source-shape.result != 'failure' }}",
+].join(' ')
 
 const job = ({
   step,
@@ -529,15 +575,25 @@ const devenvPerfMeasurementsDir = '${{ github.workspace }}/tmp/devenv-perf-ci'
 const nixClosureMeasurementsDir = `${effectUtilsMemberTmpDir}/nix-closure-ci`
 const ciMeasurementReportDir = 'tmp/ci-measurement-report'
 
+/**
+ * `actions/download-artifact` fails when the named artifact does not exist, so a producer
+ * lane that did not run in this event needs `producedBy` — the report then aggregates the
+ * lanes that did run instead of failing on the ones that did not.
+ */
 const downloadCurrentMeasurementArtifactStep = ({
   artifactName,
   outputDir,
+  producedBy,
 }: {
   artifactName: string
   outputDir: string
+  producedBy?: string
 }) =>
   ({
     name: `Download current measurement artifact: ${artifactName}`,
+    ...(producedBy === undefined
+      ? {}
+      : { if: `\${{ needs.${producedBy}.result == 'success' }}` }),
     uses: 'actions/download-artifact@v4',
     with: {
       name: artifactName,
@@ -605,6 +661,7 @@ const extraJobs: Record<string, any> = {
     },
   }),
   'devenv-perf': {
+    if: devenvPerfLaneIf,
     ...devenvPerfJob({
       runsOn: namespaceRunner({
         profile: namespaceLinuxX64PairedPerfRunner,
@@ -723,7 +780,7 @@ const extraJobs: Record<string, any> = {
     'timeout-minutes': 90,
   },
   'nix-closure-sizes': {
-    if: normalCiIf,
+    if: measurementLaneIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -756,6 +813,7 @@ const extraJobs: Record<string, any> = {
   },
   // Checkout exemption: source-shape measures actions-checkout bytes only; it runs no devenv/Buck.
   'source-shape': {
+    if: sourceShapeLaneIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -810,7 +868,7 @@ const extraJobs: Record<string, any> = {
   // Checkout exemption: report aggregation uses only Nix-provided tools and downloaded artifacts.
   'ci-measurements-report': {
     name: 'ci/measurements-report',
-    if: trustedSecretCiIf,
+    if: measurementReportIf,
     needs: ['devenv-perf', 'nix-closure-sizes', 'source-shape'],
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
@@ -827,6 +885,7 @@ const extraJobs: Record<string, any> = {
       downloadCurrentMeasurementArtifactStep({
         artifactName: 'devenv-perf',
         outputDir: `${ciMeasurementReportDir}/current/devenv-perf`,
+        producedBy: 'devenv-perf',
       }),
       downloadCurrentMeasurementArtifactStep({
         artifactName: 'nix-closure-measurements',
@@ -839,6 +898,9 @@ const extraJobs: Record<string, any> = {
       downloadPreviousGitHubArtifactStep({
         artifactName: 'devenv-perf',
         outputDir: `${ciMeasurementReportDir}/baseline/devenv-perf`,
+        // The paired lane's trend series is the nightly `schedule` run, so a `push` scan
+        // would burn its whole candidate budget on runs that never carried the artifact.
+        candidateEvents: ['schedule'],
         maxRuns: 20,
       }),
       downloadPreviousGitHubArtifactStep({
@@ -1042,7 +1104,15 @@ export default ciWorkflow({
   name: 'CI',
   on: {
     push: { branches: ['main'] },
-    pull_request: githubWorkflowEvent.all,
+    // `labeled` is present only so applying `ci:perf` materializes the paired
+    // wall-clock lane for a pull request that is already open; every other lane
+    // guards against label events because they do not change the commit under test.
+    pull_request: { types: ['opened', 'reopened', 'synchronize', 'labeled'] },
+    // Nightly measurement snapshot of `main` (03:17 UTC): the paired `devenv-perf`
+    // lane, the two deterministic measurement lanes, and `ci/measurements-report`.
+    // This is the trend series the report compares against, and the only cadence on
+    // which the 35-minute paired lane is paid.
+    schedule: [{ cron: '17 3 * * *' }],
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
@@ -1069,16 +1139,20 @@ export default ciWorkflow({
     // validation branches should fail one authority job, not obscure
     // lint/typecheck/test signal.
     // Checkout exemption: policy scans checkout authority files and never invokes devenv or Buck.
-    'default-ref-policy': defaultRefPolicyCheckJob({
-      // Keep this tiny policy job on the same Namespace runner class as the
-      // rest of CI so source-policy enforcement does not wait on legacy labels.
-      runsOn: namespaceRunner({
-        profile: 'namespace-profile-linux-x86-64',
-        runId: '${{ github.run_id }}',
+    'default-ref-policy': {
+      // A cron carries no code change, so the source-policy scan has nothing to say.
+      if: `\${{ ${notNightlyMeasurementIf} }}`,
+      ...defaultRefPolicyCheckJob({
+        // Keep this tiny policy job on the same Namespace runner class as the
+        // rest of CI so source-policy enforcement does not wait on legacy labels.
+        runsOn: namespaceRunner({
+          profile: 'namespace-profile-linux-x86-64',
+          runId: '${{ github.run_id }}',
+        }),
+        // LiveStore intentionally uses dev as its trunk branch.
+        defaultRefs: { 'livestorejs/livestore': 'dev' },
       }),
-      // LiveStore intentionally uses dev as its trunk branch.
-      defaultRefs: { 'livestorejs/livestore': 'dev' },
-    }),
+    },
     ...jobs,
     ...extraJobs,
     ...deployJobs,

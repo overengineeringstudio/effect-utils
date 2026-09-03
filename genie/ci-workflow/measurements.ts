@@ -231,6 +231,13 @@ export type GitHubPreviousArtifactStepOptions = {
   readonly seedRunIds?: readonly string[]
   readonly maxRuns?: number
   readonly maxCandidateRuns?: number
+  /**
+   * Trigger events whose successful runs may supply a baseline artifact. Defaults to
+   * `push`, which is right for a lane that runs on every merge. A lane that produces its
+   * trend series on a cadence instead names that event, so the scan is not spent on runs
+   * that never carried the artifact.
+   */
+  readonly candidateEvents?: readonly string[]
   readonly downloadTimeoutSeconds?: number
   readonly requiredObservations?: readonly CiMeasurementRequiredBaselineObservation[]
   readonly tokenExpression?: string
@@ -1265,6 +1272,7 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
       BASELINE_MAX_CANDIDATE_RUNS: String(
         opts.maxCandidateRuns ?? Math.max((opts.maxRuns ?? 5) * 3, 20),
       ),
+      BASELINE_CANDIDATE_EVENTS: (opts.candidateEvents ?? ['push']).join(' '),
       BASELINE_REQUIRED_OBSERVATIONS_JSON: ciMeasurementRequiredObservationsJson(opts),
       BASELINE_DOWNLOAD_TIMEOUT_SECONDS: String(opts.downloadTimeoutSeconds ?? 120),
     },
@@ -1327,16 +1335,21 @@ if ! [[ "$max_candidate_runs" =~ ^[0-9]+$ ]] || [ "$max_candidate_runs" -lt 1 ];
   max_candidate_runs=1
 fi
 
+candidate_events="${dollar}{BASELINE_CANDIDATE_EVENTS:-push}"
+# Run ids increase monotonically, so sorting the merged per-event lists numerically
+# descending restores "most recent candidate first" across events.
 candidate_runs="$(
-  "$GH_BIN" run list \
-    --repo "$repo" \
-    --workflow "$workflow" \
-    --branch "$branch" \
-    --event push \
-    --status success \
-    --json databaseId,headSha \
-    --limit "$max_candidate_runs" \
-    --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
+  for candidate_event in $candidate_events; do
+    "$GH_BIN" run list \
+      --repo "$repo" \
+      --workflow "$workflow" \
+      --branch "$branch" \
+      --event "$candidate_event" \
+      --status success \
+      --json databaseId,headSha \
+      --limit "$max_candidate_runs" \
+      --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
+  done | sort -rnu
 )"
 
 candidate_runs="$seed_run_ids

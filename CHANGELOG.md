@@ -182,6 +182,23 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **CI**: the paired `devenv-perf` wall-clock lane no longer runs on every pull
+  request. It now runs on a nightly `schedule` against `main`, on operator
+  `workflow_dispatch`, and on a pull request carrying the new `ci:perf` label.
+  Measured on three consecutive `ci.yml` runs the lane took 35.0 / 35.7 / 35.0
+  minutes against a 37.4-minute whole-run wall clock while `compare: false`,
+  `regressionMode: 'warn'` and `prComment.enabled: false` meant it neither
+  blocked a regression nor reported one — so it was pure critical path. The lane
+  is unchanged otherwise: same runner, same probes, same observation ids, so the
+  trend series is continuous. Consequently it is no longer a required status
+  check (a lane that does not run on every pull request reports no check run, so
+  branch protection would wait forever), `ci/measurements-report` now runs on the
+  nightly cadence as well and tolerates a skipped perf lane, and the report's
+  perf baseline scan reads `schedule` runs via the new `candidateEvents` option
+  on `downloadPreviousGitHubArtifactStep` instead of `push` runs. Per-admission
+  benchmark evidence moves to a targeted probe recorded with the admission; see
+  `context/ci-measurements.md` "Lane Cadence".
+
 - **@overeng/stylex-preset -> @overeng/stylex-tokens**: the shared StyleX
   package is renamed to say what it durably is — our design-token package — and
   is now browser-pure. Its generated manifest declares no build-tool dependency

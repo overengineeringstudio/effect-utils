@@ -119,6 +119,10 @@ const generatedCiJobKeys = Array.from(
 ).filter((jobKey): jobKey is string => jobKey !== undefined)
 
 const advisoryCheckContexts = new Set(['ci/measurements-report', 'notify-alignment'])
+// Opt-in lanes (see OPT_IN_CI_JOB_NAMES in genie/ci.ts) are non-advisory but do not run on
+// every pull request, so branch protection cannot require them: a skipped lane reports no
+// check run at all and a required-but-absent context would wait forever.
+const optInCheckContexts = new Set(['devenv-perf'])
 const matrixCheckJobs = new Set(['test', 'nix-check', 'nix-fod-check'])
 const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
 
@@ -222,10 +226,11 @@ const megarepoTaskModuleSource = readFileSync(
 )
 
 describe('ci workflow retry helpers', () => {
-  it('keeps non-advisory workflow jobs required by branch protection', () => {
-    expect(new Set(generatedRequiredCheckContexts)).toEqual(
-      new Set(generatedNonAdvisoryCheckContexts),
+  it('keeps non-advisory always-on workflow jobs required by branch protection', () => {
+    const requiredCandidates = generatedNonAdvisoryCheckContexts.filter(
+      (context) => optInCheckContexts.has(context) === false,
     )
+    expect(new Set(generatedRequiredCheckContexts)).toEqual(new Set(requiredCandidates))
   })
 
   it('emits compact calls to the checked-in retry helper script', () => {
