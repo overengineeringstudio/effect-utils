@@ -30,6 +30,13 @@ const ciWorkflowSource = [
     readFileSync(new URL(['../../../../../../genie', file].join('/'), import.meta.url), 'utf8'),
   )
   .join('\n')
+const ciWorkflowSupportFilesSource = readFileSync(
+  new URL(
+    ['../../../../../../genie/ci-workflow', 'support-files.ts'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
@@ -623,6 +630,51 @@ printf '%s\\n' "$NIX_OUTPUT"
       )
       .map((match) => ciWorkflowSource.slice(match.index, match.index + 70))
     expect(unflagged).toEqual([])
+  })
+
+  it('gives every prepared-runtime script a support-file entry consumers can emit', () => {
+    // `Prepare CI helper scripts` populates the prepared runtime dir from the
+    // CONSUMING repo's genie/ci-scripts, which is generated from
+    // ciWorkflowSupportFiles. A generated step that invokes a script with no
+    // entry references something only this repo can satisfy — the consumer
+    // regenerates a workflow whose step dies with exit 127, while this repo's
+    // own CI stays green off its hand-committed copy and hides the gap.
+    const invoked = new Set<string>()
+    for (const match of ciWorkflowSource.matchAll(
+      /(?:preparedCiRuntimeScriptsDir|scriptsDir)\}\/([A-Za-z0-9._-]+\.(?:sh|mjs|ts))/g,
+    )) {
+      invoked.add(match[1]!)
+    }
+    expect([...invoked].sort()).toEqual([
+      'prepare-job-local-rust-state.sh',
+      'resolve-devenv-ci.sh',
+      'run-with-nix-gc-race-retry.sh',
+    ])
+
+    // Those scripts also source siblings out of their own directory, so the
+    // dependency closure has to land in the prepared dir too, not just the
+    // entrypoints.
+    const required = new Set(invoked)
+    for (const name of invoked) {
+      const script = readFileSync(
+        new URL(['../../../../../../genie/ci-scripts', name].join('/'), import.meta.url),
+        'utf8',
+      )
+      for (const match of script.matchAll(
+        /\$(?:script_dir|\{script_dir\})\/([A-Za-z0-9._-]+\.sh)/g,
+      )) {
+        required.add(match[1]!)
+      }
+    }
+    expect(required.has('resolve-devenv.sh')).toBe(true)
+    expect(required.has('nix-gc-race-retry.sh')).toBe(true)
+
+    const covered = new Set(
+      [...ciWorkflowSupportFilesSource.matchAll(/'genie\/ci-scripts\/([A-Za-z0-9._-]+)'/g)].map(
+        (match) => match[1]!,
+      ),
+    )
+    expect([...required].filter((name) => covered.has(name) === false)).toEqual([])
   })
 
   it('installs setup-time megarepo from the locked effect-utils commit without mutating nix profiles', () => {

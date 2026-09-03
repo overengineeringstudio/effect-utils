@@ -47,6 +47,7 @@ export const ciWorkflowNixGcRaceRetryWrapperPath = 'genie/ci-scripts/run-with-ni
 export const ciWorkflowJobLocalRustStateScriptPath =
   'genie/ci-scripts/prepare-job-local-rust-state.sh'
 export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'
+export const ciWorkflowResolveDevenvCiScriptPath = 'genie/ci-scripts/resolve-devenv-ci.sh'
 
 export const ciWorkflowNixGcRaceRetryScript = String.raw`#!/usr/bin/env bash
 
@@ -218,6 +219,22 @@ export const ciWorkflowSupportFiles = {
   resolveDevenv: {
     path: ciWorkflowResolveDevenvScriptPath,
     output: textArtifact(`#!/usr/bin/env bash\n\n${resolveDevenvFnScript}`),
+  },
+  /**
+   * The CI wrapper around `resolve_devenv`, invoked by `validateNixStoreStepFor`.
+   *
+   * Consumers MUST be able to emit this: the generated step calls it out of the prepared runtime
+   * scripts dir, which is populated from the *consuming* repo's `genie/ci-scripts`. Without an
+   * entry here a consumer regenerates a workflow that references a script it cannot materialize,
+   * and the step dies with exit 127. It ships as a real file for the same reason as
+   * {@link ciWorkflowSupportFiles.prSnapshotArtifact}, and sources `resolve-devenv.sh` out of its
+   * own directory, so consumers must emit that one too.
+   */
+  resolveDevenvCi: {
+    path: ciWorkflowResolveDevenvCiScriptPath,
+    get output() {
+      return sharedScriptArtifact(ciWorkflowResolveDevenvCiScriptPath)
+    },
   },
   nixGcRaceRetry: {
     path: ciWorkflowNixGcRaceRetryScriptPath,
