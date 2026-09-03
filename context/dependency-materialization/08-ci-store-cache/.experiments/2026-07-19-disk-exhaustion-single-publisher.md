@@ -2,12 +2,12 @@
 
 Date: 2026-07-19
 
-## Hypothesis
+## Question
 
-Multiple jobs saving the pnpm store to distinct keys on one shared self-hosted
-runner exhaust disk; routing saves through a single-publisher primitive removes
-the exhaustion while keeping the cache warm, and the primitive can be emitted
-correctly from generated workflows.
+Do multiple jobs saving the pnpm store to distinct keys on one shared
+self-hosted runner exhaust disk; does routing saves through a single-publisher
+primitive remove the exhaustion while keeping the cache warm; and can the
+primitive be emitted correctly from generated workflows?
 
 ## Method
 
@@ -20,7 +20,7 @@ correctly from generated workflows.
   locally), since the type/generation gates run only in the real CI of the
   owning repo.
 
-## Results
+## Result
 
 - **Failure shape confirmed.** N writers per workflow on a shared runner drive
   the disk-exhaustion class; the divergence is the hand-rolled factories, which
@@ -37,10 +37,17 @@ correctly from generated workflows.
 
 ## Conclusion
 
+Single-writer publishing removes the disk-exhaustion class while keeping the
+cache warm, and the fail-closed primitive makes never-zero / never-many a
+build-time property rather than a review check. The rollout order follows disk
+risk: the highest-writer-count consumer first.
+
+## VRS Impact
+
 Supports `DMP.CICACHE-R03`/`R04` (single writer, fail-closed primitive) and the
 `0001` decision that single-writer is a callable primitive, not an inherited
-default. The rollout order follows disk risk: the highest-writer-count consumer
-first.
+default. The warm-event caveat is captured as `DMP.CICACHE-R05` and a per-repo
+verification checkpoint.
 
 ## Residual
 

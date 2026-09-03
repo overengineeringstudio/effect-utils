@@ -2,12 +2,12 @@
 
 Date: 2026-07-19 · Systems: aarch64-linux (build), x86_64-linux (cross-check)
 
-## Hypothesis
+## Question
 
 For an install root that opts into optional native bindings under
-`all-declared-triples` completeness, the prepared FOD (a) contains every declared
-`(os, cpu, libc)` binding, (b) loads them at downstream build time, and (c)
-stays host-invariant so a single shared hash remains sound.
+`all-declared-triples` completeness, does the prepared FOD (a) contain every
+declared `(os, cpu, libc)` binding, (b) load them at downstream build time, and
+(c) stay host-invariant so a single shared hash remains sound?
 
 ## Method
 
@@ -21,7 +21,7 @@ stays host-invariant so a single shared hash remains sound.
   `dlopen` the arm64-gnu bindings; run the downstream `vite build`; compare the
   realized output hash against x86_64-linux.
 
-## Results
+## Result
 
 | Observation                               | `--no-optional`               | opt-in + completeness   |
 | ----------------------------------------- | ----------------------------- | ----------------------- |
@@ -38,9 +38,18 @@ stays host-invariant so a single shared hash remains sound.
 
 ## Conclusion
 
-Confirms `DMP.NIX.NATIVE-R08` (completeness), `DMP.NIX-R11` (opt-in resolves the
-runtime load), and the host-invariance premise behind `0008`/`0009` and
-`DMP.NIX.FOD-R03` on the linux pair.
+On the measured linux pair, the opt-in prepared FOD carries every declared
+binding (58 `.node` files across all declared triples), loads them at
+downstream build time (`dlopen` OK; `vite build` succeeds), and is
+host-invariant (equal realized output hash on aarch64-linux and x86_64-linux),
+while the default `--no-optional` FOD fails the same downstream build at
+runtime binding load.
+
+## VRS Impact
+
+Confirms `DMP.NIX.NATIVE-R08` (completeness), `DMP.NIX-R11` (the opt-in
+resolves the runtime load), and the host-invariance premise behind `0008`/`0009`
+and `DMP.NIX.FOD-R03` on the linux pair.
 
 ## Residual
 

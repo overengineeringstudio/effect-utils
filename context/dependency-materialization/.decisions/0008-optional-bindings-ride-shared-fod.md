@@ -10,19 +10,7 @@ were available: include optional bindings globally for every consumer, add a
 separate binding-only FOD beside the prepared-deps FOD, or make binding
 inclusion a per-install-root opt-in on the existing prepared-deps artifact.
 
-## Decision
-
-Make optional binding inclusion a per-install-root opt-in (`DMP.NIX-R11`) that
-materializes the bindings into the _existing_ prepared-deps FOD, gated by
-all-declared-triples completeness (`0009`). Default off.
-
-- Not global-on: it would bloat every consumer's artifact with bindings it never
-  loads and move every hash.
-- Not a separate binding-only FOD: a rolldown/oxc/lightningcss version bump is a
-  lockfile-driven change that _should_ move the prepared-deps hash; a parallel
-  artifact adds a second boundary and hash class for no benefit.
-
-## Rationale
+## Evidence and Argument
 
 - The shared prepared-deps FOD stays the single dependency boundary
   (`DMP.NIX-R05`). Bindings resolve from a family's own isolated `.pnpm` subtree,
@@ -34,6 +22,20 @@ all-declared-triples completeness (`0009`). Default off.
   (`0005`), which already exposes the direct prepared-deps derivation as
   evaluated metadata and resolves through a nested-flake consumer boundary. No
   new repair surface is required.
+
+## Options
+
+| Option                                                    | Tradeoff                                                                                                                                                                                 | Outcome  |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Per-install-root opt-in on the existing prepared-deps FOD | Keeps one dependency boundary and one hash class; requires an atomic opt-in plus hash refresh per root                                                                                   | Accepted |
+| Global-on for every consumer                              | Bloats every consumer's artifact with bindings it never loads and moves every hash                                                                                                       | Rejected |
+| Separate binding-only FOD beside the prepared-deps FOD    | A rolldown/oxc/lightningcss version bump is a lockfile-driven change that _should_ move the prepared-deps hash; a parallel artifact adds a second boundary and hash class for no benefit | Rejected |
+
+## Decision
+
+Make optional binding inclusion a per-install-root opt-in (`DMP.NIX-R11`) that
+materializes the bindings into the _existing_ prepared-deps FOD, gated by
+all-declared-triples completeness (`0009`). Default off.
 
 ## Consequences
 

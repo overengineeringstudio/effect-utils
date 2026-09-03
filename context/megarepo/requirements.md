@@ -2,8 +2,8 @@
 
 Status: ratified.
 
-This sub-VRS has no `vision.md`; that document is human-authored and not yet
-written. In its place: megarepo (`mr`) exists so that several independently
+The "why" of this sub-VRS is [vision.md](./vision.md). In one line: megarepo
+(`mr`) exists so that several independently
 developed git repositories can be worked on as one environment without any of
 them having to know it — arranging them on disk from a declared intent, and
 owning the workspace state a composed build reads. Every requirement below is

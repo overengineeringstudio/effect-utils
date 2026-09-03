@@ -9,10 +9,11 @@ what it owns in a composition workspace. It builds on
 
 Draft.
 
-This sub-VRS has no `vision.md`. The tool's "why" is human-authored and has not
-been written yet; until it exists, [requirements.md](./requirements.md) carries
-the role statement in its place and is itself a draft pending human
-ratification.
+The tool's "why" is [vision.md](./vision.md), and
+[requirements.md](./requirements.md) is ratified (2026-09-02). This spec
+remains a draft: it records the ratified target — including the source
+hierarchy the follow-up restructure PR is measured against — ahead of the
+implementation reaching it.
 
 ## Scope
 

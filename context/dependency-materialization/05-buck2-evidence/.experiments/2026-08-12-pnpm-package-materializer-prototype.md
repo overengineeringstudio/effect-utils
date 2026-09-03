@@ -7,6 +7,15 @@ Status: rejected and removed; input-plan discovery retained
 Should the first TypeScript Buck slice include a repository-owned npm archive
 normalizer, or stop at the exact lock-derived contextual input plan?
 
+## Method
+
+A TypeScript archive-normalizer prototype was built and its required semantics
+surface enumerated against the exact lock-derived contextual input-plan join;
+the implementation was deliberately not connected to a Buck action or consumer.
+Method reconstructed from the record's context: the original record predates
+the shape requirement and captured no separate method narrative beyond what the
+result states.
+
 ## Result
 
 The TypeScript prototype verified that archive normalization has a substantially

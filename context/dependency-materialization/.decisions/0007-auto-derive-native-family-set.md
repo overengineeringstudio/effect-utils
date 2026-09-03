@@ -10,18 +10,7 @@ every declared platform triple (`DMP.NIX.NATIVE-R08`). The required-family set
 could be a hand-maintained per-consumer list or derived from the resolved
 closure.
 
-## Decision
-
-Derive the required-family set from the root's resolved (dev + prod) lockfile
-closure. Do not maintain a hand-written `requiredNativeFamilies` list.
-
-The detector enumerates `pure-package-artifact` families in the closure (reusing
-the native dependency policy, `0003`), expands each family's declared
-`supportedArchitectures` into concrete `(os, cpu, libc)` triples, and treats the
-product as the required set. Consumer input is limited to the opt-in plus
-reason-carrying waivers (`DMP.NIX.NATIVE-R11`).
-
-## Rationale
+## Evidence and Argument
 
 - A hand list drifts silently. A closure commonly carries more than one native
   family (a bundler binding _and_ a CSS-transformer binding, for example); a
@@ -34,6 +23,25 @@ reason-carrying waivers (`DMP.NIX.NATIVE-R11`).
 - One registry, not two. The policy classification already distinguishes
   `pure-package-artifact` from `nix-grafted`; deriving from it avoids a second
   source of truth that could disagree.
+
+## Options
+
+| Option                                                     | Tradeoff                                                                                             | Outcome                    |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------- |
+| Derive the required set from the resolved lockfile closure | Safe-direction over-approximation; reuses the existing native dependency policy as the one registry  | Accepted                   |
+| Hand-maintained per-consumer `requiredNativeFamilies` list | Drifts silently; a list that forgets one family passes review and fails the next build that loads it | Rejected                   |
+| Derived set plus an expected-set tripwire pin              | Catches an unreviewed family added by a dependency bump; auto-derive stays authoritative             | Admissible, off by default |
+
+## Decision
+
+Derive the required-family set from the root's resolved (dev + prod) lockfile
+closure. Do not maintain a hand-written `requiredNativeFamilies` list.
+
+The detector enumerates `pure-package-artifact` families in the closure (reusing
+the native dependency policy, `0003`), expands each family's declared
+`supportedArchitectures` into concrete `(os, cpu, libc)` triples, and treats the
+product as the required set. Consumer input is limited to the opt-in plus
+reason-carrying waivers (`DMP.NIX.NATIVE-R11`).
 
 ## Consequences
 

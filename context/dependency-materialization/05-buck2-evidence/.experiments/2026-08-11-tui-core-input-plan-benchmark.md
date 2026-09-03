@@ -34,7 +34,9 @@ The snapshot commit was created from the reviewed staged/worktree state solely
 to obtain a clean detached benchmark input. Raw command logs and local cache
 directories are intentionally not retained.
 
-## Notify result (RED retained)
+## Result
+
+### Notify result (RED retained)
 
 | Buck phase                                         |       min |       p50 |       p95 | actions p50 | materializations p50 | Verdict                   |
 | -------------------------------------------------- | --------: | --------: | --------: | ----------: | -------------------: | ------------------------- |
@@ -55,7 +57,7 @@ Linux notify watcher reported its pnpm directory-symlink alias beneath ignored
 `node_modules` rather than refreshing the canonical source node. The action ran
 zero times and DICE reused stale state.
 
-## Hash-crawler incremental result (GREEN)
+### Hash-crawler incremental result (GREEN)
 
 | Buck phase                   |        min |        p50 |        p95 | actions p50 | materializations p50 | Verdict            |
 | ---------------------------- | ---------: | ---------: | ---------: | ----------: | -------------------: | ------------------ |
@@ -72,7 +74,7 @@ notify returned stale state, while the crawler correctly executed one action.
 Cold and daemon-restart phases were intentionally not repeated; the rerun
 isolates the steady-state correctness/latency tradeoff.
 
-## Watchman concurrency admission
+### Watchman concurrency admission
 
 The crawler's incremental mutation matrix was GREEN, but the full concurrent
 repository gate falsified it: a file deleted while the crawler initialized its
@@ -122,7 +124,7 @@ analysis host failed before execution with the expected platform mismatch. This
 proves the local bootstrap fail-closed check, not remote configured-platform
 selection; that binding remains an admission gate.
 
-## Devenv context and comparison verdict
+### Devenv context and comparison verdict
 
 The Devenv end-user preparation reached `ts:check` but failed on existing
 TypeScript project-boundary errors (`TS6059` and `TS6307`) in this snapshot.
@@ -131,7 +133,7 @@ timing verdict. They also are not equivalent to the Buck input-plan target, so
 even a green run would be contextual overhead data rather than a cross-engine
 comparison.
 
-## Limitations
+### Limitations
 
 - Five samples make nearest-rank p95 equal to the maximum; treat tail estimates
   as directional only.

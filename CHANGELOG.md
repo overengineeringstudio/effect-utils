@@ -402,19 +402,20 @@ publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
   `@overeng/megarepo/buck2-manifest` facade.
 
 - **VRS (megarepo)**: establish the `context/megarepo/` sub-VRS for the
-  megarepo tool (ratified q10, 2026-08-31). Adds `spec.md` (the tool's two
-  responsibilities — repo arrangement and workspace ownership — the composition
-  state machine, the CLI surface, and the ratified target source hierarchy),
-  `ontology.md` (absorbs and supersedes the package's store-GC glossary, adds
-  the workspace-ownership vocabulary, and flags the R6 / `COMP-R06` shorthand
-  collision), and a draft `requirements.md` (MR-A01–A03, MR-T01–T03,
-  MR-R01–R10) derived only from already-ratified sources and pending human
-  ratification. Decision records 0001/0006/0007/0008/0009 migrate from
+  megarepo tool. Adds `vision.md` (the problem, intended future, boundaries,
+  and success criteria), `spec.md` (the tool's two responsibilities — repo
+  arrangement and workspace ownership — the composition state machine, the
+  CLI surface, and the ratified target source hierarchy), `ontology.md`
+  (absorbs and supersedes the package's store-GC glossary, adds the
+  workspace-ownership vocabulary, and flags the R6 / `COMP-R06` shorthand
+  collision), and ratified `requirements.md` (MR-A01–A03, MR-T01–T03,
+  MR-R01–R11) derived only from already-ratified sources. Decision records
+  0001/0006/0007/0008/0009 migrate from
   `packages/@overeng/megarepo/docs/decisions` with their numbering and gap
   preserved; the package's `docs/decisions/*` and `docs/glossary.md` are left
   as pointer stubs. `context/buck2/05-composition/` remains the buck2-facing
-  composition contract (`COMP-R*`) and is referenced, never restated. No
-  `vision.md`: it is human-authored and not yet written. Docs-only.
+  composition contract (`COMP-R*`) and is referenced, never restated.
+  Docs-only.
 - **VRS (buck2)**: ratify decision 0023 — Rust third-party sources become
   Buck-fetched `http_archive` targets via non-vendored Reindeer (sha256 from
   `Cargo.lock`); decisions 0017/0019 amended; two 2026-08-30 experiment
