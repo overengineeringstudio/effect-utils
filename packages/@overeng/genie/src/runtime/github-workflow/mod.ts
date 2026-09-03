@@ -58,6 +58,8 @@ type PushPullRequestTriggerConfig = {
   'paths-ignore'?: string[]
   tags?: string[]
   'tags-ignore'?: string[]
+  /** Activity types for `pull_request` / `pull_request_target`; `push` has none. */
+  types?: string[]
 }
 
 type ScheduleTrigger = {

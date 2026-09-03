@@ -44,13 +44,33 @@ export const EXTRA_CI_JOB_NAMES = [
   // Empirical bootstrap-safety authority (R32, issue #884): builds the self-contained nix genie and
   // proves `genie --phase bootstrap` + `pnpm install` run cold (no node_modules). Merge-blocking.
   'bootstrap-cold-proof',
-  'devenv-perf',
   'nix-closure-sizes',
   'source-shape',
   'test-integration-notion',
   'test-integration-restate',
   'test-live-deploy-ci-tools',
 ] as const
+
+/**
+ * Lanes that deliberately do not run on every pull request.
+ *
+ * These cannot be required status checks: a lane that is skipped reports no check run at
+ * all, so branch protection would wait for a status that never arrives.
+ *
+ * `devenv-perf` is the paired wall-clock lane. It is trend telemetry on a nightly cadence
+ * against `main` plus an opt-in `ci:perf` label for a pull request that needs the numbers
+ * before merge, because a 35-minute advisory measurement is not worth paying on every push.
+ */
+export const OPT_IN_CI_JOB_NAMES = ['devenv-perf'] as const
+
+/**
+ * Pull-request label that opts one pull request into the `devenv-perf` lane.
+ *
+ * A maintainer-managed, revocable CI capability grant in the `ci:*` axis, repo-local
+ * because only this repository has the lane. The workflow trigger and the label catalog
+ * must agree on the exact string, so both read it from here.
+ */
+export const perfLaneLabel = 'ci:perf'
 
 /** Required deploy/reporting job keys that block merge when they fail. */
 export const REQUIRED_DEPLOY_CI_JOB_NAMES = ['deploy-storybooks'] as const
@@ -63,6 +83,7 @@ export const CI_JOB_NAMES = [
   DEFAULT_REF_POLICY_CI_JOB_NAME,
   ...CORE_CI_JOB_NAMES,
   ...EXTRA_CI_JOB_NAMES,
+  ...OPT_IN_CI_JOB_NAMES,
   ...REQUIRED_DEPLOY_CI_JOB_NAMES,
   ...advisoryCIJobNames,
 ] as const
@@ -73,9 +94,11 @@ export type CIJobName = (typeof CI_JOB_NAMES)[number]
 /**
  * Merge-blocking CI job keys for branch protection.
  *
- * Every non-advisory workflow lane is required. Measurement jobs can still run
- * warn-mode comparisons internally, but the lane must produce its artifact and
- * complete successfully so branch protection covers CI evidence production.
+ * Every lane that runs on every pull request and is not advisory is required. Measurement
+ * jobs can still run warn-mode comparisons internally, but the lane must produce its
+ * artifact and complete successfully so branch protection covers CI evidence production.
+ * Lanes in `OPT_IN_CI_JOB_NAMES` are excluded because they do not run on every pull
+ * request.
  */
 export const REQUIRED_CI_JOB_NAMES = [
   DEFAULT_REF_POLICY_CI_JOB_NAME,
