@@ -100,6 +100,10 @@ def _tsgo_emit_impl(ctx):
         ctx.attrs.declaration_entrypoint,
         directory.as_output(),
     ])
+    for declaration_path in sorted(ctx.attrs.declaration_sources.keys()):
+        _require_relative_path(declaration_path, "declaration source")
+        args.add("--copy-declaration", declaration_path)
+    args.add(cmd_args(hidden = ctx.attrs.declaration_sources.values()))
     ctx.actions.run(
         args,
         category = "tsgo_emit",
@@ -122,6 +126,11 @@ tsgo_emit = rule(
         "project": attrs.string(default = "tsconfig.json"),
         "out_dir": attrs.string(default = "dist"),
         "declaration_entrypoint": attrs.string(default = "src/mod.d.ts"),
+        "declaration_sources": attrs.dict(
+            key = attrs.string(),
+            value = attrs.source(),
+            default = {},
+        ),
         "_tsgo": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:effect_tsgo",
             providers = [EffectTsgoToolchainInfo],

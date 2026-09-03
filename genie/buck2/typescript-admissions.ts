@@ -1,99 +1,83 @@
 import { Buffer } from 'node:buffer'
 
-import type { Buck2TypeScriptPackageProjection } from './typescript-package-projection.ts'
+import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as otelContractAdmission } from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as stylexTokensAdmission } from '../../packages/@overeng/stylex-tokens/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as tuiCoreAdmission } from '../../packages/@overeng/tui-core/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as tuiReactAdmission } from '../../packages/@overeng/tui-react/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as utilsAdmission } from '../../packages/@overeng/utils/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as utilsDevAdmission } from '../../packages/@overeng/utils-dev/BUCK.genie.ts'
+import type {
+  Buck2TypeScriptAuthorityMetadata,
+  Buck2TypeScriptPackageProjection,
+} from './typescript-package-projection.ts'
 
-/** Buck TypeScript projection input plus editor publication admission. */
+export type { Buck2TypeScriptAuthorityMetadata } from './typescript-package-projection.ts'
+
+/** Buck TypeScript projection input plus editor publication and optional authority admission. */
 export type Buck2TypeScriptAdmission = Buck2TypeScriptPackageProjection & {
   readonly editorViewConsumer: boolean
+  readonly authority?: Buck2TypeScriptAuthorityMetadata
+}
+
+/** Derived command and manifest data for a Buck-authoritative TypeScript package. */
+export type AuthoritativeBuck2TypeScriptAdmission = Buck2TypeScriptAuthorityMetadata & {
+  readonly packagePath: string
+  readonly typecheckTarget: `//${string}:typecheck`
+  readonly distTarget: `//${string}:dist`
 }
 
 /** Semantic registry for every package admitted to the Buck TypeScript projection. */
 export const buck2TypeScriptAdmissions = {
-  contentAddress: {
-    dependencyImporter:
-      '//buck2/dependencies:importer_packages_overeng_content_address_a119c50f74bb',
-    packageName: '@overeng/content-address',
-    packagePath: 'packages/@overeng/content-address',
-    projectionSource: 'packages/@overeng/content-address/BUCK.genie.ts',
-    sourceRoots: ['src'],
-    editorViewConsumer: false,
-  },
-  effectDistributedLock: {
-    dependencyImporter:
-      '//buck2/dependencies:importer_packages_overeng_effect_distributed_lock_f36a75b36a62',
-    packageName: '@overeng/effect-distributed-lock',
-    packagePath: 'packages/@overeng/effect-distributed-lock',
-    projectionSource: 'packages/@overeng/effect-distributed-lock/BUCK.genie.ts',
-    sourceRoots: ['src'],
-    editorViewConsumer: false,
-  },
-  otelContract: {
-    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_otel_contract_071b3792a33c',
-    packageName: '@overeng/otel-contract',
-    packagePath: 'packages/@overeng/otel-contract',
-    projectionSource: 'packages/@overeng/otel-contract/BUCK.genie.ts',
-    sourceRoots: ['src'],
-    editorViewConsumer: false,
-  },
-  tuiCore: {
-    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_tui_core_45029ece7ddb',
-    packageName: '@overeng/tui-core',
-    packagePath: 'packages/@overeng/tui-core',
-    projectionSource: 'packages/@overeng/tui-core/BUCK.genie.ts',
-    sourceRoots: ['src', 'test'],
-    editorViewConsumer: true,
-  },
-  tuiReact: {
-    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_tui_react_f20a858a9232',
-    packageName: '@overeng/tui-react',
-    packagePath: 'packages/@overeng/tui-react',
-    projectionSource: 'packages/@overeng/tui-react/BUCK.genie.ts',
-    projectFile: 'tsconfig.buck.json',
-    sourceRoots: ['src', 'test', 'examples'],
-    workspaceSiblings: [
-      {
-        packageName: '@overeng/tui-core',
-        packagePath: 'packages/@overeng/tui-core',
-        distTarget: '//packages/@overeng/tui-core:dist',
-      },
-      {
-        packageName: '@overeng/utils',
-        packagePath: 'packages/@overeng/utils',
-        sourceRoots: ['src'],
-      },
-      {
-        packageName: '@overeng/utils-dev',
-        packagePath: 'packages/@overeng/utils-dev',
-        sourceRoots: ['src'],
-      },
-    ],
-    editorViewConsumer: false,
-  },
-  stylexTokens: {
-    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_stylex_tokens_eec8ac17a1d4',
-    packageName: '@overeng/stylex-tokens',
-    packagePath: 'packages/@overeng/stylex-tokens',
-    projectionSource: 'packages/@overeng/stylex-tokens/BUCK.genie.ts',
-    sourceRoots: ['src'],
-    editorViewConsumer: false,
-  },
-  utils: {
-    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_utils_07fe64e7b8ad',
-    packageName: '@overeng/utils',
-    packagePath: 'packages/@overeng/utils',
-    projectionSource: 'packages/@overeng/utils/BUCK.genie.ts',
-    sourceRoots: ['src'],
-    editorViewConsumer: false,
-  },
-  utilsDev: {
-    dependencyImporter: '//buck2/dependencies:importer_packages_overeng_utils_dev_8614cc76469c',
-    packageName: '@overeng/utils-dev',
-    packagePath: 'packages/@overeng/utils-dev',
-    projectionSource: 'packages/@overeng/utils-dev/BUCK.genie.ts',
-    sourceRoots: ['src'],
-    editorViewConsumer: false,
-  },
+  contentAddress: contentAddressAdmission,
+  effectDistributedLock: effectDistributedLockAdmission,
+  otelContract: otelContractAdmission,
+  tuiCore: tuiCoreAdmission,
+  tuiReact: tuiReactAdmission,
+  stylexTokens: stylexTokensAdmission,
+  utils: utilsAdmission,
+  utilsDev: utilsDevAdmission,
 } as const satisfies Record<string, Buck2TypeScriptAdmission>
+
+/** Derives labels rather than duplicating them in package-local authority metadata. */
+export const deriveBuck2TypeScriptAuthority = ({
+  authority,
+  packagePath,
+}: Buck2TypeScriptAdmission & {
+  readonly authority: Buck2TypeScriptAuthorityMetadata
+}): AuthoritativeBuck2TypeScriptAdmission => ({
+  declarationEntrypoint: authority.declarationEntrypoint,
+  distTarget: `//${packagePath}:dist`,
+  packagePath,
+  projectFile: authority.projectFile,
+  typecheckTarget: `//${packagePath}:typecheck`,
+})
+
+/** Registry-ordered packages whose TypeScript checking and declarations are Buck-owned. */
+export const authoritativeBuck2TypeScriptAdmissions = Object.values(
+  buck2TypeScriptAdmissions,
+).flatMap(
+  (admission: Buck2TypeScriptAdmission): readonly AuthoritativeBuck2TypeScriptAdmission[] =>
+    admission.authority === undefined
+      ? []
+      : [
+          deriveBuck2TypeScriptAuthority({
+            ...admission,
+            authority: admission.authority,
+          }),
+        ],
+)
+
+/** Dist overlays derived from the same package-local authority declarations. */
+export const buck2TypeScriptDistOverlays = authoritativeBuck2TypeScriptAdmissions
+  .map(({ distTarget, packagePath }) => ({
+    target: distTarget,
+    destination: `${packagePath}/dist`,
+  }))
+  .toSorted((left, right) =>
+    Buffer.from(left.destination).compare(Buffer.from(right.destination)),
+  )
 
 /** Byte-sorted package paths whose editor dependency surface is currently admitted. */
 export const editorViewConsumerPackagePaths = Object.values(buck2TypeScriptAdmissions)

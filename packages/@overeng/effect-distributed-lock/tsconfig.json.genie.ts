@@ -10,7 +10,8 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...nodeTypes,
     ...packageTsconfigCompilerOptions,
+    noEmit: true,
   },
   include: ['src/**/*'],
-  references: [{ path: '../utils-dev' }],
+  references: [],
 } satisfies TSConfigArgs)

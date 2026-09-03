@@ -19,5 +19,4 @@ export default tsconfigJson({
     noEmit: true,
   },
   include: ['src/**/*', 'vite.config.ts'],
-  references: [{ path: '../../../utils' }],
 } satisfies TSConfigArgs)

@@ -51,12 +51,6 @@
   "references": [
     {
       "path": "../megarepo"
-    },
-    {
-      "path": "../utils"
-    },
-    {
-      "path": "../utils-dev"
     }
   ]
 }

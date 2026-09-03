@@ -14,11 +14,8 @@ export default tsconfigJson({
     // `node_modules` without TypeScript stripping. See #1167.
     allowJs: true,
     checkJs: true,
+    noEmit: true,
   },
   include: ['src/**/*'],
-  references: [
-    { path: '../effect-distributed-lock' },
-    { path: '../otel-contract' },
-    { path: '../utils-dev' },
-  ],
+  references: [],
 } satisfies TSConfigArgs)

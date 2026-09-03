@@ -50,12 +50,6 @@
   "references": [
     {
       "path": "../effect-schema-form"
-    },
-    {
-      "path": "../stylex-tokens"
-    },
-    {
-      "path": "../utils"
     }
   ]
 }

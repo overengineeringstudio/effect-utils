@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/otel-contract/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:977f7bdf344a3cc7ebf3adcec113a855004a6e44dbe25849c7ada0ca8f6324f4
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/src/**/*.cts, packages/@overeng/otel-contract/src/**/*.mts, packages/@overeng/otel-contract/src/**/*.ts, packages/@overeng/otel-contract/src/**/*.tsx, packages/@overeng/otel-contract/tsconfig.json.genie.ts
+# Semantic fingerprint: sha256:cc8ef2b4687aedf25b6a8d05a6545ea12fc62c214798a0dac7388c92480ca8f5
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/otel-contract/src/**/*.cts, packages/@overeng/otel-contract/src/**/*.js, packages/@overeng/otel-contract/src/**/*.mts, packages/@overeng/otel-contract/src/**/*.ts, packages/@overeng/otel-contract/src/**/*.tsx, packages/@overeng/otel-contract/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
@@ -69,7 +69,22 @@ package_tree(
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
-    workspace_siblings = {},
+    workspace_siblings = {
+        "@overeng/content-address": {
+            "files": {
+                "dist": "//packages/@overeng/content-address:dist",
+                "package.json": "//packages/@overeng/content-address:package.json",
+            },
+            "links": ["@overeng/content-address"],
+        },
+        "@overeng/utils-dev": {
+            "files": {
+                "dist": "//packages/@overeng/utils-dev:dist",
+                "package.json": "//packages/@overeng/utils-dev:package.json",
+            },
+            "links": ["@overeng/utils-dev"],
+        },
+    },
     visibility = ["PUBLIC"],
 )
 
@@ -82,5 +97,8 @@ tsgo_typecheck(
 tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    declaration_entrypoint = "src/mod.d.ts",
     visibility = ["PUBLIC"],
 )

@@ -50,9 +50,6 @@
   "references": [
     {
       "path": "../kdl"
-    },
-    {
-      "path": "../utils-dev"
     }
   ]
 }

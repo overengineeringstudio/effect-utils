@@ -46,16 +46,5 @@
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "types": ["node"]
   },
-  "include": ["src/**/*", "examples/**/*"],
-  "references": [
-    {
-      "path": "../otel-contract"
-    },
-    {
-      "path": "../utils"
-    },
-    {
-      "path": "../utils-dev"
-    }
-  ]
+  "include": ["src/**/*", "examples/**/*"]
 }

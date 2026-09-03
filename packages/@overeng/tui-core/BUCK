@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/tui-core/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:bf1c0240b87370e99658fcf2dcfdf8f258308615da4f6094d499e1580889c1c7
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-admissions.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts
+# Semantic fingerprint: sha256:08f3840576365cb50c27959e94c1b3e1c0e509d62d00a585a774fc8e919f5666
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.js, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.js, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
@@ -68,5 +68,8 @@ tsgo_typecheck(
 tsgo_emit(
     name = "dist",
     package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    declaration_entrypoint = "src/mod.d.ts",
     visibility = ["PUBLIC"],
 )

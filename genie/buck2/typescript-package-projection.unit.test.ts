@@ -18,6 +18,7 @@ import {
   buck2TypeScriptAdmissions,
   editorViewConsumerPackagePaths,
 } from './typescript-admissions.ts'
+import { buck2TypeScriptPackageProjection } from './typescript-package-projection.ts'
 
 const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
 
@@ -102,6 +103,33 @@ describe('declared-closure package projection', () => {
     expect(workflow).not.toContain('Save pnpm state')
     expect(workflow).not.toContain('pnpm-state-v3-')
     expect(workflow).not.toContain('composition-state/pnpm-store-pure-v1')
+  })
+
+  it('projects package-specific declaration entrypoints for authoritative emits', () => {
+    const output = buck2TypeScriptPackageProjection({
+      ...buck2TypeScriptAdmissions.stylexTokens,
+      authority: {
+        declarationEntrypoint: 'src/tokens.stylex.d.ts',
+        projectFile: 'tsconfig.json',
+      },
+    }).stringify(genieContext)
+
+    expect(output).toContain('    declaration_entrypoint = "src/tokens.stylex.d.ts",')
+  })
+
+  it('projects only package-local handwritten declarations into emit inputs', () => {
+    expect(outputsByAdmission.tuiReact).toContain(
+      '        "src/storybook/asset-modules.d.ts": "src/storybook/asset-modules.d.ts",',
+    )
+    expect(outputsByAdmission.utils).toContain(
+      '        "src/node/storybook/gate/virtual-modules.d.ts": "src/node/storybook/gate/virtual-modules.d.ts",',
+    )
+    expect(outputsByAdmission.utils).toContain(
+      '        "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",',
+    )
+    expect(outputsByAdmission.utils).toContain(
+      '        "src/node/stylex/mod.js": "src/node/stylex/mod.js",',
+    )
   })
 })
 

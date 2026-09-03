@@ -44,12 +44,9 @@
     "types": ["node"],
     "composite": true,
     "rootDir": ".",
-    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
+    "noEmit": true
   },
   "include": ["src/**/*"],
-  "references": [
-    {
-      "path": "../utils-dev"
-    }
-  ]
+  "references": []
 }

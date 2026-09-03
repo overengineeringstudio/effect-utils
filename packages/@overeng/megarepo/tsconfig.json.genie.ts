@@ -15,12 +15,5 @@ export default tsconfigJson({
     types: ['node', 'bun'],
   },
   include: ['src/**/*', 'test/**/*', 'bin/**/*'],
-  references: [
-    { path: '../effect-path' },
-    { path: '../kdl' },
-    { path: '../kdl-effect' },
-    { path: '../otel-contract' },
-    { path: '../utils' },
-    { path: '../utils-dev' },
-  ],
+  references: [{ path: '../effect-path' }, { path: '../kdl' }, { path: '../kdl-effect' }],
 } satisfies TSConfigArgs)

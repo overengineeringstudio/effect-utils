@@ -30,7 +30,10 @@ export default packageJson(
     ...privatePackageDefaults,
     description: 'Shared StyleX design-token scales and reset stylesheet (browser-only)',
     exports: {
-      './tokens.stylex': exportEntry('./src/tokens.stylex.ts', { environment: 'browser' }),
+      './tokens.stylex': exportEntry(
+        { types: './dist/src/tokens.stylex.d.ts', default: './src/tokens.stylex.ts' },
+        { environment: 'browser' },
+      ),
       './preflight.css': exportEntry('./src/preflight.css', { environment: 'browser' }),
     },
     publishConfig: {

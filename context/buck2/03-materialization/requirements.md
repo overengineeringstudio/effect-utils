@@ -38,13 +38,15 @@ as authority transfers (BUCK-R09).
 - **DEPS-R03 Live workspace siblings:** Workspace-internal dependencies resolve
   as symlinks to live member sources, not injected copies, so a sibling edit
   needs no rebuild and no language-server restart.
-- **DEPS-R04 Hardlink economics:** Assembled trees hardlink from Buck extract
-  artifacts on the same mount as the output tree; per-tree marginal cost is
-  directory entries and links. A cross-mount silent copy is a defect
-  (BUCK-R08); mount identity, not `st_dev`, is the test. Because links share
-  inodes, a write through an assembled tree corrupts the shared artifact;
-  published editor views are read-only, and writes inside `buck-out` are a
-  recorded hazard.
+- **DEPS-R04 CoW economics:** Assembled trees clone from Buck extract
+  artifacts with copy-on-write reflinks where the filesystem supports them,
+  and fall back to plain copies where it does not; assembled files always
+  carry independent inodes. Hardlink sharing into assembled trees is
+  rejected — shared inodes let a write through an assembled tree corrupt the
+  extract artifact (decision
+  [0025](../.decisions/0025-cow-reflink-local-disk-economics.md)). A
+  cross-mount silent copy remains a defect (BUCK-R08); mount identity, not
+  `st_dev`, is the test. Published editor views are read-only.
 - **DEPS-R05 Atomic editor views:** The editor surface flips atomically
   (snapshot + `rename(2)`) with no window in which `node_modules` is absent;
   a live language server survives the flip without restart.

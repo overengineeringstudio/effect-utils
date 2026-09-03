@@ -138,12 +138,16 @@ RENAME_EXCHANGE advance.
 
 ## Phase 3 — TypeScript surface widening
 
-- Remaining TS package checks/builds admitted in value order; per-package
-  devenv/pnpm build-path consumers deleted per admission.
+- Remaining TS package checks/builds are admitted in dependency order, with one
+  PR per dependency layer rather than one PR per package. Within each layer,
+  every package retains its own authority flip, deletion-ledger entry, and
+  package-specific evidence; its devenv/pnpm build-path consumers are deleted
+  with that package's admission.
 - Workspace-sibling live links (symlink-back) are part of the standard rule.
 - The coverage-asserted registry in `genie/tsconfig-projects.ts` has 38 root
-  projects. tui-core and tui-react are admitted; 36 projects remain in both
-  root solutions and leave them one deletion-ledger entry at a time.
+  projects. Seven are admitted; 31 projects remain in both root solutions and
+  leave them one package-scoped deletion-ledger entry at a time, grouped by
+  dependency layer for review and landing.
 
 - Admission 2 transfers `@overeng/tui-react` typecheck and declaration emit to
   `//packages/@overeng/tui-react:typecheck` and
@@ -161,6 +165,41 @@ RENAME_EXCHANGE advance.
   The Buck-only project config resolves its declared workspace inputs from the
   assembled package tree. The editor root install remains transitional until
   Phase 4 and is deliberately not deleted by this admission.
+
+- The first dependency-layer admission transfers `@overeng/utils-dev` and
+  `@overeng/stylex-preset` to their package-local Buck `typecheck` and `dist`
+  targets. Each package keeps source runtime defaults while its TypeScript
+  exports consume Buck declarations.
+- The utils-dev deletion-ledger entry removes it from both root solutions,
+  deletes 25 dependent project-reference edges, and changes tui-react's Buck
+  package tree from a utils-dev source sibling to its `dist`. The stylex-preset
+  entry deletes its two dependent project-reference edges; it had no prior root
+  solution entry or standalone package check/build task. Both ordinary
+  tsconfigs are write-free. The integrated gate and package-specific evidence
+  are retained in
+  [`2026-09-02-foundation-layer-authority-transfer.md`](./02-execution/.experiments/2026-09-02-foundation-layer-authority-transfer.md).
+
+- The middle dependency-layer admission transfers `@overeng/content-address`,
+  `@overeng/effect-distributed-lock`, and `@overeng/otel-contract` to Buck. All
+  three leave both root solutions, their 17 dependent project-reference edges
+  are deleted, and their public type conditions consume Buck declarations while
+  runtime defaults remain at source.
+- The package trees replace authoritative workspace source siblings with
+  same-cell `dist` edges: content-address and effect-distributed-lock consume
+  utils-dev, while otel-contract consumes content-address and utils-dev. Each
+  package's ordinary tsconfig is write-free. The integrated gate,
+  package-specific mutation controls, budgets, and individual deletion ledgers
+  are retained in
+  [`2026-09-02-middle-layer-authority-transfer.md`](./02-execution/.experiments/2026-09-02-middle-layer-authority-transfer.md).
+
+- The utils dependency-layer admission transfers `@overeng/utils` to Buck. It
+  leaves both root solutions, all 16 dependent project-reference edges are
+  deleted, and all 13 public type conditions consume Buck declarations while
+  runtime defaults remain at source.
+- tui-react replaces its content-tracked utils source sibling with the utils
+  `dist` edge. The ordinary utils tsconfig is write-free. The mutation control,
+  cache budgets, hostile-environment proof, and deletion ledger are retained in
+  [`2026-09-02-utils-authority-transfer.md`](./02-execution/.experiments/2026-09-02-utils-authority-transfer.md).
 
 ## Phase 4 — dependency-surface authority transfer (gated)
 
@@ -201,6 +240,25 @@ RENAME_EXCHANGE advance.
   CLI path, dependency writers, and live cross-workspace mutation paths; until
   then symlink compositions remain no-upload.
 
+## Cross-phase commitments (ratified 2026-09-01)
+
+- Composed-by-default worktrees after the #1056 stack lands, at full
+  normative depth (decision
+  [0027](./.decisions/0027-composed-default-worktrees.md), MR-R11, agent
+  workflow contract rev 4); stale experimental composition roots are GC'd.
+- Reflink-first assembly and the CoW filesystem split per decision
+  [0025](./.decisions/0025-cow-reflink-local-disk-economics.md): assembler
+  change spike-gated; fleet filesystem requirement lives in dotfiles; hygiene
+  pass (stale buck-out GC, contaminated store-commit purge + guard, orphaned
+  editor snapshots) is owed regardless of filesystem.
+- Unit-test admission per decision
+  [0026](./.decisions/0026-buck-owned-unit-tests.md): hermeticity spike, then
+  per-package test admissions after the first Phase-3 admissions;
+  integration/live lanes are explicitly legacy.
+- CI Buck cache: tailnet read-only lane — bazel-remote alerting first, then
+  an ephemeral-tailscale spike on a CI runner, then the lane with fail-open
+  fallback (03-materialization DQ1 records the lane and its fallback).
+
 ## Deferred / parked
 
 - Remote execution workers (NativeLink is the designated candidate if RE enters
@@ -208,8 +266,13 @@ RENAME_EXCHANGE advance.
 - OCI product distribution durability machinery: parked per
   [decision 0013](./.decisions/0013-shared-cache-foundation.md) partial
   supersession of decision 0008.
-- pnpm store consolidation on dev3 — moot under decision 0022 (no ambient
-  store); the developer-time pnpm store is not a Buck concern.
+- pnpm store consolidation on dev3 — **un-parked** (decision
+  [0025](./.decisions/0025-cow-reflink-local-disk-economics.md) hygiene):
+  measured 90% hardlink dedup where the store is shared versus zero on
+  private stores (~95 GB reclaim) makes the former "moot under 0022" parking
+  premature while 36 of 38 projects still require the root install.
+  Consolidation stays live until Phase 4 deletes the root install, then the
+  developer-time store leaves Buck scope again.
 - pnpm 12: revisit when it is the `latest` dist-tag and packaged in nixpkgs;
   under decision 0022 pnpm runs only at developer resolution time.
 - Bun as installer: revisit only if a released Bun emits per-package

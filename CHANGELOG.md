@@ -317,6 +317,31 @@ publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
 
 ### Changed
 
+- **@overeng/utils**: transfer TypeScript typecheck and declaration emit to
+  Buck. All 13 public type conditions consume Buck declarations, 16 legacy
+  project references are removed, and tui-react consumes utils through its
+  Buck dist instead of a source-sibling copy.
+
+- **@overeng/content-address, @overeng/effect-distributed-lock,
+  @overeng/otel-contract**: transfer TypeScript typecheck and declaration emit
+  to Buck as one dependency-closed layer. Their package trees consume
+  authoritative workspace declarations through Buck dist edges, and 17 legacy
+  project references are removed.
+
+- **@overeng/utils-dev, @overeng/stylex-preset**: transfer TypeScript
+  typecheck and declaration emit to Buck as the first dependency-layer
+  admission. Public type conditions consume Buck declarations, explicit
+  handwritten declarations are copied as action inputs, legacy project
+  references are removed, and tui-react consumes utils-dev through its Buck
+  dist instead of a source-sibling copy.
+
+- **Buck2 TypeScript admissions**: localize admission declarations in each
+  package's `BUCK.genie.ts` and derive root TypeScript authority, member dist
+  overlays, declaration materialization, and Buck check targets from the same
+  typed registry. tui-core and tui-react remain the only authoritative
+  packages; future dependency-layer admissions no longer require coordinated
+  hardcoded task and manifest edits.
+
 - **@overeng/megarepo**: `src/lib/` is gone; its 100 files now sit in
   responsibility directories (`core/`, `composition/{acquisition,mounts,overlays,capabilities,root,apply}/`,
   `store/`, `sync/`, `generators/`) per the hierarchy ratified in

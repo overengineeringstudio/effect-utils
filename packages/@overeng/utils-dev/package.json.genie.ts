@@ -33,12 +33,25 @@ export default packageJson(
     name: '@overeng/utils-dev',
     ...privatePackageDefaults,
     exports: {
-      './node-vitest': exportEntry('./src/node-vitest/mod.ts', { environment: 'node' }),
-      './node-vitest/setup-fast-check': exportEntry('./src/node-vitest/setup-fast-check.ts', {
-        environment: 'node',
-      }),
-      './otelite': exportEntry('./src/otelite/mod.ts', { environment: 'node' }),
-      './cli-contract': exportEntry('./src/cli-contract.ts', { environment: 'node' }),
+      './node-vitest': exportEntry(
+        { types: './dist/src/node-vitest/mod.d.ts', default: './src/node-vitest/mod.ts' },
+        { environment: 'node' },
+      ),
+      './node-vitest/setup-fast-check': exportEntry(
+        {
+          types: './dist/src/node-vitest/setup-fast-check.d.ts',
+          default: './src/node-vitest/setup-fast-check.ts',
+        },
+        { environment: 'node' },
+      ),
+      './otelite': exportEntry(
+        { types: './dist/src/otelite/mod.d.ts', default: './src/otelite/mod.ts' },
+        { environment: 'node' },
+      ),
+      './cli-contract': exportEntry(
+        { types: './dist/src/cli-contract.d.ts', default: './src/cli-contract.ts' },
+        { environment: 'node' },
+      ),
     },
     publishConfig: {
       access: 'public',

@@ -39,6 +39,7 @@ import tuiReactTsconfig from '../packages/@overeng/tui-react/tsconfig.json.genie
 import tuiStoriesTsconfig from '../packages/@overeng/tui-stories/tsconfig.json.genie.ts'
 import utilsDevTsconfig from '../packages/@overeng/utils-dev/tsconfig.json.genie.ts'
 import utilsTsconfig from '../packages/@overeng/utils/tsconfig.json.genie.ts'
+import { authoritativeBuck2TypeScriptAdmissions } from './buck2/typescript-admissions.ts'
 
 export type Buck2TypeScriptAuthority = {
   readonly _tag: 'Buck2TypeScriptAuthority'
@@ -96,22 +97,8 @@ export const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/pty-effect': { tsconfig: ptyEffectTsconfig },
     'packages/@overeng/react-inspector': { tsconfig: reactInspectorTsconfig },
     'packages/@overeng/restate-effect': { tsconfig: restateEffectTsconfig },
-    'packages/@overeng/tui-core': {
-      tsconfig: tuiCoreTsconfig,
-      buck2Authority: {
-        _tag: 'Buck2TypeScriptAuthority',
-        typecheckTarget: '//packages/@overeng/tui-core:typecheck',
-        emitTarget: '//packages/@overeng/tui-core:dist',
-      },
-    },
-    'packages/@overeng/tui-react': {
-      tsconfig: tuiReactTsconfig,
-      buck2Authority: {
-        _tag: 'Buck2TypeScriptAuthority',
-        typecheckTarget: '//packages/@overeng/tui-react:typecheck',
-        emitTarget: '//packages/@overeng/tui-react:dist',
-      },
-    },
+    'packages/@overeng/tui-core': { tsconfig: tuiCoreTsconfig },
+    'packages/@overeng/tui-react': { tsconfig: tuiReactTsconfig },
     'packages/@overeng/tui-stories': { tsconfig: tuiStoriesTsconfig },
     'packages/@overeng/utils': { tsconfig: utilsTsconfig },
     'packages/@overeng/utils-dev': { tsconfig: utilsDevTsconfig },
@@ -140,12 +127,32 @@ export const rootWorkspaceTsconfigProjects = (() => {
         .join('\n'),
     )
   }
+  const buck2AuthoritiesByPackagePath: Readonly<Record<string, Buck2TypeScriptAuthority>> =
+    Object.fromEntries(
+      authoritativeBuck2TypeScriptAdmissions.map(
+        ({
+          distTarget,
+          packagePath,
+          typecheckTarget,
+        }): readonly [string, Buck2TypeScriptAuthority] => [
+          packagePath,
+          {
+            _tag: 'Buck2TypeScriptAuthority',
+            typecheckTarget,
+            emitTarget: distTarget,
+          },
+        ],
+      ),
+    )
   return rootWorkspacePackagePaths.map((path): RootTsconfigProject => {
     const definition = workspaceTsconfigsByPath[path]
     if (definition === undefined) {
       throw new Error(`missing tsconfig data for workspace package: ${path}`)
     }
-    return { path, ...definition }
+    const buck2Authority = buck2AuthoritiesByPackagePath[path]
+    return buck2Authority === undefined
+      ? { path, ...definition }
+      : { path, ...definition, buck2Authority }
   })
 })()
 

@@ -71,18 +71,50 @@ export default packageJson(
     name: '@overeng/utils',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry('./src/isomorphic/mod.ts', { environment: 'node' }),
-      './node': exportEntry('./src/node/mod.ts', { environment: 'node' }),
-      './node/cli-help-rewrite': exportEntry('./src/node/cli-help-rewrite.ts', {
-        environment: 'node',
-      }),
-      './node/cli-version': exportEntry('./src/node/cli-version.ts', { environment: 'node' }),
-      './node/otel': exportEntry('./src/node/otel.ts', { environment: 'node' }),
-      './node/otel-attrs': exportEntry('./src/node/otel-attrs.ts', { environment: 'node' }),
-      './node/playwright': exportEntry('./src/node/playwright/mod.ts', { environment: 'node' }),
-      './node/playwright/config': exportEntry('./src/node/playwright/config/mod.ts', {
-        environment: 'node',
-      }),
+      '.': exportEntry(
+        { types: './dist/src/isomorphic/mod.d.ts', default: './src/isomorphic/mod.ts' },
+        { environment: 'node' },
+      ),
+      './node': exportEntry(
+        { types: './dist/src/node/mod.d.ts', default: './src/node/mod.ts' },
+        { environment: 'node' },
+      ),
+      './node/cli-help-rewrite': exportEntry(
+        {
+          types: './dist/src/node/cli-help-rewrite.d.ts',
+          default: './src/node/cli-help-rewrite.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/cli-version': exportEntry(
+        {
+          types: './dist/src/node/cli-version.d.ts',
+          default: './src/node/cli-version.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/otel': exportEntry(
+        { types: './dist/src/node/otel.d.ts', default: './src/node/otel.ts' },
+        { environment: 'node' },
+      ),
+      './node/otel-attrs': exportEntry(
+        { types: './dist/src/node/otel-attrs.d.ts', default: './src/node/otel-attrs.ts' },
+        { environment: 'node' },
+      ),
+      './node/playwright': exportEntry(
+        {
+          types: './dist/src/node/playwright/mod.d.ts',
+          default: './src/node/playwright/mod.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/playwright/config': exportEntry(
+        {
+          types: './dist/src/node/playwright/config/mod.d.ts',
+          default: './src/node/playwright/config/mod.ts',
+        },
+        { environment: 'node' },
+      ),
       // Checked JavaScript, not TypeScript: Vite loads config files through
       // Node, which refuses TypeScript stripping for packages under
       // `node_modules`. See #1167.
@@ -96,28 +128,58 @@ export default packageJson(
       // Audits a BUILT stylesheet for the StyleX `:focus-visible` priority
       // defect. Its own entry because it is a check to be run, in CI or by
       // hand, and a validated detector left in a docs folder never gets run.
-      './node/stylex/focus-order': exportEntry('./src/node/stylex/focus-order.ts', {
-        environment: 'node',
-      }),
-      './node/storybook': exportEntry('./src/node/storybook/mod.ts', { environment: 'node' }),
-      './node/storybook/config': exportEntry('./src/node/storybook/config/mod.ts', {
-        environment: 'node',
-      }),
-      './node/storybook/gate': exportEntry('./src/node/storybook/gate/mod.ts', {
-        environment: 'node',
-      }),
-      './node/storybook/gate/cli': exportEntry('./src/node/storybook/gate/cli.ts', {
-        environment: 'node',
-      }),
+      './node/stylex/focus-order': exportEntry(
+        {
+          types: './dist/src/node/stylex/focus-order.d.ts',
+          default: './src/node/stylex/focus-order.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/storybook': exportEntry(
+        { types: './dist/src/node/storybook/mod.d.ts', default: './src/node/storybook/mod.ts' },
+        { environment: 'node' },
+      ),
+      './node/storybook/config': exportEntry(
+        {
+          types: './dist/src/node/storybook/config/mod.d.ts',
+          default: './src/node/storybook/config/mod.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/storybook/gate': exportEntry(
+        {
+          types: './dist/src/node/storybook/gate/mod.d.ts',
+          default: './src/node/storybook/gate/mod.ts',
+        },
+        { environment: 'node' },
+      ),
+      './node/storybook/gate/cli': exportEntry(
+        {
+          types: './dist/src/node/storybook/gate/cli.d.ts',
+          default: './src/node/storybook/gate/cli.ts',
+        },
+        { environment: 'node' },
+      ),
       // Referenced by path from the gate's `test.setupFiles`, never imported
       // from Node: it runs inside the Vitest browser environment.
-      './node/storybook/gate/setup': exportEntry('./src/node/storybook/gate/setup.ts', {
-        environment: 'browser',
-      }),
-      './lock': exportEntry('./src/lock/mod.ts', { environment: 'node' }),
-      './browser': exportEntry('./src/browser/mod.ts', { environment: 'browser' }),
+      './node/storybook/gate/setup': exportEntry(
+        {
+          types: './dist/src/node/storybook/gate/setup.d.ts',
+          default: './src/node/storybook/gate/setup.ts',
+        },
+        { environment: 'browser' },
+      ),
+      './lock': exportEntry(
+        { types: './dist/src/lock/mod.d.ts', default: './src/lock/mod.ts' },
+        { environment: 'node' },
+      ),
+      './browser': exportEntry(
+        { types: './dist/src/browser/mod.d.ts', default: './src/browser/mod.ts' },
+        { environment: 'browser' },
+      ),
       './cuid': exportEntry(
         {
+          types: './dist/src/cuid/mod.d.ts',
           browser: './src/cuid/cuid.browser.ts',
           node: './src/cuid/cuid.node.ts',
           default: './src/cuid/mod.ts',

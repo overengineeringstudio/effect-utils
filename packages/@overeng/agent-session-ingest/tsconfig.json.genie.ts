@@ -13,5 +13,4 @@ export default tsconfigJson({
     lib: ['ES2023'],
   },
   include: ['src/**/*'],
-  references: [{ path: '../utils' }, { path: '../utils-dev' }],
 } satisfies TSConfigArgs)

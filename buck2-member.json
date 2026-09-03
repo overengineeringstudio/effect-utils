@@ -19,12 +19,36 @@
   ],
   "distOverlays": [
     {
+      "target": "//packages/@overeng/content-address:dist",
+      "destination": "packages/@overeng/content-address/dist"
+    },
+    {
+      "target": "//packages/@overeng/effect-distributed-lock:dist",
+      "destination": "packages/@overeng/effect-distributed-lock/dist"
+    },
+    {
+      "target": "//packages/@overeng/otel-contract:dist",
+      "destination": "packages/@overeng/otel-contract/dist"
+    },
+    {
+      "target": "//packages/@overeng/stylex-tokens:dist",
+      "destination": "packages/@overeng/stylex-tokens/dist"
+    },
+    {
       "target": "//packages/@overeng/tui-core:dist",
       "destination": "packages/@overeng/tui-core/dist"
     },
     {
       "target": "//packages/@overeng/tui-react:dist",
       "destination": "packages/@overeng/tui-react/dist"
+    },
+    {
+      "target": "//packages/@overeng/utils-dev:dist",
+      "destination": "packages/@overeng/utils-dev/dist"
+    },
+    {
+      "target": "//packages/@overeng/utils:dist",
+      "destination": "packages/@overeng/utils/dist"
     }
   ],
   "capabilities": [

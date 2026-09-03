@@ -10,8 +10,8 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     ...nodeTypes,
+    noEmit: true,
   },
   include: ['src/**/*'],
   exclude: ['src/**/*.genie.ts'],
-  references: [{ path: '../content-address' }, { path: '../utils-dev' }],
 } satisfies TSConfigArgs)
