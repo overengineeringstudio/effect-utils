@@ -8,6 +8,7 @@ import { describe, expect, beforeEach, afterEach } from 'vitest'
 
 import { createTestTuiState, testModeLayer } from '../../src/effect/testing.tsx'
 import { createTuiApp } from '../../src/effect/TuiApp.tsx'
+import { captureStdoutLines, type RestoreStdoutCapture } from '../helpers/stdout-capture.ts'
 
 // =============================================================================
 // Test State and Action Schemas
@@ -70,19 +71,16 @@ const TestApp = createTuiApp({
 // =============================================================================
 
 describe('createTuiApp', () => {
-  let originalLog: typeof console.log
+  let restoreStdout: RestoreStdoutCapture
   let capturedOutput: string[]
 
   beforeEach(() => {
-    originalLog = console.log
     capturedOutput = []
-    console.log = (msg: string) => {
-      capturedOutput.push(msg)
-    }
+    restoreStdout = captureStdoutLines(capturedOutput)
   })
 
   afterEach(() => {
-    console.log = originalLog
+    restoreStdout()
   })
 
   describe('state management', () => {

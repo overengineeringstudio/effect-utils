@@ -9,6 +9,11 @@ import { describe, expect, beforeEach, afterEach, test } from 'vitest'
 
 import { testModeLayer } from '../../src/effect/testing.tsx'
 import { createTuiApp, run, runResult, useTuiAtomValue, Box, Text } from '../../src/mod.tsx'
+import {
+  captureStdoutLines,
+  captureStdoutRaw,
+  type RestoreStdoutCapture,
+} from '../helpers/stdout-capture.ts'
 
 const decodeJson = <A,>(schema: Schema.Codec<A>, json: string): A =>
   Schema.decodeSync(Schema.fromJsonString(schema))(json)
@@ -78,19 +83,16 @@ const CounterView = () => {
 // =============================================================================
 
 describe('createTuiApp', () => {
-  let originalLog: typeof console.log
+  let restoreStdout: RestoreStdoutCapture
   let capturedOutput: string[]
 
   beforeEach(() => {
-    originalLog = console.log
     capturedOutput = []
-    console.log = (msg: string) => {
-      capturedOutput.push(msg)
-    }
+    restoreStdout = captureStdoutLines(capturedOutput)
   })
 
   afterEach(() => {
-    console.log = originalLog
+    restoreStdout()
   })
 
   describe('headless (no view)', () => {
@@ -467,19 +469,16 @@ describe('createTuiApp', () => {
 // =============================================================================
 
 describe('Issue #129: typed errors do not mask final state', () => {
-  let originalLog: typeof console.log
+  let restoreStdout: RestoreStdoutCapture
   let capturedOutput: string[]
 
   beforeEach(() => {
-    originalLog = console.log
     capturedOutput = []
-    console.log = (msg: string) => {
-      capturedOutput.push(msg)
-    }
+    restoreStdout = captureStdoutLines(capturedOutput)
   })
 
   afterEach(() => {
-    console.log = originalLog
+    restoreStdout()
   })
 
   class GenerationFailed extends Schema.TaggedError<GenerationFailed>()('GenerationFailed', {
@@ -555,19 +554,16 @@ describe('Issue #129: typed errors do not mask final state', () => {
 // =============================================================================
 
 describe('run (standalone dual API)', () => {
-  let originalLog: typeof console.log
+  let restoreStdout: RestoreStdoutCapture
   let capturedOutput: string[]
 
   beforeEach(() => {
-    originalLog = console.log
     capturedOutput = []
-    console.log = (msg: string) => {
-      capturedOutput.push(msg)
-    }
+    restoreStdout = captureStdoutLines(capturedOutput)
   })
 
   afterEach(() => {
-    console.log = originalLog
+    restoreStdout()
   })
 
   class TestError extends Schema.TaggedError<TestError>()('TestError', {
@@ -670,6 +666,7 @@ describe('runResult', () => {
   let originalLog: typeof console.log
   let originalStdoutWrite: typeof process.stdout.write
   let originalStderrWrite: typeof process.stderr.write
+  let restoreStdout: RestoreStdoutCapture
   let capturedConsole: string[]
   let capturedStdout: string[]
   let capturedStderr: string[]
@@ -684,6 +681,10 @@ describe('runResult', () => {
     console.log = (msg: string) => {
       capturedConsole.push(msg)
     }
+    // The result lands on the fd-1 data channel; the stream patch stays so a
+    // regression that leaks it back onto `process.stdout` still shows up in
+    // `capturedStdout`.
+    restoreStdout = captureStdoutRaw(capturedStdout)
     process.stdout.write = ((chunk: unknown) => {
       capturedStdout.push(String(chunk))
       return true
@@ -695,6 +696,7 @@ describe('runResult', () => {
   })
 
   afterEach(() => {
+    restoreStdout()
     console.log = originalLog
     process.stdout.write = originalStdoutWrite
     process.stderr.write = originalStderrWrite

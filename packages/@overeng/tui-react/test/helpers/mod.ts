@@ -34,3 +34,10 @@ export { MockTerminal, createMockTerminal, stripAnsi } from './mock-terminal.ts'
 
 // Layer 3: Accurate virtual terminal (xterm.js)
 export { VirtualTerminal, createVirtualTerminal } from './virtual-terminal.ts'
+
+// Stdout data-channel capture (result/JSON/NDJSON payloads)
+export {
+  captureStdoutLines,
+  captureStdoutRaw,
+  type RestoreStdoutCapture,
+} from './stdout-capture.ts'

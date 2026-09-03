@@ -69,6 +69,7 @@ import {
   ViewOutputStreamTag,
   stripAnsi,
 } from './OutputMode.tsx'
+import { writeStdoutLineSync, writeStdoutSync } from './stdout.node.ts'
 
 // =============================================================================
 // TuiApp TypeId (for dual API dispatch)
@@ -709,7 +710,7 @@ const setupFinalJsonWithAtom = <S,>({
     Effect.gen(function* () {
       const finalState = registry.get(stateAtom)
       const jsonString = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(finalState)
-      yield* Console.log(jsonString)
+      writeStdoutLineSync(jsonString)
     }).pipe(Effect.orDie),
   )
 
@@ -737,13 +738,13 @@ const setupProgressiveJsonWithAtom = <S,>({
     const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
       initialState,
     ).pipe(Effect.orDie)
-    yield* Console.log(initialJson)
+    writeStdoutLineSync(initialJson)
 
     // Subscribe to subsequent state changes.
     const unsubscribe = registry.subscribe(stateAtom, (state) => {
       Effect.runSyncWith(runtime)(
         Schema.encodeEffect(Schema.fromJsonString(stateSchema))(state).pipe(
-          Effect.flatMap((jsonString) => Console.log(jsonString)),
+          Effect.flatMap((jsonString) => Effect.sync(() => writeStdoutLineSync(jsonString))),
           Effect.orDie,
         ),
       )
@@ -781,14 +782,14 @@ const setupProgressiveJsonWithEvents = <S, E>({
     const initialJson = yield* Schema.encodeEffect(Schema.fromJsonString(stateSchema))(
       initialState,
     ).pipe(Effect.orDie)
-    yield* Console.log(initialJson)
+    writeStdoutLineSync(initialJson)
 
     const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
       const events = fromAction({ action, prevState })
       for (const event of events) {
         Effect.runSyncWith(runtime)(
           Schema.encodeEffect(Schema.fromJsonString(eventSchema))(event).pipe(
-            Effect.flatMap((jsonString) => Console.log(jsonString)),
+            Effect.flatMap((jsonString) => Effect.sync(() => writeStdoutLineSync(jsonString))),
             Effect.orDie,
           ),
         )
@@ -898,10 +899,11 @@ const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console =>
 /** Write a value to stdout using the appropriate format for its schema type.
  *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded.
  *
- *  Writes directly to `process.stdout` rather than going through the Effect
- *  `Console` service, since `runResult` rebinds that service to stderr for
- *  handler-emitted logs — we need the result itself to land on stdout
- *  regardless.
+ *  Writes straight to fd 1 via {@link writeStdoutSync} rather than going through
+ *  the Effect `Console` service, since `runResult` rebinds that service to
+ *  stderr for handler-emitted logs — we need the result itself to land on stdout
+ *  regardless. The synchronous write also keeps the result intact when the CLI
+ *  exits non-zero; see {@link writeStdoutSync} for why buffered writes truncate.
  */
 const writeResult = <O,>({
   value,
@@ -913,16 +915,10 @@ const writeResult = <O,>({
   isStringSchema(schema as Schema.Schema<unknown>) === true
     ? Effect.sync(() => {
         const str = String(value)
-        process.stdout.write(str)
-        if (str.length > 0 && str.endsWith('\n') === false) process.stdout.write('\n')
+        writeStdoutSync(str.length > 0 && str.endsWith('\n') === false ? `${str}\n` : str)
       })
     : Schema.encodeEffect(Schema.fromJsonString(schema))(value).pipe(
-        Effect.flatMap((json) =>
-          Effect.sync(() => {
-            process.stdout.write(json)
-            process.stdout.write('\n')
-          }),
-        ),
+        Effect.flatMap((json) => Effect.sync(() => writeStdoutLineSync(json))),
         Effect.orDie,
       )
 
