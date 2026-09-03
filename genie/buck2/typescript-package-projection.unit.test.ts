@@ -8,6 +8,10 @@ import dependencyBuck from '../../buck2/dependencies/BUCK.genie.ts'
 import contentAddressBuck from '../../packages/@overeng/content-address/BUCK.genie.ts'
 import effectDistributedLockBuck from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import notionCoreBuck from '../../packages/@overeng/notion-core/BUCK.genie.ts'
+import notionEffectClientBuck from '../../packages/@overeng/notion-effect-client/BUCK.genie.ts'
+import notionEffectSchemaBuck from '../../packages/@overeng/notion-effect-schema/BUCK.genie.ts'
+import notionPropertyWriteBuck from '../../packages/@overeng/notion-property-write/BUCK.genie.ts'
 import otelContractBuck from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
 import stylexTokensBuck from '../../packages/@overeng/stylex-tokens/BUCK.genie.ts'
 import tuiCoreBuck from '../../packages/@overeng/tui-core/BUCK.genie.ts'
@@ -25,6 +29,10 @@ const genieContext: GenieContext = { cwd: process.cwd(), location: '' }
 const outputsByAdmission = {
   contentAddress: contentAddressBuck.stringify(genieContext),
   effectDistributedLock: effectDistributedLockBuck.stringify(genieContext),
+  notionCore: notionCoreBuck.stringify(genieContext),
+  notionEffectClient: notionEffectClientBuck.stringify(genieContext),
+  notionEffectSchema: notionEffectSchemaBuck.stringify(genieContext),
+  notionPropertyWrite: notionPropertyWriteBuck.stringify(genieContext),
   otelContract: otelContractBuck.stringify(genieContext),
   stylexTokens: stylexTokensBuck.stringify(genieContext),
   tuiCore: tuiCoreBuck.stringify(genieContext),

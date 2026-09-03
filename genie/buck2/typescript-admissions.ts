@@ -2,6 +2,10 @@ import { Buffer } from 'node:buffer'
 
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as notionCoreAdmission } from '../../packages/@overeng/notion-core/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as notionEffectClientAdmission } from '../../packages/@overeng/notion-effect-client/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as notionEffectSchemaAdmission } from '../../packages/@overeng/notion-effect-schema/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as notionPropertyWriteAdmission } from '../../packages/@overeng/notion-property-write/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as otelContractAdmission } from '../../packages/@overeng/otel-contract/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as stylexTokensAdmission } from '../../packages/@overeng/stylex-tokens/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as tuiCoreAdmission } from '../../packages/@overeng/tui-core/BUCK.genie.ts'
@@ -32,6 +36,10 @@ export type AuthoritativeBuck2TypeScriptAdmission = Buck2TypeScriptAuthorityMeta
 export const buck2TypeScriptAdmissions = {
   contentAddress: contentAddressAdmission,
   effectDistributedLock: effectDistributedLockAdmission,
+  notionCore: notionCoreAdmission,
+  notionEffectClient: notionEffectClientAdmission,
+  notionEffectSchema: notionEffectSchemaAdmission,
+  notionPropertyWrite: notionPropertyWriteAdmission,
   otelContract: otelContractAdmission,
   tuiCore: tuiCoreAdmission,
   tuiReact: tuiReactAdmission,
