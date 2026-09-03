@@ -67,6 +67,12 @@ including prelude's internal Rust tools, which are `python_bootstrap_binary`
 targets — therefore finds exactly one instance of each conventional toolchain,
 and it is the hub's capability-backed one.
 
+The bootstrap interpreter those prelude tools need is admitted in exactly one
+realization — the hermetic, Nix-realized `python_bootstrap` toolchain of
+[decision 0028](../.decisions/0028-hermetic-python-bootstrap-for-consumer-cells.md).
+Ambient interpreters and CPython build edges stay refused, mechanically, by
+`nix/devenv-modules/tasks/shared/tests/buck2-no-python-actions.test.sh`.
+
 **Never emit `root = <root-repo>` in `[cell_aliases]`:** root-declared aliases
 are visible in every cell, so the alias silently retargets a member's `root//`
 references to the composition root. Without it the same reference is a loud

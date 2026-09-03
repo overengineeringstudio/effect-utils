@@ -202,7 +202,7 @@
               ;
             # Hub toolchain authority realization: the exact Bun every Buck JS/TS action uses.
             bun = pkgs.bun;
-            # Hub toolchain authority realization: prelude's bootstrap-Python interpreter.
+            # Hub toolchain authority realization: prelude's bootstrap interpreter.
             buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
               exec ${pkgs.python3}/bin/python3 "$@"
             '';

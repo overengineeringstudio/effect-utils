@@ -209,11 +209,23 @@ All notable changes to this project will be documented in this file.
   `Unknown target 'genrule' from package 'effect_utils//'`; after: BUILD
   SUCCEEDED in 1.9 s, `cquery deps(effect_utils//rust/third-party:adler2-2)`
   returns 57 configured nodes, and a prelude `rust_binary` in a consumer cell
-  compiles and runs. Prelude's internal Rust tools are `python_bootstrap_binary`
+  compiles and runs. Prelude's internal Rust tools are bootstrap-interpreter
   targets, so this needed a fourth conventional toolchain and a new
-  `python-bootstrap` capability rather than upstream's
-  `system_python_bootstrap_toolchain`, which resolves a bare `python3` off the
-  ambient PATH.
+  `python-bootstrap` capability rather than upstream's ambient bootstrap
+  toolchain, which resolves a bare interpreter basename off the ambient PATH.
+  Ratified as
+  [decision 0028](./context/buck2/.decisions/0028-hermetic-python-bootstrap-for-consumer-cells.md).
+  The #1056 Python-absence gate
+  (`nix/devenv-modules/tasks/shared/tests/buck2-no-python-actions.test.sh`)
+  narrows accordingly: it was one regex refusing every Python token, and is now
+  an enumerated allowlist for the Nix-realized bootstrap interpreter — the rule,
+  the `toolchains//:python_bootstrap` target, the capability id, its projected
+  `.buck2/capabilities` entry and the `/nix/store/<realization>/bin/python3`
+  shape — over an explicit refusal list of 17 forms (ambient system
+  bootstrap/wheel/remote toolchains, every `python_*` action rule,
+  `prelude//python:`, an interpreter bound to a bare basename, `env` lookups,
+  Python shebangs, CPython itself), each with its own negative case, plus a
+  catch-all that refuses any unenumerated spelling.
   **Breaking manifest change:** `ToolchainAuthority` gains a required, total
   `provides` list of the capabilities that realize the kind (`bun → [bun]`,
   `tsgo → [effect-tsgo]`, `pnpm → []`), because kinds and executables have

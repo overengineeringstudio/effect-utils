@@ -175,13 +175,17 @@ _nix_python_bootstrap_toolchain = rule(
 
 
 def nix_python_bootstrap_toolchain(name, capabilities, generation, **kwargs):
-    """Declares the exact Nix interpreter prelude's bootstrap Python scripts run under.
+    """Declares the exact Nix interpreter prelude's bootstrap scripts run under.
 
-    Prelude's own Rust rules pull `python_bootstrap_binary` targets in
-    (`@prelude//rust/tools:transitive_dependency_symlinks`), and the upstream
-    `system_python_bootstrap_toolchain` resolves the bare name `python3` off the ambient
-    PATH. That is the one non-hermetic term the whole Rust graph would otherwise carry, so
-    the interpreter comes from the same projected capability set as every other tool.
+    Prelude's own Rust rules pull bootstrap-interpreter targets in
+    (`@prelude//rust/tools:transitive_dependency_symlinks`), and prelude's ambient
+    `system_...` bootstrap toolchain resolves the interpreter by bare basename off the
+    ambient PATH. That is the one non-hermetic term the whole Rust graph would otherwise
+    carry, so the interpreter comes from the same projected capability set as every other
+    tool.
+
+    [Decision 0028](../../context/buck2/.decisions/0028-hermetic-python-bootstrap-for-consumer-cells.md)
+    admits exactly this realization; `buck2-no-python-actions.test.sh` holds the boundary.
     """
     if "exec_compatible_with" in kwargs:
         fail("nix_python_bootstrap_toolchain owns execution compatibility")
