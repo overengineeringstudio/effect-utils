@@ -1,5 +1,6 @@
 """Configured Rust and TypeScript toolchains realized by pinned Nix inputs."""
 
+load("@prelude//go_bootstrap:go_bootstrap.bzl", "GoBootstrapToolchainInfo")
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapToolchainInfo")
 load(
     "//buck2/platforms:defs.bzl",
@@ -290,6 +291,72 @@ def effect_tsgo_toolchain(name, capabilities, generation, runner, **kwargs):
         bun = bun,
         executable = executable,
         runner = runner,
+        exec_compatible_with = host_execution_constraints(),
+        **kwargs
+    )
+
+
+def _nix_go_bootstrap_toolchain_impl(ctx):
+    _require_nix_store_binary(ctx.attrs.go, "go", "Go")
+    return [
+        DefaultInfo(),
+        GoBootstrapToolchainInfo(
+            env_go_arch = ctx.attrs.env_go_arch,
+            env_go_os = ctx.attrs.env_go_os,
+            # `go` locates its own GOROOT relative to the realized executable, and
+            # the capability resolver already realpath'd it, so declaring GOROOT
+            # would only restate what the store path says.
+            env_go_root = None,
+            go = RunInfo(args = [ctx.attrs.go]),
+            go_wrapper = ctx.attrs.go_wrapper[RunInfo],
+        ),
+    ]
+
+
+_nix_go_bootstrap_toolchain = rule(
+    impl = _nix_go_bootstrap_toolchain_impl,
+    attrs = {
+        "env_go_arch": attrs.string(),
+        "env_go_os": attrs.string(),
+        "go": attrs.string(),
+        "go_wrapper": attrs.exec_dep(providers = [RunInfo], default = "prelude//go_bootstrap/tools:go_wrapper_py"),
+    },
+    is_toolchain_rule = True,
+)
+
+
+def go_platform_pair():
+    """Returns the (GOOS, GOARCH) pair for the admitted native host."""
+    host = host_info()
+    if host.os.is_linux and host.arch.is_x86_64:
+        return ("linux", "amd64")
+    if host.os.is_linux and host.arch.is_aarch64:
+        return ("linux", "arm64")
+    if host.os.is_macos and host.arch.is_aarch64:
+        return ("darwin", "arm64")
+    fail("Go toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
+
+
+def nix_go_bootstrap_toolchain(name, capabilities, generation, **kwargs):
+    """Declares the exact Nix Go distribution every Go action compiles with.
+
+    This is prelude's `GoBootstrapToolchainInfo`, i.e. the `go build` driver rather
+    than the per-package compile/link graph. Upstream's
+    `system_go_bootstrap_toolchain` resolves the bare name `go` off the ambient
+    PATH; the capability projection makes it an immutable store realization that is
+    part of every Go action's key.
+    """
+    if "exec_compatible_with" in kwargs:
+        fail("nix_go_bootstrap_toolchain owns execution compatibility")
+    platform = host_capability_platform()
+    go = require_capability(capabilities, generation, platform, "go")["executableStorePath"]
+    _require_nix_store_binary(go, "go", "Go")
+    go_os, go_arch = go_platform_pair()
+    _nix_go_bootstrap_toolchain(
+        name = name,
+        env_go_arch = go_arch,
+        env_go_os = go_os,
+        go = go,
         exec_compatible_with = host_execution_constraints(),
         **kwargs
     )

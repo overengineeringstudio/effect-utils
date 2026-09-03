@@ -22,6 +22,12 @@ toolchain_alias(
 )
 
 toolchain_alias(
+    name = "go_bootstrap",
+    actual = "//buck2/toolchains:go_bootstrap",
+    visibility = ["PUBLIC"],
+)
+
+toolchain_alias(
     name = "python_bootstrap",
     actual = "//buck2/toolchains:python_bootstrap",
     visibility = ["PUBLIC"],
