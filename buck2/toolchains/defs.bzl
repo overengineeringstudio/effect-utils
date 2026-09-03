@@ -1,5 +1,7 @@
 """Configured Rust and TypeScript toolchains realized by pinned Nix inputs."""
 
+load("@prelude//go:toolchain.bzl", "GoToolchainInfo", "parse_go_version")
+load("@prelude//go_bootstrap:go_bootstrap.bzl", "GoBootstrapToolchainInfo")
 load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapToolchainInfo")
 load(
     "//buck2/platforms:defs.bzl",
@@ -290,6 +292,176 @@ def effect_tsgo_toolchain(name, capabilities, generation, runner, **kwargs):
         bun = bun,
         executable = executable,
         runner = runner,
+        exec_compatible_with = host_execution_constraints(),
+        **kwargs
+    )
+
+
+def _nix_go_bootstrap_toolchain_impl(ctx):
+    _require_nix_store_binary(ctx.attrs.go, "go", "Go")
+    return [
+        DefaultInfo(),
+        GoBootstrapToolchainInfo(
+            env_go_arch = ctx.attrs.env_go_arch,
+            env_go_os = ctx.attrs.env_go_os,
+            # `go` locates its own GOROOT relative to the realized executable, and
+            # the capability resolver already realpath'd it, so declaring GOROOT
+            # would only restate what the store path says.
+            env_go_root = None,
+            go = RunInfo(args = [ctx.attrs.go]),
+            go_wrapper = ctx.attrs.go_wrapper[RunInfo],
+        ),
+    ]
+
+
+_nix_go_bootstrap_toolchain = rule(
+    impl = _nix_go_bootstrap_toolchain_impl,
+    attrs = {
+        "env_go_arch": attrs.string(),
+        "env_go_os": attrs.string(),
+        "go": attrs.string(),
+        "go_wrapper": attrs.exec_dep(providers = [RunInfo], default = "prelude//go_bootstrap/tools:go_wrapper_py"),
+    },
+    is_toolchain_rule = True,
+)
+
+
+def go_platform_pair():
+    """Returns the (GOOS, GOARCH) pair for the admitted native host."""
+    host = host_info()
+    if host.os.is_linux and host.arch.is_x86_64:
+        return ("linux", "amd64")
+    if host.os.is_linux and host.arch.is_aarch64:
+        return ("linux", "arm64")
+    if host.os.is_macos and host.arch.is_aarch64:
+        return ("darwin", "arm64")
+    fail("Go toolchains support only x86_64-linux, aarch64-linux, and aarch64-darwin")
+
+
+def nix_go_bootstrap_toolchain(name, capabilities, generation, **kwargs):
+    """Declares the exact Nix Go distribution every Go action compiles with.
+
+    This is prelude's `GoBootstrapToolchainInfo`, i.e. the `go build` driver rather
+    than the per-package compile/link graph. Upstream's
+    `system_go_bootstrap_toolchain` resolves the bare name `go` off the ambient
+    PATH; the capability projection makes it an immutable store realization that is
+    part of every Go action's key.
+    """
+    if "exec_compatible_with" in kwargs:
+        fail("nix_go_bootstrap_toolchain owns execution compatibility")
+    platform = host_capability_platform()
+    go = require_capability(capabilities, generation, platform, "go")["executableStorePath"]
+    _require_nix_store_binary(go, "go", "Go")
+    go_os, go_arch = go_platform_pair()
+    _nix_go_bootstrap_toolchain(
+        name = name,
+        env_go_arch = go_arch,
+        env_go_os = go_os,
+        go = go,
+        exec_compatible_with = host_execution_constraints(),
+        **kwargs
+    )
+
+
+def _goroot_from_executable(executable):
+    """Derives GOROOT from the realized `go` executable.
+
+    A Go distribution always keeps `bin/go` inside GOROOT, and the capability
+    resolver realpath's the executable, so this is the store path's own statement
+    about its GOROOT rather than an out-of-band pin.
+    """
+    suffix = "/bin/go"
+    if not executable.endswith(suffix):
+        fail("Go executable must live in <goroot>/bin/go: {}".format(executable))
+    return executable[:-len(suffix)]
+
+
+def _nix_go_toolchain_impl(ctx):
+    go_os, go_arch = ctx.attrs.env_go_os, ctx.attrs.env_go_arch
+    goroot = ctx.actions.declare_output("goroot", dir = True)
+    ctx.actions.run(
+        cmd_args([
+            ctx.attrs.copy_goroot[RunInfo],
+            ctx.attrs.goroot_store_path,
+            goroot.as_output(),
+        ]),
+        category = "go_copy_goroot",
+        local_only = True,
+    )
+    tool_prefix = "pkg/tool/{}_{}".format(go_os, go_arch)
+    go = RunInfo(args = [ctx.attrs.go])
+    return [
+        DefaultInfo(sub_targets = {"go": [go]}),
+        GoToolchainInfo(
+            assembler = RunInfo(args = [ctx.attrs.goroot_store_path + "/" + tool_prefix + "/asm"]),
+            assembler_flags = [],
+            cgo = RunInfo(args = [ctx.attrs.goroot_store_path + "/" + tool_prefix + "/cgo"]),
+            compiler = RunInfo(args = [ctx.attrs.goroot_store_path + "/" + tool_prefix + "/compile"]),
+            compiler_flags = [],
+            cover = RunInfo(args = [ctx.attrs.goroot_store_path + "/" + tool_prefix + "/cover"]),
+            cxx_compiler_flags = [],
+            env_go_arch = go_arch,
+            env_go_os = go_os,
+            env_go_root = goroot,
+            external_linker_flags = [],
+            gen_embedcfg = ctx.attrs.gen_embedcfg[RunInfo],
+            go = go,
+            go_wrapper = ctx.attrs.go_wrapper[RunInfo],
+            linker = RunInfo(args = [ctx.attrs.goroot_store_path + "/" + tool_prefix + "/link"]),
+            linker_flags = [],
+            # Modern Go distributions ship no `pkg/tool/*/pack` binary (`go tool pack`
+            # is a subcommand of `go` itself), so prelude compiles `cmd/pack` from the
+            # distribution's own sources with the bootstrap toolchain.
+            packer = ctx.attrs.tool_pack[RunInfo],
+            pkg_analyzer = ctx.attrs.pkg_analyzer[RunInfo],
+            build_tags = ctx.attrs.build_tags,
+            version = parse_go_version(ctx.attrs.version),
+        ),
+    ]
+
+
+_nix_go_toolchain = rule(
+    impl = _nix_go_toolchain_impl,
+    attrs = {
+        "build_tags": attrs.list(attrs.string(), default = []),
+        "copy_goroot": attrs.exec_dep(providers = [RunInfo]),
+        "env_go_arch": attrs.string(),
+        "env_go_os": attrs.string(),
+        "gen_embedcfg": attrs.exec_dep(providers = [RunInfo], default = "prelude//go/tools:gen_embedcfg"),
+        "go": attrs.string(),
+        "go_wrapper": attrs.exec_dep(providers = [RunInfo], default = "prelude//go/tools:go_wrapper"),
+        "goroot_store_path": attrs.string(),
+        "pkg_analyzer": attrs.exec_dep(providers = [RunInfo], default = "prelude//go/tools:pkg_analyzer"),
+        "tool_pack": attrs.exec_dep(providers = [RunInfo], default = "prelude//go/tools:tool_pack"),
+        "version": attrs.string(),
+    },
+    is_toolchain_rule = True,
+)
+
+
+def nix_go_toolchain(name, capabilities, generation, copy_goroot, version, **kwargs):
+    """Declares the full prelude Go graph's toolchain (`go_library`/`go_binary`).
+
+    Costly, and honest about why: `prelude//go:go_stdlib.bzl` needs GOROOT as a
+    Buck `Artifact` so it can project stdlib sources, so this toolchain copies the
+    Nix Go distribution into `buck-out` once. Members that only need a product
+    binary should use `buck2/go/defs.bzl:go_vendored_binary`, which drives
+    `go build` and needs no GOROOT artifact at all.
+    """
+    if "exec_compatible_with" in kwargs:
+        fail("nix_go_toolchain owns execution compatibility")
+    platform = host_capability_platform()
+    go = require_capability(capabilities, generation, platform, "go")["executableStorePath"]
+    _require_nix_store_binary(go, "go", "Go")
+    go_os, go_arch = go_platform_pair()
+    _nix_go_toolchain(
+        name = name,
+        copy_goroot = copy_goroot,
+        env_go_arch = go_arch,
+        env_go_os = go_os,
+        go = go,
+        goroot_store_path = _goroot_from_executable(go),
+        version = version,
         exec_compatible_with = host_execution_constraints(),
         **kwargs
     )

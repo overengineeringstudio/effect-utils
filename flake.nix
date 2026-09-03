@@ -202,6 +202,11 @@
               ;
             # Hub toolchain authority realization: the exact Bun every Buck JS/TS action uses.
             bun = pkgs.bun;
+            # Hub toolchain authority realization: the exact Go distribution every
+            # Buck Go action compiles with. `bin/go` is a symlink into
+            # `share/go/bin/go` of the SAME realization, so the resolver's realpath
+            # still lands on /nix/store/<realization>/…/bin/go and no wrapper is needed.
+            go = pkgs.go;
             # Hub toolchain authority realization: prelude's bootstrap interpreter.
             buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
               exec ${pkgs.python3}/bin/python3 "$@"
