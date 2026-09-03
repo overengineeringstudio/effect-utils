@@ -31,10 +31,7 @@ const ciWorkflowSource = [
   )
   .join('\n')
 const ciWorkflowSupportFilesSource = readFileSync(
-  new URL(
-    ['../../../../../../genie/ci-workflow', 'support-files.ts'].join('/'),
-    import.meta.url,
-  ),
+  new URL(['../../../../../../genie/ci-workflow', 'support-files.ts'].join('/'), import.meta.url),
   'utf8',
 )
 const generatedWorkflowSource = readFileSync(
