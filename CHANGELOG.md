@@ -198,6 +198,40 @@ All notable changes to this project will be documented in this file.
   on `downloadPreviousGitHubArtifactStep` instead of `push` runs. Per-admission
   benchmark evidence moves to a targeted probe recorded with the admission; see
   `context/ci-measurements.md` "Lane Cadence".
+- **buck2 hub / @overeng/megarepo**: a consumer cell can now use plain prelude
+  rules against the hub's capability-backed tools, and the hub's own toolchain
+  package parses inside a read-only mount. The hub's root package declares
+  prelude's conventional toolchains — `rust`, `cxx`, `python_bootstrap` as
+  native `toolchain_alias` onto `//buck2/toolchains:*`, `genrule` as prelude's
+  own `system_genrule_toolchain` — which the composition root's
+  `[cell_aliases] toolchains = <hub>` makes resolve from every member cell.
+  Before: `buck2 build dotfiles//gen:probe` from a foreign cell died with
+  `Unknown target 'genrule' from package 'effect_utils//'`; after: BUILD
+  SUCCEEDED in 1.9 s, `cquery deps(effect_utils//rust/third-party:adler2-2)`
+  returns 57 configured nodes, and a prelude `rust_binary` in a consumer cell
+  compiles and runs. Prelude's internal Rust tools are `python_bootstrap_binary`
+  targets, so this needed a fourth conventional toolchain and a new
+  `python-bootstrap` capability rather than upstream's
+  `system_python_bootstrap_toolchain`, which resolves a bare `python3` off the
+  ambient PATH.
+  **Breaking manifest change:** `ToolchainAuthority` gains a required, total
+  `provides` list of the capabilities that realize the kind (`bun → [bun]`,
+  `tsgo → [effect-tsgo]`, `pnpm → []`), because kinds and executables have
+  different arities. Provided tool ids share the duplicate-detection namespace
+  with member-owned capabilities, and the member-override refusal now covers
+  them. Every `buck2-member.json` must declare `provides`.
+- **@overeng/megarepo**: mr's composition capability resolver is the sole
+  producer of `.buck2/capabilities`. It projects authority-provided capabilities
+  alongside member-owned ones, so the same 20-tool projection reaches every
+  read-only mount and, through `mr apply`, the owned member.
+  `scripts/buck2-capability-project.sh`, its 212-line test, and the 100 lines of
+  `devenv.nix` wiring that drove it from `enterShell` are deleted; the five
+  Buck-invoking devenv tasks are ordered after `mr:apply` instead. Three
+  producers with two disagreeing tool sets and two generation digests become one
+  producer plus one atomic installer, one tool set, one digest — net −249 lines.
+  Adding the two new tools moves `GENERATION`, and `support_tool` derives its
+  input label from the whole-projection generation, so capability-consuming
+  actions re-key once.
 
 - **@overeng/stylex-preset -> @overeng/stylex-tokens**: the shared StyleX
   package is renamed to say what it durably is — our design-token package — and

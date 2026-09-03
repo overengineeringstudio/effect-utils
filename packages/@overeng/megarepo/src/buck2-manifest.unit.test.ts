@@ -6,6 +6,7 @@ import {
   BuckMemberManifestSchema,
   COMPOSITION_ROOT_SCHEMA_VERSION,
   buckMemberCapabilityByToolId,
+  buckMemberProjectedCapabilities,
   decodeBuckMemberManifest,
   decodeBuckMemberManifestJson,
   encodeBuckMemberManifest,
@@ -25,9 +26,17 @@ const capability: BuckMemberCapability = {
   executable: 'bin/buck2',
 }
 
+const tsgoCapability: BuckMemberCapability = {
+  toolId: 'effect-tsgo',
+  protocol: 'effect-utils/buck2-effect-tsgo/v1',
+  flakePackage: 'effect-tsgo',
+  executable: 'bin/tsgo',
+}
+
 const toolchainAuthority: BuckMemberToolchainAuthority = {
   _tag: 'ToolchainAuthority',
   toolchain: 'tsgo',
+  provides: [tsgoCapability],
 }
 
 const toolchainRequirement: BuckMemberToolchainRequirement = {
@@ -64,5 +73,6 @@ describe('@overeng/megarepo/buck2-manifest', () => {
     expect(decodeBuckMemberManifestJson(encodeBuckMemberManifestJson(decoded))).toEqual(decoded)
     expect(buckMemberCapabilityByToolId({ manifest: decoded, toolId: 'buck2' })).toEqual(capability)
     expect(buckMemberCapabilityByToolId({ manifest: decoded, toolId: 'tsgo' })).toBeUndefined()
+    expect(buckMemberProjectedCapabilities(decoded)).toEqual([capability, tsgoCapability])
   })
 })

@@ -130,9 +130,16 @@ export const BuckMemberCapabilitySchema = Schema.Struct({
 }).annotate({ identifier: 'Megarepo.BuckMemberCapability' })
 export type BuckMemberCapability = typeof BuckMemberCapabilitySchema.Type
 
-/** One toolchain kind whose concrete instance and pins are owned by the platform hub. */
+/**
+ * One toolchain kind whose concrete instance and pins are owned by the platform hub.
+ *
+ * `provides` names the Nix-realizable executables that constitute the toolchain, so every
+ * capability the hub's Buck rules require is projected into every mount by the one resolver.
+ * A kind that owns only a developer-time pin (pnpm) declares an empty list.
+ */
 export const BuckMemberToolchainAuthoritySchema = Schema.TaggedStruct('ToolchainAuthority', {
   toolchain: CapabilityToken,
+  provides: Schema.Array(BuckMemberCapabilitySchema),
 }).annotate({ identifier: 'Megarepo.BuckMemberToolchainAuthority' })
 export type BuckMemberToolchainAuthority = typeof BuckMemberToolchainAuthoritySchema.Type
 
@@ -158,6 +165,21 @@ const isExecutableCapability = (
 export const buckMemberExecutableCapabilities = (
   manifest: BuckMemberManifest,
 ): ReadonlyArray<BuckMemberCapability> => manifest.capabilities.filter(isExecutableCapability)
+
+/**
+ * Every Nix capability that must be projected into a mount of this member: member-owned
+ * executables plus the executables that realize the hub toolchains this member is authority for.
+ */
+export const buckMemberProjectedCapabilities = (
+  manifest: BuckMemberManifest,
+): ReadonlyArray<BuckMemberCapability> => [
+  ...buckMemberExecutableCapabilities(manifest),
+  ...manifest.capabilities.flatMap((capability) =>
+    isExecutableCapability(capability) === false && capability._tag === 'ToolchainAuthority'
+      ? capability.provides
+      : [],
+  ),
+]
 
 /** Find one declared member-owned Nix capability by its stable tool id. */
 export const buckMemberCapabilityByToolId = ({
@@ -196,6 +218,12 @@ export const BuckMemberManifestSchema = Schema.Struct({
             return `Duplicate toolchain authority: ${capability.toolchain}`
           }
           authorityKinds.add(capability.toolchain)
+          for (const provided of capability.provides) {
+            if (tools.has(provided.toolId) === true) {
+              return `Duplicate capability toolId: ${provided.toolId}`
+            }
+            tools.add(provided.toolId)
+          }
           continue
         }
         if (requirementKinds.has(capability.toolchain) === true) {
@@ -219,6 +247,9 @@ const normalizeDistOverlay = (overlay: BuckMemberDistOverlay): BuckMemberDistOve
   destination: overlay.destination,
 })
 
+const executableCapabilitySortKey = (capability: BuckMemberCapability): string =>
+  `${capability.toolId}:${capability.protocol}:${capability.flakePackage}:${capability.executable}`
+
 const normalizeCapability = (
   capability: BuckMemberManifestCapability,
 ): BuckMemberManifestCapability => {
@@ -230,12 +261,26 @@ const normalizeCapability = (
       executable: capability.executable,
     }
   }
+  if (capability._tag === 'ToolchainAuthority') {
+    return {
+      _tag: capability._tag,
+      toolchain: capability.toolchain,
+      provides: capability.provides
+        .map((provided) => normalizeCapability(provided) as BuckMemberCapability)
+        .toSorted((left, right) =>
+          compareCodeUnits({
+            left: executableCapabilitySortKey(left),
+            right: executableCapabilitySortKey(right),
+          }),
+        ),
+    }
+  }
   return { _tag: capability._tag, toolchain: capability.toolchain }
 }
 
 const capabilitySortKey = (capability: BuckMemberManifestCapability): string => {
   if (isExecutableCapability(capability) === true) {
-    return `0:${capability.toolId}:${capability.protocol}:${capability.flakePackage}:${capability.executable}`
+    return `0:${executableCapabilitySortKey(capability)}`
   }
   return capability._tag === 'ToolchainAuthority'
     ? `1:${capability.toolchain}`
@@ -418,6 +463,7 @@ export const resolveCompositionToolchainRequirements = ({
   }
 
   const authorityKinds = new Set<string>()
+  const authorityToolIds = new Set<string>()
   for (const member of members) {
     for (const capability of member.manifest.capabilities) {
       if (isExecutableCapability(capability) === true || capability._tag !== 'ToolchainAuthority')
@@ -428,6 +474,7 @@ export const resolveCompositionToolchainRequirements = ({
         )
       }
       authorityKinds.add(capability.toolchain)
+      for (const provided of capability.provides) authorityToolIds.add(provided.toolId)
     }
   }
 
@@ -435,8 +482,8 @@ export const resolveCompositionToolchainRequirements = ({
   for (const member of members) {
     const executableCapabilities = buckMemberExecutableCapabilities(member.manifest)
     if (member.memberKey !== hub.memberKey) {
-      const conflictingCapability = executableCapabilities.find(({ toolId }) =>
-        authorityKinds.has(toolId),
+      const conflictingCapability = executableCapabilities.find(
+        ({ toolId }) => authorityKinds.has(toolId) || authorityToolIds.has(toolId),
       )
       if (conflictingCapability !== undefined) {
         throw new TypeError(

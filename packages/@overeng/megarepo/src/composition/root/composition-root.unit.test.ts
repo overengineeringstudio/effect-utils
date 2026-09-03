@@ -11,6 +11,7 @@ import {
   CompositionGenerationManifestSchema,
   CompositionRootOutputSchema,
   buckMemberCapabilityByToolId,
+  buckMemberProjectedCapabilities,
   decodeBuckMemberManifest,
   decodeBuckMemberManifestJson,
   decodeCompositionRootInput,
@@ -19,6 +20,7 @@ import {
   encodeCompositionRootOutput,
   generateCompositionRoot,
   resolveCompositionToolchainRequirements,
+  type BuckMemberCapability,
   type BuckMemberManifest,
   type CompositionRootInput,
   type GeneratedCompositionFile,
@@ -31,16 +33,20 @@ const compareCodeUnits = (left: string, right: string): number =>
 const filesByPath = (input: CompositionRootInput): ReadonlyMap<string, GeneratedCompositionFile> =>
   new Map(generateCompositionRoot(input).files.map((file) => [file.path, file]))
 
-const capability = (toolId: string) => ({
+const capability = (toolId: string): BuckMemberCapability => ({
   toolId,
   protocol: 'native-executable/v1',
   flakePackage: `${toolId}-package`,
   executable: `bin/${toolId}`,
 })
 
-const toolchainAuthority = (toolchain: string) => ({
+const toolchainAuthority = (
+  toolchain: string,
+  provides: ReadonlyArray<BuckMemberCapability> = [],
+) => ({
   _tag: 'ToolchainAuthority' as const,
   toolchain,
+  provides,
 })
 
 const toolchainRequirement = (toolchain: string) => ({
@@ -227,9 +233,9 @@ describe('shared hub toolchain authority', () => {
     manifest: manifest({
       cell: 'hub',
       capabilities: [
-        toolchainAuthority('bun'),
+        toolchainAuthority('bun', [capability('bun')]),
         toolchainAuthority('pnpm'),
-        toolchainAuthority('tsgo'),
+        toolchainAuthority('tsgo', [capability('effect-tsgo')]),
       ],
     }),
   } as const
@@ -283,6 +289,10 @@ describe('shared hub toolchain authority', () => {
         capabilities: [toolchainRequirement('bun'), capability('bun')],
       }),
     ],
+    [
+      'a member-owned capability shadowing a hub-provided tool id',
+      manifest({ cell: 'consumer', capabilities: [capability('effect-tsgo')] }),
+    ],
   ])('rejects %s before root generation', (_name, consumerManifest) => {
     expect(() =>
       generateCompositionRoot(
@@ -299,6 +309,17 @@ describe('shared hub toolchain authority', () => {
     ['duplicate member requirement', [toolchainRequirement('bun'), toolchainRequirement('bun')]],
     ['consumer-selected instance', [{ ...toolchainRequirement('bun'), instance: 'bun-1.3.13' }]],
     ['consumer pin override', [{ ...toolchainRequirement('bun'), flakePackage: 'bun-next' }]],
+    [
+      'a provided tool id colliding with a member-owned capability',
+      [capability('bun'), toolchainAuthority('bun', [capability('bun')])],
+    ],
+    [
+      'the same tool id provided by two authorities',
+      [
+        toolchainAuthority('bun', [capability('shared')]),
+        toolchainAuthority('tsgo', [capability('shared')]),
+      ],
+    ],
   ])('manifest decoding rejects %s', (_name, capabilities) => {
     expect(() =>
       decodeBuckMemberManifest({
@@ -306,6 +327,25 @@ describe('shared hub toolchain authority', () => {
         capabilities,
       }),
     ).toThrow()
+  })
+
+  it('projects member-owned capabilities together with every hub-provided one', () => {
+    const decoded = decodeBuckMemberManifest(
+      manifest({
+        cell: 'hub',
+        capabilities: [
+          capability('buck2'),
+          toolchainAuthority('tsgo', [capability('effect-tsgo'), capability('bun')]),
+          toolchainAuthority('pnpm'),
+        ],
+      }),
+    )
+    expect(buckMemberProjectedCapabilities(decoded).map(({ toolId }) => toolId)).toEqual([
+      'buck2',
+      'bun',
+      'effect-tsgo',
+    ])
+    expect(buckMemberCapabilityByToolId({ manifest: decoded, toolId: 'bun' })).toBeUndefined()
   })
 })
 

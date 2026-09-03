@@ -55,6 +55,18 @@ detector spec lists every cell explicitly (COMP-R04). The hub cell for platforms
 is effect-utils; its real package is `buck2/platforms` with `host_platform` /
 `host_execution_platform` targets (COMP-R05).
 
+Because `[cell_aliases] toolchains = <hub>` makes `toolchains//:<name>` resolve
+to `<hub>//:<name>`, the conventional targets prelude looks up live in the hub's
+**root package**, each a native `toolchain_alias` onto the real
+`<hub>//buck2/toolchains:<name>` target (`alias` cannot front an
+`is_toolchain_rule = True` target; `toolchain_alias` is itself a toolchain
+rule). `genrule` is the one exception: `GenruleToolchainInfo` carries only
+`zip_scrubber = None`, so the hub instantiates prelude's own
+`system_genrule_toolchain` and pins nothing. Every prelude rule a member uses —
+including prelude's internal Rust tools, which are `python_bootstrap_binary`
+targets — therefore finds exactly one instance of each conventional toolchain,
+and it is the hub's capability-backed one.
+
 **Never emit `root = <root-repo>` in `[cell_aliases]`:** root-declared aliases
 are visible in every cell, so the alias silently retargets a member's `root//`
 references to the composition root. Without it the same reference is a loud
@@ -74,12 +86,19 @@ and unioned), executable capabilities, and toolchain requirements.
 Toolchain instances and their Nix pins have one authority: the platform hub.
 The hub manifest declares each available `ToolchainAuthority`; a consumer that
 uses one declares the corresponding `ToolchainRequirement`. A consumer cannot
-name an instance, package, executable, or pin in that requirement. Composition
-resolves every requirement to the hub before generating or publishing root
-bytes and refuses an unknown requirement, duplicate authority or requirement,
-non-hub authority, or a member-owned executable capability that attempts to
-override the required toolchain. This is an explicit shared-pin contract, not
-silent inheritance.
+name an instance, package, executable, or pin in that requirement. An authority
+carries a total `provides` list of the Nix-realizable executables that
+constitute the kind, because kinds and executables have different arities: a
+kind may be realized by several tool ids (`tsgo` → `effect-tsgo`), by one whose
+id differs from the kind, or by none at all (`pnpm`, a developer-time pin with
+no Buck rule behind it, declares `provides: []`). Kind names and provided tool
+ids share one namespace: a provided tool id may not collide with a member-owned
+capability or with another authority's. Composition resolves every requirement
+to the hub before generating or publishing root bytes and refuses an unknown
+requirement, duplicate authority or requirement, non-hub authority, or a
+member-owned executable capability that attempts to override the required
+toolchain _or any tool id an authority provides_. This is an explicit
+shared-pin contract, not silent inheritance.
 
 `--isolation-dir` is CLI-only and cannot be pinned by buckconfig, so mr also
 owns the invocation wrapper that fixes it (COMP-R07); an unwrapped `buck2` call
@@ -90,9 +109,13 @@ effect-utils' `.buckconfig` is part of landing the generator, so the
 unsupported bare-checkout shape fails loudly instead of silently building a
 cache island. (A member's `.buckconfig` is inert under composition — only its
 `[cell_aliases]` are honored — so nothing else is lost.) The gitignored
-`.buck2/capabilities` cell is per-host projected state: the mount pipeline
-runs the capability projection per mount rather than expecting it from a git
-export.
+`.buck2/capabilities` cell is per-host projected state with exactly one
+producer, mr's composition capability resolver: the mount pipeline projects it
+per read-only mount, and `mr apply` installs it into the owned member. A member
+ships no projector of its own, and a member-shipped script under `scripts/` is
+inert data the resolver never reads or executes. Buck analysis of the hub's
+`buck2/toolchains` package reads that projection, so every task that invokes
+Buck is ordered after `mr apply`.
 
 ## Workspace Anatomy
 

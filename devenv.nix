@@ -98,83 +98,7 @@ let
     entry = "packages/@overeng/ci-tools/bin/ci-tools.ts";
   };
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
-  buck2ExecutionPlatform = buck2Machine.executionPlatform;
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
-  buck2RustToolchainCapability =
-    import ./nix/workspace-tools/lib/buck2-rust-toolchain-capability.nix
-      {
-        pkgs = flakePkgs;
-        nixpkgsRevision = repoFlake.inputs.nixpkgs.rev;
-      };
-  buck2CapabilityProjectionTools = [
-    pkgs.bash
-    pkgs.coreutils
-    pkgs.diffutils
-    pkgs.findutils
-    pkgs.flock
-    pkgs.gawk
-    pkgs.gnugrep
-    pkgs.gnused
-    pkgs.jq
-  ];
-  buck2CapabilityGateBins = {
-    AWK_BIN = "${pkgs.gawk}/bin/awk";
-    GAWK_BIN = "${pkgs.gawk}/bin/gawk";
-    SED_BIN = "${pkgs.gnused}/bin/sed";
-    GREP_BIN = "${pkgs.gnugrep}/bin/grep";
-    RG_BIN = rg;
-    FIND_BIN = "${pkgs.findutils}/bin/find";
-    XARGS_BIN = "${pkgs.findutils}/bin/xargs";
-    JQ_BIN = "${pkgs.jq}/bin/jq";
-    FLOCK_BIN = "${pkgs.flock}/bin/flock";
-    DIFF_BIN = "${pkgs.diffutils}/bin/diff";
-    CMP_BIN = "${pkgs.diffutils}/bin/cmp";
-    BASH_BIN = "${pkgs.bash}/bin/bash";
-    MKTEMP_BIN = "${pkgs.coreutils}/bin/mktemp";
-    UNAME_BIN = "${pkgs.coreutils}/bin/uname";
-    MKDIR_BIN = "${pkgs.coreutils}/bin/mkdir";
-    RM_BIN = "${pkgs.coreutils}/bin/rm";
-    MV_BIN = "${pkgs.coreutils}/bin/mv";
-    LN_BIN = "${pkgs.coreutils}/bin/ln";
-    CP_BIN = "${pkgs.coreutils}/bin/cp";
-    CAT_BIN = "${pkgs.coreutils}/bin/cat";
-    READLINK_BIN = "${pkgs.coreutils}/bin/readlink";
-    DIRNAME_BIN = "${pkgs.coreutils}/bin/dirname";
-    BASENAME_BIN = "${pkgs.coreutils}/bin/basename";
-    SHA256_BIN = "${pkgs.coreutils}/bin/sha256sum";
-    SORT_BIN = "${pkgs.coreutils}/bin/sort";
-  };
-  buck2CapabilityGateBinExports = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (name: path: "export ${name}=${path}") buck2CapabilityGateBins
-  );
-  buck2CapabilityProjection = pkgs.writeShellScript "buck2-capability-projection" ''
-    set -euo pipefail
-    export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
-    ${buck2CapabilityGateBinExports}
-    ${buck2RustToolchainCapability.preflight}
-    exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh \
-      "''${DEVENV_ROOT:-$PWD}" ${lib.escapeShellArg buck2ExecutionPlatform} \
-      archive-tool effect-utils/buck2-archive-tool/v2 ${
-        buck2Stage0Definition."archive-tool"
-      }/bin/buck2-archive-tool \
-      product effect-utils/buck2-product/v1 ${buck2Stage0Definition.product}/bin/buck2-product \
-      bun effect-utils/buck2-bun/v1 ${pkgs.bun}/bin/bun \
-      effect-tsgo effect-utils/buck2-effect-tsgo/v1 ${effectTsgo}/bin/tsgo \
-      rust-compiler effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-compiler} \
-      rust-rustdoc effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-rustdoc} \
-      rust-clippy-driver effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-clippy-driver} \
-      rust-c-compiler effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-c-compiler} \
-      rust-cxx-compiler effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-cxx-compiler} \
-      rust-linker effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-linker} \
-      rust-archiver effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-archiver} \
-      rust-dwp effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-dwp} \
-      rust-nm effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-nm} \
-      rust-objcopy effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-objcopy} \
-      rust-objdump effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-objdump} \
-      rust-ranlib effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-ranlib} \
-      rust-strip effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-strip} \
-      rust-shell effect-utils/buck2-rust-tool/v1 ${buck2RustToolchainCapability.tools.rust-shell}
-  '';
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
     {
@@ -971,33 +895,9 @@ in
     '';
   };
 
-  tasks."buck2:capabilities:project" = {
-    description = "Atomically project exact Nix support capabilities for Buck2 analysis";
-    after = [ "mr:check" ];
-    exec = trace.exec "buck2:capabilities:project" ''
-      set -euo pipefail
-      export BUCK2_BIN=${buck2Machine}/bin/buck2
-      ${buck2CapabilityGateBinExports}
-      ${buck2CapabilityProjection}
-      ${pkgs.bash}/bin/bash scripts/buck2-capability-project.sh --check "$PWD"
-    '';
-  };
-
-  tasks."buck2:capabilities:test" = {
-    description = "Test exact, idempotent, invalidating Buck2 capability projection";
-    after = [ "buck2:capabilities:project" ];
-    exec = trace.exec "buck2:capabilities:test" ''
-      set -euo pipefail
-      export PATH=${lib.makeBinPath buck2CapabilityProjectionTools}
-      ${buck2CapabilityGateBinExports}
-      exec ${pkgs.bash}/bin/bash scripts/buck2-capability-project.test.sh \
-        "$PWD" ${buck2Machine}/bin/buck2
-    '';
-  };
-
   tasks."buck2:nix-bridge:check" = {
     description = "Check the strict build-product contract and fail-closed artifact importer";
-    after = [ "buck2:capabilities:project" ];
+    after = [ "mr:apply" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
@@ -1009,7 +909,7 @@ in
     description = "Derive exact whole-workspace editor dependency authority from semantic and Buck ownership";
     # Buck analysis of //buck2/toolchains reads the `.buck2/capabilities`
     # projection, so every task that invokes Buck must be ordered after it.
-    after = [ "buck2:capabilities:project" ];
+    after = [ "mr:apply" ];
     exec = trace.exec "buck2:editor-authority" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -1115,7 +1015,7 @@ in
   tasks."buck2:typescript:materialize-dist" = {
     description = "Atomically materialize all Buck-owned TypeScript declarations";
     after = [
-      "buck2:capabilities:project"
+      "mr:apply"
       "genie:run"
     ];
     exec = trace.exec "buck2:typescript:materialize-dist" ''
@@ -1160,8 +1060,7 @@ in
   tasks."buck2:check" = {
     description = "Build admitted TypeScript checks and surviving archive/product Buck2 surface";
     after = [
-      "buck2:capabilities:project"
-      "buck2:capabilities:test"
+      "mr:apply"
       "buck2:nix-bridge:check"
       "buck2:task-guards:check"
       "buck2:rust-deps:check"
@@ -1217,7 +1116,6 @@ in
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
-    ${buck2CapabilityProjection}
     ${buck2LocalConfigHook}
     ${cliBuildStamp.shellHook}
   '';

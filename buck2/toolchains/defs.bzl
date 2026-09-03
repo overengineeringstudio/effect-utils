@@ -1,5 +1,6 @@
 """Configured Rust and TypeScript toolchains realized by pinned Nix inputs."""
 
+load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapToolchainInfo")
 load(
     "//buck2/platforms:defs.bzl",
     "admitted_rust_target_triple",
@@ -26,11 +27,11 @@ ConfiguredRustToolchainInfo = provider(fields = {
 def host_capability_platform():
     """Returns the projection platform key for the admitted native host.
 
-    This is the same spelling `buck2ExecutionPlatform` hands to
-    `scripts/buck2-capability-project.sh`, so it indexes `CAPABILITIES`
-    directly. Every capability consumer must use this one helper: a second
-    spelling of the macOS key is how a toolchain silently misses its
-    realization.
+    This is the same spelling the composition capability resolver keys its
+    projection by (`composition-capability-resolver.ts` `executionPlatform`), so
+    it indexes `CAPABILITIES` directly. Every capability consumer must use this
+    one helper: a second spelling of the macOS key is how a toolchain silently
+    misses its realization.
     """
     host = host_info()
     if host.os.is_linux and host.arch.is_x86_64:
@@ -154,6 +155,50 @@ def _require_nix_store_binary(executable, binary, tool):
     for component in components[3:]:
         if component == "" or component == "." or component == "..":
             fail("{} executable path is not normalized: {}".format(tool, executable))
+
+
+def _nix_python_bootstrap_toolchain_impl(ctx):
+    _require_nix_store_binary(ctx.attrs.interpreter, "python3", "Python bootstrap")
+    return [
+        DefaultInfo(),
+        PythonBootstrapToolchainInfo(interpreter = ctx.attrs.interpreter),
+    ]
+
+
+_nix_python_bootstrap_toolchain = rule(
+    impl = _nix_python_bootstrap_toolchain_impl,
+    attrs = {
+        "interpreter": attrs.string(),
+    },
+    is_toolchain_rule = True,
+)
+
+
+def nix_python_bootstrap_toolchain(name, capabilities, generation, **kwargs):
+    """Declares the exact Nix interpreter prelude's bootstrap Python scripts run under.
+
+    Prelude's own Rust rules pull `python_bootstrap_binary` targets in
+    (`@prelude//rust/tools:transitive_dependency_symlinks`), and the upstream
+    `system_python_bootstrap_toolchain` resolves the bare name `python3` off the ambient
+    PATH. That is the one non-hermetic term the whole Rust graph would otherwise carry, so
+    the interpreter comes from the same projected capability set as every other tool.
+    """
+    if "exec_compatible_with" in kwargs:
+        fail("nix_python_bootstrap_toolchain owns execution compatibility")
+    platform = host_capability_platform()
+    interpreter = require_capability(
+        capabilities,
+        generation,
+        platform,
+        "python-bootstrap",
+    )["executableStorePath"]
+    _require_nix_store_binary(interpreter, "python3", "Python bootstrap")
+    _nix_python_bootstrap_toolchain(
+        name = name,
+        interpreter = interpreter,
+        exec_compatible_with = host_execution_constraints(),
+        **kwargs
+    )
 
 
 def _bun_toolchain_impl(ctx):
