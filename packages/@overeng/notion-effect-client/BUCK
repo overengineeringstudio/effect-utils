@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/notion-effect-client/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:ddc4ffcd456173a8917d48c1ad8768f9b4b48059dc8fc1955c4fd0d721472809
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-core/src/**/*.cts, packages/@overeng/notion-core/src/**/*.js, packages/@overeng/notion-core/src/**/*.mts, packages/@overeng/notion-core/src/**/*.ts, packages/@overeng/notion-core/src/**/*.tsx, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-client/src/**/*.cts, packages/@overeng/notion-effect-client/src/**/*.js, packages/@overeng/notion-effect-client/src/**/*.mts, packages/@overeng/notion-effect-client/src/**/*.ts, packages/@overeng/notion-effect-client/src/**/*.tsx, packages/@overeng/notion-effect-client/tsconfig.json.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-effect-schema/src/**/*.cts, packages/@overeng/notion-effect-schema/src/**/*.js, packages/@overeng/notion-effect-schema/src/**/*.mts, packages/@overeng/notion-effect-schema/src/**/*.ts, packages/@overeng/notion-effect-schema/src/**/*.tsx, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
+# Semantic fingerprint: sha256:76b3eb2045df7a6d75598848b2e63327513dd58d693766fa6d262146a4547c19
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-client/src/**/*.cts, packages/@overeng/notion-effect-client/src/**/*.js, packages/@overeng/notion-effect-client/src/**/*.mts, packages/@overeng/notion-effect-client/src/**/*.ts, packages/@overeng/notion-effect-client/src/**/*.tsx, packages/@overeng/notion-effect-client/tsconfig.json.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_tree")
@@ -161,55 +161,15 @@ package_tree(
         },
         "@overeng/notion-core": {
             "files": {
+                "dist": "//packages/@overeng/notion-core:dist",
                 "package.json": "//packages/@overeng/notion-core:package.json",
-                "src/body-fidelity.ts": "//packages/@overeng/notion-core:src/body-fidelity.ts",
-                "src/body-fidelity.unit.test.ts": "//packages/@overeng/notion-core:src/body-fidelity.unit.test.ts",
-                "src/colors.ts": "//packages/@overeng/notion-core:src/colors.ts",
-                "src/colors.unit.test.ts": "//packages/@overeng/notion-core:src/colors.unit.test.ts",
-                "src/constants.ts": "//packages/@overeng/notion-core:src/constants.ts",
-                "src/constants.unit.test.ts": "//packages/@overeng/notion-core:src/constants.unit.test.ts",
-                "src/ids.ts": "//packages/@overeng/notion-core:src/ids.ts",
-                "src/ids.unit.test.ts": "//packages/@overeng/notion-core:src/ids.unit.test.ts",
-                "src/mod.ts": "//packages/@overeng/notion-core:src/mod.ts",
-                "src/properties.ts": "//packages/@overeng/notion-core:src/properties.ts",
-                "src/properties.unit.test.ts": "//packages/@overeng/notion-core:src/properties.unit.test.ts",
-                "src/rich-text.ts": "//packages/@overeng/notion-core:src/rich-text.ts",
-                "src/rich-text.unit.test.ts": "//packages/@overeng/notion-core:src/rich-text.unit.test.ts",
             },
             "links": ["@overeng/notion-core"],
         },
         "@overeng/notion-effect-schema": {
             "files": {
+                "dist": "//packages/@overeng/notion-effect-schema:dist",
                 "package.json": "//packages/@overeng/notion-effect-schema:package.json",
-                "src/common.ts": "//packages/@overeng/notion-effect-schema:src/common.ts",
-                "src/common.unit.test.ts": "//packages/@overeng/notion-effect-schema:src/common.unit.test.ts",
-                "src/mod.ts": "//packages/@overeng/notion-effect-schema:src/mod.ts",
-                "src/objects.ts": "//packages/@overeng/notion-effect-schema:src/objects.ts",
-                "src/objects.unit.test.ts": "//packages/@overeng/notion-effect-schema:src/objects.unit.test.ts",
-                "src/properties.unit.test.ts": "//packages/@overeng/notion-effect-schema:src/properties.unit.test.ts",
-                "src/properties/audit.ts": "//packages/@overeng/notion-effect-schema:src/properties/audit.ts",
-                "src/properties/boolean.ts": "//packages/@overeng/notion-effect-schema:src/properties/boolean.ts",
-                "src/properties/canonical-codec.ts": "//packages/@overeng/notion-effect-schema:src/properties/canonical-codec.ts",
-                "src/properties/canonical-codec.unit.test.ts": "//packages/@overeng/notion-effect-schema:src/properties/canonical-codec.unit.test.ts",
-                "src/properties/canonical.ts": "//packages/@overeng/notion-effect-schema:src/properties/canonical.ts",
-                "src/properties/common.ts": "//packages/@overeng/notion-effect-schema:src/properties/common.ts",
-                "src/properties/computed.ts": "//packages/@overeng/notion-effect-schema:src/properties/computed.ts",
-                "src/properties/contact.ts": "//packages/@overeng/notion-effect-schema:src/properties/contact.ts",
-                "src/properties/date.ts": "//packages/@overeng/notion-effect-schema:src/properties/date.ts",
-                "src/properties/descriptor.ts": "//packages/@overeng/notion-effect-schema:src/properties/descriptor.ts",
-                "src/properties/descriptor.unit.test.ts": "//packages/@overeng/notion-effect-schema:src/properties/descriptor.unit.test.ts",
-                "src/properties/mod.ts": "//packages/@overeng/notion-effect-schema:src/properties/mod.ts",
-                "src/properties/number.ts": "//packages/@overeng/notion-effect-schema:src/properties/number.ts",
-                "src/properties/reference.ts": "//packages/@overeng/notion-effect-schema:src/properties/reference.ts",
-                "src/properties/rollup.ts": "//packages/@overeng/notion-effect-schema:src/properties/rollup.ts",
-                "src/properties/select.ts": "//packages/@overeng/notion-effect-schema:src/properties/select.ts",
-                "src/properties/text.ts": "//packages/@overeng/notion-effect-schema:src/properties/text.ts",
-                "src/property-schema.ts": "//packages/@overeng/notion-effect-schema:src/property-schema.ts",
-                "src/rich-text-utils.ts": "//packages/@overeng/notion-effect-schema:src/rich-text-utils.ts",
-                "src/rich-text-utils.unit.test.ts": "//packages/@overeng/notion-effect-schema:src/rich-text-utils.unit.test.ts",
-                "src/rich-text.ts": "//packages/@overeng/notion-effect-schema:src/rich-text.ts",
-                "src/users.ts": "//packages/@overeng/notion-effect-schema:src/users.ts",
-                "src/webhook.ts": "//packages/@overeng/notion-effect-schema:src/webhook.ts",
             },
             "links": ["@overeng/notion-effect-schema"],
         },
@@ -249,5 +209,6 @@ tsgo_emit(
     package_tree = ":package_tree",
     declaration_sources = {
     },
+    declaration_entrypoint = "src/mod.d.ts",
     visibility = ["PUBLIC"],
 )
