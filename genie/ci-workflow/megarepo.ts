@@ -102,9 +102,16 @@ fi
   shell: 'bash',
 } as const
 
-/** Fetch latest refs and apply megarepo workspace. */
+/**
+ * Fetch latest refs and apply megarepo workspace.
+ *
+ * `mr fetch --apply` applies the workspace, so CI requires an explicit
+ * `--worktree-mode`. `tracking` matches this step's intent: it deliberately
+ * moves members to the latest branch heads, so it wants the branch worktrees
+ * under `refs/heads/<branch>/` rather than detached per-commit ones.
+ */
 export const syncMegarepoWorkspaceStep = (opts?: { skip?: string[] }) => {
-  const args = ['mr', 'fetch', '--apply']
+  const args = ['mr', 'fetch', '--apply', '--worktree-mode', 'tracking']
   const skipCsv = opts?.skip?.join(',')
   if (skipCsv !== undefined && skipCsv !== '') args.push('--skip', shellSingleQuote(skipCsv))
   return {
@@ -126,6 +133,12 @@ ${args.join(' ')}`,
  * shape instead of silently drifting to newer branch heads during job setup.
  * Resolves the CLI inline with `nix run` to avoid `nix profile install`
  * conflicts on self-hosted runners.
+ *
+ * `--worktree-mode commit` is mandatory: `mr apply` rejects the implicit `auto`
+ * mode when `CI=true`. `commit` materializes `refs/commits/<sha>/` worktrees,
+ * which is the deterministic reading of the checked-in lock this step exists to
+ * enforce — and is exactly what `auto` used to resolve to in CI before the mode
+ * became explicit, so pinning it here changes nothing but the guard.
  */
 export const applyMegarepoLockStep = (opts?: { skip?: string[]; cacheableStore?: boolean }) => {
   const megarepoStore =
@@ -153,7 +166,7 @@ if [ -n "${'${GITHUB_ENV:-}'}" ]; then
   ${appendGitHubEnvLine({ name: 'MEGAREPO_STORE', valueExpression: '"$MEGAREPO_STORE"' })}
 fi
 ${exportSkipMembersScript}
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
+nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all --worktree-mode commit${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }

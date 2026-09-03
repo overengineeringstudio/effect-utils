@@ -211,7 +211,12 @@ const mergeQueueSource = extractSourceBlock(
 const installMegarepoStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const installMegarepoStep = {',
-  '/** Fetch latest refs and apply megarepo workspace. */',
+  'export const syncMegarepoWorkspaceStep = (',
+)
+const syncMegarepoWorkspaceStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export const syncMegarepoWorkspaceStep = (',
+  'export const applyMegarepoLockStep = (',
 )
 const megarepoTaskModuleSource = readFileSync(
   new URL(
@@ -593,6 +598,31 @@ printf '%s\\n' "$NIX_OUTPUT"
     expect(applyMegarepoLockStepSource).not.toContain(
       'nix run "github:overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo"',
     )
+  })
+
+  it('gives every workspace-applying megarepo invocation an explicit worktree mode', () => {
+    // `mr apply` (and `mr fetch --apply`) reject the implicit `auto` worktree
+    // mode whenever CI=true, so a generated step without `--worktree-mode`
+    // fails deterministically during job setup, before any real work runs.
+    expect(applyMegarepoLockStepSource).toContain('apply --all --worktree-mode commit')
+    expect(syncMegarepoWorkspaceStepSource).toContain(
+      "['mr', 'fetch', '--apply', '--worktree-mode', 'tracking']",
+    )
+
+    // Sweep every workspace-applying invocation the CI generators can emit —
+    // `nix run … -- apply` and the `'--apply'` argv form — so a newly added
+    // step cannot reintroduce the implicit mode. Matches the command shapes
+    // only, never the surrounding prose.
+    const invocations = [...ciWorkflowSource.matchAll(/(?:-- apply|'--apply')/g)]
+    expect(invocations.length).toBeGreaterThan(0)
+    const unflagged = invocations
+      .filter(
+        (match) =>
+          ciWorkflowSource.slice(match.index, match.index + 140).includes('--worktree-mode') ===
+          false,
+      )
+      .map((match) => ciWorkflowSource.slice(match.index, match.index + 70))
+    expect(unflagged).toEqual([])
   })
 
   it('installs setup-time megarepo from the locked effect-utils commit without mutating nix profiles', () => {
