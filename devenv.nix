@@ -6,7 +6,28 @@
   ...
 }:
 let
-  repoFlake = builtins.getFlake "git+file://${toString ./.}";
+  # `git+file://` and not a bare path: `builtins.getFlake (toString ./.)`
+  # parses as a `path:` flakeref, which copies the entire working directory —
+  # gitignored `.devenv/` included, 546 MB / 25,142 files against 18 MB / 2,746
+  # for the git-tracked view — into the store on every eval, and re-copies it
+  # whenever devenv writes its own state. Measured 82.4 s -> 14.6 s median on a
+  # forced eval-cache miss.
+  #
+  # The assertion is the other half. `git+file://` needs `./.` to be a real
+  # worktree, and #1190 is what happens when it is not: config evaluated from a
+  # store-backed source has no `.git`, and this expression dies where a bare
+  # path would have limped on.
+  repoFlake =
+    assert lib.assertMsg (builtins.pathExists (./. + "/.git")) ''
+      devenv.nix: `repoFlake` needs `./.` to be a real git worktree, and
+      ${toString ./.} has no `.git`.
+
+      This is the #1190 regression: `builtins.getFlake "git+file://…"` is fine
+      while `./.` is a checkout and fails the moment this file is evaluated
+      from a store path. If you moved config evaluation onto a store-backed
+      source, pass that source in explicitly rather than re-deriving it here.
+    '';
+    builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
