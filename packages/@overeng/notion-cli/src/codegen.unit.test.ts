@@ -119,6 +119,33 @@ describe('codegen', () => {
       expect(code).toContain(`NotionDatabases.resolveQueryTarget({ databaseId: DATABASE_ID })`)
       expect(code).toContain(`dataSourceId: queryTarget.dataSourceId`)
     })
+
+    it('uses the exported write type alias instead of typeof', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test Database',
+        url: 'https://notion.so/test-db',
+        properties: (
+          [{ id: 'title-prop', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
+      }
+
+      const code = generateApiCode({
+        dbInfo,
+        schemaName: 'TestDatabase',
+        schemaFileName: 'test-database.gen.ts',
+        options: { includeWrite: true },
+      })
+
+      expect(code).not.toContain(`typeof TestDatabasePageWrite.Type`)
+      expect(code).toContain(`export const create = (properties: TestDatabasePageWrite) =>`)
+      expect(code).toContain(`  properties: Partial<TestDatabasePageWrite>,`)
+      expect(code).toContain(
+        `    properties: encodeTestDatabaseWrite(properties as TestDatabasePageWrite),`,
+      )
+    })
   })
 
   describe('generateSchemaCode', () => {
