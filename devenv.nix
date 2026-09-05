@@ -774,6 +774,10 @@ in
     cwd = "packages/@overeng/megarepo";
     exec = trace.exec "test:megarepo-cold-gc" ''
       set -euo pipefail
+      if [ "$(uname -s)" != "Linux" ]; then
+        echo "Skipping megarepo cold-GC archive/reap integration tests: process in-use guard requires /proc"
+        exit 0
+      fi
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
       run_package_bin vitest vitest run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 240000
     '';
