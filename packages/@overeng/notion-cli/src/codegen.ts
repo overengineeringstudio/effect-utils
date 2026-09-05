@@ -940,6 +940,18 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
 
   const pascalName = toTopLevelIdentifier(schemaName)
   const schemaImportPath = `./${schemaFileName}`
+  const generatedCodePrintWidth = 100
+  const writeImport = `import { ${pascalName}PageProperties, type ${pascalName}PageWrite, encode${pascalName}Write } from '${schemaImportPath}'`
+  const writeImportLines =
+    writeImport.length <= generatedCodePrintWidth
+      ? [writeImport]
+      : [
+          `import {`,
+          `  ${pascalName}PageProperties,`,
+          `  type ${pascalName}PageWrite,`,
+          `  encode${pascalName}Write,`,
+          `} from '${schemaImportPath}'`,
+        ]
 
   // Build the config comment (same options as schema file, always includes includeApi: true)
   const configComment = generateConfigComment({
@@ -964,13 +976,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     `import { NotionDatabases, NotionPages, type TypedPage } from '@overeng/notion-effect-client'`,
     ``,
     ...(includeWrite === true
-      ? [
-          `import {`,
-          `  ${pascalName}PageProperties,`,
-          `  type ${pascalName}PageWrite,`,
-          `  encode${pascalName}Write,`,
-          `} from '${schemaImportPath}'`,
-        ]
+      ? writeImportLines
       : [`import { ${pascalName}PageProperties } from '${schemaImportPath}'`]),
     ``,
     `/** Database ID for ${dbInfo.name} */`,
@@ -1053,9 +1059,15 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     lines.push(`/**`)
     lines.push(` * Update an existing page.`)
     lines.push(` */`)
-    lines.push(
-      `export const update = (pageId: string, properties: Partial<${pascalName}PageWrite>) =>`,
-    )
+    const updateSignature = `export const update = (pageId: string, properties: Partial<${pascalName}PageWrite>) =>`
+    if (updateSignature.length <= generatedCodePrintWidth) {
+      lines.push(updateSignature)
+    } else {
+      lines.push(`export const update = (`)
+      lines.push(`  pageId: string,`)
+      lines.push(`  properties: Partial<${pascalName}PageWrite>,`)
+      lines.push(`) =>`)
+    }
     lines.push(`  NotionPages.update({`)
     lines.push(`    pageId,`)
     lines.push(`    properties: encode${pascalName}Write(properties as ${pascalName}PageWrite),`)

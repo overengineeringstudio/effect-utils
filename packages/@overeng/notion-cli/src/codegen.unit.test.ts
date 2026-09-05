@@ -192,6 +192,39 @@ import {
       expect(code).toContain(`schema: PdfDocumentPageProperties,`)
       expect(code).toContain(`properties: encodePdfDocumentWrite(properties),`)
     })
+    it('selects generated layouts that match the shared 100-column print width', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test',
+        url: 'https://notion.so/test',
+        properties: (
+          [{ id: 'title-prop', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
+      }
+
+      const shortCode = generateApiCode({
+        dbInfo,
+        schemaName: 'Test',
+        schemaFileName: 'test.gen.ts',
+        options: { includeWrite: true },
+      })
+      const longCode = generateApiCode({
+        dbInfo,
+        schemaName: 'Engineering Onboarding Checklist',
+        schemaFileName: 'engineering-onboarding-checklist.gen.ts',
+        options: { includeWrite: true },
+      })
+
+      expect(shortCode).toContain(
+        `import { TestPageProperties, type TestPageWrite, encodeTestWrite } from './test.gen.ts'`,
+      )
+      expect(longCode).toContain(`export const update = (
+  pageId: string,
+  properties: Partial<EngineeringOnboardingChecklistPageWrite>,
+) =>`)
+    })
   })
 
   describe('generateSchemaCode', () => {
