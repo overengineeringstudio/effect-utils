@@ -224,6 +224,11 @@ import {
   pageId: string,
   properties: Partial<EngineeringOnboardingChecklistPageWrite>,
 ) =>`)
+      expect(longCode).toContain(`export type EngineeringOnboardingChecklistPage =
+  TypedPage<EngineeringOnboardingChecklistPageProperties>`)
+      expect(longCode).toContain(`    properties: encodeEngineeringOnboardingChecklistWrite(
+      properties as EngineeringOnboardingChecklistPageWrite,
+    ),`)
     })
   })
 

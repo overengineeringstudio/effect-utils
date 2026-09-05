@@ -952,6 +952,20 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
           `  encode${pascalName}Write,`,
           `} from '${schemaImportPath}'`,
         ]
+  const pageType = `export type ${pascalName}Page = TypedPage<${pascalName}PageProperties>`
+  const pageTypeLines =
+    pageType.length <= generatedCodePrintWidth
+      ? [pageType]
+      : [`export type ${pascalName}Page =`, `  TypedPage<${pascalName}PageProperties>`]
+  const encodeCall = `    properties: encode${pascalName}Write(properties as ${pascalName}PageWrite),`
+  const encodeCallLines =
+    encodeCall.length <= generatedCodePrintWidth
+      ? [encodeCall]
+      : [
+          `    properties: encode${pascalName}Write(`,
+          `      properties as ${pascalName}PageWrite,`,
+          `    ),`,
+        ]
 
   // Build the config comment (same options as schema file, always includes includeApi: true)
   const configComment = generateConfigComment({
@@ -1033,7 +1047,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     `    schema: ${pascalName}PageProperties,`,
     `  })`,
     ``,
-    `export type ${pascalName}Page = TypedPage<${pascalName}PageProperties>`,
+    ...pageTypeLines,
   ]
 
   // Add create/update if write schema is enabled
@@ -1070,7 +1084,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     }
     lines.push(`  NotionPages.update({`)
     lines.push(`    pageId,`)
-    lines.push(`    properties: encode${pascalName}Write(properties as ${pascalName}PageWrite),`)
+    lines.push(...encodeCallLines)
     lines.push(`  })`)
   }
 
