@@ -168,7 +168,11 @@ describe('codegen', () => {
 
       // `PdfDocumentPageWrite` only ever appears in type positions, so it must be
       // imported with a `type` specifier (verbatimModuleSyntax / consistent-type-imports).
-      expect(code).toContain(`import {
+      expect(code).toContain(`import { Effect, Stream } from 'effect'
+
+import { NotionDatabases, NotionPages, type TypedPage } from '@overeng/notion-effect-client'
+
+import {
   PdfDocumentPageProperties,
   type PdfDocumentPageWrite,
   encodePdfDocumentWrite,

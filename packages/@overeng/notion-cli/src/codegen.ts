@@ -960,7 +960,9 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     ...(configComment !== '' ? [configComment] : []),
     ``,
     `import { Effect, Stream } from 'effect'`,
+    ``,
     `import { NotionDatabases, NotionPages, type TypedPage } from '@overeng/notion-effect-client'`,
+    ``,
     ...(includeWrite === true
       ? [
           `import {`,
