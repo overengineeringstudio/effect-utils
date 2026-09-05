@@ -304,7 +304,7 @@ const sanitizeLiteralValue = (name: string): string => {
 const toSingleQuotedStringLiteral = (value: string): string => {
   const json = JSON.stringify(value)
   const inner = json.slice(1, -1)
-  return `'${inner.replace(/'/g, "\\'")}'`
+  return `'${inner.replaceAll('\\"', '"').replaceAll("'", "\\'")}'`
 }
 
 const sanitizeLineComment = (comment: string): string =>

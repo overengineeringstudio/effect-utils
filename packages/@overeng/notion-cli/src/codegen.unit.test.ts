@@ -484,6 +484,30 @@ describe('codegen', () => {
       `)
     })
 
+    it('emits valid single-quoted property descriptions without escaping double quotes', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test',
+        url: 'https://notion.so/test',
+        properties: (
+          [
+            {
+              id: 'prop1',
+              name: 'Status',
+              type: 'select',
+              description: `He said "don't"; path C:\\tmp; line one\nline two; template \${value}`,
+            },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
+      }
+
+      const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
+
+      expect(code).toContain(
+        `description: 'He said "don\\'t"; path C:\\\\tmp; line one\\nline two; template \${value}'`,
+      )
+    })
+
     it('should handle all property types with default transforms', () => {
       const propertyTypes: Array<{
         type: PropertyInfo['type']
