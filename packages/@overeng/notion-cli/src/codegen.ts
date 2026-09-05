@@ -304,7 +304,7 @@ const sanitizeLiteralValue = (name: string): string => {
 const toSingleQuotedStringLiteral = (value: string): string => {
   const json = JSON.stringify(value)
   const inner = json.slice(1, -1)
-  return `'${inner.replace(/'/g, "\\'")}'`
+  return `'${inner.replaceAll('\\"', '"').replaceAll("'", "\\'")}'`
 }
 
 const sanitizeLineComment = (comment: string): string =>
@@ -1031,7 +1031,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     lines.push(`/**`)
     lines.push(` * Create a new page in the ${dbInfo.name} database.`)
     lines.push(` */`)
-    lines.push(`export const create = (properties: typeof ${pascalName}PageWrite.Type) =>`)
+    lines.push(`export const create = (properties: ${pascalName}PageWrite) =>`)
     lines.push(`  NotionPages.create({`)
     lines.push(`    parent: { type: 'database_id', database_id: DATABASE_ID },`)
     lines.push(`    properties: encode${pascalName}Write(properties),`)
@@ -1046,13 +1046,11 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     lines.push(` */`)
     lines.push(`export const update = (`)
     lines.push(`  pageId: string,`)
-    lines.push(`  properties: Partial<typeof ${pascalName}PageWrite.Type>,`)
+    lines.push(`  properties: Partial<${pascalName}PageWrite>,`)
     lines.push(`) =>`)
     lines.push(`  NotionPages.update({`)
     lines.push(`    pageId,`)
-    lines.push(
-      `    properties: encode${pascalName}Write(properties as typeof ${pascalName}PageWrite.Type),`,
-    )
+    lines.push(`    properties: encode${pascalName}Write(properties as ${pascalName}PageWrite),`)
     lines.push(`  })`)
   }
 

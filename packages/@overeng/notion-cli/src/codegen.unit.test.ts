@@ -119,6 +119,33 @@ describe('codegen', () => {
       expect(code).toContain(`NotionDatabases.resolveQueryTarget({ databaseId: DATABASE_ID })`)
       expect(code).toContain(`dataSourceId: queryTarget.dataSourceId`)
     })
+
+    it('uses the exported write type alias instead of typeof', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test Database',
+        url: 'https://notion.so/test-db',
+        properties: (
+          [{ id: 'title-prop', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
+      }
+
+      const code = generateApiCode({
+        dbInfo,
+        schemaName: 'TestDatabase',
+        schemaFileName: 'test-database.gen.ts',
+        options: { includeWrite: true },
+      })
+
+      expect(code).not.toContain(`typeof TestDatabasePageWrite.Type`)
+      expect(code).toContain(`export const create = (properties: TestDatabasePageWrite) =>`)
+      expect(code).toContain(`  properties: Partial<TestDatabasePageWrite>,`)
+      expect(code).toContain(
+        `    properties: encodeTestDatabaseWrite(properties as TestDatabasePageWrite),`,
+      )
+    })
   })
 
   describe('generateSchemaCode', () => {
@@ -455,6 +482,30 @@ describe('codegen', () => {
         export const decodeTestPropertiesEffect = Schema.decodeUnknownEffect(TestPageProperties)
         "
       `)
+    })
+
+    it('emits valid single-quoted property descriptions without escaping double quotes', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test',
+        url: 'https://notion.so/test',
+        properties: (
+          [
+            {
+              id: 'prop1',
+              name: 'Status',
+              type: 'select',
+              description: `He said "don't"; path C:\\tmp; line one\nline two; template \${value}`,
+            },
+          ] satisfies Array<Omit<PropertyInfo, 'schema'>>
+        ).map(makeProperty),
+      }
+
+      const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
+
+      expect(code).toContain(
+        `description: 'He said "don\\'t"; path C:\\\\tmp; line one\\nline two; template \${value}'`,
+      )
     })
 
     it('should handle all property types with default transforms', () => {
