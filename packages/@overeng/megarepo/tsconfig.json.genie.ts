@@ -13,7 +13,7 @@ export default tsconfigJson({
     ...nodeTypes,
     ...reactJsx,
     types: ['node', 'bun'],
+    noEmit: true,
   },
   include: ['src/**/*', 'test/**/*', 'bin/**/*'],
-  references: [{ path: '../effect-path' }, { path: '../kdl' }, { path: '../kdl-effect' }],
 } satisfies TSConfigArgs)

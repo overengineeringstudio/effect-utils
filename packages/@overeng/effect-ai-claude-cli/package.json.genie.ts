@@ -15,7 +15,7 @@ const workspaceDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick('@effect/vitest', 'typescript', 'effect', 'vite', 'vitest'),
+      ...catalog.pick('@effect/vitest', '@types/node', 'typescript', 'effect', 'vite', 'vitest'),
     },
   },
   peerDependencies: {
@@ -28,7 +28,10 @@ export default packageJson(
     name: '@overeng/effect-ai-claude-cli',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      '.': exportEntry(
+        { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
+        { environment: 'node' },
+      ),
     },
     publishConfig: {
       access: 'public',

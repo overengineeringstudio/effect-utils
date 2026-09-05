@@ -4,8 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts",
-    "./react-aria": "./src/react-aria/mod.ts"
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./react-aria": {
+      "types": "./dist/src/react-aria/mod.d.ts",
+      "default": "./src/react-aria/mod.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -25,6 +31,7 @@
     "@overeng/utils": "workspace:^",
     "@storybook/react": "10.5.10",
     "@storybook/react-vite": "10.5.10",
+    "@types/node": "26.0.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",

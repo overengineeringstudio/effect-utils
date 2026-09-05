@@ -13,7 +13,7 @@ export default tsconfigJson({
     ...reactJsx,
     rootDir: './src',
     lib: [...domLib],
+    noEmit: true,
   },
   include: ['src/**/*'],
-  references: [{ path: '../effect-schema-form' }],
 } satisfies TSConfigArgs)

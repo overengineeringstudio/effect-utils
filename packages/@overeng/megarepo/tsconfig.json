@@ -45,18 +45,8 @@
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "types": ["node", "bun"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "noEmit": true
   },
-  "include": ["src/**/*", "test/**/*", "bin/**/*"],
-  "references": [
-    {
-      "path": "../effect-path"
-    },
-    {
-      "path": "../kdl"
-    },
-    {
-      "path": "../kdl-effect"
-    }
-  ]
+  "include": ["src/**/*", "test/**/*", "bin/**/*"]
 }
