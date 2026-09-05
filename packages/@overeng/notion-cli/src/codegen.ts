@@ -1012,8 +1012,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     `/**`,
     ` * Query pages and collect all results.`,
     ` */`,
-    `export const queryAll = (options?: QueryOptions) =>`,
-    `  query(options).pipe(Stream.runCollect)`,
+    `export const queryAll = (options?: QueryOptions) => query(options).pipe(Stream.runCollect)`,
     ``,
     `// -----------------------------------------------------------------------------`,
     `// Get`,
@@ -1054,10 +1053,9 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     lines.push(`/**`)
     lines.push(` * Update an existing page.`)
     lines.push(` */`)
-    lines.push(`export const update = (`)
-    lines.push(`  pageId: string,`)
-    lines.push(`  properties: Partial<${pascalName}PageWrite>,`)
-    lines.push(`) =>`)
+    lines.push(
+      `export const update = (pageId: string, properties: Partial<${pascalName}PageWrite>) =>`,
+    )
     lines.push(`  NotionPages.update({`)
     lines.push(`    pageId,`)
     lines.push(`    properties: encode${pascalName}Write(properties as ${pascalName}PageWrite),`)
@@ -1072,8 +1070,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
   lines.push(`/**`)
   lines.push(` * Archive (soft-delete) a page.`)
   lines.push(` */`)
-  lines.push(`export const archive = (pageId: string) =>`)
-  lines.push(`  NotionPages.archive({ pageId })`)
+  lines.push(`export const archive = (pageId: string) => NotionPages.archive({ pageId })`)
   lines.push(``)
 
   return lines.join('\n')

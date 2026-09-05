@@ -141,7 +141,9 @@ describe('codegen', () => {
 
       expect(code).not.toContain(`typeof TestDatabasePageWrite.Type`)
       expect(code).toContain(`export const create = (properties: TestDatabasePageWrite) =>`)
-      expect(code).toContain(`  properties: Partial<TestDatabasePageWrite>,`)
+      expect(code).toContain(
+        `export const update = (pageId: string, properties: Partial<TestDatabasePageWrite>) =>`,
+      )
       expect(code).toContain(
         `    properties: encodeTestDatabaseWrite(properties as TestDatabasePageWrite),`,
       )
@@ -177,6 +179,15 @@ import {
   type PdfDocumentPageWrite,
   encodePdfDocumentWrite,
 } from './pdf-document.gen.ts'`)
+      expect(code).toContain(
+        `export const queryAll = (options?: QueryOptions) => query(options).pipe(Stream.runCollect)`,
+      )
+      expect(code).toContain(
+        `export const update = (pageId: string, properties: Partial<PdfDocumentPageWrite>) =>`,
+      )
+      expect(code).toContain(
+        `export const archive = (pageId: string) => NotionPages.archive({ pageId })`,
+      )
       // Schemas and encoders stay value imports.
       expect(code).toContain(`schema: PdfDocumentPageProperties,`)
       expect(code).toContain(`properties: encodePdfDocumentWrite(properties),`)
