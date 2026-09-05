@@ -146,6 +146,35 @@ describe('codegen', () => {
         `    properties: encodeTestDatabaseWrite(properties as TestDatabasePageWrite),`,
       )
     })
+
+    it('imports the write type with a type-only specifier', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'pdf-db-id',
+        name: 'PDF Document',
+        url: 'https://notion.so/pdf-document',
+        properties: (
+          [{ id: 'title-prop', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
+      }
+
+      const code = generateApiCode({
+        dbInfo,
+        schemaName: 'PDF Document',
+        schemaFileName: 'pdf-document.gen.ts',
+        options: { includeWrite: true },
+      })
+
+      // `PdfDocumentPageWrite` only ever appears in type positions, so it must be
+      // imported with a `type` specifier (verbatimModuleSyntax / consistent-type-imports).
+      expect(code).toContain(
+        `import { PdfDocumentPageProperties, type PdfDocumentPageWrite, encodePdfDocumentWrite } from './pdf-document.gen.ts'`,
+      )
+      // Schemas and encoders stay value imports.
+      expect(code).toContain(`schema: PdfDocumentPageProperties,`)
+      expect(code).toContain(`properties: encodePdfDocumentWrite(properties),`)
+    })
   })
 
   describe('generateSchemaCode', () => {

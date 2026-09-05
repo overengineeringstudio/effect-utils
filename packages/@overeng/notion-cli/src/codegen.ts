@@ -961,7 +961,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     ``,
     `import { Effect, Stream } from 'effect'`,
     `import { NotionDatabases, NotionPages, type TypedPage } from '@overeng/notion-effect-client'`,
-    `import { ${pascalName}PageProperties${includeWrite === true ? `, ${pascalName}PageWrite, encode${pascalName}Write` : ''} } from '${schemaImportPath}'`,
+    `import { ${pascalName}PageProperties${includeWrite === true ? `, type ${pascalName}PageWrite, encode${pascalName}Write` : ''} } from '${schemaImportPath}'`,
     ``,
     `/** Database ID for ${dbInfo.name} */`,
     `const DATABASE_ID = '${dbInfo.id}'`,
