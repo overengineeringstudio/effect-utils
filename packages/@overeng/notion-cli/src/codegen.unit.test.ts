@@ -168,9 +168,11 @@ describe('codegen', () => {
 
       // `PdfDocumentPageWrite` only ever appears in type positions, so it must be
       // imported with a `type` specifier (verbatimModuleSyntax / consistent-type-imports).
-      expect(code).toContain(
-        `import { PdfDocumentPageProperties, type PdfDocumentPageWrite, encodePdfDocumentWrite } from './pdf-document.gen.ts'`,
-      )
+      expect(code).toContain(`import {
+  PdfDocumentPageProperties,
+  type PdfDocumentPageWrite,
+  encodePdfDocumentWrite,
+} from './pdf-document.gen.ts'`)
       // Schemas and encoders stay value imports.
       expect(code).toContain(`schema: PdfDocumentPageProperties,`)
       expect(code).toContain(`properties: encodePdfDocumentWrite(properties),`)
