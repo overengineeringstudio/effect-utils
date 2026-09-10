@@ -766,6 +766,9 @@ const extraJobs: Record<string, any> = {
       checkoutStep(),
       installNixStep(),
       prepareEffectUtilsCompositionStep,
+      prepareCiScriptsStep,
+      preparePinnedDevenvStep,
+      validateNixStoreStep,
       {
         name: 'Prove a fresh context gets a remote action-cache hit',
         env: {
