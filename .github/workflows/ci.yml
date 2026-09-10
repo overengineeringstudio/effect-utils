@@ -46,6 +46,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -439,6 +444,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -594,7 +604,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'devenv tasks run ts:check:strict' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check:strict'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:check ts:check:strict' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:check ts:check:strict'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -663,6 +673,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -873,6 +888,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1080,6 +1100,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1290,6 +1315,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1500,6 +1530,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1560,7 +1595,7 @@ jobs:
         run: |
           cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'Cold pnpm deps validation' 'set -euo pipefail
-          for attr in '"'"'.#genie-pnpm-deps'"'"' '"'"'.#ci-tools-pnpm-deps'"'"' '"'"'.#megarepo-pnpm-deps'"'"' '"'"'.#oxc-config-plugin-pnpm-deps'"'"' '"'"'.#tui-stories-pnpm-deps'"'"' '"'"'.#notion-cli-pnpm-deps'"'"' '"'"'.#notion-md-pnpm-deps'"'"'; do
+          for attr in '"'"'.#oxc-config-plugin-pnpm-deps'"'"'; do
             echo "::group::rebuild-check $attr"
             # Step 1: Realize once (may substitute) so rebuild has a trusted output to compare against.
             nix build --no-link "$attr" --option substituters '"'"'https://cache.nixos.org'"'"'
@@ -1634,6 +1669,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1892,6 +1932,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -2101,6 +2146,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -2515,6 +2565,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -2722,6 +2777,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -3153,6 +3213,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -4378,7 +4443,7 @@ jobs:
           target_name='genie'
           target_label='Genie package'
           target_group='packages'
-          target_description='the packaged Genie CLI closure'
+          target_description='the Genie CLI closure wrapped from the immutable Buck product manifest'
           artifact_file="$ARTIFACT_DIR/measurements.json"
           target_system='x86_64-linux'
 
@@ -4535,7 +4600,7 @@ jobs:
           target_name='megarepo'
           target_label='Megarepo package'
           target_group='packages'
-          target_description='the packaged megarepo CLI closure'
+          target_description='the megarepo CLI closure wrapped from the immutable Buck product manifest'
           artifact_file="$ARTIFACT_DIR/measurements.json"
           target_system='x86_64-linux'
 
@@ -7712,6 +7777,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -7927,6 +7997,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -8134,6 +8209,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -8392,6 +8472,11 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -8679,7 +8764,6 @@ jobs:
       - pnpm-builder-contract
       - pnpm-regression
       - bundle-smoke
-      - buck2
       - cargo
       - weaver
       - deploy-storybooks
