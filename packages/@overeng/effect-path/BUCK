@@ -2,15 +2,15 @@
 # Source: BUCK.genie.ts
 
 # Projection source: packages/@overeng/effect-path/BUCK.genie.ts
-# Projection schema version: 6
+# Projection schema version: 8
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:fbab384d5b1cba348f09c03cffe1e72a6bd1f42f38d1a2b79315e30c16cd82fc
+# Semantic fingerprint: sha256:6b056764d54b14f484a9ccee6c314f3dfdd899e6bee3e1e40a188c55fa1cf67f
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-path/BUCK.genie.ts, packages/@overeng/effect-path/BUCK.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/effect-path/src/**/*.cts, packages/@overeng/effect-path/src/**/*.js, packages/@overeng/effect-path/src/**/*.mts, packages/@overeng/effect-path/src/**/*.spec.cjs, packages/@overeng/effect-path/src/**/*.spec.jsx, packages/@overeng/effect-path/src/**/*.spec.mjs, packages/@overeng/effect-path/src/**/*.test.cjs, packages/@overeng/effect-path/src/**/*.test.jsx, packages/@overeng/effect-path/src/**/*.test.mjs, packages/@overeng/effect-path/src/**/*.ts, packages/@overeng/effect-path/src/**/*.tsx, packages/@overeng/effect-path/src/**/__snapshots__/*.snap, packages/@overeng/effect-path/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
 load("//buck2:editor_view.bzl", "editor_view_inputs")
-load("//buck2:javascript.bzl", "vitest_test")
+load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
 
 export_file(
@@ -71,13 +71,6 @@ package_view(
         "src/verified.ts": "src/verified.ts",
         "tsconfig.json": "tsconfig.json",
     },
-    workspace_dist = {
-        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
-        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
-    },
-    workspace_dependency_views = {
-        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
-    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -106,13 +99,7 @@ package_view(
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },
-    workspace_dist = {
-        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
-        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
-    },
-    workspace_dependency_views = {
-        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
-    },
+    strip_project_references = True,
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -142,6 +129,12 @@ tsgo_emit(
 
 vitest_test(
     name = "test",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_collect",
     package_tree = ":test_package_tree",
     visibility = ["PUBLIC"],
 )
