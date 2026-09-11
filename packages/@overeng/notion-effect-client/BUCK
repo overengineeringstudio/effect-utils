@@ -2,9 +2,9 @@
 # Source: BUCK.genie.ts
 
 # Projection source: packages/@overeng/notion-effect-client/BUCK.genie.ts
-# Projection schema version: 8
+# Projection schema version: 9
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d68ee6e34191bb73a51e75fa30dd31adfe77027e54bc029ed0171d380c3cab96
+# Semantic fingerprint: sha256:7898cbfd92672ee964557c238160b0ec7818687da2771afb4c9709491742e5cf
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/content-address/package.json.genie.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-client/src/**/*.cts, packages/@overeng/notion-effect-client/src/**/*.js, packages/@overeng/notion-effect-client/src/**/*.mts, packages/@overeng/notion-effect-client/src/**/*.spec.cjs, packages/@overeng/notion-effect-client/src/**/*.spec.jsx, packages/@overeng/notion-effect-client/src/**/*.spec.mjs, packages/@overeng/notion-effect-client/src/**/*.test.cjs, packages/@overeng/notion-effect-client/src/**/*.test.jsx, packages/@overeng/notion-effect-client/src/**/*.test.mjs, packages/@overeng/notion-effect-client/src/**/*.ts, packages/@overeng/notion-effect-client/src/**/*.tsx, packages/@overeng/notion-effect-client/src/**/__snapshots__/*.snap, packages/@overeng/notion-effect-client/tsconfig.json.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -153,29 +153,7 @@ package_view(
         "src/views.ts": "src/views.ts",
         "tsconfig.json": "tsconfig.json",
     },
-    workspace_dist = {
-        "node_modules/@overeng/content-address/dist": "//packages/@overeng/content-address:dist",
-        "node_modules/@overeng/content-address/package.json": "//packages/@overeng/content-address:package.json",
-        "node_modules/@overeng/notion-core/dist": "//packages/@overeng/notion-core:dist",
-        "node_modules/@overeng/notion-core/package.json": "//packages/@overeng/notion-core:package.json",
-        "node_modules/@overeng/notion-effect-schema/dist": "//packages/@overeng/notion-effect-schema:dist",
-        "node_modules/@overeng/notion-effect-schema/package.json": "//packages/@overeng/notion-effect-schema:package.json",
-        "node_modules/@overeng/otel-contract/dist": "//packages/@overeng/otel-contract:dist",
-        "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
-        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
-        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
-        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
-        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
-    },
-    workspace_dependency_views = {
-        "node_modules/@overeng/content-address/node_modules": "//packages/@overeng/content-address:package_tree",
-        "node_modules/@overeng/notion-core/node_modules": "//packages/@overeng/notion-core:package_tree",
-        "node_modules/@overeng/notion-effect-schema/node_modules": "//packages/@overeng/notion-effect-schema:package_tree",
-        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
-        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
-        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
-    },
-    runtime = "//:package_tree_runtime",
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
 )
@@ -201,7 +179,6 @@ package_view(
         "src/databases.unit.test.ts": "src/databases.unit.test.ts",
         "src/error.ts": "src/error.ts",
         "src/files.ts": "src/files.ts",
-        "src/files.unit.test.ts": "src/files.unit.test.ts",
         "src/internal/http.ts": "src/internal/http.ts",
         "src/internal/http.unit.test.ts": "src/internal/http.unit.test.ts",
         "src/internal/metrics.ts": "src/internal/metrics.ts",
@@ -244,30 +221,8 @@ package_view(
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },
-    workspace_dist = {
-        "node_modules/@overeng/content-address/dist": "//packages/@overeng/content-address:dist",
-        "node_modules/@overeng/content-address/package.json": "//packages/@overeng/content-address:package.json",
-        "node_modules/@overeng/notion-core/dist": "//packages/@overeng/notion-core:dist",
-        "node_modules/@overeng/notion-core/package.json": "//packages/@overeng/notion-core:package.json",
-        "node_modules/@overeng/notion-effect-schema/dist": "//packages/@overeng/notion-effect-schema:dist",
-        "node_modules/@overeng/notion-effect-schema/package.json": "//packages/@overeng/notion-effect-schema:package.json",
-        "node_modules/@overeng/otel-contract/dist": "//packages/@overeng/otel-contract:dist",
-        "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
-        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
-        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
-        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
-        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
-    },
-    workspace_dependency_views = {
-        "node_modules/@overeng/content-address/node_modules": "//packages/@overeng/content-address:package_tree",
-        "node_modules/@overeng/notion-core/node_modules": "//packages/@overeng/notion-core:package_tree",
-        "node_modules/@overeng/notion-effect-schema/node_modules": "//packages/@overeng/notion-effect-schema:package_tree",
-        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
-        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
-        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
-    },
     strip_project_references = True,
-    runtime = "//:package_tree_runtime",
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
 )
