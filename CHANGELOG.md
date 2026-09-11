@@ -267,6 +267,11 @@ character after JSON`, failing every build against such a lockfile.
   preserve failed `mr` exit codes in shared devenv tasks.
 - **@overeng/genie**: YAML block scalars no longer indent empty lines, keeping
   generated workflows free of trailing whitespace.
+
+- **@overeng/megarepo**: unchanged composed members now preserve validated
+  published overlays instead of advancing the member mount and rebuilding every
+  declared overlay. Aggregate no-op apply skips Buck when all overlay identities
+  are already current.
 - **CI**: keep draft assistant PRs mergeable by completing the auto-review job
   successfully when no review request is needed.
 - **CI**: stop requiring `main`-only Notion integration, live-deploy, and
