@@ -245,6 +245,8 @@ All notable changes to this project will be documented in this file.
   top-level Buck member manifest fields while retaining strict validation of
   known fields; generate composed roots during `store worktree new`; and
   preserve failed `mr` exit codes in shared devenv tasks.
+- **@overeng/genie**: YAML block scalars no longer indent empty lines, keeping
+  generated workflows free of trailing whitespace.
 - **CI**: keep draft assistant PRs mergeable by completing the auto-review job
   successfully when no review request is needed.
 - **CI**: stop requiring `main`-only Notion integration, live-deploy, and
