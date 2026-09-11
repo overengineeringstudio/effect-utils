@@ -52,6 +52,7 @@ export const internalPackages = [
  */
 export const pnpmWorkspaceMemberPaths = [
   'context/effect/socket',
+  'packages/@overeng/effect-rpc-tanstack/examples/basic',
   'context/opentui',
   ...internalPackages.map((name) => `packages/@overeng/${name}` as const),
   'packages/@overeng/npm-release',
