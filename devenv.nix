@@ -403,6 +403,7 @@ let
       lib.nameValuePair lane.taskName {
         description = "Execute the bounded ${lane.packageName} unit-test lane under Buck";
         after = [ "mr:apply" ] ++ lib.optional (lane ? unboundedTaskName) lane.unboundedTaskName;
+        # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
         exec = buck2UnitTestExec {
           name = lane.taskName;
           targets = [ lane.target ];
@@ -860,6 +861,7 @@ in
   tasks."lint:check:asset-import-needs-type-reference" = {
     after = [ "mr:apply" ];
     description = "Require travelling type references for compiled asset imports through Buck";
+    # trace-audit-allow: buck2BuildExec returns a trace.exec-wrapped command.
     exec = buck2BuildExec {
       name = "lint:check:asset-import-needs-type-reference";
       targets = [ "effect_utils//buck2/static:check_policy" ];
@@ -874,6 +876,7 @@ in
   tasks."workspace:check" = {
     after = [ "mr:apply" ];
     description = "Validate generated workspace package inventory through Buck";
+    # trace-audit-allow: buck2BuildExec returns a trace.exec-wrapped command.
     exec = buck2BuildExec {
       name = "workspace:check";
       targets = [ "effect_utils//buck2/static:check_policy" ];
@@ -1015,6 +1018,7 @@ in
   tasks."bundle:smoke" = {
     after = [ "mr:apply" ];
     description = "Bundle representative public entries through Buck with Vite/Rollup";
+    # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "bundle:smoke";
       targets = [ "effect_utils//packages/@overeng/pty-effect:bundle_smoke" ];
@@ -1154,6 +1158,7 @@ in
   tasks."buck2:editor:bootstrap" = {
     description = "Bootstrap source-generator dependencies from the committed Buck graph";
     after = [ "mr:setup" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec "bootstrap";
   };
 
@@ -1178,18 +1183,21 @@ in
   tasks."buck2:editor:authority" = {
     description = "Prove complete Buck ownership of every workspace editor dependency view";
     after = [ "mr:apply" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec "authority";
   };
 
   tasks."buck2:editor:publish" = {
     description = "Atomically publish every Buck-owned workspace editor dependency view";
     after = [ "mr:apply" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec "publish";
   };
 
   tasks."buck2:editor:check" = {
     description = "Fail when any published workspace editor dependency view is stale";
     after = [ "mr:apply" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec "check";
   };
 
@@ -1278,6 +1286,7 @@ in
   tasks."test:buck2:unit" = {
     description = "Execute every admitted bounded unit-test lane under Buck";
     after = [ "mr:apply" ];
+    # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "test:buck2:unit";
       targets = map (lane: lane.target) buck2TestLanes;
