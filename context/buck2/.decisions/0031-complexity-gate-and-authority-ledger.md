@@ -75,11 +75,11 @@ Buck target on its default branch.
 ## Amendment 1
 
 PR #1260 is the accepted positive foundation slice from Decision 4. At
-`c6abd2028d732343232ef4a77712b635ae5c3da3`, the Authority Ledger path patterns
-measure 6,607 added and 378 deleted build-machinery lines, net +6,229, with:
+`61dfc2be32900aac4100a714956f10b40030de6f`, the Authority Ledger path patterns
+measure 6,941 added and 379 deleted build-machinery lines, net +6,562, with:
 
 ```sh
-git diff --no-renames --numstat origin/main...c6abd2028d732343232ef4a77712b635ae5c3da3 --
+git diff --no-renames --numstat origin/main...61dfc2be32900aac4100a714956f10b40030de6f --
 ```
 
 The positive net establishes Buck targets and authoritative declaration views
