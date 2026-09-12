@@ -8,6 +8,7 @@
 {
   pkgs,
   products,
+  nativeProducts ? (import ../../buck2-native-products { inherit pkgs; }).products,
   typeProofCompilerBin,
   oxfmtPkg ? pkgs.oxfmt,
   gitRev ? "unknown",
@@ -63,7 +64,7 @@ let
       CLI_BUILD_STAMP = buildStamp;
       GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
       GENIE_EXPORT_TYPE_PROOF_COMPILER = typeProofCompilerBin;
-      GENIE_TYPESCRIPT_API_SERVER = "${pkgs.typescript}/bin/tsc";
+      GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
     };
     expectedExternalCapabilities = [
       "actionlint"
@@ -79,8 +80,10 @@ let
     smokeTestArgs = [ "--dry-run" ];
   };
   genie-bootstrap-closure-check = mk "genie-bootstrap-closure-check" {
+    environment.GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
     binaryName = "genie-bootstrap-closure-check";
     expectedProductKind = "cli";
+    expectedExternalCapabilities = [ "typescript-api-server" ];
     smokeTestArgs = [ "--help" ];
   };
   ci-tools = mk "ci-tools" {
