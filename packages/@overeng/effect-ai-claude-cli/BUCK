@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts
 # Projection schema version: 6
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:cd78631a011e624976d2075c3530d6cb8e36baaed10018a45ba176949bb156a9
+# Semantic fingerprint: sha256:0ba808eb943c060e1aa3a8b3cc4a180f021431ce790f6da332de3947e787fa14
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts, packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts, packages/@overeng/effect-ai-claude-cli/package.json.genie.ts, packages/@overeng/effect-ai-claude-cli/src/**/*.cts, packages/@overeng/effect-ai-claude-cli/src/**/*.js, packages/@overeng/effect-ai-claude-cli/src/**/*.mts, packages/@overeng/effect-ai-claude-cli/src/**/*.spec.cjs, packages/@overeng/effect-ai-claude-cli/src/**/*.spec.jsx, packages/@overeng/effect-ai-claude-cli/src/**/*.spec.mjs, packages/@overeng/effect-ai-claude-cli/src/**/*.test.cjs, packages/@overeng/effect-ai-claude-cli/src/**/*.test.jsx, packages/@overeng/effect-ai-claude-cli/src/**/*.test.mjs, packages/@overeng/effect-ai-claude-cli/src/**/*.ts, packages/@overeng/effect-ai-claude-cli/src/**/*.tsx, packages/@overeng/effect-ai-claude-cli/src/**/__snapshots__/*.snap, packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -53,6 +53,9 @@ package_view(
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
+    workspace_dependency_views = {
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -73,6 +76,9 @@ package_view(
     workspace_dist = {
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",

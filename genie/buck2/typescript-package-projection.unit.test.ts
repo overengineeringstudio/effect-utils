@@ -202,6 +202,9 @@ describe('declared-closure package projection', () => {
       expect(target?.split('\n)\n')[0]).toContain(
         '        "node_modules/@overeng/notion-effect-client/dist": "//packages/@overeng/notion-effect-client:dist",',
       )
+      expect(target?.split('\n)\n')[0]).toContain(
+        '        "node_modules/@overeng/notion-effect-client/node_modules": "//packages/@overeng/notion-effect-client:package_tree",',
+      )
     }
   })
 

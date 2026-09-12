@@ -59,6 +59,8 @@ package_view(
     },
     workspace_dist = {
     },
+    workspace_dependency_views = {
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -81,6 +83,8 @@ package_view(
         "vitest.config.ts": "vitest.config.ts",
     },
     workspace_dist = {
+    },
+    workspace_dependency_views = {
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",

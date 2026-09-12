@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -170,6 +170,13 @@ describe('Buck package view over a normalized dependency view', () => {
     const declarations = join(fixture.root, 'workspace-dist')
     mkdirSync(declarations)
     writeFileSync(join(declarations, 'index.d.ts'), 'export declare const authoritative: true\n')
+    const workspacePackageTree = join(fixture.root, 'workspace-package-tree')
+    const transitiveLink = join(workspacePackageTree, 'node_modules', 'transitive')
+    mkdirSync(join(workspacePackageTree, 'node_modules'), { recursive: true })
+    symlinkSync(
+      relative(join(workspacePackageTree, 'node_modules'), fixture.packageDirectory),
+      transitiveLink,
+    )
 
     runPackageTreeCli([
       '--output',
@@ -179,6 +186,9 @@ describe('Buck package view over a normalized dependency view', () => {
       '--workspace-file',
       'node_modules/@overeng/workspace/dist',
       declarations,
+      '--workspace-dependency-view',
+      'node_modules/@overeng/workspace/node_modules',
+      workspacePackageTree,
     ])
 
     const nodeModules = join(fixture.output, 'node_modules')
@@ -188,6 +198,11 @@ describe('Buck package view over a normalized dependency view', () => {
     ).toBe('export declare const authoritative: true\n')
     expect(statSync(join(nodeModules, 'safe', 'package.json')).isFile()).toBe(true)
     expect(statSync(join(nodeModules, '@overeng', 'other', 'package.json')).isFile()).toBe(true)
+    expect(
+      statSync(
+        join(nodeModules, '@overeng', 'workspace', 'node_modules', 'transitive', 'package.json'),
+      ).isFile(),
+    ).toBe(true)
     expect(existsSync(join(fixture.nodeModules, '@overeng', 'workspace', 'dist'))).toBe(false)
   })
 
