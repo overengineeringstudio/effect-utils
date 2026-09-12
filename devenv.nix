@@ -30,6 +30,7 @@ let
     builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
+  trackedBuck2Products = import ./nix/buck2-products { pkgs = flakePkgs; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
@@ -38,11 +39,11 @@ let
   };
   restate = import ./nix/restate.nix { pkgs = restatePkgs; };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
-  # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
+  # Use npm oxlint with NAPI bindings and the two tracked Buck plugin modules.
   oxlintNpm = import ./nix/oxlint-npm.nix {
     pkgs = flakePkgs;
     bun = flakePkgs.bun;
-    src = repoFlake;
+    products = trackedBuck2Products.products;
   };
   oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
     inherit pkgs oxlintNpm;
@@ -86,7 +87,6 @@ let
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
-    nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
     bootstrap-closure = import ./nix/devenv-modules/tasks/shared/bootstrap-closure.nix;
     weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
@@ -115,24 +115,7 @@ let
   ghCiUtilsCli = repoPackages.gh-ci-utils;
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
-  # The only Nix-managed pnpm dependency hash left: the oxlint plugin bundle is
-  # an npm-plugin artifact, so no JavaScript product import replaces it.
-  nixCliPackages = [
-    {
-      name = "gh-ci-utils";
-      flakeRef = ".#gh-ci-utils";
-      hashSource = "packages/@overeng/gh-ci-utils/nix/build.nix";
-      lockfile = "pnpm-lock.yaml";
-      packageJson = "packages/@overeng/gh-ci-utils/package.json";
-    }
-    {
-      name = "oxlint-npm";
-      flakeRef = ".#oxlint-npm";
-      hashSource = "nix/oxc-config-plugin.nix";
-      lockfile = "pnpm-lock.yaml";
-      packageJson = "packages/@overeng/oxc-config/package.json";
-    }
-  ];
+
 
   # The generated root package manifest is the workspace package authority.
   # Consuming it here removes the former hand-maintained Nix package list and
@@ -674,6 +657,7 @@ in
     (taskModules.megarepo { mrPkg = mrCli; })
     (taskModules.lint-nix { })
     (taskModules.check {
+      hasNixCheck = false;
       extraChecks = [
         "devenv:trace-audit"
         "workspace:check"
@@ -821,11 +805,6 @@ in
         "genie"
         "mr"
       ];
-    })
-    # Nix CLI build and hash management
-    (taskModules.nix-cli {
-      cliPackages = nixCliPackages;
-      dependencyTask = null;
     })
     (taskModules.secretspec { })
     taskModules.devenv-module-tests
