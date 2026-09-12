@@ -9,10 +9,10 @@ by attribution), paid today by effect-utils alone: no repository authors an
 `effect_utils//` label and Phase 6 has not started. The only Buck2-native
 alternative, git external cells, is rejected
 ([decision 0030](../.decisions/0030-external-cells-are-not-a-composition-mechanism.md)).
-[.proposed/artifact-composition.md](../.decisions/.proposed/artifact-composition.md)
-proposes artifact-granular reuse for the effect-utils library edges and pauses
-composed-by-default; it lists the VRS edits and falsification spikes. Blocked
-on: Johannes' decision on criterion 6, and spikes 1–2 of the proposal.
+The artifact-granular alternative would move effect-utils library edges to
+published dist artifacts and pause composed-by-default worktrees. Blocked on:
+Johannes' decision on criterion 6 and on validating artifact fetch and one
+src-only package end to end.
 
 ## Open 2026-09-12: root-owned capability cell
 
