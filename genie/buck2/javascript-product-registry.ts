@@ -38,6 +38,7 @@ export const javaScriptProductRegistry = {
     },
     {
       entrypoint: 'bin/bootstrap-closure-check.ts',
+      externalCapabilities: ['typescript-api-server'],
       kind: 'cli',
       output: 'genie-bootstrap-closure-check.js',
       productName: 'genie-bootstrap-closure-check',
