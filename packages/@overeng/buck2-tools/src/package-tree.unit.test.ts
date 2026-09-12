@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readlinkSync,
+  readFileSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -159,7 +160,38 @@ describe('Buck package view over a normalized dependency view', () => {
     expect(statSync(join(fixture.output, 'src', 'mod.ts')).isFile()).toBe(true)
   })
 
-  it.each(['--file', '--workspace-file', '--workspace-link'] as const)(
+  it('overlays authoritative workspace declarations without copying dependency bytes', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync('.pnpm/safe/node_modules/safe', join(fixture.nodeModules, 'safe'))
+    const scope = join(fixture.nodeModules, '@overeng')
+    mkdirSync(scope)
+    symlinkSync('../.pnpm/safe/node_modules/safe', join(scope, 'workspace'))
+    symlinkSync('../.pnpm/safe/node_modules/safe', join(scope, 'other'))
+    const declarations = join(fixture.root, 'workspace-dist')
+    mkdirSync(declarations)
+    writeFileSync(join(declarations, 'index.d.ts'), 'export declare const authoritative: true\n')
+
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--dependency-view',
+      fixture.nodeModules,
+      '--workspace-file',
+      'node_modules/@overeng/workspace/dist',
+      declarations,
+    ])
+
+    const nodeModules = join(fixture.output, 'node_modules')
+    expect(lstatSync(nodeModules).isDirectory()).toBe(true)
+    expect(
+      readFileSync(join(nodeModules, '@overeng', 'workspace', 'dist', 'index.d.ts'), 'utf8'),
+    ).toBe('export declare const authoritative: true\n')
+    expect(statSync(join(nodeModules, 'safe', 'package.json')).isFile()).toBe(true)
+    expect(statSync(join(nodeModules, '@overeng', 'other', 'package.json')).isFile()).toBe(true)
+    expect(existsSync(join(fixture.nodeModules, '@overeng', 'workspace', 'dist'))).toBe(false)
+  })
+
+  it.each(['--file', '--workspace-link'] as const)(
     'rejects %s writes through the linked dependency boundary',
     (flag) => {
       const fixture = createAssemblyFixture()
