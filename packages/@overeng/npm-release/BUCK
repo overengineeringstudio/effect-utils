@@ -54,6 +54,10 @@ package_view(
         "src/verify.ts": "src/verify.ts",
         "tsconfig.json": "tsconfig.json",
     },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -72,6 +76,10 @@ package_view(
         "src/verify.ts": "src/verify.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
