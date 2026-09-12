@@ -124,6 +124,8 @@ package_view(
         "src/stylex-upstream-plugin.ts": "src/stylex-upstream-plugin.ts",
         "tsconfig.json": "tsconfig.json",
     },
+    workspace_dist = {
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -176,6 +178,8 @@ package_view(
         "src/stylex-upstream-plugin.ts": "src/stylex-upstream-plugin.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
