@@ -763,6 +763,9 @@ export const buck2TypeScriptPackageProjection = ({
       packagePath: sibling.packagePath,
       sourceRoots: sibling.sourceRoots ?? [],
       files,
+      packageTreeTarget:
+        sibling.distTarget?.replace(/:dist$/, ':package_tree') ??
+        `//${sibling.packagePath}:package_tree`,
     }
   })
   const workspaceDistEntries = workspaceSiblingProjections
@@ -772,6 +775,12 @@ export const buck2TypeScriptPackageProjection = ({
           [`node_modules/${sibling.packageName}/${destination}`, source] as const,
       ),
     )
+    .toSorted(([left], [right]) => compareStrings({ left, right }))
+  const workspaceDependencyViewEntries = workspaceSiblingProjections
+    .map((sibling): readonly [string, string] => [
+      `node_modules/${sibling.packageName}/node_modules`,
+      sibling.packageTreeTarget,
+    ])
     .toSorted(([left], [right]) => compareStrings({ left, right }))
   const semanticInputs = [
     ...commonSemanticInputs,
@@ -881,6 +890,10 @@ export const buck2TypeScriptPackageProjection = ({
       `    dependency_view = ${starlarkString(dependencyView)},`,
       ...renderMap({ name: 'files', entries: packageFileEntries }),
       ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
+      ...renderMap({
+        name: 'workspace_dependency_views',
+        entries: workspaceDependencyViewEntries,
+      }),
       `    runtime = ${starlarkString(packageTreeRuntime.label)},`,
       `    runtime_entry = ${starlarkString(runtimeEntry)},`,
       renderBuck2Visibility({ visibility }),
@@ -894,6 +907,10 @@ export const buck2TypeScriptPackageProjection = ({
             `    dependency_view = ${starlarkString(dependencyView)},`,
             ...renderMap({ name: 'files', entries: testPackageFileEntries }),
             ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
+            ...renderMap({
+              name: 'workspace_dependency_views',
+              entries: workspaceDependencyViewEntries,
+            }),
             `    runtime = ${starlarkString(packageTreeRuntime.label)},`,
             `    runtime_entry = ${starlarkString(runtimeEntry)},`,
             renderBuck2Visibility({ visibility }),
