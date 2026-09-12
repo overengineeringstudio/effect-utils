@@ -7,11 +7,7 @@ import {
   type GenieOutput,
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
-import {
-  javaScriptActionRuntime,
-  packageTreeRuntime,
-  stagedModuleName,
-} from './runtime-modules.ts'
+import { javaScriptActionRuntime, packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
 const regenerationCommand = 'devenv tasks run genie:run' as const
 const sourceExtensions = ['.cts', '.js', '.mts', '.ts', '.tsx'] as const
@@ -326,13 +322,7 @@ type ProjectedTestTarget = {
   readonly semanticData: unknown
 }
 
-const requireRelativeTestPath = ({
-  field,
-  value,
-}: {
-  field: string
-  value: string
-}): string => {
+const requireRelativeTestPath = ({ field, value }: { field: string; value: string }): string => {
   if (value === '' || value.startsWith('/') === true) {
     throw new Error(`${field} must be relative to the package tree: ${value}`)
   }
@@ -435,10 +425,7 @@ const projectTestTarget = ({
     .toSorted((left, right) => compareStrings({ left, right }))
     .map((inputName) => {
       requireEnvironmentName({ field: 'configured test input name', value: inputName })
-      return [
-        inputName,
-        `${packageSlug}_${target.name}_${inputName.toLowerCase()}`,
-      ] as const
+      return [inputName, `${packageSlug}_${target.name}_${inputName.toLowerCase()}`] as const
     })
   const inheritedEnv = [...(target.inheritedEnv ?? [])]
     .toSorted((left, right) => compareStrings({ left, right }))
@@ -474,10 +461,7 @@ const projectTestTarget = ({
     if (existsSync(path.join(process.cwd(), packagePath, vitest.config)) === false) {
       throw new Error(`Vitest config does not exist: ${packagePath}/${vitest.config}`)
     }
-    if (
-      vitest.vitestRuntime === 'node' &&
-      tools.some(([name]) => name === 'NODE_BIN') === false
-    ) {
+    if (vitest.vitestRuntime === 'node' && tools.some(([name]) => name === 'NODE_BIN') === false) {
       throw new Error(
         `Test target ${target.name} declares the node Vitest runtime, which requires a declared NODE_BIN tool`,
       )
@@ -781,6 +765,14 @@ export const buck2TypeScriptPackageProjection = ({
       files,
     }
   })
+  const workspaceDistEntries = workspaceSiblingProjections
+    .flatMap((sibling) =>
+      sibling.files.map(
+        ([destination, source]) =>
+          [`node_modules/${sibling.packageName}/${destination}`, source] as const,
+      ),
+    )
+    .toSorted(([left], [right]) => compareStrings({ left, right }))
   const semanticInputs = [
     ...commonSemanticInputs,
     projectionSource,
@@ -800,9 +792,7 @@ export const buck2TypeScriptPackageProjection = ({
       ]),
     ]),
     ...testDataRoots.flatMap((dataRoot) =>
-      dataRoot.extensions.map(
-        (extension) => `${packagePath}/${dataRoot.root}/**/*${extension}`,
-      ),
+      dataRoot.extensions.map((extension) => `${packagePath}/${dataRoot.root}/**/*${extension}`),
     ),
     ...workspaceSiblingProjections.flatMap((sibling) => [
       `${sibling.packagePath}/package.json.genie.ts`,
@@ -890,6 +880,7 @@ export const buck2TypeScriptPackageProjection = ({
       '    name = "package_tree",',
       `    dependency_view = ${starlarkString(dependencyView)},`,
       ...renderMap({ name: 'files', entries: packageFileEntries }),
+      ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
       `    runtime = ${starlarkString(packageTreeRuntime.label)},`,
       `    runtime_entry = ${starlarkString(runtimeEntry)},`,
       renderBuck2Visibility({ visibility }),
@@ -902,6 +893,7 @@ export const buck2TypeScriptPackageProjection = ({
             '    name = "test_package_tree",',
             `    dependency_view = ${starlarkString(dependencyView)},`,
             ...renderMap({ name: 'files', entries: testPackageFileEntries }),
+            ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
             `    runtime = ${starlarkString(packageTreeRuntime.label)},`,
             `    runtime_entry = ${starlarkString(runtimeEntry)},`,
             renderBuck2Visibility({ visibility }),
@@ -932,9 +924,7 @@ export const buck2TypeScriptPackageProjection = ({
       ...(projectFile === 'tsconfig.json' ? [] : [`    project = ${starlarkString(projectFile)},`]),
       ...(authority === undefined
         ? []
-        : [
-            `    declaration_entrypoint = ${starlarkString(authority.declarationEntrypoint)},`,
-          ]),
+        : [`    declaration_entrypoint = ${starlarkString(authority.declarationEntrypoint)},`]),
       renderBuck2Visibility({ visibility }),
       ')',
       '',
