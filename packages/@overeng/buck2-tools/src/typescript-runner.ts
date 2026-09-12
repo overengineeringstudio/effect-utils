@@ -336,23 +336,51 @@ const prepareStagedOutput = async (options: {
 }
 
 /**
- * Rebinds the copied package tree to its declared dependency view.
+ * Rebinds declared dependency links after copying a package tree into the
+ * system temp directory.
  *
- * The package tree uses a relative `node_modules` symlink because Buck artifacts
- * relocate together. Emit stages package sources under the system temp
- * directory, where copying that relative link verbatim would point nowhere.
+ * A package tree either links its complete `node_modules` boundary or projects
+ * first-hop dependency links around workspace declaration overlays. Copying
+ * either relative link shape verbatim changes its destination, so every link
+ * that resolves outside the source package tree is rebound to the declared
+ * artifact before TypeScript reads the staging tree.
  */
 export const relinkStagedDependencyView = async (options: {
   readonly packageTree: string
   readonly stagedPackageRoot: string
 }): Promise<void> => {
-  const sourceNodeModules = join(options.packageTree, 'node_modules')
-  if ((await lstat(sourceNodeModules)).isSymbolicLink() === false) return
-
+  const packageTree = await realpath(options.packageTree)
+  const sourceNodeModules = join(packageTree, 'node_modules')
   const stagedNodeModules = join(options.stagedPackageRoot, 'node_modules')
-  const dependencyView = await realpath(sourceNodeModules)
-  await rm(stagedNodeModules, { force: true, recursive: true })
-  await symlink(dependencyView, stagedNodeModules)
+  const visit = async ({
+    source,
+    staged,
+  }: {
+    readonly source: string
+    readonly staged: string
+  }) => {
+    const metadata = await lstat(source)
+    if (metadata.isSymbolicLink() === true) {
+      const target = await realpath(source)
+      const fromPackageTree = relative(packageTree, target)
+      if (
+        fromPackageTree === '..' ||
+        fromPackageTree.startsWith(`..${sep}`) === true ||
+        isAbsolute(fromPackageTree) === true
+      ) {
+        await rm(staged, { force: true, recursive: true })
+        await symlink(target, staged)
+      }
+      return
+    }
+    if (metadata.isDirectory() === false) return
+    await forEachSequential({
+      iterator: (await readdir(source)).values(),
+      visit: async (entry) => visit({ source: join(source, entry), staged: join(staged, entry) }),
+    })
+  }
+
+  await visit({ source: sourceNodeModules, staged: stagedNodeModules })
 }
 
 const packageTreeArtifactDirectory = (root: string): string | undefined =>

@@ -7,11 +7,12 @@ import {
   rmSync,
   readlinkSync,
   realpathSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -124,6 +125,26 @@ it('rebinds a staged package to its declared dependency view after relocation', 
 
   expect(readlinkSync(join(stagedPackageRoot, 'node_modules'))).toBe(realpathSync(dependencyView))
   expect(lstatSync(join(stagedPackageRoot, 'node_modules')).isSymbolicLink()).toBe(true)
+})
+
+it('rebinds projected dependency entries after package relocation', async () => {
+  const { root, packageRoot } = createFixture()
+  const dependencyPackage = join(root, 'buck-artifact', 'dependency')
+  const sourceLink = join(packageRoot, 'node_modules', '@overeng', 'dependency')
+  const stagedPackageRoot = join(root, 'system-temp', 'package')
+  const stagedLink = join(stagedPackageRoot, 'node_modules', '@overeng', 'dependency')
+  mkdirSync(dependencyPackage, { recursive: true })
+  writeFileSync(join(dependencyPackage, 'package.json'), '{"name":"dependency"}\n')
+  mkdirSync(dirname(sourceLink), { recursive: true })
+  mkdirSync(dirname(stagedLink), { recursive: true })
+  const sourceTarget = relative(dirname(sourceLink), dependencyPackage)
+  symlinkSync(sourceTarget, sourceLink)
+  symlinkSync(sourceTarget, stagedLink)
+
+  await relinkStagedDependencyView({ packageTree: packageRoot, stagedPackageRoot })
+
+  expect(readlinkSync(stagedLink)).toBe(realpathSync(dependencyPackage))
+  expect(statSync(stagedLink).isDirectory()).toBe(true)
 })
 
 it('projects declared workspace package trees beside the relocated package', async () => {
