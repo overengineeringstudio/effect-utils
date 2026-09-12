@@ -37,6 +37,9 @@ const loadedState = (status: string): Extract<CiState, { _tag: 'Loaded' }> => ({
       conclusion: null,
       durationSeconds: 100,
       runner: 'nsc:x',
+      runnerName: 'nsc-runner-x1y2z3w4v5',
+      runnerKind: 'namespace',
+      runnerInstance: 'x1y2z3w4v5',
       jobUrl: 'https://github.com/o/r/actions/runs/1/job/1',
       failedStepName: null,
     },
@@ -176,5 +179,94 @@ describe('ndjson watch liveness', () => {
       passed: 1,
     })
     expect(Schema.decodeUnknownSync(CiNdjsonEvent)(complete)).toEqual(complete)
+  })
+
+  it('carries structured runner identity and requested step facts on JobUpdate', () => {
+    const prev = loadedState('in_progress')
+    const lint = prev.jobs[0]!
+    const steps = [
+      {
+        name: 'Set up job',
+        status: 'completed',
+        conclusion: 'success',
+        number: 1,
+        startedAt: '2026-09-10T11:00:00.000Z',
+        completedAt: '2026-09-10T11:00:06.000Z',
+      },
+    ]
+    const events = fromCiAction({
+      action: {
+        _tag: 'SetLoaded',
+        run: prev.run,
+        jobs: [{ ...lint, status: 'completed', conclusion: 'success', steps }],
+        errors: [],
+        annotations: [],
+        runnerHostMap: [],
+        prHealth: null,
+        summary: prev.summary,
+      },
+      prevState: prev,
+    })
+
+    const update = events.find((e) => e._tag === 'JobUpdate')
+    expect(update).toEqual({
+      _tag: 'JobUpdate',
+      jobId: 1,
+      name: 'lint',
+      status: 'completed',
+      conclusion: 'success',
+      durationSeconds: 100,
+      runner: 'nsc:x',
+      runnerName: 'nsc-runner-x1y2z3w4v5',
+      runnerKind: 'namespace',
+      runnerInstance: 'x1y2z3w4v5',
+      steps,
+    })
+    expect(Schema.decodeUnknownSync(CiNdjsonEvent)(update)).toEqual(update)
+  })
+
+  it('emits a JobUpdate when preserved runner or step facts change', () => {
+    const prev = loadedState('in_progress')
+    const lint = prev.jobs[0]!
+    const steps = [
+      {
+        name: 'Set up job',
+        status: 'in_progress',
+        conclusion: null,
+        number: 1,
+        startedAt: '2026-09-10T11:00:00.000Z',
+        completedAt: null,
+      },
+    ]
+    const events = fromCiAction({
+      action: {
+        _tag: 'SetLoaded',
+        run: prev.run,
+        jobs: [
+          {
+            ...lint,
+            runner: 'self:runner-1',
+            runnerName: 'runner-1',
+            runnerKind: 'self-hosted',
+            runnerInstance: 'runner-1',
+            steps,
+          },
+        ],
+        errors: [],
+        annotations: [],
+        runnerHostMap: [],
+        prHealth: null,
+        summary: prev.summary,
+      },
+      prevState: prev,
+    })
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      _tag: 'JobUpdate',
+      runnerKind: 'self-hosted',
+      runnerInstance: 'runner-1',
+      steps,
+    })
   })
 })

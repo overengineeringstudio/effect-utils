@@ -7,7 +7,12 @@
 import { Schema } from 'effect'
 
 import { isBlockingConclusion } from '../../lib/summary.ts'
-import { SummaryOverallStatus } from '../../lib/viewModels.ts'
+import {
+  RunnerKind,
+  StepInfoSchema,
+  SummaryOverallStatus,
+  type WorkflowJobVM,
+} from '../../lib/viewModels.ts'
 import type { CiAction, CiState } from './schema.ts'
 
 /** Event emitted per job status change */
@@ -17,7 +22,13 @@ export const CiJobUpdate = Schema.TaggedStruct('JobUpdate', {
   status: Schema.String,
   conclusion: Schema.NullOr(Schema.String),
   durationSeconds: Schema.Finite,
+  /** Abbreviated runner label, as shown in the TUI. */
   runner: Schema.String,
+  /** Raw `runner_name` from GitHub — `null` when no runner was assigned. */
+  runnerName: Schema.NullOr(Schema.String),
+  runnerKind: RunnerKind,
+  runnerInstance: Schema.NullOr(Schema.String),
+  steps: Schema.optional(Schema.Array(StepInfoSchema)),
 }).annotate({ identifier: 'CiNdjson.JobUpdate' })
 
 /** Event emitted when errors are extracted from a failed job */
@@ -95,6 +106,24 @@ export const CiNdjsonEvent = Schema.Union([
 ])
 export type CiNdjsonEvent = typeof CiNdjsonEvent.Type
 
+const jobUpdateFactsChanged = ({
+  previous,
+  current,
+}: {
+  previous: WorkflowJobVM | undefined
+  current: WorkflowJobVM
+}): boolean =>
+  previous === undefined ||
+  previous.name !== current.name ||
+  previous.status !== current.status ||
+  previous.conclusion !== current.conclusion ||
+  previous.durationSeconds !== current.durationSeconds ||
+  previous.runner !== current.runner ||
+  previous.runnerName !== current.runnerName ||
+  previous.runnerKind !== current.runnerKind ||
+  previous.runnerInstance !== current.runnerInstance ||
+  JSON.stringify(previous.steps) !== JSON.stringify(current.steps)
+
 /** Map a dispatched action + previous state to NDJSON events. */
 export const fromCiAction = ({
   action,
@@ -138,7 +167,7 @@ export const fromCiAction = ({
 
   for (const job of action.jobs) {
     const prev = prevJobs.find((j) => j.id === job.id)
-    if (!prev || prev.status !== job.status || prev.conclusion !== job.conclusion) {
+    if (jobUpdateFactsChanged({ previous: prev, current: job })) {
       events.push({
         _tag: 'JobUpdate',
         jobId: job.id,
@@ -147,6 +176,10 @@ export const fromCiAction = ({
         conclusion: job.conclusion,
         durationSeconds: job.durationSeconds,
         runner: job.runner,
+        runnerName: job.runnerName,
+        runnerKind: job.runnerKind,
+        runnerInstance: job.runnerInstance,
+        ...(job.steps === undefined ? {} : { steps: job.steps }),
       })
     }
   }

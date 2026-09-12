@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDuration, abbreviateRunner } from '../src/isomorphic/lib/format.ts'
+import {
+  abbreviateRunner,
+  formatDuration,
+  parseRunnerIdentity,
+} from '../src/isomorphic/lib/format.ts'
 
 describe('formatDuration', () => {
   it('formats seconds', () => expect(formatDuration(45)).toBe('45s'))
@@ -20,4 +24,37 @@ describe('abbreviateRunner', () => {
   it('passes through non-matching names', () =>
     expect(abbreviateRunner('some-other-runner')).toBe('some-other-runner'))
   it('handles null', () => expect(abbreviateRunner(null)).toBe('—'))
+})
+
+describe('parseRunnerIdentity', () => {
+  it('keeps the full Namespace runner id, not just the abbreviated prefix', () =>
+    expect(parseRunnerIdentity({ name: 'nsc-runner-psmnb4mkjm3mq' })).toEqual({
+      _tag: 'namespace',
+      instance: 'psmnb4mkjm3mq',
+    }))
+
+  it('resolves self-hosted runner-scaler workers to their host', () => {
+    expect(parseRunnerIdentity({ name: 'dev3-6038ddf9' })).toEqual({
+      _tag: 'self-hosted',
+      instance: 'dev3',
+    })
+    expect(parseRunnerIdentity({ name: 'mbp2021-e2387a32' })).toEqual({
+      _tag: 'self-hosted',
+      instance: 'mbp2021',
+    })
+  })
+
+  it('reports unrecognized names verbatim rather than guessing a scheme', () => {
+    expect(parseRunnerIdentity({ name: 'some-other-runner' })).toEqual({
+      _tag: 'other',
+      instance: 'some-other-runner',
+    })
+    expect(parseRunnerIdentity({ name: 'ubuntu-latest' })).toEqual({
+      _tag: 'other',
+      instance: 'ubuntu-latest',
+    })
+  })
+
+  it('distinguishes "no runner assigned" from an unrecognized runner', () =>
+    expect(parseRunnerIdentity({ name: null })).toEqual({ _tag: 'unknown', instance: null }))
 })
