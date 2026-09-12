@@ -67,6 +67,12 @@ def _package_tree_impl(ctx):
         args.add("--node-modules", ctx.attrs.node_modules)
     _add_mapped_sources(args, "--file", ctx.attrs.files)
     _add_mapped_sources(args, "--workspace-file", ctx.attrs.workspace_files)
+    for destination in sorted(ctx.attrs.workspace_dependency_views.keys()):
+        _require_relative_path(destination, "workspace dependency view")
+        package_tree = ctx.attrs.workspace_dependency_views[destination][PackageTreeInfo]
+        args.add("--workspace-dependency-view", destination, package_tree.tree)
+        args.add(cmd_args(hidden = package_tree.read_roots))
+        read_roots = _unique_artifacts(read_roots + package_tree.read_roots)
     for link_path in sorted(ctx.attrs.workspace_links.keys()):
         target_path = ctx.attrs.workspace_links[link_path]
         _require_relative_path(link_path, "workspace link")
@@ -99,6 +105,11 @@ _package_tree = rule(
         "workspace_files": attrs.dict(
             key = attrs.string(),
             value = attrs.source(),
+            default = {},
+        ),
+        "workspace_dependency_views": attrs.dict(
+            key = attrs.string(),
+            value = attrs.dep(providers = [PackageTreeInfo]),
             default = {},
         ),
         "workspace_links": attrs.dict(
@@ -140,12 +151,13 @@ def package_tree(name, node_modules, files, runtime, runtime_entry, workspace_si
         runtime = runtime,
         runtime_entry = runtime_entry,
         workspace_files = workspace_files,
+        workspace_dependency_views = {},
         workspace_links = workspace_links,
         **kwargs
     )
 
 
-def package_view(name, dependency_view, files, runtime, runtime_entry, workspace_dist = {}, **kwargs):
+def package_view(name, dependency_view, files, runtime, runtime_entry, workspace_dependency_views = {}, workspace_dist = {}, **kwargs):
     """Assembles one bounded package view over a normalized dependency view."""
     workspace_files = {}
     for destination in sorted(workspace_dist.keys()):
@@ -157,6 +169,7 @@ def package_view(name, dependency_view, files, runtime, runtime_entry, workspace
         files = files,
         runtime = runtime,
         runtime_entry = runtime_entry,
+        workspace_dependency_views = workspace_dependency_views,
         workspace_files = workspace_files,
         workspace_links = {},
         **kwargs
@@ -172,6 +185,7 @@ def empty_package_view(name, files, runtime, runtime_entry, **kwargs):
         runtime = runtime,
         runtime_entry = runtime_entry,
         workspace_files = {},
+        workspace_dependency_views = {},
         workspace_links = {},
         **kwargs
     )

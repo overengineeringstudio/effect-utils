@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/pty-effect/BUCK.genie.ts
 # Projection schema version: 6
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:fce1e4cbd4be03e99c21e17fbea02e74700d009435cde4545e05acba8ae40922
+# Semantic fingerprint: sha256:4a9d7943e4be1ea9d7a477aa792fceba422c3cc4af35a1382bd2166cdcdea2b6
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/pty-effect/BUCK.genie.ts, packages/@overeng/pty-effect/BUCK.genie.ts, packages/@overeng/pty-effect/package.json.genie.ts, packages/@overeng/pty-effect/src/**/*.cts, packages/@overeng/pty-effect/src/**/*.js, packages/@overeng/pty-effect/src/**/*.mts, packages/@overeng/pty-effect/src/**/*.spec.cjs, packages/@overeng/pty-effect/src/**/*.spec.jsx, packages/@overeng/pty-effect/src/**/*.spec.mjs, packages/@overeng/pty-effect/src/**/*.test.cjs, packages/@overeng/pty-effect/src/**/*.test.jsx, packages/@overeng/pty-effect/src/**/*.test.mjs, packages/@overeng/pty-effect/src/**/*.ts, packages/@overeng/pty-effect/src/**/*.tsx, packages/@overeng/pty-effect/src/**/__snapshots__/*.snap, packages/@overeng/pty-effect/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -73,6 +73,10 @@ package_view(
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
+    workspace_dependency_views = {
+        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -104,6 +108,10 @@ package_view(
         "node_modules/@overeng/otel-contract/package.json": "//packages/@overeng/otel-contract:package.json",
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",

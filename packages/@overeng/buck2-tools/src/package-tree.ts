@@ -36,6 +36,7 @@ export type PackageTreeOptions = {
   readonly dependencies: PackageTreeDependencies
   readonly files: ReadonlyMap<string, string>
   readonly workspaceFiles: ReadonlyMap<string, string>
+  readonly workspaceDependencyViews: ReadonlyMap<string, string>
   readonly workspaceLinks: ReadonlyMap<string, string>
 }
 
@@ -93,11 +94,17 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
   let dependencies: PackageTreeDependencies | undefined
   const files = new Map<string, string>()
   const workspaceFiles = new Map<string, string>()
+  const workspaceDependencyViews = new Map<string, string>()
   const workspaceLinks = new Map<string, string>()
 
   for (let index = 0; index < args.length;) {
     const flag = requireValue({ args, index, flag: 'argument' })
-    if (flag === '--file' || flag === '--workspace-file' || flag === '--workspace-link') {
+    if (
+      flag === '--file' ||
+      flag === '--workspace-file' ||
+      flag === '--workspace-dependency-view' ||
+      flag === '--workspace-link'
+    ) {
       const destination = requireRelativePath({
         value: requireValue({ args, index: index + 1, flag }),
         field: `${flag} destination`,
@@ -105,7 +112,13 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
       const value = requireValue({ args, index: index + 2, flag })
       if (flag === '--workspace-link') requireRelativePath({ value, field: `${flag} target` })
       const values =
-        flag === '--file' ? files : flag === '--workspace-file' ? workspaceFiles : workspaceLinks
+        flag === '--file'
+          ? files
+          : flag === '--workspace-file'
+            ? workspaceFiles
+            : flag === '--workspace-dependency-view'
+              ? workspaceDependencyViews
+              : workspaceLinks
       setUnique({ values, key: destination, value, field: flag })
       index += 3
       continue
@@ -130,6 +143,7 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
       ),
     files,
     workspaceFiles,
+    workspaceDependencyViews,
     workspaceLinks,
   }
 }
@@ -390,6 +404,26 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       cloneTree({
         source,
         destination: destinationInside({ root: output, relativePath: destination }),
+      })
+    }
+    for (const [destination, source] of options.workspaceDependencyViews) {
+      const components = destination.split('/')
+      const expectedLength = components[1]?.startsWith('@') === true ? 4 : 3
+      if (
+        components[0] !== 'node_modules' ||
+        components.at(-1) !== 'node_modules' ||
+        components.length !== expectedLength
+      ) {
+        invalidArguments(
+          `workspace dependency view must target package node_modules: ${destination}`,
+        )
+      }
+      const link = destinationInside({ root: output, relativePath: destination })
+      rmSync(link, { recursive: true, force: true })
+      addExternalLink({
+        allow: allowedExternalLinks,
+        destination: link,
+        source: join(source, 'node_modules'),
       })
     }
     for (const [linkPath, targetPath] of options.workspaceLinks) {
