@@ -91,6 +91,10 @@ package_view(
         "src/upstream.test.ts": "src/upstream.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -705,6 +709,10 @@ package_view(
         "test-fixtures/input/zero_space_before_slashdash_prop.kdl": "test-fixtures/input/zero_space_before_slashdash_prop.kdl",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",

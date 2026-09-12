@@ -115,6 +115,8 @@ package_view(
         "src/utils/propertyUtils.tsx": "src/utils/propertyUtils.tsx",
         "tsconfig.json": "tsconfig.json",
     },
+    workspace_dist = {
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -173,6 +175,8 @@ package_view(
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
         "vitest.setup.ts": "vitest.setup.ts",
+    },
+    workspace_dist = {
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
