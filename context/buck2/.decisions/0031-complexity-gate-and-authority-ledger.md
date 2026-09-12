@@ -71,3 +71,22 @@ Buck target on its default branch.
   closes, nothing is deleted from the VRS.
 - Consumers with one slice add a row and a deletion entry in their PR and
   author no VRS node; dotfiles keeps its delta node.
+
+## Amendment 1
+
+PR #1260 is the accepted positive foundation slice from Decision 4. At
+`c6abd2028d732343232ef4a77712b635ae5c3da3`, the Authority Ledger path patterns
+measure 6,607 added and 378 deleted build-machinery lines, net +6,229, with:
+
+```sh
+git diff --no-renames --numstat origin/main...c6abd2028d732343232ef4a77712b635ae5c3da3 --
+```
+
+The positive net establishes Buck targets and authoritative declaration views
+for 29 packages. The same slice deletes 7 of the 10 package FOD builders that
+preceded it (70%). The value-ordered source slices must delete 2 more
+product-import consumer FOD builders (a further 20 percentage points, leaving
+the single plugin-specific builder) and the 2 root TypeScript solution edges
+from `check:quick` and `check:all`. This amortization records the concrete
+contraction bought by the foundation; it does not weaken the negative
+per-repository and cumulative gates at adoption close.
