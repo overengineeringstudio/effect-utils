@@ -366,6 +366,33 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
   mkdirSync(output, { recursive: true })
   try {
     const allowedExternalLinks = new Set<string>()
+    const workspacePackages = new Set(
+      [...options.workspaceFiles.keys()]
+        .map(workspacePackageRoot)
+        .filter((packageName): packageName is string => packageName !== undefined),
+    )
+    if (options.workspaceDependencyViews.size > 0 && options.dependencies.kind !== 'link') {
+      invalidArguments('workspace dependency views require a linked dependency view')
+    }
+    for (const destination of options.workspaceDependencyViews.keys()) {
+      const components = destination.split('/')
+      const expectedLength = components[1]?.startsWith('@') === true ? 4 : 3
+      if (
+        components[0] !== 'node_modules' ||
+        components.at(-1) !== 'node_modules' ||
+        components.length !== expectedLength
+      ) {
+        invalidArguments(
+          `workspace dependency view must target package node_modules: ${destination}`,
+        )
+      }
+      const packageName = workspacePackageRoot(destination)
+      if (packageName === undefined || workspacePackages.has(packageName) === false) {
+        invalidArguments(
+          `workspace dependency view has no matching workspace overlay: ${destination}`,
+        )
+      }
+    }
     if (options.dependencies.kind === 'link') {
       for (const destination of [...options.files.keys(), ...options.workspaceLinks.keys()]) {
         const normalized = requireRelativePath({ value: destination, field: 'destination' })
@@ -380,11 +407,6 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       cloneTree({ source: options.dependencies.path, destination: join(output, 'node_modules') })
     } else {
       const link = join(output, 'node_modules')
-      const workspacePackages = new Set(
-        [...options.workspaceFiles.keys()]
-          .map(workspacePackageRoot)
-          .filter((packageName): packageName is string => packageName !== undefined),
-      )
       if (workspacePackages.size === 0) {
         addExternalLink({
           allow: allowedExternalLinks,
@@ -407,17 +429,6 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       })
     }
     for (const [destination, source] of options.workspaceDependencyViews) {
-      const components = destination.split('/')
-      const expectedLength = components[1]?.startsWith('@') === true ? 4 : 3
-      if (
-        components[0] !== 'node_modules' ||
-        components.at(-1) !== 'node_modules' ||
-        components.length !== expectedLength
-      ) {
-        invalidArguments(
-          `workspace dependency view must target package node_modules: ${destination}`,
-        )
-      }
       const link = destinationInside({ root: output, relativePath: destination })
       rmSync(link, { recursive: true, force: true })
       addExternalLink({

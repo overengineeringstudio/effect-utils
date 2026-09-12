@@ -206,6 +206,33 @@ describe('Buck package view over a normalized dependency view', () => {
     expect(existsSync(join(fixture.nodeModules, '@overeng', 'workspace', 'dist'))).toBe(false)
   })
 
+  it('rejects a dependency view for a package without a workspace overlay', () => {
+    const fixture = createAssemblyFixture()
+    const scope = join(fixture.nodeModules, '@overeng')
+    const workspacePackageTree = join(fixture.root, 'workspace-package-tree')
+    mkdirSync(join(workspacePackageTree, 'node_modules'), { recursive: true })
+    mkdirSync(scope)
+    symlinkSync(relative(scope, workspacePackageTree), join(scope, 'poison'))
+    const declarations = join(fixture.root, 'workspace-dist')
+    mkdirSync(declarations)
+
+    expect(() =>
+      runPackageTreeCli([
+        '--output',
+        fixture.output,
+        '--dependency-view',
+        fixture.nodeModules,
+        '--workspace-file',
+        'node_modules/@overeng/workspace/dist',
+        declarations,
+        '--workspace-dependency-view',
+        'node_modules/@overeng/poison/node_modules',
+        workspacePackageTree,
+      ]),
+    ).toThrow('workspace dependency view has no matching workspace overlay')
+    expect(statSync(join(workspacePackageTree, 'node_modules')).isDirectory()).toBe(true)
+  })
+
   it.each(['--file', '--workspace-link'] as const)(
     'rejects %s writes through the linked dependency boundary',
     (flag) => {
