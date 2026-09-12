@@ -38,6 +38,9 @@ All notable changes to this project will be documented in this file.
   cross-repository reuse, cost ledger, falsification spikes), open for
   acceptance or rejection. Roadmap Phase 6 and the composition open questions
   reference the proposal; no ratified requirement changes.
+- **Buck2**: added a root-owned `capabilities//` cell, declared-closure support
+  for pnpm tarball URL lock entries, and a deterministic npm tarball product
+  for the Buck-built `@overeng/utils` dist tree.
 - **@overeng/notion-effect-client**: added bounded file uploads through the shared
   HTTP client, with single-part uploads through 20 MiB, sequential 10 MiB
   multipart uploads above that threshold, and a configurable `maxBytes` limit

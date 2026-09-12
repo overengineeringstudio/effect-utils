@@ -521,6 +521,7 @@ export interface NormalizedCompositionRootInput {
 }
 
 const reservedCellNames: Readonly<Record<string, true>> = {
+  capabilities: true,
   prelude: true,
   toolchains: true,
   workspace: true,

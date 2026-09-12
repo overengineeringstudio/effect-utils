@@ -547,11 +547,18 @@ export const translatePnpmLock = ({
     }
     rejectUnknownFields({
       record: resolution,
-      allowed: ['integrity'],
+      allowed: ['integrity', 'tarball'],
       location: `${location}.resolution`,
     })
     const integrity = stringField({ record: resolution, field: 'integrity', location: location })
     integrityBytes({ integrity: integrity, location: `${location}.resolution.integrity` })
+    const tarball =
+      resolution.tarball === undefined
+        ? archiveUrl({ name, version })
+        : stringField({ record: resolution, field: 'tarball', location: location })
+    if (tarball.startsWith('https://') === false) {
+      return fail(`${location}.resolution.tarball must use https:`)
+    }
     const patch = workspacePatches[`${name}@${version}`]
     packages[key] = {
       cpu,
@@ -563,7 +570,7 @@ export const translatePnpmLock = ({
       ...(patch === undefined ? {} : { patch }),
       resolution: 'registry',
       target: pnpmTargetName({ prefix: 'package', identity: key }),
-      url: archiveUrl({ name, version }),
+      url: tarball,
       version,
     }
   }

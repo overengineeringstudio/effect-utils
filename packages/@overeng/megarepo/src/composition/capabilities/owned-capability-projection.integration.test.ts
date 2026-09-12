@@ -261,6 +261,7 @@ describe('owned capability projection', () => {
           installOwnedCapabilityProjection({
             memberKey: 'owned',
             ownedMemberPath: owned,
+            workspaceRoot: fixture,
             projectionPath: projection,
             workspaceRoot: workspace,
             projectionDigest: generation,
@@ -304,6 +305,7 @@ describe('owned capability projection', () => {
           installOwnedCapabilityProjection({
             memberKey: 'owned',
             ownedMemberPath: owned,
+            workspaceRoot: fixture,
             projectionPath: projection,
             workspaceRoot: workspace,
             projectionDigest: generation,
