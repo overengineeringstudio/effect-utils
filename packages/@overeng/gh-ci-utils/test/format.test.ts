@@ -28,33 +28,33 @@ describe('abbreviateRunner', () => {
 
 describe('parseRunnerIdentity', () => {
   it('keeps the full Namespace runner id, not just the abbreviated prefix', () =>
-    expect(parseRunnerIdentity('nsc-runner-psmnb4mkjm3mq')).toEqual({
+    expect(parseRunnerIdentity({ name: 'nsc-runner-psmnb4mkjm3mq' })).toEqual({
       _tag: 'namespace',
       instance: 'psmnb4mkjm3mq',
     }))
 
   it('resolves self-hosted runner-scaler workers to their host', () => {
-    expect(parseRunnerIdentity('dev3-6038ddf9')).toEqual({
+    expect(parseRunnerIdentity({ name: 'dev3-6038ddf9' })).toEqual({
       _tag: 'self-hosted',
       instance: 'dev3',
     })
-    expect(parseRunnerIdentity('mbp2021-e2387a32')).toEqual({
+    expect(parseRunnerIdentity({ name: 'mbp2021-e2387a32' })).toEqual({
       _tag: 'self-hosted',
       instance: 'mbp2021',
     })
   })
 
   it('reports unrecognized names verbatim rather than guessing a scheme', () => {
-    expect(parseRunnerIdentity('some-other-runner')).toEqual({
+    expect(parseRunnerIdentity({ name: 'some-other-runner' })).toEqual({
       _tag: 'other',
       instance: 'some-other-runner',
     })
-    expect(parseRunnerIdentity('ubuntu-latest')).toEqual({
+    expect(parseRunnerIdentity({ name: 'ubuntu-latest' })).toEqual({
       _tag: 'other',
       instance: 'ubuntu-latest',
     })
   })
 
   it('distinguishes "no runner assigned" from an unrecognized runner', () =>
-    expect(parseRunnerIdentity(null)).toEqual({ _tag: 'unknown', instance: null }))
+    expect(parseRunnerIdentity({ name: null })).toEqual({ _tag: 'unknown', instance: null }))
 })
