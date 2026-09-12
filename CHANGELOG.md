@@ -404,6 +404,7 @@ All notable changes to this project will be documented in this file.
   entries disappeared — and
   `buck2/dependencies/pnpm-lock.unit.test.ts` guards both properties against
   the real lock.
+
 - **Buck2 TypeScript admissions**: transfer typecheck and declaration authority
   for the remaining independent library packages (effect-path, kdl, oxc-config,
   npm-release, effect-ai-claude-cli, agent-session-ingest, effect-react,
@@ -434,6 +435,9 @@ All notable changes to this project will be documented in this file.
   Buck by policy: integration, e2e, live-deploy, PTY, Playwright and Storybook
   remain source-owned, as does native Rust product authority for `otelite` and
   `otel-scrape`, whose per-tuple products this repository has never emitted.
+  Authoritative workspace dependencies are overlaid into each compile and test
+  package view from sibling Buck `dist` targets, so dependent checks validate
+  the declaration boundary instead of falling back to sibling sources.
 
 - **TypeScript 7**: move the npm compiler/API package from 6.0.3 to 7.0.2 and
   refresh the Effect-TS `tsgo` flake input. The existing nixpkgs
@@ -639,6 +643,7 @@ tsconfig.check.json`, but oxlint 1.39 cannot speak the tsgolint 7 protocol, so
   `*.ts`/`*.tsx` only; the gate is now proven over every lintable extension in
   `packages`, `scripts`, `context` (1640 files) with `--type-aware` and
   `--deny-warnings`.
+
 - **Nix Buck products**: `packages.<system>.oxc-config` now denotes the
   manifest-pinned Buck JavaScript module; the retained pnpm-built oxlint plugin
   bundle is available as `packages.<system>.oxc-config-plugin`.

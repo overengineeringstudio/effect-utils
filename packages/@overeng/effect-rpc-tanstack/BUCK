@@ -55,6 +55,10 @@ package_view(
         "src/streaming.unit.test.ts": "src/streaming.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
+    workspace_dist = {
+        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -75,6 +79,10 @@ package_view(
         "src/streaming.unit.test.ts": "src/streaming.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",

@@ -55,6 +55,10 @@ package_view(
         "src/proof.unit.test.ts": "src/proof.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
+    workspace_dist = {
+        "node_modules/@overeng/notion-effect-schema/dist": "//packages/@overeng/notion-effect-schema:dist",
+        "node_modules/@overeng/notion-effect-schema/package.json": "//packages/@overeng/notion-effect-schema:package.json",
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -74,6 +78,10 @@ package_view(
         "src/proof.unit.test.ts": "src/proof.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/notion-effect-schema/dist": "//packages/@overeng/notion-effect-schema:dist",
+        "node_modules/@overeng/notion-effect-schema/package.json": "//packages/@overeng/notion-effect-schema:package.json",
     },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
