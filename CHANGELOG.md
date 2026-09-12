@@ -390,8 +390,9 @@ character after JSON`, failing every build against such a lockfile.
   remain source-owned, as does native Rust product authority for `otelite` and
   `otel-scrape`, whose per-tuple products this repository has never emitted.
   Authoritative workspace dependencies are overlaid into each compile and test
-  package view from sibling Buck `dist` targets, so dependent checks validate
-  the declaration boundary instead of falling back to sibling sources.
+  package view from sibling Buck `dist` targets, while each sibling retains its
+  own declared dependency view. Dependent checks therefore validate the
+  declaration boundary instead of falling back to sibling sources.
 
 - **TypeScript 7**: move the npm compiler/API package from 6.0.3 to 7.0.2 and
   refresh the Effect-TS `tsgo` flake input. The existing nixpkgs
