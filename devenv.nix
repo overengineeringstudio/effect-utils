@@ -114,10 +114,7 @@ let
   ciToolsCli = repoPackages.ci-tools;
   tuiStoriesCli = repoPackages.tui-stories;
   genieBootstrapClosureCheckCli = repoPackages.genie-bootstrap-closure-check;
-  ghCiUtilsSourceCli = mkSourceCli {
-    name = "gh-ci-utils";
-    entry = "packages/@overeng/gh-ci-utils/bin/gh-ci-utils.ts";
-  };
+  ghCiUtilsCli = repoPackages.gh-ci-utils;
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
   # The only Nix-managed pnpm dependency hash left: the oxlint plugin bundle is
@@ -666,7 +663,7 @@ in
     buck2Stage0Definition.product
     cliBuildStamp.package
     ciToolsCli
-    ghCiUtilsSourceCli
+    ghCiUtilsCli
     tuiStoriesCli
     # Rust toolchain for the standalone Rust crates.
     # Nix builds use pkgs.rustPlatform; these give local dev + the cargo CI lane
