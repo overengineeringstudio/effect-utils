@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Buck2 (context)**: Make the adoption roadmap timeless, restore strict VRS
+  document shapes, and make decision-to-requirement and implementation
+  traceability explicit.
+
 - **@overeng/gh-ci-utils**: Migrate the CI inspection CLI into effect-utils so
   its source, tests, and Nix package have one reusable owner.
 
