@@ -3,7 +3,7 @@
 Subsystem questions live in their subsystem (`03-materialization`,
 `05-composition`). These are cross-cutting.
 
-## OQ1: Does the local check entry point stay a devenv verb over a Buck aggregate, or does Buck become the verb?
+## OQ1: Does the local check entry point stay a devenv verb over a Buck aggregate, or does Buck become the verb? — resolved by decision 0032
 
 - Blocks: every consumer's local-check shape and the residual-gate list; the
   dissolution condition of `nix/devenv-modules/tasks/shared/check.nix` and the
@@ -20,7 +20,9 @@ Subsystem questions live in their subsystem (`03-materialization`,
   the check loop first-class OTel coverage (devenv trace versus Buck event log
   export). Johannes accepts deleting devenv tasks if Buck proves superior
   (q5, 2026-09-12).
-- Blocker: the experiment has not been run.
+- Resolution: resolved by decision 0032. Devenv keeps the stable outer verbs
+  over one scoped Buck aggregate; the decision records the conditions for
+  reconsidering the outer verb after the remaining capability gaps close.
 
 ## OQ2: How do public-repo CI runners share the cache with the private fleet?
 
