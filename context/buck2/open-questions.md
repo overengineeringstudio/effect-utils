@@ -36,11 +36,12 @@ Subsystem questions live in their subsystem (`03-materialization`,
   read-only action cache; a separate public cache endpoint with authenticated
   read and no PR write-back; a Namespace-native cache volume; distinct cache
   namespaces per trust tier with `main`-only write-back.
-- Resolution signal: a spike per candidate recording reachability, hit rate on
-  an unchanged head, wall-clock, secret surface, and the trust boundary
-  (BUCK-A05 says trust follows the tailnet; a public runner is outside it).
-- Signal status (2026-09-12): met by
-  [the cache-posture experiment](./04-reuse/.experiments/2026-09-12-ci-cache-posture.md).
+- Decision evidence: the
+  [cache-posture experiment](./04-reuse/.experiments/2026-09-12-ci-cache-posture.md)
+  eliminated the unsafe and non-REAPI options and established the required
+  trust boundary. It produced no unchanged-head hit because the public tier
+  does not yet exist; that measurement remains deployment proof, not evidence
+  for choosing a different topology.
 - Resolution: resolved by
   [decision 0033](./.decisions/0033-ci-cache-posture-two-trust-tiers.md).
   Public pull requests read but never write the isolated public tier; protected
