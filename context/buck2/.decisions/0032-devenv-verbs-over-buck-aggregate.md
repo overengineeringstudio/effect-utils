@@ -1,6 +1,6 @@
-# Check Entry Point
+# 0032 Devenv Verbs over a Buck Aggregate
 
-Status: proposed
+Status: accepted
 
 ## Context
 
@@ -17,6 +17,11 @@ single-member projection failed before action execution. It did establish that
 unrelated tests. It also established the concrete residual-gate and telemetry
 cost of deleting the outer task graph.
 
+## Evidence and Argument
+
+- Johannes accepted option A in q15 on 2026-09-12: keep the devenv verbs over
+  one scoped Buck aggregate.
+
 ## Options
 
 | Option                        | Shape                                                                                        | Benefits                                                                                                                                                                                           | Costs                                                                                                                                                                                                                |
@@ -24,12 +29,12 @@ cost of deleting the outer task graph.
 | A — retain devenv entry point | `devenv tasks run check:quick` depends on one scoped Buck aggregate plus residual task gates | preserves `check:quick`/`check:all`, task dependencies and status caching, Nix/lint/workspace/trace-audit/Weaver fan-in, pre-commit and skill ergonomics, and existing OTLP `span.label` semantics | immediate prototype adds 43 lines; keeps devenv evaluation and shell-entry overhead; speed is not yet measured                                                                                                       |
 | B — direct Buck entry point   | delete local devenv check fan-in and run `buck2 test //...`                                  | immediate prototype net +15 lines; direct Buck target/action ergonomics and native event logs                                                                                                      | does not run the admitted TypeScript typecheck/dist surface, discovers unrelated tests, removes residual gates from the entry point, changes hooks/skills/CI callers, and has no repository Buck-to-OTLP export path |
 
-## Proposed Decision
+## Decision
 
 Select option A. Devenv owns the stable repository check interface and the
 residual task graph. Buck owns deterministic admitted work behind one explicitly
 scoped aggregate. `mr:*` remains outside the measured aggregate until the
-composition-root defect is resolved; this proposal does not decide cache
+composition-root defect is resolved; this decision does not decide cache
 posture.
 
 Do not use `buck2 test //...` as an alias for the admitted aggregate. If Buck
