@@ -10,7 +10,6 @@ import {
   dollar,
   linuxX64Runner,
   shellSingleQuote,
-  standardCIEnv,
   withCiSourceRoot,
 } from './shared.ts'
 
@@ -1802,10 +1801,7 @@ export const nixClosureMeasurementsJob = (opts: NixClosureMeasurementsJobOptions
     ...(opts.timeoutMinutes === undefined ? {} : { 'timeout-minutes': opts.timeoutMinutes }),
     ...(opts.permissions === undefined ? {} : { permissions: opts.permissions }),
     defaults: bashShellDefaults,
-    env: {
-      ...standardCIEnv,
-      ...opts.env,
-    },
+    ...(opts.env === undefined ? {} : { env: opts.env }),
     steps: [
       ...(opts.setupSteps ?? [checkoutStep(), installNixStep(), validateNixStoreStep]),
       ...nixClosureMeasurementSteps(opts),
@@ -3719,7 +3715,6 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
     ...(opts?.permissions === undefined ? {} : { permissions: opts.permissions }),
     defaults: bashShellDefaults,
     env: {
-      ...standardCIEnv,
       ARTIFACT_DIR: artifactDir,
       OTEL_SERVICE_NAME: 'devenv-perf-ci',
       RUNNER_CLASS: (opts?.runsOn ?? linuxX64Runner).join(','),

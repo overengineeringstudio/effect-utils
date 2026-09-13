@@ -15,7 +15,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
+
+import {
+  ciWorkflow,
+  standardCIEnv,
+  type CiTrustTier,
+  type CiWorkflowArgs,
+} from '../../../../../../genie/ci-workflow/shared.ts'
 
 const ciWorkflowSource = [
   'ci-workflow.ts',
@@ -941,6 +948,35 @@ describe('ci workflow shared auth helpers', () => {
 })
 
 describe('ci workflow standard job helpers', () => {
+  it.each([
+    ['private', '0'],
+    ['public', '1'],
+  ] as const)('renders the %s repository cache trust tier', (trustTier, noRemoteCache) => {
+    const workflow = ciWorkflow({
+      actionlint: false,
+      trustTier,
+      name: 'CI',
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        check: {
+          'runs-on': 'ubuntu-latest',
+          steps: [],
+        },
+      },
+    })
+
+    expect(workflow.data.jobs.check?.env).toEqual(standardCIEnv({ trustTier }))
+    expect(workflow.data.jobs.check?.env?.BUCK2_NO_REMOTE_CACHE).toBe(noRemoteCache)
+  })
+
+  it('requires a repository cache trust tier', () => {
+    expectTypeOf<Parameters<typeof standardCIEnv>>().toEqualTypeOf<
+      [options: { readonly trustTier: CiTrustTier }]
+    >()
+    expectTypeOf<Parameters<typeof ciWorkflow>>().toEqualTypeOf<[args: CiWorkflowArgs]>()
+    expectTypeOf<CiWorkflowArgs>().toMatchTypeOf<{ readonly trustTier: CiTrustTier }>()
+  })
+
   it('centralizes self-hosted devenv task job composition', () => {
     expect(ciWorkflowSource).toContain('export const devenvTaskStep')
     expect(ciWorkflowSource).toContain('export const standardSelfHostedDevenvTaskJob')

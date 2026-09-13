@@ -29,7 +29,7 @@ import {
   type DefaultRefPolicyCheckStepOptions,
 } from './ci-workflow/megarepo.ts'
 import { checkoutStep, installNixStep } from './ci-workflow/setup.ts'
-import { bashShellDefaults, linuxX64Runner, standardCIEnv } from './ci-workflow/shared.ts'
+import { bashShellDefaults, linuxX64Runner } from './ci-workflow/shared.ts'
 
 type GitHubWorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type GitHubWorkflowStep = GitHubWorkflowJob['steps'][number]
@@ -62,7 +62,7 @@ export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions =
     'runs-on': runsOn ?? linuxX64Runner,
     permissions: permissions ?? { contents: 'read' },
     defaults: defaults ?? bashShellDefaults,
-    env: { ...standardCIEnv, ...env },
+    ...(env === undefined ? {} : { env }),
     steps: [
       checkoutStep(),
       installNixStep(),
@@ -103,6 +103,8 @@ export {
   standardCIEnv,
   withCiSourceRoot,
   withGcRaceRetry,
+  type CiTrustTier,
+  type CiWorkflowArgs,
   type GcRaceRetryOptions,
   type NixBinaryCache,
   type RunnerProfile,
