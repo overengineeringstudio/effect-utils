@@ -1,6 +1,6 @@
 # Composition Open Questions
 
-## Open 2026-09-12: is cross-repository cell composition worth its shape?
+## Open 2026-09-13: accept artifact-default composition?
 
 Composed cells exist for vision criterion 6 (a consumer builds producer
 targets from the shared cache with source-granular invalidation). The cost is
