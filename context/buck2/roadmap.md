@@ -50,11 +50,11 @@ stability, and move consumers to the owned-member authoring surface.
 in-mount writes, member-local Buck roots, and cache-upload exceptions as their
 consumers pass these proofs:
 
-| Consumer class                                  | Retirement change                                                                                                    | Admission proof                                                                          |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| CLI executed from another member's source mount | Execute the already-packaged Nix CLI; move each consumer's mount execution to that package                            | Command succeeds with the source mount protected and unchanged                           |
+| Consumer class                                  | Retirement change                                                                                                   | Admission proof                                                                          |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| CLI executed from another member's source mount | Execute the already-packaged Nix CLI; move each consumer's mount execution to that package                          | Command succeeds with the source mount protected and unchanged                           |
 | Dependency task that writes another member      | Move the producer into that member's owned workspace; consume only committed source plus declared artifact overlays | Mutation sentinel remains clean across apply, task execution, and teardown               |
-| Live cross-workspace branch sharing             | Commit upstream in its owned workspace, advance the consumer lock, then re-apply                                     | No non-owned mount is branch-attached; the lock advance alone changes the consumer input |
+| Live cross-workspace branch sharing             | Commit upstream in its owned workspace, advance the consumer lock, then re-apply                                    | No non-owned mount is branch-attached; the lock advance alone changes the consumer input |
 
 ## Phase 2b — declared dependency closure
 
