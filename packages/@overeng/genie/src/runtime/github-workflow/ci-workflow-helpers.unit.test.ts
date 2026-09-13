@@ -15,14 +15,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, expectTypeOf, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import {
-  ciWorkflow,
-  standardCIEnv,
-  type CiTrustTier,
-  type CiWorkflowArgs,
-} from '../../../../../../genie/ci-workflow/shared.ts'
+const ciWorkflowModuleUrl = new URL(
+  '../../../../../../genie/ci-workflow/shared.ts',
+  import.meta.url,
+).href
 
 const ciWorkflowSource = [
   'ci-workflow.ts',
@@ -951,7 +949,10 @@ describe('ci workflow standard job helpers', () => {
   it.each([
     ['private', '0'],
     ['public', '1'],
-  ] as const)('renders the %s repository cache trust tier', (trustTier, noRemoteCache) => {
+  ] as const)('renders the %s repository cache trust tier', async (trustTier, noRemoteCache) => {
+    // Load by URL so this package test can exercise the repo-local generator without
+    // pulling that generator into @overeng/genie's composite TypeScript project.
+    const { ciWorkflow, standardCIEnv } = await import(ciWorkflowModuleUrl)
     const workflow = ciWorkflow({
       actionlint: false,
       trustTier,
@@ -967,14 +968,6 @@ describe('ci workflow standard job helpers', () => {
 
     expect(workflow.data.jobs.check?.env).toEqual(standardCIEnv({ trustTier }))
     expect(workflow.data.jobs.check?.env?.BUCK2_NO_REMOTE_CACHE).toBe(noRemoteCache)
-  })
-
-  it('requires a repository cache trust tier', () => {
-    expectTypeOf<Parameters<typeof standardCIEnv>>().toEqualTypeOf<
-      [options: { readonly trustTier: CiTrustTier }]
-    >()
-    expectTypeOf<Parameters<typeof ciWorkflow>>().toEqualTypeOf<[args: CiWorkflowArgs]>()
-    expectTypeOf<CiWorkflowArgs>().toMatchTypeOf<{ readonly trustTier: CiTrustTier }>()
   })
 
   it('centralizes self-hosted devenv task job composition', () => {
