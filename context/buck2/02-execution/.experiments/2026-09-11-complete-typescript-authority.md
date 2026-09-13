@@ -40,7 +40,7 @@ The final stack was measured against `11e463` with documentation, tests, and loc
 
 The source cost is shared across 39 TypeScript projects, 35 declaration publishers, 11 JavaScript products, and three native products published for three platforms. The generated majority is therefore not a second implementation. It is the checked-in expansion of those shared registries and rules.
 
-At implementation head `219352091` (immediately before this evidence-only update), an isolated local-only build of all 11 JavaScript product descriptors, with remote action caching disabled, executed 919 local actions in 12.4 seconds after `buck2 clean` and transferred 57 MiB of package inputs. An immediate repeat executed no actions, transferred no data, and completed in 0.6 seconds. The native TypeScript API server was also built on x86_64 Linux, aarch64 Linux, and aarch64 Darwin; the Darwin build completed 599 local actions in approximately 59 seconds.
+At implementation head `7c8f81825` (immediately before this evidence-only update), an isolated local-only build of all 11 JavaScript product descriptors, with remote action caching disabled, executed 919 local actions in 13.3 seconds after `buck2 clean` and transferred 57 MiB of package inputs. An immediate repeat executed no actions, transferred no data, and completed in 0.6 seconds. The native TypeScript API server was also built on x86_64 Linux, aarch64 Linux, and aarch64 Darwin; the Darwin build completed 599 local actions in approximately 59 seconds.
 
 ## Conclusion
 
