@@ -172,6 +172,12 @@ All notable changes to this project will be documented in this file.
   even when the wrapper was evaluated elsewhere. Previously the lookup
   walked into ancestor `node_modules` and spawned a half-installed copy,
   failing aarch64 pnpm builds with a bare spawnSync ENOENT.
+- **Nix (mk-pnpm-deps)**: the aggregate-manifest alignment query now merges
+  importer maps across lockfile documents (`yq ea ... '[.importers] |
+  .[0] * .[1]'`). pnpm 12 writes two-document lockfiles and the previous
+  bare `.importers` query emitted one JSON document per input document,
+  which the single-parse consumer rejected with `Unexpected non-whitespace
+  character after JSON`, failing every build against such a lockfile.
 - **@overeng/megarepo**: `StoreLayer` now resolves a symlinked store root to
   its real path before building the Store. Git registers worktrees under real
   paths while member identity checks compare paths lexically, so a default

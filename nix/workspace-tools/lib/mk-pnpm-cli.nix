@@ -1339,7 +1339,11 @@ let
           | ${pkgs.gnutar}/bin/tar --null --files-from=- -cf "$NIX_BUILD_TOP/aggregate-manifests.tar"
         cp pnpm-workspace.yaml "$NIX_BUILD_TOP/aggregate-pnpm-workspace.yaml"
         cp pnpm-lock.yaml "$NIX_BUILD_TOP/aggregate-pnpm-lock.yaml"
-        ${pkgs.yq-go}/bin/yq -o=json '.importers' pnpm-lock.yaml \
+        # pnpm 12 writes two-document lockfiles (importers, then settings);
+        # a bare `.importers` query emits one JSON document per input
+        # document and the consumer parses exactly one. Merge both so
+        # single- and two-document locks work.
+        ${pkgs.yq-go}/bin/yq ea -o=json '[.importers] | .[0] * .[1]' pnpm-lock.yaml \
           | ${pkgs.nodejs}/bin/node ${alignAggregateManifestSpecifiersScript} pnpm-workspace.yaml pnpm-lock.yaml
       '';
       postPnpmInstall = ''
