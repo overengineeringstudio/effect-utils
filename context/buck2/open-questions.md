@@ -24,7 +24,7 @@ Subsystem questions live in their subsystem (`03-materialization`,
   over one scoped Buck aggregate; the decision records the conditions for
   reconsidering the outer verb after the remaining capability gaps close.
 
-## OQ2: How do public-repo CI runners share the cache with the private fleet?
+## OQ2: How do public-repo CI runners share the cache with the private fleet? — resolved by decision 0033
 
 - Blocks: BUCK-R06/R07 measurability in PR CI; consumer digest comparison
   (Phase 6); DQ1 in `03-materialization`.
@@ -36,10 +36,19 @@ Subsystem questions live in their subsystem (`03-materialization`,
   read-only action cache; a separate public cache endpoint with authenticated
   read and no PR write-back; a Namespace-native cache volume; distinct cache
   namespaces per trust tier with `main`-only write-back.
-- Resolution signal: a spike per candidate recording reachability, hit rate on
-  an unchanged head, wall-clock, secret surface, and the trust boundary
-  (BUCK-A05 says trust follows the tailnet; a public runner is outside it).
-- Blocker: no spike has been run.
+- Decision evidence: the
+  [cache-posture experiment](./04-reuse/.experiments/2026-09-12-ci-cache-posture.md)
+  eliminated the unsafe and non-REAPI options and established the required
+  trust boundary. It produced no unchanged-head hit because the public tier
+  does not yet exist; that measurement remains deployment proof, not evidence
+  for choosing a different topology.
+- Resolution: resolved by
+  [decision 0033](./.decisions/0033-ci-cache-posture-two-trust-tiers.md).
+  Public pull requests read but never write the isolated public tier; protected
+  public `main` and both private lanes read and write within their trust tiers.
+- Follow-up: refine BUCK-R06 and REUSE-R01 for the public read-only lane.
+- Deployment blocker: the public-only cache tier is not deployed; until it is
+  deployed and proven from a Namespace lane, public CI stays force-cold.
 
 ## OQ3: What must an external livestore contributor install?
 
