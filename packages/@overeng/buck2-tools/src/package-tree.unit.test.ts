@@ -173,6 +173,8 @@ describe('Buck package view over a normalized dependency view', () => {
     const workspacePackageTree = join(fixture.root, 'workspace-package-tree')
     const transitiveLink = join(workspacePackageTree, 'node_modules', 'transitive')
     mkdirSync(join(workspacePackageTree, 'node_modules'), { recursive: true })
+    mkdirSync(join(workspacePackageTree, 'src'))
+    writeFileSync(join(workspacePackageTree, 'src', 'mod.ts'), 'export const runtime = true\n')
     symlinkSync(
       relative(join(workspacePackageTree, 'node_modules'), fixture.packageDirectory),
       transitiveLink,
@@ -196,6 +198,9 @@ describe('Buck package view over a normalized dependency view', () => {
     expect(
       readFileSync(join(nodeModules, '@overeng', 'workspace', 'dist', 'index.d.ts'), 'utf8'),
     ).toBe('export declare const authoritative: true\n')
+    expect(readFileSync(join(nodeModules, '@overeng', 'workspace', 'src', 'mod.ts'), 'utf8')).toBe(
+      'export const runtime = true\n',
+    )
     expect(statSync(join(nodeModules, 'safe', 'package.json')).isFile()).toBe(true)
     expect(statSync(join(nodeModules, '@overeng', 'other', 'package.json')).isFile()).toBe(true)
     expect(
