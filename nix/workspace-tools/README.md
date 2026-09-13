@@ -18,6 +18,11 @@ pure and designed to work in both megarepo workspaces and standalone repos.
   - `mk-pnpm-deps.nix` — FOD helper for preparing relocatable pnpm install trees that downstream builds restore without rerunning `pnpm install`.
   - `cli-build-stamp.nix` — build stamp helper for CLIs.
   - `update-bun-hashes.nix` — helper to refresh bunDeps hashes.
+  - `pnpm-install-policy.nix` — install knobs shared by live and prepared
+    installs, plus the workspace-boundary rule below.
+  - `pnpm-source-input-specifiers.cjs` — the staged source-input `file:`
+    specifier algebra shared by every surface that writes, classifies, or
+    strips one.
 - `docs/`
   - `README.md` — index to mk-bun-cli notes.
 
@@ -88,3 +93,42 @@ byte-identical dependency inputs but move when lockfiles, package manifests, or
 patch authority change. `passthru.buck2DependencyMaterializationEvidence`
 adapts the same evidence into a Buck2-facing shape while explicitly declaring
 that Buck2 does not own live pnpm materialization or repair.
+
+## Two pnpm invariants every install root depends on
+
+Both are properties of pnpm itself, both were silent under pnpm 11, and both
+are load-bearing for composed workspaces. They are encoded once and asserted by
+`nix/devenv-modules/tasks/shared/tests/pnpm-nested-roots-and-source-inputs.test.sh`.
+
+### An install root must be a workspace boundary
+
+pnpm discovers the workspace by walking **up** from the install root. A nested
+root without its own `pnpm-workspace.yaml` is adopted by the nearest ancestor
+workspace: the ancestor's lockfile is written instead of the nested one, the
+ancestor's `overrides` apply, and the nested root's `node_modules` never
+appears — after which a frozen install fails with `ERR_PNPM_NO_LOCKFILE`.
+`--ignore-workspace` and a `cd`/`--dir` into the root do not prevent this.
+
+`pnpmInstallPolicy.nestedWorkspaceBoundaryShell` is the one encoding. It
+asserts the boundary by default (a staged root that lacks one is a builder
+bug), and `ephemeral = true` declares a missing boundary only for the wrapped
+install, for a root whose directory is itself a build artifact whose hash must
+not move.
+
+### A `file:` specifier is relative to the manifest that declares it
+
+Staged source inputs live at `.devenv/pnpm-source-inputs/current/<sourcePath>`
+and are reached through `file:` specifiers. pnpm resolves such a specifier
+relative to the **declaring** manifest and records that importer-relative form
+in `importers.<path>.dependencies.<name>.specifier`. So the root-relative
+spelling is correct only for the root importer; for an importer at depth N it
+does not resolve, and it disagrees with the lockfile, which a frozen install
+rejects.
+
+`pnpm-source-input-specifiers.cjs` owns this algebra:
+`sourceInputSpecifierFor` gives the specifier an importer must declare,
+`relativizeSourceInputSpecifier` re-spells an existing one for its importer,
+and `targetsSourceInputStage` classifies a recorded value by resolved target so
+that the root-relative and importer-relative spellings of the same dependency
+are treated alike — which is what lets the projection be stripped from a
+prepared tree completely.

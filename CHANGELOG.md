@@ -172,6 +172,29 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
+  install are now encoded once and asserted.
+  **Workspace boundary**: pnpm discovers the workspace by walking up from the
+  install root, so a nested root without its own `pnpm-workspace.yaml` is
+  adopted by the nearest ancestor — the ancestor's lockfile is written instead
+  of the nested one, its `overrides` apply, and the nested `node_modules` never
+  appears, after which a frozen install fails `ERR_PNPM_NO_LOCKFILE`.
+  `--ignore-workspace` does not prevent it and pnpm 11 scoped the same tree
+  correctly. `pnpmInstallPolicy.nestedWorkspaceBoundaryShell` now asserts the
+  boundary for every staged install root and the live Materialization Root, and
+  declares an ephemeral one for the staged `mk-bun-cli` dependency roots whose
+  directory is itself a hashed build artifact.
+  **Staged source-input specifiers**: pnpm resolves a `file:` specifier
+  relative to the manifest that declares it and records that importer-relative
+  form in the lockfile, so the root-relative spelling resolves only for the
+  root importer and otherwise disagrees with the lockfile — which a frozen
+  install rejects. The new `pnpm-source-input-specifiers.cjs` owns that algebra
+  and the aggregate manifest alignment now re-derives each specifier for its
+  importer instead of copying the recorded spelling, while the projection strip
+  classifies by resolved target so both spellings of one dependency are removed
+  from a prepared tree. Covered by
+  `nix/devenv-modules/tasks/shared/tests/pnpm-nested-roots-and-source-inputs.test.sh`.
+
 - **Nix (pnpm)**: `mkPnpm` now bundles the linux-arm64 native executable
   for glibc x86_64 evaluations and points it at the cross glibc loader,
   so `resolveInstalledBinary()` finds a working binary on aarch64 builders

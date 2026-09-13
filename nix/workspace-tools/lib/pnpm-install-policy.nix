@@ -17,6 +17,49 @@ rec {
     "--pm-on-fail=ignore"
   ];
 
+  # An install root is only isolated from an enclosing workspace when it is a
+  # workspace boundary itself, i.e. it owns a `pnpm-workspace.yaml`.
+  #
+  # `--ignore-workspace` and a `cd`/`--dir` into the root are NOT sufficient.
+  # pnpm 12 discovers the workspace by walking up from the install root, so a
+  # nested root without its own boundary file is adopted by the first ancestor
+  # that has one: the ancestor's lockfile is written instead of the nested one,
+  # the ancestor's `overrides` apply, and the nested root's own dependencies are
+  # resolved against the wrong root. The next frozen install then fails with
+  # ERR_PNPM_NO_LOCKFILE because the lockfile it needs was never written where
+  # it was expected. pnpm 11 scoped the same tree correctly, so this is silent
+  # until the boundary is asserted.
+  #
+  # Every install root therefore declares the boundary. `rootRelPath` is the
+  # install root relative to the tree being installed, used only in messages.
+  #
+  # `ephemeral` declares a missing boundary for the duration of the install and
+  # removes it again, for a root that is an install root by construction (it
+  # owns a lockfile) but whose staged directory is also a build artifact: a
+  # retained file would change the prepared tree and therefore its fixed-output
+  # hash. Use it inside a subshell, whose exit runs the cleanup.
+  nestedWorkspaceBoundaryShell =
+    {
+      rootRelPath ? ".",
+      ephemeral ? false,
+    }:
+    if ephemeral then
+      ''
+        if [ ! -f pnpm-workspace.yaml ]; then
+          printf 'packages:\n  - .\n' > pnpm-workspace.yaml
+          trap 'rm -f pnpm-workspace.yaml' EXIT
+          echo "[pnpm] Declared an ephemeral workspace boundary for ${rootRelPath}" >&2
+        fi
+      ''
+    else
+      ''
+        if [ ! -f pnpm-workspace.yaml ]; then
+          echo "pnpm install root is not a workspace boundary: ${rootRelPath}/pnpm-workspace.yaml is missing" >&2
+          echo "pnpm resolves a nested root against the nearest ancestor workspace, so this install would write the wrong lockfile" >&2
+          exit 1
+        fi
+      '';
+
   # The fixed-output builder writes policy through .npmrc because pnpm
   # rejects some workspace-scoped keys via `pnpm config set --global`. The
   # prepared tree is restored directly by downstream builds. Live and prepared
