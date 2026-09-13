@@ -57,4 +57,4 @@ five samples per workload before reconsidering the outer verb.
   consumer migration.
 - Speed remains unresolved. Failure elapsed times are not benchmark samples.
 
-Evidence: [2026-09-12 check-entry bakeoff](../../.experiments/2026-09-12-check-entry-bakeoff.md).
+Evidence: [2026-09-12 check-entry bakeoff](../.experiments/2026-09-12-check-entry-bakeoff.md).

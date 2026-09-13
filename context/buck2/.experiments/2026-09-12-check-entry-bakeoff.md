@@ -146,9 +146,9 @@ produce n≥5 measurements and after Buck has an equivalent typed aggregate verb
 
 ## VRS Impact
 
-This experiment proposes an OQ1 answer in
-[check-entry-point](../.decisions/.proposed/check-entry-point.md): devenv owns the
-repository check interface and residual task graph; Buck owns admitted
-deterministic actions and native evidence behind that interface. The proposal
+This experiment supports the OQ1 answer accepted in
+[decision 0032](../.decisions/0032-devenv-verbs-over-buck-aggregate.md): devenv
+owns the repository check interface and residual task graph; Buck owns admitted
+deterministic actions and native evidence behind that interface. The decision
 does not change cache posture, composition requirements, or the prohibition on
 a launcher between the caller and Buck for direct product evidence.
