@@ -1,8 +1,8 @@
 # Proposed: Cross-Repository Reuse Through Artifacts, Not Composed Cells
 
-Status: proposed (PR-local; not in force). Reopens the "Product bridge only"
-row of [decision 0014](../0014-megarepo-cell-composition.md) with evidence
-that did not exist then.
+Status: superseded before acceptance by
+[the composition architecture bakeoff](../.proposed/composition-architecture.md).
+This record was never in force.
 
 ## Context
 
