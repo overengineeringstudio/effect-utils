@@ -20,7 +20,7 @@
 # lifecycle script or network access at build time.
 # The linux-arm64 payload is bundled alongside the eval-platform one:
 # `resolveInstalledBinary()` probes the host's target directory, and a
-# wrapper evaluated on x86_64 but executed on aarch64 (remote Pi builders)
+# wrapper evaluated on x86_64 but executed on aarch64 (remote builders)
 # must find a working binary there. Without it, resolution walks into
 # ancestor `node_modules` and spawns whatever half-installed copy it finds
 # (typically missing its optional exe or carrying an unpatched interpreter),
@@ -63,12 +63,14 @@ let
     hash = exeHashes.${target};
   };
 
-  # The linux-arm64 executable is bundled alongside the eval-platform one so
-  # `resolveInstalledBinary()` finds a working binary on aarch64 builders
-  # even when this derivation was evaluated elsewhere. Omitted when the
-  # eval platform already is linux-arm64 (then it is the primary copy).
+  # The linux-arm64 executable is bundled only for the glibc x86_64 build,
+  # whose wrapper is the one consumed cross-platform by aarch64 builders:
+  # `resolveInstalledBinary()` probes the host's target directory, so it
+  # must find a working binary there. Other targets resolve natively
+  # (aarch64-linux, both darwins) or are out of scope (musl), so bundling
+  # there would only retain the cross glibc/GCC libraries for no benefit.
   # All references below are lazy: nothing is fetched unless bundled.
-  wantArm64Exe = target != "linux-arm64";
+  wantArm64Exe = target == "linux-x64";
   arm64ExeSrc = pkgs.fetchurl {
     url = "https://registry.npmjs.org/@pnpm/exe.linux-arm64/-/exe.linux-arm64-${version}.tgz";
     hash = exeHashes."linux-arm64";
@@ -107,12 +109,11 @@ pkgs.stdenvNoCC.mkDerivation {
     mkdir -p "$exeDir"
     ln -s ../../../pnpm "$exeDir/pnpm"
 
-    # A wrapper evaluated anywhere else still needs a working binary on
-    # aarch64 builders (remote Pi builds): unpack the linux-arm64 payload
-    # into its platform directory and point it at the cross glibc loader.
-    # autoPatchelfHook only covers the eval-platform binary and cannot run
-    # foreign binaries, so this is explicit. musl and darwin targets stay
-    # single-copy (musl is static; darwin builders evaluate natively).
+    # A glibc x86_64 wrapper still needs a working binary on aarch64
+    # builders: unpack the linux-arm64 payload into its platform directory
+    # and point it at the cross glibc loader. autoPatchelfHook only covers
+    # the eval-platform binary and cannot run foreign binaries, so this is
+    # explicit. musl and darwin targets stay single-copy.
     ${lib.optionalString wantArm64Exe ''
       arm64Dir=$wrapper/node_modules/@pnpm/exe.linux-arm64
       mkdir -p "$arm64Dir"
