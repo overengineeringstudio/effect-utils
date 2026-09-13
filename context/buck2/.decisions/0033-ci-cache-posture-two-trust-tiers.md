@@ -1,6 +1,6 @@
-# CI cache posture: isolate public and private trust domains
+# 0033 CI Cache Posture: Two Trust Tiers
 
-Status: proposed
+Status: accepted
 
 ## Context
 
@@ -13,9 +13,12 @@ repositories; `instance_name` is attribution rather than full isolation.
 
 Force-cold public CI does not meet the reuse and wall-clock budgets. The measured
 failure is retained in
-[the experiment](../../04-reuse/.experiments/2026-09-12-ci-cache-posture.md).
+[the experiment](../04-reuse/.experiments/2026-09-12-ci-cache-posture.md).
 
 ## Evidence and Argument
+
+- Johannes accepted the two-tier cache posture in q16 on 2026-09-12, with the
+  BUCK-R06/REUSE-R01 refinement recorded below as a required follow-up.
 
 Buck2 independently controls remote-cache reads and uploads. A public pull
 request can set `remote_cache_enabled = True` and `allow_cache_uploads = False`,
@@ -70,8 +73,8 @@ Use two cache trust domains:
   public-repository artifacts only.
 - The service fleet gains one process, listener, bounded storage directory,
   credential, health check, and cache metric identity.
-- Acceptance requires constitutional refinement of BUCK-R06 and REUSE-R01,
-  followed by alignment of REUSE-A01, REUSE-R06, the root and reuse specs, the
+- Follow-up: refine BUCK-R06 and REUSE-R01 so untrusted public pull requests
+  are read-only, then align REUSE-A01, REUSE-R06, the root and reuse specs, the
   roadmap, and materialization DQ1 with the accepted two-tier topology.
 - CI remains force-cold until the public tier exists and a Namespace lane proves
   the exact client contract.

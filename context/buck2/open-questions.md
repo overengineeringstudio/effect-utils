@@ -24,7 +24,7 @@ Subsystem questions live in their subsystem (`03-materialization`,
   over one scoped Buck aggregate; the decision records the conditions for
   reconsidering the outer verb after the remaining capability gaps close.
 
-## OQ2: How do public-repo CI runners share the cache with the private fleet?
+## OQ2: How do public-repo CI runners share the cache with the private fleet? — resolved by decision 0033
 
 - Blocks: BUCK-R06/R07 measurability in PR CI; consumer digest comparison
   (Phase 6); DQ1 in `03-materialization`.
@@ -41,12 +41,13 @@ Subsystem questions live in their subsystem (`03-materialization`,
   (BUCK-A05 says trust follows the tailnet; a public runner is outside it).
 - Signal status (2026-09-12): met by
   [the cache-posture experiment](./04-reuse/.experiments/2026-09-12-ci-cache-posture.md).
-- Proposed resolution: isolate public and private cache storage; public pull
-  requests read but never write, protected public `main` reads and writes, both
-  private lanes read and write. See
-  [the proposed decision](./.decisions/.proposed/ci-cache-posture.md).
-- Acceptance blocker: the proposal needs a refinement of BUCK-R06 and REUSE-R01
-  plus a deployed public-only cache tier; until then public CI stays force-cold.
+- Resolution: resolved by
+  [decision 0033](./.decisions/0033-ci-cache-posture-two-trust-tiers.md).
+  Public pull requests read but never write the isolated public tier; protected
+  public `main` and both private lanes read and write within their trust tiers.
+- Follow-up: refine BUCK-R06 and REUSE-R01 for the public read-only lane.
+- Deployment blocker: the public-only cache tier is not deployed; until it is
+  deployed and proven from a Namespace lane, public CI stays force-cold.
 
 ## OQ3: What must an external livestore contributor install?
 
