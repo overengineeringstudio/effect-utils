@@ -436,9 +436,10 @@ All notable changes to this project will be documented in this file.
   remain source-owned, as does native Rust product authority for `otelite` and
   `otel-scrape`, whose per-tuple products this repository has never emitted.
   Authoritative workspace dependencies are overlaid into each compile and test
-  package view from sibling Buck `dist` targets, while each sibling retains its
-  own declared dependency view. Dependent checks therefore validate the
-  declaration boundary instead of falling back to sibling sources.
+  package view from sibling Buck `dist` targets. Each sibling retains its own
+  declared dependency view and linked runtime sources, so type checks use the
+  declaration boundary while JavaScript products can still bundle
+  implementations.
 
 - **TypeScript 7**: move the npm compiler/API package from 6.0.3 to 7.0.2 and
   refresh the Effect-TS `tsgo` flake input. The existing nixpkgs

@@ -1,6 +1,7 @@
 #!/usr/bin/env -S bun
 import {
   constants,
+  existsSync,
   copyFileSync,
   lstatSync,
   mkdirSync,
@@ -429,13 +430,20 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       })
     }
     for (const [destination, source] of options.workspaceDependencyViews) {
-      const link = destinationInside({ root: output, relativePath: destination })
-      rmSync(link, { recursive: true, force: true })
-      addExternalLink({
-        allow: allowedExternalLinks,
-        destination: link,
-        source: join(source, 'node_modules'),
-      })
+      if (lstatSync(source).isDirectory() === false) {
+        invalidArguments(`workspace dependency package view must be a directory: ${source}`)
+      }
+      const dependencyDestination = destinationInside({ root: output, relativePath: destination })
+      const packageDestination = dirname(dependencyDestination)
+      for (const entry of readdirSync(source).toSorted()) {
+        const entryDestination = join(packageDestination, entry)
+        if (existsSync(entryDestination) === true) continue
+        addExternalLink({
+          allow: allowedExternalLinks,
+          destination: entryDestination,
+          source: join(source, entry),
+        })
+      }
     }
     for (const [linkPath, targetPath] of options.workspaceLinks) {
       const link = destinationInside({ root: output, relativePath: linkPath })

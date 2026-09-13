@@ -3,6 +3,9 @@
   bun,
   src,
 }:
+let
+  mkSharedHash = hash: { inherit hash; };
+in
 import ../../../../nix/oxc-config-plugin.nix {
   inherit
     pkgs
