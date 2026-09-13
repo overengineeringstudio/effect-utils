@@ -28,9 +28,11 @@ execution-platforms and target-execution subsystems.
 ### Platforms and tools
 
 - **EXEC-R01 Configured platforms:** Every admitted action selects an explicit
-  target platform and execution platform. Platform labels are canonical and
-  shared across composition shapes: the label, not its content, enters the
-  configuration hash ([decision 0003](../.decisions/0003-platform-proof-and-rust-convergence.md)).
+  target platform and execution platform
+  ([decision 0003](../.decisions/0003-platform-proof-and-rust-convergence.md)).
+  Platform labels are canonical and shared across composition shapes: the
+  label, not its content, enters the configuration hash
+  ([COMP-R05](../05-composition/requirements.md#requirements)).
 - **EXEC-R02 Exact tools from the store:** Every executable provider binds tool
   bytes, protocol, runtime requirements, and execution-platform compatibility,
   and resolves through `/nix/store` paths. Per-worktree tool paths are

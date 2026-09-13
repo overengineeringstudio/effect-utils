@@ -117,10 +117,10 @@ supersedes, and each product's pnpm-deps fixed-output derivation.
 admitted targets from merged authority; the consumer has a composed workspace,
 stable cross-member labels, and trust-appropriate cache access.
 
-**Sequence:** Adopt consumers in dependency and leverage order: effect-utils,
-dotfiles, schickling.dev, schickling-stiftung, private-shared, livestore after
-its external-contributor contract is settled, then dormant consumers when they
-resume. Each consumer is re-cut only from merged producer authority.
+**Sequence:** Adopt consumers in dependency order, beginning only from merged
+producer authority. A consumer enters when its contributor and lifecycle
+contracts are settled; dormant consumers enter only after resuming. Concrete
+repository identities, order, and status live only in the private ledger.
 
 **Dissolution target:** Delete each consumer's source-mount CLI execution,
 cross-member dependency writers, live branch sharing, duplicate build

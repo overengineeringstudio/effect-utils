@@ -2,7 +2,9 @@
 
 Status: accepted
 
-Implementation: `packages/@overeng/buck2-tools/src/owned-files.ts`.
+Implementation: partial — `packages/@overeng/buck2-tools/src/owned-files.ts`
+implements the Git/Buck join, but the semantic supported-file policy is not yet
+projected into its candidate census.
 
 ## Context
 
