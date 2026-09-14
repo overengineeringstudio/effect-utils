@@ -9,10 +9,25 @@ by attribution), paid today by effect-utils alone: no repository authors an
 `effect_utils//` label and Phase 6 has not started. The only Buck2-native
 alternative, git external cells, is rejected
 ([decision 0030](../.decisions/0030-external-cells-are-not-a-composition-mechanism.md)).
-[.proposed/artifact-composition.md](../.decisions/.proposed/artifact-composition.md)
-proposes artifact-granular reuse for the effect-utils library edges and pauses
-composed-by-default; it lists the VRS edits and falsification spikes. Blocked
-on: Johannes' decision on criterion 6, and spikes 1–2 of the proposal.
+The first artifact-composition proposal (merged by mistake as a PR-local
+record via #1271; removed 2026-09-14) ran its falsification spikes in PR #1282:
+URL tarball closure, digest refusal, and a root-owned capability cell passed;
+the consumer boundary failed (publisher rejected scoped names; a single URL
+artifact could not coexist with workspace consumers under the consumer's pnpm
+policy). The architecture bakeoff (PR #1287,
+`.experiments/2026-09-13-composition-bakeoff.md`, proposed decision
+`.decisions/.proposed/composition-architecture.md` on that branch) provisionally
+selects artifact-default composition. Johannes (q22/q23, 2026-09-13) adopted
+that direction with **no registry**: the durable origin is the existing
+content-addressed buck2-products release layout, the CAS is an accelerator, and
+consumers pin tarball URL + integrity in their lockfile. The one-edge proof
+(PR #1289: `@overeng/utils` published, dotfiles notion-scan consuming by URL,
+typecheck + 28 tests green) succeeded; its net (+482) is judged by the
+reconciliation trajectory (decision 0031 Amendment 1). Composed-by-default
+(decision 0027) stays paused until the proposal is promoted or rejected.
+Remaining blocker: the constitutional edits (vision criterion 6, BUCK-R05/R06,
+COMP-R01/R02) are Johannes', and pnpm's injected-workspace pruning must be
+shown to be a strict no-op on the second install.
 
 ## Open 2026-09-12: root-owned capability cell
 
