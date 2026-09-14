@@ -42,6 +42,9 @@ in
           : > "$control/fixture/b"
           : > "$control/fixture/nested/c"
           for i in $(seq 1 20); do : > "$control/orphan/f$i"; done
+          fixture_path_hex=$(printf %s "$control/fixture" | od -An -tx1 | tr -d ' \n')
+          orphan_path_hex=$(printf %s "$control/orphan" | od -An -tx1 | tr -d ' \n')
+
 
           ${pkgs.sqlite}/bin/sqlite3 "$control/fixture.db" "
             create table file_input (
@@ -61,7 +64,7 @@ in
               unique(cached_eval_id, file_input_id)
             );
             insert into file_input (id, path, is_directory, recursive)
-              values (1, '$control/fixture', 1, 1), (2, '$control/orphan', 1, 1);
+              values (1, X'$fixture_path_hex', 1, 1), (2, X'$orphan_path_hex', 1, 1);
             insert into cached_eval (id, attr_name) values (1, 'shell');
             insert into eval_input_path (cached_eval_id, file_input_id) values (1, 1);
           "

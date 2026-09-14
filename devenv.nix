@@ -497,6 +497,7 @@ in
           "cargo:check"
           "dependency-materialization:evidence:check"
           "devenv:trace-audit"
+          "check:devenv-eval-inputs"
           "lint:check"
           "lint:nix"
           "mr:check"
@@ -595,7 +596,7 @@ in
     # a deploy is skipped. Use the hermetic package instead of relying on an
     # ambient source-workspace node_modules projection.
     (taskModules.workflow-report {
-      ciToolsBin = "${ciToolsSourceCli}/bin/ci-tools";
+      ciToolsBin = "${repoFlake.packages.${currentSystem}.ci-tools}/bin/ci-tools";
     })
     (taskModules.lint-oxc {
       oxlintPkg = oxlintWithPlugins;
