@@ -746,15 +746,13 @@ in
   # buck2-tools executes inside pinned Bun actions and exercises Bun.YAML/Bun.which.
   # Keep its package gate on that runtime rather than Vitest's Node process.
   tasks."test:buck2-tools".description = lib.mkForce "Run buck2-tools tests under pinned Bun";
-  tasks."test:buck2-tools".env = {
-    CP_BIN = "${pkgs.coreutils}/bin/cp";
-    MV_BIN = "${pkgs.coreutils}/bin/mv";
-    FALSE_BIN = "${pkgs.coreutils}/bin/false";
-  };
   tasks."test:buck2-tools".exec = lib.mkForce (
     trace.exec "test:buck2-tools" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      export CP_BIN=${pkgs.coreutils}/bin/cp
+      export MV_BIN=${pkgs.coreutils}/bin/mv
+      export FALSE_BIN=${pkgs.coreutils}/bin/false
       cd "$root/packages/@overeng/buck2-tools"
       exec ${pkgs.bun}/bin/bun test src/*.test.ts
     ''
