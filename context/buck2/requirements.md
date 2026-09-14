@@ -139,6 +139,9 @@ invariants named in its own document:
   (which later deletion pays for it); the per-change signal is advisory, the
   per-close gate is not
   ([decision 0031](./.decisions/0031-complexity-gate-and-authority-ledger.md)).
+  Between closes the gate has a trajectory: at every reconciliation the
+  cumulative sum must be lower than at the previous reconciliation, or
+  admissions pause until it is (decision 0031, Amendment 1).
   When BUCK-R15 conflicts with coverage (BUCK-R01) or the wall-clock budgets
   (BUCK-R07), BUCK-R15 wins: the others are constraints with tolerances.
 - **BUCK-R16 Benchmark evidence:** Efficiency claims are measured, never
