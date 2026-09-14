@@ -1,18 +1,23 @@
 # Composition Open Questions
 
-## Open 2026-09-12: is cross-repository cell composition worth its shape?
+## Open 2026-09-13: accept artifact-default composition?
 
-Composed cells exist for vision criterion 6 (a consumer builds producer
-targets from the shared cache with source-granular invalidation). The cost is
-the decision-0020 workspace shape and mr's mount pipeline (up to ~13–14k LOC
-by attribution), paid today by effect-utils alone: no repository authors an
-`effect_utils//` label and Phase 6 has not started. The only Buck2-native
-alternative, git external cells, is rejected
-([decision 0030](../.decisions/0030-external-cells-are-not-a-composition-mechanism.md)).
-[.proposed/artifact-composition.md](../.decisions/.proposed/artifact-composition.md)
-proposes artifact-granular reuse for the effect-utils library edges and pauses
-composed-by-default; it lists the VRS edits and falsification spikes. Blocked
-on: Johannes' decision on criterion 6, and spikes 1–2 of the proposal.
+The [composition architecture bakeoff](./.experiments/2026-09-13-composition-bakeoff.md)
+provisionally selects immutable package artifacts for ordinary
+cross-repository TypeScript library edges. It narrows source mounts to named
+fork/generator exceptions and proposes retiring cross-repository Buck2 cells
+after adoption. The
+[proposed decision](../.decisions/.proposed/composition-architecture.md)
+records the criterion-by-criterion winners, concrete deletion ledger, and VRS
+changes that require principal confirmation. The earlier
+[artifact proposal](../.decisions/.superseded/artifact-composition.md) was
+never accepted and is superseded by this bakeoff.
+
+Blocked on: Johannes' architecture decision; a BUCK-R15 net-complexity ledger
+that counts permanent artifact machinery and retains all L3 cost during
+coexistence; and a real scoped-package publication proof that closes
+package-manifest transformation, runtime closure, immutable origin/retention,
+and provenance.
 
 ## Open 2026-09-12: root-owned capability cell
 
