@@ -333,6 +333,7 @@
           ts = import ./nix/devenv-modules/tasks/shared/ts.nix;
           setup = import ./nix/devenv-modules/tasks/shared/setup.nix;
           check = import ./nix/devenv-modules/tasks/shared/check.nix;
+          devenv-eval-input-budget = import ./nix/devenv-modules/tasks/shared/devenv-eval-input-budget.nix;
           clean = import ./nix/devenv-modules/tasks/shared/clean.nix;
           test = import ./nix/devenv-modules/tasks/shared/test.nix;
           test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;

@@ -74,6 +74,7 @@ let
     worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
     setup = import ./nix/devenv-modules/tasks/shared/setup.nix;
     check = import ./nix/devenv-modules/tasks/shared/check.nix;
+    devenv-eval-input-budget = import ./nix/devenv-modules/tasks/shared/devenv-eval-input-budget.nix;
     clean = import ./nix/devenv-modules/tasks/shared/clean.nix;
     test = import ./nix/devenv-modules/tasks/shared/test.nix;
     test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
@@ -496,6 +497,7 @@ in
           "cargo:check"
           "dependency-materialization:evidence:check"
           "devenv:trace-audit"
+          "check:devenv-eval-inputs"
           "lint:check"
           "lint:nix"
           "mr:check"
@@ -530,6 +532,7 @@ in
       ];
       checkAllTypecheckTask = "ts:check:strict";
     })
+    (taskModules.devenv-eval-input-budget { })
     (taskModules.weaver { })
     # Wire the additive weaver gate into `check:all` only (not `check:quick`, which stays fast):
     # `after` list options merge across modules, so this appends without redefining check:all.
@@ -592,7 +595,9 @@ in
     # Workflow reports run as standalone CI control-plane steps, including when
     # a deploy is skipped. Use the hermetic package instead of relying on an
     # ambient source-workspace node_modules projection.
-    (taskModules.workflow-report { })
+    (taskModules.workflow-report {
+      ciToolsBin = "${repoFlake.packages.${currentSystem}.ci-tools}/bin/ci-tools";
+    })
     (taskModules.lint-oxc {
       oxlintPkg = oxlintWithPlugins;
       lintPaths = [
@@ -744,15 +749,13 @@ in
   # buck2-tools executes inside pinned Bun actions and exercises Bun.YAML/Bun.which.
   # Keep its package gate on that runtime rather than Vitest's Node process.
   tasks."test:buck2-tools".description = lib.mkForce "Run buck2-tools tests under pinned Bun";
-  tasks."test:buck2-tools".env = {
-    CP_BIN = "${pkgs.coreutils}/bin/cp";
-    MV_BIN = "${pkgs.coreutils}/bin/mv";
-    FALSE_BIN = "${pkgs.coreutils}/bin/false";
-  };
   tasks."test:buck2-tools".exec = lib.mkForce (
     trace.exec "test:buck2-tools" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      export CP_BIN=${pkgs.coreutils}/bin/cp
+      export MV_BIN=${pkgs.coreutils}/bin/mv
+      export FALSE_BIN=${pkgs.coreutils}/bin/false
       cd "$root/packages/@overeng/buck2-tools"
       exec ${pkgs.bun}/bin/bun test src/*.test.ts
     ''
