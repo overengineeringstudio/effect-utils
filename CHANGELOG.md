@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 - **Buck2**: added a root-owned `capabilities//` cell, declared-closure support
   for pnpm tarball URL lock entries, and a deterministic npm tarball product
   for the Buck-built `@overeng/utils` dist tree.
+- **Buck2**: extended the npm package product and immutable-release publisher
+  to publish scoped package closures without a package registry. Runtime
+  workspace/catalog edges resolve to digest-addressed sibling release assets,
+  while unresolved local edges fail packaging.
 
 - **@overeng/megarepo**: composition-enabled branch worktrees are now created
   directly at their final `P/repos/<owned>` path and use Git registration as
