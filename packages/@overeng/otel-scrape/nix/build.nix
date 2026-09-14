@@ -22,7 +22,7 @@ let
   workspaceRoot = repositoryRoot + "/rust";
   crateRoot = ../.;
   mkRustWorkspaceSource = import ../../../../nix/workspace-tools/lib/mk-rust-workspace-source.nix {
-    inherit lib;
+    inherit lib pkgs;
   };
   # NixStamp JSON (same contract as @overeng/utils/node/cli-version NixStamp).
   # baseVersion pinned to the crate version below so machineVersion is

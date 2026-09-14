@@ -8,7 +8,7 @@ let
   workspaceRoot = repositoryRoot + "/rust";
   crateRoot = ../.;
   mkRustWorkspaceSource = import ../../../../nix/workspace-tools/lib/mk-rust-workspace-source.nix {
-    inherit lib;
+    inherit lib pkgs;
   };
   src = mkRustWorkspaceSource {
     inherit repositoryRoot workspaceRoot;

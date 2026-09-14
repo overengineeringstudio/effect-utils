@@ -4,27 +4,38 @@ let
   repositoryRoot = ../.;
   workspaceRoot = repositoryRoot + "/rust";
 
-  sharedFileset = lib.fileset.unions [
+  sharedRustFileset = lib.fileset.unions [
     (workspaceRoot + "/Cargo.toml")
     (workspaceRoot + "/Cargo.lock")
-    (repositoryRoot + "/rust-toolchain.toml")
-    (repositoryRoot + "/nix/buck2-stage0-tools.nix")
     (workspaceRoot + "/buck2-tools/core/Cargo.toml")
     (lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/buck2-tools/core/src"))
   ];
-  mkSourceFileset =
+  sharedRootFiles = [
+    (repositoryRoot + "/rust-toolchain.toml")
+    (repositoryRoot + "/nix/buck2-stage0-tools.nix")
+  ];
+  mkRustFileset =
     packageRoot:
     lib.fileset.unions [
-      sharedFileset
+      sharedRustFileset
       (packageRoot + "/Cargo.toml")
       (lib.fileset.fileFilter (file: file.hasExt "rs") (packageRoot + "/src"))
     ];
+  mkSourceInputs = packageRoot: sharedRootFiles ++ lib.fileset.toList (mkRustFileset packageRoot);
   mkSource =
     packageRoot:
-    lib.fileset.toSource {
-      root = repositoryRoot;
-      fileset = mkSourceFileset packageRoot;
-    };
+    let
+      rustSource = lib.fileset.toSource {
+        root = workspaceRoot;
+        fileset = mkRustFileset packageRoot;
+      };
+    in
+    pkgs.runCommand "buck2-stage0-source" { } ''
+      mkdir -p "$out/nix"
+      cp -R ${rustSource} "$out/rust"
+      cp ${repositoryRoot + "/rust-toolchain.toml"} "$out/rust-toolchain.toml"
+      cp ${repositoryRoot + "/nix/buck2-stage0-tools.nix"} "$out/nix/buck2-stage0-tools.nix"
+    '';
 
   toolDefinitions = {
     archive-tool = {
@@ -79,8 +90,6 @@ let
 in
 {
   archive-tool = mkTool toolDefinitions.archive-tool;
-  source-inputs = lib.mapAttrs (
-    _: definition: lib.fileset.toList (mkSourceFileset definition.packageRoot)
-  ) toolDefinitions;
+  source-inputs = lib.mapAttrs (_: definition: mkSourceInputs definition.packageRoot) toolDefinitions;
   product = mkTool toolDefinitions.product;
 }
