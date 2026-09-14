@@ -59,6 +59,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
 ### Available Modules:
 
 - `check.nix` - Aggregate check tasks (check:quick, check:all, configurable strict typecheck gate)
+- `devenv-eval-input-budget.nix` - Per-attribute recursive eval-cache input budget,
+  wired into `check:quick` and `check:all` by default
 - `clean.nix` - Clean tasks
 - `genie.nix` - Genie config generation tasks
 - `lint-oxc.nix` - Linting tasks (oxlint, oxfmt)

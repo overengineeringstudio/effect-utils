@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
+  budget that names the offending cached attribute and gates quick and full
+  checks.
 - **Buck2 (context)**: Make the adoption roadmap timeless, restore strict VRS
   document shapes, and make decision-to-requirement and implementation
   traceability explicit.
