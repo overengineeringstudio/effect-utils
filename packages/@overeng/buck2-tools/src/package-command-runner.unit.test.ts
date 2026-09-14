@@ -695,8 +695,75 @@ describe('the product descriptor projection', () => {
 })
 
 describe('the npm dist package projection', () => {
-  it('packs deterministic bytes whose manifest exports only the emitted dist tree', async () => {
-    const root = scratch('buck2-dist-package-')
+  const readTarEntries = (archive: Uint8Array): ReadonlyMap<string, Uint8Array> => {
+    const tar = gunzipSync(archive)
+    const decoder = new TextDecoder()
+    const entries = new Map<string, Uint8Array>()
+    for (let offset = 0; offset < tar.byteLength - 1024;) {
+      const nameBytes = tar.subarray(offset, offset + 100)
+      const nameEnd = nameBytes.indexOf(0)
+      const name = decoder.decode(nameBytes.subarray(0, nameEnd === -1 ? undefined : nameEnd))
+      const sizeText = decoder
+        .decode(tar.subarray(offset + 124, offset + 136))
+        .replaceAll('\0', '')
+        .trim()
+      const size = Number.parseInt(sizeText, 8)
+      entries.set(name, tar.subarray(offset + 512, offset + 512 + size))
+      offset += 512 + Math.ceil(size / 512) * 512
+    }
+    return entries
+  }
+
+  const writeDependencyProduct = ({
+    path,
+    productName,
+    transportSlug,
+  }: {
+    readonly path: string
+    readonly productName: string
+    readonly transportSlug: string
+  }): {
+    readonly integrity: string
+    readonly path: string
+    readonly payload: string
+    readonly url: string
+  } => {
+    const payload = `${path}.tgz`
+    const payloadBytes = new TextEncoder().encode(`package bytes for ${productName}`)
+    writeFileSync(payload, payloadBytes)
+    const sha256 = new Bun.CryptoHasher('sha256').update(payloadBytes).digest('hex')
+    const integrity = `sha512-${new Bun.CryptoHasher('sha512').update(payloadBytes).digest('base64')}`
+    const tag = `buck2-package-v1-${transportSlug}-${sha256}`
+    const name = `${sha256}-${transportSlug}.tgz`
+    const url = `https://github.com/overengineeringstudio/effect-utils/releases/download/${tag}/${name}`
+    writeFileSync(
+      path,
+      JSON.stringify({
+        schema: 'effect-utils/npm-package-product/v2',
+        productName,
+        version: '0.1.0',
+        transportSlug,
+        modulePath: `${transportSlug}.tgz`,
+        sha256,
+        sha512: integrity,
+        release: { tag, name, url },
+      }),
+    )
+    return { integrity, path, payload, url }
+  }
+
+  const makeDistPackageFixture = ({
+    dependencies,
+    optionalDependencies,
+    peerDependencies,
+    prefix,
+  }: {
+    readonly dependencies?: Readonly<Record<string, string>>
+    readonly optionalDependencies?: Readonly<Record<string, string>>
+    readonly peerDependencies?: Readonly<Record<string, string>>
+    readonly prefix: string
+  }) => {
+    const root = scratch(prefix)
     const dist = join(root, 'dist')
     mkdirSync(join(dist, 'src'), { recursive: true })
     writeFileSync(join(dist, 'src', 'mod.js'), 'export const answer = 42\n')
@@ -705,60 +772,216 @@ describe('the npm dist package projection', () => {
       packageJson,
       JSON.stringify({
         name: '@overeng/utils',
+        version: '0.1.0',
         private: true,
         exports: { '.': './src/mod.ts' },
+        ...(dependencies === undefined ? {} : { dependencies }),
+        ...(optionalDependencies === undefined ? {} : { optionalDependencies }),
+        ...(peerDependencies === undefined ? {} : { peerDependencies }),
         publishConfig: { access: 'public', exports: { '.': './dist/mod.js' } },
       }),
     )
-    const first = join(root, 'first.tgz')
-    const second = join(root, 'second.tgz')
-    const command = {
-      descriptor: join(root, 'descriptor.json'),
-      dist,
-      output: first,
-      packageJson,
-      productName: '@overeng/utils',
-      targetIdentity: '//packages/@overeng/utils:dist-package',
+    return {
+      command: {
+        dependencyDescriptors: [] as readonly string[],
+        dependencyPayloads: [] as readonly string[],
+        descriptor: join(root, 'descriptor.json'),
+        dist,
+        output: join(root, 'overeng-utils.tgz'),
+        packageJson,
+        productName: '@overeng/utils',
+        targetIdentity: '//packages/@overeng/utils:dist-package',
+        transportSlug: 'overeng-utils',
+      },
+      root,
     }
+  }
 
-    await packDistPackage(command)
-    await packDistPackage({ ...command, descriptor: join(root, 'second.json'), output: second })
+  it('packs deterministic bytes with content-addressed identity and rewritten runtime siblings', async () => {
+    const { command, root } = makeDistPackageFixture({
+      dependencies: {
+        '@overeng/effect-distributed-lock': 'workspace:^',
+        '@overeng/otel-contract': 'catalog:',
+        effect: '4.0.0-rc.112',
+      },
+      peerDependencies: {
+        '@overeng/otel-contract': 'workspace:^',
+        effect: '^4.0.0-rc.112',
+      },
+      prefix: 'buck2-dist-package-',
+    })
+    const lock = writeDependencyProduct({
+      path: join(root, 'lock.json'),
+      productName: '@overeng/effect-distributed-lock',
+      transportSlug: 'overeng-effect-distributed-lock',
+    })
+    const otel = writeDependencyProduct({
+      path: join(root, 'otel.json'),
+      productName: '@overeng/otel-contract',
+      transportSlug: 'overeng-otel-contract',
+    })
+    const lockIntegrity = lock.integrity
+    const otelIntegrity = otel.integrity
+    const lockUrl = lock.url
+    const otelUrl = otel.url
+    const dependencyDescriptors = [lock.path, otel.path]
+    const dependencyPayloads = [lock.payload, otel.payload]
+    const firstCommand = { ...command, dependencyDescriptors, dependencyPayloads }
+    const second = join(root, 'second.tgz')
+    const secondDescriptor = join(root, 'second.json')
 
-    expect(readFileSync(first)).toEqual(readFileSync(second))
-    const tar = gunzipSync(readFileSync(first)).toString('utf8')
-    expect(tar).toContain('"exports": {\n    ".": "./dist/src/mod.js"\n  }')
-    expect(tar).toContain('package/dist/src/mod.js')
-    expect(JSON.parse(readFileSync(command.descriptor, 'utf8'))).toMatchObject({
-      schema: 'effect-utils/npm-package-product/v1',
+    await packDistPackage(firstCommand)
+    await packDistPackage({
+      ...firstCommand,
+      descriptor: secondDescriptor,
+      output: second,
+    })
+
+    expect(readFileSync(command.output)).toEqual(readFileSync(second))
+    const entries = readTarEntries(readFileSync(command.output))
+    expect(entries.has('package/dist/src/mod.js')).toBe(true)
+    const manifest = JSON.parse(
+      new TextDecoder().decode(entries.get('package/package.json')),
+    ) as Record<string, unknown>
+    expect(manifest).not.toHaveProperty('private')
+    expect(manifest['exports']).toEqual({ '.': './dist/src/mod.js' })
+    expect(manifest['dependencies']).toEqual({
+      '@overeng/effect-distributed-lock': lockUrl,
+      '@overeng/otel-contract': otelUrl,
+      effect: '4.0.0-rc.112',
+    })
+    expect(manifest['peerDependencies']).toEqual({
+      '@overeng/otel-contract': 'workspace:^',
+      effect: '^4.0.0-rc.112',
+    })
+
+    const descriptor = JSON.parse(readFileSync(command.descriptor, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    expect(descriptor).toMatchObject({
+      schema: 'effect-utils/npm-package-product/v2',
       productName: '@overeng/utils',
       productKind: 'package',
       runtimeContract: 'npm-package',
+      target: '//packages/@overeng/utils:dist-package',
+      transportSlug: 'overeng-utils',
+      version: '0.1.0',
+      dependencies: {
+        '@overeng/effect-distributed-lock': { integrity: lockIntegrity, url: lockUrl },
+        '@overeng/otel-contract': { integrity: otelIntegrity, url: otelUrl },
+      },
     })
+    expect(descriptor['sha256']).toMatch(/^[0-9a-f]{64}$/)
+    expect(descriptor['integrity']).toMatch(/^sha256-/)
+    expect(descriptor['sha512']).toMatch(/^sha512-/)
+    const sha256 = descriptor['sha256']
+    const tag = `buck2-package-v1-overeng-utils-${sha256}`
+    const name = `${sha256}-overeng-utils.tgz`
+    expect(descriptor['release']).toEqual({
+      tag,
+      name,
+      url: `https://github.com/overengineeringstudio/effect-utils/releases/download/${tag}/${name}`,
+    })
+    const repeatedDescriptor = JSON.parse(readFileSync(secondDescriptor, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    expect({ ...repeatedDescriptor, modulePath: descriptor['modulePath'] }).toEqual(descriptor)
+  })
+
+  it.each(['workspace:^', 'catalog:', 'link:../sibling', 'file:../sibling'])(
+    'refuses a remaining local runtime dependency with specifier %s',
+    async (specifier) => {
+      const { command } = makeDistPackageFixture({
+        dependencies: { '@overeng/sibling': specifier },
+        prefix: 'buck2-dist-package-local-dependency-',
+      })
+
+      await expect(packDistPackage(command)).rejects.toThrow(
+        `runtime dependency @overeng/sibling retains a local specifier: ${specifier}`,
+      )
+    },
+  )
+
+  it.each(['workspace:^', 'catalog:', 'link:../sibling', 'file:../sibling'])(
+    'refuses a remaining local optional runtime dependency with specifier %s',
+    async (specifier) => {
+      const { command } = makeDistPackageFixture({
+        optionalDependencies: { '@overeng/sibling': specifier },
+        prefix: 'buck2-dist-package-local-optional-dependency-',
+      })
+
+      await expect(packDistPackage(command)).rejects.toThrow(
+        `runtime dependency @overeng/sibling retains a local specifier: ${specifier}`,
+      )
+    },
+  )
+
+  it('refuses a dependency descriptor whose URL is not derived from its digest', async () => {
+    const { command, root } = makeDistPackageFixture({
+      dependencies: { '@overeng/sibling': 'workspace:^' },
+      prefix: 'buck2-dist-package-dependency-url-',
+    })
+    const product = writeDependencyProduct({
+      path: join(root, 'sibling.json'),
+      productName: '@overeng/sibling',
+      transportSlug: 'overeng-sibling',
+    })
+    const value = JSON.parse(readFileSync(product.path, 'utf8')) as Record<string, unknown>
+    const release = value['release'] as Record<string, unknown>
+    release['url'] =
+      'https://github.com/overengineeringstudio/effect-utils/releases/download/mutable/sibling.tgz'
+    writeFileSync(product.path, JSON.stringify(value))
+
+    await expect(
+      packDistPackage({
+        ...command,
+        dependencyDescriptors: [product.path],
+        dependencyPayloads: [product.payload],
+      }),
+    ).rejects.toThrow('dependency descriptor release does not match its digest')
+  })
+
+  it('refuses a dependency descriptor whose SHA-512 does not match its payload', async () => {
+    const { command, root } = makeDistPackageFixture({
+      dependencies: { '@overeng/sibling': 'workspace:^' },
+      prefix: 'buck2-dist-package-dependency-integrity-',
+    })
+    const product = writeDependencyProduct({
+      path: join(root, 'sibling.json'),
+      productName: '@overeng/sibling',
+      transportSlug: 'overeng-sibling',
+    })
+    const value = JSON.parse(readFileSync(product.path, 'utf8')) as Record<string, unknown>
+    value['sha512'] = `sha512-${'Y'.repeat(86)}==`
+    writeFileSync(product.path, JSON.stringify(value))
+
+    await expect(
+      packDistPackage({
+        ...command,
+        dependencyDescriptors: [product.path],
+        dependencyPayloads: [product.payload],
+      }),
+    ).rejects.toThrow('dependency descriptor SHA-512 does not match its payload')
   })
 
   it('refuses a publication export outside dist', async () => {
-    const root = scratch('buck2-dist-package-refusal-')
-    const dist = join(root, 'dist')
-    mkdirSync(dist)
-    const packageJson = join(root, 'package.json')
+    const { command } = makeDistPackageFixture({
+      prefix: 'buck2-dist-package-refusal-',
+    })
     writeFileSync(
-      packageJson,
+      command.packageJson,
       JSON.stringify({
         name: '@overeng/utils',
+        version: '0.1.0',
         publishConfig: { exports: { '.': './src/mod.ts' } },
       }),
     )
 
-    await expect(
-      packDistPackage({
-        descriptor: join(root, 'descriptor.json'),
-        dist,
-        output: join(root, 'package.tgz'),
-        packageJson,
-        productName: '@overeng/utils',
-        targetIdentity: '//packages/@overeng/utils:dist-package',
-      }),
-    ).rejects.toThrow('published export does not point into dist')
+    await expect(packDistPackage(command)).rejects.toThrow(
+      'published export does not point into dist',
+    )
   })
 })
 

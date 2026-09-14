@@ -11,10 +11,33 @@ const source = 'nix/buck2-products/targets.json.genie.ts'
 const semanticInputs = ['genie/buck2/javascript-product-registry.ts', source] as const
 const regenerationCommand = 'devenv tasks run genie:run'
 
-const products = javaScriptProductPublications.map(({ label, productName }) => ({
-  name: productName,
-  target: `effect_utils${label}`,
-}))
+const packageProductPublications = [
+  {
+    label: '//packages/@overeng/content-address:dist-package',
+    productName: '@overeng/content-address',
+  },
+  {
+    label: '//packages/@overeng/effect-distributed-lock:dist-package',
+    productName: '@overeng/effect-distributed-lock',
+  },
+  {
+    label: '//packages/@overeng/otel-contract:dist-package',
+    productName: '@overeng/otel-contract',
+  },
+  {
+    label: '//packages/@overeng/utils:dist-package',
+    productName: '@overeng/utils',
+  },
+] as const
+
+const products = [...javaScriptProductPublications, ...packageProductPublications]
+  .map(({ label, productName }) => ({
+    name: productName,
+    target: `effect_utils${label}`,
+  }))
+  .toSorted((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  )
 const fingerprint = buck2SemanticFingerprint({
   generator,
   schemaVersion,

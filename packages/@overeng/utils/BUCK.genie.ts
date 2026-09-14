@@ -62,6 +62,11 @@ npm_package_product(
     dist = ":dist",
     package_json = "package.json",
     product_name = "@overeng/utils",
+    transport_slug = "overeng-utils",
+    package_dependencies = [
+        "//packages/@overeng/effect-distributed-lock:dist-package",
+        "//packages/@overeng/otel-contract:dist-package",
+    ],
     visibility = ["PUBLIC"],
 )
 `,
