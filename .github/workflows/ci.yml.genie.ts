@@ -14,8 +14,8 @@ import {
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
-  standardCIEnv,
   ciWorkflow,
+  type CiWorkflowArgs,
   ciMeasurementBaselineCheckoutStep,
   ciMeasurementBaselineWorkflowDispatchInputs,
   ciMeasurementNotBaselineBackfillPredicate,
@@ -339,7 +339,6 @@ const job = ({
   }),
   'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
-  env: standardCIEnv,
   steps: [
     ...baseSteps,
     ...extraSteps,
@@ -364,7 +363,6 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
   }),
   'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
-  env: standardCIEnv,
   steps: [
     ...baseSteps,
     step,
@@ -400,7 +398,6 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
   }),
   'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
-  env: standardCIEnv,
   steps: [
     ...strictNixJobBaseSteps,
     step,
@@ -727,7 +724,6 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     permissions: { contents: 'read' },
     env: {
-      ...standardCIEnv,
       // Composition only suppresses remote-cache projection for the exact value `1`.
       BUCK2_NO_REMOTE_CACHE: '0',
     },
@@ -1095,7 +1091,6 @@ const extraJobs: Record<string, any> = {
     }),
     'timeout-minutes': 90,
     defaults: bashShellDefaults,
-    env: standardCIEnv,
     steps: [
       ...baseSteps,
       {
@@ -1138,7 +1133,6 @@ const extraJobs: Record<string, any> = {
     }),
     'timeout-minutes': 60,
     defaults: bashShellDefaults,
-    env: standardCIEnv,
     steps: [
       ...baseSteps,
       {
@@ -1163,7 +1157,6 @@ const extraJobs: Record<string, any> = {
     }),
     'timeout-minutes': 30,
     defaults: bashShellDefaults,
-    env: standardCIEnv,
     steps: [
       ...baseSteps,
       liveNetlifyCiToolsPreflightStep,
@@ -1188,9 +1181,6 @@ const deployJobs: Record<string, any> = {
     // No `needs` — run in parallel with other jobs for faster feedback
     permissions: { contents: 'read' },
     defaults: bashShellDefaults,
-    env: {
-      ...standardCIEnv,
-    },
     steps: [
       ...baseSteps,
       { ...netlifyDeployStep(), env: { NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}' } },
@@ -1245,6 +1235,7 @@ const withEffectUtilsCompositionCleanup = (jobMap: Record<string, any>) =>
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
+  trustTier: 'public',
   name: 'CI',
   on: {
     push: { branches: ['main'] },
@@ -1307,4 +1298,4 @@ export default ciWorkflow({
       }),
     },
   }),
-} satisfies GitHubWorkflowArgs)
+} satisfies CiWorkflowArgs)

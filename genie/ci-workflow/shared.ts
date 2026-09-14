@@ -44,19 +44,22 @@ export const bashShellDefaults = {
   run: { shell: 'bash' },
 } as const
 
+export type CiTrustTier = 'private' | 'public'
+
 /**
- * Standard CI environment variables.
+ * Standard CI environment variables for a repository's cache trust tier.
  * GITHUB_TOKEN is exported for tools that need it as a shell env var (e.g. gh CLI, nix auth).
  * Nix eval policy is enforced at step runtime by helpers like
  * `validateNixStoreStep` and `runDevenvTasksBefore`, which append
  * `restrict-eval = false` while preserving inherited NIX_CONFIG values.
  */
-export const standardCIEnv = {
-  FORCE_SETUP: '1',
-  CI: 'true',
-  BUCK2_NO_REMOTE_CACHE: '1',
-  GITHUB_TOKEN: '${{ github.token }}',
-} as const
+export const standardCIEnv = ({ trustTier }: { readonly trustTier: CiTrustTier }) =>
+  ({
+    FORCE_SETUP: '1',
+    CI: 'true',
+    BUCK2_NO_REMOTE_CACHE: trustTier === 'private' ? '0' : '1',
+    GITHUB_TOKEN: '${{ github.token }}',
+  }) as const
 
 /**
  * Cancel superseded CI jobs for the same event, ref, and job id.
@@ -170,27 +173,55 @@ export const ciWorkflowConcurrency = {
   'cancel-in-progress': ciCancelInProgress(),
 } as const
 
+export type CiWorkflowArgs = GitHubWorkflowArgs & {
+  readonly trustTier: CiTrustTier
+}
+
+const withStandardCIEnv = ({
+  jobs,
+  trustTier,
+}: {
+  readonly jobs: GitHubWorkflowArgs['jobs']
+  readonly trustTier: CiTrustTier
+}): GitHubWorkflowArgs['jobs'] =>
+  Object.fromEntries(
+    Object.entries(jobs).map(([jobId, job]) => [
+      jobId,
+      {
+        ...job,
+        env: {
+          ...standardCIEnv({ trustTier }),
+          ...job.env,
+        },
+      },
+    ]),
+  )
+
 /**
  * Standard wrapper for composed CI workflows.
  *
- * This keeps cancellation policy centralized in `effect-utils`. Repos can still
- * override the workflow-level policy by passing an explicit `concurrency`
- * field, and individual jobs can opt out or provide their own `concurrency`.
+ * This keeps cache trust and cancellation policy centralized in `effect-utils`.
+ * Repos can still override the workflow-level policy by passing an explicit
+ * `concurrency` field, and individual jobs can opt out or provide their own
+ * `concurrency`.
  */
-export const ciWorkflow = (args: GitHubWorkflowArgs) =>
+export const ciWorkflow = ({ trustTier, ...args }: CiWorkflowArgs) =>
   (({ concurrency, actionlint, jobs, on, ...rest }) =>
     githubWorkflow({
       ...rest,
       on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
       ...(concurrency === undefined ? {} : { concurrency }),
       actionlint: actionlint ?? defaultActionlintConfig,
-      jobs:
-        concurrency === undefined
-          ? withDefaultJobConcurrency({
-              jobs,
-              measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
-            })
-          : jobs,
+      jobs: withStandardCIEnv({
+        trustTier,
+        jobs:
+          concurrency === undefined
+            ? withDefaultJobConcurrency({
+                jobs,
+                measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
+              })
+            : jobs,
+      }),
     }))(args)
 
 export type NixConfigOptions = {

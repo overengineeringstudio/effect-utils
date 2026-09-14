@@ -11,7 +11,6 @@ import {
   linuxX64Runner,
   runDevenvTasksBefore,
   shellSingleQuote,
-  standardCIEnv,
   withGcRaceRetry,
   preparedCiRuntimeScriptsDir,
   ciNixCachePath,
@@ -798,7 +797,7 @@ export type StandardSelfHostedDevenvTaskJobOptions = Omit<
 export const standardSelfHostedDevenvTaskJob = ({
   runsOn = linuxX64Runner,
   defaults = bashShellDefaults,
-  env = standardCIEnv,
+  env,
   prepSteps,
   postSteps,
   prep,
@@ -808,7 +807,7 @@ export const standardSelfHostedDevenvTaskJob = ({
 }: StandardSelfHostedDevenvTaskJobOptions): WorkflowJob => ({
   'runs-on': Array.isArray(runsOn) === true ? [...runsOn] : runsOn,
   defaults,
-  env,
+  ...(env === undefined ? {} : { env }),
   steps: [
     ...(prepSteps ?? standardSelfHostedPnpmCiPrepSteps(prep)),
     step,

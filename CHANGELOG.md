@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.
 - **Buck2 (context)**: Make the adoption roadmap timeless, restore strict VRS
   document shapes, and make decision-to-requirement and implementation
   traceability explicit.
+- **Genie CI**: Require each repository to declare a public or private cache
+  trust tier so private CI can use the shared Buck2 action cache while public CI
+  stays cold.
 
 - **@overeng/gh-ci-utils**: Migrate the CI inspection CLI into effect-utils so
   its source, tests, and Nix package have one reusable owner.
