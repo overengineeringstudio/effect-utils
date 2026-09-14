@@ -589,6 +589,12 @@ in
                   # after pnpm exited, leaving fixed-output deps builders
                   # wedged before post-install normalization.
                   pushd "$install_root" >/dev/null
+                  # pnpm discovers the workspace by walking up from here, so a
+                  # staged root without its own boundary file would install
+                  # against the aggregate root instead of itself. Every staged
+                  # root is written with one, so a missing file is a builder
+                  # bug: fail closed rather than produce a wrong tree.
+                  ${pnpmInstallPolicy.nestedWorkspaceBoundaryShell { rootRelPath = "$install_root"; }}
                   # Keep the frozen invocation literal in-source so downstream
                   # contract checks can verify the strict default install mode:
                   # pnpm install --frozen-lockfile --ignore-scripts

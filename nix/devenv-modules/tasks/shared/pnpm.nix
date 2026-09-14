@@ -570,6 +570,13 @@ let
         ${preInstall}
         ${runPnpmInstallFn}
 
+        # The Materialization Root must be its own pnpm workspace boundary.
+        # pnpm 12 walks up from here, so a nested root without one installs
+        # into the nearest ancestor workspace: the ancestor's lockfile is
+        # written, its overrides apply, and this root's node_modules never
+        # appears. Fail closed instead of materializing the wrong graph.
+        ${pnpmInstallPolicy.nestedWorkspaceBoundaryShell { rootRelPath = workspaceRoot; }}
+
         _pnpm_install_contract_file="$PWD/pnpm-install-contract.json"
         if [ ! -f "$_pnpm_install_contract_file" ]; then
           _pnpm_install_contract_file=""

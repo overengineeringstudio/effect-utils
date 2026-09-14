@@ -14,6 +14,7 @@
 
 let
   lib = pkgs.lib;
+  pnpmInstallPolicy = import ../pnpm-install-policy.nix { inherit lib; };
   isPnpm = depsManager == "pnpm";
   depsHash = if isPnpm then pnpmDepsHash else bunDepsHash;
   lockFileName = if isPnpm then "pnpm-lock.yaml" else "bun.lock";
@@ -100,6 +101,16 @@ else
         else
           (
             cd "$dep_path"
+            # A staged local dependency owns its own lockfile, so it is its own
+            # install root. pnpm 12 walks up from here to find the workspace, so
+            # without its own boundary file this install would resolve against
+            # the staged aggregate workspace and never write this lockfile. The
+            # boundary is ephemeral: this directory is also a build artifact, so
+            # a retained file would change the prepared tree's hash.
+            ${pnpmInstallPolicy.nestedWorkspaceBoundaryShell {
+              rootRelPath = "$dep_name";
+              ephemeral = true;
+            }}
             # Use --ignore-scripts to avoid /usr/bin/env shebang failures in Nix sandbox.
             # See the stack-level Nix/devenv CI policy docs.
             pnpm install \
