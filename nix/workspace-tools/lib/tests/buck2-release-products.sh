@@ -57,7 +57,7 @@ expect_failure() {
 }
 
 summary="$(eval_loader "$repo_root/nix/buck2-products")"
-expected_names='["ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
+expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/otel-contract","@overeng/utils","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 
 jq -e --argjson expected "$expected_names" '
   .fullyPublished == true and
@@ -68,9 +68,16 @@ jq -e --argjson expected "$expected_names" '
   all(
     .releases | to_entries[];
     .key as $product |
-    (.value.tag | sub("^buck2-product-v3-\($product)-"; "")) as $digest |
-    ($digest | test("^[0-9a-f]{64}$")) and
-    (.value.name | startswith("\($digest)-")) and
+    if ($product | startswith("@")) then
+      ($product | ltrimstr("@") | gsub("/"; "-")) as $slug |
+      (.value.tag | sub("^buck2-package-v1-\($slug)-"; "")) as $digest |
+      ($digest | test("^[0-9a-f]{64}$")) and
+      .value.name == "\($digest)-\($slug).tgz"
+    else
+      (.value.tag | sub("^buck2-product-v3-\($product)-"; "")) as $digest |
+      ($digest | test("^[0-9a-f]{64}$")) and
+      (.value.name | startswith("\($digest)-"))
+    end and
     .value.url == "https://github.com/overengineeringstudio/effect-utils/releases/download/\(.value.tag)/\(.value.name)"
   )
 ' <<<"$summary" >/dev/null
@@ -357,7 +364,7 @@ if ! jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck2-product-publication-plan/v1" and
   .repository == "overengineeringstudio/effect-utils" and
   [.products[].productName] == $expected and
-  (.products | length == 12) and
+  (.products | length == ($expected | length)) and
   all(
     .products[];
     (.candidateTarget | test("^([A-Za-z0-9_]+)?//")) and
