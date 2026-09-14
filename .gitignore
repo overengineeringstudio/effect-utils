@@ -52,6 +52,8 @@ result
 # `result-*` shadows source files such as `src/core/result-envelope.ts`.
 /result-*
 .pre-commit-config.yaml
+# Local devenv traces retained for performance analysis
+/.otel/
 
 # Storybook
 storybook-static
