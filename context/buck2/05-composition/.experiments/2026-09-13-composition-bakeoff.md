@@ -8,7 +8,9 @@ Which long-term composition model gives cross-repository reuse and correct inval
 
 The same consumer edge must typecheck and run an existing unit test in each surviving mode. Numbers below state the command and sample count. The [prior-art record](../.reference/2026-09-13-cross-repo-reuse-prior-art.md) supplies source-verified mechanism contracts.
 
-## Candidates
+## Method
+
+### Candidates
 
 ### A. Composed Buck2 cells
 
@@ -32,7 +34,7 @@ Ruled out before implementation as a universal TypeScript-library model. Flake l
 
 Buck2 Git external cells, Bazel Bzlmod, Nx/Turborepo cache, git submodules/worktrees, and Josh were research controls rather than separate prototypes. They respectively provide pinned source, module resolution, task-result transport, or checkout/history views. None eliminates the package publication boundary for this edge.
 
-## Fixture
+### Fixture
 
 A throwaway dotfiles worktree at `origin/main` materialized effect-utils at the consumer lock pin. No consumer branch was pushed. The candidate-B archive reused the `@overeng/utils` Buck dist from draft PR #1282, branch `schickling-assistant/2026-09-12-artifact-spikes`; this record does not duplicate its target or publisher code.
 
@@ -55,7 +57,9 @@ The one-line mixed-mode selector was:
 
 The broad root override for `@overeng/utils` continued to point at source, so other packages stayed in source mode. A registry version is the production equivalent; the local file fixture avoids publishing experimental bytes.
 
-## Correctness Results
+## Result
+
+### Correctness Results
 
 ### Source/composed edge
 
@@ -200,7 +204,7 @@ The consumer had unrelated pre-existing strict peer drift in `@overeng/tui-react
 
 A reversible newline was appended to `packages/@overeng/utils/src/node/cli-help-rewrite.ts`; `sha256sum packages/@overeng/utils/src/node/cli-help-rewrite.ts` changed from `04eb7cb1…e94` to `bd9131db…291b` (n=1 before/after). The artifact consumer lock and installed artifact did not change, and the producer file was restored byte-for-byte. This is the intended artifact boundary: an unpublished producer edit cannot invalidate a consumer. Candidate A would include the changed source in affected action inputs; candidate B requires a new immutable package identity.
 
-## Timing
+### Timing
 
 All pnpm timing commands used the shared store required by the investigation:
 
@@ -243,7 +247,7 @@ All rows use the exact Buck command above; fresh samples substituted isolation n
 
 The accepted decision-0027 record reports fresh warm-cache composition 30.6 s, unchanged apply 0.20 s, 100% cross-worktree cache hits, and a 69 s cold daemon connection. The source record does not preserve commands or sample counts, so this bakeoff treats those as prior qualitative evidence and does not reuse them as statistical measurements.
 
-## Machinery and Refactor Ledger
+### Machinery and Refactor Ledger
 
 Production LOC was counted by reading every `*.ts` under `packages/@overeng/megarepo/src/composition/` and excluding names containing `.test.`: 14,408 lines in 19 files (n=1 repository snapshot). The exact calculation was:
 
@@ -263,7 +267,7 @@ Breaking refactor flows:
 - **B:** add compatibility in producer, publish immutable version, update consumer lock/API, then remove compatibility after all consumers adopt. More steps, but each repository remains reproducible during staggered rollout.
 - **C:** use B for package APIs; use a named source mount only while a fork/generator change genuinely needs joint source. It must not silently become the default graph shape.
 
-## Operational Comparison
+### Operational Comparison
 
 | Concern          | A: cells                                                                                      | B: artifacts                                                | C: narrowed hybrid                           |
 | ---------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------- |
@@ -277,7 +281,9 @@ Breaking refactor flows:
 
 During this bakeoff, a fresh `devenv tasks run mr:setup` for the assigned effect-utils worktree produced no terminal phase output until the retained PTY was explicitly stopped. The host had an active CPU-oversubscription incident. This is one operational observation (`pty stats effect-utils.composition-bakeoff.mr-setup-proof`, repeated snapshots), not a composition timing sample and not proof of deadlock. The executable cross-cell probe therefore used a minimal disposable root instead of waiting for the generated root.
 
-## Criterion Winners
+## Conclusion
+
+### Criterion Winners
 
 | Criterion                                | Winner                                              |
 | ---------------------------------------- | --------------------------------------------------- |
@@ -296,7 +302,7 @@ During this bakeoff, a fresh `devenv tasks run mr:setup` for the assigned effect
 
 **Provisional overall winner: B, artifact-default libraries, with C narrowed to L2 source mounts for named fork/generator exceptions.** Candidate A wins more performance/correctness criteria. B has the measured gross deletion opportunity, but the artifact lane's permanent publisher, registry, provenance, and migration costs are not implemented or counted. Decision 0031 therefore blocks acceptance until a BUCK-R15 ledger proves lower **net** standing complexity while counting retained L3 in full during coexistence.
 
-## Falsifiers Before Acceptance or First Adoption
+### Falsifiers Before Acceptance or First Adoption
 
 1. A real consumer demonstrates that package-granular invalidation or publish latency blocks its normal loop and that an L2 source override cannot cover development.
 2. The scoped publisher cannot make scope/name/version immutable with durable retention and provenance using the selected registry.
@@ -305,6 +311,10 @@ During this bakeoff, a fresh `devenv tasks run mr:setup` for the assigned effect
 5. The artifact closure requires publishing a large inseparable package graph whose net machinery meets or exceeds retained L3.
 6. A measured downstream Buck target gets enough action-level cross-repository reuse to pay the deletion-ledger difference.
 
-## Prototype Disposition
+### Prototype Disposition
 
 No prototype code is proposed for merge. The disposable dotfiles worktree, local archives, two-cell probe, and private Buck daemons were removed after measurement; no consumer branch was pushed. PR #1282 remains draft and is the sole branch containing its spike implementation. The proposed decision records required follow-up; accepted VRS remains unchanged.
+
+## VRS Impact
+
+Grounds [decision 0034](../../.decisions/0034-artifact-default-composition-no-registry.md): artifact-default cross-repository composition, with the durable origin later fixed as the release-asset layout (no registry) by q23. Cells win incremental delta, invalidation correctness, shared-cache efficiency, and one-shot cross-repository testing; artifacts win standing machinery, durability, editor and standalone ergonomics, multi-agent behaviour, and observability. The falsifiers listed above were met by the no-registry publication edge (PR #1289) except the strict second-install no-op, which decision 0034 carries as a consumer requirement.
