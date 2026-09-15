@@ -32,7 +32,7 @@ met (q22, q23, q29). What changed between proposal and decision:
 
 Decisions 0014, 0020, and 0027 selected composed Buck2 cells so a consumer can build producer targets with source-granular invalidation and shared action-cache reuse. That capability is real. It also requires a distinct composition root, one writable owned mount, replicated read-only mounts, generation/lock coordination, capability projection, and dist overlays. The production TypeScript directly under `packages/@overeng/megarepo/src/composition/` is 14,408 lines across 19 non-test files on 2026-09-13. No downstream repository on `main` authors an `effect_utils//` target label.
 
-The [composition bakeoff](../../05-composition/.experiments/2026-09-13-composition-bakeoff.md) compares this contract against package artifacts and a hybrid. The [prior-art record](../../05-composition/.reference/2026-09-13-cross-repo-reuse-prior-art.md) shows that build-system cells, package releases, task caches, Nix outputs, and Git checkouts have different identities. No external tool makes cross-repository source composition free.
+The [composition bakeoff](../05-composition/.experiments/2026-09-13-composition-bakeoff.md) compares this contract against package artifacts and a hybrid. The [prior-art record](../05-composition/.reference/2026-09-13-cross-repo-reuse-prior-art.md) shows that build-system cells, package releases, task caches, Nix outputs, and Git checkouts have different identities. No external tool makes cross-repository source composition free.
 
 ## Decision
 
