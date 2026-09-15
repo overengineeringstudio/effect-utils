@@ -109,6 +109,42 @@
     {
       "descriptor": {
         "externalCapabilities": [
+          "gh",
+          "git"
+        ],
+        "externalModules": [],
+        "integrity": "sha256-mdT7e46qQ8tCgLlcEZGgHejLgIZQL1KAc/NTaqPYans=",
+        "modulePath": "gh-ci-utils.js",
+        "platform": {
+          "abi": "any",
+          "architecture": "any",
+          "os": "any"
+        },
+        "productKind": "cli",
+        "productName": "gh-ci-utils",
+        "provenance": {
+          "configuredTarget": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "dependencyClosureIdentity": "runtime=node;package_tree=effect_utils//packages/@overeng/gh-ci-utils:package_tree (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "module": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate-module"
+        },
+        "runtimeContract": "javascript-esm",
+        "runtimeContractVersion": "v1",
+        "runtimeKind": "node",
+        "schema": "effect-utils/javascript-product/v2",
+        "sizeBytes": 2593430,
+        "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
+      },
+      "descriptorSha256": "885f8b9e14c4a76cba30f85aabe8e9fd44ef1de81b83dc615aff3a33e998af62",
+      "release": {
+        "hash": "sha256-mdT7e46qQ8tCgLlcEZGgHejLgIZQL1KAc/NTaqPYans=",
+        "name": "99d4fb7b8eaa43cb4280b95c1191a01de8cb8086502f528073f3536aa3d86a7b-gh-ci-utils.js",
+        "tag": "buck2-product-v3-gh-ci-utils-99d4fb7b8eaa43cb4280b95c1191a01de8cb8086502f528073f3536aa3d86a7b",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-gh-ci-utils-99d4fb7b8eaa43cb4280b95c1191a01de8cb8086502f528073f3536aa3d86a7b/99d4fb7b8eaa43cb4280b95c1191a01de8cb8086502f528073f3536aa3d86a7b-gh-ci-utils.js"
+      }
+    },
+    {
+      "descriptor": {
+        "externalCapabilities": [
           "buck2",
           "coreutils",
           "git",

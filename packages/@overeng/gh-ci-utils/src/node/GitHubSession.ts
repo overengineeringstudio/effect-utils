@@ -49,7 +49,7 @@ export const loadSession = Effect.gen(function* () {
       ),
     )
 
-  const data = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(SessionData))(content).pipe(
+  const data = yield* Schema.decodeEffect(Schema.fromJsonString(SessionData))(content).pipe(
     Effect.mapError((cause) => new ConfigError({ message: 'Failed to parse session data', cause })),
   )
 

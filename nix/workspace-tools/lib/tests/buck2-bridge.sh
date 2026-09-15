@@ -18,6 +18,8 @@ fi
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 export BUCK2_BRIDGE_REPO="$repo_root"
+build_root_dir="$(mktemp -d)"
+trap 'rm -rf "$build_root_dir"' EXIT
 
 common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
   flake = builtins.getFlake (toString repo);
@@ -42,7 +44,10 @@ base_expr="let
 in test"
 
 build_expr() {
-  nix build --impure --no-link --print-out-paths --expr "$1"
+  local root_dir
+  root_dir="$(mktemp -d "$build_root_dir/root.XXXXXX")"
+  nix build --impure --out-link "$root_dir/result" --expr "$1" >/dev/null
+  readlink -f "$root_dir/result"
 }
 
 expect_build_failure() {
@@ -391,23 +396,30 @@ expect_command_failure \
   "$scan_out" tree "$store_reference_root"
 rm -rf "$store_reference_root"
 
-unreadable_archive_root="$(mktemp -d)"
-unreadable_extract_root="$(mktemp -d)"
-unreadable_archive="$(mktemp)"
-printf '%s\n' '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-unreadable-leak' \
-  >"$unreadable_archive_root/unreadable"
-tar --create --mode=000 --file "$unreadable_archive" \
-  --directory "$unreadable_archive_root" unreadable
-tar --extract --file "$unreadable_archive" \
-  --directory "$unreadable_extract_root"
-[ ! -r "$unreadable_extract_root/unreadable" ] \
-  || fail "unreadable archive fixture unexpectedly remained readable"
-expect_command_failure \
-  "unreadable archive member store reference" \
-  "failed to scan tree for forbidden Nix store references" \
-  "$scan_out" tree "$unreadable_extract_root"
-chmod u+r "$unreadable_extract_root/unreadable"
-rm -rf "$unreadable_archive_root" "$unreadable_extract_root" "$unreadable_archive"
+if [ "$(id -u)" -eq 0 ]; then
+  echo "buck2-bridge-test: SKIP unreadable archive member store reference reason=root can read mode-000 files"
+else
+  unreadable_archive_root="$(mktemp -d)"
+  unreadable_extract_root="$(mktemp -d)"
+  unreadable_archive="$(mktemp)"
+  printf '%s\n' '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-unreadable-leak' \
+    >"$unreadable_archive_root/unreadable"
+  tar --create --mode=000 --file "$unreadable_archive" \
+    --directory "$unreadable_archive_root" unreadable
+  tar --extract --file "$unreadable_archive" \
+    --directory "$unreadable_extract_root"
+  [ ! -r "$unreadable_extract_root/unreadable" ] \
+    || {
+      echo "buck2-bridge-test: unreadable archive fixture unexpectedly remained readable" >&2
+      exit 1
+    }
+  expect_command_failure \
+    "unreadable archive member store reference" \
+    "failed to scan tree for forbidden Nix store references" \
+    "$scan_out" tree "$unreadable_extract_root"
+  chmod u+r "$unreadable_extract_root/unreadable"
+  rm -rf "$unreadable_archive_root" "$unreadable_extract_root" "$unreadable_archive"
+fi
 
 portable_symlink_root="$(mktemp -d)"
 mkdir -p "$portable_symlink_root/bin" "$portable_symlink_root/lib"

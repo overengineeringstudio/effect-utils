@@ -113,6 +113,19 @@ describe('pinStagedModuleIdentity', () => {
     expect(pin(sourceCode)).toBe(sourceCode)
   })
 
+  it('leaves regular-expression and JSX text literals byte-identical', () => {
+    const regularExpression = 'const pattern = /import.meta.url/'
+    const jsxText = 'export const view = () => <span>import.meta.dirname</span>'
+
+    expect(pin(regularExpression)).toBe(regularExpression)
+    expect(
+      pinStagedModuleIdentity({
+        sourceCode: jsxText,
+        sourcePath: '/repo/generators/view.genie.tsx',
+      }),
+    ).toBe(jsxText)
+  })
+
   it('pins interpolations inside a template literal without touching its raw text', () => {
     expect(pin('const t = `import.meta.url is ${import.meta.url}`')).toBe(
       'const t = `import.meta.url is ${"file:///repo/generators/identity.json.genie.ts"}`',

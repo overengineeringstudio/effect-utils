@@ -195,7 +195,7 @@ describe('status --output json job contract (#927)', () => {
   it('still decodes job payloads written before completion finality was tracked', () => {
     const legacyJob = job()
 
-    expect(Schema.decodeUnknownSync(WorkflowJobViewModel)(legacyJob)).toEqual(legacyJob)
+    expect(Schema.decodeSync(WorkflowJobViewModel)(legacyJob)).toEqual(legacyJob)
   })
 
   it('exposes a top-level summary in the status state', () => {
