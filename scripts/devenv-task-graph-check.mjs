@@ -261,8 +261,7 @@ ok({
     reaches({
       start: 'buck2:typescript:materialize-dist',
       target: 'buck2:editor:materialize',
-    }) === true &&
-    reaches({ start: 'setup:strict', target: 'buck2:editor:materialize' }) === true,
+    }) === true && reaches({ start: 'setup:strict', target: 'buck2:editor:materialize' }) === true,
   name: 'mutating setup and dist publication share the ordered editor materialization barrier',
 })
 ok({

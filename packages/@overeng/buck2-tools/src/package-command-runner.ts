@@ -625,7 +625,7 @@ const verifyExternalSurface = ({
       bundle.includes(packagePrefix)
     const hasStaticFamilyReference = staticModules.some((name) => family.packages.includes(name))
     if (hasStaticFamilyReference === false && hasDynamicFamilyReference === false) continue
-    if (hasDynamicFamilyReference)
+    if (hasDynamicFamilyReference === true)
       for (const packageName of family.packages) moduleSet.add(packageName)
     required.add(family.capability)
   }

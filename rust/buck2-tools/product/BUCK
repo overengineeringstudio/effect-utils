@@ -2,13 +2,21 @@
 # Source: BUCK.genie.ts
 
 # Projection source: rust/buck2-tools/product/BUCK.genie.ts
-# Projection schema version: 1
+# Projection schema version: 2
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:f890998a68b6bd30533ba88cfdffa1190a178acebe4e45647f122b452d69186f
-# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/product/BUCK.genie.ts, rust/buck2-tools/product/Cargo.toml, rust/buck2-tools/product/src/**/*.rs, rust/buck2-tools/product/tests/**/*.rs, rust/reindeer.toml, rust/third-party/BUCK
+# Semantic fingerprint: sha256:e734ed0e06c4e1ce21726810303184e99a59746e30be6fa6d42e490201a4108d
+# Semantic inputs: buck2/static_checks.bzl, genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/product/BUCK.genie.ts, rust/buck2-tools/product/Cargo.toml, rust/buck2-tools/product/src/**/*.rs, rust/buck2-tools/product/tests/**/*.rs, rust/reindeer.toml, rust/third-party/BUCK
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/buck2-tools/product",
+    srcs = native.glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
 native.rust_binary(
     name = "buck2-product",
     crate = "buck2_product",

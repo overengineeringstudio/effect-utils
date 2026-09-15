@@ -1157,9 +1157,10 @@ const listOwnedSnapshots = ({
 }: {
   paths: ViewPaths
   options: EditorViewOptions
-}): readonly string[] => {
+}): { readonly valid: readonly string[]; readonly invalid: readonly string[] } => {
   const pattern = snapshotNamePattern(paths.viewName)
-  const snapshots: string[] = []
+  const valid: string[] = []
+  const invalid: string[] = []
   for (const name of readdirSync(paths.storeDir).toSorted((left, right) =>
     compareBytes({ left, right }),
   )) {
@@ -1174,7 +1175,6 @@ const listOwnedSnapshots = ({
       const record = readRecord(join(snapshotDir, 'editor-view.json'))
       if (record.snapshot !== `.store/${name}`)
         fail(`snapshot store contains an ambiguously owned entry: ${snapshotDir}`)
-      requireReadOnlySnapshot(snapshotDir)
       continue
     }
     requireDirectory({ path: snapshotDir, field: 'retained snapshot' })
@@ -1196,10 +1196,17 @@ const listOwnedSnapshots = ({
       recordsEqual({ left: record, right: { ...expected, snapshot: `.store/${name}` } }) === false
     )
       fail(`retained snapshot ownership mismatch: ${snapshotDir}`)
-    requireReadOnlySnapshot(snapshotDir)
-    snapshots.push(name)
+    try {
+      requireReadOnlySnapshot(snapshotDir)
+      valid.push(name)
+    } catch {
+      // A previously published snapshot can become unreadable when its legacy external links are
+      // collected. Keep it in the retention transaction so the new pointer is published before
+      // garbage collection removes it.
+      invalid.push(name)
+    }
   }
-  return snapshots
+  return { valid, invalid }
 }
 
 const prepareSnapshotRetention = ({
@@ -1212,9 +1219,9 @@ const prepareSnapshotRetention = ({
   options: EditorViewOptions
   current: string
   token: string
-}): readonly string[] => {
+}): { readonly ordered: readonly string[]; readonly invalid: ReadonlySet<string> } => {
   const discovered = listOwnedSnapshots({ paths, options })
-  const discoveredSet = new Set(discovered)
+  const discoveredSet = new Set(discovered.valid)
   const recorded = readSnapshotRetention({
     path: paths.retentionRecord,
     viewName: paths.viewName,
@@ -1222,10 +1229,11 @@ const prepareSnapshotRetention = ({
   const ordered = [
     current,
     ...recorded.filter((name) => name !== current && discoveredSet.has(name)),
-    ...discovered.filter((name) => name !== current && recorded.includes(name) === false),
+    ...discovered.valid.filter((name) => name !== current && recorded.includes(name) === false),
+    ...discovered.invalid.filter((name) => name !== current),
   ]
   writeSnapshotRetention({ paths, snapshots: ordered, token })
-  return ordered
+  return { ordered, invalid: new Set(discovered.invalid) }
 }
 
 const makeDirectoriesWritable = (root: string): void => {
@@ -1257,16 +1265,20 @@ const garbageCollectSnapshots = ({
   paths,
   options,
   ordered,
+  invalid,
   current,
   token,
 }: {
   paths: ViewPaths
   options: EditorViewOptions
   ordered: readonly string[]
+  invalid: ReadonlySet<string>
   current: string
   token: string
 }): void => {
-  const keep = ordered.slice(0, options.snapshotRetention)
+  const keep = ordered
+    .filter((name) => invalid.has(name) === false)
+    .slice(0, options.snapshotRetention)
   if (keep.includes(current) === false) fail(`snapshot retention would delete current: ${current}`)
   const pointer = readlinkSync(paths.current)
   if (pointer !== `.store/${current}`)
@@ -1535,6 +1547,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
   })
   const token = tokenSafe(lock.token)
   let candidate: string | undefined
+  let displacedSnapshot: { readonly snapshotDir: string; readonly quarantine: string } | undefined
   try {
     const fingerprint = await canonicalTreeFingerprint({ tree: options.editorInputs })
     const selectedViewDigest = await canonicalTreeFingerprint({ tree: options.nodeModules })
@@ -1556,7 +1569,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     })
     const snapshotName = `${paths.viewName}-${identity}`
     const snapshotDir = join(paths.storeDir, snapshotName)
-    let record: EditorViewRecord
+    let record: EditorViewRecord | undefined
     if (existsSync(snapshotDir) === true) {
       const existing = readRecord(join(snapshotDir, 'editor-view.json'))
       record = expectedRecord({
@@ -1566,8 +1579,16 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
         selectedViewDigest,
         byteSnapshotDigest: existing.byteSnapshotDigest,
       })
-      await validateSnapshot({ snapshotDir, expected: record })
-    } else {
+      try {
+        await validateSnapshot({ snapshotDir, expected: record })
+      } catch {
+        const quarantine = join(paths.editorRoot, `.gc-${token}-${snapshotName}`)
+        renameReadOnlySnapshot({ source: snapshotDir, destination: quarantine })
+        displacedSnapshot = { snapshotDir, quarantine }
+        record = undefined
+      }
+    }
+    if (record === undefined) {
       candidate = join(paths.storeDir, `.candidate-${token}`)
       mkdirSync(candidate)
       if (finite === true) {
@@ -1629,7 +1650,8 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     garbageCollectSnapshots({
       paths,
       options,
-      ordered: retention,
+      ordered: retention.ordered,
+      invalid: retention.invalid,
       current: snapshotName,
       token,
     })
@@ -1640,6 +1662,17 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
       // abandoned candidate must be unlocked before removal.
       makeDirectoriesWritable(candidate)
       rmSync(candidate, { recursive: true, force: true })
+    }
+    if (displacedSnapshot !== undefined && pathExists(displacedSnapshot.quarantine) === true) {
+      if (pathExists(displacedSnapshot.snapshotDir) === false) {
+        renameReadOnlySnapshot({
+          source: displacedSnapshot.quarantine,
+          destination: displacedSnapshot.snapshotDir,
+        })
+      } else {
+        makeDirectoriesWritable(displacedSnapshot.quarantine)
+        rmSync(displacedSnapshot.quarantine, { recursive: true, force: true })
+      }
     }
     releaseLock(lock)
   }

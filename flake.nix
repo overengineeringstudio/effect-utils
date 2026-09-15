@@ -60,9 +60,7 @@
               inherit pkgs;
               nixpkgsRevision = nixpkgs.rev;
             };
-        # Buck is the sole producer for admitted repository products. The
-        # unadmitted gh-ci-utils CLI keeps its source-built Nix package until a
-        # later authority transfer explicitly admits it.
+        # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products { inherit pkgs; };
         oxlintNpm = import ./nix/oxlint-npm.nix {
           inherit pkgs;
@@ -79,20 +77,6 @@
           products = trackedBuck2Products.products;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
-        ghCiUtils = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
-          inherit
-            pkgs
-            gitRev
-            commitTs
-            dirty
-            ;
-          src = self;
-        };
-        ghCiUtilsDirty = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
-          inherit pkgs gitRev commitTs;
-          src = self;
-          dirty = true;
-        };
         cliPackages = buck2ProductCandidates // {
           genie = buck2ProductCandidates.genie.overrideAttrs (old: {
             passthru = (old.passthru or { }) // {
@@ -100,6 +84,18 @@
             };
           });
         };
+        cliPackagesDirty = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
+          inherit
+            pkgs
+            gitRev
+            commitTs
+            ;
+          dirty = true;
+          products = trackedBuck2Products.products;
+          typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
+        };
+        ghCiUtils = cliPackages.gh-ci-utils;
+        ghCiUtilsDirty = cliPackagesDirty.gh-ci-utils;
       in
       {
         packages =
@@ -154,7 +150,6 @@
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             gh-ci-utils = ghCiUtils;
             gh-ci-utils-dirty = ghCiUtilsDirty;
-            "gh-ci-utils-pnpm-deps" = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
             # Static-check executables projected as Buck capabilities. Nix realizes
             # third-party tools; Buck owns source inputs and check execution.
             oxfmt = pkgs.oxfmt;

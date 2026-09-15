@@ -337,6 +337,8 @@ export const catalog = defineCatalog({
   typescript: '7.0.2',
   // TypeScript 7 removed its classic in-process JSONC helper; this is VS Code's zero-dependency parser.
   'jsonc-parser': '3.3.1',
+  // Syntax-aware source transforms use Oxc's parser metadata rather than context-free token matching.
+  'oxc-parser': '0.127.0',
   '@playwright/test': '1.63.0',
   vite: '8.2.2',
   vitest: '4.1.9',

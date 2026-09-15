@@ -1,4 +1,4 @@
-import { pnpmWorkspaceMemberPaths } from '../packages.ts'
+import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import { buck2TypeScriptAdmission as effectSocketAdmission } from '../../context/effect/socket/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as opentuiAdmission } from '../../context/opentui/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as agentSessionIngestAdmission } from '../../packages/@overeng/agent-session-ingest/BUCK.genie.ts'
@@ -361,8 +361,8 @@ export const editorViewConsumerPackagePaths = Object.values(buck2TypeScriptAdmis
   .map((admission) => admission.packagePath)
   .toSorted(compareAuthorityStrings)
 const editorViewPackageSet = new Set(editorViewConsumerPackagePaths)
-const workspacePackageSet = new Set(pnpmWorkspaceMemberPaths)
-const missingEditorViews = pnpmWorkspaceMemberPaths.filter(
+const workspacePackageSet = new Set(rootWorkspaceMemberPaths)
+const missingEditorViews = rootWorkspaceMemberPaths.filter(
   (packagePath) => editorViewPackageSet.has(packagePath) === false,
 )
 const nonWorkspaceEditorViews = editorViewConsumerPackagePaths.filter(
