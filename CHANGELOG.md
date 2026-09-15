@@ -33,6 +33,10 @@ All notable changes to this project will be documented in this file.
   cross-repository reuse, cost ledger, falsification spikes), open for
   acceptance or rejection. Roadmap Phase 6 and the composition open questions
   reference the proposal; no ratified requirement changes.
+- **@overeng/notion-effect-client**: added bounded file uploads through the shared
+  HTTP client, with single-part uploads through 20 MiB, sequential 10 MiB
+  multipart uploads above that threshold, and a configurable `maxBytes` limit
+  that defaults to 64 MiB.
 
 - **@overeng/megarepo**: composition-enabled branch worktrees are now created
   directly at their final `P/repos/<owned>` path and use Git registration as
