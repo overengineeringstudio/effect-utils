@@ -1,7 +1,7 @@
 # Proposed: Cross-Repository Reuse Through Artifacts, Not Composed Cells
 
 Status: superseded before acceptance by
-[the composition architecture bakeoff](../.proposed/composition-architecture.md).
+[the composition architecture bakeoff](../0034-artifact-default-composition-no-registry.md).
 This record was never in force.
 
 ## Context
