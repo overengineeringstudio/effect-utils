@@ -38,6 +38,13 @@ const expectedPublications = [
     runtimeKind: 'bun',
   },
   {
+    label: '//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate',
+    module: 'gh-ci-utils.js',
+    productKind: 'cli',
+    productName: 'gh-ci-utils',
+    runtimeKind: 'node',
+  },
+  {
     label: '//packages/@overeng/megarepo:megarepo-candidate',
     module: 'mr.js',
     productKind: 'cli',
@@ -102,9 +109,9 @@ const expectUnique = (values: readonly string[]): void => {
 }
 
 describe('JavaScript product registry', () => {
-  it('declares the eleven exact publication labels and product contracts', () => {
+  it('declares the twelve exact publication labels and product contracts', () => {
     expect(javaScriptProductPublications).toEqual(expectedPublications)
-    expect(javaScriptProductPublications).toHaveLength(11)
+    expect(javaScriptProductPublications).toHaveLength(12)
   })
 
   it('keeps every publication identity and package-local target unique', () => {
