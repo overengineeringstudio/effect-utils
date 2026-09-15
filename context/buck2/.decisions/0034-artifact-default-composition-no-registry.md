@@ -45,7 +45,7 @@ If accepted:
 5. **Retire cross-repository Buck2 cell composition after artifact adoption.** A repository's Buck graph contains that repository's source and installed dependency artifacts. No new downstream composed-cell rollout starts. Existing composed roots remain supported only during the migration and are removed after the last recorded consumer edge leaves them.
 6. **Use Nix package outputs only for Nix-native executable/product edges.** Nix flakes are a good immutable identity and distribution path for products already consumed by Nix. They do not replace TypeScript package metadata, editor resolution, or pnpm lock identity.
 
-## Why
+## Evidence and Argument
 
 Decision 0031 makes standing complexity a hard gate. Composed cells win source-granular invalidation, action-level reuse, and the shortest edit-to-test loop. The 14,408 production composition lines establish a gross deletion opportunity, not a passing net ledger: registry, publisher, provenance, package-closure, migration, and temporarily retained L3 machinery remain uncounted. This proposal therefore recommends a direction but cannot be accepted until BUCK-R15 proves the net result.
 
@@ -53,7 +53,7 @@ Artifact-default composition gives up source-granular invalidation across the re
 
 The hybrid is not the default because it retains both permanent mechanisms. Source mounts remain only for named active fork/generator exceptions; they do not imply Buck cell composition.
 
-## Criterion Winners
+### Criterion Winners
 
 | Criterion                              | Winner                                                            | Reason                                                                                                                                                   |
 | -------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -70,7 +70,7 @@ The hybrid is not the default because it retains both permanent mechanisms. Sour
 
 **Provisional overall winner: artifact-default composition.** This is a complexity-first recommendation, not a claim that artifacts beat cells on every criterion. Acceptance remains blocked on the complete net-complexity ledger below.
 
-## Required Publication Contract
+### Required Publication Contract
 
 Before the first consumer migrates, the artifact lane must prove all of these conditions:
 
@@ -84,7 +84,7 @@ Before the first consumer migrates, the artifact lane must prove all of these co
 
 PR #1282 branch `schickling-assistant/2026-09-12-artifact-spikes` is the spike source. Its package packer and publisher changes are not duplicated here. That draft found two current blockers: the product publisher rejects scoped package identities, and the first `@overeng/utils` archive retained two `workspace:^` runtime dependencies. The bakeoff's locally transformed archive demonstrates the consumer resolution shape only; it is not a publishable implementation.
 
-## Migration and Concrete Deletions
+### Migration and Concrete Deletions
 
 Migration is package-by-package:
 
@@ -111,7 +111,15 @@ The final retirement ledger must name at least these deletion groups:
 
 The exact deletion count is intentionally not predicted. The 14,408-line measurement is a gross baseline, not a promised net deletion. Before acceptance, BUCK-R15 must count registry, publisher, provenance, package-closure, migration, and coexistence code against deletions. Retained L3 counts in full until it is actually removed.
 
-## Rejected or Narrowed Alternatives
+## Options
+
+| Decision       | Selected                                                             | Alternatives rejected                                                                                            |
+| -------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Reuse channel  | Immutable package artifacts pinned by digest                         | Composed cells as default (fallback); permanent hybrid; git external cells (0030); Bzlmod; task caches; Nix-only |
+| Durable origin | buck2-products release-asset layout, CAS as accelerator              | GitHub Packages (billing, tokens); self-hosted registry (service + ingress); public npmjs (public API semantics) |
+| Default shape  | Standalone worktrees; composed shape paused, retired after migration | Lift the pause; keep both permanently                                                                            |
+
+### Rejected or Narrowed Alternatives
 
 - **Composed cells as default:** retains the best incremental/cache behavior. It remains the fallback if the artifact lane cannot pass the net standing-complexity gate.
 - **Hybrid cells for forks plus artifacts for libraries:** narrowed. Forks may retain L2 source mounts, but not permanent cross-repository Buck cells. Otherwise the hybrid retains both L3 and publication machinery.
@@ -121,9 +129,9 @@ The exact deletion count is intentionally not predicted. The 14,408-line measure
 - **Nix-only library composition:** cannot provide the pnpm/editor package contract for ordinary TypeScript consumers.
 - **Git submodules, worktrees, or Josh:** source checkout/history mechanisms, not immutable package publication across independent origins.
 
-## Consequences and VRS Changes If Accepted
+## Consequences
 
-Acceptance requires explicit principal confirmation before constitutional edits. Then:
+Confirmed by Johannes (q29). Applied in the accepting change:
 
 - Rewrite vision criterion 6 from producer-action reuse to immutable cross-repository product reuse, while keeping source-granular reuse inside one repository.
 - Amend BUCK-R05/R06 and COMP-R01/R02 so cross-repository cells are not required.
