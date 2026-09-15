@@ -20,6 +20,7 @@ test.describe('Resize and Truncation', () => {
   })
 
   test('TTY tab truncates long lines with ellipsis', async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 720 })
     await page.getByTestId('tab-tty').click()
     const rows = page.locator(terminalRows)
     await expect
