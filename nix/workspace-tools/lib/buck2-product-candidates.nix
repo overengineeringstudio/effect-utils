@@ -92,6 +92,20 @@ let
     expectedProductKind = "cli";
     smokeTestArgs = [ "--help" ];
   };
+  gh-ci-utils = mk "gh-ci-utils" {
+    binaryName = "gh-ci-utils";
+    environment.CLI_BUILD_STAMP = buildStamp;
+    expectedExternalCapabilities = [
+      "gh"
+      "git"
+    ];
+    expectedProductKind = "cli";
+    pathPackages = [
+      pkgs.gh
+      pkgs.git
+    ];
+    smokeTestArgs = [ "--version" ];
+  };
   megarepo = mk "megarepo" {
     binaryName = "mr";
     environment = {
@@ -214,6 +228,7 @@ let
   # wired to absent bytes.
   requiredProducts = {
     ci-tools = [ "ci-tools" ];
+    gh-ci-utils = [ "gh-ci-utils" ];
     genie = [ "genie" ];
     genie-bootstrap-closure-check = [ "genie-bootstrap-closure-check" ];
     megarepo = [ "megarepo" ];
@@ -232,6 +247,7 @@ let
   candidates = {
     inherit
       ci-tools
+      gh-ci-utils
       genie
       genie-bootstrap-closure-check
       megarepo

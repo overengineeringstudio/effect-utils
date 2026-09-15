@@ -18,8 +18,12 @@ const LOG_TIME_PATTERN = /^\[\d{2}:\d{2}:\d{2}\.\d{3}\]/gmu
 const LOCAL_SOURCE_SUFFIX_PATTERN = / — running from local source \([^)]+\)/gu
 const EFFECT_CLI_FIBER_PATTERN = /(?<=ERROR \(#)\d+(?=\): ~effect\/cli\/)/gu
 
+const BUCK_EFFECT_CLI_FRAME_PATTERN =
+  /\/[^()\s]*\/__entry_effect_4_0_0_rc_\d+_[^/]+__\/entry\/node_modules\/effect\/dist\/unstable\/cli\/Command\.js:\d+:\d+/gu
 const EFFECT_CLI_FRAME_PATTERN =
   /effect@4\.0\.0-rc\.\d+\/node_modules\/effect\/dist\/unstable\/cli\/Command\.js:\d+:\d+/gu
+const NORMALIZED_EFFECT_CLI_FRAME =
+  'effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>'
 
 /** Replacement token written into the baseline in place of a log timestamp. */
 export const TIME_TOKEN = '[time]'
@@ -73,6 +77,16 @@ export const normalizeCliOutput = ({
   let output = input
   if (ansi === true) output = output.replace(ANSI_PATTERN, '')
   if (time === true) output = output.replace(LOG_TIME_PATTERN, TIME_TOKEN)
+  if (effectCliInternals === true) {
+    const sourceTreePrefix =
+      repoRoot === undefined
+        ? ''
+        : `${repoRoot}${repoRoot.endsWith('/') === true ? '' : '/'}node_modules/.pnpm/`
+    output = output.replace(
+      BUCK_EFFECT_CLI_FRAME_PATTERN,
+      `${sourceTreePrefix}${NORMALIZED_EFFECT_CLI_FRAME}`,
+    )
+  }
   if (repoRoot !== undefined) {
     if (repoRoot === '') throw new Error('normalizeCliOutput: repoRoot must be non-empty')
     output = output.replaceAll(repoRoot, REPO_TOKEN)
@@ -80,10 +94,7 @@ export const normalizeCliOutput = ({
   if (effectCliInternals === true) {
     output = output
       .replace(EFFECT_CLI_FIBER_PATTERN, '<fiber>')
-      .replace(
-        EFFECT_CLI_FRAME_PATTERN,
-        'effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>',
-      )
+      .replace(EFFECT_CLI_FRAME_PATTERN, NORMALIZED_EFFECT_CLI_FRAME)
   }
   return output.replace(LOCAL_SOURCE_SUFFIX_PATTERN, '')
 }

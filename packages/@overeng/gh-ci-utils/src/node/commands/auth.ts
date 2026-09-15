@@ -169,9 +169,7 @@ const performLogin = Effect.gen(function* () {
     })
   }
 
-  const parsed = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LoginResult))(
-    child.stdout,
-  ).pipe(
+  const parsed = yield* Schema.decodeEffect(Schema.fromJsonString(LoginResult))(child.stdout).pipe(
     Effect.mapError((cause) => new ConfigError({ message: 'Failed to parse login result', cause })),
   )
 

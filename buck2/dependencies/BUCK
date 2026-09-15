@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:98cc3eb33479f30ffc8a81298e73dfda9f3313b9ff2940860caf9023b2518c4f
+# Store fingerprint: sha256:d309a5ed054880dd36d2053eedfc90bd5db651f2ee94931b1130ba9912845190
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 
@@ -20737,6 +20737,7 @@ pnpm_store_view(
         "@types/react-reconciler": "@types+react-reconciler@0.33.0_@types+react@19.2.18",
         "effect": "effect@4.0.0-rc.112",
         "jsonc-parser": "jsonc-parser@3.3.1",
+        "oxc-parser": "oxc-parser@0.127.0",
         "prettier": "prettier@3.9.6",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",

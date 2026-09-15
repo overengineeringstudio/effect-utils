@@ -18,6 +18,17 @@ export const javaScriptProductRegistry = {
       targetName: 'ci-tools-candidate',
     },
   ],
+  'packages/@overeng/gh-ci-utils': [
+    {
+      entrypoint: 'bin/gh-ci-utils.ts',
+      externalCapabilities: ['gh', 'git'],
+      kind: 'cli',
+      output: 'gh-ci-utils.js',
+      productName: 'gh-ci-utils',
+      smokeArgs: ['--version'],
+      targetName: 'gh-ci-utils-candidate',
+    },
+  ],
   'packages/@overeng/genie': [
     {
       entrypoint: 'bin/genie.tsx',

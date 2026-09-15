@@ -949,10 +949,10 @@ const checkCompositionCapabilityProjectionInternal = async ({
 
 const withOwnerWritableDirectory = async <A>({
   path,
-  use,
+  action,
 }: {
   readonly path: string
-  readonly use: () => Promise<A>
+  readonly action: () => Promise<A>
 }): Promise<A> => {
   const handle = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
   const before = await handle.stat()
@@ -969,7 +969,7 @@ const withOwnerWritableDirectory = async <A>({
   try {
     if (needsOwnerWrite === true) await handle.chmod(originalMode | 0o200)
     try {
-      outcome = { _tag: 'Success', value: await use() }
+      outcome = { _tag: 'Success', value: await action() }
     } catch (cause) {
       outcome = { _tag: 'Failure', cause }
     }
@@ -1042,7 +1042,7 @@ const ensureCapabilityRootDirectory = async ({
   }
   await withOwnerWritableDirectory({
     path: parentPath,
-    use: () => mkdir(path, { recursive: false }),
+    action: () => mkdir(path, { recursive: false }),
   })
 }
 
@@ -1102,26 +1102,30 @@ const retainCompositionCapabilityProjectionInternal = async ({
     )
     await withOwnerWritableDirectory({
       path: generationRoot,
-      use: async () => {
-        for (const resolved of capabilities) {
-          const rootPath = NodePath.join(generationRoot, resolved.capability.toolId)
-          const retainCommand = command({
-            executable: runtime.nixPath,
-            args: ['build', '--out-link', rootPath, resolved.nixOutputPath],
-          })
-          await run({ value: retainCommand, env })
-          const rootInfo = await lstat(rootPath)
-          if (
-            rootInfo.isSymbolicLink() === false ||
-            (await readlink(rootPath)) !== resolved.nixOutputPath
-          ) {
-            throw new CompositionCapabilityResolutionError({
-              reason: 'ProjectionFailure',
-              message: `Capability GC root '${resolved.capability.toolId}' has the wrong identity`,
-              path: rootPath,
+      action: async () => {
+        const results = await Promise.allSettled(
+          capabilities.map(async (resolved) => {
+            const rootPath = NodePath.join(generationRoot, resolved.capability.toolId)
+            const retainCommand = command({
+              executable: runtime.nixPath,
+              args: ['build', '--out-link', rootPath, resolved.nixOutputPath],
             })
-          }
-        }
+            await run({ value: retainCommand, env })
+            const rootInfo = await lstat(rootPath)
+            if (
+              rootInfo.isSymbolicLink() === false ||
+              (await readlink(rootPath)) !== resolved.nixOutputPath
+            ) {
+              throw new CompositionCapabilityResolutionError({
+                reason: 'ProjectionFailure',
+                message: `Capability GC root '${resolved.capability.toolId}' has the wrong identity`,
+                path: rootPath,
+              })
+            }
+          }),
+        )
+        const failure = results.find((result) => result.status === 'rejected')
+        if (failure?.status === 'rejected') throw failure.reason
       },
     })
     await syncCapabilityRootDirectory({
@@ -1166,32 +1170,36 @@ const pruneCompositionCapabilityProjectionRootsInternal = async ({
     if (generationInfo.isDirectory() === false || generationInfo.isSymbolicLink() === true) {
       throw new Error(`Capability generation root is not a directory: '${generationRoot}'`)
     }
-    for (const resolved of resolution.capabilities) {
-      const rootPath = NodePath.join(generationRoot, resolved.capability.toolId)
-      const rootInfo = await lstat(rootPath)
-      if (
-        rootInfo.isSymbolicLink() === false ||
-        (await readlink(rootPath)) !== resolved.nixOutputPath
-      ) {
-        throw new Error(`Capability GC root has the wrong identity: '${rootPath}'`)
-      }
-    }
+    await Promise.all(
+      resolution.capabilities.map(async (resolved) => {
+        const rootPath = NodePath.join(generationRoot, resolved.capability.toolId)
+        const rootInfo = await lstat(rootPath)
+        if (
+          rootInfo.isSymbolicLink() === false ||
+          (await readlink(rootPath)) !== resolved.nixOutputPath
+        ) {
+          throw new Error(`Capability GC root has the wrong identity: '${rootPath}'`)
+        }
+      }),
+    )
     await assertPublishedCapabilityGeneration({ memberRoot, resolution })
     await withOwnerWritableDirectory({
       path: rootsPath,
-      use: async () => {
+      action: async () => {
         const entries = await readdir(rootsPath, { withFileTypes: true })
-        for (const entry of entries) {
-          if (
-            entry.name !== resolution.projectionDigest &&
-            /^[0-9a-f]{64}$/u.test(entry.name) === true &&
-            entry.isDirectory() === true
-          ) {
-            const staleRoot = NodePath.join(rootsPath, entry.name)
-            await makeDirectoriesOwnerWritable(staleRoot)
-            await rm(staleRoot, { recursive: true })
-          }
-        }
+        await Promise.all(
+          entries.map(async (entry) => {
+            if (
+              entry.name !== resolution.projectionDigest &&
+              /^[0-9a-f]{64}$/u.test(entry.name) === true &&
+              entry.isDirectory() === true
+            ) {
+              const staleRoot = NodePath.join(rootsPath, entry.name)
+              await makeDirectoriesOwnerWritable(staleRoot)
+              await rm(staleRoot, { recursive: true })
+            }
+          }),
+        )
       },
     })
   } catch (cause) {

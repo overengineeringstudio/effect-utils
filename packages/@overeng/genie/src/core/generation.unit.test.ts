@@ -1,9 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
-
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { addHeaderComment, getHeaderComment, pinStagedModuleIdentity } from './generation.ts'
 
@@ -79,50 +74,31 @@ describe('getExpectedContent', () => {
 })
 
 describe('pinStagedModuleIdentity', () => {
-  let tempRoot = ''
+  const sourcePath = '/repo/generators/identity.json.genie.ts'
+  const pin = (sourceCode: string) => pinStagedModuleIdentity({ sourceCode, sourcePath })
 
-  beforeAll(async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-pin-identity-'))
-  })
-
-  afterAll(async () => {
-    await rm(tempRoot, { recursive: true, force: true })
-  })
-
-  const identitySourcePath = () => path.join(tempRoot, 'generators/identity.json.genie.ts')
-  const pin = async (
-    sourceCode: string,
-    sourcePath: string = identitySourcePath(),
-  ): Promise<string> => {
-    await mkdir(path.dirname(sourcePath), { recursive: true })
-    await writeFile(sourcePath, sourceCode)
-    return pinStagedModuleIdentity({ sourceCode, sourcePath })
-  }
-
-  it('pins each identity field to the original source location', async () => {
-    const sourcePath = identitySourcePath()
-    expect(await pin('export const id = import.meta.url')).toBe(
-      `export const id = ${JSON.stringify(pathToFileURL(sourcePath).href)}`,
+  it('pins each identity field to the original source location', () => {
+    expect(pin('export const id = import.meta.url')).toBe(
+      'export const id = "file:///repo/generators/identity.json.genie.ts"',
     )
-    expect(await pin('export const dir = import.meta.dirname')).toBe(
-      `export const dir = ${JSON.stringify(path.dirname(sourcePath))}`,
+    expect(pin('export const dir = import.meta.dirname')).toBe(
+      'export const dir = "/repo/generators"',
     )
-    expect(await pin('export const file = import.meta.filename')).toBe(
-      `export const file = ${JSON.stringify(sourcePath)}`,
+    expect(pin('export const file = import.meta.filename')).toBe(
+      'export const file = "/repo/generators/identity.json.genie.ts"',
     )
   })
 
-  it('pins accesses written with arbitrary whitespace and interleaved comments', async () => {
-    const sourcePath = identitySourcePath()
-    expect(await pin('export const id = import\n  . meta\n  . url')).toBe(
-      `export const id = ${JSON.stringify(pathToFileURL(sourcePath).href)}`,
+  it('pins accesses written with arbitrary whitespace and interleaved comments', () => {
+    expect(pin('export const id = import\n  . meta\n  . url')).toBe(
+      'export const id = "file:///repo/generators/identity.json.genie.ts"',
     )
-    expect(await pin('export const dir = import . /* here */ meta . dirname')).toBe(
-      `export const dir = ${JSON.stringify(path.dirname(sourcePath))}`,
+    expect(pin('export const dir = import . /* here */ meta . dirname')).toBe(
+      'export const dir = "/repo/generators"',
     )
   })
 
-  it('leaves comments and string literals byte-identical', async () => {
+  it('leaves comments and string literals byte-identical', () => {
     // Genie generates TypeScript, so a generator legitimately documents or emits the very text
     // being pinned. A textual rewrite corrupts exactly these bytes.
     const sourceCode = [
@@ -134,35 +110,49 @@ describe('pinStagedModuleIdentity', () => {
       'export const emit = () => [emitted, single, template]',
     ].join('\n')
 
-    expect(await pin(sourceCode)).toBe(sourceCode)
+    expect(pin(sourceCode)).toBe(sourceCode)
   })
 
-  it('pins interpolations inside a template literal without touching its raw text', async () => {
-    const sourcePath = identitySourcePath()
-    expect(await pin('const t = `import.meta.url is ${import.meta.url}`')).toBe(
-      `const t = \`import.meta.url is \${${JSON.stringify(pathToFileURL(sourcePath).href)}}\``,
+  it('leaves regular-expression and JSX text literals byte-identical', () => {
+    const regularExpression = 'const pattern = /import.meta.url/'
+    const jsxText = 'export const view = () => <span>import.meta.dirname</span>'
+
+    expect(pin(regularExpression)).toBe(regularExpression)
+    expect(
+      pinStagedModuleIdentity({
+        sourceCode: jsxText,
+        sourcePath: '/repo/generators/view.genie.tsx',
+      }),
+    ).toBe(jsxText)
+  })
+
+  it('pins interpolations inside a template literal without touching its raw text', () => {
+    expect(pin('const t = `import.meta.url is ${import.meta.url}`')).toBe(
+      'const t = `import.meta.url is ${"file:///repo/generators/identity.json.genie.ts"}`',
     )
   })
 
-  it('leaves other import.meta members and same-named property accesses alone', async () => {
+  it('leaves other import.meta members and same-named property accesses alone', () => {
     const sourceCode = [
       'const resolved = import.meta.resolve("./sibling.ts")',
       'const shadowed = { url: 1 }.url',
       'const meta = import.meta',
     ].join('\n')
 
-    expect(await pin(sourceCode)).toBe(sourceCode)
+    expect(pin(sourceCode)).toBe(sourceCode)
   })
 
-  it('returns the input unchanged when there is no identity access', async () => {
+  it('returns the input unchanged when there is no identity access', () => {
     const sourceCode = 'export const value = 1\n'
-    expect(await pin(sourceCode)).toBe(sourceCode)
+    expect(pin(sourceCode)).toBe(sourceCode)
   })
 
-  it('pins identity in TSX sources', async () => {
-    const sourcePath = path.join(tempRoot, 'generators/view.genie.tsx')
-    expect(await pin('export const view = () => <div title={import.meta.url} />', sourcePath)).toBe(
-      `export const view = () => <div title={${JSON.stringify(pathToFileURL(sourcePath).href)}} />`,
-    )
+  it('pins identity in TSX sources', () => {
+    expect(
+      pinStagedModuleIdentity({
+        sourceCode: 'export const view = () => <div title={import.meta.url} />',
+        sourcePath: '/repo/generators/view.genie.tsx',
+      }),
+    ).toBe('export const view = () => <div title={"file:///repo/generators/view.genie.tsx"} />')
   })
 })

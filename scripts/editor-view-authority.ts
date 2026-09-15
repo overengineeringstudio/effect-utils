@@ -3,13 +3,13 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
-import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
+import { rootWorkspaceMemberPaths } from '../package.json.genie.ts'
 import { reconcileBuckViews } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type { BuckWatchPlan } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import { writeEditorViewAuthority } from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
 import { defaultEditorViewName } from '../packages/@overeng/buck2-tools/src/editor-view.ts'
 /** Complete source-authoritative editor consumer registry, including the repository root. */
-export const editorViewPackagePaths = ['.', ...pnpmWorkspaceMemberPaths].toSorted((left, right) =>
+export const editorViewPackagePaths = ['.', ...rootWorkspaceMemberPaths].toSorted((left, right) =>
   left === right ? 0 : left < right ? -1 : 1,
 )
 

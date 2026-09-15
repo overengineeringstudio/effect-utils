@@ -448,7 +448,7 @@ export const installOwnedCapabilityProjection = async ({
             expectedParent: capabilityParentIdentity.realpath,
           })) !== currentGeneration
         ) {
-          throw new TypeError('retention rollback did not restore the prior projection')
+          throw new TypeError('retention rollback did not restore the prior projection', { cause })
         }
       } else {
         await runExact({
@@ -457,7 +457,7 @@ export const installOwnedCapabilityProjection = async ({
         })
         try {
           await lstat(destination)
-          throw new TypeError('retention rollback left the first projection published')
+          throw new TypeError('retention rollback left the first projection published', { cause })
         } catch (missingCause) {
           if (isErrno({ cause: missingCause, code: 'ENOENT' }) === false) throw missingCause
         }

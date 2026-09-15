@@ -80,6 +80,8 @@ repository_static_checks(
     "//packages/@overeng/notion-react:static_sources",
     "//packages/@overeng/npm-release:static_sources",
     "//packages/@overeng/otel-contract:static_sources",
+    "//packages/@overeng/otel-scrape:static_sources",
+    "//packages/@overeng/otelite:static_sources",
     "//packages/@overeng/oxc-config:static_sources",
     "//packages/@overeng/pty-effect:static_sources",
     "//packages/@overeng/react-inspector:static_sources",

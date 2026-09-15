@@ -377,6 +377,12 @@ All notable changes to this project will be documented in this file.
   composition worktree, with no source-compiler comparison fallback. The
   staged Buck action runners move into their owning `@overeng/buck2-tools`
   package so admitting that package does not leave its sources root-owned.
+- **Buck2 / static authority**: move formatting, type-aware linting, repository
+  policy, workspace inventory, and bundle smoke checks to Buck actions over
+  generated source sets. The census derives pnpm members from the generated
+  workspace manifest and includes Nix-only Cargo packages, so nested workspace
+  members and non-pnpm Buck packages cannot silently leave the static-check
+  surface.
 
 - **Buck2 / editor authority**: replace the repository pnpm install with 39
   atomically published Buck dependency views: one root source-generator closure

@@ -200,6 +200,7 @@ export const cargoBuck2PackageProjection = ({
   }
 
   const semanticInputPaths = sorted([
+    'buck2/static_checks.bzl',
     'genie/buck2/mod.ts',
     'rust/buck2-tools/core/cargo-buck2-package-projection.ts',
     'rust/Cargo.toml',
@@ -354,6 +355,7 @@ export const cargoBuck2PackageProjection = ({
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("@prelude//:prelude.bzl", "native")',
+    'load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")',
     ...(buildProduct === true
       ? [
           'load("//buck2/products:defs.bzl", "build_product")',
@@ -361,6 +363,13 @@ export const cargoBuck2PackageProjection = ({
           'load("//buck2/rust:defs.bzl", "rust_product_executable")',
         ]
       : []),
+    '',
+    'static_source_set(',
+    '    name = "static_sources",',
+    `    prefix = ${starlarkString(packagePath)},`,
+    '    srcs = native.glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),',
+    '    visibility = ["PUBLIC"],',
+    ')',
     ...rules,
   ].join('\n')
 
@@ -368,7 +377,7 @@ export const cargoBuck2PackageProjection = ({
 }
 
 const generator = 'effect-utils/rust/cargo-buck2-package-projection' as const
-const schemaVersion = 1 as const
+const schemaVersion = 2 as const
 const regenerationCommand = 'devenv tasks run genie:run' as const
 const thirdPartyPackage = '//rust/third-party' as const
 
