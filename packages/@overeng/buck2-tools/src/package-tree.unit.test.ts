@@ -5,13 +5,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readlinkSync,
+  readFileSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -159,7 +160,85 @@ describe('Buck package view over a normalized dependency view', () => {
     expect(statSync(join(fixture.output, 'src', 'mod.ts')).isFile()).toBe(true)
   })
 
-  it.each(['--file', '--workspace-file', '--workspace-link'] as const)(
+  it('overlays authoritative workspace declarations without copying dependency bytes', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync('.pnpm/safe/node_modules/safe', join(fixture.nodeModules, 'safe'))
+    const scope = join(fixture.nodeModules, '@overeng')
+    mkdirSync(scope)
+    symlinkSync('../.pnpm/safe/node_modules/safe', join(scope, 'workspace'))
+    symlinkSync('../.pnpm/safe/node_modules/safe', join(scope, 'other'))
+    const declarations = join(fixture.root, 'workspace-dist')
+    mkdirSync(declarations)
+    writeFileSync(join(declarations, 'index.d.ts'), 'export declare const authoritative: true\n')
+    const workspacePackageTree = join(fixture.root, 'workspace-package-tree')
+    const transitiveLink = join(workspacePackageTree, 'node_modules', 'transitive')
+    mkdirSync(join(workspacePackageTree, 'node_modules'), { recursive: true })
+    mkdirSync(join(workspacePackageTree, 'src'))
+    writeFileSync(join(workspacePackageTree, 'src', 'mod.ts'), 'export const runtime = true\n')
+    symlinkSync(
+      relative(join(workspacePackageTree, 'node_modules'), fixture.packageDirectory),
+      transitiveLink,
+    )
+
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--dependency-view',
+      fixture.nodeModules,
+      '--workspace-file',
+      'node_modules/@overeng/workspace/dist',
+      declarations,
+      '--workspace-dependency-view',
+      'node_modules/@overeng/workspace/node_modules',
+      workspacePackageTree,
+    ])
+
+    const nodeModules = join(fixture.output, 'node_modules')
+    expect(lstatSync(nodeModules).isDirectory()).toBe(true)
+    expect(
+      readFileSync(join(nodeModules, '@overeng', 'workspace', 'dist', 'index.d.ts'), 'utf8'),
+    ).toBe('export declare const authoritative: true\n')
+    expect(readFileSync(join(nodeModules, '@overeng', 'workspace', 'src', 'mod.ts'), 'utf8')).toBe(
+      'export const runtime = true\n',
+    )
+    expect(statSync(join(nodeModules, 'safe', 'package.json')).isFile()).toBe(true)
+    expect(statSync(join(nodeModules, '@overeng', 'other', 'package.json')).isFile()).toBe(true)
+    expect(
+      statSync(
+        join(nodeModules, '@overeng', 'workspace', 'node_modules', 'transitive', 'package.json'),
+      ).isFile(),
+    ).toBe(true)
+    expect(existsSync(join(fixture.nodeModules, '@overeng', 'workspace', 'dist'))).toBe(false)
+  })
+
+  it('rejects a dependency view for a package without a workspace overlay', () => {
+    const fixture = createAssemblyFixture()
+    const scope = join(fixture.nodeModules, '@overeng')
+    const workspacePackageTree = join(fixture.root, 'workspace-package-tree')
+    mkdirSync(join(workspacePackageTree, 'node_modules'), { recursive: true })
+    mkdirSync(scope)
+    symlinkSync(relative(scope, workspacePackageTree), join(scope, 'poison'))
+    const declarations = join(fixture.root, 'workspace-dist')
+    mkdirSync(declarations)
+
+    expect(() =>
+      runPackageTreeCli([
+        '--output',
+        fixture.output,
+        '--dependency-view',
+        fixture.nodeModules,
+        '--workspace-file',
+        'node_modules/@overeng/workspace/dist',
+        declarations,
+        '--workspace-dependency-view',
+        'node_modules/@overeng/poison/node_modules',
+        workspacePackageTree,
+      ]),
+    ).toThrow('workspace dependency view has no matching workspace overlay')
+    expect(statSync(join(workspacePackageTree, 'node_modules')).isDirectory()).toBe(true)
+  })
+
+  it.each(['--file', '--workspace-link'] as const)(
     'rejects %s writes through the linked dependency boundary',
     (flag) => {
       const fixture = createAssemblyFixture()
