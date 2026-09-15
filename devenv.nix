@@ -714,6 +714,7 @@ in
     (taskModules.test-playwright {
       playwrightPkg = inputs.playwright.packages.${currentSystem}.playwright;
       installTask = "buck2:editor:publish";
+      playwrightBin = "node_modules/.bin/playwright";
       packages = [
         {
           path = "packages/@overeng/utils";
