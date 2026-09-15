@@ -13,6 +13,10 @@
       "target": "effect_utils//packages/@overeng/genie:genie-bootstrap-closure-check-candidate"
     },
     {
+      "name": "gh-ci-utils",
+      "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
+    },
+    {
       "name": "megarepo",
       "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
     },
@@ -46,7 +50,7 @@
     }
   ],
   "provenance": {
-    "fingerprint": "sha256:d26312c03856cc45ee69bc8587b4792087beb9c76f411b44f66865b374283089",
+    "fingerprint": "sha256:546ff155a723865914b52d8a97301ee35492c928fe4a86d4b20c4dd00083b081",
     "generator": "effect-utils/genie/buck2-javascript-release-targets",
     "regenerationCommand": "devenv tasks run genie:run",
     "semanticInputs": [
