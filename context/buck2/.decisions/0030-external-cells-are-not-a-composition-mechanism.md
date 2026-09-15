@@ -72,7 +72,7 @@ rules-distribution role.
 
 - No change to COMP-R08/R10, decision 0020, or mr's mount pipeline from this
   decision alone. What changes the mount pipeline's _scope_ is the separate
-  proposal [.proposed/artifact-composition.md](./.proposed/artifact-composition.md),
+  proposal the artifact-composition proposal (superseded by [decision 0034](./0034-artifact-default-composition-no-registry.md)),
   which asks whether Buck2 should compose cells across repositories at all.
 - The root-owned capability cell is recorded as an open question in
   05-composition; it is the right ownership boundary in every option and
