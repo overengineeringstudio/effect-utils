@@ -12,8 +12,8 @@
    through Nix rebuilds sources and churns fixed-output hashes; the repair cost
    recurs on every dependency change.
 4. **Composition does not compound:** Megarepo members share sources, but each
-   repository rebuilds shared work from scratch; per-repository solutions do
-   not carry to dotfiles or other members.
+   repository rebuilds shared work from scratch; a producer's built output does
+   not reach dotfiles or other members as an immutable, pinnable product.
 
 ## The Vision
 
@@ -23,9 +23,10 @@
   identical work executes once anywhere and is reused everywhere.
 - Dependency state is a Buck-produced, verified artifact — including the
   editor surface — with no hand-maintained install step and no silent drift.
-- Megarepo composition is a first-class build structure: members are Buck cells
-  with identical action identities standalone and composed, so adoption in one
-  repository pays off directly in every consumer, dotfiles first.
+- Cross-repository reuse is artifact-granular: a producer publishes immutable,
+  content-addressed products of its Buck graph, and a consumer pins them by
+  digest in its own lockfile. No consumer carries a producer's action graph;
+  source-granular reuse stays inside one repository.
 - Nix supplies immutable inputs and independently verifies and imports portable
   Buck products into the Nix store; repo-local tools cross into system closures
   without source rebuilds or fixed-output churn.
@@ -56,10 +57,10 @@
    deletion ledger never carries an admitted slice with a surviving legacy path.
 5. Admitted repository-local tools reach Nix consumers through product import
    with zero fixed-output hash repairs attributable to their dependencies.
-6. A member built standalone and the same member built inside a composed
-   repository produce identical action identities, and a consuming repository
-   (dotfiles first) builds consumed member targets from cache without local
-   re-execution.
+6. A consuming repository (dotfiles first) installs a producer's Buck-built
+   package by immutable digest from the shared product origin, with no source
+   mount, path shim, or producer checkout, and a second install of the same
+   pins is a strict no-op.
 7. An independent Nix evaluation rejects a malformed or mismatched product and
    imports a valid product without rebuilding repository sources.
 8. Dependency drift is impossible silently: a stale dependency surface fails

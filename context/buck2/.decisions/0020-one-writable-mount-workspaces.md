@@ -143,3 +143,7 @@ configured legacy-symlink members whose entire `repos/<name>` path is added to r
 only because Buck cannot traverse, hash, detect, or invalidate from the excluded path.
 Darwin advance remains separately gated on a verified login-session invalidation
 receipt or explicit runtime admission; fixture proof does not discharge tierA or CI.
+
+## Amendment 3 (2026-09-15)
+
+The one-writable-mount workspace is no longer the default development context; it is retained on `main` as the paused composed shape until the last consumer edge leaves it, then deleted with its ledger rows. See [decision 0034](./0034-artifact-default-composition-no-registry.md).

@@ -55,3 +55,7 @@ evidence rather than silently rolled back.
   as the flip.
 - Per-root disk cost multiplies by live worktrees until decision 0025's CoW
   economics are deliverable on the host filesystem.
+
+## Amendment 1 (2026-09-15)
+
+Composed-by-default is reverted: standalone worktrees are the default (MR-R11 as amended); composed workspaces are a declared exception. See [decision 0034](./0034-artifact-default-composition-no-registry.md).

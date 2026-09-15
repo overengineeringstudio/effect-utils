@@ -1,5 +1,7 @@
 # Cross-Repository Reuse Prior Art
 
+Source: official documentation and source trees of Buck2, Bazel, the Remote Execution API, pnpm/npm, Nx, Turborepo, Nix, and Git/Josh as pinned in the Date line; retrieved 2026-09-13 by the composition-architecture explorer (effect-utils PR #1287).
+
 Date: 2026-09-13. Research used current official documentation and source at Buck2 `5baef2d`, Bazel `aac8677`, Remote Execution API `76ddd98`, pnpm 12.4.1, npm 11.19.1, Nx 22.7.12, and Turborepo 2.10.12.
 
 This record separates source identity, artifact identity, cache identity, and checkout identity. These mechanisms solve different problems. A cache is not a durable artifact origin, and a checkout is not a package version.
@@ -87,3 +89,14 @@ This record separates source identity, artifact identity, cache identity, and ch
 7. Nix flake-lock concurrent writer semantics and binary-cache duplicate-upload policy.
 8. Producer Git retention sufficient for every historical submodule pin.
 9. Josh filtered-object stability across Josh versions and any claimed atomic behavior across unrelated origins.
+
+## Relevant Facts
+
+- Buck2 action identity includes the physical cell path; external cells key differently from on-disk cells (decision 0030).
+- pnpm accepts tarball-URL dependencies with lock integrity; `blockExoticSubdeps` refuses transitive exotic sources by default.
+- Task caches (Nx, Turborepo) transport task results and are not durable dependency origins.
+- Nix flake inputs and store paths are the native identity for Nix-consumed products only.
+
+## VRS Impact
+
+Grounds decision 0034 (artifact-default composition without a registry) and the rejection of external cells, Bzlmod, task caches, Nix-only library composition, and checkout mechanisms as cross-repository reuse channels.

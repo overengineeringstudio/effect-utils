@@ -72,11 +72,13 @@ invariants named in its own document:
 - **BUCK-R05 Exact portable identity:** An action identity contains every
   result-affecting source, dependency closure, configuration, toolchain,
   platform, and policy input, excludes irrelevant host state, and is stable
-  across worktrees, machines, and composition shapes
-  ([05-composition](./05-composition/requirements.md)).
-- **BUCK-R06 Shared reuse:** Admitted actions read and write the shared remote
-  action cache. A second same-platform context at an identical revision
-  re-executes zero actions for unchanged admitted targets; a violation is a
+  across worktrees and machines of one repository. Cross-repository identity is
+  the product digest a consumer pins, not a shared action key
+  ([decision 0034](./.decisions/0034-artifact-default-composition-no-registry.md)).
+- **BUCK-R06 Shared reuse:** Admitted actions read and write the remote action
+  cache of their trust tier (decision 0033). A second same-platform context of
+  the same repository at an identical revision re-executes zero actions for
+  unchanged admitted targets; a violation is a
   key-stability regression ([04-reuse](./04-reuse/requirements.md)).
 - **BUCK-R07 Wall-clock budgets:** The admitted surface holds a warm no-op
   check at ≤ 5 s and a fresh-context green with warm shared cache at ≤ 3 min.
