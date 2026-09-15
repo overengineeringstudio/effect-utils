@@ -1,6 +1,32 @@
-# Proposed: Artifact-Default Cross-Repository Composition
+# 0034 Artifact-Default Cross-Repository Composition Without a Registry
 
-Status: proposed; not in force. Constitutional VRS changes require principal acceptance. This proposal supersedes the never-accepted [artifact-composition proposal](../.superseded/artifact-composition.md) with a measured bakeoff and a concrete retirement ledger.
+Status: accepted
+
+Promoted 2026-09-15 from the PR #1287 proposal after its acceptance gate was
+met (q22, q23, q29). What changed between proposal and decision:
+
+- **No registry.** The durable origin is the existing buck2-products
+  content-addressed release layout (`nix/buck2-products/`), the shared CAS is a
+  transport accelerator, and a consumer pins the producer package by tarball
+  URL plus SHA-512 integrity in its lockfile. The proposal's "package registry
+  as durable origin" is replaced by this; every other clause stands.
+- **Proof.** PR #1289 published `@overeng/utils` and its three-package runtime
+  closure as immutable release assets through the extended publisher and made
+  dotfiles `apps/notion-scan` consume it by URL with its `link:` edge,
+  `tsconfig` `paths` shim, and source-closure entry deleted; typecheck and 28
+  unit tests pass. Edge net +482 (retained composition machinery counted in
+  full), judged by the reconciliation trajectory (decision 0031 Amendment 1).
+- **Residues carried as requirements, not blockers.** A consumer's second
+  frozen install must be a strict no-op (pnpm injected-workspace pruning is
+  observed today); peer contracts (Effect release candidates) must align per
+  consumer before its edge migrates.
+- **Pin derivation.** A consumer's URL and integrity derive from its
+  `megarepo.lock` member commit through the producer's checked-in manifest, so
+  the practiced repin flow is the version-resolution step; genie owns the
+  derivation.
+- Constitutional edits made in the same change: vision criterion 6 and problem
+  4, BUCK-R05/R06, COMP-R01/R02, MR-R11, and amendments to decisions 0014,
+  0020, 0027.
 
 ## Context
 

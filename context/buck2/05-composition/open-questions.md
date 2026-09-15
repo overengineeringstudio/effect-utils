@@ -7,7 +7,7 @@ provisionally selects immutable package artifacts for ordinary
 cross-repository TypeScript library edges. It narrows source mounts to named
 fork/generator exceptions and proposes retiring cross-repository Buck2 cells
 after adoption. The
-[proposed decision](../.decisions/.proposed/composition-architecture.md)
+[decision 0034](../.decisions/0034-artifact-default-composition-no-registry.md)
 records the criterion-by-criterion winners, concrete deletion ledger, and VRS
 changes that require principal confirmation. The earlier
 [artifact proposal](../.decisions/.superseded/artifact-composition.md) was

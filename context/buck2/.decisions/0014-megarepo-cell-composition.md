@@ -59,3 +59,7 @@ directories, full detector coverage) is normative in
   megarepo/genie enforce the canonical shape.
 - Members must not ship `.buckroot`; a cwd inside a member must not silently
   become its own project root.
+
+## Amendment 1 (2026-09-15)
+
+Cross-repository reuse moves to immutable package artifacts pinned by digest; the 'product bridge only' row this decision rejected is now the accepted shape for ordinary library edges. Cells remain only for the paused composed shape (fork co-development, generator sources). See [decision 0034](./0034-artifact-default-composition-no-registry.md).
