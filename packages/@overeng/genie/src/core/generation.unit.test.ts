@@ -89,6 +89,18 @@ describe('pinStagedModuleIdentity', () => {
     )
   })
 
+  it('pins optional identity accesses to the original source location', () => {
+    expect(pin('export const id = import.meta?.url')).toBe(
+      'export const id = "file:///repo/generators/identity.json.genie.ts"',
+    )
+    expect(pin('export const dir = import.meta?.dirname')).toBe(
+      'export const dir = "/repo/generators"',
+    )
+    expect(pin('export const file = import.meta?.filename')).toBe(
+      'export const file = "/repo/generators/identity.json.genie.ts"',
+    )
+  })
+
   it('pins accesses written with arbitrary whitespace and interleaved comments', () => {
     expect(pin('export const id = import\n  . meta\n  . url')).toBe(
       'export const id = "file:///repo/generators/identity.json.genie.ts"',
