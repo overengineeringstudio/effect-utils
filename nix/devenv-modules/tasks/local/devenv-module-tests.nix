@@ -5,6 +5,8 @@ let
   devenvModuleTestsScript = pkgs.writeShellScript "devenv-module-tests" ''
     set -euo pipefail
 
+    export PATH=${lib.makeBinPath [ pkgs.bc ]}:$PATH
+
     testDir="$PWD/nix/devenv-modules/tasks/shared/tests"
     if [ ! -d "$testDir" ]; then
       echo "No devenv module tests found (missing $testDir)"
