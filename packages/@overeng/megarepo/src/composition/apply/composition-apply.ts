@@ -199,6 +199,12 @@ export interface CompositionApplyPrimitives {
   ) => Promise<CompositionRootPublicationResult>
 }
 
+/** One prepared root-local Watchman change and its prior-state compensation. */
+export interface CompositionWatchmanProjectReconciliation {
+  readonly reconcile: () => Promise<void>
+  readonly rollback: () => Promise<void>
+}
+
 /** All process and lifecycle capabilities are explicit. PATH is never a fallback. */
 export interface CompositionApplyRuntime {
   /** Atomic owned-worktree projection port; the resolver itself remains scratch-only. */
@@ -240,8 +246,10 @@ export interface CompositionApplyRuntime {
   readonly overlayRuntime: DistOverlayRuntime
   readonly overlayScratch: CompositionOverlayScratchRuntime
   readonly updateLockRuntime: WorkspaceUpdateLockRuntime
-  /** Reloads only this composition root after its generated Watchman config changes. */
-  readonly reconcileWatchmanProject: (input: { readonly workspaceRoot: string }) => Promise<void>
+  /** Captures prior root registration before returning config reconciliation and compensation. */
+  readonly prepareWatchmanProjectReconciliation: (input: {
+    readonly workspaceRoot: string
+  }) => Promise<CompositionWatchmanProjectReconciliation>
   /** Executes exactly the supplied argv. Implementations may add environment, never arguments. */
   readonly runBuck: (argv: readonly [string, ...ReadonlyArray<string>]) => Promise<void>
   readonly primitives?: Partial<CompositionApplyPrimitives>
@@ -1556,13 +1564,19 @@ const applyComposition = async ({
       const watchmanConfigChanged =
         (rootPlan._tag === 'Create' || rootPlan._tag === 'Update') &&
         rootPlan.files.some((file) => file.path === '.watchmanconfig')
+      const watchmanReconciliation =
+        watchmanConfigChanged === true
+          ? await runtime.prepareWatchmanProjectReconciliation({
+              workspaceRoot: request.workspaceRoot,
+            })
+          : undefined
       const publicationOptions = {
         ...rootPublicationOptions,
-        ...(watchmanConfigChanged === false
+        ...(watchmanReconciliation === undefined
           ? {}
           : {
-              afterAuthorityPublished: () =>
-                runtime.reconcileWatchmanProject({ workspaceRoot: request.workspaceRoot }),
+              afterAuthorityPublished: watchmanReconciliation.reconcile,
+              afterAuthorityRollback: watchmanReconciliation.rollback,
             }),
       } satisfies PublishCompositionRootOptions
       if (rootPlan._tag === 'Create' || watchmanConfigChanged === true) {

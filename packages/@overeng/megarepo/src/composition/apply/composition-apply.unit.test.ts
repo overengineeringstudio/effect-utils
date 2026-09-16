@@ -234,8 +234,8 @@ const fake = ({
       },
     },
     updateLockRuntime: {},
-    reconcileWatchmanProject: async () => {
-      throw new Error('dry-run reconciled Watchman')
+    prepareWatchmanProjectReconciliation: async () => {
+      throw new Error('dry-run prepared Watchman reconciliation')
     },
     runBuck: async () => {
       throw new Error('dry-run ran Buck')

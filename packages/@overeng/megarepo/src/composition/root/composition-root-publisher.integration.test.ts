@@ -132,6 +132,7 @@ const optionsFor = ({
   lockToken = 'test-token',
   recoverToken,
   afterAuthorityPublished,
+  afterAuthorityRollback,
 }: {
   readonly fixture: Fixture
   readonly memberKeys?: ReadonlyArray<string>
@@ -144,6 +145,7 @@ const optionsFor = ({
   readonly lockToken?: string
   readonly recoverToken?: string
   readonly afterAuthorityPublished?: () => Promise<void>
+  readonly afterAuthorityRollback?: () => Promise<void>
 }): PublishCompositionRootOptions => ({
   workspaceRoot: fixture.workspaceRoot,
   configMemberKeys: memberKeys,
@@ -173,6 +175,7 @@ const optionsFor = ({
   },
   runtime: publicationRuntime,
   ...(afterAuthorityPublished === undefined ? {} : { afterAuthorityPublished }),
+  ...(afterAuthorityRollback === undefined ? {} : { afterAuthorityRollback }),
 })
 
 const planOptionsFor = (
@@ -416,6 +419,16 @@ describe('composition root publisher', () => {
             '.megarepo',
             'buck-out',
             'node_modules',
+            'repos/alpha/.devenv',
+            'repos/alpha/buck-out',
+            'repos/alpha/node_modules',
+            'repos/alpha/target',
+            'repos/alpha/tmp',
+            'repos/beta/.devenv',
+            'repos/beta/buck-out',
+            'repos/beta/node_modules',
+            'repos/beta/target',
+            'repos/beta/tmp',
             'target',
             'tmp',
           ],
@@ -679,6 +692,7 @@ describe('composition root publisher', () => {
       Effect.gen(function* () {
         const fixture = yield* makeFixture()
         yield* publishCompositionRoot(optionsFor({ fixture, cacheValue: 'old:1234' }))
+        let rollbacks = 0
         const before = new Map(
           yield* Effect.promise(() =>
             Promise.all(
@@ -699,6 +713,12 @@ describe('composition root publisher', () => {
               afterAuthorityPublished: async () => {
                 throw new Error('projection side effect failed')
               },
+              afterAuthorityRollback: async () => {
+                rollbacks += 1
+                expect((await readGenerated(fixture, '.buckconfig')).toString()).toContain(
+                  'old:1234',
+                )
+              },
             }),
           ),
         )
@@ -709,6 +729,7 @@ describe('composition root publisher', () => {
           expect(yield* Effect.promise(() => readFile(absolute))).toEqual(before.get(path)?.bytes)
           expect(info.mode & 0o777).toBe(before.get(path)?.mode)
         }
+        expect(rollbacks).toBe(1)
       }),
     ),
   )

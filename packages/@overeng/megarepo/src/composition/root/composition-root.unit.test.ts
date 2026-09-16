@@ -487,6 +487,11 @@ describe('composition root goldens', () => {
         '.megarepo',
         'buck-out',
         'node_modules',
+        'repos/alpha/.devenv',
+        'repos/alpha/buck-out',
+        'repos/alpha/node_modules',
+        'repos/alpha/target',
+        'repos/alpha/tmp',
         'target',
         'tmp',
       ],
@@ -764,10 +769,14 @@ describe('ignore projection', () => {
                     'generated',
                     'packages/.editor-view',
                   ],
+                  distOverlays: [{ target: '//packages:dist', destination: 'packages/dist' }],
                 }),
               },
             ],
-            additionalProjectIgnores: ['repos/retired'],
+            additionalProjectIgnores: [
+              'repos/retired',
+              'repos/alpha/.buck2/capabilities',
+            ],
           }),
         ).get('.watchmanconfig')!,
       ),
@@ -778,8 +787,14 @@ describe('ignore projection', () => {
       '.megarepo',
       'buck-out',
       'node_modules',
+      'repos/alpha/.devenv',
+      'repos/alpha/buck-out',
       'repos/alpha/generated',
+      'repos/alpha/node_modules',
       'repos/alpha/packages/.editor-view',
+      'repos/alpha/packages/dist',
+      'repos/alpha/target',
+      'repos/alpha/tmp',
       'repos/retired',
       'target',
       'tmp',
@@ -787,6 +802,7 @@ describe('ignore projection', () => {
     expect(config.ignore_dirs).not.toContain('repos/alpha/**/dist')
     expect(config.ignore_dirs.some((path) => path.includes('*'))).toBe(false)
     expect(config.ignore_dirs.some((path) => path.includes('.buck2/capabilities'))).toBe(false)
+    expect(config.ignore_dirs).not.toContain('repos/alpha/.buck2/capabilities')
     expect(config.ignore_dirs.some((path) => path.includes('/src'))).toBe(false)
   })
 })

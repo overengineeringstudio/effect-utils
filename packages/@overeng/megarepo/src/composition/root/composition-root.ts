@@ -780,6 +780,10 @@ const ROOT_GENERATED_DIRECTORIES = [
   'tmp',
 ] as const
 
+const MEMBER_GENERATED_DIRECTORIES = ROOT_GENERATED_DIRECTORIES.filter(
+  (directory) => directory !== '.megarepo',
+)
+
 const ROOT_PROJECT_IGNORES = [
   '.git',
   ...ROOT_GENERATED_DIRECTORIES.filter((directory) => directory !== '.megarepo'),
@@ -791,12 +795,18 @@ const ROOT_PROJECT_IGNORES = [
   '.buck2/capabilities.candidate.*',
 ] as const
 
+const containsCapabilityProjection = (path: string): boolean => {
+  const segments = path.split('/')
+  return segments.some(
+    (segment, index) => segment === '.buck2' && segments[index + 1] === 'capabilities',
+  )
+}
+
 const isConcreteWatchmanIgnore = (path: string): boolean =>
   /[*?[\]{}]/u.test(path) === false &&
   path !== '.git' &&
   path.endsWith('/.git') === false &&
-  path !== '.buck2/capabilities' &&
-  path.startsWith('.buck2/capabilities/') === false
+  containsCapabilityProjection(path) === false
 
 const watchmanIgnoreDirectories = (
   input: NormalizedCompositionRootInput,
@@ -804,11 +814,15 @@ const watchmanIgnoreDirectories = (
   canonicalStringSet([
     ...ROOT_GENERATED_DIRECTORIES,
     ...input.additionalProjectIgnores.filter(isConcreteWatchmanIgnore),
-    ...input.members.flatMap(({ manifest }) =>
-      manifest.projectIgnore
+    ...input.members.flatMap(({ manifest }) => [
+      ...MEMBER_GENERATED_DIRECTORIES.map((directory) => `${manifest.mount}/${directory}`),
+      ...manifest.projectIgnore
         .filter(isConcreteWatchmanIgnore)
         .map((directory) => `${manifest.mount}/${directory}`),
-    ),
+      ...manifest.distOverlays.map(
+        ({ destination }) => `${manifest.mount}/${destination}`,
+      ),
+    ]),
   ])
 
 const renderWatchmanConfig = (input: NormalizedCompositionRootInput): string =>

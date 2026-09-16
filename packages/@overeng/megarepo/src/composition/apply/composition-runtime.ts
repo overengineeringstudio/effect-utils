@@ -98,13 +98,13 @@ const watchmanCommand = async ({
   return response
 }
 
-const deleteWatchmanProjectIfWatched = async ({
+const watchmanProjectIsWatched = async ({
   watchmanPath,
   workspaceRoot,
 }: {
   readonly watchmanPath: string
   readonly workspaceRoot: string
-}): Promise<void> => {
+}): Promise<boolean> => {
   const response = await watchmanCommand({ watchmanPath, args: ['watch-list'] })
   if (
     typeof response !== 'object' ||
@@ -115,20 +115,32 @@ const deleteWatchmanProjectIfWatched = async ({
   ) {
     throw new TypeError('Watchman watch-list did not return a string root list')
   }
-  if (response.roots.includes(workspaceRoot) === true) {
-    await watchmanCommand({ watchmanPath, args: ['watch-del', workspaceRoot] })
-  }
+  return response.roots.includes(workspaceRoot)
 }
 
-/** Reload one generated root config without restarting or otherwise mutating the shared server. */
-export const reconcileWatchmanProject = async ({
+const deleteWatchmanProjectIfWatched = async ({
   watchmanPath,
   workspaceRoot,
 }: {
   readonly watchmanPath: string
   readonly workspaceRoot: string
 }): Promise<void> => {
+  if (await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })) {
+    await watchmanCommand({ watchmanPath, args: ['watch-del', workspaceRoot] })
+  }
+}
+
+const setWatchmanProjectWatched = async ({
+  watchmanPath,
+  workspaceRoot,
+  watched,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+  readonly watched: boolean
+}): Promise<void> => {
   await deleteWatchmanProjectIfWatched({ watchmanPath, workspaceRoot })
+  if (watched === false) return
   try {
     const response = await watchmanCommand({
       watchmanPath,
@@ -153,6 +165,39 @@ export const reconcileWatchmanProject = async ({
       )
     }
     throw cause
+  }
+}
+
+/** Reload one generated root config without restarting or otherwise mutating the shared server. */
+export const reconcileWatchmanProject = async ({
+  watchmanPath,
+  workspaceRoot,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+}): Promise<void> => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true })
+
+export interface WatchmanProjectReconciliation {
+  readonly reconcile: () => Promise<void>
+  readonly rollback: () => Promise<void>
+}
+
+/**
+ * Capture one root's prior registration before publication and return its bounded reconciliation
+ * plus compensation capabilities. The rollback runs only after the old config is back on disk.
+ */
+export const prepareWatchmanProjectReconciliation = async ({
+  watchmanPath,
+  workspaceRoot,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+}): Promise<WatchmanProjectReconciliation> => {
+  const wasWatched = await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })
+  return {
+    reconcile: () => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true }),
+    rollback: () =>
+      setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: wasWatched }),
   }
 }
 
@@ -332,11 +377,11 @@ export const compositionApplyRuntimeFromEnv = ({
     },
     overlayScratch: overlayScratchRuntime(workspaceRoot),
     updateLockRuntime: { token: nonce },
-    reconcileWatchmanProject: ({ workspaceRoot: requestedRoot }) => {
+    prepareWatchmanProjectReconciliation: ({ workspaceRoot: requestedRoot }) => {
       if (requestedRoot !== workspaceRoot) {
         throw new TypeError('Watchman workspace does not match its runtime authority')
       }
-      return reconcileWatchmanProject({ watchmanPath, workspaceRoot })
+      return prepareWatchmanProjectReconciliation({ watchmanPath, workspaceRoot })
     },
     runBuck: (argv) => {
       if (argv[0] !== buck2Path) {
