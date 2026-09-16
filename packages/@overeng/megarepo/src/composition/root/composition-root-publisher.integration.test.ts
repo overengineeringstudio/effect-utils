@@ -1613,6 +1613,42 @@ describe('composition root publisher', () => {
     ),
   )
 
+  it.effect('teardown accepts the legacy manifest and preserves unrecorded user files', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
+        const manifestPath = NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)
+        const watchmanPath = NodePath.join(fixture.root, '.watchmanconfig')
+        const userFilePath = NodePath.join(fixture.root, 'user-owned.txt')
+        yield* Effect.promise(async () => {
+          const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+            schemaVersion: 1
+            files: Array<{ path: string; mode: number; sha256: string }>
+          }
+          manifest.files = manifest.files.filter((file) => file.path !== '.watchmanconfig')
+          await writeFile(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
+          await writeFile(watchmanPath, '{"user_owned":true}\n')
+          await writeFile(userFilePath, 'keep\n')
+        })
+
+        const result = yield* teardownCompositionRoot({
+          workspaceRoot: fixture.workspaceRoot,
+          lock: { owner: 'publisher-test', token: 'legacy-teardown-token' },
+        })
+        const legacyGeneratedPaths = generatedPaths.filter((path) => path !== '.watchmanconfig')
+        expect(result.removedPaths.toSorted()).toEqual(legacyGeneratedPaths.toSorted())
+        for (const path of legacyGeneratedPaths) {
+          expect(yield* exists(NodePath.join(fixture.root, path))).toBe(false)
+        }
+        expect(yield* Effect.promise(() => readFile(watchmanPath, 'utf8'))).toBe(
+          '{"user_owned":true}\n',
+        )
+        expect(yield* Effect.promise(() => readFile(userFilePath, 'utf8'))).toBe('keep\n')
+      }),
+    ),
+  )
+
   it.effect('teardown revalidates no-follow identity immediately before unlink', () =>
     Effect.scoped(
       Effect.gen(function* () {
