@@ -20,6 +20,8 @@ const EFFECT_CLI_FIBER_PATTERN = /(?<=ERROR \(#)\d+(?=\): ~effect\/cli\/)/gu
 
 const BUCK_EFFECT_CLI_FRAME_PATTERN =
   /\/[^()\s]*\/__entry_effect_4_0_0_rc_\d+_[^/]+__\/entry\/node_modules\/effect\/dist\/unstable\/cli\/Command\.js:\d+:\d+/gu
+const EDITOR_VIEW_EFFECT_CLI_FRAME_PATTERN =
+  /\/[^()\s]*\/packages\/\.editor-view\/\.store\/[^/]+\/\.backing\/[^/]+\/node_modules\/effect\/dist\/unstable\/cli\/Command\.js:\d+:\d+/gu
 const EFFECT_CLI_FRAME_PATTERN =
   /(?:effect@4\.0\.0-rc\.\d+\/node_modules\/effect|\/[^\s]*buck-out[^\s]*\/node_modules\/effect)\/dist\/unstable\/cli\/Command\.js:\d+:\d+/gu
 const NORMALIZED_EFFECT_CLI_FRAME =
@@ -82,10 +84,15 @@ export const normalizeCliOutput = ({
       repoRoot === undefined
         ? ''
         : `${repoRoot}${repoRoot.endsWith('/') === true ? '' : '/'}node_modules/.pnpm/`
-    output = output.replace(
-      BUCK_EFFECT_CLI_FRAME_PATTERN,
-      `${sourceTreePrefix}${NORMALIZED_EFFECT_CLI_FRAME}`,
-    )
+    output = output
+      .replace(
+        BUCK_EFFECT_CLI_FRAME_PATTERN,
+        `${sourceTreePrefix}${NORMALIZED_EFFECT_CLI_FRAME}`,
+      )
+      .replace(
+        EDITOR_VIEW_EFFECT_CLI_FRAME_PATTERN,
+        `${sourceTreePrefix}${NORMALIZED_EFFECT_CLI_FRAME}`,
+      )
   }
   if (repoRoot !== undefined) {
     if (repoRoot === '') throw new Error('normalizeCliOutput: repoRoot must be non-empty')

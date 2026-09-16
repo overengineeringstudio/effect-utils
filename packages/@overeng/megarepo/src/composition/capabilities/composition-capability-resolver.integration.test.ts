@@ -148,8 +148,24 @@ const makeFixture = async ({
   }
 }
 
-const clean = async (fixture: Fixture): Promise<void> =>
-  rm(fixture.root, { recursive: true, force: true })
+const makeDirectoriesOwnerWritable = async (path: string): Promise<void> => {
+  const info = await lstat(path).catch((cause: NodeJS.ErrnoException) => {
+    if (cause.code === 'ENOENT') return undefined
+    throw cause
+  })
+  if (info === undefined || info.isDirectory() === false || info.isSymbolicLink() === true) return
+  await chmod(path, 0o700)
+  await Promise.all(
+    (await readdir(path)).map((child) =>
+      makeDirectoriesOwnerWritable(NodePath.join(path, child)),
+    ),
+  )
+}
+
+const clean = async (fixture: Fixture): Promise<void> => {
+  await makeDirectoriesOwnerWritable(fixture.root)
+  await rm(fixture.root, { recursive: true, force: true })
+}
 
 const failure = async (
   promise: Promise<unknown>,
