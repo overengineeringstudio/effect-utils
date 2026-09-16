@@ -147,9 +147,9 @@ export DEVENV_ROOT="$tmpdir/workspace"
 : > "$tmpdir/spans.ndjson"
 
 if ! stdout="$(cd "$tmpdir" && "$test_bash" "$tmpdir/ts-check.exec.sh" 2>&1)"; then
-  printf '%s\n' "$stdout" >&2
-  printf '%s\n' 'ts:check fixture execution trace:' >&2
-  (cd "$tmpdir" && "$test_bash" -x "$tmpdir/ts-check.exec.sh") >&2 || true
+  printf '%s\n' "$stdout"
+  printf '%s\n' 'ts:check fixture execution trace:'
+  (cd "$tmpdir" && "$test_bash" -x "$tmpdir/ts-check.exec.sh") 2>&1 || true
   fail "ts:check fixture execution failed"
 fi
 echo "$stdout" > "$tmpdir/stdout.txt"
