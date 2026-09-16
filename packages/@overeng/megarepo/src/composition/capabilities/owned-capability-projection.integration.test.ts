@@ -121,6 +121,7 @@ describe('owned capability projection', () => {
       )
       await mkdir(NodePath.dirname(oldRoot), { recursive: true })
       await writeFile(oldRoot, 'old root\n')
+      const durabilityEvents: string[] = []
 
       await expect(
         installOwnedCapabilityProjection({
@@ -131,7 +132,12 @@ describe('owned capability projection', () => {
           runtime: {
             ...coreutils,
             nonce: () => 'advance',
+            directoryFsync: async ({ reason, sync }) => {
+              await sync()
+              durabilityEvents.push(reason)
+            },
             retainPublishedCapabilities: async ({ destinationPath }) => {
+              durabilityEvents.push('retain')
               expect(await readFile(NodePath.join(destinationPath, 'defs.bzl'), 'utf8')).toBe(
                 `GENERATION = "${secondGeneration}"
 `,
@@ -147,6 +153,11 @@ describe('owned capability projection', () => {
         _tag: 'OwnedCapabilityProjectionError',
         reason: 'RetentionFailed',
       })
+      expect(durabilityEvents).toEqual([
+        'OwnedProjectionPublish',
+        'retain',
+        'OwnedProjectionRollback',
+      ])
       expect(await readFile(NodePath.join(owned, '.buck2/capabilities/defs.bzl'), 'utf8')).toBe(
         `GENERATION = "${firstGeneration}"
 `,
