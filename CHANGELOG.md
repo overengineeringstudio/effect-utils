@@ -312,6 +312,8 @@ character after JSON`, failing every build against such a lockfile.
   in plugin 'overeng'"). Covered by
   `nix/devenv-modules/tasks/shared/tests/oxlint-plugin-injection.test.sh`.
 
+### Changed
+
 - **Bun**: move the runtime pin from Bun 1.3.13 to 1.4.2. The nixpkgs
   authority (`flake.lock`, `devenv.lock`, and both nested flakes) moves to
   the upstream bump commit, and the `@types/bun` catalog pin moves
