@@ -218,7 +218,7 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
     let mut needed_offsets = Vec::new();
     let mut version_needs_address = None;
     let mut version_needs_count = None;
-    for entry in dynamic_bytes.chunks_exact(16) {
+    for entry in dynamic_bytes.as_chunks::<16>().0 {
         let tag = read_u64(entry, 0, endian)?;
         let value = read_u64(entry, 8, endian)?;
         match tag {
@@ -728,7 +728,7 @@ mod tests {
             }
             let offset = usize_from(read_u64(&bytes, header + 8, endian).unwrap()).unwrap();
             let size = usize_from(read_u64(&bytes, header + 32, endian).unwrap()).unwrap();
-            for entry in bytes[offset..offset + size].chunks_exact_mut(16) {
+            for entry in bytes[offset..offset + size].as_chunks_mut::<16>().0 {
                 if matches!(read_u64(entry, 0, endian).unwrap(), 15 | 29) {
                     let replacement = match endian {
                         Endian::Little => 21u64.to_le_bytes(),

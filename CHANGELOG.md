@@ -314,6 +314,14 @@ character after JSON`, failing every build against such a lockfile.
 
 ### Changed
 
+- **Bun**: move the runtime pin from Bun 1.3.13 to 1.4.2. The nixpkgs
+  authority (`flake.lock`, `devenv.lock`, and both nested flakes) moves to
+  the upstream bump commit, and the `@types/bun` catalog pin moves
+  1.4.1 -> 1.4.2. Bun 1.4.2 closes two of the three switchback blockers
+  (the install-hang issue and both `patchedDependencies` issues), so the
+  workaround notes record their fixed status; the `file:` slowness tracker
+  stays open, which is why installs stay on pnpm.
+
 - **pnpm**: move the ecosystem pin from pnpm 12.3.4 to 12.4.1. pnpm 12.3.4
   rejects `pnpm install --frozen-lockfile` with `ERR_PNPM_OUTDATED_LOCKFILE` on
   workspaces whose root `overrides` carry a `file:` specifier consumed by a

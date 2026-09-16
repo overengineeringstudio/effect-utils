@@ -16,17 +16,17 @@
 
 ## Blocking Issues (must be fixed before switching back)
 
-#### BUN-01: Bun install hang bug
+#### BUN-01: Bun install hang bug (fixed upstream)
 
-- [bun install frequently hangs in monorepo (isolated linker) — no progress, no error, even with --verbose](https://github.com/oven-sh/bun/issues/22846)
+> [bun install frequently hangs in monorepo (isolated linker) — no progress, no error, even with --verbose](https://github.com/oven-sh/bun/issues/22846) closed 2026-04-17.
 
-Current workaround: `bun install --no-cache` seems to work but is much slower.
+Current workaround (if the hang resurfaces on a newer Bun): `bun install --no-cache` seems to work but is much slower.
 
 ### BUN-02: Bun `file:` dependency slowness
 
-Using `file:../path` dependencies is extremely slow (6-35+ seconds per package) because bun creates individual symlinks for **every file** in the target package, rather than a single symlink to the package root.
+Using `file:../path` dependencies is extremely slow (6-35+ seconds per package) because bun creates individual symlinks for **every file** in the target package, rather than a single symlink to the package root. Still open as of Bun 1.4.2, so it remains the reason we stay on pnpm for installs.
 
-**Relevant issues:**
+**Relevant issues (2 of 3 closed, tracker still open):**
 
 - [#13223 - bun install on projects with file: dependencies is very slow](https://github.com/oven-sh/bun/issues/13223)
 - [#23453 - file protocol in package.json dependency](https://github.com/oven-sh/bun/issues/23453) (tracked internally as ENG-20854)
@@ -57,12 +57,11 @@ This aligns with our pnpm pattern - see "Bun Workspace Pattern" section below.
 
 ## Additional Blocking Issues
 
-### BUN-03: Bun patchedDependencies bug
+### BUN-03: Bun patchedDependencies bug (fixed upstream)
 
-- [Patching falls over when using local path dependencies](https://github.com/oven-sh/bun/issues/13531)
-- [Nested workspace package patchedDependencies break root install](https://github.com/oven-sh/bun/issues/27894)
+> [Patching falls over when using local path dependencies](https://github.com/oven-sh/bun/issues/13531) closed 2026-08-21 and [Nested workspace package patchedDependencies break root install](https://github.com/oven-sh/bun/issues/27894) closed 2026-03-11.
 
-Validated on Bun `1.3.10`:
+Last validated on Bun `1.3.10`, before the upstream fixes shipped:
 
 - A workspace app root can install successfully when only the install root carries top-level `patchedDependencies`
 - The same install fails as soon as a nested workspace package also carries its own top-level `patchedDependencies`
