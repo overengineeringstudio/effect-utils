@@ -8,6 +8,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  renameSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -357,6 +358,38 @@ describe('editor view publisher', () => {
       cleanup(fixture)
     }
   })
+  it('refuses a deterministic snapshot symlink without mutating its external target', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      const snapshotDir = join(fixture.editorRoot, record.snapshot)
+      chmodSync(snapshotDir, 0o700)
+      chmodSync(join(fixture.editorRoot, '.store'), 0o700)
+      const externalSnapshot = join(fixture.root, 'external-snapshot')
+      renameSync(snapshotDir, externalSnapshot)
+      symlinkSync(externalSnapshot, snapshotDir, 'dir')
+      const externalMode = statSync(externalSnapshot).mode & 0o777
+      const externalNodeModules = join(externalSnapshot, 'node_modules')
+      const externalNodeModulesMode = statSync(externalNodeModules).mode & 0o777
+      const externalRecord = readFileSync(join(externalSnapshot, 'editor-view.json'), 'utf8')
+      const externalContent = readFileSync(join(externalNodeModules, 'dep', 'index.js'), 'utf8')
+
+      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+        'snapshot must be a real directory',
+      )
+
+      expect(lstatSync(snapshotDir).isSymbolicLink()).toBe(true)
+      expect(statSync(externalSnapshot).mode & 0o777).toBe(externalMode)
+      expect(statSync(externalNodeModules).mode & 0o777).toBe(externalNodeModulesMode)
+      expect(readFileSync(join(externalSnapshot, 'editor-view.json'), 'utf8')).toBe(externalRecord)
+      expect(readFileSync(join(externalNodeModules, 'dep', 'index.js'), 'utf8')).toBe(
+        externalContent,
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   it('keeps the current and previous snapshots while preserving in-flight candidates', async () => {
     const fixture = makeFixture()
     try {
