@@ -46,7 +46,7 @@ import { inspectMemberMount } from './member-mount.ts'
 export const R6_MANIFEST_VERSION = 1 as const
 /** Owned cp-a mount metadata wire version. */
 export const OWNED_CP_A_MOUNT_METADATA_VERSION = 2 as const
-/** Runtime-managed Nix roots must not alter immutable repository identity. */
+/** Legacy in-member Nix roots must not alter immutable repository identity. */
 const R6_CAPABILITY_ROOTS_DESTINATION = '.buck2/capability-roots'
 
 const Sha256 = Schema.String.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/u))
