@@ -216,6 +216,14 @@ export interface PublishCompositionRootOptions {
   readonly afterAuthorityPublished?: () => Promise<void>
   /** Schema-backed state retained until external compensation or forward commit succeeds. */
   readonly externalState?: CompositionPublicationExternalState
+  /**
+   * Captures compensation state after stale-transaction recovery and before a newly changed
+   * `.watchmanconfig` is published.
+   */
+  readonly prepareExternalState?: () => Promise<{
+    readonly externalState: CompositionPublicationExternalState
+    readonly afterAuthorityPublished: () => Promise<void>
+  }>
   /** Restores persisted external state after filesystem authority, before recovery metadata clears. */
   readonly afterAuthorityRollback?: (
     state: CompositionPublicationExternalState,
@@ -2255,19 +2263,42 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
           })
           await ensureDirectory(workspaceRoot, '.megarepo/bin')
           const state = await validatePublicationState({ workspaceRoot, files: output.files })
-          const transaction = makeTransaction({
+          let externalState = options.externalState
+          let afterAuthorityPublished = options.afterAuthorityPublished
+          let transaction = makeTransaction({
             lock: acquired.lock,
             output: output.files,
             state,
-            ...(options.externalState === undefined
-              ? {}
-              : { externalState: options.externalState }),
+            ...(externalState === undefined ? {} : { externalState }),
           })
           if (transaction === undefined) {
             return {
               changedPaths: [],
               memberManifests: members.map(({ memberKey, manifest }) => ({ memberKey, manifest })),
             }
+          }
+          if (
+            externalState === undefined &&
+            transaction.files.some((file) => file.path === '.watchmanconfig') === true &&
+            options.prepareExternalState !== undefined
+          ) {
+            const prepared = await options.prepareExternalState()
+            externalState = prepared.externalState
+            afterAuthorityPublished = prepared.afterAuthorityPublished
+            const forwardTransaction = makeTransaction({
+              lock: acquired.lock,
+              output: output.files,
+              state,
+              externalState,
+            })
+            if (forwardTransaction === undefined) {
+              throw failure({
+                reason: 'RecoveryRefused',
+                path: workspaceRoot,
+                message: 'Changed Watchman publication disappeared during external preparation',
+              })
+            }
+            transaction = forwardTransaction
           }
           let authorityCommitted = false
           try {
@@ -2287,9 +2318,7 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
               output: output.files,
               runtime: options.runtime,
             })
-            if (options.afterAuthorityPublished !== undefined) {
-              await options.afterAuthorityPublished()
-            }
+            await afterAuthorityPublished?.()
             if (options.runtime.simulateProcessFaultAfterAuthorityPublished?.() === true) {
               throw new SimulatedProcessFault('.watchmanconfig')
             }

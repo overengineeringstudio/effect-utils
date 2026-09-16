@@ -139,6 +139,7 @@ const optionsFor = ({
   afterAuthorityPublished,
   afterAuthorityRollback,
   externalState,
+  prepareExternalState,
 }: {
   readonly fixture: Fixture
   readonly memberKeys?: ReadonlyArray<string>
@@ -153,6 +154,7 @@ const optionsFor = ({
   readonly afterAuthorityPublished?: () => Promise<void>
   readonly afterAuthorityRollback?: PublishCompositionRootOptions['afterAuthorityRollback']
   readonly externalState?: PublishCompositionRootOptions['externalState']
+  readonly prepareExternalState?: PublishCompositionRootOptions['prepareExternalState']
 }): PublishCompositionRootOptions => ({
   workspaceRoot: fixture.workspaceRoot,
   configMemberKeys: memberKeys,
@@ -182,6 +184,7 @@ const optionsFor = ({
   },
   runtime: publicationRuntime,
   ...(afterAuthorityPublished === undefined ? {} : { afterAuthorityPublished }),
+  ...(prepareExternalState === undefined ? {} : { prepareExternalState }),
   ...(externalState === undefined && afterAuthorityPublished === undefined
     ? {}
     : { externalState: externalState ?? watchmanExternalState }),
@@ -803,60 +806,79 @@ describe('composition root publisher', () => {
     ),
   )
 
-  it.effect('recovers prior external state after a process fault following reconciliation', () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const fixture = yield* makeFixture()
-        yield* publishCompositionRoot(
-          optionsFor({ fixture, cacheValue: 'old:1234', lockToken: 'external-seed-token' }),
-        )
-        let reconciliations = 0
-        const fault = yield* failureReason(
-          publishCompositionRoot(
+  it.effect(
+    'recovers prior external state and reconciles forward publication before returning',
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeFixture()
+          yield* publishCompositionRoot(
             optionsFor({
               fixture,
-              cacheValue: 'new:5678',
-              lockToken: 'external-fault-token',
-              afterAuthorityPublished: async () => {
-                reconciliations += 1
+              memberKeys: ['alpha'],
+              cacheValue: 'old:1234',
+              lockToken: 'external-seed-token',
+            }),
+          )
+          let reconciliations = 0
+          const fault = yield* failureReason(
+            publishCompositionRoot(
+              optionsFor({
+                fixture,
+                cacheValue: 'new:5678',
+                lockToken: 'external-fault-token',
+                afterAuthorityPublished: async () => {
+                  reconciliations += 1
+                },
+                publicationRuntime: runtime({
+                  simulateProcessFaultAfterAuthorityPublished: () => true,
+                }),
+              }),
+            ),
+          )
+          expect(fault.reason).toBe('SimulatedProcessFault')
+          expect(reconciliations).toBe(1)
+          expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain('new:5678')
+
+          let recoveries = 0
+          let forwardReconciliations = 0
+          const recovered = yield* publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'old:1234',
+              lockToken: 'external-recovered-token',
+              recoverToken: 'external-fault-token',
+              afterAuthorityRollback: async (state) => {
+                expect(state).toEqual(watchmanExternalState)
+                expect(
+                  (await readFile(NodePath.join(fixture.root, '.buckconfig'))).toString(),
+                ).toContain('old:1234')
+                expect(
+                  (
+                    await readFile(
+                      NodePath.join(fixture.root, '.megarepo/composition-publication.json'),
+                    )
+                  ).byteLength,
+                ).toBeGreaterThan(0)
+                recoveries += 1
               },
-              publicationRuntime: runtime({
-                simulateProcessFaultAfterAuthorityPublished: () => true,
+              prepareExternalState: async () => ({
+                externalState: watchmanExternalState,
+                afterAuthorityPublished: async () => {
+                  const config = JSON.parse(
+                    await readFile(NodePath.join(fixture.root, '.watchmanconfig'), 'utf8'),
+                  ) as { readonly ignore_dirs: ReadonlyArray<string> }
+                  expect(config.ignore_dirs).toContain('repos/beta/node_modules')
+                  forwardReconciliations += 1
+                },
               }),
             }),
-          ),
-        )
-        expect(fault.reason).toBe('SimulatedProcessFault')
-        expect(reconciliations).toBe(1)
-        expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain('new:5678')
-
-        let recoveries = 0
-        const recovered = yield* publishCompositionRoot(
-          optionsFor({
-            fixture,
-            cacheValue: 'old:1234',
-            lockToken: 'external-recovered-token',
-            recoverToken: 'external-fault-token',
-            afterAuthorityRollback: async (state) => {
-              expect(state).toEqual(watchmanExternalState)
-              expect(
-                (await readFile(NodePath.join(fixture.root, '.buckconfig'))).toString(),
-              ).toContain('old:1234')
-              expect(
-                (
-                  await readFile(
-                    NodePath.join(fixture.root, '.megarepo/composition-publication.json'),
-                  )
-                ).byteLength,
-              ).toBeGreaterThan(0)
-              recoveries += 1
-            },
-          }),
-        )
-        expect(recovered.changedPaths).toEqual([])
-        expect(recoveries).toBe(1)
-      }),
-    ),
+          )
+          expect(recovered.changedPaths).toContain('.watchmanconfig')
+          expect(recoveries).toBe(1)
+          expect(forwardReconciliations).toBe(1)
+        }),
+      ),
   )
 
   it.effect('preserves bytes, modes, and mtimes on an idempotent repeat', () =>
