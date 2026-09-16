@@ -830,7 +830,7 @@ in
   tasks."lint:check:lockfile".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:lockfile".exec = lib.mkForce (
     trace.exec "lint:check:lockfile" ''
-      pnpm install --frozen-lockfile --ignore-scripts --lockfile-only --offline
+      pnpm install --frozen-lockfile --ignore-scripts --lockfile-only
     ''
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];

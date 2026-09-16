@@ -54,35 +54,38 @@ esac
 link_native_package() {
   local scope="$1"
   local package="$2"
-  local encoded_scope="${scope#@}"
-  local candidates=(
-    "$ROOT/node_modules/.pnpm/@${encoded_scope}+${package}@"*/node_modules/"$scope"/"$package"
-  )
-  if [ "${#candidates[@]}" -ne 1 ] || [ ! -d "${candidates[0]}" ]; then
+  local provider="$3"
+  local provider_path
+  provider_path="$(realpath "$ROOT/node_modules/$provider")"
+  local dependency_root
+  case "$provider" in
+    @*/*) dependency_root="$(dirname "$(dirname "$provider_path")")" ;;
+    *) dependency_root="$(dirname "$provider_path")" ;;
+  esac
+  local candidate="$dependency_root/$scope/$package"
+  if [ ! -d "$candidate" ]; then
     echo "Expected one installed native package for $scope/$package" >&2
     return 1
   fi
   local destination="$ROOT/packages/@overeng/genie/node_modules/$scope/$package"
   if [ ! -e "$destination" ] && [ ! -L "$destination" ]; then
     mkdir -p "$(dirname "$destination")"
-    ln -s "${candidates[0]}" "$destination"
+    ln -s "$candidate" "$destination"
     linked_packages+=("$destination")
   fi
 }
 
-link_native_package "@opentui" "$opentui_native"
-link_native_package "@oxc-parser" "$oxc_native"
+link_native_package "@opentui" "$opentui_native" "@opentui/core"
+link_native_package "@oxc-parser" "$oxc_native" "oxc-parser"
 
-oxc_parser_candidates=(
-  "$ROOT/node_modules/.pnpm/oxc-parser@"*/node_modules/oxc-parser
-)
-if [ "${#oxc_parser_candidates[@]}" -ne 1 ] || [ ! -d "${oxc_parser_candidates[0]}" ]; then
+oxc_parser_candidate="$(realpath "$ROOT/node_modules/oxc-parser")"
+if [ ! -d "$oxc_parser_candidate" ]; then
   echo "Expected one installed oxc-parser package" >&2
   exit 1
 fi
 oxc_parser_destination="$ROOT/packages/@overeng/genie/node_modules/oxc-parser"
 if [ ! -e "$oxc_parser_destination" ] && [ ! -L "$oxc_parser_destination" ]; then
-  ln -s "${oxc_parser_candidates[0]}" "$oxc_parser_destination"
+  ln -s "$oxc_parser_candidate" "$oxc_parser_destination"
   linked_packages+=("$oxc_parser_destination")
 fi
 
