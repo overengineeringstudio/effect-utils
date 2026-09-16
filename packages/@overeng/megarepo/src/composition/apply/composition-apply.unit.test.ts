@@ -149,6 +149,7 @@ const fake = ({
       throw new Error('unexpected materialization')
     },
     listPublishedMemberKeys: async () => [],
+    listCapabilityRootMemberKeys: async () => [],
     teardownMount: async () => {
       throw new Error('unexpected teardown')
     },

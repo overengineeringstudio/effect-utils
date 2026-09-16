@@ -169,6 +169,7 @@ export interface CompositionApplyPrimitives {
     readonly memberKey: string
   }) => Promise<CompositionMountedMemberInspection>
   readonly listPublishedMemberKeys: (workspaceRoot: string) => Promise<ReadonlyArray<string>>
+  readonly listCapabilityRootMemberKeys: (workspaceRoot: string) => Promise<ReadonlyArray<string>>
   readonly teardownMount: (input: {
     readonly workspaceRoot: string
     readonly memberKey: string
@@ -289,6 +290,13 @@ const defaultPrimitives: CompositionApplyPrimitives = {
   listPublishedMemberKeys: async (workspaceRoot) =>
     readdir(NodePath.join(workspaceRoot, 'repos')).then((entries) =>
       entries.filter((entry) => entry !== '.mr' && entry.startsWith('.') === false),
+    ),
+  listCapabilityRootMemberKeys: async (workspaceRoot) =>
+    readdir(NodePath.join(workspaceRoot, '.megarepo', 'capability-roots')).catch(
+      (cause: NodeJS.ErrnoException) => {
+        if (cause.code === 'ENOENT') return []
+        throw cause
+      },
     ),
   teardownMount: ({ workspaceRoot, memberKey }) =>
     runNode(
@@ -970,28 +978,15 @@ const applyComposition = async ({
         ...lockedMembers.map((member) => member.key),
         ...(request.compositionConfig.ignoredMembers ?? []),
       ])
-      const publishedKeys = await primitives.listPublishedMemberKeys(request.workspaceRoot)
-      for (const memberKey of publishedKeys) {
-        if (expectedKeys.has(memberKey) === true) continue
-        try {
-          await primitives.teardownMount({ workspaceRoot: request.workspaceRoot, memberKey })
-        } catch (cause) {
-          throw normalizeFailure({
-            cause,
-            reason: 'MountFailure',
-            phase: 'Mount',
-            memberKey,
-            path: NodePath.join(request.workspaceRoot, 'repos', memberKey),
-            message: `Refusing to remove unverified orphan member '${memberKey}'`,
-            recoveryPaths: [NodePath.join(request.workspaceRoot, 'repos', memberKey)],
-          })
-        }
+      const removedCapabilityRootKeys = new Set<string>()
+      const removeCapabilityRoots = async (memberKey: string): Promise<void> => {
         try {
           await primitives.removeMemberCapabilityRoots({
             workspaceRoot: request.workspaceRoot,
             memberKey,
             runtime: runtime.capabilityRuntime,
           })
+          removedCapabilityRootKeys.add(memberKey)
         } catch (cause) {
           const rootsPath = NodePath.join(
             request.workspaceRoot,
@@ -1009,6 +1004,35 @@ const applyComposition = async ({
             recoveryPaths: [rootsPath],
           })
         }
+      }
+      const publishedKeys = await primitives.listPublishedMemberKeys(request.workspaceRoot)
+      for (const memberKey of publishedKeys) {
+        if (expectedKeys.has(memberKey) === true) continue
+        try {
+          await primitives.teardownMount({ workspaceRoot: request.workspaceRoot, memberKey })
+        } catch (cause) {
+          throw normalizeFailure({
+            cause,
+            reason: 'MountFailure',
+            phase: 'Mount',
+            memberKey,
+            path: NodePath.join(request.workspaceRoot, 'repos', memberKey),
+            message: `Refusing to remove unverified orphan member '${memberKey}'`,
+            recoveryPaths: [NodePath.join(request.workspaceRoot, 'repos', memberKey)],
+          })
+        }
+        await removeCapabilityRoots(memberKey)
+      }
+      const capabilityRootKeys = await primitives.listCapabilityRootMemberKeys(
+        request.workspaceRoot,
+      )
+      for (const memberKey of capabilityRootKeys) {
+        if (
+          expectedKeys.has(memberKey) === true ||
+          removedCapabilityRootKeys.has(memberKey) === true
+        )
+          continue
+        await removeCapabilityRoots(memberKey)
       }
     }
 
