@@ -169,38 +169,38 @@ flat="$(tr -d '\n ' < "$tmpdir/spans.ndjson")"
 
 # 3. Per-project spans carry their own per-project totals (0.339s and 0.274s),
 #    proving the aggregate (18.107s) was NOT mis-attributed to the last project.
-echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":0.339}' \
+grep -q '"typescript.total_time_s","value":{"doubleValue":0.339}' <<< "$flat" \
   || fail "first project span missing typescript.total_time_s=0.339"
-echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":0.274}' \
+grep -q '"typescript.total_time_s","value":{"doubleValue":0.274}' <<< "$flat" \
   || fail "second (last) project span missing total_time_s=0.274"
 
 # 4. Exactly one span is the aggregate, with the build-level total (18.107s) and
 #    projects_built count.
 agg_count=$( (echo "$flat" | grep -oE '"typescript.aggregate","value":\{"boolValue":true\}' || true) | grep -c . || true)
 [ "$agg_count" -eq 1 ] || fail "expected exactly 1 aggregate span, got $agg_count"
-echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":18.107}' \
+grep -q '"typescript.total_time_s","value":{"doubleValue":18.107}' <<< "$flat" \
   || fail "aggregate span missing total_time_s=18.107"
-echo "$flat" | grep -q '"typescript.projects_built","value":{"intValue":"34"}' \
+grep -q '"typescript.projects_built","value":{"intValue":"34"}' <<< "$flat" \
   || fail "aggregate span missing projects_built=34"
-echo "$flat" | grep -q '"span.label","value":{"stringValue":"aggregate"}' \
+grep -q '"span.label","value":{"stringValue":"aggregate"}' <<< "$flat" \
   || fail "aggregate span missing span.label=aggregate"
-echo "$flat" | grep -q '"span.label","value":{"stringValue":"socket"}' \
+grep -q '"span.label","value":{"stringValue":"socket"}' <<< "$flat" \
   || fail "project span missing concise span.label"
-echo "$flat" | grep -q '"compiler.name","value":{"stringValue":"tsgo"}' \
+grep -q '"compiler.name","value":{"stringValue":"tsgo"}' <<< "$flat" \
   || fail "span missing compiler identity"
-echo "$flat" | grep -q '"diagnostics.source","value":{"stringValue":"extendedDiagnostics"}' \
+grep -q '"diagnostics.source","value":{"stringValue":"extendedDiagnostics"}' <<< "$flat" \
   || fail "span missing diagnostics source"
-echo "$flat" | grep -q '"name":"typescript.build.aggregate"' \
+grep -q '"name":"typescript.build.aggregate"' <<< "$flat" \
   || fail "aggregate span should use the stable typescript.build.aggregate name"
-echo "$flat" | grep -q '"name":"typescript.project.check"' \
+grep -q '"name":"typescript.project.check"' <<< "$flat" \
   || fail "project spans should use the stable typescript.project.check name"
-echo "$flat" | grep -q '"service.name","value":{"stringValue":"effect-utils-devenv"}' \
+grep -q '"service.name","value":{"stringValue":"effect-utils-devenv"}' <<< "$flat" \
   || fail "spans should use the unified effect-utils-devenv service"
-echo "$flat" | grep -q '"tool.name","value":{"stringValue":"typescript"}' \
+grep -q '"tool.name","value":{"stringValue":"typescript"}' <<< "$flat" \
   || fail "span missing tool.name=typescript"
-echo "$flat" | grep -q '"ts.project.name","value":{"stringValue":"socket"}' \
+grep -q '"ts.project.name","value":{"stringValue":"socket"}' <<< "$flat" \
   || fail "project span missing typed project name"
-echo "$flat" | grep -q '"tsconfig.path","value":{"stringValue":"tsconfig.check.json"}' \
+grep -q '"tsconfig.path","value":{"stringValue":"tsconfig.check.json"}' <<< "$flat" \
   || fail "project span missing typed tsconfig path"
 
 # 5. No per-project span should carry the aggregate total. (grep may match
