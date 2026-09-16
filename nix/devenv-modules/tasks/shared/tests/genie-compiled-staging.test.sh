@@ -8,12 +8,8 @@ echo "Running Genie compiled import staging cleanup test..."
 echo ""
 
 tmpdir="$(mktemp -d)"
-linked_packages=()
 cleanup() {
   rm -rf "$tmpdir"
-  for package in "${linked_packages[@]}"; do
-    rm -f "$package"
-  done
 }
 trap cleanup EXIT
 # Genie reports realpath-resolved module locations, so the identity assertions below must compare
@@ -30,19 +26,15 @@ ln -s "$ROOT/packages/@overeng/genie/node_modules" "$workspace/node_modules"
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)
-    opentui_native="core-darwin-arm64"
     oxc_native="binding-darwin-arm64"
     ;;
   Darwin-x86_64)
-    opentui_native="core-darwin-x64"
     oxc_native="binding-darwin-x64"
     ;;
   Linux-aarch64)
-    opentui_native="core-linux-arm64"
     oxc_native="binding-linux-arm64-gnu"
     ;;
   Linux-x86_64)
-    opentui_native="core-linux-x64"
     oxc_native="binding-linux-x64-gnu"
     ;;
   *)
@@ -51,52 +43,12 @@ case "$(uname -s)-$(uname -m)" in
     ;;
 esac
 
-link_native_package() {
-  local scope="$1"
-  local package="$2"
-  local provider="$3"
-  local provider_path
-  provider_path="$(realpath "$ROOT/node_modules/$provider")"
-  local dependency_root
-  case "$provider" in
-    @*/*) dependency_root="$(dirname "$(dirname "$provider_path")")" ;;
-    *) dependency_root="$(dirname "$provider_path")" ;;
-  esac
-  local candidate="$dependency_root/$scope/$package"
-  if [ ! -d "$candidate" ]; then
-    echo "Expected one installed native package for $scope/$package" >&2
-    return 1
-  fi
-  local destination="$ROOT/packages/@overeng/genie/node_modules/$scope/$package"
-  if [ ! -e "$destination" ] && [ ! -L "$destination" ]; then
-    mkdir -p "$(dirname "$destination")"
-    ln -s "$candidate" "$destination"
-    linked_packages+=("$destination")
-  fi
-}
-
-link_native_package "@opentui" "$opentui_native" "@opentui/core"
-link_native_package "@oxc-parser" "$oxc_native" "oxc-parser"
-
-oxc_parser_candidate="$(realpath "$ROOT/node_modules/oxc-parser")"
-if [ ! -d "$oxc_parser_candidate" ]; then
-  echo "Expected one installed oxc-parser package" >&2
-  exit 1
-fi
-oxc_parser_destination="$ROOT/packages/@overeng/genie/node_modules/oxc-parser"
-if [ ! -e "$oxc_parser_destination" ] && [ ! -L "$oxc_parser_destination" ]; then
-  ln -s "$oxc_parser_candidate" "$oxc_parser_destination"
-  linked_packages+=("$oxc_parser_destination")
-fi
-
-oxc_native_libraries=(
-  "$ROOT/node_modules/.pnpm/@oxc-parser+${oxc_native}@"*/node_modules/@oxc-parser/"$oxc_native"/parser."${oxc_native#binding-}".node
-)
-if [ "${#oxc_native_libraries[@]}" -ne 1 ] || [ ! -f "${oxc_native_libraries[0]}" ]; then
+oxc_parser_path="$(realpath "$ROOT/node_modules/oxc-parser")"
+oxc_native_library="$(dirname "$oxc_parser_path")/@oxc-parser/$oxc_native/parser.${oxc_native#binding-}.node"
+if [ ! -f "$oxc_native_library" ]; then
   echo "Expected one installed Oxc native library for $oxc_native" >&2
   exit 1
 fi
-oxc_native_library="${oxc_native_libraries[0]}"
 
 cat > "$workspace/lib/payload.ts" <<'EOF'
 import { Schema } from 'effect'
@@ -121,7 +73,7 @@ echo "Test 1: compiled Genie generates output and exits"
 (
   cd "$ROOT"
   bun build packages/@overeng/genie/bin/genie.tsx --compile --no-tree-shaking \
-    --outfile "$compiled_genie" >/dev/null
+    --external '@opentui/core-*' --outfile "$compiled_genie" >/dev/null
 )
 
 for _ in 1 2 3; do
