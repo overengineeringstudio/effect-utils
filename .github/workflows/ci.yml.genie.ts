@@ -375,8 +375,6 @@ const multiPlatformJob = (step: {
   ],
 })
 
-
-
 /**
  * Audit the native npm dependency policy against the lockfile (issue #807).
  * Install-free: depends only on `pnpm-lock.yaml` and the genie policy source.

@@ -109,7 +109,6 @@ export const workspaceMember = ({
     pnpmPackageClosure,
   }) as const
 
-
 /**
  * Common pnpm workspace data for effect-utils workspaces.
  *
