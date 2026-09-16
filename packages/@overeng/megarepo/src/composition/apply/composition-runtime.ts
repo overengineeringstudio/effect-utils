@@ -177,15 +177,15 @@ export const reconcileWatchmanProject = async ({
   readonly workspaceRoot: string
 }): Promise<void> => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true })
 
-export interface WatchmanProjectReconciliation {
-  readonly reconcile: () => Promise<void>
-  readonly rollback: () => Promise<void>
-}
 
-/**
- * Capture one root's prior registration before publication and return its bounded reconciliation
- * plus compensation capabilities. The rollback runs only after the old config is back on disk.
- */
+export interface WatchmanProjectReconciliation {
+  readonly state: {
+    readonly _tag: 'WatchmanProject'
+    readonly phase: 'CompensationRequired'
+    readonly priorWatched: boolean
+  }
+  readonly reconcile: () => Promise<void>
+}
 export const prepareWatchmanProjectReconciliation = async ({
   watchmanPath,
   workspaceRoot,
@@ -195,11 +195,26 @@ export const prepareWatchmanProjectReconciliation = async ({
 }): Promise<WatchmanProjectReconciliation> => {
   const wasWatched = await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })
   return {
+    state: {
+      _tag: 'WatchmanProject',
+      phase: 'CompensationRequired',
+      priorWatched: wasWatched,
+    },
     reconcile: () => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true }),
-    rollback: () =>
-      setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: wasWatched }),
   }
 }
+
+/** Restore the exact root registration captured before composition publication. */
+export const restoreWatchmanProjectState = async ({
+  watchmanPath,
+  workspaceRoot,
+  priorWatched,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+  readonly priorWatched: boolean
+}): Promise<void> =>
+  setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: priorWatched })
 
 const checkProjection = async ({ memberRoot }: { readonly memberRoot: string }) =>
   checkCompositionCapabilityProjection({ memberRoot })
@@ -383,6 +398,12 @@ export const compositionApplyRuntimeFromEnv = ({
       }
       return prepareWatchmanProjectReconciliation({ watchmanPath, workspaceRoot })
     },
+    restoreWatchmanProjectState: (state) =>
+      restoreWatchmanProjectState({
+        watchmanPath,
+        workspaceRoot,
+        priorWatched: state.priorWatched,
+      }),
     runBuck: (argv) => {
       if (argv[0] !== buck2Path) {
         throw new TypeError('Composition requested a Buck executable outside the pinned runtime')

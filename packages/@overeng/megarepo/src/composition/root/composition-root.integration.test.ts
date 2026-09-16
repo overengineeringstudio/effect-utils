@@ -11,6 +11,7 @@ import { expect } from 'vitest'
 import {
   prepareWatchmanProjectReconciliation,
   reconcileWatchmanProject,
+  restoreWatchmanProjectState,
 } from '../apply/composition-runtime.ts'
 import { generateCompositionRoot, type CompositionRootInput } from './composition-root.ts'
 
@@ -254,6 +255,7 @@ describe('generated Watchman root', () => {
           mkdir(join(member, 'node_modules', 'dependency'), { recursive: true }),
           mkdir(join(member, 'target', 'debug'), { recursive: true }),
           mkdir(join(member, 'packages', 'dist'), { recursive: true }),
+          mkdir(join(member, 'tmp'), { recursive: true }),
           mkdir(join(root, 'buck-out'), { recursive: true }),
         ])
         await Promise.all([
@@ -265,6 +267,7 @@ describe('generated Watchman root', () => {
           writeFile(join(member, 'node_modules', 'dependency', 'ignored.js'), 'ignored\n'),
           writeFile(join(member, 'target', 'debug', 'ignored'), 'ignored\n'),
           writeFile(join(member, 'packages', 'dist', 'ignored.js'), 'ignored\n'),
+          writeFile(join(member, 'tmp', 'rules.bzl'), 'RULES = {}\n'),
           writeGeneratedWatchmanConfig({
             root,
             projectIgnore: [],
@@ -286,6 +289,7 @@ describe('generated Watchman root', () => {
         expect(firstFiles).not.toContain('repos/alpha/target/debug/ignored')
         expect(firstFiles).not.toContain('repos/alpha/packages/dist/ignored.js')
         expect(firstFiles).not.toContain('../unrelated-sibling/large/tree/sentinel')
+        expect(firstFiles).toContain('repos/alpha/tmp/rules.bzl')
 
         await writeGeneratedWatchmanConfig({
           root,
@@ -298,6 +302,7 @@ describe('generated Watchman root', () => {
         expect(reconfiguredFiles).toContain('repos/alpha/.buck2/capabilities/defs.bzl')
         expect(reconfiguredFiles).not.toContain('repos/alpha/generated/ignored.txt')
 
+        expect(reconfiguredFiles).toContain('repos/alpha/tmp/rules.bzl')
         await watchman('watch-del', root)
         await reconcileWatchmanProject({ watchmanPath, workspaceRoot: root })
         const recreated = await watchman('watch-project', root)
@@ -312,7 +317,11 @@ describe('generated Watchman root', () => {
           workspaceRoot: root,
         })
         await watchedRollback.reconcile()
-        await watchedRollback.rollback()
+        await restoreWatchmanProjectState({
+          watchmanPath,
+          workspaceRoot: root,
+          priorWatched: watchedRollback.state.priorWatched,
+        })
         expect(await watchman('watch-list')).toMatchObject({ roots: expect.arrayContaining([root]) })
 
         await watchman('watch-del', root)
@@ -322,7 +331,11 @@ describe('generated Watchman root', () => {
         })
         await unwatchedRollback.reconcile()
         expect(await watchman('watch-list')).toMatchObject({ roots: expect.arrayContaining([root]) })
-        await unwatchedRollback.rollback()
+        await restoreWatchmanProjectState({
+          watchmanPath,
+          workspaceRoot: root,
+          priorWatched: unwatchedRollback.state.priorWatched,
+        })
         expect(await watchman('watch-list')).toMatchObject({
           roots: expect.not.arrayContaining([root]),
         })
