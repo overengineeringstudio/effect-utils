@@ -396,6 +396,14 @@ describe('decodeCollectionArtifact', () => {
     expect('error' in result && result.error).toMatch(/not a normalized package-relative path/)
   })
 
+  it('rejects an empty test name', () => {
+    const result = decodeCollectionArtifact({
+      artifactPath,
+      decoded: { schemaVersion: 1, tests: [{ file: 'src/x.test.ts', name: '' }] },
+    })
+    expect('error' in result && result.error).toMatch(/name must not be empty/)
+  })
+
   it('rejects entries that are not byte-sorted by file then name', () => {
     const result = decodeCollectionArtifact({
       artifactPath,
