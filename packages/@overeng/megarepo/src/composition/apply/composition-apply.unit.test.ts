@@ -237,6 +237,9 @@ const fake = ({
     prepareWatchmanProjectReconciliation: async () => {
       throw new Error('dry-run prepared Watchman reconciliation')
     },
+    restoreWatchmanProjectState: async () => {
+      throw new Error('dry-run restored Watchman state')
+    },
     runBuck: async () => {
       throw new Error('dry-run ran Buck')
     },
