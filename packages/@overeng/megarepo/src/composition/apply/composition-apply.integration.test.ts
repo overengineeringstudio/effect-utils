@@ -371,11 +371,13 @@ const fixture = async (options: FixtureOptions = {}) => {
         }
       },
     },
-    retainCapabilityRoots: async ({ memberKey }) => {
+    retainCapabilityRoots: async ({ workspaceRoot: retainedWorkspaceRoot, memberKey }) => {
+      expect(retainedWorkspaceRoot).toBe(workspaceRoot)
       calls.push(`retain:${memberKey}`)
       if (options.retainFailure === memberKey) throw new Error('capability retention failed')
     },
-    pruneCapabilityRoots: async ({ memberKey }) => {
+    pruneCapabilityRoots: async ({ workspaceRoot: prunedWorkspaceRoot, memberKey }) => {
+      expect(prunedWorkspaceRoot).toBe(workspaceRoot)
       calls.push(`prune:${memberKey}`)
     },
     system: options.allowDarwin === true ? 'aarch64-darwin' : 'x86_64-linux',
