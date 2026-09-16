@@ -2,7 +2,6 @@ import { nixOnlyPackages } from '../../genie/packages.ts'
 import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 
-
 const declaredPackages = rootWorkspaceMemberPaths
 
 const sourceSets = [

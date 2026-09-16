@@ -19,8 +19,8 @@
  * a vendor tree out of archives without re-deriving Go's own module graph.
  */
 
-import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
@@ -53,7 +53,8 @@ export type GoModuleSupply = {
 export const escapeModulePath = (value: string): string =>
   [...value].map((char) => (char >= 'A' && char <= 'Z' ? `!${char.toLowerCase()}` : char)).join('')
 
-const sha256Hex = (data: Uint8Array | string): string => createHash('sha256').update(data).digest('hex')
+const sha256Hex = (data: Uint8Array | string): string =>
+  createHash('sha256').update(data).digest('hex')
 
 const declaredPinDigest = (moduleDir: string): string => {
   const hash = createHash('sha256')

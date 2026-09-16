@@ -322,7 +322,9 @@ describe('generated Watchman root', () => {
           workspaceRoot: root,
           priorWatched: watchedRollback.state.priorWatched,
         })
-        expect(await watchman('watch-list')).toMatchObject({ roots: expect.arrayContaining([root]) })
+        expect(await watchman('watch-list')).toMatchObject({
+          roots: expect.arrayContaining([root]),
+        })
 
         await watchman('watch-del', root)
         const unwatchedRollback = await prepareWatchmanProjectReconciliation({
@@ -330,7 +332,9 @@ describe('generated Watchman root', () => {
           workspaceRoot: root,
         })
         await unwatchedRollback.reconcile()
-        expect(await watchman('watch-list')).toMatchObject({ roots: expect.arrayContaining([root]) })
+        expect(await watchman('watch-list')).toMatchObject({
+          roots: expect.arrayContaining([root]),
+        })
         await restoreWatchmanProjectState({
           watchmanPath,
           workspaceRoot: root,

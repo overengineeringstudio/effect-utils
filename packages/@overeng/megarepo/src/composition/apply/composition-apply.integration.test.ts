@@ -632,7 +632,6 @@ describe('composition apply integration', () => {
       expect(reconcile).toBeLessThan(commit)
       expect(commit).toBeLessThan(overlay)
     } finally {
-
       await value.cleanup()
     }
   })

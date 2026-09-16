@@ -204,8 +204,7 @@ describe('Buck2 test lane registry', () => {
     )
 
     expect(lane).toEqual({
-      collectionTarget:
-        'effect_utils//packages/@overeng/effect-schema-form-aria:test_collect',
+      collectionTarget: 'effect_utils//packages/@overeng/effect-schema-form-aria:test_collect',
       excludes: [],
       packageName: 'effect-schema-form-aria',
       packagePath: 'packages/@overeng/effect-schema-form-aria',
