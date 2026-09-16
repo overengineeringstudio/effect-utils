@@ -19,6 +19,7 @@
 let
   importProduct = import ./javascript-product-import.nix { inherit pkgs; };
   opentuiCoreNative = import ../../opentui-core-native.nix { inherit pkgs; };
+  oxcParserNative = import ../../oxc-parser-native.nix { inherit pkgs; };
   buck2 = import ../../buck2.nix { inherit pkgs; };
   # The stamp every CLI's `resolveCliVersion()` parses for human-readable
   # version output. Buck produces platform-invariant bytes, so the host-facing
@@ -63,6 +64,7 @@ let
       "typescript-api-server"
     ];
     expectedProductKind = "cli";
+    nativeNodePackages = oxcParserNative.packages;
     pathPackages = [ oxfmtPkg ];
     smokeTestArgs = [ "--dry-run" ];
   };
@@ -219,9 +221,9 @@ let
         ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node -e 'Promise.all(process.argv.slice(1).map((path) => import(path)))' \
           "$out/lib/oxc-config.js" "$out/lib/stylex-upstream-plugin.js"
       '';
-  # A candidate exists only when every product it composes is published, so an
-  # unpublished product surfaces as a missing attribute instead of a candidate
-  # wired to absent bytes.
+  # A candidate exists only when every JavaScript and native product it
+  # composes is published, so an unpublished product surfaces as a missing
+  # attribute instead of a candidate wired to absent bytes.
   requiredProducts = {
     ci-tools = [ "ci-tools" ];
     gh-ci-utils = [ "gh-ci-utils" ];
@@ -240,6 +242,10 @@ let
     ];
     tui-stories = [ "tui-stories" ];
   };
+  requiredNativeProducts = {
+    genie = [ "typescript-api-server" ];
+    genie-bootstrap-closure-check = [ "typescript-api-server" ];
+  };
   candidates = {
     inherit
       ci-tools
@@ -256,5 +262,7 @@ let
   };
 in
 pkgs.lib.filterAttrs (
-  name: _: pkgs.lib.all (product: products ? ${product}) requiredProducts.${name}
+  name: _:
+  pkgs.lib.all (product: products ? ${product}) requiredProducts.${name}
+  && pkgs.lib.all (product: nativeProducts ? ${product}) (requiredNativeProducts.${name} or [ ])
 ) candidates
