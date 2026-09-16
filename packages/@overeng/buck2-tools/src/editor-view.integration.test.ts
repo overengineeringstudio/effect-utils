@@ -676,6 +676,7 @@ describe('editor view publisher', () => {
 
   it('leaves the old view current when byte snapshot creation fails before flip', async () => {
     const fixture = makeFixture()
+    rmSync(join(fixture.packageDir, 'node_modules'), { recursive: true })
     try {
       await publishEditorView(fixture.options)
       const oldTarget = currentTarget(fixture)
@@ -700,6 +701,7 @@ describe('editor view publisher', () => {
 
   it('rejects an existing lock and requires exact-token explicit recovery', async () => {
     const fixture = makeFixture()
+    rmSync(join(fixture.packageDir, 'node_modules'), { recursive: true })
     try {
       mkdirSync(fixture.editorRoot, { recursive: true })
       const lock = join(fixture.editorRoot, '.publish.lock')
