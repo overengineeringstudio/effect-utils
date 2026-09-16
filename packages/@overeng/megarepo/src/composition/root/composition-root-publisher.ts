@@ -203,6 +203,8 @@ export interface PublishCompositionRootOptions {
   readonly runtime: CompositionRootPublicationRuntime
   /** Runs after `.buckconfig` is durable, before the transaction is committed or cleaned. */
   readonly afterAuthorityPublished?: () => Promise<void>
+  /** Runs after filesystem rollback when the authority callback was attempted. */
+  readonly afterAuthorityRollback?: () => Promise<void>
 }
 
 /** Read-only composition-root planning inputs. */
@@ -2204,6 +2206,7 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
             }
           }
           let authorityCommitted = false
+          let authoritySideEffectAttempted = false
           try {
             await writeTransaction({ workspaceRoot, transaction })
             const desired = new Map(output.files.map((file) => [file.path, file]))
@@ -2221,7 +2224,10 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
               output: output.files,
               runtime: options.runtime,
             })
-            await options.afterAuthorityPublished?.()
+            if (options.afterAuthorityPublished !== undefined) {
+              authoritySideEffectAttempted = true
+              await options.afterAuthorityPublished()
+            }
             const committedRecord = await writeCommittedTransaction({ workspaceRoot, transaction })
             authorityCommitted = true
             await options.runtime.afterAuthorityCommitted?.()
@@ -2250,12 +2256,28 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
             }
             const current = await readTransactionMaybe(workspaceRoot)
             if (current !== undefined) {
+              let filesystemRolledBack = false
               try {
                 await rollbackTransaction({ workspaceRoot, transactionRecord: current })
+                filesystemRolledBack = true
               } catch {
                 // A foreign replacement can make restoration unsafe. Preserve the original refusal
                 // plus the exact-token lock/manifest so no later publisher mistakes it for clean state.
                 leaveForRecovery = true
+              }
+              if (
+                filesystemRolledBack === true &&
+                authoritySideEffectAttempted === true &&
+                options.afterAuthorityRollback !== undefined
+              ) {
+                try {
+                  await options.afterAuthorityRollback()
+                } catch (rollbackCause) {
+                  throw new AggregateError(
+                    [cause, rollbackCause],
+                    'Composition authority and external-state rollback both failed',
+                  )
+                }
               }
             } else {
               const candidatePath = finalPathFor(
