@@ -780,9 +780,7 @@ const ROOT_GENERATED_DIRECTORIES = [
   'tmp',
 ] as const
 
-const MEMBER_GENERATED_DIRECTORIES = ROOT_GENERATED_DIRECTORIES.filter(
-  (directory) => directory !== '.megarepo',
-)
+const MEMBER_GENERATED_DIRECTORIES = ['node_modules', 'target'] as const
 
 const ROOT_PROJECT_IGNORES = [
   '.git',
@@ -798,7 +796,9 @@ const ROOT_PROJECT_IGNORES = [
 const containsCapabilityProjection = (path: string): boolean => {
   const segments = path.split('/')
   return segments.some(
-    (segment, index) => segment === '.buck2' && segments[index + 1] === 'capabilities',
+    (segment, index) =>
+      segment === '.buck2' &&
+      (index === segments.length - 1 || segments[index + 1] === 'capabilities'),
   )
 }
 

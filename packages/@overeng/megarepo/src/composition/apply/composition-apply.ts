@@ -66,6 +66,7 @@ import {
   type CompositionRootPublicationRuntime,
   type PlanCompositionRootPublicationOptions,
   type PublishCompositionRootOptions,
+  type CompositionPublicationExternalState,
 } from '../root/composition-root-publisher.ts'
 import {
   DEFAULT_BUCK_ISOLATION_DIR,
@@ -199,10 +200,10 @@ export interface CompositionApplyPrimitives {
   ) => Promise<CompositionRootPublicationResult>
 }
 
-/** One prepared root-local Watchman change and its prior-state compensation. */
+/** One prepared root-local Watchman change and its durable prior-state compensation record. */
 export interface CompositionWatchmanProjectReconciliation {
+  readonly state: CompositionPublicationExternalState
   readonly reconcile: () => Promise<void>
-  readonly rollback: () => Promise<void>
 }
 
 /** All process and lifecycle capabilities are explicit. PATH is never a fallback. */
@@ -250,6 +251,10 @@ export interface CompositionApplyRuntime {
   readonly prepareWatchmanProjectReconciliation: (input: {
     readonly workspaceRoot: string
   }) => Promise<CompositionWatchmanProjectReconciliation>
+  /** Restores an exact root registration from durable publisher compensation state. */
+  readonly restoreWatchmanProjectState: (
+    state: CompositionPublicationExternalState,
+  ) => Promise<void>
   /** Executes exactly the supplied argv. Implementations may add environment, never arguments. */
   readonly runBuck: (argv: readonly [string, ...ReadonlyArray<string>]) => Promise<void>
   readonly primitives?: Partial<CompositionApplyPrimitives>
@@ -1556,6 +1561,7 @@ const applyComposition = async ({
           await runtime.publisherRuntime.assertCapabilityProjection(input)
         },
       },
+      afterAuthorityRollback: runtime.restoreWatchmanProjectState,
     } satisfies PublishCompositionRootOptions
 
     let root: CompositionRootPublicationResult
@@ -1575,11 +1581,15 @@ const applyComposition = async ({
         ...(watchmanReconciliation === undefined
           ? {}
           : {
+              externalState: watchmanReconciliation.state,
               afterAuthorityPublished: watchmanReconciliation.reconcile,
-              afterAuthorityRollback: watchmanReconciliation.rollback,
             }),
       } satisfies PublishCompositionRootOptions
-      if (rootPlan._tag === 'Create' || watchmanConfigChanged === true) {
+      if (
+        rootPlan._tag === 'Create' ||
+        watchmanConfigChanged === true ||
+        (rootPlan._tag === 'Refused' && rootPlan.reason === 'RecoveryRequired')
+      ) {
         root = await primitives.publishRoot(publicationOptions)
         await publishOverlays()
       } else {

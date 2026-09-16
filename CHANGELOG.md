@@ -195,8 +195,8 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/megarepo**: Generate bounded, composition-owned Watchman root
   configuration, reload only the affected project watch when it changes,
-  restore the prior registration if publication rolls back, and preserve
-  member source and capability invalidation.
+  durably restore the prior registration across rollback and interrupted
+  publication recovery, and preserve member source and capability invalidation.
 
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
