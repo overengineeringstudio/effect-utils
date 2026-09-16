@@ -75,6 +75,7 @@
             dirty
             ;
           products = trackedBuck2Products.products;
+          nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
         cliPackages = buck2ProductCandidates // {
@@ -92,6 +93,7 @@
             ;
           dirty = true;
           products = trackedBuck2Products.products;
+          nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
         ghCiUtils = cliPackages.gh-ci-utils;
@@ -166,13 +168,15 @@
           };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
-          genie = cliPackages.genie.outPath;
           ci-tools = cliPackages.ci-tools.outPath;
           gh-ci-utils = ghCiUtils.outPath;
           megarepo = cliPackages.megarepo.outPath;
           tui-stories = cliPackages.tui-stories.outPath;
           notion-cli = cliPackages.notion-cli.outPath;
           notion-md = cliPackages.notion-md.outPath;
+        }
+        // pkgs.lib.optionalAttrs (cliPackages ? genie) {
+          genie = cliPackages.genie.outPath;
         };
         cliOutPathsDirty = {
           gh-ci-utils = ghCiUtilsDirty.outPath;
