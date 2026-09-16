@@ -19,6 +19,7 @@ import {
 import { EffectPath } from '../../core/config.ts'
 import type { CompositionCapabilitySystem } from '../capabilities/composition-capability-resolver-schema.ts'
 import {
+  removeCompositionCapabilityMemberRoots,
   resolveCompositionCapabilities,
   type CompositionCapabilityResolutionHandle,
   type CompositionCapabilityRuntime,
@@ -172,6 +173,11 @@ export interface CompositionApplyPrimitives {
     readonly workspaceRoot: string
     readonly memberKey: string
   }) => Promise<CpAMemberMountResult>
+  readonly removeMemberCapabilityRoots: (input: {
+    readonly workspaceRoot: string
+    readonly memberKey: string
+    readonly runtime: CompositionCapabilityRuntime
+  }) => Promise<void>
   readonly recoverOverlay: (input: {
     readonly request: DistOverlayRecoveryRequest
     readonly runtime: DistOverlayRuntime
@@ -290,6 +296,7 @@ const defaultPrimitives: CompositionApplyPrimitives = {
         request: { workspaceRoot, member: memberKey, dryRun: false },
       }),
     ),
+  removeMemberCapabilityRoots: removeCompositionCapabilityMemberRoots,
   inspectMountedMember: async ({ workspaceRoot, memberKey }) => {
     const publishedPath = NodePath.join(workspaceRoot, 'repos', memberKey)
     const metadata = await runNode(
@@ -977,6 +984,29 @@ const applyComposition = async ({
             path: NodePath.join(request.workspaceRoot, 'repos', memberKey),
             message: `Refusing to remove unverified orphan member '${memberKey}'`,
             recoveryPaths: [NodePath.join(request.workspaceRoot, 'repos', memberKey)],
+          })
+        }
+        try {
+          await primitives.removeMemberCapabilityRoots({
+            workspaceRoot: request.workspaceRoot,
+            memberKey,
+            runtime: runtime.capabilityRuntime,
+          })
+        } catch (cause) {
+          const rootsPath = NodePath.join(
+            request.workspaceRoot,
+            '.megarepo',
+            'capability-roots',
+            memberKey,
+          )
+          throw normalizeFailure({
+            cause,
+            reason: 'CapabilityFailure',
+            phase: 'Capability',
+            memberKey,
+            path: rootsPath,
+            message: `Could not remove retired capability roots for '${memberKey}'`,
+            recoveryPaths: [rootsPath],
           })
         }
       }

@@ -28,6 +28,7 @@ import {
 import {
   checkCompositionCapabilityProjection,
   makeCapabilityProjectionManifest,
+  removeCompositionCapabilityMemberRoots,
   pruneCompositionCapabilityProjectionRoots,
   resolveCompositionCapabilities,
   resolvedCompositionCapabilityByToolId,
@@ -411,6 +412,40 @@ describe('composition capability resolver', () => {
         ),
       )
       await result.release()
+    } finally {
+      await clean(fixture)
+    }
+  })
+
+  it('removes every capability root for a retired member and preserves siblings', async () => {
+    const fixture = await makeFixture()
+    try {
+      const capabilityRootsPath = NodePath.join(fixture.root, '.megarepo', 'capability-roots')
+      const retiredRootsPath = NodePath.join(capabilityRootsPath, 'retired')
+      const activeRootsPath = NodePath.join(capabilityRootsPath, 'active')
+      await mkdir(NodePath.join(retiredRootsPath, 'a'.repeat(64)), { recursive: true })
+      await mkdir(NodePath.join(retiredRootsPath, 'operator-recovery'))
+      await mkdir(activeRootsPath)
+      await Promise.all([retiredRootsPath, capabilityRootsPath].map((path) => chmod(path, 0o555)))
+      const fsyncEvents: string[] = []
+
+      await removeCompositionCapabilityMemberRoots({
+        workspaceRoot: fixture.root,
+        memberKey: 'retired',
+        runtime: {
+          ...fixture.runtime,
+          directoryFsync: async ({ path, reason, sync }) => {
+            await sync()
+            fsyncEvents.push(`${reason}:${path}`)
+          },
+        },
+      })
+
+      await expect(lstat(retiredRootsPath)).rejects.toMatchObject({ code: 'ENOENT' })
+      expect((await lstat(activeRootsPath)).isDirectory()).toBe(true)
+      expect((await lstat(capabilityRootsPath)).mode & 0o777).toBe(0o555)
+      expect(fsyncEvents).toEqual([`MemberLink:${capabilityRootsPath}`])
+      await chmod(capabilityRootsPath, 0o755)
     } finally {
       await clean(fixture)
     }
