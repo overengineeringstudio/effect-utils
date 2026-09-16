@@ -1622,18 +1622,22 @@ describe('composition root publisher', () => {
         const manifestPath = NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)
         const watchmanPath = NodePath.join(fixture.root, '.watchmanconfig')
         const userFilePath = NodePath.join(fixture.root, 'user-owned.txt')
-        yield* Effect.promise(async () => {
+        yield* Effect.gen(function* () {
           const manifestCodec = Schema.fromJsonString(CompositionGenerationManifestSchema)
-          const manifest = Schema.decodeUnknownSync(manifestCodec)(
-            await readFile(manifestPath, 'utf8'),
-          )
+          const manifestText = yield* Effect.promise(() => readFile(manifestPath, 'utf8'))
+          const manifest = yield* Schema.decodeEffect(manifestCodec)(manifestText)
           const legacyManifest = {
             ...manifest,
             files: manifest.files.filter((file) => file.path !== '.watchmanconfig'),
           }
-          await writeFile(manifestPath, `${Schema.encodeSync(manifestCodec)(legacyManifest)}\n`)
-          await writeFile(watchmanPath, '{"user_owned":true}\n')
-          await writeFile(userFilePath, 'keep\n')
+          const legacyManifestText = yield* Schema.encodeEffect(manifestCodec)(legacyManifest)
+          yield* Effect.promise(() =>
+            Promise.all([
+              writeFile(manifestPath, `${legacyManifestText}\n`),
+              writeFile(watchmanPath, '{"user_owned":true}\n'),
+              writeFile(userFilePath, 'keep\n'),
+            ]),
+          )
         })
 
         const result = yield* teardownCompositionRoot({
