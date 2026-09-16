@@ -103,8 +103,22 @@ describe('owned capability projection', () => {
           retainPublishedCapabilities: async () => undefined,
         },
       })
-      const oldRoot = NodePath.join(owned, '.buck2', 'capability-roots', firstGeneration, 'buck2')
-      const newRoot = NodePath.join(owned, '.buck2', 'capability-roots', secondGeneration, 'buck2')
+      const oldRoot = NodePath.join(
+        fixture,
+        '.megarepo',
+        'capability-roots',
+        'owned',
+        firstGeneration,
+        'buck2',
+      )
+      const newRoot = NodePath.join(
+        fixture,
+        '.megarepo',
+        'capability-roots',
+        'owned',
+        secondGeneration,
+        'buck2',
+      )
       await mkdir(NodePath.dirname(oldRoot), { recursive: true })
       await writeFile(oldRoot, 'old root\n')
 
