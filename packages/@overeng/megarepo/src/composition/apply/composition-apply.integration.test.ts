@@ -583,7 +583,7 @@ describe('composition apply integration', () => {
     }
   })
 
-  it('skips Buck and overlay publication for validated already-current overlays', async () => {
+  it('rebuilds overlays for validated already-current mounts', async () => {
     const value = await fixture({ alreadyCurrent: true })
     try {
       const result = await Effect.runPromise(
@@ -591,21 +591,23 @@ describe('composition apply integration', () => {
       )
       expect(result._tag).toBe('Applied')
       if (result._tag !== 'Applied') return
-      expect(result.members.every((member) => member.overlays.length === 0)).toBe(true)
+      expect(result.members.filter((member) => member.owned === false)[0]?.overlays).toHaveLength(1)
       const mountedMembers = result.members.filter((member) => member.owned === false)
       expect(mountedMembers).toHaveLength(1)
       for (const member of mountedMembers) {
         expect(member.mount?._tag).toBe('AlreadyCurrent')
       }
-      expect(value.calls.some((call) => call.startsWith('scratch:'))).toBe(false)
-      expect(value.calls.some((call) => call.startsWith('buck:'))).toBe(false)
-      expect(value.calls.some((call) => call.startsWith('overlay:'))).toBe(false)
+      expect(value.calls.filter((call) => call.startsWith('scratch:dep:create'))).toHaveLength(1)
+      expect(value.calls.filter((call) => call.startsWith('buck:'))).toHaveLength(1)
+      expect(value.calls.filter((call) => call.startsWith('overlay:dep://pkg:'))).toEqual([
+        'overlay:dep://pkg:dist0',
+      ])
     } finally {
       await value.cleanup()
     }
   })
 
-  it('builds only missing overlays for an otherwise current mount', async () => {
+  it('rebuilds every overlay for an otherwise current mount', async () => {
     const value = await fixture({
       members: [{ key: 'dep', overlays: 2 }],
       currentOverlayCount: 1,
@@ -619,11 +621,13 @@ describe('composition apply integration', () => {
       const mountedMember = result.members.find((member) => member.owned === false)
       expect(mountedMember?.mount?._tag).toBe('AlreadyCurrent')
       expect(mountedMember?.overlays.map((overlay) => overlay.destinationPath)).toEqual([
+        NodePath.join(value.root, 'workspace', 'repos', 'dep', 'pkg/dist0'),
         NodePath.join(value.root, 'workspace', 'repos', 'dep', 'pkg/dist1'),
       ])
-      expect(value.calls.filter((call) => call.startsWith('scratch:dep:create'))).toHaveLength(1)
-      expect(value.calls.filter((call) => call.startsWith('buck:'))).toHaveLength(1)
+      expect(value.calls.filter((call) => call.startsWith('scratch:dep:create'))).toHaveLength(2)
+      expect(value.calls.filter((call) => call.startsWith('buck:'))).toHaveLength(2)
       expect(value.calls.filter((call) => call.startsWith('overlay:dep://pkg:'))).toEqual([
+        'overlay:dep://pkg:dist0',
         'overlay:dep://pkg:dist1',
       ])
     } finally {
