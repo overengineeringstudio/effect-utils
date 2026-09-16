@@ -1270,6 +1270,19 @@ describe('effect-utils CI composition workspace', () => {
       ].join('\n'),
     )
     writeFileSync(
+      join(fakeBin, 'chmod'),
+      [
+        '#!/usr/bin/env bash',
+        'set -euo pipefail',
+        'if [ "${RUNNER_OS:-}" = "macOS" ]; then',
+        '  for arg in "$@"; do',
+        '    if [ "$arg" = "--" ]; then printf "chmod: --: No such file or directory\\n" >&2; exit 1; fi',
+        '  done',
+        'fi',
+        'PATH="${PATH#*:}" exec chmod "$@"',
+      ].join('\n'),
+    )
+    writeFileSync(
       join(mrOut, 'bin', 'mr'),
       [
         '#!/usr/bin/env bash',
@@ -1320,6 +1333,7 @@ describe('effect-utils CI composition workspace', () => {
       ].join('\n'),
     )
     chmodSync(join(fakeBin, 'nix'), 0o755)
+    chmodSync(join(fakeBin, 'chmod'), 0o755)
     chmodSync(join(mrOut, 'bin', 'mr'), 0o755)
 
     const env = {
