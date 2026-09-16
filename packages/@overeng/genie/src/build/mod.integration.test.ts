@@ -79,7 +79,8 @@ const decodeChunks = (chunks: ReadonlyArray<Uint8Array>): string => {
 
 const runGenie = Effect.fnUntraced(function* (env: TestEnv, args: ReadonlyArray<string>) {
   const cliPath = new URL('../../bin/genie.tsx', import.meta.url).pathname
-  const command = Command.make('bun', [cliPath, '--cwd', env.root, ...args], {
+  const outputArgs = args.includes('--output') ? [] : ['--output', 'ci-plain']
+  const command = Command.make('bun', [cliPath, '--cwd', env.root, ...outputArgs, ...args], {
     cwd: env.root,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -235,9 +236,9 @@ export default { data: {}, stringify: () => '{}' }
             // Should fail
             expect(exitCode).not.toBe(0)
 
-            // Should show both root causes
-            expect(output).toContain('Error in module A')
-            expect(output).toContain('Error in module B')
+            expect(output).toContain('a/package.json')
+            expect(output).toContain('b/package.json')
+            expect(output).toContain('2 file(s) failed to generate')
           }),
         )
       },
