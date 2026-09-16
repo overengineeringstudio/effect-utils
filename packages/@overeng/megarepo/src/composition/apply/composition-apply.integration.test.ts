@@ -391,20 +391,25 @@ const fixture = async (options: FixtureOptions = {}) => {
           phase: 'CompensationRequired',
           priorWatched: true,
         })
-        return { changedPaths: [], memberManifests: [] }
       }
+      const prepared =
+        options.rootMode === 'first' ||
+        options.rootMode === 'recovery' ||
+        options.watchmanConfigChanged === true
+          ? await input.prepareExternalState?.()
+          : undefined
       try {
         calls.push('root:authority')
-        await input.afterAuthorityPublished?.()
+        await prepared?.afterAuthorityPublished()
         if (options.rootFailureAfterReconcile === true) {
           throw new Error('root commit failed after Watchman reconciliation')
         }
         calls.push('root:commit')
-        return { changedPaths: ['.buckconfig'], memberManifests: [] }
+        return { changedPaths: ['.watchmanconfig', '.buckconfig'], memberManifests: [] }
       } catch (cause) {
         calls.push('root:rollback')
-        if (input.externalState !== undefined) {
-          await input.afterAuthorityRollback?.(input.externalState)
+        if (prepared !== undefined) {
+          await input.afterAuthorityRollback?.(prepared.externalState)
         }
         throw cause
       }
@@ -631,7 +636,7 @@ describe('composition apply integration', () => {
       await value.cleanup()
     }
   })
-  it('recovers durable Watchman state before any overlay can invoke Buck', async () => {
+  it('recovers then reconciles forward Watchman config before any overlay invokes Buck', async () => {
     const value = await fixture({ rootMode: 'recovery' })
     try {
       const result = await Effect.runPromise(
@@ -639,11 +644,19 @@ describe('composition apply integration', () => {
       )
       expect(result._tag).toBe('Applied')
       const recovery = value.calls.indexOf('root:recover')
-      const watchman = value.calls.indexOf('watchman:rollback')
+      const rollback = value.calls.indexOf('watchman:rollback')
+      const prepare = value.calls.indexOf('watchman:prepare')
+      const authority = value.calls.indexOf('root:authority')
+      const reconcile = value.calls.indexOf('watchman:reconcile')
+      const commit = value.calls.indexOf('root:commit')
       const overlay = value.calls.findIndex((call) => call.startsWith('overlay:dep:'))
       expect(recovery).toBeGreaterThanOrEqual(0)
-      expect(recovery).toBeLessThan(watchman)
-      expect(watchman).toBeLessThan(overlay)
+      expect(recovery).toBeLessThan(rollback)
+      expect(rollback).toBeLessThan(prepare)
+      expect(prepare).toBeLessThan(authority)
+      expect(authority).toBeLessThan(reconcile)
+      expect(reconcile).toBeLessThan(commit)
+      expect(commit).toBeLessThan(overlay)
     } finally {
       await value.cleanup()
     }
