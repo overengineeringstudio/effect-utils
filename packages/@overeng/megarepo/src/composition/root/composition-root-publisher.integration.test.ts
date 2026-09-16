@@ -1788,6 +1788,7 @@ describe('composition root publisher', () => {
         const result = yield* teardownCompositionRoot({
           workspaceRoot: fixture.workspaceRoot,
           lock: { owner: 'publisher-test', token: 'teardown-token' },
+          deregisterWatchmanProject: async () => undefined,
         })
         expect(result.removedPaths.toSorted()).toEqual([...generatedPaths].toSorted())
         for (const path of generatedPaths) {
@@ -1797,6 +1798,61 @@ describe('composition root publisher', () => {
         expect(yield* exists(NodePath.join(fixture.root, 'megarepo.kdl'))).toBe(true)
         expect(yield* exists(NodePath.join(fixture.root, 'buck-out/keep'))).toBe(true)
         expect(yield* exists(ownedConfig)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect('teardown deregisters only the exact composition-root Watchman watch', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
+        const unrelatedRoot = NodePath.join(fixture.root, 'unrelated-watch')
+        const watchedRoots = new Set([fixture.root, unrelatedRoot])
+        const deregisteredRoots: string[] = []
+
+        yield* teardownCompositionRoot({
+          workspaceRoot: fixture.workspaceRoot,
+          lock: { owner: 'publisher-test', token: 'watchman-teardown-token' },
+          deregisterWatchmanProject: async (workspaceRoot) => {
+            deregisteredRoots.push(workspaceRoot)
+            expect(
+              (await readFile(NodePath.join(fixture.root, '.watchmanconfig'))).byteLength,
+            ).toBeGreaterThan(0)
+            watchedRoots.delete(workspaceRoot)
+          },
+        })
+
+        expect(deregisteredRoots).toEqual([fixture.root])
+        expect(watchedRoots.has(fixture.root)).toBe(false)
+        expect(watchedRoots.has(unrelatedRoot)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect('teardown preserves generated authority when Watchman deregistration fails', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
+
+        const error = yield* failureReason(
+          teardownCompositionRoot({
+            workspaceRoot: fixture.workspaceRoot,
+            lock: { owner: 'publisher-test', token: 'watchman-teardown-failure-token' },
+            deregisterWatchmanProject: async () => {
+              throw new Error('watch-del failed')
+            },
+          }),
+        )
+
+        expect(error.reason).toBe('IoFailure')
+        for (const path of generatedPaths) {
+          expect(yield* exists(NodePath.join(fixture.root, path))).toBe(true)
+        }
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+        ).toBe(false)
       }),
     ),
   )
@@ -1858,6 +1914,7 @@ describe('composition root publisher', () => {
           teardownCompositionRoot({
             workspaceRoot: fixture.workspaceRoot,
             lock: { owner: 'publisher-test', token: 'teardown-race-token' },
+            deregisterWatchmanProject: async () => undefined,
             beforeRemoveFile: async (path) => {
               if (path !== '.buckconfig') return
               const replacementPath = `${configPath}.foreign`

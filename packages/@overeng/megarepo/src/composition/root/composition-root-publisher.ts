@@ -296,6 +296,11 @@ export interface CompositionRootPublicationResult {
 export interface TeardownCompositionRootOptions {
   readonly workspaceRoot: AbsoluteDirPath
   readonly lock: CompositionPublisherLockOptions
+  /**
+   * Deregisters the exact composition-root Watchman watch before generated authority is removed.
+   * Required when the owned generation includes `.watchmanconfig`.
+   */
+  readonly deregisterWatchmanProject?: (workspaceRoot: AbsoluteDirPath) => Promise<void>
   readonly beforeRemoveFile?: (path: string) => Promise<void>
 }
 
@@ -2446,7 +2451,7 @@ const validateTeardownState = async ({
   return { manifestSnapshot, manifest, files }
 }
 
-/** Remove only immediately revalidated generated files and now-empty generator-owned directories. */
+/** Deregister owned external state, then remove verified generated files and empty directories. */
 export const teardownCompositionRoot = Effect.fn('megarepo/composition-root/teardown')(
   (options: TeardownCompositionRootOptions) =>
     Effect.tryPromise({
@@ -2459,6 +2464,16 @@ export const teardownCompositionRoot = Effect.fn('megarepo/composition-root/tear
         const removedDirectories: string[] = []
         try {
           const state = await validateTeardownState({ workspaceRoot })
+          if (state.files.has('.watchmanconfig') === true) {
+            if (options.deregisterWatchmanProject === undefined) {
+              throw failure({
+                reason: 'InvalidInput',
+                path: finalPathFor(workspaceRoot, '.watchmanconfig'),
+                message: 'Watchman deregistration is required before composition-root teardown',
+              })
+            }
+            await options.deregisterWatchmanProject(workspaceRoot as AbsoluteDirPath)
+          }
           const removalOrder = [
             ...state.manifest.files.filter((file) => file.path === '.buckconfig'),
             ...state.manifest.files.filter((file) => file.path !== '.buckconfig'),
