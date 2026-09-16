@@ -85,10 +85,7 @@ export const normalizeCliOutput = ({
         ? ''
         : `${repoRoot}${repoRoot.endsWith('/') === true ? '' : '/'}node_modules/.pnpm/`
     output = output
-      .replace(
-        BUCK_EFFECT_CLI_FRAME_PATTERN,
-        `${sourceTreePrefix}${NORMALIZED_EFFECT_CLI_FRAME}`,
-      )
+      .replace(BUCK_EFFECT_CLI_FRAME_PATTERN, `${sourceTreePrefix}${NORMALIZED_EFFECT_CLI_FRAME}`)
       .replace(
         EDITOR_VIEW_EFFECT_CLI_FRAME_PATTERN,
         `${sourceTreePrefix}${NORMALIZED_EFFECT_CLI_FRAME}`,

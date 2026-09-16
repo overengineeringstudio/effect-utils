@@ -156,9 +156,7 @@ const makeDirectoriesOwnerWritable = async (path: string): Promise<void> => {
   if (info === undefined || info.isDirectory() === false || info.isSymbolicLink() === true) return
   await chmod(path, 0o700)
   await Promise.all(
-    (await readdir(path)).map((child) =>
-      makeDirectoriesOwnerWritable(NodePath.join(path, child)),
-    ),
+    (await readdir(path)).map((child) => makeDirectoriesOwnerWritable(NodePath.join(path, child))),
   )
 }
 
