@@ -139,7 +139,18 @@ exit 0
 EOF
 chmod +x "$tmpdir/bin/otel-span"
 
+# Stub otel-scrape: preserve the command boundary without invoking a packaged native binary.
+cat > "$tmpdir/bin/otel-scrape" <<'EOF'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+[ "${1:-}" = "--" ] && shift
+exec "$@"
+EOF
+chmod +x "$tmpdir/bin/otel-scrape"
+
 export PATH="$tmpdir/bin:$PATH"
+export OTEL_SPAN_BIN="$tmpdir/bin/otel-span"
+export OTEL_SCRAPE_BIN="$tmpdir/bin/otel-scrape"
 export OTEL_SPAN_SPOOL_DIR="$tmpdir/spool"
 mkdir -p "$OTEL_SPAN_SPOOL_DIR"
 export OTEL_TASK_TRACEPARENT="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
