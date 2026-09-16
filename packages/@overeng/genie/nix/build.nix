@@ -46,6 +46,7 @@ pkgs.runCommand "genie"
         depsBuildEntries
         depsBuildsByInstallRoot
         fodHashRepairTargets
+        alignAggregateManifestSpecifiersScript
         inheritRootPatchedDependenciesScript
         installRoots
         ;

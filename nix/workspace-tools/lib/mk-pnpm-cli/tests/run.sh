@@ -369,6 +369,101 @@ run_downstream_pure_eval_regression() {
   echo "Timing: downstream-pure-eval $(( $(date +%s) - start ))s"
 }
 
+run_align_aggregate_manifest_specifiers_regression() {
+  local start
+  start="$(date +%s)"
+
+  echo "Check: aggregate manifest alignment reads every lockfile document"
+  local script
+  script="$(
+    cd "$ROOT" &&
+      nix build --no-link --no-write-lock-file --print-out-paths ".#packages.$SYSTEM.genie.passthru.alignAggregateManifestSpecifiersScript"
+  )"
+
+  local fixture
+  fixture="$(mktemp -d "${TMPDIR:-/tmp}/mk-pnpm-cli-alignment.XXXXXX")"
+  mkdir -p \
+    "$fixture/packages/first" \
+    "$fixture/packages/second" \
+    "$fixture/packages/third" \
+    "$fixture/packages/__proto__"
+  cat >"$fixture/pnpm-workspace.yaml" <<'YAML'
+packages:
+  - packages/*
+YAML
+  for package in first second third __proto__; do
+    cat >"$fixture/packages/$package/package.json" <<JSON
+{
+  "name": "$package",
+  "dependencies": {
+    "source": "file:.devenv/pnpm-source-inputs/current/repos/source"
+  }
+}
+JSON
+  done
+  cat >"$fixture/pnpm-lock.yaml" <<'YAML'
+---
+lockfileVersion: '9.0'
+importers:
+  packages/first:
+    dependencies:
+      source:
+        specifier: file:../../.devenv/pnpm-source-inputs/current/repos/source
+---
+lockfileVersion: '9.0'
+importers:
+  packages/second:
+    dependencies:
+      source:
+        specifier: file:../../.devenv/pnpm-source-inputs/current/repos/source
+---
+lockfileVersion: '9.0'
+importers:
+  packages/third:
+    dependencies:
+      source:
+        specifier: file:../../.devenv/pnpm-source-inputs/current/repos/source
+  packages/__proto__:
+    dependencies:
+      source:
+        specifier: file:../../.devenv/pnpm-source-inputs/current/repos/source
+YAML
+
+  (
+    cd "$fixture"
+    bun "$script" pnpm-workspace.yaml pnpm-lock.yaml
+  )
+
+  for package in first second third __proto__; do
+    jq -e \
+      '.dependencies.source == "file:../../.devenv/pnpm-source-inputs/current/repos/source"' \
+      "$fixture/packages/$package/package.json" >/dev/null
+  done
+
+  cat >"$fixture/duplicate-importer-lock.yaml" <<'YAML'
+---
+lockfileVersion: '9.0'
+importers:
+  packages/first: {}
+---
+lockfileVersion: '9.0'
+importers:
+  packages/first: {}
+YAML
+  if (
+    cd "$fixture"
+    bun "$script" pnpm-workspace.yaml duplicate-importer-lock.yaml
+  ) 2>"$fixture/duplicate-importer.log"; then
+    echo "error: duplicate importer ownership across lockfile documents was accepted" >&2
+    exit 1
+  fi
+  grep -q "duplicate lockfile importer across YAML documents: packages/first" \
+    "$fixture/duplicate-importer.log"
+  rm -rf "$fixture"
+
+  echo "Timing: align-aggregate-manifest-specifiers $(( $(date +%s) - start ))s"
+}
+
 run_inherit_root_patched_dependencies_regression() {
   local start
   start="$(date +%s)"
@@ -461,6 +556,7 @@ if [ "$SKIP_MEGAREPO" -eq 0 ]; then
 fi
 
 if [ "$SKIP_DOWNSTREAM" -eq 0 ]; then
+  run_align_aggregate_manifest_specifiers_regression
   run_inherit_root_patched_dependencies_regression
   prepare_downstream_workspace
   run_downstream_pure_eval_regression
