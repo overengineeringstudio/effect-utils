@@ -8,12 +8,16 @@ import { promisify } from 'node:util'
 import { describe, it } from '@effect/vitest'
 import { expect } from 'vitest'
 
-import { reconcileWatchmanProject } from '../apply/composition-runtime.ts'
+import {
+  prepareWatchmanProjectReconciliation,
+  reconcileWatchmanProject,
+} from '../apply/composition-runtime.ts'
 import { generateCompositionRoot, type CompositionRootInput } from './composition-root.ts'
 
 const makeInput = (
   resolvedBuckExecutable: string,
   projectIgnore: ReadonlyArray<string> = [],
+  distOverlayDestinations: ReadonlyArray<string> = [],
 ): CompositionRootInput => ({
   schemaVersion: 1,
   members: [
@@ -24,7 +28,10 @@ const makeInput = (
         cell: 'alpha',
         mount: 'repos/alpha',
         projectIgnore,
-        distOverlays: [],
+        distOverlays: distOverlayDestinations.map((destination) => ({
+          target: '//packages:dist',
+          destination,
+        })),
         capabilities: [],
       },
     },
@@ -89,11 +96,15 @@ const queryWatchmanFiles = async (root: string): Promise<ReadonlyArray<string>> 
 const writeGeneratedWatchmanConfig = async ({
   root,
   projectIgnore,
+  distOverlayDestinations = [],
 }: {
   readonly root: string
   readonly projectIgnore: ReadonlyArray<string>
+  readonly distOverlayDestinations?: ReadonlyArray<string>
 }): Promise<void> => {
-  const generated = generateCompositionRoot(makeInput('/nix/store/fake/bin/buck2', projectIgnore))
+  const generated = generateCompositionRoot(
+    makeInput('/nix/store/fake/bin/buck2', projectIgnore, distOverlayDestinations),
+  )
   const config = generated.files.find((file) => file.path === '.watchmanconfig')
   if (config === undefined) throw new TypeError('composition did not generate .watchmanconfig')
   await writeFile(join(root, config.path), config.bytes)
@@ -240,6 +251,9 @@ describe('generated Watchman root', () => {
           mkdir(join(member, 'src'), { recursive: true }),
           mkdir(join(member, '.buck2', 'capabilities'), { recursive: true }),
           mkdir(join(member, 'generated'), { recursive: true }),
+          mkdir(join(member, 'node_modules', 'dependency'), { recursive: true }),
+          mkdir(join(member, 'target', 'debug'), { recursive: true }),
+          mkdir(join(member, 'packages', 'dist'), { recursive: true }),
           mkdir(join(root, 'buck-out'), { recursive: true }),
         ])
         await Promise.all([
@@ -248,7 +262,14 @@ describe('generated Watchman root', () => {
           writeFile(join(member, '.buck2', 'capabilities', 'defs.bzl'), 'TOOLS = {}\n'),
           writeFile(join(member, 'generated', 'ignored.txt'), 'ignored\n'),
           writeFile(join(root, 'buck-out', 'ignored.txt'), 'ignored\n'),
-          writeGeneratedWatchmanConfig({ root, projectIgnore: [] }),
+          writeFile(join(member, 'node_modules', 'dependency', 'ignored.js'), 'ignored\n'),
+          writeFile(join(member, 'target', 'debug', 'ignored'), 'ignored\n'),
+          writeFile(join(member, 'packages', 'dist', 'ignored.js'), 'ignored\n'),
+          writeGeneratedWatchmanConfig({
+            root,
+            projectIgnore: [],
+            distOverlayDestinations: ['packages/dist'],
+          }),
         ])
 
         await reconcileWatchmanProject({ watchmanPath, workspaceRoot: root })
@@ -261,9 +282,16 @@ describe('generated Watchman root', () => {
         expect(firstFiles).toContain('repos/alpha/.buck2/capabilities/defs.bzl')
         expect(firstFiles).toContain('repos/alpha/generated/ignored.txt')
         expect(firstFiles).not.toContain('buck-out/ignored.txt')
+        expect(firstFiles).not.toContain('repos/alpha/node_modules/dependency/ignored.js')
+        expect(firstFiles).not.toContain('repos/alpha/target/debug/ignored')
+        expect(firstFiles).not.toContain('repos/alpha/packages/dist/ignored.js')
         expect(firstFiles).not.toContain('../unrelated-sibling/large/tree/sentinel')
 
-        await writeGeneratedWatchmanConfig({ root, projectIgnore: ['generated'] })
+        await writeGeneratedWatchmanConfig({
+          root,
+          projectIgnore: ['generated'],
+          distOverlayDestinations: ['packages/dist'],
+        })
         await reconcileWatchmanProject({ watchmanPath, workspaceRoot: root })
         const reconfiguredFiles = await queryWatchmanFiles(root)
         expect(reconfiguredFiles).toContain('repos/alpha/src/sentinel.ts')
@@ -278,6 +306,26 @@ describe('generated Watchman root', () => {
         expect(recreatedFiles).toContain('repos/alpha/src/sentinel.ts')
         expect(recreatedFiles).toContain('repos/alpha/.buck2/capabilities/defs.bzl')
         expect(recreatedFiles).not.toContain('repos/alpha/generated/ignored.txt')
+
+        const watchedRollback = await prepareWatchmanProjectReconciliation({
+          watchmanPath,
+          workspaceRoot: root,
+        })
+        await watchedRollback.reconcile()
+        await watchedRollback.rollback()
+        expect(await watchman('watch-list')).toMatchObject({ roots: expect.arrayContaining([root]) })
+
+        await watchman('watch-del', root)
+        const unwatchedRollback = await prepareWatchmanProjectReconciliation({
+          watchmanPath,
+          workspaceRoot: root,
+        })
+        await unwatchedRollback.reconcile()
+        expect(await watchman('watch-list')).toMatchObject({ roots: expect.arrayContaining([root]) })
+        await unwatchedRollback.rollback()
+        expect(await watchman('watch-list')).toMatchObject({
+          roots: expect.not.arrayContaining([root]),
+        })
       } finally {
         await watchman('watch-del', root).catch(() => undefined)
         await rm(parent, { recursive: true, force: true })

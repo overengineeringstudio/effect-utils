@@ -88,6 +88,7 @@ interface FixtureOptions {
   readonly rootRemovalFailure?: string
   readonly watchmanConfigChanged?: boolean
   readonly watchmanFailure?: boolean
+  readonly rootFailureAfterReconcile?: boolean
 }
 
 const fixture = async (options: FixtureOptions = {}) => {
@@ -366,10 +367,14 @@ const fixture = async (options: FixtureOptions = {}) => {
       try {
         calls.push('root:authority')
         await input.afterAuthorityPublished?.()
+        if (options.rootFailureAfterReconcile === true) {
+          throw new Error('root commit failed after Watchman reconciliation')
+        }
         calls.push('root:commit')
         return { changedPaths: ['.buckconfig'], memberManifests: [] }
       } catch (cause) {
         calls.push('root:rollback')
+        await input.afterAuthorityRollback?.()
         throw cause
       }
     },
@@ -441,10 +446,20 @@ const fixture = async (options: FixtureOptions = {}) => {
       },
     },
     updateLockRuntime: {},
-    reconcileWatchmanProject: async ({ workspaceRoot: reconciledRoot }) => {
+    prepareWatchmanProjectReconciliation: async ({ workspaceRoot: reconciledRoot }) => {
       expect(reconciledRoot).toBe(workspaceRoot)
-      calls.push('watchman:reconcile')
-      if (options.watchmanFailure === true) throw new Error('watchman reconciliation failed')
+      calls.push('watchman:prepare')
+      return {
+        reconcile: async () => {
+          calls.push('watchman:reconcile')
+          if (options.watchmanFailure === true) {
+            throw new Error('watchman reconciliation failed')
+          }
+        },
+        rollback: async () => {
+          calls.push('watchman:rollback')
+        },
+      }
     },
     runBuck: async (argv) => {
       calls.push(`buck:${argv.join('|')}`)
@@ -590,6 +605,30 @@ describe('composition apply integration', () => {
       expect(result._tag).toBe('Failure')
       expect(value.calls).toContain('watchman:reconcile')
       expect(value.calls).toContain('root:rollback')
+      expect(value.calls).toContain('watchman:rollback')
+      expect(value.calls.some((call) => call.startsWith('overlay:dep:'))).toBe(false)
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('restores the prior Watchman state when root commit fails after reconciliation', async () => {
+    const value = await fixture({
+      rootMode: 'update',
+      watchmanConfigChanged: true,
+      rootFailureAfterReconcile: true,
+    })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      expect(value.calls).toContain('watchman:reconcile')
+      expect(value.calls).toContain('root:rollback')
+      expect(value.calls).toContain('watchman:rollback')
+      expect(value.calls.indexOf('root:rollback')).toBeLessThan(
+        value.calls.indexOf('watchman:rollback'),
+      )
       expect(value.calls.some((call) => call.startsWith('overlay:dep:'))).toBe(false)
     } finally {
       await value.cleanup()
