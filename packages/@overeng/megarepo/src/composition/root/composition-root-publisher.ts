@@ -1363,18 +1363,20 @@ const decodeGenerationManifest = ({
 
 const assertManifestShape = ({
   manifest,
-  expectedPaths,
+  expectedPathSets,
   path,
 }: {
   readonly manifest: CompositionGenerationManifest
-  readonly expectedPaths: ReadonlyArray<string>
+  readonly expectedPathSets: ReadonlyArray<ReadonlyArray<string>>
   readonly path: string
 }): void => {
   const actual = manifest.files.map((file) => file.path)
-  if (
-    actual.length !== expectedPaths.length ||
-    actual.some((value, index) => value !== expectedPaths[index]) === true
-  ) {
+  const matchesExpectedSet = expectedPathSets.some(
+    (expectedPaths) =>
+      actual.length === expectedPaths.length &&
+      actual.every((value, index) => value === expectedPaths[index]),
+  )
+  if (matchesExpectedSet === false) {
     throw failure({
       reason: 'InvalidGenerationManifest',
       path,
@@ -2322,7 +2324,8 @@ const validateTeardownState = async ({
     '.watchmanconfig',
     'BUCK',
   ].toSorted()
-  assertManifestShape({ manifest, expectedPaths: canonical, path: manifestPath })
+  const legacy = canonical.filter((path) => path !== '.watchmanconfig')
+  assertManifestShape({ manifest, expectedPathSets: [canonical, legacy], path: manifestPath })
   const files = new Map<string, FileSnapshot>()
   for (const record of manifest.files) {
     const path = finalPathFor(workspaceRoot, record.path)
