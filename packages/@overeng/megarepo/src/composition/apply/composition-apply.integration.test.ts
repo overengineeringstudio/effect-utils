@@ -82,6 +82,9 @@ interface FixtureOptions {
   readonly currentOverlayCount?: number
   readonly releaseFailures?: ReadonlyArray<string>
   readonly retainFailure?: string
+  readonly publishedMemberKeys?: ReadonlyArray<string>
+  readonly teardownFailure?: string
+  readonly rootRemovalFailure?: string
 }
 
 const fixture = async (options: FixtureOptions = {}) => {
@@ -261,9 +264,18 @@ const fixture = async (options: FixtureOptions = {}) => {
       calls.push(`mount-committed:${mount.member}`)
       return published
     },
-    listPublishedMemberKeys: async () => [],
-    teardownMount: async () => {
-      throw new Error('unexpected teardown')
+    listPublishedMemberKeys: async () => options.publishedMemberKeys ?? [],
+    teardownMount: async ({ memberKey }) => {
+      calls.push(`teardown:${memberKey}`)
+      if (options.teardownFailure === memberKey) throw new Error('teardown failed')
+      return {
+        _tag: 'TornDown',
+        destinationPath: NodePath.join(workspaceRoot, 'repos', memberKey),
+      }
+    },
+    removeMemberCapabilityRoots: async ({ memberKey }) => {
+      calls.push(`remove-roots:${memberKey}`)
+      if (options.rootRemovalFailure === memberKey) throw new Error('root removal failed')
     },
     inspectMountedMember: async ({ memberKey }) => inspections.get(memberKey)!,
     recoverOverlay: async ({ request: recovery }) => {
@@ -578,6 +590,50 @@ describe('composition apply integration', () => {
         'prune:beta',
         'prune:alpha',
       ])
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('removes retired member capability roots only after verified mount teardown', async () => {
+    const value = await fixture({ publishedMemberKeys: ['owned', 'dep', 'retired'] })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      expect(value.calls.filter((call) => call.startsWith('teardown:'))).toEqual([
+        'teardown:retired',
+      ])
+      expect(value.calls.filter((call) => call.startsWith('remove-roots:'))).toEqual([
+        'remove-roots:retired',
+      ])
+      expect(value.calls.indexOf('teardown:retired')).toBeLessThan(
+        value.calls.indexOf('remove-roots:retired'),
+      )
+      expect(value.calls.indexOf('remove-roots:retired')).toBeLessThan(
+        value.calls.indexOf('cap:owned'),
+      )
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('preserves retired member capability roots when mount teardown fails', async () => {
+    const value = await fixture({
+      publishedMemberKeys: ['retired'],
+      teardownFailure: 'retired',
+    })
+    try {
+      await expect(
+        Effect.runPromise(compositionApply({ request: value.request, runtime: value.runtime })),
+      ).rejects.toMatchObject({
+        reason: 'MountFailure',
+        phase: 'Mount',
+        memberKey: 'retired',
+      })
+      expect(value.calls).toContain('teardown:retired')
+      expect(value.calls).not.toContain('remove-roots:retired')
     } finally {
       await value.cleanup()
     }
