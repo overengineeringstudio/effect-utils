@@ -1,0 +1,63 @@
+{
+  "products": [
+    {
+      "name": "ci-tools",
+      "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
+    },
+    {
+      "name": "genie",
+      "target": "effect_utils//packages/@overeng/genie:genie-candidate"
+    },
+    {
+      "name": "genie-bootstrap-closure-check",
+      "target": "effect_utils//packages/@overeng/genie:genie-bootstrap-closure-check-candidate"
+    },
+    {
+      "name": "gh-ci-utils",
+      "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
+    },
+    {
+      "name": "megarepo",
+      "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
+    },
+    {
+      "name": "notion-cli",
+      "target": "effect_utils//packages/@overeng/notion-cli:notion-cli-candidate"
+    },
+    {
+      "name": "notion-db-runtime",
+      "target": "effect_utils//packages/@overeng/notion-cli:notion-db-candidate"
+    },
+    {
+      "name": "notion-md",
+      "target": "effect_utils//packages/@overeng/notion-md:notion-md-candidate"
+    },
+    {
+      "name": "npm-release",
+      "target": "effect_utils//packages/@overeng/npm-release:npm-release-candidate"
+    },
+    {
+      "name": "oxc-config",
+      "target": "effect_utils//packages/@overeng/oxc-config:oxc-config-candidate"
+    },
+    {
+      "name": "oxc-config-stylex-upstream-plugin",
+      "target": "effect_utils//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate"
+    },
+    {
+      "name": "tui-stories",
+      "target": "effect_utils//packages/@overeng/tui-stories:tui-stories-candidate"
+    }
+  ],
+  "provenance": {
+    "fingerprint": "sha256:546ff155a723865914b52d8a97301ee35492c928fe4a86d4b20c4dd00083b081",
+    "generator": "effect-utils/genie/buck2-javascript-release-targets",
+    "regenerationCommand": "devenv tasks run genie:run",
+    "semanticInputs": [
+      "genie/buck2/javascript-product-registry.ts",
+      "nix/buck2-products/targets.json.genie.ts"
+    ],
+    "source": "nix/buck2-products/targets.json.genie.ts"
+  },
+  "schemaVersion": 1
+}

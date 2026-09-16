@@ -40,11 +40,6 @@
         pkgs = import nixpkgs { inherit system; };
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
-        oxlintNpm = import ./nix/oxlint-npm.nix {
-          inherit pkgs;
-          bun = pkgs.bun;
-          src = self;
-        };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
         providerCliPackages = {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
@@ -63,10 +58,13 @@
               inherit pkgs;
               nixpkgsRevision = nixpkgs.rev;
             };
-        # Buck is the sole producer for admitted repository products. The
-        # unadmitted gh-ci-utils CLI keeps its source-built Nix package until a
-        # later authority transfer explicitly admits it.
+        # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products { inherit pkgs; };
+        oxlintNpm = import ./nix/oxlint-npm.nix {
+          inherit pkgs;
+          bun = pkgs.bun;
+          products = trackedBuck2Products.products;
+        };
         buck2ProductCandidates = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
           inherit
             pkgs
@@ -77,21 +75,19 @@
           products = trackedBuck2Products.products;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
-        ghCiUtils = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
+        cliPackages = buck2ProductCandidates;
+        cliPackagesDirty = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
           inherit
             pkgs
             gitRev
             commitTs
-            dirty
             ;
-          src = self;
-        };
-        ghCiUtilsDirty = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
-          inherit pkgs gitRev commitTs;
-          src = self;
           dirty = true;
+          products = trackedBuck2Products.products;
+          typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
         };
-        cliPackages = buck2ProductCandidates;
+        ghCiUtils = cliPackages.gh-ci-utils;
+        ghCiUtilsDirty = cliPackagesDirty.gh-ci-utils;
       in
       {
         packages =
@@ -146,18 +142,11 @@
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             gh-ci-utils = ghCiUtils;
             gh-ci-utils-dirty = ghCiUtilsDirty;
-            "gh-ci-utils-pnpm-deps" = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
             # Static-check executables projected as Buck capabilities. Nix realizes
             # third-party tools; Buck owns source inputs and check execution.
             oxfmt = pkgs.oxfmt;
-            # The oxlint plugin bundle keeps its pnpm FOD as first-class outputs:
-            # `nix/oxlint-npm.nix` needs the pnpm-built plugin bundle, which the
-            # `oxc-config` JavaScript product does not replace. The bundle exposes
-            # Evergreen producer metadata; its raw FOD remains directly addressable.
-            # The `oxc-config` package itself is merged in from `cliPackages`.
-            "oxc-config-plugin" = oxlintNpm.pluginBundle;
-            "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.depsBuildsByInstallRoot.root;
-            # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
+            # npm oxlint with NAPI bindings. Its two JavaScript plugins are
+            # immutable Buck module products imported from the tracked manifest.
             oxlint-npm = oxlintNpm;
             # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
             oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
@@ -181,22 +170,21 @@
           gh-ci-utils = ghCiUtilsDirty.outPath;
         };
 
-        apps =
-          {
-            update-bun-hashes = flake-utils.lib.mkApp {
-              drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
-            };
-          }
-          // pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
-            otelite = flake-utils.lib.mkApp {
-              drv = nativeProductPackages.otelite;
-              exePath = "/bin/otelite";
-            };
-            otel-scrape = flake-utils.lib.mkApp {
-              drv = nativeProductPackages.otel-scrape;
-              exePath = "/bin/otel-scrape";
-            };
+        apps = {
+          update-bun-hashes = flake-utils.lib.mkApp {
+            drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
           };
+        }
+        // pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
+          otelite = flake-utils.lib.mkApp {
+            drv = nativeProductPackages.otelite;
+            exePath = "/bin/otelite";
+          };
+          otel-scrape = flake-utils.lib.mkApp {
+            drv = nativeProductPackages.otel-scrape;
+            exePath = "/bin/otel-scrape";
+          };
+        };
       }
     )
     // {
@@ -307,21 +295,20 @@
           // args
         );
 
-      # npm oxlint with NAPI bindings for JavaScript plugin support.
-      # When `src` is provided (the effect-utils source), the @overeng/oxc-config
-      # plugin is bundled alongside and exposed via passthru.pluginPath.
-      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; src = inputs.effect-utils; }
+      # npm oxlint with NAPI bindings plus the two tracked immutable
+      # @overeng/oxc-config JavaScript plugin products.
+      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; }
       lib.mkOxlintNpm =
         {
           pkgs,
           bun,
-          src ? null,
+          products ? (import ./nix/buck2-products { inherit pkgs; }).products,
         }:
-        import ./nix/oxlint-npm.nix { inherit pkgs bun src; };
+        import ./nix/oxlint-npm.nix { inherit pkgs bun products; };
 
-      # oxlint wrapper that auto-injects the @overeng/oxc-config plugin when
-      # the project config contains overeng/* rules. Falls through to plain
-      # oxlint-npm otherwise.
+      # oxlint wrapper that substitutes the overeng and @stylexjs configured
+      # entries with their separate tracked module paths. Projects without
+      # either namespace pass through to plain oxlint-npm.
       # Usage: effectUtils.lib.mkOxlintWithPlugins { inherit pkgs; oxlintNpm = effectUtils.packages.\${system}.oxlint-npm; }
       lib.mkOxlintWithPlugins =
         {

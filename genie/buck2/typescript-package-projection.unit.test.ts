@@ -113,7 +113,7 @@ const retiredProviderTerms = [
 
 describe('declared-closure package projection', () => {
   it('publishes editor views for the complete workspace package registry', () => {
-    expect(editorViewConsumerPackagePaths).toHaveLength(38)
+    expect(editorViewConsumerPackagePaths).toHaveLength(39)
     expect(editorViewConsumerPackagePaths).toEqual(
       Object.values(buck2TypeScriptAdmissions)
         .map((admission) => admission.packagePath)
@@ -702,6 +702,38 @@ describe('derived test collection targets', () => {
       expect(recordedSource).toEqual(source)
       expect([...bounded, ...recordedSource].toSorted()).toEqual(census)
     }
+  })
+
+  it('projects the effect-schema-form-aria census as one wholly bounded JSX lane', () => {
+    const admitted = admittedTestLanes.find(
+      ({ packagePath }) => packagePath === 'packages/@overeng/effect-schema-form-aria',
+    )
+    expect(admitted).toBeDefined()
+    const census = admitted === undefined ? [] : collectableTestModulesOf(admitted)
+    const lane = buck2TestLanes.find(
+      ({ packagePath }) => packagePath === 'packages/@overeng/effect-schema-form-aria',
+    )
+
+    expect(census).toEqual(['src/mod.unit.test.tsx'])
+    expect(lane?.selectedTestFiles).toEqual(census)
+    expect(lane?.excludes).toEqual([])
+    expect(lane?.sourceOwners).toEqual({})
+    expect(lane?.unboundedFiles).toEqual([])
+    expect(lane?.unboundedTaskName).toBeUndefined()
+    expect(admitted?.output).toContain(
+      [
+        'vitest_test(',
+        '    name = "test",',
+        '    package_tree = ":test_package_tree",',
+      ].join('\n'),
+    )
+    expect(admitted?.output).toContain(
+      [
+        'vitest_collect(',
+        '    name = "test_collect",',
+        '    package_tree = ":test_package_tree",',
+      ].join('\n'),
+    )
   })
 
   it('keeps the JSX census inside the partition it stages', () => {

@@ -83,6 +83,10 @@ backlink_dir="$(cd "$(dirname "$backlink")" && pwd -P)"
 backlink="$backlink_dir/$(basename "$backlink")"
 [ "$backlink" = "$owned_worktree/.git" ]
 
+# Composed capabilities can contain Nix-derived directories without owner write
+# permission. Restore removal permission only after the ownership checks above.
+chmod -R u+w -- "$workspace_root"
+
 git --git-dir="$bare_repo" worktree remove --force "$owned_worktree"
 rm -rf -- "$workspace_root"
 git --git-dir="$bare_repo" update-ref -d "$branch_ref"

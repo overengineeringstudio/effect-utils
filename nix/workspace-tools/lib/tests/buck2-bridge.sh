@@ -18,6 +18,8 @@ fi
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 export BUCK2_BRIDGE_REPO="$repo_root"
+build_root_dir="$(mktemp -d)"
+trap 'rm -rf "$build_root_dir"' EXIT
 
 common_let='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
   flake = builtins.getFlake (toString repo);
@@ -42,7 +44,10 @@ base_expr="let
 in test"
 
 build_expr() {
-  nix build --impure --no-link --print-out-paths --expr "$1"
+  local root_dir
+  root_dir="$(mktemp -d "$build_root_dir/root.XXXXXX")"
+  nix build --impure --out-link "$root_dir/result" --expr "$1" >/dev/null
+  readlink -f "$root_dir/result"
 }
 
 expect_build_failure() {
@@ -107,6 +112,31 @@ expect_build_failure \
   "unsupported build-product runtime" \
   "runtime inspector is not available for self-contained" \
   "$unsupported_runtime_expr"
+
+static_runtime_expr="let
+  $common_let
+  exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_STATIC_PRODUCT\");
+  original = builtins.fromJSON (builtins.readFile (exported + \"/descriptor.json\"));
+  descriptor = original // {
+    platform = original.platform // { abi = \"glibc\"; };
+    runtime = {
+      elfClass = \"ELF64\";
+      inspectionContract = \"elf-static/v1\";
+      kind = \"elf-static\";
+      machine = original.platform.architecture;
+    };
+  };
+in test.mkImport {
+  inherit descriptor;
+  expectedDescriptorDigest = contract.descriptorDigest descriptor;
+  expectedPlatform = descriptor.platform;
+  artifact = exported + \"/artifact.tar\";
+}"
+static_import="$(build_expr "$static_runtime_expr")"
+[ -x "$static_import/bin/fixture-tool" ] || {
+  echo "buck2-bridge-test: admitted static entrypoint is missing" >&2
+  exit 1
+}
 
 dynamic_export="$(build_expr "($base_expr).dynamicExport")"
 export BUCK2_BRIDGE_DYNAMIC_EXPORT="$dynamic_export"
@@ -269,10 +299,18 @@ jq '.entrypoints = ["bin/no-adhoc-tool"]' "$mach_o_descriptor" >"$mach_o_descrip
 expect_command_failure "Mach-O CodeDirectory without ad-hoc flag" "must carry the ad-hoc flag" \
   "$mach_o_inspector_out" "$mach_o_descriptor.no-adhoc" "$mach_o_root"
 cp "$mach_o_root/bin/fixture-tool" "$mach_o_root/bin/cms-tool"
-printf '\011' | dd of="$mach_o_root/bin/cms-tool" bs=1 seek=123 conv=notrunc status=none
+printf '\024' | dd of="$mach_o_root/bin/cms-tool" bs=1 seek=99 conv=notrunc status=none
+printf '\060' | dd of="$mach_o_root/bin/cms-tool" bs=1 seek=91 conv=notrunc status=none
+printf '\372\336\013\001\000\000\000\014\001\002\003\004' \
+  | dd of="$mach_o_root/bin/cms-tool" bs=1 seek=112 conv=notrunc status=none
 jq '.entrypoints = ["bin/cms-tool"]' "$mach_o_descriptor" >"$mach_o_descriptor.cms"
-expect_command_failure "Mach-O non-empty CMS signature wrapper" "CMS signature blob must be empty" \
+expect_command_failure "ad-hoc Mach-O with non-empty CMS signature" "CMS signature blob must be empty" \
   "$mach_o_inspector_out" "$mach_o_descriptor.cms" "$mach_o_root"
+cp "$mach_o_root/bin/cms-tool" "$mach_o_root/bin/embedded-tool"
+printf '\000\000\000\000' | dd of="$mach_o_root/bin/embedded-tool" bs=1 seek=104 conv=notrunc status=none
+jq '.entrypoints = ["bin/embedded-tool"] | .runtime.signingPolicy = "embedded/v1"' \
+  "$mach_o_descriptor" >"$mach_o_descriptor.embedded"
+"$mach_o_inspector_out" "$mach_o_descriptor.embedded" "$mach_o_root"
 hostile_mach_o_inspector_expr="let
   $common_let
 in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-mach-o-dynamic.nix\") {
@@ -298,7 +336,8 @@ fat_mach_o_inspector_out="$(build_expr "$fat_mach_o_inspector_expr")"
 expect_command_failure "Mach-O universal binary" "must contain exactly one architecture" \
   "$fat_mach_o_inspector_out" "$mach_o_descriptor" "$mach_o_root"
 rm -rf "$mach_o_root"
-rm -f "$mach_o_descriptor" "$mach_o_descriptor.no-adhoc" "$mach_o_descriptor.cms"
+rm -f "$mach_o_descriptor" "$mach_o_descriptor.no-adhoc" "$mach_o_descriptor.cms" \
+  "$mach_o_descriptor.embedded"
 
 tampered_archive="$(mktemp)"
 cp "$dynamic_export/artifact.tar" "$tampered_archive"
@@ -357,23 +396,30 @@ expect_command_failure \
   "$scan_out" tree "$store_reference_root"
 rm -rf "$store_reference_root"
 
-unreadable_archive_root="$(mktemp -d)"
-unreadable_extract_root="$(mktemp -d)"
-unreadable_archive="$(mktemp)"
-printf '%s\n' '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-unreadable-leak' \
-  >"$unreadable_archive_root/unreadable"
-tar --create --mode=000 --file "$unreadable_archive" \
-  --directory "$unreadable_archive_root" unreadable
-tar --extract --file "$unreadable_archive" \
-  --directory "$unreadable_extract_root"
-[ ! -r "$unreadable_extract_root/unreadable" ] \
-  || fail "unreadable archive fixture unexpectedly remained readable"
-expect_command_failure \
-  "unreadable archive member store reference" \
-  "failed to scan tree for forbidden Nix store references" \
-  "$scan_out" tree "$unreadable_extract_root"
-chmod u+r "$unreadable_extract_root/unreadable"
-rm -rf "$unreadable_archive_root" "$unreadable_extract_root" "$unreadable_archive"
+if [ "$(id -u)" -eq 0 ]; then
+  echo "buck2-bridge-test: SKIP unreadable archive member store reference reason=root can read mode-000 files"
+else
+  unreadable_archive_root="$(mktemp -d)"
+  unreadable_extract_root="$(mktemp -d)"
+  unreadable_archive="$(mktemp)"
+  printf '%s\n' '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-unreadable-leak' \
+    >"$unreadable_archive_root/unreadable"
+  tar --create --mode=000 --file "$unreadable_archive" \
+    --directory "$unreadable_archive_root" unreadable
+  tar --extract --file "$unreadable_archive" \
+    --directory "$unreadable_extract_root"
+  [ ! -r "$unreadable_extract_root/unreadable" ] \
+    || {
+      echo "buck2-bridge-test: unreadable archive fixture unexpectedly remained readable" >&2
+      exit 1
+    }
+  expect_command_failure \
+    "unreadable archive member store reference" \
+    "failed to scan tree for forbidden Nix store references" \
+    "$scan_out" tree "$unreadable_extract_root"
+  chmod u+r "$unreadable_extract_root/unreadable"
+  rm -rf "$unreadable_archive_root" "$unreadable_extract_root" "$unreadable_archive"
+fi
 
 portable_symlink_root="$(mktemp -d)"
 mkdir -p "$portable_symlink_root/bin" "$portable_symlink_root/lib"

@@ -110,7 +110,7 @@ describe('GitHubSchemas', () => {
     it.each(['stale', 'startup_failure'] as const)(
       'decodes the documented %s conclusion for jobs and steps',
       (conclusion) => {
-        const result = Schema.decodeUnknownSync(GH.WorkflowJob)({
+        const result = Schema.decodeSync(GH.WorkflowJob)({
           id: 456,
           run_id: 123,
           name: 'synthetic-conclusion',
