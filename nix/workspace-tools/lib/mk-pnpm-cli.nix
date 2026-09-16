@@ -338,12 +338,11 @@ let
     );
   '';
   sourceInputSpecifiersModule = ./pnpm-source-input-specifiers.cjs;
-  alignAggregateManifestSpecifiersScript = pkgs.writeText "align-aggregate-manifest-specifiers.cjs" ''
+  alignAggregateManifestSpecifiersSource = pkgs.writeText "align-aggregate-manifest-specifiers.cjs" ''
     const fs = require("node:fs");
     const path = require("node:path");
     const specifiers = require("${sourceInputSpecifiersModule}");
 
-    const importers = JSON.parse(fs.readFileSync(0, "utf8"));
     const [workspaceYamlPath, lockfilePath] = process.argv.slice(2);
     if (!workspaceYamlPath || !lockfilePath) {
       console.error(
@@ -351,10 +350,29 @@ let
       );
       process.exit(1);
     }
+
+    const parsedLockfile = Bun.YAML.parse(fs.readFileSync(lockfilePath, "utf8"));
+    const documents = Array.isArray(parsedLockfile) ? parsedLockfile : [parsedLockfile];
+    const importers = new Map();
+    for (const document of documents) {
+      if (document === null || typeof document !== "object" || Array.isArray(document)) continue;
+      const documentImporters = document.importers;
+      if (
+        documentImporters === null ||
+        typeof documentImporters !== "object" ||
+        Array.isArray(documentImporters)
+      ) continue;
+      for (const [importerPath, importer] of Object.entries(documentImporters)) {
+        if (importers.has(importerPath)) {
+          throw new Error(`duplicate lockfile importer across YAML documents: ''${importerPath}`);
+        }
+        importers.set(importerPath, importer);
+      }
+    }
     const workspaceRoot = process.cwd();
     const dependencySections = ["dependencies", "devDependencies", "optionalDependencies"];
 
-    for (const [importerPath, importer] of Object.entries(importers)) {
+    for (const [importerPath, importer] of importers) {
       const manifestPath = path.resolve(
         importerPath === "." ? "package.json" : path.join(importerPath, "package.json")
       );
@@ -423,6 +441,9 @@ let
 
     stripSourceInputOverrides(workspaceYamlPath);
     stripSourceInputOverrides(lockfilePath);
+  '';
+  alignAggregateManifestSpecifiersScript = pkgs.writeShellScript "align-aggregate-manifest-specifiers" ''
+    exec ${pkgs.bun}/bin/bun ${alignAggregateManifestSpecifiersSource} "$@"
   '';
 
   isDerivationOutput =
@@ -1350,12 +1371,7 @@ let
           | ${pkgs.gnutar}/bin/tar --null --files-from=- -cf "$NIX_BUILD_TOP/aggregate-manifests.tar"
         cp pnpm-workspace.yaml "$NIX_BUILD_TOP/aggregate-pnpm-workspace.yaml"
         cp pnpm-lock.yaml "$NIX_BUILD_TOP/aggregate-pnpm-lock.yaml"
-        # pnpm 12 writes two-document lockfiles (importers, then settings);
-        # a bare `.importers` query emits one JSON document per input
-        # document and the consumer parses exactly one. Merge both so
-        # single- and two-document locks work.
-        ${pkgs.yq-go}/bin/yq ea -o=json '[.importers] | .[0] * .[1]' pnpm-lock.yaml \
-          | ${pkgs.nodejs}/bin/node ${alignAggregateManifestSpecifiersScript} pnpm-workspace.yaml pnpm-lock.yaml
+        ${alignAggregateManifestSpecifiersScript} pnpm-workspace.yaml pnpm-lock.yaml
       '';
       postPnpmInstall = ''
         ${pkgs.gnutar}/bin/tar -xf "$NIX_BUILD_TOP/aggregate-manifests.tar"
@@ -1643,6 +1659,7 @@ pkgs.stdenv.mkDerivation {
       dependencyMaterializationProfiles
       fodHashRepairTargets
       inheritRootPatchedDependenciesScript
+      alignAggregateManifestSpecifiersScript
       ;
     installRoots = map (root: {
       inherit (root) attrName installDir lockfilePath;
