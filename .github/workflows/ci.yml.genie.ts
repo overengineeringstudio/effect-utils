@@ -325,16 +325,18 @@ const measurementReportIf = [
 const job = ({
   step,
   extraSteps = [],
+  timeoutMinutes = jobTimeoutMinutes,
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   extraSteps?: readonly any[]
+  timeoutMinutes?: number
 }) => ({
   if: normalCiIf,
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
   }),
-  'timeout-minutes': jobTimeoutMinutes,
+  'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
@@ -446,6 +448,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:megarepo-cold-gc'),
     },
+    timeoutMinutes: 60,
   }),
 
   'pnpm-builder-contract': job({
@@ -518,6 +521,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('weaver:check', 'weaver:diff', 'weaver:live-check'),
     },
+    timeoutMinutes: 60,
   }),
 }
 

@@ -30,6 +30,12 @@ const mockWorkspaceRootContext: GenieContext = {
   location: '.',
   cwd: '/workspace',
 }
+const strictProofRuntime = createNodePackageJsonValidationRuntime({
+  typeProofCompiler: {
+    kind: 'custom',
+    path: path.resolve(import.meta.dirname, '../../../node_modules/.bin/tsc'),
+  },
+})
 
 const createTempRepo = (...memberPaths: string[]) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-package-json-'))
@@ -872,7 +878,7 @@ describe('packageJson', () => {
     fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
 
     const validate = async () =>
-      await nodePackageJsonValidationRuntime.validateExportEnvironments({
+      await strictProofRuntime.validateExportEnvironments({
         cwd: repo.repoRoot,
         location: 'packages/pkg',
         packageName: '@test/package',
@@ -1158,7 +1164,7 @@ describe('packageJson', () => {
     const issues = await result.validate?.({
       cwd: repoRoot,
       location: 'packages/@overeng/genie',
-      validation: { packageJson: nodePackageJsonValidationRuntime },
+      validation: { packageJson: strictProofRuntime },
     })
 
     expect(issues).toEqual([])

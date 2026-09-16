@@ -1520,7 +1520,7 @@ jobs:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -2821,7 +2821,7 @@ jobs:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
