@@ -211,14 +211,14 @@ export interface CompositionApplyRuntime {
   }
   /** Retain one published projection's Nix outputs before its resolver scratch is released. */
   readonly retainCapabilityRoots: (input: {
+    readonly workspaceRoot: string
     readonly memberKey: string
-    readonly memberRoot: string
     readonly resolution: CompositionCapabilityResolutionHandle
   }) => Promise<void>
   /** Verify the retained generation and prune stale roots only after publication commits. */
   readonly pruneCapabilityRoots: (input: {
+    readonly workspaceRoot: string
     readonly memberKey: string
-    readonly memberRoot: string
     readonly resolution: CompositionCapabilityResolutionHandle
   }) => Promise<void>
   readonly system: CompositionCapabilitySystem
@@ -1163,8 +1163,8 @@ const applyComposition = async ({
     const retainOwnedCapabilityRoots = async (): Promise<void> => {
       try {
         await runtime.retainCapabilityRoots({
+          workspaceRoot: request.workspaceRoot,
           memberKey: request.ownedMemberKey,
-          memberRoot: request.ownedMemberPath,
           resolution: ownedHandle,
         })
       } catch (cause) {
@@ -1201,8 +1201,8 @@ const applyComposition = async ({
     }
     try {
       await runtime.pruneCapabilityRoots({
+        workspaceRoot: request.workspaceRoot,
         memberKey: request.ownedMemberKey,
-        memberRoot: request.ownedMemberPath,
         resolution: ownedHandle,
       })
     } catch (cause) {
@@ -1236,8 +1236,8 @@ const applyComposition = async ({
       const retainMountedCapabilityRoots = async (): Promise<void> => {
         try {
           await runtime.retainCapabilityRoots({
+            workspaceRoot: request.workspaceRoot,
             memberKey: member.key,
-            memberRoot: mountedRoot,
             resolution: capability,
           })
         } catch (cause) {
@@ -1255,8 +1255,8 @@ const applyComposition = async ({
       const pruneMountedCapabilityRoots = async (): Promise<void> => {
         try {
           await runtime.pruneCapabilityRoots({
+            workspaceRoot: request.workspaceRoot,
             memberKey: member.key,
-            memberRoot: mountedRoot,
             resolution: capability,
           })
         } catch (cause) {

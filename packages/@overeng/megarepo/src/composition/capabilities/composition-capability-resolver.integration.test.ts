@@ -300,7 +300,7 @@ describe('composition capability resolver', () => {
     }
   })
 
-  it('retains durable generation roots idempotently and prunes stale generation directories', async () => {
+  it('retains durable workspace-owned generation roots without polluting owned member state', async () => {
     const fixture = await makeFixture()
     try {
       const result = await resolve(fixture, {
@@ -322,14 +322,19 @@ describe('composition capability resolver', () => {
         }),
       })
       if (result._tag !== 'Resolved') throw new Error('unreachable')
-      const publishedRoot = NodePath.join(fixture.root, 'published')
+      const publishedRoot = NodePath.join(fixture.root, 'repos', 'owned')
       const buck2Path = NodePath.join(publishedRoot, '.buck2')
-      await mkdir(buck2Path, { recursive: true })
+      const megarepoPath = NodePath.join(fixture.root, '.megarepo')
+      await Promise.all([
+        mkdir(buck2Path, { recursive: true }),
+        mkdir(megarepoPath, { recursive: true }),
+      ])
       await cp(result.projectionPath, NodePath.join(buck2Path, 'capabilities'), {
         recursive: true,
       })
       await chmod(buck2Path, 0o555)
-      const rootsPath = NodePath.join(buck2Path, 'capability-roots')
+      const capabilityRootsPath = NodePath.join(megarepoPath, 'capability-roots')
+      const rootsPath = NodePath.join(capabilityRootsPath, 'owned')
       const generationRoot = NodePath.join(rootsPath, result.projectionDigest)
       const fsyncEvents: string[] = []
       const durableRuntime: CompositionCapabilityRuntime = {
@@ -341,7 +346,8 @@ describe('composition capability resolver', () => {
       }
 
       await retainCompositionCapabilityProjection({
-        memberRoot: publishedRoot,
+        workspaceRoot: fixture.root,
+        memberKey: 'owned',
         resolution: result,
         runtime: durableRuntime,
       })
@@ -357,21 +363,25 @@ describe('composition capability resolver', () => {
         ),
       )
       await retainCompositionCapabilityProjection({
-        memberRoot: publishedRoot,
+        workspaceRoot: fixture.root,
+        memberKey: 'owned',
         resolution: result,
         runtime: durableRuntime,
       })
       expect(fsyncEvents).toEqual([
         `CapabilityLinks:${generationRoot}`,
         `GenerationLink:${rootsPath}`,
-        `RootsLink:${buck2Path}`,
+        `MemberLink:${capabilityRootsPath}`,
+        `RootsLink:${megarepoPath}`,
         `CapabilityLinks:${generationRoot}`,
         `GenerationLink:${rootsPath}`,
-        `RootsLink:${buck2Path}`,
+        `MemberLink:${capabilityRootsPath}`,
+        `RootsLink:${megarepoPath}`,
       ])
       expect(await readdir(rootsPath)).toContain('a'.repeat(64))
       await pruneCompositionCapabilityProjectionRoots({
-        memberRoot: publishedRoot,
+        workspaceRoot: fixture.root,
+        memberKey: 'owned',
         resolution: result,
         runtime: fixture.runtime,
       })
@@ -388,6 +398,7 @@ describe('composition capability resolver', () => {
         result.projectionDigest,
         'operator-recovery',
       ])
+      expect(await readdir(buck2Path)).not.toContain('capability-roots')
       expect(await readFile(fixture.nixLog, 'utf8')).toContain(
         `build --out-link ${aRoot} ${bashOutput}\n` +
           `build --out-link ${zRoot} ${bashOutput}\n` +
@@ -395,7 +406,9 @@ describe('composition capability resolver', () => {
           `build --out-link ${zRoot} ${bashOutput}\n`,
       )
       await Promise.all(
-        [generationRoot, recoveryRoot, rootsPath, buck2Path].map((path) => chmod(path, 0o755)),
+        [generationRoot, recoveryRoot, rootsPath, capabilityRootsPath, megarepoPath, buck2Path].map(
+          (path) => chmod(path, 0o755),
+        ),
       )
       await result.release()
     } finally {
@@ -408,22 +421,24 @@ describe('composition capability resolver', () => {
     try {
       const result = await resolve(fixture)
       if (result._tag !== 'Resolved') throw new Error('unreachable')
-      const publishedRoot = NodePath.join(fixture.root, 'published')
+      const publishedRoot = NodePath.join(fixture.root, 'repos', 'fixture')
       const buck2Path = NodePath.join(publishedRoot, '.buck2')
-      await mkdir(buck2Path, { recursive: true })
+      const megarepoPath = NodePath.join(fixture.root, '.megarepo')
+      await Promise.all([
+        mkdir(buck2Path, { recursive: true }),
+        mkdir(megarepoPath, { recursive: true }),
+      ])
       await cp(result.projectionPath, NodePath.join(buck2Path, 'capabilities'), {
         recursive: true,
       })
-      const lostRoot = NodePath.join(
-        buck2Path,
-        'capability-roots',
-        result.projectionDigest,
-        'buck2',
-      )
+      const capabilityRootsPath = NodePath.join(megarepoPath, 'capability-roots')
+      const rootsPath = NodePath.join(capabilityRootsPath, 'fixture')
+      const lostRoot = NodePath.join(rootsPath, result.projectionDigest, 'buck2')
 
       const retentionError = await failure(
         retainCompositionCapabilityProjection({
-          memberRoot: publishedRoot,
+          workspaceRoot: fixture.root,
+          memberKey: 'fixture',
           resolution: result,
           runtime: {
             ...fixture.runtime,
@@ -439,7 +454,8 @@ describe('composition capability resolver', () => {
       await expect(lstat(lostRoot)).rejects.toMatchObject({ code: 'ENOENT' })
       const syncedParents = new Set<string>()
       await retainCompositionCapabilityProjection({
-        memberRoot: publishedRoot,
+        workspaceRoot: fixture.root,
+        memberKey: 'fixture',
         resolution: result,
         runtime: {
           ...fixture.runtime,
@@ -449,15 +465,17 @@ describe('composition capability resolver', () => {
           },
         },
       })
-      const rootsPath = NodePath.join(buck2Path, 'capability-roots')
       const generationRoot = NodePath.join(rootsPath, result.projectionDigest)
       if (syncedParents.has(rootsPath) === false) {
         await rm(generationRoot, { recursive: true, force: true })
       }
-      if (syncedParents.has(buck2Path) === false) {
+      if (syncedParents.has(capabilityRootsPath) === false) {
         await rm(rootsPath, { recursive: true, force: true })
       }
-      expect(syncedParents).toEqual(new Set([rootsPath, buck2Path]))
+      if (syncedParents.has(megarepoPath) === false) {
+        await rm(capabilityRootsPath, { recursive: true, force: true })
+      }
+      expect(syncedParents).toEqual(new Set([rootsPath, capabilityRootsPath, megarepoPath]))
       expect((await lstat(lostRoot)).isSymbolicLink()).toBe(true)
       await result.release()
     } finally {
@@ -465,30 +483,36 @@ describe('composition capability resolver', () => {
     }
   })
 
-  it('restores a protected Buck parent mode when root verification fails', async () => {
+  it('restores a protected workspace-state parent mode when root verification fails', async () => {
     const fixture = await makeFixture()
     try {
       const result = await resolve(fixture)
       if (result._tag !== 'Resolved') throw new Error('unreachable')
-      const publishedRoot = NodePath.join(fixture.root, 'published')
+      const publishedRoot = NodePath.join(fixture.root, 'repos', 'fixture')
       const buck2Path = NodePath.join(publishedRoot, '.buck2')
-      await mkdir(buck2Path, { recursive: true })
+      const megarepoPath = NodePath.join(fixture.root, '.megarepo')
+      await Promise.all([
+        mkdir(buck2Path, { recursive: true }),
+        mkdir(megarepoPath, { recursive: true }),
+      ])
       await cp(result.projectionPath, NodePath.join(buck2Path, 'capabilities'), {
         recursive: true,
       })
-      await chmod(buck2Path, 0o555)
+      await Promise.all([chmod(buck2Path, 0o555), chmod(megarepoPath, 0o555)])
       await writeFile(fixture.nixOutputPath, `${alternateOutput}\n`)
 
       const error = await failure(
         retainCompositionCapabilityProjection({
-          memberRoot: publishedRoot,
+          workspaceRoot: fixture.root,
+          memberKey: 'fixture',
           resolution: result,
           runtime: fixture.runtime,
         }),
       )
       expect(error.reason).toBe('ProjectionFailure')
+      expect((await lstat(megarepoPath)).mode & 0o777).toBe(0o555)
       expect((await lstat(buck2Path)).mode & 0o777).toBe(0o555)
-      await chmod(buck2Path, 0o755)
+      await Promise.all([chmod(megarepoPath, 0o755), chmod(buck2Path, 0o755)])
       await result.release()
     } finally {
       await clean(fixture)
@@ -514,15 +538,19 @@ describe('composition capability resolver', () => {
       if (expected._tag !== 'Resolved' || published._tag !== 'Resolved') {
         throw new Error('unreachable')
       }
-      const publishedRoot = NodePath.join(fixture.root, 'published')
-      await mkdir(NodePath.join(publishedRoot, '.buck2'), { recursive: true })
+      const publishedRoot = NodePath.join(fixture.root, 'repos', 'fixture')
+      await Promise.all([
+        mkdir(NodePath.join(publishedRoot, '.buck2'), { recursive: true }),
+        mkdir(NodePath.join(fixture.root, '.megarepo'), { recursive: true }),
+      ])
       await cp(published.projectionPath, NodePath.join(publishedRoot, '.buck2', 'capabilities'), {
         recursive: true,
       })
       const priorRoot = NodePath.join(
-        publishedRoot,
-        '.buck2',
+        fixture.root,
+        '.megarepo',
         'capability-roots',
+        'fixture',
         expected.projectionDigest,
       )
       await mkdir(priorRoot, { recursive: true })
@@ -530,7 +558,8 @@ describe('composition capability resolver', () => {
 
       const error = await failure(
         retainCompositionCapabilityProjection({
-          memberRoot: publishedRoot,
+          workspaceRoot: fixture.root,
+          memberKey: 'fixture',
           resolution: expected,
           runtime: fixture.runtime,
         }),
