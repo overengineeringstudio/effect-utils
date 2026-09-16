@@ -56,7 +56,7 @@ const expectedPublications = [
     module: 'notion.js',
     productKind: 'cli',
     productName: 'notion-cli',
-    runtimeKind: 'node',
+    runtimeKind: 'bun',
   },
   {
     label: '//packages/@overeng/notion-cli:notion-db-candidate',
@@ -98,7 +98,7 @@ const expectedPublications = [
     module: 'tui-stories.js',
     productKind: 'cli',
     productName: 'tui-stories',
-    runtimeKind: 'node',
+    runtimeKind: 'bun',
   },
 ] as const
 
