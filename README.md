@@ -112,7 +112,6 @@ Key features:
 - **Read-only protection** - Generated files are read-only by default
 - **CI integration** - `--check` mode verifies files are up to date
 
-
 ## Quick Start
 
 ### Enter the dev shell

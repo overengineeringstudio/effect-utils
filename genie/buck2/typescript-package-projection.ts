@@ -2,11 +2,11 @@ import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
+import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import {
   createGenieOutput,
   type GenieOutput,
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
-import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 import { javaScriptActionRuntime, packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
