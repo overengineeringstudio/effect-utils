@@ -194,16 +194,16 @@ export const compositionApplyRuntimeFromEnv = ({
           },
         }),
     },
-    retainCapabilityRoots: ({ workspaceRoot, memberKey, resolution }) =>
+    retainCapabilityRoots: ({ workspaceRoot: retainedWorkspaceRoot, memberKey, resolution }) =>
       retainCompositionCapabilityProjection({
-        workspaceRoot,
+        workspaceRoot: retainedWorkspaceRoot,
         memberKey,
         resolution,
         runtime: capabilityRuntime,
       }),
-    pruneCapabilityRoots: ({ workspaceRoot, memberKey, resolution }) =>
+    pruneCapabilityRoots: ({ workspaceRoot: prunedWorkspaceRoot, memberKey, resolution }) =>
       pruneCompositionCapabilityProjectionRoots({
-        workspaceRoot,
+        workspaceRoot: prunedWorkspaceRoot,
         memberKey,
         resolution,
         runtime: capabilityRuntime,
