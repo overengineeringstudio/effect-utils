@@ -91,7 +91,7 @@ let
       pkgs.gh
       pkgs.git
     ];
-    smokeTestArgs = [ "--version" ];
+    smokeTestArgs = [ "--help" ];
   };
   megarepo = mk "megarepo" {
     binaryName = "mr";
