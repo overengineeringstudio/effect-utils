@@ -1561,6 +1561,15 @@ const applyComposition = async ({
           await runtime.publisherRuntime.assertCapabilityProjection(input)
         },
       },
+      prepareExternalState: async () => {
+        const prepared = await runtime.prepareWatchmanProjectReconciliation({
+          workspaceRoot: request.workspaceRoot,
+        })
+        return {
+          externalState: prepared.state,
+          afterAuthorityPublished: prepared.reconcile,
+        }
+      },
       afterAuthorityRollback: runtime.restoreWatchmanProjectState,
     } satisfies PublishCompositionRootOptions
 
@@ -1570,21 +1579,7 @@ const applyComposition = async ({
       const watchmanConfigChanged =
         (rootPlan._tag === 'Create' || rootPlan._tag === 'Update') &&
         rootPlan.files.some((file) => file.path === '.watchmanconfig')
-      const watchmanReconciliation =
-        watchmanConfigChanged === true
-          ? await runtime.prepareWatchmanProjectReconciliation({
-              workspaceRoot: request.workspaceRoot,
-            })
-          : undefined
-      const publicationOptions = {
-        ...rootPublicationOptions,
-        ...(watchmanReconciliation === undefined
-          ? {}
-          : {
-              externalState: watchmanReconciliation.state,
-              afterAuthorityPublished: watchmanReconciliation.reconcile,
-            }),
-      } satisfies PublishCompositionRootOptions
+      const publicationOptions = rootPublicationOptions
       if (
         rootPlan._tag === 'Create' ||
         watchmanConfigChanged === true ||
