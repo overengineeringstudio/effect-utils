@@ -152,6 +152,9 @@ const fake = ({
     teardownMount: async () => {
       throw new Error('unexpected teardown')
     },
+    removeMemberCapabilityRoots: async () => {
+      throw new Error('unexpected capability root removal')
+    },
     inspectMountedMember: async () => ({ identity: { dev: 1, ino: 2 }, metadata: metadata() }),
     recoverOverlay: async () => {
       throw new Error('unexpected recovery')
