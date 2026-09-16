@@ -647,8 +647,8 @@ describe('composition apply integration', () => {
       )
       expect(result._tag).toBe('Applied')
       if (result._tag !== 'Applied') return
-      expect(result.members.filter((member) => member.owned === false)[0]?.overlays).toHaveLength(1)
       const mountedMembers = result.members.filter((member) => member.owned === false)
+      expect(mountedMembers[0]?.overlays).toHaveLength(1)
       expect(mountedMembers).toHaveLength(1)
       for (const member of mountedMembers) {
         expect(member.mount?._tag).toBe('AlreadyCurrent')

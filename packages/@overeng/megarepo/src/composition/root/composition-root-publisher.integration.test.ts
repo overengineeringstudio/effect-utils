@@ -20,7 +20,7 @@ import * as NodePath from 'node:path'
 import { promisify } from 'node:util'
 
 import { describe, it } from '@effect/vitest'
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { CompositionGeneratorConfig, EffectPath } from '../../core/config.ts'
@@ -37,6 +37,7 @@ import {
   BUCK_MEMBER_MANIFEST_FILENAME,
   COMPOSITION_GENERATION_MANIFEST_PATH,
   encodeBuckMemberManifestJson,
+  CompositionGenerationManifestSchema,
   generateCompositionRoot,
   type BuckMemberManifest,
 } from './composition-root.ts'
@@ -1622,12 +1623,15 @@ describe('composition root publisher', () => {
         const watchmanPath = NodePath.join(fixture.root, '.watchmanconfig')
         const userFilePath = NodePath.join(fixture.root, 'user-owned.txt')
         yield* Effect.promise(async () => {
-          const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
-            schemaVersion: 1
-            files: Array<{ path: string; mode: number; sha256: string }>
+          const manifestCodec = Schema.fromJsonString(CompositionGenerationManifestSchema)
+          const manifest = Schema.decodeUnknownSync(manifestCodec)(
+            await readFile(manifestPath, 'utf8'),
+          )
+          const legacyManifest = {
+            ...manifest,
+            files: manifest.files.filter((file) => file.path !== '.watchmanconfig'),
           }
-          manifest.files = manifest.files.filter((file) => file.path !== '.watchmanconfig')
-          await writeFile(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
+          await writeFile(manifestPath, `${Schema.encodeSync(manifestCodec)(legacyManifest)}\n`)
           await writeFile(watchmanPath, '{"user_owned":true}\n')
           await writeFile(userFilePath, 'keep\n')
         })

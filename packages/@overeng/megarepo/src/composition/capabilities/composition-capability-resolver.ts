@@ -89,6 +89,7 @@ export interface RetainCompositionCapabilityProjectionInput {
   readonly resolution: CompositionCapabilityResolutionHandle
   readonly runtime: CompositionCapabilityRuntime
 }
+/** Workspace-owned capability roots to remove after verified member teardown. */
 export interface RemoveCompositionCapabilityMemberRootsInput {
   readonly workspaceRoot: string
   readonly memberKey: string
