@@ -826,10 +826,12 @@ in
   tasks."lint:check:genie".after = [ "buck2:editor:bootstrap" ];
   tasks."genie:watch".after = [ "buck2:editor:bootstrap" ];
   tasks."lint:check:lockfile".description =
-    lib.mkForce "Verify lockfile and package specifiers through source-side Genie freshness";
+    lib.mkForce "Verify pnpm-lock.yaml matches generated package.json specifiers";
   tasks."lint:check:lockfile".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:lockfile".exec = lib.mkForce (
-    trace.exec "lint:check:lockfile" "exec genie --check"
+    trace.exec "lint:check:lockfile" ''
+      pnpm install --frozen-lockfile --ignore-scripts --lockfile-only --offline
+    ''
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
   tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish" ];
