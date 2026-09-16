@@ -771,21 +771,48 @@ export const encodeCompositionRootOutput = (
 ): typeof CompositionRootOutputSchema.Encoded =>
   Schema.encodeSync(CompositionRootOutputSchema, strictParseOptions)(output)
 
+const ROOT_GENERATED_DIRECTORIES = [
+  '.devenv',
+  '.megarepo',
+  'buck-out',
+  'node_modules',
+  'target',
+  'tmp',
+] as const
+
 const ROOT_PROJECT_IGNORES = [
   '.git',
-  '.devenv',
-  'node_modules',
+  ...ROOT_GENERATED_DIRECTORIES.filter((directory) => directory !== '.megarepo'),
   '**/node_modules',
   '**/node_modules/**',
-  'target',
   '**/target',
   '**/target/**',
-  'tmp',
-  'buck-out',
   'repos/.staging-*',
   '.buck2/capabilities.candidate.*',
 ] as const
 
+const isConcreteWatchmanIgnore = (path: string): boolean =>
+  /[*?[\]{}]/u.test(path) === false &&
+  path !== '.git' &&
+  path.endsWith('/.git') === false &&
+  path !== '.buck2/capabilities' &&
+  path.startsWith('.buck2/capabilities/') === false
+
+const watchmanIgnoreDirectories = (
+  input: NormalizedCompositionRootInput,
+): ReadonlyArray<string> =>
+  canonicalStringSet([
+    ...ROOT_GENERATED_DIRECTORIES,
+    ...input.additionalProjectIgnores.filter(isConcreteWatchmanIgnore),
+    ...input.members.flatMap(({ manifest }) =>
+      manifest.projectIgnore
+        .filter(isConcreteWatchmanIgnore)
+        .map((directory) => `${manifest.mount}/${directory}`),
+    ),
+  ])
+
+const renderWatchmanConfig = (input: NormalizedCompositionRootInput): string =>
+  `${JSON.stringify({ ignore_dirs: watchmanIgnoreDirectories(input) }, undefined, 2)}\n`
 const utf8 = (value: string): Uint8Array => textEncoder.encode(value)
 const sha256 = (bytes: Uint8Array): string =>
   `sha256:${createHash('sha256').update(bytes).digest('hex')}`
@@ -940,7 +967,11 @@ export const generateCompositionRoot = (rawInput: CompositionRootInput): Composi
   })
   const ownedFiles: ReadonlyArray<GeneratedCompositionFile> = [
     generatedFile({ path: '.buckroot', mode: 0o644, content: '' }),
-    generatedFile({ path: '.watchmanconfig', mode: 0o644, content: '{}\n' }),
+    generatedFile({
+      path: '.watchmanconfig',
+      mode: 0o644,
+      content: renderWatchmanConfig(input),
+    }),
     generatedFile({ path: 'BUCK', mode: 0o644, content: '' }),
     generatedFile({
       path: '.megarepo/bin/buck2',

@@ -198,6 +198,9 @@ All notable changes to this project will be documented in this file.
 - **Genie CI**: Stop exposing `GITHUB_TOKEN` through the standard job
   environment. GitHub CLI and authenticated Nix steps now receive it only in
   their step-local environment.
+- **@overeng/megarepo**: Generate bounded, composition-owned Watchman root
+  configuration and reload only the affected project watch when that
+  configuration changes, preserving member source and capability invalidation.
 
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
