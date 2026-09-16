@@ -111,7 +111,7 @@ const watchmanProjectIsWatched = async ({
     response === null ||
     !('roots' in response) ||
     Array.isArray(response.roots) === false ||
-    response.roots.some((root) => typeof root !== 'string')
+    response.roots.some((root) => typeof root !== 'string') === true
   ) {
     throw new TypeError('Watchman watch-list did not return a string root list')
   }
@@ -125,10 +125,25 @@ const deleteWatchmanProjectIfWatched = async ({
   readonly watchmanPath: string
   readonly workspaceRoot: string
 }): Promise<void> => {
-  if (await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })) {
+  if ((await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })) === true) {
     await watchmanCommand({ watchmanPath, args: ['watch-del', workspaceRoot] })
   }
 }
+
+const watchmanReconciliationAndCleanupFailure = ({
+  cause,
+  cleanupCause,
+  workspaceRoot,
+}: {
+  readonly cause: unknown
+  readonly cleanupCause: unknown
+  readonly workspaceRoot: string
+}): AggregateError =>
+  new AggregateError(
+    [cause, cleanupCause],
+    `Watchman project reconciliation and cleanup failed for ${workspaceRoot}`,
+    { cause: cleanupCause },
+  )
 
 const setWatchmanProjectWatched = async ({
   watchmanPath,
@@ -159,10 +174,7 @@ const setWatchmanProjectWatched = async ({
     try {
       await deleteWatchmanProjectIfWatched({ watchmanPath, workspaceRoot })
     } catch (cleanupCause) {
-      throw new AggregateError(
-        [cause, cleanupCause],
-        `Watchman project reconciliation and cleanup failed for ${workspaceRoot}`,
-      )
+      throw watchmanReconciliationAndCleanupFailure({ cause, cleanupCause, workspaceRoot })
     }
     throw cause
   }
@@ -177,7 +189,7 @@ export const reconcileWatchmanProject = async ({
   readonly workspaceRoot: string
 }): Promise<void> => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true })
 
-
+/** Captured Watchman registration state and the exact-root reconcile action for one publication. */
 export interface WatchmanProjectReconciliation {
   readonly state: {
     readonly _tag: 'WatchmanProject'
@@ -186,6 +198,7 @@ export interface WatchmanProjectReconciliation {
   }
   readonly reconcile: () => Promise<void>
 }
+/** Capture prior registration state before publishing root files. */
 export const prepareWatchmanProjectReconciliation = async ({
   watchmanPath,
   workspaceRoot,

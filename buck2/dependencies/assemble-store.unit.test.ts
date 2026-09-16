@@ -59,8 +59,8 @@ const census = async (root: string): Promise<TreeCensus> => {
   const files: string[] = []
   const links: string[] = []
   const visit = async (directory: string, prefix: string): Promise<void> => {
-    for (const entry of (await readdir(directory, { withFileTypes: true })).toSorted((left, right) =>
-      left.name < right.name ? -1 : 1,
+    for (const entry of (await readdir(directory, { withFileTypes: true })).toSorted(
+      (left, right) => (left.name < right.name ? -1 : 1),
     )) {
       const path = join(directory, entry.name)
       const display = prefix === '' ? entry.name : `${prefix}/${entry.name}`
@@ -210,9 +210,7 @@ describe('normalized store entry assembly', () => {
     await expect(
       assembleStoreEntry({
         bins: [],
-        dependencies: [
-          { entryDir: declaredEntry, name: 'missing', packageName: 'missing' },
-        ],
+        dependencies: [{ entryDir: declaredEntry, name: 'missing', packageName: 'missing' }],
         output: join(root, 'entry'),
         packageName: 'left',
         packageTree: makePackage({ name: 'left', root }),
@@ -231,9 +229,7 @@ describe('normalized store entry assembly', () => {
     await expect(
       assembleStoreEntry({
         bins: [],
-        dependencies: [
-          { entryDir: declaredEntry, name: 'escaped', packageName: 'escaped' },
-        ],
+        dependencies: [{ entryDir: declaredEntry, name: 'escaped', packageName: 'escaped' }],
         output: join(root, 'entry'),
         packageName: 'left',
         packageTree: makePackage({ name: 'left', root }),
@@ -270,7 +266,11 @@ describe('strongly connected component assembly', () => {
       { name: 'left', sourceStoreKey: 'right@1.0.0', targetStoreKey: 'left@1.0.0' },
     ],
     members: [
-      { packageName: 'left', packageTree: makePackage({ name: 'left', root }), storeKey: 'left@1.0.0' },
+      {
+        packageName: 'left',
+        packageTree: makePackage({ name: 'left', root }),
+        storeKey: 'left@1.0.0',
+      },
       {
         packageName: 'right',
         packageTree: makePackage({ name: 'right', root }),
@@ -290,10 +290,7 @@ describe('strongly connected component assembly', () => {
       'left@1.0.0/node_modules/left/index.js',
       'right@1.0.0/node_modules/right/index.js',
     ])
-    expect(links).toEqual([
-      'left@1.0.0/node_modules/right',
-      'right@1.0.0/node_modules/left',
-    ])
+    expect(links).toEqual(['left@1.0.0/node_modules/right', 'right@1.0.0/node_modules/left'])
     expect(await readlink(join(options.output, 'left@1.0.0', 'node_modules', 'right'))).toBe(
       '../../right@1.0.0/node_modules/right',
     )
@@ -558,7 +555,14 @@ describe('store assembly command line', () => {
       ]),
     ).rejects.toThrow(/--package-tree and --package-override are mutually exclusive/)
     await expect(
-      runStoreAssemblyCli(['--mode', 'entry', '--output', join(root, 'none'), '--package-name', 'left']),
+      runStoreAssemblyCli([
+        '--mode',
+        'entry',
+        '--output',
+        join(root, 'none'),
+        '--package-name',
+        'left',
+      ]),
     ).rejects.toThrow(/missing --package-tree/)
   })
 

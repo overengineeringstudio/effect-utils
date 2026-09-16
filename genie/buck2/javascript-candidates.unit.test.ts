@@ -2,8 +2,8 @@ import process from 'node:process'
 
 import { describe, expect, it } from 'vitest'
 
-import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import releaseTargetsProjection from '../../nix/buck2-products/targets.json.genie.ts'
+import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { withJavaScriptCandidates } from './javascript-candidates.ts'
 import {
   javaScriptProductPublications,

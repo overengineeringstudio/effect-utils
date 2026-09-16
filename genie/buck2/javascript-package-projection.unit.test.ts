@@ -38,9 +38,7 @@ describe('portable JavaScript product cache policy', () => {
 
   it('admits deterministic local product actions under the root shared-cache policy', () => {
     for (const source of [packageTools, productRules]) {
-      expect(source).toContain(
-        'load("//buck2/platforms:defs.bzl",',
-      )
+      expect(source).toContain('load("//buck2/platforms:defs.bzl",')
       expect(source).toContain('"root_allow_cache_uploads"')
       expect(source).toContain('"root_remote_cache_enabled"')
       expect(source).toContain(

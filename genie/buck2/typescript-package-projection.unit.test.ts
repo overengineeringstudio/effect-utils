@@ -721,11 +721,7 @@ describe('derived test collection targets', () => {
     expect(lane?.unboundedFiles).toEqual([])
     expect(lane?.unboundedTaskName).toBeUndefined()
     expect(admitted?.output).toContain(
-      [
-        'vitest_test(',
-        '    name = "test",',
-        '    package_tree = ":test_package_tree",',
-      ].join('\n'),
+      ['vitest_test(', '    name = "test",', '    package_tree = ":test_package_tree",'].join('\n'),
     )
     expect(admitted?.output).toContain(
       [

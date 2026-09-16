@@ -808,9 +808,7 @@ const isConcreteWatchmanIgnore = (path: string): boolean =>
   path.endsWith('/.git') === false &&
   containsCapabilityProjection(path) === false
 
-const watchmanIgnoreDirectories = (
-  input: NormalizedCompositionRootInput,
-): ReadonlyArray<string> =>
+const watchmanIgnoreDirectories = (input: NormalizedCompositionRootInput): ReadonlyArray<string> =>
   canonicalStringSet([
     ...ROOT_GENERATED_DIRECTORIES,
     ...input.additionalProjectIgnores.filter(isConcreteWatchmanIgnore),
@@ -819,9 +817,7 @@ const watchmanIgnoreDirectories = (
       ...manifest.projectIgnore
         .filter(isConcreteWatchmanIgnore)
         .map((directory) => `${manifest.mount}/${directory}`),
-      ...manifest.distOverlays.map(
-        ({ destination }) => `${manifest.mount}/${destination}`,
-      ),
+      ...manifest.distOverlays.map(({ destination }) => `${manifest.mount}/${destination}`),
     ]),
   ])
 

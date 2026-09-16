@@ -2,9 +2,7 @@
   "products": [
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/otel-scrape"
-        ],
+        "entrypoints": ["bin/otel-scrape"],
         "name": "otel-scrape",
         "payload": {
           "digest": {
@@ -22,10 +20,7 @@
         },
         "runtime": {
           "architecture": "arm64",
-          "dylibs": [
-            "/usr/lib/libSystem.B.dylib",
-            "/usr/lib/libiconv.2.dylib"
-          ],
+          "dylibs": ["/usr/lib/libSystem.B.dylib", "/usr/lib/libiconv.2.dylib"],
           "inspectionContract": "mach-o-dynamic/v1",
           "installNamePolicy": "system-only/v1",
           "kind": "mach-o-dynamic",
@@ -50,9 +45,7 @@
     },
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/otel-scrape"
-        ],
+        "entrypoints": ["bin/otel-scrape"],
         "name": "otel-scrape",
         "payload": {
           "digest": {
@@ -74,11 +67,7 @@
           "interpreter": "/lib/ld-linux-aarch64.so.1",
           "kind": "elf-dynamic",
           "machine": "aarch64",
-          "neededLibraries": [
-            "ld-linux-aarch64.so.1",
-            "libc.so.6",
-            "libgcc_s.so.1"
-          ],
+          "neededLibraries": ["ld-linux-aarch64.so.1", "libc.so.6", "libgcc_s.so.1"],
           "rpathPolicy": "empty/v1",
           "symbolVersionFloors": [
             "GCC_3.0",
@@ -113,9 +102,7 @@
     },
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/otel-scrape"
-        ],
+        "entrypoints": ["bin/otel-scrape"],
         "name": "otel-scrape",
         "payload": {
           "digest": {
@@ -137,11 +124,7 @@
           "interpreter": "/lib64/ld-linux-x86-64.so.2",
           "kind": "elf-dynamic",
           "machine": "x86_64",
-          "neededLibraries": [
-            "ld-linux-x86-64.so.2",
-            "libc.so.6",
-            "libgcc_s.so.1"
-          ],
+          "neededLibraries": ["ld-linux-x86-64.so.2", "libc.so.6", "libgcc_s.so.1"],
           "rpathPolicy": "empty/v1",
           "symbolVersionFloors": [
             "GCC_3.0",
@@ -184,9 +167,7 @@
     },
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/otelite"
-        ],
+        "entrypoints": ["bin/otelite"],
         "name": "otelite",
         "payload": {
           "digest": {
@@ -204,10 +185,7 @@
         },
         "runtime": {
           "architecture": "arm64",
-          "dylibs": [
-            "/usr/lib/libSystem.B.dylib",
-            "/usr/lib/libiconv.2.dylib"
-          ],
+          "dylibs": ["/usr/lib/libSystem.B.dylib", "/usr/lib/libiconv.2.dylib"],
           "inspectionContract": "mach-o-dynamic/v1",
           "installNamePolicy": "system-only/v1",
           "kind": "mach-o-dynamic",
@@ -232,9 +210,7 @@
     },
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/otelite"
-        ],
+        "entrypoints": ["bin/otelite"],
         "name": "otelite",
         "payload": {
           "digest": {
@@ -256,12 +232,7 @@
           "interpreter": "/lib/ld-linux-aarch64.so.1",
           "kind": "elf-dynamic",
           "machine": "aarch64",
-          "neededLibraries": [
-            "ld-linux-aarch64.so.1",
-            "libc.so.6",
-            "libgcc_s.so.1",
-            "libm.so.6"
-          ],
+          "neededLibraries": ["ld-linux-aarch64.so.1", "libc.so.6", "libgcc_s.so.1", "libm.so.6"],
           "rpathPolicy": "empty/v1",
           "symbolVersionFloors": [
             "GCC_3.0",
@@ -296,9 +267,7 @@
     },
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/otelite"
-        ],
+        "entrypoints": ["bin/otelite"],
         "name": "otelite",
         "payload": {
           "digest": {
@@ -320,12 +289,7 @@
           "interpreter": "/lib64/ld-linux-x86-64.so.2",
           "kind": "elf-dynamic",
           "machine": "x86_64",
-          "neededLibraries": [
-            "ld-linux-x86-64.so.2",
-            "libc.so.6",
-            "libgcc_s.so.1",
-            "libm.so.6"
-          ],
+          "neededLibraries": ["ld-linux-x86-64.so.2", "libc.so.6", "libgcc_s.so.1", "libm.so.6"],
           "rpathPolicy": "empty/v1",
           "symbolVersionFloors": [
             "GCC_3.0",
@@ -370,9 +334,7 @@
     },
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/typescript-api-server"
-        ],
+        "entrypoints": ["bin/typescript-api-server"],
         "name": "typescript-api-server",
         "payload": {
           "digest": {
@@ -420,9 +382,7 @@
     },
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/typescript-api-server"
-        ],
+        "entrypoints": ["bin/typescript-api-server"],
         "name": "typescript-api-server",
         "payload": {
           "digest": {
@@ -461,9 +421,7 @@
     },
     {
       "descriptor": {
-        "entrypoints": [
-          "bin/typescript-api-server"
-        ],
+        "entrypoints": ["bin/typescript-api-server"],
         "name": "typescript-api-server",
         "payload": {
           "digest": {

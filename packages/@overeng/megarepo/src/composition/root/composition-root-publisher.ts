@@ -225,9 +225,7 @@ export interface PublishCompositionRootOptions {
     readonly afterAuthorityPublished: () => Promise<void>
   }>
   /** Restores persisted external state after filesystem authority, before recovery metadata clears. */
-  readonly afterAuthorityRollback?: (
-    state: CompositionPublicationExternalState,
-  ) => Promise<void>
+  readonly afterAuthorityRollback?: (state: CompositionPublicationExternalState) => Promise<void>
 }
 
 /** Read-only composition-root planning inputs. */
@@ -1135,9 +1133,7 @@ const rollbackTransaction = async ({
     readonly transaction: CompositionPublicationTransaction
     readonly snapshot: FileSnapshot
   }
-  readonly restoreExternalState?: (
-    state: CompositionPublicationExternalState,
-  ) => Promise<void>
+  readonly restoreExternalState?: (state: CompositionPublicationExternalState) => Promise<void>
 }): Promise<void> => {
   const config = transactionRecord.transaction.files.find((file) => file.path === '.buckconfig')!
   const nonConfig = transactionRecord.transaction.files.filter(
@@ -1215,9 +1211,7 @@ const recoverTransaction = async ({
 }: {
   readonly workspaceRoot: string
   readonly lock: CompositionPublisherLock
-  readonly restoreExternalState?: (
-    state: CompositionPublicationExternalState,
-  ) => Promise<void>
+  readonly restoreExternalState?: (state: CompositionPublicationExternalState) => Promise<void>
 }): Promise<void> => {
   const [record, committedRecord] = await Promise.all([
     readTransactionMaybe(workspaceRoot),
@@ -1315,9 +1309,7 @@ const acquireLock = async ({
 }: {
   readonly workspaceRoot: string
   readonly options: CompositionPublisherLockOptions
-  readonly restoreExternalState?: (
-    state: CompositionPublicationExternalState,
-  ) => Promise<void>
+  readonly restoreExternalState?: (state: CompositionPublicationExternalState) => Promise<void>
 }): Promise<{ readonly lock: CompositionPublisherLock; readonly snapshot: FileSnapshot }> => {
   let requested: CompositionPublisherLock
   try {

@@ -40,7 +40,7 @@ const tarEntries = (tarball) => {
   const archive = gunzipSync(tarball, { maxOutputLength: maxTarUncompressedBytes })
   const entries = []
 
-  for (let offset = 0; offset + 512 <= archive.length; ) {
+  for (let offset = 0; offset + 512 <= archive.length;) {
     const header = archive.subarray(offset, offset + 512)
     if (header.every((byte) => byte === 0) === true) break
 
