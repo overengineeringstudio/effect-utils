@@ -83,6 +83,7 @@ interface FixtureOptions {
   readonly releaseFailures?: ReadonlyArray<string>
   readonly retainFailure?: string
   readonly publishedMemberKeys?: ReadonlyArray<string>
+  readonly capabilityRootMemberKeys?: ReadonlyArray<string>
   readonly teardownFailure?: string
   readonly rootRemovalFailure?: string
 }
@@ -265,6 +266,7 @@ const fixture = async (options: FixtureOptions = {}) => {
       return published
     },
     listPublishedMemberKeys: async () => options.publishedMemberKeys ?? [],
+    listCapabilityRootMemberKeys: async () => options.capabilityRootMemberKeys ?? [],
     teardownMount: async ({ memberKey }) => {
       calls.push(`teardown:${memberKey}`)
       if (options.teardownFailure === memberKey) throw new Error('teardown failed')
@@ -611,6 +613,25 @@ describe('composition apply integration', () => {
       expect(value.calls.indexOf('teardown:retired')).toBeLessThan(
         value.calls.indexOf('remove-roots:retired'),
       )
+      expect(value.calls.indexOf('remove-roots:retired')).toBeLessThan(
+        value.calls.indexOf('cap:owned'),
+      )
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('retries retired capability-root removal after its mount is already absent', async () => {
+    const value = await fixture({ capabilityRootMemberKeys: ['retired'] })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      expect(value.calls.filter((call) => call.startsWith('teardown:'))).toEqual([])
+      expect(value.calls.filter((call) => call.startsWith('remove-roots:'))).toEqual([
+        'remove-roots:retired',
+      ])
       expect(value.calls.indexOf('remove-roots:retired')).toBeLessThan(
         value.calls.indexOf('cap:owned'),
       )
