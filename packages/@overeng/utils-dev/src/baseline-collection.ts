@@ -423,6 +423,9 @@ export const decodeCollectionArtifact = ({
     if (typeof file !== 'string' || typeof name !== 'string') {
       return { error: `${artifactPath}: tests[${index}] is not a { file, name } record` }
     }
+    if (name.length === 0) {
+      return { error: `${artifactPath}: tests[${index}].name must not be empty` }
+    }
     if (isNormalizedRelativePath(file) === false) {
       return {
         error: `${artifactPath}: tests[${index}].file ${JSON.stringify(file)} is not a normalized package-relative path`,
