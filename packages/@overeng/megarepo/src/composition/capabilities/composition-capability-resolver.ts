@@ -89,6 +89,11 @@ export interface RetainCompositionCapabilityProjectionInput {
   readonly resolution: CompositionCapabilityResolutionHandle
   readonly runtime: CompositionCapabilityRuntime
 }
+export interface RemoveCompositionCapabilityMemberRootsInput {
+  readonly workspaceRoot: string
+  readonly memberKey: string
+  readonly runtime: CompositionCapabilityRuntime
+}
 
 /** Validated dry-run plan or completed scratch projection. */
 export type ResolveCompositionCapabilitiesResult =
@@ -125,6 +130,10 @@ export const retainCompositionCapabilityProjection = (
 export const pruneCompositionCapabilityProjectionRoots = (
   input: RetainCompositionCapabilityProjectionInput,
 ): Promise<void> => pruneCompositionCapabilityProjectionRootsInternal(input)
+/** Remove every retained capability generation after a member mount is torn down. */
+export const removeCompositionCapabilityMemberRoots = (
+  input: RemoveCompositionCapabilityMemberRootsInput,
+): Promise<void> => removeCompositionCapabilityMemberRootsInternal(input)
 
 /** Fail-closed resolved capability lookup used by Buck/tool consumers. */
 export const resolvedCompositionCapabilityByToolId = (input: {
@@ -1245,6 +1254,62 @@ const pruneCompositionCapabilityProjectionRootsInternal = async ({
     throw new CompositionCapabilityResolutionError({
       reason: 'ProjectionFailure',
       message: 'Could not prune stale capability generations',
+      path: memberRootsPath,
+      cause,
+    })
+  }
+}
+
+const removeCompositionCapabilityMemberRootsInternal = async ({
+  workspaceRoot,
+  memberKey,
+  runtime,
+}: RemoveCompositionCapabilityMemberRootsInput): Promise<void> => {
+  const { capabilityRootsPath, memberRootsPath } = capabilityRootPaths({
+    workspaceRoot,
+    memberKey,
+  })
+  await validateRuntime(runtime)
+  try {
+    let memberRootsInfo
+    try {
+      memberRootsInfo = await lstat(memberRootsPath)
+    } catch (cause) {
+      if (
+        typeof cause === 'object' &&
+        cause !== null &&
+        'code' in cause &&
+        cause.code === 'ENOENT'
+      ) {
+        return
+      }
+      throw cause
+    }
+    if (
+      memberRootsInfo.isDirectory() === false ||
+      memberRootsInfo.isSymbolicLink() === true ||
+      containedBy({ root: capabilityRootsPath, path: memberRootsPath }) === false ||
+      memberRootsPath === capabilityRootsPath
+    ) {
+      throw new Error(`Capability member root is not a contained directory: '${memberRootsPath}'`)
+    }
+    await withOwnerWritableDirectory({
+      path: capabilityRootsPath,
+      action: async () => {
+        await makeDirectoriesOwnerWritable(memberRootsPath)
+        await rm(memberRootsPath, { recursive: true })
+      },
+    })
+    await syncCapabilityRootDirectory({
+      path: capabilityRootsPath,
+      reason: 'MemberLink',
+      runtime,
+    })
+  } catch (cause) {
+    if (cause instanceof CompositionCapabilityResolutionError) throw cause
+    throw new CompositionCapabilityResolutionError({
+      reason: 'ProjectionFailure',
+      message: 'Could not remove retired member capability roots',
       path: memberRootsPath,
       cause,
     })
