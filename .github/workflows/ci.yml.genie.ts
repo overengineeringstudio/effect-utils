@@ -354,7 +354,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
     profile: '${{ matrix.runner }}' as RunnerProfile,
     runId: '${{ github.run_id }}',
   }),
-  'timeout-minutes': jobTimeoutMinutes,
+  'timeout-minutes': 60,
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
