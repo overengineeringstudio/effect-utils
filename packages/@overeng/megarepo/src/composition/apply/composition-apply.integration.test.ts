@@ -86,6 +86,8 @@ interface FixtureOptions {
   readonly capabilityRootMemberKeys?: ReadonlyArray<string>
   readonly teardownFailure?: string
   readonly rootRemovalFailure?: string
+  readonly watchmanConfigChanged?: boolean
+  readonly watchmanFailure?: boolean
 }
 
 const fixture = async (options: FixtureOptions = {}) => {
@@ -325,10 +327,31 @@ const fixture = async (options: FixtureOptions = {}) => {
     }),
     planRoot: async (input) => {
       rootCacheSections.push(input.cacheSections)
+      const configFiles =
+        options.rootMode === 'first' || options.watchmanConfigChanged === true
+          ? [
+              {
+                path: '.watchmanconfig',
+                old:
+                  options.rootMode === 'first'
+                    ? undefined
+                    : { mode: 0o644 as const, sha256: `sha256:${'1'.repeat(64)}` },
+                new: { mode: 0o644 as const, sha256: `sha256:${'2'.repeat(64)}` },
+              },
+              {
+                path: '.buckconfig',
+                old:
+                  options.rootMode === 'first'
+                    ? undefined
+                    : { mode: 0o644 as const, sha256: `sha256:${'3'.repeat(64)}` },
+                new: { mode: 0o644 as const, sha256: `sha256:${'4'.repeat(64)}` },
+              },
+            ]
+          : []
       return options.rootMode === 'first'
-        ? { _tag: 'Create', files: [], configLast: true }
+        ? { _tag: 'Create', files: configFiles, configLast: true }
         : options.rootMode === 'update'
-          ? { _tag: 'Update', files: [], configLast: true }
+          ? { _tag: 'Update', files: configFiles, configLast: true }
           : { _tag: 'NoChange', files: [], configLast: true }
     },
     publishRoot: async (input) => {
@@ -430,6 +453,11 @@ const fixture = async (options: FixtureOptions = {}) => {
       },
     },
     updateLockRuntime: {},
+    reconcileWatchmanProject: async ({ workspaceRoot: reconciledRoot }) => {
+      expect(reconciledRoot).toBe(workspaceRoot)
+      calls.push('watchman:reconcile')
+      if (options.watchmanFailure === true) throw new Error('watchman reconciliation failed')
+    },
     runBuck: async (argv) => {
       calls.push(`buck:${argv.join('|')}`)
       await mkdir(argv.at(-1)!, { recursive: true })
@@ -507,8 +535,13 @@ describe('composition apply integration', () => {
         )
         if (rootMode === 'first') {
           expect(rootIndex).toBeLessThan(overlayIndex)
+          expect(value.calls.indexOf('watchman:reconcile')).toBeGreaterThan(rootIndex)
+          expect(value.calls.indexOf('watchman:reconcile')).toBeLessThan(
+            value.calls.indexOf('root:commit'),
+          )
         } else {
           expect(rootIndex).toBeGreaterThan(overlayIndex)
+          expect(value.calls).not.toContain('watchman:reconcile')
         }
         expect(value.calls.indexOf('cap:owned:release')).toBeGreaterThan(overlayIndex)
         expect(value.calls.indexOf('retain:owned')).toBeGreaterThan(
@@ -536,6 +569,44 @@ describe('composition apply integration', () => {
       }
     },
   )
+
+  it('publishes and reconciles changed Watchman config before an update can invoke Buck', async () => {
+    const value = await fixture({ rootMode: 'update', watchmanConfigChanged: true })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      const authority = value.calls.indexOf('root:authority')
+      const reconcile = value.calls.indexOf('watchman:reconcile')
+      const commit = value.calls.indexOf('root:commit')
+      const overlay = value.calls.findIndex((call) => call.startsWith('overlay:dep:'))
+      expect(authority).toBeLessThan(reconcile)
+      expect(reconcile).toBeLessThan(commit)
+      expect(commit).toBeLessThan(overlay)
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('rolls root publication back when changed Watchman config cannot be reconciled', async () => {
+    const value = await fixture({
+      rootMode: 'update',
+      watchmanConfigChanged: true,
+      watchmanFailure: true,
+    })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      expect(value.calls).toContain('watchman:reconcile')
+      expect(value.calls).toContain('root:rollback')
+      expect(value.calls.some((call) => call.startsWith('overlay:dep:'))).toBe(false)
+    } finally {
+      await value.cleanup()
+    }
+  })
 
   it('forwards an explicit cache override unchanged to root planning and publication', async () => {
     const cacheSections: NonNullable<CompositionApplyRequest['cacheSections']> = [

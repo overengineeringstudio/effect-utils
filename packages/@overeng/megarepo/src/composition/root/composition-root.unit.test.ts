@@ -481,7 +481,16 @@ describe('composition root goldens', () => {
   ignore = **/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,repos/.staging-*,repos/alpha/**/dist,repos/alpha/.git,target,tmp
 `)
     expect(output.get('.buckroot')?.bytes).toHaveLength(0)
-    expect(text(output.get('.watchmanconfig')!)).toBe('{}\n')
+    expect(JSON.parse(text(output.get('.watchmanconfig')!))).toEqual({
+      ignore_dirs: [
+        '.devenv',
+        '.megarepo',
+        'buck-out',
+        'node_modules',
+        'target',
+        'tmp',
+      ],
+    })
     expect(output.get('BUCK')?.bytes).toHaveLength(0)
   })
 
@@ -737,6 +746,48 @@ describe('ignore projection', () => {
     expect(ignore).toContain('repos/.staging-*')
     expect(ignore).toContain('.buck2/capabilities.candidate.*')
     expect(ignore).toEqual([...ignore].sort(compareCodeUnits))
+  })
+
+  it('emits only concrete composition-derived directories without hiding source or capabilities', () => {
+    const config = JSON.parse(
+      text(
+        filesByPath(
+          input({
+            members: [
+              {
+                memberKey: 'alpha',
+                manifest: manifest({
+                  cell: 'alpha',
+                  projectIgnore: [
+                    '**/dist',
+                    '.buck2/capabilities.candidate.*',
+                    'generated',
+                    'packages/.editor-view',
+                  ],
+                }),
+              },
+            ],
+            additionalProjectIgnores: ['repos/retired'],
+          }),
+        ).get('.watchmanconfig')!,
+      ),
+    ) as { readonly ignore_dirs: ReadonlyArray<string> }
+
+    expect(config.ignore_dirs).toEqual([
+      '.devenv',
+      '.megarepo',
+      'buck-out',
+      'node_modules',
+      'repos/alpha/generated',
+      'repos/alpha/packages/.editor-view',
+      'repos/retired',
+      'target',
+      'tmp',
+    ])
+    expect(config.ignore_dirs).not.toContain('repos/alpha/**/dist')
+    expect(config.ignore_dirs.some((path) => path.includes('*'))).toBe(false)
+    expect(config.ignore_dirs.some((path) => path.includes('.buck2/capabilities'))).toBe(false)
+    expect(config.ignore_dirs.some((path) => path.includes('/src'))).toBe(false)
   })
 })
 

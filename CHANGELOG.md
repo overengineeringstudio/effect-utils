@@ -193,6 +193,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: Generate bounded, composition-owned Watchman root
+  configuration and reload only the affected project watch when that
+  configuration changes, preserving member source and capability invalidation.
+
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
   **Workspace boundary**: pnpm discovers the workspace by walking up from the
