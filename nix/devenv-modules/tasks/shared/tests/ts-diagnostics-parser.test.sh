@@ -13,6 +13,7 @@ set -euo pipefail
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
+test_bash="${BASH_BIN:-$BASH}"
 FIXTURE="$TESTS_DIR/fixtures/tsgo-extended-diagnostics.txt"
 
 fail() {
@@ -145,7 +146,10 @@ export OTEL_TASK_TRACEPARENT="00-0af7651916cd43dd8448eb211c80319c-b7ad6b71692033
 export DEVENV_ROOT="$tmpdir/workspace"
 : > "$tmpdir/spans.ndjson"
 
-stdout="$(cd "$tmpdir" && bash "$tmpdir/ts-check.exec.sh" 2>&1)"
+if ! stdout="$(cd "$tmpdir" && "$test_bash" "$tmpdir/ts-check.exec.sh" 2>&1)"; then
+  printf '%s\n' "$stdout" >&2
+  fail "ts:check fixture execution failed"
+fi
 echo "$stdout" > "$tmpdir/stdout.txt"
 
 # 1. Effect lint warnings must be re-surfaced (not swallowed by the parser path).
