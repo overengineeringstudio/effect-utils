@@ -71,6 +71,86 @@ jq -e --argjson expected "$expected_names" '
   )
 ' <<<"$summary" >/dev/null
 
+candidate_summary="$(nix eval --impure --json --expr "let
+  productNames = builtins.fromJSON ''$expected_names'';
+  products = builtins.listToAttrs (
+    builtins.map (
+      name: {
+        inherit name;
+        value = throw \"candidate selection forced JavaScript product \${name}\";
+      }
+    ) productNames
+  );
+  pkgs.lib = {
+    all = builtins.all;
+    filterAttrs =
+      predicate: attrs:
+      builtins.listToAttrs (
+        builtins.map (
+          name: {
+            inherit name;
+            value = builtins.getAttr name attrs;
+          }
+        ) (
+          builtins.filter (
+            name: predicate name (builtins.getAttr name attrs)
+          ) (builtins.attrNames attrs)
+        )
+      );
+  };
+  candidatesFor =
+    path: nativeProducts:
+    builtins.attrNames (import path {
+      inherit pkgs products nativeProducts;
+      typeProofCompilerBin = \"/nix/store/test-tsgo/bin/tsgo\";
+    });
+  withoutNative = {};
+  withNative = {
+    \"typescript-api-server\" = throw \"candidate selection forced native product\";
+  };
+in {
+  candidatesWithoutNative =
+    candidatesFor $repo_root/nix/workspace-tools/lib/buck2-product-candidates.nix withoutNative;
+  candidatesWithNative =
+    candidatesFor $repo_root/nix/workspace-tools/lib/buck2-product-candidates.nix withNative;
+  cliPackagesWithoutNative =
+    candidatesFor $repo_root/nix/workspace-tools/lib/mk-cli-packages.nix withoutNative;
+  cliPackagesWithNative =
+    candidatesFor $repo_root/nix/workspace-tools/lib/mk-cli-packages.nix withNative;
+}")"
+
+jq -e '
+  .candidatesWithoutNative == [
+    "ci-tools",
+    "gh-ci-utils",
+    "megarepo",
+    "notion-cli",
+    "notion-md",
+    "npm-release",
+    "oxc-config",
+    "tui-stories"
+  ] and
+  .candidatesWithNative == [
+    "ci-tools",
+    "genie",
+    "genie-bootstrap-closure-check",
+    "gh-ci-utils",
+    "megarepo",
+    "notion-cli",
+    "notion-md",
+    "npm-release",
+    "oxc-config",
+    "tui-stories"
+  ] and
+  .cliPackagesWithoutNative == ["ci-tools", "megarepo"] and
+  .cliPackagesWithNative == [
+    "ci-tools",
+    "genie",
+    "genie-bootstrap-closure-check",
+    "megarepo"
+  ]
+' <<<"$candidate_summary" >/dev/null
+
 mkdir -p "$tmp/products"
 cp "$repo_root/nix/buck2-products/default.nix" "$tmp/products/default.nix"
 cp "$repo_root/nix/buck2-products/targets.json" "$tmp/products/targets.json"
