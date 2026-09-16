@@ -404,12 +404,18 @@ describe('composition root publisher', () => {
         )
 
         expect(result.changedPaths).toContain('.watchmanconfig')
-        expect((yield* readGenerated(fixture, '.watchmanconfig')).toString()).toBe('{}\n')
-        const upgradedManifest = (yield* readGenerated(
-          fixture,
-          COMPOSITION_GENERATION_MANIFEST_PATH,
-        )).toString()
-        expect(upgradedManifest).toContain('"path": ".watchmanconfig"')
+        expect(JSON.parse((yield* readGenerated(fixture, '.watchmanconfig')).toString())).toEqual({
+          ignore_dirs: [
+            '.devenv',
+            '.megarepo',
+            'buck-out',
+            'node_modules',
+            'target',
+            'tmp',
+          ],
+        })
+        const upgradedManifest = yield* Effect.promise(() => readGenerationManifest(fixture))
+        expect(upgradedManifest.files.map((file) => file.path)).toContain('.watchmanconfig')
       }),
     ),
   )

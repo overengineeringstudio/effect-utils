@@ -233,6 +233,8 @@ export interface CompositionApplyRuntime {
   readonly overlayRuntime: DistOverlayRuntime
   readonly overlayScratch: CompositionOverlayScratchRuntime
   readonly updateLockRuntime: WorkspaceUpdateLockRuntime
+  /** Reloads only this composition root after its generated Watchman config changes. */
+  readonly reconcileWatchmanProject: (input: { readonly workspaceRoot: string }) => Promise<void>
   /** Executes exactly the supplied argv. Implementations may add environment, never arguments. */
   readonly runBuck: (argv: readonly [string, ...ReadonlyArray<string>]) => Promise<void>
   readonly primitives?: Partial<CompositionApplyPrimitives>
@@ -1507,12 +1509,24 @@ const applyComposition = async ({
     let root: CompositionRootPublicationResult
     try {
       const rootPlan = await primitives.planRoot(rootInput)
-      if (rootPlan._tag === 'Create') {
-        root = await primitives.publishRoot(rootPublicationOptions)
+      const watchmanConfigChanged =
+        (rootPlan._tag === 'Create' || rootPlan._tag === 'Update') &&
+        rootPlan.files.some((file) => file.path === '.watchmanconfig')
+      const publicationOptions = {
+        ...rootPublicationOptions,
+        ...(watchmanConfigChanged === false
+          ? {}
+          : {
+              afterAuthorityPublished: () =>
+                runtime.reconcileWatchmanProject({ workspaceRoot: request.workspaceRoot }),
+            }),
+      } satisfies PublishCompositionRootOptions
+      if (rootPlan._tag === 'Create' || watchmanConfigChanged === true) {
+        root = await primitives.publishRoot(publicationOptions)
         await publishOverlays()
       } else {
         await publishOverlays()
-        root = await primitives.publishRoot(rootPublicationOptions)
+        root = await primitives.publishRoot(publicationOptions)
       }
     } catch (cause) {
       if (cause instanceof CompositionApplyError && cause.reason === 'CleanupFailure') throw cause
