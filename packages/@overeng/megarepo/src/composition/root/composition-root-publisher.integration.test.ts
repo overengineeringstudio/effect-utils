@@ -119,6 +119,12 @@ const runtime = (
   ...overrides,
 })
 
+const watchmanExternalState = {
+  _tag: 'WatchmanProject',
+  phase: 'CompensationRequired',
+  priorWatched: true,
+} as const
+
 const optionsFor = ({
   fixture,
   memberKeys = ['alpha', 'beta'],
@@ -132,6 +138,7 @@ const optionsFor = ({
   recoverToken,
   afterAuthorityPublished,
   afterAuthorityRollback,
+  externalState,
 }: {
   readonly fixture: Fixture
   readonly memberKeys?: ReadonlyArray<string>
@@ -144,7 +151,8 @@ const optionsFor = ({
   readonly lockToken?: string
   readonly recoverToken?: string
   readonly afterAuthorityPublished?: () => Promise<void>
-  readonly afterAuthorityRollback?: () => Promise<void>
+  readonly afterAuthorityRollback?: PublishCompositionRootOptions['afterAuthorityRollback']
+  readonly externalState?: PublishCompositionRootOptions['externalState']
 }): PublishCompositionRootOptions => ({
   workspaceRoot: fixture.workspaceRoot,
   configMemberKeys: memberKeys,
@@ -174,7 +182,14 @@ const optionsFor = ({
   },
   runtime: publicationRuntime,
   ...(afterAuthorityPublished === undefined ? {} : { afterAuthorityPublished }),
-  ...(afterAuthorityRollback === undefined ? {} : { afterAuthorityRollback }),
+  ...(externalState === undefined && afterAuthorityPublished === undefined
+    ? {}
+    : { externalState: externalState ?? watchmanExternalState }),
+  ...(afterAuthorityRollback === undefined
+    ? afterAuthorityPublished === undefined
+      ? {}
+      : { afterAuthorityRollback: async () => undefined }
+    : { afterAuthorityRollback }),
 })
 
 const planOptionsFor = (
@@ -413,16 +428,10 @@ describe('composition root publisher', () => {
             '.megarepo',
             'buck-out',
             'node_modules',
-            'repos/alpha/.devenv',
-            'repos/alpha/buck-out',
             'repos/alpha/node_modules',
             'repos/alpha/target',
-            'repos/alpha/tmp',
-            'repos/beta/.devenv',
-            'repos/beta/buck-out',
             'repos/beta/node_modules',
             'repos/beta/target',
-            'repos/beta/tmp',
             'target',
             'tmp',
           ],
@@ -724,6 +733,128 @@ describe('composition root publisher', () => {
           expect(info.mode & 0o777).toBe(before.get(path)?.mode)
         }
         expect(rollbacks).toBe(1)
+      }),
+    ),
+  )
+
+
+  it.effect('keeps failed external compensation recoverable without masking authority failure', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* publishCompositionRoot(
+          optionsFor({
+            fixture,
+            cacheValue: 'old:1234',
+            lockToken: 'compensation-seed-token',
+          }),
+        )
+        let compensationAttempts = 0
+        const error = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'new:5678',
+              lockToken: 'compensation-failure-token',
+              afterAuthorityPublished: async () => {
+                throw new Error('original authority failure')
+              },
+              afterAuthorityRollback: async (state) => {
+                expect(state).toEqual(watchmanExternalState)
+                compensationAttempts += 1
+                throw new Error('watchman compensation failed')
+              },
+            }),
+          ),
+        )
+
+        expect(error.reason).toBe('IoFailure')
+        expect(String(error.cause)).toContain('original authority failure')
+        expect(compensationAttempts).toBe(1)
+        expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain('old:1234')
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+        ).toBe(true)
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+        ).toBe(true)
+
+        const recovered = yield* publishCompositionRoot(
+          optionsFor({
+            fixture,
+            cacheValue: 'old:1234',
+            lockToken: 'compensation-recovered-token',
+            recoverToken: 'compensation-failure-token',
+            afterAuthorityRollback: async (state) => {
+              expect(state).toEqual(watchmanExternalState)
+              compensationAttempts += 1
+            },
+          }),
+        )
+        expect(recovered.changedPaths).toEqual([])
+        expect(compensationAttempts).toBe(2)
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+        ).toBe(false)
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+        ).toBe(false)
+      }),
+    ),
+  )
+
+  it.effect('recovers prior external state after a process fault following reconciliation', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        yield* publishCompositionRoot(
+          optionsFor({ fixture, cacheValue: 'old:1234', lockToken: 'external-seed-token' }),
+        )
+        let reconciliations = 0
+        const fault = yield* failureReason(
+          publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'new:5678',
+              lockToken: 'external-fault-token',
+              afterAuthorityPublished: async () => {
+                reconciliations += 1
+              },
+              publicationRuntime: runtime({
+                simulateProcessFaultAfterAuthorityPublished: () => true,
+              }),
+            }),
+          ),
+        )
+        expect(fault.reason).toBe('SimulatedProcessFault')
+        expect(reconciliations).toBe(1)
+        expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain('new:5678')
+
+        let recoveries = 0
+        const recovered = yield* publishCompositionRoot(
+          optionsFor({
+            fixture,
+            cacheValue: 'old:1234',
+            lockToken: 'external-recovered-token',
+            recoverToken: 'external-fault-token',
+            afterAuthorityRollback: async (state) => {
+              expect(state).toEqual(watchmanExternalState)
+              expect(
+                (await readFile(NodePath.join(fixture.root, '.buckconfig'))).toString(),
+              ).toContain('old:1234')
+              expect(
+                (
+                  await readFile(
+                    NodePath.join(fixture.root, '.megarepo/composition-publication.json'),
+                  )
+                ).byteLength,
+              ).toBeGreaterThan(0)
+              recoveries += 1
+            },
+          }),
+        )
+        expect(recovered.changedPaths).toEqual([])
+        expect(recoveries).toBe(1)
       }),
     ),
   )
@@ -1508,6 +1639,7 @@ describe('composition root publisher', () => {
                 cacheValue: 'uncommitted:1234',
                 lockToken: 'after-commit-token',
                 recoverToken: 'commit-token',
+                afterAuthorityRollback: async () => undefined,
                 publicationRuntime: runtime({
                   assertCapabilityProjection: async () => {
                     throw new Error('stop after recovery')
