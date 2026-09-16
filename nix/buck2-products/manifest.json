@@ -152,7 +152,7 @@
           "watchman"
         ],
         "externalModules": [],
-        "integrity": "sha256-4ToNr5qkUJ8EmRTxd3Rzus6zFS6OkwZeLEPmPrBYAPk=",
+        "integrity": "sha256-ZP4DjW+jdW3HNZ2aOZJGHn7aM65DYqTWNgHv4Rd7D8E=",
         "modulePath": "mr.js",
         "platform": {
           "abi": "any",
@@ -170,15 +170,15 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3792081,
+        "sizeBytes": 3794505,
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "descriptorSha256": "05b94de677b0488029836d19252ef4c87b7cad82d67cd35ce51b6fb316e6fb3a",
+      "descriptorSha256": "98157a627a8ca4ce5c55d72e9521837a0f2ad159a626af568be70d96f80b9836",
       "release": {
-        "hash": "sha256-4ToNr5qkUJ8EmRTxd3Rzus6zFS6OkwZeLEPmPrBYAPk=",
-        "name": "e13a0daf9aa4509f049914f1777473baceb3152e8e93065e2c43e63eb05800f9-mr.js",
-        "tag": "buck2-product-v3-megarepo-e13a0daf9aa4509f049914f1777473baceb3152e8e93065e2c43e63eb05800f9",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-megarepo-e13a0daf9aa4509f049914f1777473baceb3152e8e93065e2c43e63eb05800f9/e13a0daf9aa4509f049914f1777473baceb3152e8e93065e2c43e63eb05800f9-mr.js"
+        "hash": "sha256-ZP4DjW+jdW3HNZ2aOZJGHn7aM65DYqTWNgHv4Rd7D8E=",
+        "name": "64fe038d6fa3756dc7359d9a3992461e7eda33ae4362a4d63601efe1177b0fc1-mr.js",
+        "tag": "buck2-product-v3-megarepo-64fe038d6fa3756dc7359d9a3992461e7eda33ae4362a4d63601efe1177b0fc1",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-megarepo-64fe038d6fa3756dc7359d9a3992461e7eda33ae4362a4d63601efe1177b0fc1/64fe038d6fa3756dc7359d9a3992461e7eda33ae4362a4d63601efe1177b0fc1-mr.js"
       }
     },
     {
