@@ -81,9 +81,7 @@ describe('normalizeCliOutput', () => {
     it('masks Effect frames materialized through an editor dependency view', () => {
       const input =
         'at <anonymous> (/repo/packages/.editor-view/.store/root-abcd/.backing/0143/node_modules/effect/dist/unstable/cli/Command.js:1077:34)'
-      expect(
-        normalizeCliOutput({ input, repoRoot: '/repo', effectCliInternals: true }),
-      ).toBe(
+      expect(normalizeCliOutput({ input, repoRoot: '/repo', effectCliInternals: true })).toBe(
         'at <anonymous> (<repo>/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>)',
       )
     })
