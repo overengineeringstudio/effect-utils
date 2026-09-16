@@ -35,12 +35,7 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": [
-          "actionlint",
-          "effect-tsgo",
-          "oxfmt",
-          "typescript-api-server"
-        ],
+        "externalCapabilities": ["actionlint", "effect-tsgo", "oxfmt", "typescript-api-server"],
         "externalModules": [],
         "integrity": "sha256-9oifXd6Bj+1+U1Bom6ijykhOoi5dTj5JQZFC4i4ZWZg=",
         "modulePath": "genie.js",
@@ -73,9 +68,7 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": [
-          "typescript-api-server"
-        ],
+        "externalCapabilities": ["typescript-api-server"],
         "externalModules": [],
         "integrity": "sha256-SN4MPityKu/Q2F37mDPYufDOxp4RqCzj6++uZJK0nUM=",
         "modulePath": "genie-bootstrap-closure-check.js",
@@ -108,10 +101,7 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": [
-          "gh",
-          "git"
-        ],
+        "externalCapabilities": ["gh", "git"],
         "externalModules": [],
         "integrity": "sha256-qwbrhaJCOnbfz8LHXFR6+HlcEm0j0j6b/np6EIcGQTE=",
         "modulePath": "gh-ci-utils.js",
@@ -144,15 +134,9 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": [
-          "buck2",
-          "coreutils",
-          "git",
-          "nix",
-          "watchman"
-        ],
+        "externalCapabilities": ["buck2", "coreutils", "git", "nix", "watchman"],
         "externalModules": [],
-        "integrity": "sha256-IhH9X1j5g0ZyN6kNMvXK+NpvuERXgJA03eXy1EvaxrE=",
+        "integrity": "sha256-3mQO/IsihPaS67cyqsEO+iLuXyBqacLoIaqRGyhcXRw=",
         "modulePath": "mr.js",
         "platform": {
           "abi": "any",
@@ -170,15 +154,15 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3795280,
+        "sizeBytes": 3803695,
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "descriptorSha256": "dfbc8039c3b6bc24ae6d69c253f6408ac8b3a577a592fafbd5538b78035166f3",
+      "descriptorSha256": "6b0c9627de564061ac0f1c8f804f6ee8f2866d02a21566bb3a8c8a380f484eba",
       "release": {
-        "hash": "sha256-IhH9X1j5g0ZyN6kNMvXK+NpvuERXgJA03eXy1EvaxrE=",
-        "name": "2211fd5f58f983467237a90d32f5caf8da6fb84457809034dde5f2d44bdac6b1-mr.js",
-        "tag": "buck2-product-v3-megarepo-2211fd5f58f983467237a90d32f5caf8da6fb84457809034dde5f2d44bdac6b1",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-megarepo-2211fd5f58f983467237a90d32f5caf8da6fb84457809034dde5f2d44bdac6b1/2211fd5f58f983467237a90d32f5caf8da6fb84457809034dde5f2d44bdac6b1-mr.js"
+        "hash": "sha256-3mQO/IsihPaS67cyqsEO+iLuXyBqacLoIaqRGyhcXRw=",
+        "name": "de640efc8b2284f692ebb732aac10efa22ee5f206a69c2e821aa911b285c5d1c-mr.js",
+        "tag": "buck2-product-v3-megarepo-de640efc8b2284f692ebb732aac10efa22ee5f206a69c2e821aa911b285c5d1c",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-megarepo-de640efc8b2284f692ebb732aac10efa22ee5f206a69c2e821aa911b285c5d1c/de640efc8b2284f692ebb732aac10efa22ee5f206a69c2e821aa911b285c5d1c-mr.js"
       }
     },
     {
@@ -216,9 +200,7 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": [
-          "opentui-core-native"
-        ],
+        "externalCapabilities": ["opentui-core-native"],
         "externalModules": [
           "@opentui/core-darwin-arm64",
           "@opentui/core-darwin-x64",
@@ -293,9 +275,7 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": [
-          "npm"
-        ],
+        "externalCapabilities": ["npm"],
         "externalModules": [],
         "integrity": "sha256-syowIz8W23x67+DZY2oimeIeylN6fJ9TUpPBg6T1dek=",
         "modulePath": "npm-release.js",
