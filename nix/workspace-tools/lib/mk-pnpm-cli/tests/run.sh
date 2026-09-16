@@ -278,7 +278,7 @@ run_downstream_pure_eval_regression() {
   )"
   local install_phase
   install_phase="$(nix derivation show "$drv" | jq -r '.derivations | to_entries[0].value.env.installPhase')"
-  if [[ "$install_phase" != *'align-aggregate-manifest-specifiers.cjs pnpm-workspace.yaml'* ]]; then
+  if [[ "$install_phase" != *'align-aggregate-manifest-specifiers pnpm-workspace.yaml'* ]]; then
     echo "error: aggregate prepared deps install does not align source-input manifest specifiers with the lockfile: $drv" >&2
     exit 1
   fi
@@ -431,7 +431,7 @@ YAML
 
   (
     cd "$fixture"
-    bun "$script" pnpm-workspace.yaml pnpm-lock.yaml
+    "$script" pnpm-workspace.yaml pnpm-lock.yaml
   )
 
   for package in first second third __proto__; do
@@ -452,7 +452,7 @@ importers:
 YAML
   if (
     cd "$fixture"
-    bun "$script" pnpm-workspace.yaml duplicate-importer-lock.yaml
+    "$script" pnpm-workspace.yaml duplicate-importer-lock.yaml
   ) 2>"$fixture/duplicate-importer.log"; then
     echo "error: duplicate importer ownership across lockfile documents was accepted" >&2
     exit 1

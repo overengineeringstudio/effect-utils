@@ -338,7 +338,7 @@ let
     );
   '';
   sourceInputSpecifiersModule = ./pnpm-source-input-specifiers.cjs;
-  alignAggregateManifestSpecifiersScript = pkgs.writeText "align-aggregate-manifest-specifiers.cjs" ''
+  alignAggregateManifestSpecifiersSource = pkgs.writeText "align-aggregate-manifest-specifiers.cjs" ''
     const fs = require("node:fs");
     const path = require("node:path");
     const specifiers = require("${sourceInputSpecifiersModule}");
@@ -441,6 +441,9 @@ let
 
     stripSourceInputOverrides(workspaceYamlPath);
     stripSourceInputOverrides(lockfilePath);
+  '';
+  alignAggregateManifestSpecifiersScript = pkgs.writeShellScript "align-aggregate-manifest-specifiers" ''
+    exec ${pkgs.bun}/bin/bun ${alignAggregateManifestSpecifiersSource} "$@"
   '';
 
   isDerivationOutput =
@@ -1368,7 +1371,7 @@ let
           | ${pkgs.gnutar}/bin/tar --null --files-from=- -cf "$NIX_BUILD_TOP/aggregate-manifests.tar"
         cp pnpm-workspace.yaml "$NIX_BUILD_TOP/aggregate-pnpm-workspace.yaml"
         cp pnpm-lock.yaml "$NIX_BUILD_TOP/aggregate-pnpm-lock.yaml"
-        ${pkgs.bun}/bin/bun ${alignAggregateManifestSpecifiersScript} pnpm-workspace.yaml pnpm-lock.yaml
+        ${alignAggregateManifestSpecifiersScript} pnpm-workspace.yaml pnpm-lock.yaml
       '';
       postPnpmInstall = ''
         ${pkgs.gnutar}/bin/tar -xf "$NIX_BUILD_TOP/aggregate-manifests.tar"
