@@ -25,7 +25,7 @@ export const javaScriptProductRegistry = {
       kind: 'cli',
       output: 'gh-ci-utils.js',
       productName: 'gh-ci-utils',
-      smokeArgs: ['--version'],
+      smokeArgs: ['--help'],
       targetName: 'gh-ci-utils-candidate',
     },
   ],

@@ -34,7 +34,7 @@ describe('Buck2 TypeScript authority derivation', () => {
     )
 
     expect(authoritativeBuck2TypeScriptProjects).toEqual(packageLocalAuthorities)
-    expect(authoritativeBuck2TypeScriptProjects).toHaveLength(39)
+    expect(authoritativeBuck2TypeScriptProjects).toHaveLength(40)
   })
 
   it('gives every root TypeScript project one Buck typecheck target', () => {
