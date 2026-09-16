@@ -35,7 +35,7 @@ const isProductionSource = (path: string) =>
 
 const sourceFiles = (dir: string): ReadonlyArray<string> =>
   readdirSync(dir).flatMap((entry) => {
-    if (entry === 'node_modules' || entry === 'dist') return []
+    if (entry === 'node_modules' || entry === 'dist' || entry === '.editor-view') return []
     const path = resolve(dir, entry)
     const stat = statSync(path)
     if (stat.isDirectory() === true) return sourceFiles(path)
