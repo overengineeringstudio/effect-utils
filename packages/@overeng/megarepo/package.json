@@ -65,7 +65,7 @@
     "@overeng/utils-dev": "workspace:^",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
-    "@types/bun": "1.4.1",
+    "@types/bun": "1.4.2",
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
     "@vitejs/plugin-react": "6.1.1",

@@ -329,7 +329,7 @@ export const catalog = defineCatalog({
   '@types/react': '19.2.18',
   '@types/react-dom': '19.2.7',
   '@types/node': '26.5.0',
-  '@types/bun': '1.4.1',
+  '@types/bun': '1.4.2',
   '@types/is-dom': '1.1.2',
 
   // Build tools
