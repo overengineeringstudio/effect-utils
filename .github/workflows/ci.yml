@@ -431,7 +431,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   typecheck:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -513,6 +512,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -544,7 +545,7 @@ jobs:
           ! grep -q '\[otel\] Using' "$tmp_log"
           test "$(git status --porcelain=v1)" = "$before"
           rm -f "$tmp_log"
-      - name: Type check
+      - name: Type check (Buck authority + residual root solution)
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -610,7 +611,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   lint:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -692,6 +692,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -772,7 +774,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   test:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     strategy:
@@ -857,6 +858,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -937,7 +940,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   test-megarepo-cold-gc:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1019,6 +1021,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1099,7 +1103,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   nix-check:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     strategy:
@@ -1184,6 +1187,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1264,7 +1269,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   nix-fod-check:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     strategy:
@@ -1402,7 +1406,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   pnpm-builder-contract:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1484,6 +1487,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1615,7 +1620,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   pnpm-regression:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1697,6 +1701,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1779,7 +1785,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   bundle-smoke:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1861,6 +1866,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -1941,7 +1948,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   cargo:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2023,6 +2029,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -2103,7 +2111,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   weaver:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -2185,6 +2192,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -2272,7 +2281,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   pr-a-inert-buck:
     if: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
     runs-on: ubuntu-latest
@@ -2286,7 +2294,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -2366,10 +2373,13 @@ jobs:
             genie/buck2/typescript-package-projection.unit.test.ts \
             genie/buck2/javascript-candidates.unit.test.ts \
             packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts
-      - name: Check product publisher contract and dry-run
+      - name: Check product publisher and manifest import contracts
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"'
+        run: |
+          cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"
       - name: Reject tracked product and editor payload bytes
         run: |
           cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail
@@ -2459,6 +2469,8 @@ jobs:
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
@@ -2602,6 +2614,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -2682,7 +2696,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   devenv-perf:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on:
@@ -2780,6 +2793,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -3511,7 +3526,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -3589,6 +3603,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -4154,7 +4170,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -4416,7 +4431,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -7027,6 +7041,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -7112,7 +7128,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   test-integration-restate:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     concurrency:
@@ -7197,6 +7212,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -7274,7 +7291,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   test-live-deploy-ci-tools:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     concurrency:
@@ -7359,6 +7375,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -7488,7 +7506,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   deploy-storybooks:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on:
@@ -7572,6 +7589,8 @@ jobs:
         shell: bash
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
@@ -7726,7 +7745,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
   notify-alignment:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
@@ -7766,4 +7784,3 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
