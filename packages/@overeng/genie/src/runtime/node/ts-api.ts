@@ -20,6 +20,7 @@
  * Both own the session lifetime: the `tsgo` child process is always closed, including on throw.
  */
 
+import { once } from 'node:events'
 import path from 'node:path'
 
 import type { SourceFile, StringLiteral } from 'typescript/unstable/ast'
@@ -52,6 +53,50 @@ const analyzableSourceExtensions: Record<string, true> = {
 const apiSpawnOptions = (cwd: string) => {
   const configured = process.env.GENIE_TYPESCRIPT_API_SERVER
   return configured === undefined || configured === '' ? { cwd } : { cwd, tsserverPath: configured }
+}
+
+/**
+ * The structural equivalent of an `API` session: `close` plus the spawned child, if any.
+ *
+ * A real `API` cannot be typed as this directly — its `client` field is compile-time `private`
+ * (erased at runtime), and a private source property never satisfies a public target one. So
+ * `closeApi` accepts the union and performs the single contained structural read itself; tests
+ * pass fakes of this shape with no casts.
+ */
+export type ClosableTsApi = {
+  readonly close: () => Promise<void>
+  readonly client?: { readonly process?: JoinableChildProcess | undefined } | undefined
+}
+
+/**
+ * The minimal child surface the joined shutdown needs: liveness plus the exit event. A real
+ * `ChildProcess` satisfies this; the unit test fakes it with an `EventEmitter` and an `exitCode`.
+ */
+export type JoinableChildProcess = NodeJS.EventEmitter & { readonly exitCode: number | null }
+
+/**
+ * Close an API session and do not resolve until its `tsgo` child has actually exited.
+ *
+ * `API.close()` ends the child's stdin but returns without awaiting child exit (about 1 ms while
+ * the child is still alive), leaving unjoined process lifetime behind every session. Harmless on
+ * Linux, where the child exits within milliseconds, but on macOS the lingering stdio handles stall
+ * Vitest's close phase past its deadline. The client offers no public join surface (`Client` is
+ * not exported from `typescript/unstable/async`), so the boundary reads the erased
+ * `client.process` field structurally and joins it. Pinned to `typescript@7.0.2`: if a bump
+ * reshapes the client, the lookup yields `undefined` and shutdown degrades to plain `close()`.
+ *
+ * Deliberately no timeout: a child that never exits is a real hang and must surface loudly,
+ * not be masked by a deadline.
+ */
+export const closeApi = async (api: API | ClosableTsApi): Promise<void> => {
+  const child = (api as unknown as ClosableTsApi).client?.process
+  await api.close()
+  // The check and the listener attach run synchronously after `close()` resolves, before the event
+  // loop can deliver the child's exit — so `exitCode === null` means the `exit` event is still to
+  // come and `once` cannot miss it.
+  if (child !== undefined && child.exitCode === null) {
+    await once(child, 'exit')
+  }
 }
 
 /** A file opened for analysis: its AST plus the module resolution of the project that owns it. */
@@ -131,7 +176,7 @@ export const runTsFileAnalysis = async <A>({
 
     return await run({ analyze })
   } finally {
-    await api.close()
+    await closeApi(api)
   }
 }
 
@@ -196,7 +241,7 @@ export const runTsVirtualProject = async <A>({
           .map(formatDiagnostic),
     })
   } finally {
-    await api.close()
+    await closeApi(api)
   }
 }
 
