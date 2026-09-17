@@ -58,3 +58,18 @@ five samples per workload before reconsidering the outer verb.
 - Speed remains unresolved. Failure elapsed times are not benchmark samples.
 
 Evidence: [2026-09-12 check-entry bakeoff](../.experiments/2026-09-12-check-entry-bakeoff.md).
+
+## Amendment 1 (2026-09-14)
+
+Evidence after acceptance: on a contended host the devenv _evaluation_ step —
+not any task — stalled 20–60 min for five workers while every producer invoked
+directly completed in seconds; dotfiles decision 0027 measured the same cost
+class as our own Nix configuration (shell entry 229 s → 17.8 s after four fixes;
+devenv's fixed overhead 254 ms). The verb decision stands (q25, 2026-09-14) with
+two budgets attached: warm shell entry ≤ 20 s and task-run overhead ≤ 2 s,
+measured per repository at n ≥ 3 on a host below load 16. Each repository
+carries a `devenv-eval` residual ledger row whose dissolution is meeting those
+budgets by removing the cost at its source (task/shell closure decoupling,
+filtered source coercion, a recursive-input budget gate). While that row is
+open, a change may be verified with the same producer the task wraps, invoked
+directly, and must say so in its PR body; this is not a second verb.

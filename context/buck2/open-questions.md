@@ -61,4 +61,8 @@ Subsystem questions live in their subsystem (`03-materialization`,
 - Resolution signal: a written contributor loop for livestore under each
   answer, with the tool set and cold-start time measured on a machine outside
   the fleet.
-- Blocker: not started; livestore-lead owns it once the ledger exists.
+- Resolved (q17, 2026-09-14): livestore is an artifact consumer only. It pins
+  `@overeng/*` release assets by tarball URL + integrity (decision 0034 once the
+  artifact-composition proposal is accepted); no Buck2 or `mr` in livestore; its
+  contributors install nothing new; livestore rows are excluded from the ledger.
+  livestore PR #1622 closes.

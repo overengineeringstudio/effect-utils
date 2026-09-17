@@ -71,3 +71,15 @@ Buck target on its default branch.
   closes, nothing is deleted from the VRS.
 - Consumers with one slice add a row and a deletion entry in their PR and
   author no VRS node; dotfiles keeps its delta node.
+
+## Amendment 1 (2026-09-14)
+
+The per-close fold is unreachable for the hub until consumers migrate and the
+composition layer is deleted, so a gate that only fires at close would be silent
+for the whole period in which +28,363 lines accumulated. Johannes (q26,
+2026-09-14) added a trajectory obligation: the ledger stores a reconciliation
+snapshot (cumulative net at a revision); at every reconciliation the cumulative
+net must be lower than at the previous snapshot, otherwise admissions pause
+until a contraction slice lands. Reconciliations happen per phase or after ten
+rows change status, whichever is first. The check gains the snapshot list and
+the comparison; the per-close fold is unchanged.
