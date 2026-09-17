@@ -76,6 +76,8 @@ const discoverTestFiles = async ({
       ).map(async (entry) => {
         const relativePath = `${prefix}/${entry.name}`
         if (entry.isDirectory() === true) {
+          // Editor snapshots contain package and dependency copies, not source-authority inputs.
+          if (entry.name === '.editor-view') return []
           return discoverTestFiles({
             directory: resolve(directory, entry.name),
             prefix: relativePath,
