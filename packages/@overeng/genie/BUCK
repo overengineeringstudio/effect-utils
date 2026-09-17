@@ -445,7 +445,7 @@ package_bin_artifact(
     name = "genie-candidate-module",
     entrypoint = "bin/genie.tsx",
     external = [],
-    external_capabilities = ["actionlint", "effect-tsgo", "oxfmt"],
+    external_capabilities = ["actionlint", "effect-tsgo", "opentui-core-native", "oxfmt", "typescript-api-server"],
     kind = "cli",
     output = "genie.js",
     package_tree = ":package_tree",
