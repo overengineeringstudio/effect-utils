@@ -26,69 +26,8 @@ import {
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
 
-const evictOutPathShellLines = [
-  '      if nix path-info "$outPath" >/dev/null 2>&1; then',
-  '        echo "evicting cached: $(basename "$outPath")"',
-  '        if nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1; then',
-  '          echo "freshness_mode=strict-delete drv=$drv out=$outPath"',
-  '          if nix path-info "$outPath" >/dev/null 2>&1; then',
-  '            echo "::error::cached pnpm-deps output still present after successful eviction: $outPath"',
-  '            exit 1',
-  '          fi',
-  '          echo "delete_verified=true drv=$drv out=$outPath"',
-  '        else',
-  '          echo "freshness_mode=rebuild-check reason=immutable-global-store drv=$drv out=$outPath"',
-  '          warning="cached pnpm-deps output is immutable; forcing a Nix rebuild check for $drv"',
-  '          echo "::warning title=pnpm deps freshness fallback::$warning"',
-  '          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then',
-  '            printf \'%s\\n\' "### pnpm deps freshness fallback" "" "- mode: \`rebuild-check\`" "- output: \`$outPath\`" "- derivation: \`$drv\`" >>"$GITHUB_STEP_SUMMARY"',
-  '          fi',
-  '          rebuildLog=$(mktemp)',
-  '          if ! nix build --no-link --rebuild -L "$drv^*" 2>&1 | tee "$rebuildLog"; then',
-  '            rm -f "$rebuildLog"',
-  '            echo "::error::rebuild check failed for cached pnpm-deps output: $outPath"',
-  '            exit 1',
-  '          fi',
-  '          if ! grep -F "checking outputs of \'$drv\'" "$rebuildLog" >/dev/null; then',
-  '            rm -f "$rebuildLog"',
-  '            echo "::error::rebuild check did not prove builder execution for: $drv"',
-  '            exit 1',
-  '          fi',
-  '          rm -f "$rebuildLog"',
-  '          echo "rebuild_check_verified=true drv=$drv out=$outPath"',
-  '        fi',
-  '      else',
-  '        echo "freshness_mode=not-present drv=$drv out=$outPath"',
-  '      fi',
-] as const
-
-const withEachPnpmDepsDrvShellLines = ({
-  flakeRef,
-  bodyLines,
-}: {
-  flakeRef: string
-  bodyLines: readonly string[]
-}) =>
-  [
-    `targetRef=${shellSingleQuote(flakeRef)}`,
-    'entriesJson=$(mktemp)',
-    'if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then',
-    "  while IFS=$'\\t' read -r attrName drv; do",
-    '    [ -n "$drv" ] || continue',
-    ...bodyLines,
-    '  done < <(jq -r \'.[] | [.attrName, (.drvPath // "")] | @tsv\' "$entriesJson")',
-    'else',
-    '  topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)',
-    '  if [ -n "$topDrv" ]; then',
-    '    while IFS= read -r drv; do',
-    '      [ -n "$drv" ] || continue',
-    '      attrName=""',
-    ...bodyLines,
-    '    done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\\.drv$" || true)',
-    '  fi',
-    'fi',
-    'rm -f "$entriesJson"',
-  ] as const
+const evictPnpmDepsCachedOutputsScript =
+  `${preparedCiRuntimeScriptsDir}/evict-pnpm-deps-cached-outputs.sh`
 
 /** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
 export const evictCachedPnpmDepsStep = ({
@@ -102,15 +41,7 @@ export const evictCachedPnpmDepsStep = ({
   shell: 'bash',
   env: githubTokenEnv(),
   run: withCiSourceRoot(
-    withEachPnpmDepsDrvShellLines({
-      flakeRef,
-      bodyLines: [
-        '    while IFS= read -r outPath; do',
-        '      [ -n "$outPath" ] || continue',
-        ...evictOutPathShellLines,
-        '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-      ],
-    }).join('\n'),
+    `bash ${shellSingleQuote(evictPnpmDepsCachedOutputsScript)} ${shellSingleQuote(flakeRef)}`,
   ),
 })
 
@@ -967,20 +898,7 @@ export const coldFreshNixBuildStep = ({
   env: githubTokenEnv(),
   run: withCiSourceRoot(
     [
-      'set -euo pipefail',
-      ...withEachPnpmDepsDrvShellLines({
-        flakeRef,
-        bodyLines: [
-          '    installable="${drv}^*"',
-          '    echo "cold-building pnpm deps: ${attrName:-$drv}"',
-          '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org" || true',
-          '    while IFS= read -r outPath; do',
-          '      [ -n "$outPath" ] || continue',
-          ...evictOutPathShellLines,
-          '    done < <(nix path-info "$installable" 2>/dev/null || true)',
-          '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
-        ],
-      }),
+      `bash ${shellSingleQuote(evictPnpmDepsCachedOutputsScript)} --cold-build ${shellSingleQuote(flakeRef)}`,
       `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
     ].join('\n'),
   ),
