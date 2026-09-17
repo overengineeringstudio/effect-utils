@@ -2,14 +2,15 @@
 # Source: BUCK.genie.ts
 
 # Projection source: packages/@overeng/gh-ci-utils/BUCK.genie.ts
-# Projection schema version: 9
+# Projection schema version: 10
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:2c9ad5a5431fa08ba6815d8aed8462d5b59141e95a1945bc4deb016a43454e3d
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/gh-ci-utils/BUCK.genie.ts, packages/@overeng/gh-ci-utils/BUCK.genie.ts, packages/@overeng/gh-ci-utils/bin/**/*.cts, packages/@overeng/gh-ci-utils/bin/**/*.js, packages/@overeng/gh-ci-utils/bin/**/*.mts, packages/@overeng/gh-ci-utils/bin/**/*.spec.cjs, packages/@overeng/gh-ci-utils/bin/**/*.spec.jsx, packages/@overeng/gh-ci-utils/bin/**/*.spec.mjs, packages/@overeng/gh-ci-utils/bin/**/*.test.cjs, packages/@overeng/gh-ci-utils/bin/**/*.test.jsx, packages/@overeng/gh-ci-utils/bin/**/*.test.mjs, packages/@overeng/gh-ci-utils/bin/**/*.ts, packages/@overeng/gh-ci-utils/bin/**/*.tsx, packages/@overeng/gh-ci-utils/bin/**/__snapshots__/*.snap, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/gh-ci-utils/src/**/*.cts, packages/@overeng/gh-ci-utils/src/**/*.js, packages/@overeng/gh-ci-utils/src/**/*.mts, packages/@overeng/gh-ci-utils/src/**/*.spec.cjs, packages/@overeng/gh-ci-utils/src/**/*.spec.jsx, packages/@overeng/gh-ci-utils/src/**/*.spec.mjs, packages/@overeng/gh-ci-utils/src/**/*.test.cjs, packages/@overeng/gh-ci-utils/src/**/*.test.jsx, packages/@overeng/gh-ci-utils/src/**/*.test.mjs, packages/@overeng/gh-ci-utils/src/**/*.ts, packages/@overeng/gh-ci-utils/src/**/*.tsx, packages/@overeng/gh-ci-utils/src/**/__snapshots__/*.snap, packages/@overeng/gh-ci-utils/test/**/*.cts, packages/@overeng/gh-ci-utils/test/**/*.js, packages/@overeng/gh-ci-utils/test/**/*.mts, packages/@overeng/gh-ci-utils/test/**/*.spec.cjs, packages/@overeng/gh-ci-utils/test/**/*.spec.jsx, packages/@overeng/gh-ci-utils/test/**/*.spec.mjs, packages/@overeng/gh-ci-utils/test/**/*.test.cjs, packages/@overeng/gh-ci-utils/test/**/*.test.jsx, packages/@overeng/gh-ci-utils/test/**/*.test.mjs, packages/@overeng/gh-ci-utils/test/**/*.ts, packages/@overeng/gh-ci-utils/test/**/*.tsx, packages/@overeng/gh-ci-utils/test/**/__snapshots__/*.snap, packages/@overeng/gh-ci-utils/tsconfig.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
+# Semantic fingerprint: sha256:5a964bce8e07de2e19e8be6280b2d4f85f8b98fbfc2487684cae2d9fae9d17b5
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/gh-ci-utils/BUCK.genie.ts, packages/@overeng/gh-ci-utils/BUCK.genie.ts, packages/@overeng/gh-ci-utils/bin/**/*.cts, packages/@overeng/gh-ci-utils/bin/**/*.js, packages/@overeng/gh-ci-utils/bin/**/*.mts, packages/@overeng/gh-ci-utils/bin/**/*.spec.cjs, packages/@overeng/gh-ci-utils/bin/**/*.spec.jsx, packages/@overeng/gh-ci-utils/bin/**/*.spec.mjs, packages/@overeng/gh-ci-utils/bin/**/*.test.cjs, packages/@overeng/gh-ci-utils/bin/**/*.test.jsx, packages/@overeng/gh-ci-utils/bin/**/*.test.mjs, packages/@overeng/gh-ci-utils/bin/**/*.ts, packages/@overeng/gh-ci-utils/bin/**/*.tsx, packages/@overeng/gh-ci-utils/bin/**/__snapshots__/*.snap, packages/@overeng/gh-ci-utils/package.json.genie.ts, packages/@overeng/gh-ci-utils/src/**/*.cts, packages/@overeng/gh-ci-utils/src/**/*.js, packages/@overeng/gh-ci-utils/src/**/*.mts, packages/@overeng/gh-ci-utils/src/**/*.spec.cjs, packages/@overeng/gh-ci-utils/src/**/*.spec.jsx, packages/@overeng/gh-ci-utils/src/**/*.spec.mjs, packages/@overeng/gh-ci-utils/src/**/*.test.cjs, packages/@overeng/gh-ci-utils/src/**/*.test.jsx, packages/@overeng/gh-ci-utils/src/**/*.test.mjs, packages/@overeng/gh-ci-utils/src/**/*.ts, packages/@overeng/gh-ci-utils/src/**/*.tsx, packages/@overeng/gh-ci-utils/src/**/__snapshots__/*.snap, packages/@overeng/gh-ci-utils/test/**/*.cts, packages/@overeng/gh-ci-utils/test/**/*.js, packages/@overeng/gh-ci-utils/test/**/*.mts, packages/@overeng/gh-ci-utils/test/**/*.spec.cjs, packages/@overeng/gh-ci-utils/test/**/*.spec.jsx, packages/@overeng/gh-ci-utils/test/**/*.spec.mjs, packages/@overeng/gh-ci-utils/test/**/*.test.cjs, packages/@overeng/gh-ci-utils/test/**/*.test.jsx, packages/@overeng/gh-ci-utils/test/**/*.test.mjs, packages/@overeng/gh-ci-utils/test/**/*.ts, packages/@overeng/gh-ci-utils/test/**/*.tsx, packages/@overeng/gh-ci-utils/test/**/__snapshots__/*.snap, packages/@overeng/gh-ci-utils/tsconfig.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
 load("//buck2:editor_view.bzl", "editor_view_inputs")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
 load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
 
@@ -135,6 +136,14 @@ export_materialization_inputs([
     "test/toolFailure.test.ts",
     "test/watchPlan.test.ts",
 ])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/gh-ci-utils",
+    srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
 
 alias(
     name = "node_modules",
