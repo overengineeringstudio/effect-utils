@@ -8,6 +8,7 @@ import {
 import {
   bashShellDefaults,
   dollar,
+  githubTokenEnv,
   linuxX64Runner,
   shellSingleQuote,
   withCiSourceRoot,
@@ -1235,6 +1236,7 @@ export const devenvPerfBenchmarkStep = (
   ({
     name: 'Benchmark devenv surfaces',
     shell: 'bash',
+    env: githubTokenEnv(),
     run: withCiSourceRoot(
       renderDevenvPerfScript({
         taskProbes: opts?.taskProbes ?? [],
@@ -1261,6 +1263,7 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
     name: `Download previous artifact: ${opts.artifactName}`,
     shell: 'bash',
     env: {
+      ...githubTokenEnv(opts.tokenExpression),
       GH_TOKEN: opts.tokenExpression ?? '${{ github.token }}',
       BASELINE_ARTIFACT_NAME: opts.artifactName,
       BASELINE_OUTPUT_DIR: opts.outputDir,
@@ -1585,6 +1588,7 @@ export const nixClosureMeasurementStep = (opts: NixClosureMeasurementStepOptions
     name: `Measure Nix closure: ${targetName}`,
     shell: 'bash',
     env: {
+      ...githubTokenEnv(),
       ARTIFACT_DIR: artifactDir,
       RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
     },
@@ -2018,6 +2022,7 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
     name: 'Compare CI measurements with baseline',
     shell: 'bash',
     env: {
+      ...githubTokenEnv(opts?.prComment?.tokenExpression),
       CI_MEASUREMENT_CURRENT_DIR: opts?.currentDir ?? 'tmp/ci-measurements/current',
       CI_MEASUREMENT_BASELINE_DIR: opts?.baselineDir ?? 'tmp/ci-measurements/baseline',
       CI_MEASUREMENT_COMPARISON_FILE:

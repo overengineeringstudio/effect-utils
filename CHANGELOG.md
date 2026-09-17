@@ -184,6 +184,9 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/ci-tools**: Pass Vercel authentication to child processes through
   `VERCEL_TOKEN` instead of exposing the configured token in command arguments.
+- **Genie CI**: Stop exposing `GITHUB_TOKEN` through the standard job
+  environment. GitHub CLI and authenticated Nix steps now receive it only in
+  their step-local environment.
 
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.

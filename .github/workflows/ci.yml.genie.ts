@@ -40,6 +40,7 @@ import {
   validateNixStoreStep,
   withCiSourceRoot,
   defaultRefPolicyCheckJob,
+  githubTokenEnv,
 } from '../../genie/ci-workflow.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
 import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
@@ -142,6 +143,7 @@ const liveNetlifyCiToolsE2EStep = {
   name: 'Live Netlify ci-tools E2E',
   shell: 'bash',
   env: {
+    ...githubTokenEnv(),
     CI_TOOLS_NETLIFY_LIVE: '1',
     NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
     NETLIFY_SITE_ID: '${{ secrets.NETLIFY_SITE_ID }}',
@@ -199,6 +201,7 @@ const liveVercelCiToolsE2EStep = {
   name: 'Live Vercel ci-tools E2E',
   shell: 'bash',
   env: {
+    ...githubTokenEnv(),
     CI_TOOLS_VERCEL_LIVE: '1',
     VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
     VERCEL_PROJECT_ID: '${{ secrets.VERCEL_PROJECT_ID }}',
@@ -227,6 +230,7 @@ const storybookPreviewSummaryPath =
 /** Verify shell activation is mutation-free and exposes the native Buck command. */
 const verifyOtelShellEntryStep = {
   name: 'Verify mutation-free shell entry',
+  env: githubTokenEnv(),
   shell: 'bash' as const,
   run: withCiSourceRoot(
     [
@@ -329,7 +333,7 @@ const job = ({
   step,
   extraSteps = [],
 }: {
-  step: { name: string; run: string }
+  step: { name: string; run: string; env?: Record<string, string> }
   extraSteps?: readonly any[]
 }) => ({
   if: normalCiIf,
@@ -349,7 +353,11 @@ const job = ({
   ],
 })
 
-const multiPlatformJob = (step: { name: string; run: string }) => ({
+const multiPlatformJob = (step: {
+  name: string
+  run: string
+  env?: Record<string, string>
+}) => ({
   if: normalCiIf,
   strategy: {
     'fail-fast': false,
@@ -414,6 +422,7 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
 const nativeDepPolicyAuditStep = {
   name: 'Audit native dependency policy',
   shell: 'bash',
+  env: githubTokenEnv(),
   run: withCiSourceRoot(
     [
       'set -euo pipefail',
@@ -432,6 +441,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   typecheck: job({
     step: {
       name: 'Type check',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('ts:check:strict'),
     },
     extraSteps: [verifyOtelShellEntryStep],
@@ -439,6 +449,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   lint: job({
     step: {
       name: 'Format + lint',
+      env: githubTokenEnv(),
       // Keep generated-file freshness authoritative in CI. The lint task's
       // execIfModified filter remains only a local fast path.
       run: runDevenvTasksBefore('genie:check', 'lint:check'),
@@ -446,11 +457,13 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   }),
   test: multiPlatformJob({
     name: 'Unit tests',
+    env: githubTokenEnv(),
     run: runDevenvTasksBefore('test:run'),
   }),
   'test-megarepo-cold-gc': job({
     step: {
       name: 'Megarepo cold-GC tests',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:megarepo-cold-gc'),
     },
   }),
@@ -458,6 +471,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   // This catches stale hashes before they break downstream consumers
   'nix-check': multiPlatformJob({
     name: 'Nix hash check',
+    env: githubTokenEnv(),
     run: runDevenvTasksBefore('nix:check'),
   }),
   // Force a fresh local rebuild of every exported pnpm FOD to catch stale
@@ -501,18 +515,21 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   'bundle-smoke': job({
     step: {
       name: 'Bundle smoke tests',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('bundle:smoke'),
     },
   }),
   buck2: job({
     step: {
       name: 'Buck2 toolchain surface and Nix bridge',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('buck2:check'),
     },
   }),
   cargo: job({
     step: {
       name: 'Cargo build + test + clippy + fmt',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('cargo:check'),
     },
   }),
@@ -542,6 +559,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     ],
     step: {
       name: 'Weaver registry gates (check + diff + live-check)',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('weaver:check', 'weaver:diff', 'weaver:live-check'),
     },
   }),
@@ -586,6 +604,7 @@ const downloadCurrentMeasurementArtifactStep = ({
 const ciMeasurementReportToolStep = {
   name: 'Provide CI measurement report tools',
   shell: 'bash',
+  env: githubTokenEnv(),
   run: [
     'set -euo pipefail',
     'for out in $(nix build --no-link --print-out-paths nixpkgs#jq nixpkgs#nodejs nixpkgs#gh nixpkgs#resvg); do',
@@ -657,10 +676,12 @@ const extraJobs: Record<string, any> = {
       validateNixStoreStep,
       {
         name: 'Check generated sources',
+        env: githubTokenEnv(),
         run: runDevenvTasksBefore('genie:check'),
       },
       {
         name: 'Run focused normalized, projection, and runner tests',
+        env: githubTokenEnv(),
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
@@ -673,6 +694,7 @@ const extraJobs: Record<string, any> = {
       },
       {
         name: 'Check product publisher contract and dry-run',
+        env: githubTokenEnv(),
         run: withCiSourceRoot(
           '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"',
         ),
@@ -693,6 +715,7 @@ const extraJobs: Record<string, any> = {
       },
       {
         name: 'Query and build representative inert Buck targets',
+        env: githubTokenEnv(),
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
@@ -734,6 +757,7 @@ const extraJobs: Record<string, any> = {
       {
         name: 'Prove a fresh context gets a remote action-cache hit',
         env: {
+          ...githubTokenEnv(),
           BUCK2_REMOTE_CACHE_BASIC_AUTH:
             '${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}',
         },
@@ -798,6 +822,7 @@ const extraJobs: Record<string, any> = {
   'bootstrap-cold-proof': job({
     step: {
       name: 'Bootstrap cold-proof (R32)',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('bootstrap:cold-proof'),
     },
   }),
@@ -1096,6 +1121,7 @@ const extraJobs: Record<string, any> = {
       {
         name: 'Notion integration tests',
         env: {
+          ...githubTokenEnv(),
           NOTION_API_TOKEN: '${{ secrets.NOTION_API_TOKEN }}',
           NOTION_TEST_PARENT_PAGE_ID: '${{ secrets.NOTION_TEST_PARENT_PAGE_ID }}',
           NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID:
@@ -1137,6 +1163,7 @@ const extraJobs: Record<string, any> = {
       ...baseSteps,
       {
         name: 'Restate integration tests',
+        env: githubTokenEnv(),
         run: runDevenvTasksBefore('test:restate-integration'),
       },
       nixDiagnosticsSummaryStep,
@@ -1183,7 +1210,13 @@ const deployJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     steps: [
       ...baseSteps,
-      { ...netlifyDeployStep(), env: { NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}' } },
+      {
+        ...netlifyDeployStep(),
+        env: {
+          ...githubTokenEnv(),
+          NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+        },
+      },
       workflowReportCollectorStep({
         workflowReportFlakeRef,
         bundleId: 'storybook-preview',

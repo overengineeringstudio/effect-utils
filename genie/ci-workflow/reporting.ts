@@ -5,7 +5,7 @@ import {
   type WorkflowReportRecord,
 } from '../../packages/@overeng/ci-tools/src/workflow-report.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { runDevenvTasksBefore, shellSingleQuote } from './shared.ts'
+import { githubTokenEnv, runDevenvTasksBefore, shellSingleQuote } from './shared.ts'
 
 type GitHubWorkflowStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 
@@ -93,6 +93,7 @@ export const workflowReportCollectorStep = (
   ...(opts.if === undefined ? {} : { if: opts.if }),
   shell: 'bash',
   env: {
+    ...githubTokenEnv(),
     GH_TOKEN: '${{ github.token }}',
     WORKFLOW_REPORT_BUNDLE_ID: opts.bundleId,
     WORKFLOW_REPORT_INPUT_PATHS_JSON: JSON.stringify(opts.inputPaths),
@@ -114,6 +115,7 @@ export const workflowReportCommentBodyStep = (
   ...(opts.if === undefined ? {} : { if: opts.if }),
   shell: 'bash',
   env: {
+    ...githubTokenEnv(),
     GH_TOKEN: '${{ github.token }}',
     GH_REPO: '${{ github.repository }}',
     WORKFLOW_REPORT_EVENT_NAME: '${{ github.event_name }}',
@@ -141,6 +143,7 @@ export const workflowReportPublisherStep = (
   if: opts.if ?? 'always() && !cancelled()',
   shell: 'bash',
   env: {
+    ...githubTokenEnv(),
     GH_TOKEN: '${{ github.token }}',
     GH_REPO: '${{ github.repository }}',
     WORKFLOW_REPORT_EVENT_NAME: '${{ github.event_name }}',

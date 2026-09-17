@@ -946,42 +946,65 @@ describe('ci workflow standard job helpers', () => {
   it.each([
     ['private', '0'],
     ['public', '1'],
-  ] as const)('renders the %s repository cache trust tier', (trustTier, noRemoteCache) => {
-    const fixture = spawnSync(
-      'bun',
-      [
-        '-e',
-        `
-          import { ciWorkflow, standardCIEnv } from './genie/ci-workflow/shared.ts'
-          const trustTier = ${JSON.stringify(trustTier)}
-          const workflow = ciWorkflow({
-            actionlint: false,
-            trustTier,
-            name: 'CI',
-            on: { push: { branches: ['main'] } },
-            jobs: { check: { 'runs-on': 'ubuntu-latest', steps: [] } },
-          })
-          console.log(JSON.stringify({
-            jobEnv: workflow.data.jobs.check?.env,
-            standardEnv: standardCIEnv({ trustTier }),
-          }))
-        `,
-      ],
-      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
-    )
-    const expectedEnv = {
-      FORCE_SETUP: '1',
-      CI: 'true',
-      BUCK2_NO_REMOTE_CACHE: noRemoteCache,
-      GITHUB_TOKEN: '${{ github.token }}',
-    }
+  ] as const)(
+    'renders the %s repository cache trust tier without an ambient GitHub token',
+    (trustTier, noRemoteCache) => {
+      const fixture = spawnSync(
+        'bun',
+        [
+          '-e',
+          `
+            import {
+              cachixCliBuildStep,
+              ciWorkflow,
+              devenvTaskStep,
+              downloadPreviousGitHubArtifactStep,
+              githubTokenEnv,
+              standardCIEnv,
+            } from './genie/ci-workflow.ts'
+            const trustTier = ${JSON.stringify(trustTier)}
+            const workflow = ciWorkflow({
+              actionlint: false,
+              trustTier,
+              name: 'CI',
+              on: { push: { branches: ['main'] } },
+              jobs: { check: { 'runs-on': 'ubuntu-latest', steps: [] } },
+            })
+            console.log(JSON.stringify({
+              jobEnv: workflow.data.jobs.check?.env,
+              standardEnv: standardCIEnv({ trustTier }),
+              githubTokenEnv: githubTokenEnv(),
+              nixStepEnv: cachixCliBuildStep.env,
+              devenvStepEnv: devenvTaskStep('Check', 'check:quick').env,
+              ghStepEnv: downloadPreviousGitHubArtifactStep({
+                artifactName: 'baseline',
+                outputDir: 'tmp/baseline',
+              }).env.GITHUB_TOKEN,
+            }))
+          `,
+        ],
+        { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+      )
+      const expectedEnv = {
+        FORCE_SETUP: '1',
+        CI: 'true',
+        BUCK2_NO_REMOTE_CACHE: noRemoteCache,
+      }
+      const expectedTokenEnv = {
+        GITHUB_TOKEN: '${{ github.token }}',
+      }
 
-    expect(fixture.status, fixture.stderr).toBe(0)
-    expect(JSON.parse(fixture.stdout)).toEqual({
-      jobEnv: expectedEnv,
-      standardEnv: expectedEnv,
-    })
-  })
+      expect(fixture.status, fixture.stderr).toBe(0)
+      expect(JSON.parse(fixture.stdout)).toEqual({
+        jobEnv: expectedEnv,
+        standardEnv: expectedEnv,
+        githubTokenEnv: expectedTokenEnv,
+        nixStepEnv: expectedTokenEnv,
+        devenvStepEnv: expectedTokenEnv,
+        ghStepEnv: '${{ github.token }}',
+      })
+    },
+  )
 
   it('centralizes self-hosted devenv task job composition', () => {
     expect(ciWorkflowSource).toContain('export const devenvTaskStep')
