@@ -150,6 +150,7 @@ const pinStagedModuleIdentityWithAnalysis = async ({
     )
 }
 
+/** Pins import-meta identity reads to the staged module's original source URL. */
 export const pinStagedModuleIdentity = ({
   sourceCode,
   sourcePath,

@@ -74,6 +74,7 @@ describe('Buck2 TypeScript authority derivation', () => {
       'packages/@overeng/effect-rpc-tanstack/examples/basic',
       'packages/@overeng/effect-schema-form-aria',
       'packages/@overeng/genie',
+      'packages/@overeng/gh-ci-utils',
       'packages/@overeng/kdl-effect',
       'packages/@overeng/megarepo',
       'packages/@overeng/react-inspector/tsconfig.strict-consumer.json',
