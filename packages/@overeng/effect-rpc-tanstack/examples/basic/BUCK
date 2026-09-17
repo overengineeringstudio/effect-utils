@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts
 # Projection schema version: 9
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:8391faf1179448410fa36dbc7d22608a2827d2cf7c2a52a080c2550a6b17ea60
+# Semantic fingerprint: sha256:1298b82b5c7f68bcfaa7179641791005d94d256cc78d2c65f8f1cfa89bfda3a8
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.cts, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.js, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.mts, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.spec.cjs, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.spec.jsx, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.spec.mjs, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.test.cjs, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.test.jsx, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.test.mjs, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/*.tsx, packages/@overeng/effect-rpc-tanstack/examples/basic/src/**/__snapshots__/*.snap, packages/@overeng/effect-rpc-tanstack/examples/basic/tsconfig.json.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/vite.config.ts, packages/@overeng/effect-rpc-tanstack/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -63,6 +63,16 @@ package_view(
         "src/ssr.tsx": "src/ssr.tsx",
         "tsconfig.json": "tsconfig.json",
         "vite.config.ts": "vite.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/effect-rpc-tanstack/dist": "//packages/@overeng/effect-rpc-tanstack:dist",
+        "node_modules/@overeng/effect-rpc-tanstack/package.json": "//packages/@overeng/effect-rpc-tanstack:package.json",
+        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/effect-rpc-tanstack/node_modules": "//packages/@overeng/effect-rpc-tanstack:package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
