@@ -13,6 +13,7 @@ import { buck2TypeScriptAdmission as effectRpcTanstackBasicAdmission } from '../
 import { buck2TypeScriptAdmission as effectSchemaFormAriaAdmission } from '../../packages/@overeng/effect-schema-form-aria/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAdmission } from '../../packages/@overeng/effect-schema-form/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as genieAdmission } from '../../packages/@overeng/genie/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as ghCiUtilsAdmission } from '../../packages/@overeng/gh-ci-utils/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as kdlEffectAdmission } from '../../packages/@overeng/kdl-effect/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as kdlAdmission } from '../../packages/@overeng/kdl/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as megarepoAdmission } from '../../packages/@overeng/megarepo/BUCK.genie.ts'
@@ -86,6 +87,7 @@ export const buck2TypeScriptAdmissions = {
   effectSchemaForm: effectSchemaFormAdmission,
   effectSchemaFormAria: effectSchemaFormAriaAdmission,
   genie: genieAdmission,
+  ghCiUtils: ghCiUtilsAdmission,
   kdl: kdlAdmission,
   kdlEffect: kdlEffectAdmission,
   megarepo: megarepoAdmission,

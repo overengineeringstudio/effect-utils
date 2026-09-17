@@ -71,6 +71,10 @@
       "destination": "packages/@overeng/genie/dist"
     },
     {
+      "target": "//packages/@overeng/gh-ci-utils:dist",
+      "destination": "packages/@overeng/gh-ci-utils/dist"
+    },
+    {
       "target": "//packages/@overeng/kdl-effect:dist",
       "destination": "packages/@overeng/kdl-effect/dist"
     },
