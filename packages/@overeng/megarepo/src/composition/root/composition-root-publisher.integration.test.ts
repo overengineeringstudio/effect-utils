@@ -1789,6 +1789,7 @@ describe('composition root publisher', () => {
           workspaceRoot: fixture.workspaceRoot,
           lock: { owner: 'publisher-test', token: 'teardown-token' },
           deregisterWatchmanProject: async () => undefined,
+          registerWatchmanProject: async () => undefined,
         })
         expect(result.removedPaths.toSorted()).toEqual([...generatedPaths].toSorted())
         for (const path of generatedPaths) {
@@ -1821,6 +1822,9 @@ describe('composition root publisher', () => {
             ).toBeGreaterThan(0)
             watchedRoots.delete(workspaceRoot)
           },
+          registerWatchmanProject: async (workspaceRoot) => {
+            watchedRoots.add(workspaceRoot)
+          },
         })
 
         expect(deregisteredRoots).toEqual([fixture.root])
@@ -1843,6 +1847,7 @@ describe('composition root publisher', () => {
             deregisterWatchmanProject: async () => {
               throw new Error('watch-del failed')
             },
+            registerWatchmanProject: async () => undefined,
           }),
         )
 
@@ -1910,11 +1915,20 @@ describe('composition root publisher', () => {
         const configPath = NodePath.join(fixture.root, '.buckconfig')
         const configBytes = yield* Effect.promise(() => readFile(configPath))
         const before = yield* Effect.promise(() => lstat(configPath))
+        const watchedRoots = new Set([fixture.root])
+        const watchmanEvents: string[] = []
         const error = yield* failureReason(
           teardownCompositionRoot({
             workspaceRoot: fixture.workspaceRoot,
             lock: { owner: 'publisher-test', token: 'teardown-race-token' },
-            deregisterWatchmanProject: async () => undefined,
+            deregisterWatchmanProject: async (workspaceRoot) => {
+              watchmanEvents.push('deregister')
+              watchedRoots.delete(workspaceRoot)
+            },
+            registerWatchmanProject: async (workspaceRoot) => {
+              watchmanEvents.push('register')
+              watchedRoots.add(workspaceRoot)
+            },
             beforeRemoveFile: async (path) => {
               if (path !== '.buckconfig') return
               const replacementPath = `${configPath}.foreign`
@@ -1925,6 +1939,8 @@ describe('composition root publisher', () => {
           }),
         )
         expect(error.reason).toBe('ForeignPath')
+        expect(watchmanEvents).toEqual(['deregister', 'register'])
+        expect(watchedRoots.has(fixture.root)).toBe(true)
         const replacement = yield* Effect.promise(() => lstat(configPath))
         expect(replacement.ino).not.toBe(before.ino)
         expect(yield* readGenerated(fixture, '.buckconfig')).toEqual(configBytes)
