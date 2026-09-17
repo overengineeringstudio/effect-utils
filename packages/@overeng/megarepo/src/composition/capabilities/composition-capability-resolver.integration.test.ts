@@ -414,11 +414,17 @@ describe('composition capability resolver', () => {
         'operator-recovery',
       ])
       expect(await readdir(buck2Path)).not.toContain('capability-roots')
-      expect(await readFile(fixture.nixLog, 'utf8')).toContain(
-        `build --out-link ${aRoot} ${bashOutput}\n` +
-          `build --out-link ${zRoot} ${bashOutput}\n` +
-          `build --out-link ${aRoot} ${bashOutput}\n` +
-          `build --out-link ${zRoot} ${bashOutput}\n`,
+      const durableBuilds = (await readFile(fixture.nixLog, 'utf8'))
+        .split('\n')
+        .filter((line) => line.includes(`${generationRoot}${NodePath.sep}`))
+        .toSorted()
+      expect(durableBuilds).toEqual(
+        [
+          `build --out-link ${aRoot} ${bashOutput}`,
+          `build --out-link ${zRoot} ${bashOutput}`,
+          `build --out-link ${aRoot} ${bashOutput}`,
+          `build --out-link ${zRoot} ${bashOutput}`,
+        ].toSorted(),
       )
       await Promise.all(
         [generationRoot, recoveryRoot, rootsPath, capabilityRootsPath, megarepoPath, buck2Path].map(
