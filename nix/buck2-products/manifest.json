@@ -35,9 +35,24 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": ["actionlint", "effect-tsgo", "oxfmt", "typescript-api-server"],
-        "externalModules": [],
-        "integrity": "sha256-9oifXd6Bj+1+U1Bom6ijykhOoi5dTj5JQZFC4i4ZWZg=",
+        "externalCapabilities": [
+          "actionlint",
+          "effect-tsgo",
+          "opentui-core-native",
+          "oxfmt",
+          "typescript-api-server"
+        ],
+        "externalModules": [
+          "@opentui/core-darwin-arm64",
+          "@opentui/core-darwin-x64",
+          "@opentui/core-linux-arm64",
+          "@opentui/core-linux-arm64-musl",
+          "@opentui/core-linux-x64",
+          "@opentui/core-linux-x64-musl",
+          "@opentui/core-win32-arm64",
+          "@opentui/core-win32-x64"
+        ],
+        "integrity": "sha256-cKvtEWWkjF9l7XjxRImwjQkLgbQ38em8HOtIuGA4XeA=",
         "modulePath": "genie.js",
         "platform": {
           "abi": "any",
@@ -55,20 +70,22 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3345070,
+        "sizeBytes": 6356717,
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "descriptorSha256": "cb7170ac413821dd208a61fa2bf333fdab1a660c42bff6d69b7a0b1fd58206c5",
+      "descriptorSha256": "8d215849eda5b6b65f674d03fc83408f0b7221070d9928eb6616692140520150",
       "release": {
-        "hash": "sha256-9oifXd6Bj+1+U1Bom6ijykhOoi5dTj5JQZFC4i4ZWZg=",
-        "name": "f6889f5dde818fed7e5350689ba8a3ca484ea22e5d4e3e49419142e22e195998-genie.js",
-        "tag": "buck2-product-v3-genie-f6889f5dde818fed7e5350689ba8a3ca484ea22e5d4e3e49419142e22e195998",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-f6889f5dde818fed7e5350689ba8a3ca484ea22e5d4e3e49419142e22e195998/f6889f5dde818fed7e5350689ba8a3ca484ea22e5d4e3e49419142e22e195998-genie.js"
+        "hash": "sha256-cKvtEWWkjF9l7XjxRImwjQkLgbQ38em8HOtIuGA4XeA=",
+        "name": "70abed1165a48c5f65ed78f14489b08d090b81b437f1e9bc1ceb48b860385de0-genie.js",
+        "tag": "buck2-product-v3-genie-70abed1165a48c5f65ed78f14489b08d090b81b437f1e9bc1ceb48b860385de0",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-70abed1165a48c5f65ed78f14489b08d090b81b437f1e9bc1ceb48b860385de0/70abed1165a48c5f65ed78f14489b08d090b81b437f1e9bc1ceb48b860385de0-genie.js"
       }
     },
     {
       "descriptor": {
-        "externalCapabilities": ["typescript-api-server"],
+        "externalCapabilities": [
+          "typescript-api-server"
+        ],
         "externalModules": [],
         "integrity": "sha256-SN4MPityKu/Q2F37mDPYufDOxp4RqCzj6++uZJK0nUM=",
         "modulePath": "genie-bootstrap-closure-check.js",
@@ -101,7 +118,10 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": ["gh", "git"],
+        "externalCapabilities": [
+          "gh",
+          "git"
+        ],
         "externalModules": [],
         "integrity": "sha256-qwbrhaJCOnbfz8LHXFR6+HlcEm0j0j6b/np6EIcGQTE=",
         "modulePath": "gh-ci-utils.js",
@@ -134,7 +154,13 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": ["buck2", "coreutils", "git", "nix", "watchman"],
+        "externalCapabilities": [
+          "buck2",
+          "coreutils",
+          "git",
+          "nix",
+          "watchman"
+        ],
         "externalModules": [],
         "integrity": "sha256-3UbJ8DscnDIqfuE9U4GKREj44xjFNYM6zVBk8su+Tqw=",
         "modulePath": "mr.js",
@@ -200,7 +226,9 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": ["opentui-core-native"],
+        "externalCapabilities": [
+          "opentui-core-native"
+        ],
         "externalModules": [
           "@opentui/core-darwin-arm64",
           "@opentui/core-darwin-x64",
@@ -275,7 +303,9 @@
     },
     {
       "descriptor": {
-        "externalCapabilities": ["npm"],
+        "externalCapabilities": [
+          "npm"
+        ],
         "externalModules": [],
         "integrity": "sha256-syowIz8W23x67+DZY2oimeIeylN6fJ9TUpPBg6T1dek=",
         "modulePath": "npm-release.js",
