@@ -14,6 +14,7 @@ const previewText = 'pre:not(.sb-errordisplay_code)'
 
 test.describe('Resize and Truncation', () => {
   test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 700, height: 600 })
     await page.goto('/iframe.html?id=examples-03-cli-deploy--long-lines&viewMode=story')
     await expect(page.getByTestId('tui-preview-tabs')).toBeVisible({ timeout: 30_000 })
   })

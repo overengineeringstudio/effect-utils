@@ -273,7 +273,13 @@ export const TuiStoryPreview = <S, A>({
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
     terminal.open(containerRef.current)
-    terminal.loadAddon(new WebglAddon())
+    try {
+      const webglAddon = new WebglAddon()
+      webglAddon.onContextLoss(() => webglAddon.dispose())
+      terminal.loadAddon(webglAddon)
+    } catch {
+      // xterm keeps its DOM renderer when WebGL is unavailable.
+    }
     fitAddon.fit()
 
     terminalRef.current = terminal
@@ -1287,7 +1293,13 @@ const FullscreenPreviewPane: React.FC<{
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
     terminal.open(containerRef.current)
-    terminal.loadAddon(new WebglAddon())
+    try {
+      const webglAddon = new WebglAddon()
+      webglAddon.onContextLoss(() => webglAddon.dispose())
+      terminal.loadAddon(webglAddon)
+    } catch {
+      // xterm keeps its DOM renderer when WebGL is unavailable.
+    }
     fitAddon.fit()
 
     terminalRef.current = terminal

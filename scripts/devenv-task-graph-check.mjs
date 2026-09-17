@@ -169,7 +169,7 @@ for (const lane of buck2TestAuthority.lanes) {
     typeof lane.taskName !== 'string' ||
     typeof lane.sourceOwners !== 'object' ||
     lane.sourceOwners === null ||
-    Array.isArray(lane.sourceOwners)
+    Array.isArray(lane.sourceOwners) === true
   ) {
     throw new Error('buck2-test-authority.json contains a malformed lane')
   }
