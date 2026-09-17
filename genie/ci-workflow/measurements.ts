@@ -8,6 +8,7 @@ import {
 import {
   bashShellDefaults,
   dollar,
+  githubTokenEnv,
   linuxX64Runner,
   shellSingleQuote,
   withCiSourceRoot,
@@ -1235,6 +1236,7 @@ export const devenvPerfBenchmarkStep = (
   ({
     name: 'Benchmark devenv surfaces',
     shell: 'bash',
+    env: githubTokenEnv(),
     run: withCiSourceRoot(
       renderDevenvPerfScript({
         taskProbes: opts?.taskProbes ?? [],
@@ -1261,6 +1263,7 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
     name: `Download previous artifact: ${opts.artifactName}`,
     shell: 'bash',
     env: {
+      ...githubTokenEnv(opts.tokenExpression),
       GH_TOKEN: opts.tokenExpression ?? '${{ github.token }}',
       BASELINE_ARTIFACT_NAME: opts.artifactName,
       BASELINE_OUTPUT_DIR: opts.outputDir,
@@ -1585,6 +1588,7 @@ export const nixClosureMeasurementStep = (opts: NixClosureMeasurementStepOptions
     name: `Measure Nix closure: ${targetName}`,
     shell: 'bash',
     env: {
+      ...githubTokenEnv(),
       ARTIFACT_DIR: artifactDir,
       RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
     },
@@ -1829,6 +1833,7 @@ export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptio
     name: `Measure source shape: ${targetName}`,
     shell: 'bash',
     env: {
+      ...githubTokenEnv(),
       ARTIFACT_DIR: artifactDir,
       RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
     },
@@ -2035,6 +2040,7 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
       ...opts?.prComment?.publicAssetEnv,
       ...(opts?.prComment?.enabled === true
         ? {
+            ...githubTokenEnv(opts.prComment.tokenExpression),
             CI_MEASUREMENT_IS_FORK_PR:
               "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '1' || '' }}",
             GH_TOKEN: opts.prComment.tokenExpression ?? '${{ github.token }}',

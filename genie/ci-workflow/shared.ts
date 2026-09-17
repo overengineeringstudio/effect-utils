@@ -46,9 +46,14 @@ export const bashShellDefaults = {
 
 export type CiTrustTier = 'private' | 'public'
 
+/** Step-local environment for GitHub CLI and authenticated Nix access. */
+export const githubTokenEnv = (tokenExpression = '${{ github.token }}') =>
+  ({
+    GITHUB_TOKEN: tokenExpression,
+  }) as const
+
 /**
  * Standard CI environment variables for a repository's cache trust tier.
- * GITHUB_TOKEN is exported for tools that need it as a shell env var (e.g. gh CLI, nix auth).
  * Nix eval policy is enforced at step runtime by helpers like
  * `validateNixStoreStep` and `runDevenvTasksBefore`, which append
  * `restrict-eval = false` while preserving inherited NIX_CONFIG values.
@@ -58,7 +63,6 @@ export const standardCIEnv = ({ trustTier }: { readonly trustTier: CiTrustTier }
     FORCE_SETUP: '1',
     CI: 'true',
     BUCK2_NO_REMOTE_CACHE: trustTier === 'private' ? '0' : '1',
-    GITHUB_TOKEN: '${{ github.token }}',
   }) as const
 
 /**

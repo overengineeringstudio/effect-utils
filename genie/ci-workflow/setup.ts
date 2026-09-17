@@ -6,6 +6,7 @@ import {
   cachixHostsFromBinaryCaches,
   defaultCiRuntimeScriptsDir,
   jobLocalCiDiagnosticsDir,
+  githubTokenEnv,
   nixBinaryCachesExtraConf,
   resolveDevenvRevScriptFor,
   linuxX64Runner,
@@ -77,6 +78,7 @@ export const evictCachedPnpmDepsStep = ({
 }) => ({
   name,
   shell: 'bash',
+  env: githubTokenEnv(),
   run: withCiSourceRoot(
     withEachPnpmDepsDrvShellLines({
       flakeRef,
@@ -122,6 +124,7 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
  */
 export const prepareEffectUtilsCompositionStep = {
   name: 'Prepare effect-utils composition',
+  env: githubTokenEnv(),
   run: '"$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"',
 } as const
 
@@ -180,7 +183,7 @@ export const githubAppInstallationTokenStep = (opts: {
  * invocations must authenticate with the minted installation token.
  */
 export const githubAccessTokenEnv = (tokenExpression: string) => ({
-  GITHUB_TOKEN: tokenExpression,
+  ...githubTokenEnv(tokenExpression),
   GH_TOKEN: tokenExpression,
 })
 
@@ -315,6 +318,7 @@ export const installNixStep = (opts?: {
 }) => ({
   name: 'Install Nix',
   uses: 'DeterminateSystems/determinate-nix-action@v3' as const,
+  env: githubTokenEnv(opts?.githubAccessTokenExpression),
   with: {
     'extra-conf': [
       /**
@@ -344,6 +348,7 @@ export const installNixStep = (opts?: {
 export const cachixCliBuildStep = {
   name: 'Provide cachix CLI from nixpkgs',
   shell: 'bash',
+  env: githubTokenEnv(),
   run: [
     'set -euo pipefail',
     'out=$(nix build --no-link --print-out-paths nixpkgs#cachix)',
@@ -533,6 +538,7 @@ export const pnpmInstallWithDiagnosticsStep = () =>
   ({
     name: 'Install pnpm dependencies',
     shell: 'bash',
+    env: githubTokenEnv(),
     run: [
       'set -euo pipefail',
       'mkdir -p "$CI_DIAGNOSTICS_DIR"',
@@ -777,6 +783,7 @@ export const standardSelfHostedPnpmCiPostSteps = (opts?: {
 
 export const devenvTaskStep = (name: string, ...args: [string, ...string[]]) => ({
   name,
+  env: githubTokenEnv(),
   run: runDevenvTasksBefore(...args),
 })
 
@@ -899,6 +906,7 @@ export const validateColdPnpmDepsStep = ({
 }) => ({
   name,
   shell: 'bash',
+  env: githubTokenEnv(),
   run: (() => {
     const substituterArgs =
       substituters === undefined || substituters.length === 0
@@ -934,6 +942,7 @@ export const coldFreshNixBuildStep = ({
 }) => ({
   name,
   shell: 'bash',
+  env: githubTokenEnv(),
   run: withCiSourceRoot(
     [
       'set -euo pipefail',
@@ -1035,6 +1044,7 @@ export const pnpmBuilderContractStep = ({
 export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>
   ({
     name: 'Resolve devenv',
+    env: githubTokenEnv(),
     // Routed through the shared retry wrapper: resolving devenv is the first step that
     // evaluates flake inputs, so it is where a transient store/input-cache failure lands
     // (`path '/nix/store/...' is not valid`, a truncated input tarball, an incompletely

@@ -92,6 +92,7 @@ export {
   ciPnpmStore,
   ciSourceRoot,
   jobLocalCiDiagnosticsDir,
+  githubTokenEnv,
   linuxArm64Runner,
   linuxX64Runner,
   namespaceLinuxX64PairedPerfRunner,

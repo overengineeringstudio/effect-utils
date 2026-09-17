@@ -1,4 +1,4 @@
-import { shellSingleQuote } from './shared.ts'
+import { githubTokenEnv, shellSingleQuote } from './shared.ts'
 
 /** Ephemeral per-job megarepo store path scoped to the CI run/attempt/job */
 export const jobLocalMegarepoStore =
@@ -82,6 +82,7 @@ const appendGitHubEnvLine = ({
  */
 export const installMegarepoStep = {
   name: 'Install megarepo CLI',
+  env: githubTokenEnv(),
   run: `EU_REV=$(jq -r '.members["effect-utils"].commit // empty' megarepo.lock 2>/dev/null || true)
 if [ -n "$EU_REV" ]; then
   MR_REF="github:overengineeringstudio/effect-utils/$EU_REV#megarepo"
@@ -141,7 +142,7 @@ export const applyMegarepoLockStep = (opts?: { skip?: string[]; cacheableStore?:
 fi`
   return {
     name: 'Sync megarepo dependencies',
-    env: { MEGAREPO_STORE: megarepoStore },
+    env: { ...githubTokenEnv(), MEGAREPO_STORE: megarepoStore },
     run: `EU_REV=$(jq -r '.members["effect-utils"].commit' megarepo.lock)
 if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
   echo '::error::megarepo.lock missing members["effect-utils"].commit'
@@ -526,6 +527,7 @@ process.exit(1)`
 export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions = {}) => ({
   name: 'Check first-party default refs',
   env: {
+    ...githubTokenEnv(),
     FIRST_PARTY_OWNERS_JSON: JSON.stringify(
       opts.firstPartyOwners ?? ['schickling', 'overengineeringstudio'],
     ),

@@ -24,7 +24,7 @@
 
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
 import { prSnapshotTrustLabel } from '../labels.ts'
-import { bashShellDefaults, runDevenvTasksBefore } from './shared.ts'
+import { bashShellDefaults, githubTokenEnv, runDevenvTasksBefore } from './shared.ts'
 import {
   emittedPrSnapshotValidatorPath,
   emittedPrSnapshotValidatorTestPath,
@@ -126,6 +126,7 @@ export const prSnapshotPackJob = (opts: PrSnapshotPackJobOptions) => {
           name: 'Pack exact-SHA snapshot',
           run: runDevenvTasksBefore(packTask),
           env: {
+            ...githubTokenEnv(),
             GIT_SHA: '${{ github.event.pull_request.head.sha }}',
             PR_NUMBER: '${{ github.event.pull_request.number }}',
           },

@@ -946,42 +946,256 @@ describe('ci workflow standard job helpers', () => {
   it.each([
     ['private', '0'],
     ['public', '1'],
-  ] as const)('renders the %s repository cache trust tier', (trustTier, noRemoteCache) => {
-    const fixture = spawnSync(
-      'bun',
-      [
-        '-e',
-        `
-          import { ciWorkflow, standardCIEnv } from './genie/ci-workflow/shared.ts'
-          const trustTier = ${JSON.stringify(trustTier)}
-          const workflow = ciWorkflow({
-            actionlint: false,
-            trustTier,
-            name: 'CI',
-            on: { push: { branches: ['main'] } },
-            jobs: { check: { 'runs-on': 'ubuntu-latest', steps: [] } },
-          })
-          console.log(JSON.stringify({
-            jobEnv: workflow.data.jobs.check?.env,
-            standardEnv: standardCIEnv({ trustTier }),
-          }))
-        `,
-      ],
-      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
-    )
-    const expectedEnv = {
-      FORCE_SETUP: '1',
-      CI: 'true',
-      BUCK2_NO_REMOTE_CACHE: noRemoteCache,
-      GITHUB_TOKEN: '${{ github.token }}',
-    }
+  ] as const)(
+    'renders the %s repository cache trust tier without an ambient GitHub token',
+    (trustTier, noRemoteCache) => {
+      const fixture = spawnSync(
+        'bun',
+        [
+          '-e',
+          `
+            import {
+              cachixCliBuildStep,
+              compareCiMeasurementsStep,
+              ciWorkflow,
+              devenvTaskStep,
+              downloadPreviousGitHubArtifactStep,
+              githubTokenEnv,
+              netlifyDeployStep,
+              prepareEffectUtilsCompositionStep,
+              prSnapshotPackJob,
+              standardCIEnv,
+              vercelDeployJobs,
+              vercelDeployStep,
+            } from './genie/ci-workflow.ts'
+            import { readFileSync } from 'node:fs'
+            const generatedWorkflow = Bun.YAML.parse(
+              readFileSync('.github/workflows/ci.yml', 'utf8'),
+            )
+            const pnpmRegressionStep = generatedWorkflow.jobs['pnpm-regression'].steps.find(
+              (step) => step.name === 'pnpm regression suite',
+            )
+            const generatedSteps = Object.entries(generatedWorkflow.jobs).flatMap(
+              ([jobId, job]) =>
+                (job.steps ?? []).map((step) => ({ jobId, step })),
+            )
+            const expectedGitHubToken = '$' + '{{ github.token }}'
+            const devenvRunMarker = '$' + '{DEVENV_BIN:?DEVENV_BIN not set}'
+            const generatedDevenvAuthMissing = generatedSteps
+              .filter(({ step }) => {
+                const run = typeof step.run === 'string' ? step.run : ''
+                return run.includes(devenvRunMarker)
+              })
+              .filter(({ step }) => step.env?.GITHUB_TOKEN !== expectedGitHubToken)
+              .map(({ jobId, step }) => jobId + ': ' + step.name)
+            const netlifyStep = netlifyDeployStep({
+              NETLIFY_AUTH_TOKEN: 'netlify-secret',
+            })
+            const customNetlifyStep = netlifyDeployStep({
+              GITHUB_TOKEN: 'netlify-app-token',
+            })
+            const vercelStep = vercelDeployStep({ name: 'docs' })
+            const vercelJobs = vercelDeployJobs({
+              projects: [{ name: 'docs', projectIdEnv: 'VERCEL_PROJECT_ID_DOCS' }],
+              runner: ['ubuntu-latest'],
+              baseSteps: [],
+              env: {
+                GITHUB_TOKEN: 'vercel-job-app-token',
+                VERCEL_TEAM_ID: 'vercel-team',
+              },
+              includeComment: false,
+              deployStepDecorator: (step) => ({
+                ...step,
+                env: { ...(step.env ?? {}), VERCEL_AUTH_TOKEN: 'vercel-secret' },
+              }),
+            })
+            const vercelJob = vercelJobs['deploy-docs']
+            const vercelJobStep = vercelJob.steps.find(
+              (step) => step.name === 'Deploy docs to Vercel',
+            )
+            const decoratedVercelJobs = vercelDeployJobs({
+              projects: [{ name: 'docs', projectIdEnv: 'VERCEL_PROJECT_ID_DOCS' }],
+              runner: ['ubuntu-latest'],
+              baseSteps: [],
+              env: { GITHUB_TOKEN: 'vercel-job-app-token' },
+              includeComment: false,
+              deployStepDecorator: (step) => ({
+                ...step,
+                env: { ...(step.env ?? {}), GITHUB_TOKEN: 'vercel-decorator-app-token' },
+              }),
+            })
+            const decoratedVercelJob = decoratedVercelJobs['deploy-docs']
+            const decoratedVercelJobStep = decoratedVercelJob.steps.find(
+              (step) => step.name === 'Deploy docs to Vercel',
+            )
+            const snapshotPackStep = prSnapshotPackJob({
+              topologyPath: 'release-topology.json',
+              setupStepsAfterCheckout: [],
+              packTask: 'release:pack',
+            })['pack-pr-snapshot'].steps.find((step) => step.name === 'Pack exact-SHA snapshot')
+            const directNixAuthMissing = generatedSteps
+              .filter(({ step }) => {
+                const run = typeof step.run === 'string' ? step.run : ''
+                return (
+                  run.includes('nix build') ||
+                  run.includes('nix run') ||
+                  run.includes('require_ci_measurement_tool')
+                )
+              })
+              .filter(({ step }) => step.env?.GITHUB_TOKEN !== expectedGitHubToken)
+              .map(({ jobId, step }) => jobId + ': ' + step.name)
+            const scriptBackedNixStepNames = [
+              'Prepare effect-utils composition',
+              'Resolve devenv',
+              'Bootstrap cold-proof (R32)',
+              'pnpm regression suite',
+            ]
+            const scriptBackedNixAuthMissing = generatedSteps
+              .filter(({ step }) => scriptBackedNixStepNames.includes(step.name))
+              .filter(({ step }) => step.env?.GITHUB_TOKEN !== expectedGitHubToken)
+              .map(({ jobId, step }) => jobId + ': ' + step.name)
+            const sourceShapeStep = generatedSteps.find(
+              ({ step }) => step.name === 'Measure source shape: effect-utils',
+            )?.step
+            const localOnlyStepTokenPresence = Object.fromEntries(
+              [
+                'Guard pnpm builder contract',
+                'Reject tracked product and editor payload bytes',
+              ].map((name) => {
+                const step = generatedSteps.find(({ step }) => step.name === name)?.step
+                if (step === undefined) {
+                  throw new Error('missing generated local-only step: ' + name)
+                }
+                return [name, Object.hasOwn(step.env ?? {}, 'GITHUB_TOKEN')]
+              }),
+            )
+            const trustTier = ${JSON.stringify(trustTier)}
+            const workflow = ciWorkflow({
+              actionlint: false,
+              trustTier,
+              name: 'CI',
+              on: { push: { branches: ['main'] } },
+              jobs: { check: { 'runs-on': 'ubuntu-latest', steps: [] } },
+            })
+            console.log(JSON.stringify({
+              jobEnv: workflow.data.jobs.check?.env,
+              standardEnv: standardCIEnv({ trustTier }),
+              githubTokenEnv: githubTokenEnv(),
+              nixStepEnv: cachixCliBuildStep.env,
+              compositionStepEnv: prepareEffectUtilsCompositionStep.env,
+              devenvStepEnv: devenvTaskStep('Check', 'check:quick').env,
+              ghStepEnv: downloadPreviousGitHubArtifactStep({
+                artifactName: 'baseline',
+                outputDir: 'tmp/baseline',
+              }).env.GITHUB_TOKEN,
+              pnpmRegressionStepEnv: pnpmRegressionStep.env,
+              sourceShapeStepEnv: sourceShapeStep?.env,
+              generatedDevenvAuthMissing,
+              netlifyStepEnv: netlifyStep.env,
+              customNetlifyStepEnv: customNetlifyStep.env,
+              vercelStepEnv: vercelStep.env,
+              vercelJobHasToken: Object.hasOwn(vercelJob.env, 'GITHUB_TOKEN'),
+              vercelJobTeamId: vercelJob.env.VERCEL_TEAM_ID,
+              vercelJobStepEnv: vercelJobStep?.env,
+              decoratedVercelJobStepEnv: decoratedVercelJobStep?.env,
+              decoratedVercelJobHasToken: Object.hasOwn(
+                decoratedVercelJob.env,
+                'GITHUB_TOKEN',
+              ),
+              snapshotPackStepEnv: snapshotPackStep?.env,
+              directNixAuthMissing,
+              scriptBackedNixAuthMissing,
+              localOnlyStepTokenPresence,
+              comparisonHasToken: Object.hasOwn(
+                compareCiMeasurementsStep().env,
+                'GITHUB_TOKEN',
+              ),
+              disabledComparisonHasToken: Object.hasOwn(
+                compareCiMeasurementsStep({ prComment: { enabled: false } }).env,
+                'GITHUB_TOKEN',
+              ),
+              commentComparisonTokens: (() => {
+                const env = compareCiMeasurementsStep({ prComment: { enabled: true } }).env
+                return { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN }
+              })(),
+              customCommentComparisonTokens: (() => {
+                const env = compareCiMeasurementsStep({
+                  prComment: { enabled: true, tokenExpression: 'custom-token' },
+                }).env
+                return { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN }
+              })(),
+            }))
+          `,
+        ],
+        { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+      )
+      const expectedEnv = {
+        FORCE_SETUP: '1',
+        CI: 'true',
+        BUCK2_NO_REMOTE_CACHE: noRemoteCache,
+      }
+      const expectedTokenEnv = {
+        GITHUB_TOKEN: '${{ github.token }}',
+      }
 
-    expect(fixture.status, fixture.stderr).toBe(0)
-    expect(JSON.parse(fixture.stdout)).toEqual({
-      jobEnv: expectedEnv,
-      standardEnv: expectedEnv,
-    })
-  })
+      expect(fixture.status, fixture.stderr).toBe(0)
+      expect(JSON.parse(fixture.stdout)).toEqual({
+        jobEnv: expectedEnv,
+        standardEnv: expectedEnv,
+        githubTokenEnv: expectedTokenEnv,
+        nixStepEnv: expectedTokenEnv,
+        compositionStepEnv: expectedTokenEnv,
+        devenvStepEnv: expectedTokenEnv,
+        ghStepEnv: '${{ github.token }}',
+        pnpmRegressionStepEnv: expectedTokenEnv,
+        sourceShapeStepEnv: {
+          ARTIFACT_DIR: 'tmp/source-shape-ci/current/effect-utils',
+          RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
+          ...expectedTokenEnv,
+        },
+        generatedDevenvAuthMissing: [],
+        netlifyStepEnv: {
+          NETLIFY_AUTH_TOKEN: 'netlify-secret',
+          ...expectedTokenEnv,
+        },
+        customNetlifyStepEnv: {
+          GITHUB_TOKEN: 'netlify-app-token',
+        },
+        vercelStepEnv: expectedTokenEnv,
+        vercelJobHasToken: false,
+        vercelJobTeamId: 'vercel-team',
+        vercelJobStepEnv: {
+          GITHUB_TOKEN: 'vercel-job-app-token',
+          VERCEL_AUTH_TOKEN: 'vercel-secret',
+        },
+        decoratedVercelJobStepEnv: {
+          GITHUB_TOKEN: 'vercel-decorator-app-token',
+        },
+        decoratedVercelJobHasToken: false,
+        snapshotPackStepEnv: {
+          GIT_SHA: '${{ github.event.pull_request.head.sha }}',
+          PR_NUMBER: '${{ github.event.pull_request.number }}',
+          ...expectedTokenEnv,
+        },
+        directNixAuthMissing: [],
+        scriptBackedNixAuthMissing: [],
+        localOnlyStepTokenPresence: {
+          'Guard pnpm builder contract': false,
+          'Reject tracked product and editor payload bytes': false,
+        },
+        comparisonHasToken: false,
+        disabledComparisonHasToken: false,
+        commentComparisonTokens: {
+          GITHUB_TOKEN: '${{ github.token }}',
+          GH_TOKEN: '${{ github.token }}',
+        },
+        customCommentComparisonTokens: {
+          GITHUB_TOKEN: 'custom-token',
+          GH_TOKEN: 'custom-token',
+        },
+      })
+    },
+  )
 
   it('centralizes self-hosted devenv task job composition', () => {
     expect(ciWorkflowSource).toContain('export const devenvTaskStep')
