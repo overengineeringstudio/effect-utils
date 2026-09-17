@@ -936,6 +936,11 @@ jobs:
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-${{ strategy.job-index }}"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
   test-playwright-utils:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -944,11 +949,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      FORCE_SETUP: '1'
-      CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1132,6 +1132,11 @@ jobs:
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-utils"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
   test-playwright-tui-react:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
@@ -1140,11 +1145,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      FORCE_SETUP: '1'
-      CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '1'
-      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1328,6 +1328,11 @@ jobs:
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-tui-react"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      GITHUB_TOKEN: ${{ github.token }}
   test-megarepo-cold-gc:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.event_name != 'schedule' }}
     runs-on:
