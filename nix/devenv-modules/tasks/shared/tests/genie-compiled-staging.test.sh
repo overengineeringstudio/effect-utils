@@ -78,7 +78,7 @@ echo "Test 1: compiled Genie generates output and exits"
 
 for _ in 1 2 3; do
   rm -f "$workspace/demo.json"
-  env -u OTEL_EXPORTER_OTLP_ENDPOINT \
+  env -i PATH="$PATH" HOME="$HOME" \
     NAPI_RS_NATIVE_LIBRARY_PATH="$oxc_native_library" \
     TMPDIR="$tmp_root" \
     timeout 20s "$compiled_genie" --cwd "$workspace" --output json >/dev/null
@@ -149,7 +149,7 @@ printf "%s\n" "\$@" > "$compiler_log"
 EOF
 chmod +x "$fake_compiler"
 
-env -u OTEL_EXPORTER_OTLP_ENDPOINT \
+env -i PATH="$PATH" HOME="$HOME" \
   NAPI_RS_NATIVE_LIBRARY_PATH="$oxc_native_library" \
   GENIE_EXPORT_TYPE_PROOF_COMPILER="$fake_compiler" \
   GENIE_TYPESCRIPT_API_SERVER="$typescript_api_server" \
@@ -188,7 +188,7 @@ const payload = {
 export default { data: payload, stringify: () => JSON.stringify(payload, null, 2) }
 EOF
 
-env -u OTEL_EXPORTER_OTLP_ENDPOINT \
+env -i PATH="$PATH" HOME="$HOME" \
   NAPI_RS_NATIVE_LIBRARY_PATH="$oxc_native_library" \
   TMPDIR="$tmp_root" \
   timeout 20s "$compiled_genie" --cwd "$identity_repo" --output json >/dev/null
