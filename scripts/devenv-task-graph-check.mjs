@@ -62,16 +62,19 @@ const dependencies = new Map([...tasks.keys()].map((name) => [name, new Set()]))
 const ensureTask = (name) => {
   if (dependencies.has(name) === false) dependencies.set(name, new Set())
 }
+const missingDependencies = []
 for (const [name, task] of tasks) {
   for (const dependency of task.after ?? []) {
     const upstream = dependencyName(dependency)
     if (upstream === undefined) continue
     ensureTask(upstream)
+    if (tasks.has(upstream) === false) missingDependencies.push(`${name}.after -> ${upstream}`)
     dependencies.get(name).add(upstream)
   }
   for (const dependency of task.before ?? []) {
     const downstream = dependencyName(dependency)
     if (downstream === undefined) continue
+    if (tasks.has(downstream) === false) missingDependencies.push(`${name}.before -> ${downstream}`)
     ensureTask(downstream)
     dependencies.get(downstream).add(name)
   }
@@ -86,6 +89,11 @@ const ok = ({ condition, name, detail = '' }) => {
   testCount += 1
   console.log(`ok ${testCount} - ${name}`)
 }
+ok({
+  condition: missingDependencies.length === 0,
+  name: 'every task dependency resolves to an evaluated task',
+  detail: missingDependencies.join(', '),
+})
 const requireTask = (name) => {
   const task = tasks.get(name)
   ok({ condition: task !== undefined, name: `evaluated graph contains ${name}` })
