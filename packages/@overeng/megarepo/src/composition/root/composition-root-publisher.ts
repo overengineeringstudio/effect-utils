@@ -298,9 +298,11 @@ export interface TeardownCompositionRootOptions {
   readonly lock: CompositionPublisherLockOptions
   /**
    * Deregisters the exact composition-root Watchman watch before generated authority is removed.
-   * Required when the owned generation includes `.watchmanconfig`.
+   * Required with `registerWatchmanProject` when the owned generation includes `.watchmanconfig`.
    */
   readonly deregisterWatchmanProject?: (workspaceRoot: AbsoluteDirPath) => Promise<void>
+  /** Restores that exact watch if teardown fails before removing `.watchmanconfig`. */
+  readonly registerWatchmanProject?: (workspaceRoot: AbsoluteDirPath) => Promise<void>
   readonly beforeRemoveFile?: (path: string) => Promise<void>
 }
 
@@ -2462,21 +2464,30 @@ export const teardownCompositionRoot = Effect.fn('megarepo/composition-root/tear
         const acquired = await acquireLock({ workspaceRoot, options: options.lock })
         const removedPaths: string[] = []
         const removedDirectories: string[] = []
+        let watchmanDeregistered = false
         try {
           const state = await validateTeardownState({ workspaceRoot })
           if (state.files.has('.watchmanconfig') === true) {
-            if (options.deregisterWatchmanProject === undefined) {
+            if (
+              options.deregisterWatchmanProject === undefined ||
+              options.registerWatchmanProject === undefined
+            ) {
               throw failure({
                 reason: 'InvalidInput',
                 path: finalPathFor(workspaceRoot, '.watchmanconfig'),
-                message: 'Watchman deregistration is required before composition-root teardown',
+                message:
+                  'Watchman deregistration and recovery are required before composition-root teardown',
               })
             }
             await options.deregisterWatchmanProject(workspaceRoot as AbsoluteDirPath)
+            watchmanDeregistered = true
           }
           const removalOrder = [
             ...state.manifest.files.filter((file) => file.path === '.buckconfig'),
-            ...state.manifest.files.filter((file) => file.path !== '.buckconfig'),
+            ...state.manifest.files.filter(
+              (file) => file.path !== '.buckconfig' && file.path !== '.watchmanconfig',
+            ),
+            ...state.manifest.files.filter((file) => file.path === '.watchmanconfig'),
           ]
           for (const record of removalOrder) {
             await options.beforeRemoveFile?.(record.path)
@@ -2507,6 +2518,20 @@ export const teardownCompositionRoot = Effect.fn('megarepo/composition-root/tear
               }
             }
           }
+        } catch (cause) {
+          if (watchmanDeregistered === true && removedPaths.includes('.watchmanconfig') === false) {
+            try {
+              await options.registerWatchmanProject!(workspaceRoot as AbsoluteDirPath)
+            } catch (recoveryCause) {
+              throw failure({
+                reason: 'IoFailure',
+                path: finalPathFor(workspaceRoot, '.watchmanconfig'),
+                message: 'Composition-root teardown failed and the Watchman watch was not restored',
+                cause: { teardownCause: cause, recoveryCause },
+              })
+            }
+          }
+          throw cause
         } finally {
           await releaseLock({ workspaceRoot, acquired })
         }
