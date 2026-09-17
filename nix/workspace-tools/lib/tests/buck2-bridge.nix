@@ -3,6 +3,8 @@
 let
   importArtifact = import ../buck2-artifact-import.nix { inherit pkgs; };
   hostArchitecture = if pkgs.stdenv.hostPlatform.isAarch64 then "aarch64" else "x86_64";
+  # Keep the forbidden store reference stable when nixpkgs changes between cached evaluations.
+  storeReferenceFixture = builtins.toFile "buck2-store-reference-fixture" "fixture";
   hostElfMachine = hostArchitecture;
   hostInterpreter =
     if pkgs.stdenv.hostPlatform.isAarch64 then
@@ -241,7 +243,7 @@ let
         mkdir -p payload/bin "$out"
         printf '%s\n' 'int main(void) { return 0; }' > fixture.c
         $CC -static fixture.c -o payload/bin/fixture-tool
-        printf '%s\n' ${pkgs.hello} >> payload/bin/fixture-tool
+        printf '%s\n' ${storeReferenceFixture} >> payload/bin/fixture-tool
         tar --create --format=gnu --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner \
           --file "$out/artifact.tar" --directory payload .
         digest="sha256-$(openssl dgst -sha256 -binary "$out/artifact.tar" | openssl base64 -A)"
