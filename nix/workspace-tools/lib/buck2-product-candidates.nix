@@ -18,6 +18,16 @@
 let
   importProduct = import ./javascript-product-import.nix { inherit pkgs; };
   opentuiCoreNative = import ../../opentui-core-native.nix { inherit pkgs; };
+  opentuiCoreExternalModules = [
+    "@opentui/core-darwin-arm64"
+    "@opentui/core-darwin-x64"
+    "@opentui/core-linux-arm64"
+    "@opentui/core-linux-arm64-musl"
+    "@opentui/core-linux-x64"
+    "@opentui/core-linux-x64-musl"
+    "@opentui/core-win32-arm64"
+    "@opentui/core-win32-x64"
+  ];
   buck2 = import ../../buck2.nix { inherit pkgs; };
   # The stamp every CLI's `resolveCliVersion()` parses for human-readable
   # version output. Buck produces platform-invariant bytes, so the host-facing
@@ -57,9 +67,12 @@ let
     expectedExternalCapabilities = [
       "actionlint"
       "effect-tsgo"
+      "opentui-core-native"
       "oxfmt"
     ];
+    expectedExternalModules = opentuiCoreExternalModules;
     expectedProductKind = "cli";
+    nativeNodePackages = opentuiCoreNative.packages;
     pathPackages = [ oxfmtPkg ];
     smokeTestArgs = [ "--dry-run" ];
   };
@@ -121,16 +134,7 @@ let
     # and the whole family is listed because the bytes are the same on every
     # host. Sourced from the tracked descriptor, so a change in what the
     # product asks for fails the import instead of the program.
-    expectedExternalModules = [
-      "@opentui/core-darwin-arm64"
-      "@opentui/core-darwin-x64"
-      "@opentui/core-linux-arm64"
-      "@opentui/core-linux-arm64-musl"
-      "@opentui/core-linux-x64"
-      "@opentui/core-linux-x64-musl"
-      "@opentui/core-win32-arm64"
-      "@opentui/core-win32-x64"
-    ];
+    expectedExternalModules = opentuiCoreExternalModules;
     expectedProductKind = "cli";
     generateCompletions = false;
     nativeNodePackages = opentuiCoreNative.packages;

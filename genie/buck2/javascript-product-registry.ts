@@ -21,7 +21,7 @@ export const javaScriptProductRegistry = {
   'packages/@overeng/genie': [
     {
       entrypoint: 'bin/genie.tsx',
-      externalCapabilities: ['actionlint', 'effect-tsgo', 'oxfmt'],
+      externalCapabilities: ['actionlint', 'effect-tsgo', 'opentui-core-native', 'oxfmt'],
       kind: 'cli',
       output: 'genie.js',
       productName: 'genie',
