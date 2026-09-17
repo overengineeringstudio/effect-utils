@@ -21,12 +21,12 @@ block in this handbook is drawn from one of these verified files:
 | Service + typed error boundary   | [`01-service.ts`](../../examples/01-service.ts)                                               | `examples.integration.test.ts`                  |
 | Virtual Object + typed State     | [`02-virtual-object.ts`](../../examples/02-virtual-object.ts)                                 | `examples.integration.test.ts`                  |
 | Workflow + durable promise       | [`03-workflow.ts`](../../examples/03-workflow.ts)                                             | `examples.integration.test.ts`                  |
-| Endpoint (`layer` / `serve`)     | [`04-endpoint.ts`](../../examples/04-endpoint.ts)                                             | `buck2:check`                                  |
-| Determinism + descriptors        | [`05-determinism.ts`](../../examples/05-determinism.ts)                                       | `buck2:check`                                  |
+| Endpoint (`layer` / `serve`)     | [`04-endpoint.ts`](../../examples/04-endpoint.ts)                                             | `buck2:check`                                   |
+| Determinism + descriptors        | [`05-determinism.ts`](../../examples/05-determinism.ts)                                       | `buck2:check`                                   |
 | Typed ingress client             | [`06-ingress-client.ts`](../../examples/06-ingress-client.ts)                                 | `examples.integration.test.ts`                  |
 | Calls / idempotency / awakeables | [`07-clients-idempotency-awakeables.ts`](../../examples/07-clients-idempotency-awakeables.ts) | `examples.integration.test.ts`                  |
-| Annotations + redaction          | [`08-annotations.ts`](../../examples/08-annotations.ts)                                       | `buck2:check`                                  |
-| OTel bridge                      | [`09-otel.ts`](../../examples/09-otel.ts)                                                     | `buck2:check`                                  |
+| Annotations + redaction          | [`08-annotations.ts`](../../examples/08-annotations.ts)                                       | `buck2:check`                                   |
+| OTel bridge                      | [`09-otel.ts`](../../examples/09-otel.ts)                                                     | `buck2:check`                                   |
 | Cancellation                     | [`10-cancellation.ts`](../../examples/10-cancellation.ts)                                     | `cancellation.integration.test.ts`              |
 | Testing harness                  | [`11-testing.ts`](../../examples/11-testing.ts)                                               | `examples.integration.test.ts`                  |
 | Self-reschedule                  | [`12-self-reschedule.ts`](../../examples/12-self-reschedule.ts)                               | `scheduled.integration.test.ts`                 |
