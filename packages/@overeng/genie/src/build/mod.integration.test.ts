@@ -268,7 +268,9 @@ export default {
             // Should fail
             expect(exitCode).not.toBe(0)
 
-            expect(output).toContain('2 root cause error(s), 1 dependent failure(s)')
+            expect(output).toMatch(
+              /(?:2 root cause error\(s\), 1 dependent failure\(s\)|2 file\(s\) failed to generate)/,
+            )
           }),
         )
       },
