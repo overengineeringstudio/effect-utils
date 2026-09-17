@@ -971,6 +971,47 @@ describe('ci workflow standard job helpers', () => {
             const pnpmRegressionStep = generatedWorkflow.jobs['pnpm-regression'].steps.find(
               (step) => step.name === 'pnpm regression suite',
             )
+            const generatedSteps = Object.entries(generatedWorkflow.jobs).flatMap(
+              ([jobId, job]) =>
+                (job.steps ?? []).map((step) => ({ jobId, step })),
+            )
+            const expectedGitHubToken = '$' + '{{ github.token }}'
+            const directNixAuthMissing = generatedSteps
+              .filter(({ step }) => {
+                const run = typeof step.run === 'string' ? step.run : ''
+                return (
+                  run.includes('nix build') ||
+                  run.includes('nix run') ||
+                  run.includes('require_ci_measurement_tool')
+                )
+              })
+              .filter(({ step }) => step.env?.GITHUB_TOKEN !== expectedGitHubToken)
+              .map(({ jobId, step }) => jobId + ': ' + step.name)
+            const scriptBackedNixStepNames = [
+              'Prepare effect-utils composition',
+              'Resolve devenv',
+              'Bootstrap cold-proof (R32)',
+              'pnpm regression suite',
+            ]
+            const scriptBackedNixAuthMissing = generatedSteps
+              .filter(({ step }) => scriptBackedNixStepNames.includes(step.name))
+              .filter(({ step }) => step.env?.GITHUB_TOKEN !== expectedGitHubToken)
+              .map(({ jobId, step }) => jobId + ': ' + step.name)
+            const sourceShapeStep = generatedSteps.find(
+              ({ step }) => step.name === 'Measure source shape: effect-utils',
+            )?.step
+            const localOnlyStepTokenPresence = Object.fromEntries(
+              [
+                'Guard pnpm builder contract',
+                'Reject tracked product and editor payload bytes',
+              ].map((name) => {
+                const step = generatedSteps.find(({ step }) => step.name === name)?.step
+                if (step === undefined) {
+                  throw new Error('missing generated local-only step: ' + name)
+                }
+                return [name, Object.hasOwn(step.env ?? {}, 'GITHUB_TOKEN')]
+              }),
+            )
             const trustTier = ${JSON.stringify(trustTier)}
             const workflow = ciWorkflow({
               actionlint: false,
@@ -991,6 +1032,10 @@ describe('ci workflow standard job helpers', () => {
                 outputDir: 'tmp/baseline',
               }).env.GITHUB_TOKEN,
               pnpmRegressionStepEnv: pnpmRegressionStep.env,
+              sourceShapeStepEnv: sourceShapeStep?.env,
+              directNixAuthMissing,
+              scriptBackedNixAuthMissing,
+              localOnlyStepTokenPresence,
               comparisonHasToken: Object.hasOwn(
                 compareCiMeasurementsStep().env,
                 'GITHUB_TOKEN',
@@ -1033,6 +1078,17 @@ describe('ci workflow standard job helpers', () => {
         devenvStepEnv: expectedTokenEnv,
         ghStepEnv: '${{ github.token }}',
         pnpmRegressionStepEnv: expectedTokenEnv,
+        sourceShapeStepEnv: {
+          ARTIFACT_DIR: 'tmp/source-shape-ci/current/effect-utils',
+          RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
+          ...expectedTokenEnv,
+        },
+        directNixAuthMissing: [],
+        scriptBackedNixAuthMissing: [],
+        localOnlyStepTokenPresence: {
+          'Guard pnpm builder contract': false,
+          'Reject tracked product and editor payload bytes': false,
+        },
         comparisonHasToken: false,
         disabledComparisonHasToken: false,
         commentComparisonTokens: {

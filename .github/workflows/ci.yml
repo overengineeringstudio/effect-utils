@@ -4930,6 +4930,7 @@ jobs:
       - name: 'Measure source shape: effect-utils'
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           ARTIFACT_DIR: tmp/source-shape-ci/current/effect-utils
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
         run: |

@@ -1833,6 +1833,7 @@ export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptio
     name: `Measure source shape: ${targetName}`,
     shell: 'bash',
     env: {
+      ...githubTokenEnv(),
       ARTIFACT_DIR: artifactDir,
       RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
     },
