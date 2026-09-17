@@ -461,6 +461,30 @@ export const installOwnedCapabilityProjection = async ({
       } catch {
         // Preserve both trees for explicit recovery when rollback cannot be proven.
       }
+    } else {
+      try {
+        await assertDirectoryIdentity(capabilityParentIdentity)
+        const publishedGeneration = await readGeneration({
+          projectionPath: destination,
+          expectedParent: capabilityParentIdentity.realpath,
+        })
+        if (publishedGeneration !== projectionDigest) {
+          throw new TypeError('failed first publication was replaced before rollback', { cause })
+        }
+        await runExact({
+          executable: runtime.mvPath,
+          args: ['-T', '--no-clobber', '--', destination, stage],
+        })
+        await assertDirectoryIdentity(capabilityParentIdentity)
+        await syncDirectoryIdentity({
+          identity: capabilityParentIdentity,
+          reason: 'OwnedProjectionRollback',
+          runtime,
+        })
+      } catch {
+        // An absent destination means publication never moved the stage. Otherwise preserve every
+        // reachable tree for explicit recovery when rollback cannot be proven.
+      }
     }
     throw failure({
       reason: 'PublishFailed',
