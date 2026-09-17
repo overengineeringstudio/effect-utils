@@ -72,13 +72,19 @@ export const notifyAlignmentJob = (opts: {
 // Vercel Deploy Helpers
 // =============================================================================
 
-const withGithubTokenEnv = (step: Record<string, unknown>): Record<string, unknown> => ({
-  ...step,
-  env: {
-    ...((step.env as Record<string, string> | undefined) ?? {}),
-    ...githubTokenEnv(),
-  },
-})
+const withGithubTokenEnv = (
+  step: Record<string, unknown>,
+  tokenExpression?: string,
+): Record<string, unknown> => {
+  const env = (step.env as Record<string, string> | undefined) ?? {}
+  return {
+    ...step,
+    env: {
+      ...githubTokenEnv(tokenExpression),
+      ...env,
+    },
+  }
+}
 
 /**
  * Deploy a single Vercel project via devenv task.
@@ -135,14 +141,19 @@ export const vercelDeployJobs = (opts: {
     project: VercelProject,
   ) => Record<string, unknown>
 }): Record<string, Record<string, unknown>> => {
+  const { GITHUB_TOKEN: tokenExpression, ...jobEnv } = opts.env
   const deployStepDecorator = (
     step: Record<string, unknown>,
     project: VercelProject,
   ): Record<string, unknown> =>
-    withGithubTokenEnv(opts.deployStepDecorator?.(step, project) ?? step)
+    withGithubTokenEnv(
+      opts.deployStepDecorator?.(step, project) ?? step,
+      tokenExpression,
+    )
 
   return buildVercelDeployJobs({
     ...opts,
+    env: jobEnv,
     runDevenvTasksBefore,
     deployCommentPermissions,
     bashShellDefaults,

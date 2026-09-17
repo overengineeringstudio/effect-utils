@@ -991,18 +991,43 @@ describe('ci workflow standard job helpers', () => {
             const netlifyStep = netlifyDeployStep({
               NETLIFY_AUTH_TOKEN: 'netlify-secret',
             })
+            const customNetlifyStep = netlifyDeployStep({
+              GITHUB_TOKEN: 'netlify-app-token',
+            })
             const vercelStep = vercelDeployStep({ name: 'docs' })
-            const vercelJobStep = vercelDeployJobs({
+            const vercelJobs = vercelDeployJobs({
               projects: [{ name: 'docs', projectIdEnv: 'VERCEL_PROJECT_ID_DOCS' }],
               runner: ['ubuntu-latest'],
               baseSteps: [],
-              env: {},
+              env: {
+                GITHUB_TOKEN: 'vercel-job-app-token',
+                VERCEL_TEAM_ID: 'vercel-team',
+              },
               includeComment: false,
               deployStepDecorator: (step) => ({
                 ...step,
                 env: { ...(step.env ?? {}), VERCEL_AUTH_TOKEN: 'vercel-secret' },
               }),
-            })['deploy-docs'].steps.find((step) => step.name === 'Deploy docs to Vercel')
+            })
+            const vercelJob = vercelJobs['deploy-docs']
+            const vercelJobStep = vercelJob.steps.find(
+              (step) => step.name === 'Deploy docs to Vercel',
+            )
+            const decoratedVercelJobs = vercelDeployJobs({
+              projects: [{ name: 'docs', projectIdEnv: 'VERCEL_PROJECT_ID_DOCS' }],
+              runner: ['ubuntu-latest'],
+              baseSteps: [],
+              env: { GITHUB_TOKEN: 'vercel-job-app-token' },
+              includeComment: false,
+              deployStepDecorator: (step) => ({
+                ...step,
+                env: { ...(step.env ?? {}), GITHUB_TOKEN: 'vercel-decorator-app-token' },
+              }),
+            })
+            const decoratedVercelJob = decoratedVercelJobs['deploy-docs']
+            const decoratedVercelJobStep = decoratedVercelJob.steps.find(
+              (step) => step.name === 'Deploy docs to Vercel',
+            )
             const snapshotPackStep = prSnapshotPackJob({
               topologyPath: 'release-topology.json',
               setupStepsAfterCheckout: [],
@@ -1067,8 +1092,16 @@ describe('ci workflow standard job helpers', () => {
               sourceShapeStepEnv: sourceShapeStep?.env,
               generatedDevenvAuthMissing,
               netlifyStepEnv: netlifyStep.env,
+              customNetlifyStepEnv: customNetlifyStep.env,
               vercelStepEnv: vercelStep.env,
+              vercelJobHasToken: Object.hasOwn(vercelJob.env, 'GITHUB_TOKEN'),
+              vercelJobTeamId: vercelJob.env.VERCEL_TEAM_ID,
               vercelJobStepEnv: vercelJobStep?.env,
+              decoratedVercelJobStepEnv: decoratedVercelJobStep?.env,
+              decoratedVercelJobHasToken: Object.hasOwn(
+                decoratedVercelJob.env,
+                'GITHUB_TOKEN',
+              ),
               snapshotPackStepEnv: snapshotPackStep?.env,
               directNixAuthMissing,
               scriptBackedNixAuthMissing,
@@ -1125,11 +1158,20 @@ describe('ci workflow standard job helpers', () => {
           NETLIFY_AUTH_TOKEN: 'netlify-secret',
           ...expectedTokenEnv,
         },
-        vercelStepEnv: expectedTokenEnv,
-        vercelJobStepEnv: {
-          VERCEL_AUTH_TOKEN: 'vercel-secret',
-          ...expectedTokenEnv,
+        customNetlifyStepEnv: {
+          GITHUB_TOKEN: 'netlify-app-token',
         },
+        vercelStepEnv: expectedTokenEnv,
+        vercelJobHasToken: false,
+        vercelJobTeamId: 'vercel-team',
+        vercelJobStepEnv: {
+          GITHUB_TOKEN: 'vercel-job-app-token',
+          VERCEL_AUTH_TOKEN: 'vercel-secret',
+        },
+        decoratedVercelJobStepEnv: {
+          GITHUB_TOKEN: 'vercel-decorator-app-token',
+        },
+        decoratedVercelJobHasToken: false,
         snapshotPackStepEnv: {
           GIT_SHA: '${{ github.event.pull_request.head.sha }}',
           PR_NUMBER: '${{ github.event.pull_request.number }}',
