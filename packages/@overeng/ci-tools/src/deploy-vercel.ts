@@ -211,10 +211,12 @@ const vercelScopeArgs = (scope: string | undefined) =>
   scope === undefined ? [] : ['--scope', scope]
 
 const vercelCommandEnv = (opts: {
+  readonly authToken: string
   readonly projectId: string
   readonly orgId: string
   readonly teamId: string | undefined
 }) => ({
+  VERCEL_TOKEN: opts.authToken,
   VERCEL_PROJECT_ID: opts.projectId,
   VERCEL_ORG_ID: opts.orgId,
   ...(opts.teamId === undefined ? {} : { VERCEL_TEAM_ID: opts.teamId }),
@@ -527,8 +529,6 @@ const prepareLocalPrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-loc
       '--yes',
       ...(opts.mode === 'prod' ? ['--prod'] : []),
       ...vercelScopeArgs(opts.scope),
-      '--token',
-      opts.authToken,
     ]
     const commandEnv = {
       ...opts.buildEnv,
@@ -541,15 +541,7 @@ const prepareLocalPrebuiltOutput = Effect.fn('ci-tools.deploy.vercel.prepare-loc
     const pullResult = yield* runVercelCommand({
       vercelBin: opts.vercelBin,
       cwd: process.cwd(),
-      args: [
-        'pull',
-        '--yes',
-        '--environment',
-        pullEnvironment,
-        ...vercelScopeArgs(opts.scope),
-        '--token',
-        opts.authToken,
-      ],
+      args: ['pull', '--yes', '--environment', pullEnvironment, ...vercelScopeArgs(opts.scope)],
       env: commandEnv,
     })
     if (pullResult.status !== 0) {
@@ -770,14 +762,7 @@ const assignAliasResilient = (opts: {
         effect: runVercelCommand({
           vercelBin: opts.vercelBin,
           cwd: opts.workDir,
-          args: [
-            'alias',
-            opts.rawDeployUrl,
-            opts.aliasHost,
-            ...vercelScopeArgs(opts.scope),
-            '--token',
-            opts.authToken,
-          ],
+          args: ['alias', opts.rawDeployUrl, opts.aliasHost, ...vercelScopeArgs(opts.scope)],
           env: vercelCommandEnv(opts),
         }),
       })
@@ -1007,15 +992,7 @@ const cleanupAlias = Effect.fn('ci-tools.deploy.vercel.cleanup-alias')(function*
   const result = yield* runVercelCommand({
     vercelBin: opts.vercelBin,
     cwd: opts.workDir,
-    args: [
-      'alias',
-      'rm',
-      aliasHost,
-      '--yes',
-      ...vercelScopeArgs(opts.scope),
-      '--token',
-      opts.authToken,
-    ],
+    args: ['alias', 'rm', aliasHost, '--yes', ...vercelScopeArgs(opts.scope)],
     env: vercelCommandEnv(opts),
   }).pipe(Effect.result)
 
@@ -1238,10 +1215,8 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
             '--yes',
             ...(options.mode === 'prod' ? ['--prod'] : []),
             ...vercelScopeArgs(scope),
-            '--token',
-            authTokenValue,
           ],
-          env: vercelCommandEnv({ projectId, orgId, teamId }),
+          env: vercelCommandEnv({ authToken: authTokenValue, projectId, orgId, teamId }),
         }),
       })
 
@@ -1307,15 +1282,8 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
           effect: runVercelCommand({
             vercelBin: options.vercelBin,
             cwd: preparedOutput.workDir,
-            args: [
-              'alias',
-              rawDeployUrl,
-              productionDomain,
-              ...vercelScopeArgs(scope),
-              '--token',
-              authTokenValue,
-            ],
-            env: vercelCommandEnv({ projectId, orgId, teamId }),
+            args: ['alias', rawDeployUrl, productionDomain, ...vercelScopeArgs(scope)],
+            env: vercelCommandEnv({ authToken: authTokenValue, projectId, orgId, teamId }),
           }),
         })
         if (domainResult.status !== 0) {

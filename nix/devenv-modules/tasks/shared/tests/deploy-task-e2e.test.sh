@@ -326,7 +326,7 @@ chmod +x "$tmpdir/fake-netlify-pkg/bin/netlify"
 cat > "$tmpdir/fake-bun-pkg/bin/bunx" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'cwd=%s args=%s\n' "$PWD" "$*" >> "${FAKE_BUNX_LOG:?}"
+printf 'cwd=%s VERCEL_TOKEN=%s args=%s\n' "$PWD" "${VERCEL_TOKEN:-}" "$*" >> "${FAKE_BUNX_LOG:?}"
 
 if [ "${1:-}" = "vercel" ] && [ "${2:-}" = "pull" ]; then
   mkdir -p .vercel
@@ -363,7 +363,7 @@ chmod +x "$tmpdir/fake-bun-pkg/bin/bunx"
 cat > "$tmpdir/fake-vercel" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'cwd=%s args=vercel %s\n' "$PWD" "$*" >> "${FAKE_BUNX_LOG:?}"
+printf 'cwd=%s VERCEL_TOKEN=%s args=vercel %s\n' "$PWD" "${VERCEL_TOKEN:-}" "$*" >> "${FAKE_BUNX_LOG:?}"
 
 if [ "${1:-}" = "pull" ]; then
   mkdir -p .vercel
@@ -506,6 +506,7 @@ vercel_output="$(
 )"
 
 vercel_static_args="$(cat "$tmpdir/vercel-static-ci-tools.log")"
+vercel_static_provider_log="$(cat "$tmpdir/static-bunx.log")"
 assert_contains "$vercel_output" "Vercel deploy URL: https://web-preview-pr-123-team.vercel.app" "Vercel static wrapper should surface ci-tools output"
 assert_contains "$vercel_static_args" "deploy vercel" "Vercel static wrapper should call ci-tools deploy vercel"
 assert_contains "$vercel_static_args" "--target web" "Vercel static wrapper should keep record target"
@@ -518,6 +519,9 @@ assert_contains "$vercel_static_args" "--github-output-file $vercel_github_outpu
 assert_contains "$vercel_static_args" "--url-env-key VERCEL_DEPLOY_URL_WEB" "Vercel static wrapper should pass default URL env key"
 assert_contains "$vercel_static_args" "--github-env-file $vercel_github_env" "Vercel static wrapper should pass GitHub env path"
 assert_contains "$vercel_static_args" "--production-domain app.example.com" "Vercel static wrapper should pass production domains"
+assert_contains "$vercel_static_provider_log" "VERCEL_TOKEN=fake-token args=vercel deploy --prebuilt --yes --scope fake-scope" "Vercel static deploy should receive auth through the child environment"
+assert_contains "$vercel_static_provider_log" "VERCEL_TOKEN=fake-token args=vercel alias https://deploy-web.vercel.app web-preview-pr-123-team.vercel.app --scope fake-scope" "Vercel static alias should receive auth through the child environment"
+assert_not_contains "$vercel_static_provider_log" "--token" "Vercel static provider argv should not contain the auth token flag"
 assert_json_field "https://web-preview-pr-123-team.vercel.app/" "$vercel_output_file" "value => value.devenv.env.VERCEL_DEPLOY_URL_WEB" "Vercel task output should be delegated through ci-tools"
 assert_json_field "vercel" "$vercel_report_file" "value => value.data.provider" "Vercel report record should be delegated through ci-tools"
 assert_contains "$(cat "$vercel_github_output")" "workflow_report_path=$vercel_report_file" "Vercel GitHub outputs should include report path from ci-tools"
@@ -562,8 +566,9 @@ build_output="$(
 build_bunx_args="$(cat "$tmpdir/build-bunx.log")"
 build_ci_tools_args="$(cat "$tmpdir/vercel-build-ci-tools.log")"
 assert_contains "$build_output" "Pulling Vercel project settings and env for app (production)..." "Vercel build wrapper should keep local pull/build phase"
-assert_contains "$build_bunx_args" "args=vercel pull --yes --environment production --scope fake-scope --token fake-token" "Vercel build wrapper should pull production env in the configured scope"
-assert_contains "$build_bunx_args" "args=vercel build --yes --prod --scope fake-scope --token fake-token" "Vercel build wrapper should build prod locally in the configured scope"
+assert_contains "$build_bunx_args" "VERCEL_TOKEN=fake-token args=vercel pull --yes --environment production --scope fake-scope" "Vercel build wrapper should pull production env with auth in the child environment"
+assert_contains "$build_bunx_args" "VERCEL_TOKEN=fake-token args=vercel build --yes --prod --scope fake-scope" "Vercel build wrapper should build prod locally with auth in the child environment"
+assert_not_contains "$build_bunx_args" "--token" "Vercel build provider argv should not contain the auth token flag"
 assert_contains "$build_ci_tools_args" "--target app" "Vercel build wrapper should keep record target"
 assert_contains "$build_ci_tools_args" "--alias-prefix app-preview" "Vercel build wrapper should preserve build-mode alias prefix"
 assert_contains "$build_ci_tools_args" "--artifact-kind prebuilt-output" "Vercel build wrapper should pass prebuilt output kind"
