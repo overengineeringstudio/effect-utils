@@ -461,6 +461,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -683,6 +685,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -891,6 +895,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1096,6 +1102,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1304,6 +1312,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1646,6 +1656,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -1902,6 +1914,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -2107,6 +2121,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -2312,6 +2328,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -2517,6 +2535,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -2722,6 +2742,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -2946,6 +2968,8 @@ jobs:
         with:
           name: overeng-effect-utils
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Prepare CI helper scripts
         shell: bash
@@ -3058,6 +3082,8 @@ jobs:
             access-tokens = github.com=${{ github.token }}
           summarize: true
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Prove a fresh context gets a remote action-cache hit
         env:
@@ -3147,6 +3173,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -3368,6 +3396,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -4220,6 +4250,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -5992,7 +6024,6 @@ jobs:
       - name: Compare CI measurements with baseline
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ github.token }}
           CI_MEASUREMENT_CURRENT_DIR: tmp/ci-measurement-report/current
           CI_MEASUREMENT_BASELINE_DIR: tmp/ci-measurement-report/baseline
           CI_MEASUREMENT_COMPARISON_FILE: tmp/ci-measurement-report/measurement-comparison.json
@@ -6002,6 +6033,7 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '16'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
           CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
+          GITHUB_TOKEN: ${{ github.token }}
           CI_MEASUREMENT_IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '1' || '' }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -7699,6 +7731,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -7912,6 +7946,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -8117,6 +8153,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash
@@ -8373,6 +8411,8 @@ jobs:
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare effect-utils composition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
       - name: Provide cachix CLI from nixpkgs
         shell: bash

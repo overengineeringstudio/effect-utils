@@ -956,10 +956,12 @@ describe('ci workflow standard job helpers', () => {
           `
             import {
               cachixCliBuildStep,
+              compareCiMeasurementsStep,
               ciWorkflow,
               devenvTaskStep,
               downloadPreviousGitHubArtifactStep,
               githubTokenEnv,
+              prepareEffectUtilsCompositionStep,
               standardCIEnv,
             } from './genie/ci-workflow.ts'
             const trustTier = ${JSON.stringify(trustTier)}
@@ -975,11 +977,30 @@ describe('ci workflow standard job helpers', () => {
               standardEnv: standardCIEnv({ trustTier }),
               githubTokenEnv: githubTokenEnv(),
               nixStepEnv: cachixCliBuildStep.env,
+              compositionStepEnv: prepareEffectUtilsCompositionStep.env,
               devenvStepEnv: devenvTaskStep('Check', 'check:quick').env,
               ghStepEnv: downloadPreviousGitHubArtifactStep({
                 artifactName: 'baseline',
                 outputDir: 'tmp/baseline',
               }).env.GITHUB_TOKEN,
+              comparisonHasToken: Object.hasOwn(
+                compareCiMeasurementsStep().env,
+                'GITHUB_TOKEN',
+              ),
+              disabledComparisonHasToken: Object.hasOwn(
+                compareCiMeasurementsStep({ prComment: { enabled: false } }).env,
+                'GITHUB_TOKEN',
+              ),
+              commentComparisonTokens: (() => {
+                const env = compareCiMeasurementsStep({ prComment: { enabled: true } }).env
+                return { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN }
+              })(),
+              customCommentComparisonTokens: (() => {
+                const env = compareCiMeasurementsStep({
+                  prComment: { enabled: true, tokenExpression: 'custom-token' },
+                }).env
+                return { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN }
+              })(),
             }))
           `,
         ],
@@ -1000,8 +1021,19 @@ describe('ci workflow standard job helpers', () => {
         standardEnv: expectedEnv,
         githubTokenEnv: expectedTokenEnv,
         nixStepEnv: expectedTokenEnv,
+        compositionStepEnv: expectedTokenEnv,
         devenvStepEnv: expectedTokenEnv,
         ghStepEnv: '${{ github.token }}',
+        comparisonHasToken: false,
+        disabledComparisonHasToken: false,
+        commentComparisonTokens: {
+          GITHUB_TOKEN: '${{ github.token }}',
+          GH_TOKEN: '${{ github.token }}',
+        },
+        customCommentComparisonTokens: {
+          GITHUB_TOKEN: 'custom-token',
+          GH_TOKEN: 'custom-token',
+        },
       })
     },
   )

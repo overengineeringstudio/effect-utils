@@ -2022,7 +2022,6 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
     name: 'Compare CI measurements with baseline',
     shell: 'bash',
     env: {
-      ...githubTokenEnv(opts?.prComment?.tokenExpression),
       CI_MEASUREMENT_CURRENT_DIR: opts?.currentDir ?? 'tmp/ci-measurements/current',
       CI_MEASUREMENT_BASELINE_DIR: opts?.baselineDir ?? 'tmp/ci-measurements/baseline',
       CI_MEASUREMENT_COMPARISON_FILE:
@@ -2040,6 +2039,7 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
       ...opts?.prComment?.publicAssetEnv,
       ...(opts?.prComment?.enabled === true
         ? {
+            ...githubTokenEnv(opts.prComment.tokenExpression),
             CI_MEASUREMENT_IS_FORK_PR:
               "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '1' || '' }}",
             GH_TOKEN: opts.prComment.tokenExpression ?? '${{ github.token }}',

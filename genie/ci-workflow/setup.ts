@@ -124,6 +124,7 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
  */
 export const prepareEffectUtilsCompositionStep = {
   name: 'Prepare effect-utils composition',
+  env: githubTokenEnv(),
   run: '"$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"',
 } as const
 
