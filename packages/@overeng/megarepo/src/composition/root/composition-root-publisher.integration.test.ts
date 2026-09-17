@@ -20,7 +20,7 @@ import * as NodePath from 'node:path'
 import { promisify } from 'node:util'
 
 import { describe, it } from '@effect/vitest'
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { CompositionGeneratorConfig, EffectPath } from '../../core/config.ts'
@@ -37,6 +37,7 @@ import {
   BUCK_MEMBER_MANIFEST_FILENAME,
   COMPOSITION_GENERATION_MANIFEST_PATH,
   encodeBuckMemberManifestJson,
+  CompositionGenerationManifestSchema,
   generateCompositionRoot,
   type BuckMemberManifest,
 } from './composition-root.ts'
@@ -119,6 +120,12 @@ const runtime = (
   ...overrides,
 })
 
+const watchmanExternalState = {
+  _tag: 'WatchmanProject',
+  phase: 'CompensationRequired',
+  priorWatched: true,
+} as const
+
 const optionsFor = ({
   fixture,
   memberKeys = ['alpha', 'beta'],
@@ -131,6 +138,9 @@ const optionsFor = ({
   lockToken = 'test-token',
   recoverToken,
   afterAuthorityPublished,
+  afterAuthorityRollback,
+  externalState,
+  prepareExternalState,
 }: {
   readonly fixture: Fixture
   readonly memberKeys?: ReadonlyArray<string>
@@ -143,6 +153,9 @@ const optionsFor = ({
   readonly lockToken?: string
   readonly recoverToken?: string
   readonly afterAuthorityPublished?: () => Promise<void>
+  readonly afterAuthorityRollback?: PublishCompositionRootOptions['afterAuthorityRollback']
+  readonly externalState?: PublishCompositionRootOptions['externalState']
+  readonly prepareExternalState?: PublishCompositionRootOptions['prepareExternalState']
 }): PublishCompositionRootOptions => ({
   workspaceRoot: fixture.workspaceRoot,
   configMemberKeys: memberKeys,
@@ -172,6 +185,15 @@ const optionsFor = ({
   },
   runtime: publicationRuntime,
   ...(afterAuthorityPublished === undefined ? {} : { afterAuthorityPublished }),
+  ...(prepareExternalState === undefined ? {} : { prepareExternalState }),
+  ...(externalState === undefined && afterAuthorityPublished === undefined
+    ? {}
+    : { externalState: externalState ?? watchmanExternalState }),
+  ...(afterAuthorityRollback === undefined
+    ? afterAuthorityPublished === undefined
+      ? {}
+      : { afterAuthorityRollback: async () => undefined }
+    : { afterAuthorityRollback }),
 })
 
 const planOptionsFor = (
@@ -409,7 +431,24 @@ describe('composition root publisher', () => {
         )
 
         expect(result.changedPaths).toContain('.watchmanconfig')
-        expect((yield* readGenerated(fixture, '.watchmanconfig')).toString()).toBe('{}\n')
+        expect(
+          yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(
+            (yield* readGenerated(fixture, '.watchmanconfig')).toString(),
+          ),
+        ).toEqual({
+          ignore_dirs: [
+            '.devenv',
+            '.megarepo',
+            'buck-out',
+            'node_modules',
+            'repos/alpha/node_modules',
+            'repos/alpha/target',
+            'repos/beta/node_modules',
+            'repos/beta/target',
+            'target',
+            'tmp',
+          ],
+        })
         const upgradedManifest = yield* Effect.promise(() => readGenerationManifest(fixture))
         expect(upgradedManifest.files.map((file) => file.path)).toContain('.watchmanconfig')
       }),
@@ -669,6 +708,7 @@ describe('composition root publisher', () => {
       Effect.gen(function* () {
         const fixture = yield* makeFixture()
         yield* publishCompositionRoot(optionsFor({ fixture, cacheValue: 'old:1234' }))
+        let rollbacks = 0
         const before = new Map(
           yield* Effect.promise(() =>
             Promise.all(
@@ -689,6 +729,10 @@ describe('composition root publisher', () => {
               afterAuthorityPublished: async () => {
                 throw new Error('projection side effect failed')
               },
+              afterAuthorityRollback: async () => {
+                rollbacks += 1
+                expect(readGenerated(fixture, '.buckconfig').toString()).toContain('old:1234')
+              },
             }),
           ),
         )
@@ -699,8 +743,151 @@ describe('composition root publisher', () => {
           expect(yield* Effect.promise(() => readFile(absolute))).toEqual(before.get(path)?.bytes)
           expect(info.mode & 0o777).toBe(before.get(path)?.mode)
         }
+        expect(rollbacks).toBe(1)
       }),
     ),
+  )
+
+  it.effect(
+    'keeps failed external compensation recoverable without masking authority failure',
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeFixture()
+          yield* publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'old:1234',
+              lockToken: 'compensation-seed-token',
+            }),
+          )
+          let compensationAttempts = 0
+          const error = yield* failureReason(
+            publishCompositionRoot(
+              optionsFor({
+                fixture,
+                cacheValue: 'new:5678',
+                lockToken: 'compensation-failure-token',
+                afterAuthorityPublished: async () => {
+                  throw new Error('original authority failure')
+                },
+                afterAuthorityRollback: async (state) => {
+                  expect(state).toEqual(watchmanExternalState)
+                  compensationAttempts += 1
+                  throw new Error('watchman compensation failed')
+                },
+              }),
+            ),
+          )
+
+          expect(error.reason).toBe('IoFailure')
+          expect(String(error.cause)).toContain('original authority failure')
+          expect(compensationAttempts).toBe(1)
+          expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain('old:1234')
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+          ).toBe(true)
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+          ).toBe(true)
+
+          const recovered = yield* publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'old:1234',
+              lockToken: 'compensation-recovered-token',
+              recoverToken: 'compensation-failure-token',
+              afterAuthorityRollback: async (state) => {
+                expect(state).toEqual(watchmanExternalState)
+                compensationAttempts += 1
+              },
+            }),
+          )
+          expect(recovered.changedPaths).toEqual([])
+          expect(compensationAttempts).toBe(2)
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+          ).toBe(false)
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+          ).toBe(false)
+        }),
+      ),
+  )
+
+  it.effect(
+    'recovers prior external state and reconciles forward publication before returning',
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeFixture()
+          yield* publishCompositionRoot(
+            optionsFor({
+              fixture,
+              memberKeys: ['alpha'],
+              cacheValue: 'old:1234',
+              lockToken: 'external-seed-token',
+            }),
+          )
+          let reconciliations = 0
+          const fault = yield* failureReason(
+            publishCompositionRoot(
+              optionsFor({
+                fixture,
+                cacheValue: 'new:5678',
+                lockToken: 'external-fault-token',
+                afterAuthorityPublished: async () => {
+                  reconciliations += 1
+                },
+                publicationRuntime: runtime({
+                  simulateProcessFaultAfterAuthorityPublished: () => true,
+                }),
+              }),
+            ),
+          )
+          expect(fault.reason).toBe('SimulatedProcessFault')
+          expect(reconciliations).toBe(1)
+          expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain('new:5678')
+
+          let recoveries = 0
+          let forwardReconciliations = 0
+          const recovered = yield* publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'old:1234',
+              lockToken: 'external-recovered-token',
+              recoverToken: 'external-fault-token',
+              afterAuthorityRollback: async (state) => {
+                expect(state).toEqual(watchmanExternalState)
+                expect(
+                  (await readFile(NodePath.join(fixture.root, '.buckconfig'))).toString(),
+                ).toContain('old:1234')
+                expect(
+                  (
+                    await readFile(
+                      NodePath.join(fixture.root, '.megarepo/composition-publication.json'),
+                    )
+                  ).byteLength,
+                ).toBeGreaterThan(0)
+                recoveries += 1
+              },
+              prepareExternalState: async () => ({
+                externalState: watchmanExternalState,
+                afterAuthorityPublished: async () => {
+                  const config = JSON.parse(
+                    await readFile(NodePath.join(fixture.root, '.watchmanconfig'), 'utf8'),
+                  ) as { readonly ignore_dirs: ReadonlyArray<string> }
+                  expect(config.ignore_dirs).toContain('repos/beta/node_modules')
+                  forwardReconciliations += 1
+                },
+              }),
+            }),
+          )
+          expect(recovered.changedPaths).toContain('.watchmanconfig')
+          expect(recoveries).toBe(1)
+          expect(forwardReconciliations).toBe(1)
+        }),
+      ),
   )
 
   it.effect('preserves bytes, modes, and mtimes on an idempotent repeat', () =>
@@ -1483,6 +1670,7 @@ describe('composition root publisher', () => {
                 cacheValue: 'uncommitted:1234',
                 lockToken: 'after-commit-token',
                 recoverToken: 'commit-token',
+                afterAuthorityRollback: async () => undefined,
                 publicationRuntime: runtime({
                   assertCapabilityProjection: async () => {
                     throw new Error('stop after recovery')
@@ -1600,6 +1788,8 @@ describe('composition root publisher', () => {
         const result = yield* teardownCompositionRoot({
           workspaceRoot: fixture.workspaceRoot,
           lock: { owner: 'publisher-test', token: 'teardown-token' },
+          deregisterWatchmanProject: async () => undefined,
+          registerWatchmanProject: async () => undefined,
         })
         expect(result.removedPaths.toSorted()).toEqual([...generatedPaths].toSorted())
         for (const path of generatedPaths) {
@@ -1609,6 +1799,108 @@ describe('composition root publisher', () => {
         expect(yield* exists(NodePath.join(fixture.root, 'megarepo.kdl'))).toBe(true)
         expect(yield* exists(NodePath.join(fixture.root, 'buck-out/keep'))).toBe(true)
         expect(yield* exists(ownedConfig)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect('teardown deregisters only the exact composition-root Watchman watch', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
+        const unrelatedRoot = NodePath.join(fixture.root, 'unrelated-watch')
+        const watchedRoots = new Set([fixture.root, unrelatedRoot])
+        const deregisteredRoots: string[] = []
+
+        yield* teardownCompositionRoot({
+          workspaceRoot: fixture.workspaceRoot,
+          lock: { owner: 'publisher-test', token: 'watchman-teardown-token' },
+          deregisterWatchmanProject: async (workspaceRoot) => {
+            deregisteredRoots.push(workspaceRoot)
+            expect(
+              (await readFile(NodePath.join(fixture.root, '.watchmanconfig'))).byteLength,
+            ).toBeGreaterThan(0)
+            watchedRoots.delete(workspaceRoot)
+          },
+          registerWatchmanProject: async (workspaceRoot) => {
+            watchedRoots.add(workspaceRoot)
+          },
+        })
+
+        expect(deregisteredRoots).toEqual([fixture.root])
+        expect(watchedRoots.has(fixture.root)).toBe(false)
+        expect(watchedRoots.has(unrelatedRoot)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect('teardown preserves generated authority when Watchman deregistration fails', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
+
+        const error = yield* failureReason(
+          teardownCompositionRoot({
+            workspaceRoot: fixture.workspaceRoot,
+            lock: { owner: 'publisher-test', token: 'watchman-teardown-failure-token' },
+            deregisterWatchmanProject: async () => {
+              throw new Error('watch-del failed')
+            },
+            registerWatchmanProject: async () => undefined,
+          }),
+        )
+
+        expect(error.reason).toBe('IoFailure')
+        for (const path of generatedPaths) {
+          expect(yield* exists(NodePath.join(fixture.root, path))).toBe(true)
+        }
+        expect(
+          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+        ).toBe(false)
+      }),
+    ),
+  )
+
+  it.effect('teardown accepts the legacy manifest and preserves unrecorded user files', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
+        const manifestPath = NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)
+        const watchmanPath = NodePath.join(fixture.root, '.watchmanconfig')
+        const userFilePath = NodePath.join(fixture.root, 'user-owned.txt')
+        yield* Effect.gen(function* () {
+          const manifestCodec = Schema.fromJsonString(CompositionGenerationManifestSchema)
+          const manifestText = yield* Effect.promise(() => readFile(manifestPath, 'utf8'))
+          const manifest = yield* Schema.decodeEffect(manifestCodec)(manifestText)
+          const legacyManifest = {
+            ...manifest,
+            files: manifest.files.filter((file) => file.path !== '.watchmanconfig'),
+          }
+          const legacyManifestText = yield* Schema.encodeEffect(manifestCodec)(legacyManifest)
+          yield* Effect.promise(() =>
+            Promise.all([
+              writeFile(manifestPath, `${legacyManifestText}\n`),
+              writeFile(watchmanPath, '{"user_owned":true}\n'),
+              writeFile(userFilePath, 'keep\n'),
+            ]),
+          )
+        })
+
+        const result = yield* teardownCompositionRoot({
+          workspaceRoot: fixture.workspaceRoot,
+          lock: { owner: 'publisher-test', token: 'legacy-teardown-token' },
+        })
+        const legacyGeneratedPaths = generatedPaths.filter((path) => path !== '.watchmanconfig')
+        expect(result.removedPaths.toSorted()).toEqual(legacyGeneratedPaths.toSorted())
+        for (const path of legacyGeneratedPaths) {
+          expect(yield* exists(NodePath.join(fixture.root, path))).toBe(false)
+        }
+        expect(yield* Effect.promise(() => readFile(watchmanPath, 'utf8'))).toBe(
+          '{"user_owned":true}\n',
+        )
+        expect(yield* Effect.promise(() => readFile(userFilePath, 'utf8'))).toBe('keep\n')
       }),
     ),
   )
@@ -1623,10 +1915,20 @@ describe('composition root publisher', () => {
         const configPath = NodePath.join(fixture.root, '.buckconfig')
         const configBytes = yield* Effect.promise(() => readFile(configPath))
         const before = yield* Effect.promise(() => lstat(configPath))
+        const watchedRoots = new Set([fixture.root])
+        const watchmanEvents: string[] = []
         const error = yield* failureReason(
           teardownCompositionRoot({
             workspaceRoot: fixture.workspaceRoot,
             lock: { owner: 'publisher-test', token: 'teardown-race-token' },
+            deregisterWatchmanProject: async (workspaceRoot) => {
+              watchmanEvents.push('deregister')
+              watchedRoots.delete(workspaceRoot)
+            },
+            registerWatchmanProject: async (workspaceRoot) => {
+              watchmanEvents.push('register')
+              watchedRoots.add(workspaceRoot)
+            },
             beforeRemoveFile: async (path) => {
               if (path !== '.buckconfig') return
               const replacementPath = `${configPath}.foreign`
@@ -1637,6 +1939,8 @@ describe('composition root publisher', () => {
           }),
         )
         expect(error.reason).toBe('ForeignPath')
+        expect(watchmanEvents).toEqual(['deregister', 'register'])
+        expect(watchedRoots.has(fixture.root)).toBe(true)
         const replacement = yield* Effect.promise(() => lstat(configPath))
         expect(replacement.ino).not.toBe(before.ino)
         expect(yield* readGenerated(fixture, '.buckconfig')).toEqual(configBytes)

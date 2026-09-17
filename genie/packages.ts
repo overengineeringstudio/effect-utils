@@ -45,8 +45,6 @@ export const internalPackages = [
   'ci-tools',
 ] as const
 
-
-
 /** Short name of an internal @overeng/* package. */
 export type InternalPackageName = (typeof internalPackages)[number]
 

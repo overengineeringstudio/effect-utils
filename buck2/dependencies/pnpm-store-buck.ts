@@ -2,7 +2,6 @@ import {
   nativeDependencyPolicy,
   nixGraftedStoreOverridePackages,
 } from '../../genie/native-dependency-policy.ts'
-
 import type { PnpmLockMetadata, PnpmSha256Sidecar } from './pnpm-lock.ts'
 import type {
   PnpmStoreEdgeSet,
@@ -267,9 +266,7 @@ export const renderPnpmPlatformGatedPackages = ({
     if (members === undefined) byFamily.set(family, [name])
     else members.push(name)
   }
-  const families = [...byFamily.keys()].toSorted((left, right) =>
-    compareStrings({ left, right }),
-  )
+  const families = [...byFamily.keys()].toSorted((left, right) => compareStrings({ left, right }))
   const capabilities: Record<string, string> = {}
   for (const family of families) {
     const policy = nativeDependencyPolicy[family as keyof typeof nativeDependencyPolicy]

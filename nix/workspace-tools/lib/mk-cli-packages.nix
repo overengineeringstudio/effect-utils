@@ -6,6 +6,7 @@
 {
   pkgs,
   products,
+  nativeProducts ? (import ../../buck2-native-products { inherit pkgs; }).products,
   typeProofCompilerBin,
   oxfmtPkg ? pkgs.oxfmt,
   gitRev ? "unknown",
@@ -17,6 +18,7 @@ let
     inherit
       pkgs
       products
+      nativeProducts
       typeProofCompilerBin
       oxfmtPkg
       gitRev
@@ -25,11 +27,9 @@ let
       ;
   };
 in
-{
-  inherit (candidates)
-    ci-tools
-    genie
-    genie-bootstrap-closure-check
-    megarepo
-    ;
-}
+builtins.intersectAttrs {
+  ci-tools = null;
+  genie = null;
+  genie-bootstrap-closure-check = null;
+  megarepo = null;
+} candidates

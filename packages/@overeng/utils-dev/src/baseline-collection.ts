@@ -190,6 +190,25 @@ const laneConformanceIssues = (lane: TestAuthorityLane): readonly string[] => {
   return issues
 }
 
+const laneBoundsFile = ({
+  file,
+  lane,
+}: {
+  readonly file: string
+  readonly lane: TestAuthorityLane
+}): boolean =>
+  lane.selectedTestFiles.includes(file) === true && lane.excludes.includes(file) === false
+
+const laneSourceOwner = ({
+  file,
+  lane,
+}: {
+  readonly file: string
+  readonly lane: TestAuthorityLane
+}): string | undefined =>
+  lane.sourceOwners[file] ??
+  (lane.unboundedFiles.includes(file) === true ? lane.unboundedTaskName : undefined)
+
 /**
  * Decodes the generated bridge, throwing on anything the contract does not allow.
  *
@@ -288,9 +307,41 @@ export const decodeTestAuthority = ({
   ) {
     issues.push('lanes are not byte-sorted by target, or declare a duplicate target')
   }
-  const packagePaths = lanes.map(({ packagePath }) => packagePath)
-  if (new Set(packagePaths).size !== packagePaths.length) {
-    issues.push('more than one lane per package is not supported')
+  const packagePaths = new Set(lanes.map(({ packagePath }) => packagePath))
+  for (const packagePath of packagePaths) {
+    const packageLanes = lanes.filter((lane) => lane.packagePath === packagePath)
+    if (packageLanes.length === 1) continue
+    const census = packageLanes[0]!.testFiles
+    for (const lane of packageLanes.slice(1)) {
+      if (
+        lane.testFiles.length !== census.length ||
+        lane.testFiles.some((file, index) => file !== census[index]) === true
+      ) {
+        issues.push(`${packagePath} lanes do not declare the same test census`)
+        break
+      }
+    }
+    for (const file of census) {
+      const bounded = packageLanes.filter((lane) => laneBoundsFile({ file, lane }))
+      if (bounded.length > 1) {
+        issues.push(
+          `${bounded.map(({ target }) => target).join(' and ')} both claim bounded ownership of ${file}`,
+        )
+        continue
+      }
+      if (bounded.length === 1) continue
+      const sourceOwners = new Set(
+        packageLanes.flatMap((lane) => {
+          const owner = laneSourceOwner({ file, lane })
+          return owner === undefined ? [] : [owner]
+        }),
+      )
+      if (sourceOwners.size !== 1) {
+        issues.push(
+          `${packagePath} lanes disagree about source ownership of ${file}: ${[...sourceOwners].join(', ')}`,
+        )
+      }
+    }
   }
   for (const parent of lanes) {
     const child = lanes.find(
@@ -325,9 +376,9 @@ export const decodeTestAuthority = ({
 /**
  * Resolves which evidence owes proof for one repository-relative test file.
  *
- * Every admitted lane records its complete test census, exact bounded selection,
- * exceptional source owners, and derived source complement. The decoder rejects duplicate
- * and nested lane paths, so the result has one possible owner.
+ * Every admitted lane records its complete package test census. Multiple lanes can partition
+ * that census, but the decoder permits at most one bounded owner per file and requires all
+ * source-only views to agree on one task.
  */
 export const ownershipForFile = ({
   file,
@@ -336,25 +387,31 @@ export const ownershipForFile = ({
   readonly file: string
   readonly lanes: readonly TestAuthorityLane[]
 }): FileOwnership => {
-  const lane = lanes.find(({ packagePath }) => file.startsWith(`${packagePath}/`))
-  if (lane === undefined) {
+  const packageLanes = lanes.filter(({ packagePath }) => file.startsWith(`${packagePath}/`))
+  if (packageLanes.length === 0) {
     // A package the Buck registry does not carry keeps its conventional source task.
     const packageDirectory = /^packages\/@overeng\/([^/]+)\//.exec(file)?.[1]
     return packageDirectory === undefined
       ? { kind: 'unowned', reason: 'this baseline file is outside the packages/@overeng layout' }
       : { kind: 'source', taskName: `test:${packageDirectory}` }
   }
-  const packageRelative = file.slice(lane.packagePath.length + 1)
-  if (lane.testFiles.includes(packageRelative) === false) {
+  const packagePath = packageLanes[0]!.packagePath
+  const packageRelative = file.slice(packagePath.length + 1)
+  if (packageLanes[0]!.testFiles.includes(packageRelative) === false) {
     return {
       kind: 'unowned',
-      reason: `lane ${lane.target} does not record this file in its test census`,
+      reason: `lanes for ${packagePath} do not record this file in their test census`,
     }
   }
-  if (
-    lane.selectedTestFiles.includes(packageRelative) === true &&
-    lane.excludes.includes(packageRelative) === false
-  ) {
+  const bounded = packageLanes.filter((lane) => laneBoundsFile({ file: packageRelative, lane }))
+  if (bounded.length > 1) {
+    return {
+      kind: 'unowned',
+      reason: `multiple lanes claim bounded ownership: ${bounded.map(({ target }) => target).join(', ')}`,
+    }
+  }
+  if (bounded.length === 1) {
+    const lane = bounded[0]!
     if (lane.runner !== 'vitest' || lane.collectionTarget === undefined) {
       return {
         kind: 'unowned',
@@ -363,14 +420,18 @@ export const ownershipForFile = ({
     }
     return { kind: 'buck', collectionTarget: lane.collectionTarget, packageRelative }
   }
-  const sourceOwner = lane.sourceOwners[packageRelative]
-  if (sourceOwner !== undefined) return { kind: 'source', taskName: sourceOwner }
-  return lane.unboundedTaskName === undefined
-    ? {
+  const sourceOwners = new Set(
+    packageLanes.flatMap((lane) => {
+      const owner = laneSourceOwner({ file: packageRelative, lane })
+      return owner === undefined ? [] : [owner]
+    }),
+  )
+  return sourceOwners.size === 1
+    ? { kind: 'source', taskName: [...sourceOwners][0]! }
+    : {
         kind: 'unowned',
-        reason: `lane ${lane.target} records this file as source-owned but declares no owner`,
+        reason: `lanes disagree about source ownership: ${[...sourceOwners].join(', ')}`,
       }
-    : { kind: 'source', taskName: lane.unboundedTaskName }
 }
 
 /**
@@ -422,6 +483,9 @@ export const decodeCollectionArtifact = ({
     const { file, name } = (entry ?? {}) as RawFields<CollectedTest>
     if (typeof file !== 'string' || typeof name !== 'string') {
       return { error: `${artifactPath}: tests[${index}] is not a { file, name } record` }
+    }
+    if (name.length === 0) {
+      return { error: `${artifactPath}: tests[${index}].name must not be empty` }
     }
     if (isNormalizedRelativePath(file) === false) {
       return {

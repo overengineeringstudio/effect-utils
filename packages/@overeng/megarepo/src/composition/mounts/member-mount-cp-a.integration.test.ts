@@ -411,65 +411,26 @@ describe('cp-a member mount lifecycle', () => {
   )
 
   it.effect(
-    'strips capability roots copied from a locked source before publishing the protected mount',
-    Effect.fnUntraced(function* () {
-      const fixture = yield* makeFixture()
-      const sourceRoot = NodePath.join(
-        fixture.sourceA,
-        '.buck2',
-        'capability-roots',
-        'a'.repeat(64),
-      )
-      yield* Effect.promise(async () => {
-        await mkdir(sourceRoot, { recursive: true })
-        await writeFile(NodePath.join(sourceRoot, 'old-tool'), 'source runtime sidecar\n')
-      })
-
-      const result = yield* firstPublish(fixture)
-      expect(result).toMatchObject({ _tag: 'Published', operation: 'FirstPublish' })
-      expect(yield* pathExists(NodePath.join(sourceRoot, 'old-tool'))).toBe(true)
-      expect(
-        yield* pathExists(NodePath.join(fixture.destinationPath, '.buck2', 'capability-roots')),
-      ).toBe(false)
-    }, withNode),
-  )
-
-  it.effect(
-    'rolls an advance back without deleting prior capability roots when retention fails',
+    'rolls an advance back without deleting prior workspace-owned roots when retention fails',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
       yield* firstPublish(fixture)
       const oldRoot = NodePath.join(
-        fixture.destinationPath,
-        '.buck2',
+        fixture.workspaceRoot,
+        '.megarepo',
         'capability-roots',
+        fixture.member,
         'a'.repeat(64),
       )
       yield* Effect.promise(async () => {
-        const buckDirectory = NodePath.join(fixture.destinationPath, '.buck2')
-        await chmod(buckDirectory, 0o755)
-        try {
-          await mkdir(oldRoot, { recursive: true })
-          await writeFile(NodePath.join(oldRoot, 'old-tool'), 'keep\n')
-        } finally {
-          await chmod(buckDirectory, 0o555)
-        }
+        await mkdir(oldRoot, { recursive: true })
+        await writeFile(NodePath.join(oldRoot, 'old-tool'), 'keep\n')
       })
 
       const result = yield* advance(fixture, {
         retainPublishedCapabilities: async ({ destinationPath }) => {
-          expect(
-            await readFile(
-              NodePath.join(
-                destinationPath,
-                '.buck2',
-                'capability-roots',
-                'a'.repeat(64),
-                'old-tool',
-              ),
-              'utf8',
-            ),
-          ).toBe('keep\n')
+          expect(destinationPath).toBe(fixture.destinationPath)
+          expect(await readFile(NodePath.join(oldRoot, 'old-tool'), 'utf8')).toBe('keep\n')
           throw new Error('retention failed')
         },
       }).pipe(Effect.result)
@@ -1094,27 +1055,22 @@ describe('cp-a transaction recovery fault matrix', () => {
   )
 
   it.effect(
-    'rolls back first publication when an unsynced root is lost before the retention marker',
+    'rolls back first publication when an unsynced workspace root is lost before the retention marker',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
       const unsyncedRoot = NodePath.join(
-        fixture.destinationPath,
-        '.buck2',
+        fixture.workspaceRoot,
+        '.megarepo',
         'capability-roots',
+        fixture.member,
         'b'.repeat(64),
         'buck2',
       )
       yield* firstPublish(fixture, {
         afterPhase: async (phase) => {
           if (phase !== 'Exchanged') return
-          const buck2Path = NodePath.join(fixture.destinationPath, '.buck2')
-          await chmod(buck2Path, 0o755)
-          try {
-            await mkdir(NodePath.dirname(unsyncedRoot), { recursive: true })
-            await writeFile(unsyncedRoot, 'unsynced\n')
-          } finally {
-            await chmod(buck2Path, 0o555)
-          }
+          await mkdir(NodePath.dirname(unsyncedRoot), { recursive: true })
+          await writeFile(unsyncedRoot, 'unsynced\n')
           throw new Error('crash')
         },
       }).pipe(Effect.result)

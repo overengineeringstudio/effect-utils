@@ -2,8 +2,8 @@ import process from 'node:process'
 
 import { describe, expect, it } from 'vitest'
 
-import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import releaseTargetsProjection from '../../nix/buck2-products/targets.json.genie.ts'
+import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { withJavaScriptCandidates } from './javascript-candidates.ts'
 import {
   javaScriptProductPublications,
@@ -38,6 +38,13 @@ const expectedPublications = [
     runtimeKind: 'bun',
   },
   {
+    label: '//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate',
+    module: 'gh-ci-utils.js',
+    productKind: 'cli',
+    productName: 'gh-ci-utils',
+    runtimeKind: 'node',
+  },
+  {
     label: '//packages/@overeng/megarepo:megarepo-candidate',
     module: 'mr.js',
     productKind: 'cli',
@@ -49,7 +56,7 @@ const expectedPublications = [
     module: 'notion.js',
     productKind: 'cli',
     productName: 'notion-cli',
-    runtimeKind: 'node',
+    runtimeKind: 'bun',
   },
   {
     label: '//packages/@overeng/notion-cli:notion-db-candidate',
@@ -91,7 +98,7 @@ const expectedPublications = [
     module: 'tui-stories.js',
     productKind: 'cli',
     productName: 'tui-stories',
-    runtimeKind: 'node',
+    runtimeKind: 'bun',
   },
 ] as const
 
@@ -102,9 +109,9 @@ const expectUnique = (values: readonly string[]): void => {
 }
 
 describe('JavaScript product registry', () => {
-  it('declares the eleven exact publication labels and product contracts', () => {
+  it('declares the twelve exact publication labels and product contracts', () => {
     expect(javaScriptProductPublications).toEqual(expectedPublications)
-    expect(javaScriptProductPublications).toHaveLength(11)
+    expect(javaScriptProductPublications).toHaveLength(12)
   })
 
   it('keeps every publication identity and package-local target unique', () => {

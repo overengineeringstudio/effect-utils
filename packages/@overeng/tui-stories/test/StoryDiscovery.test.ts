@@ -1,4 +1,5 @@
-import { resolve } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname } from 'node:path'
 
 import { describe, it, expect } from '@effect/vitest'
 import { Effect } from 'effect'
@@ -6,8 +7,7 @@ import { Effect } from 'effect'
 import { discoverStories } from '../src/StoryDiscovery.ts'
 import { parseStoryModule } from '../src/StoryModule.ts'
 
-const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
-const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
+const MEGAREPO_DIR = dirname(dirname(createRequire(import.meta.url).resolve('@overeng/megarepo')))
 
 describe('StoryDiscovery', () => {
   it.effect(

@@ -19,6 +19,7 @@ import {
 import { EffectPath } from '../../core/config.ts'
 import type { CompositionCapabilitySystem } from '../capabilities/composition-capability-resolver-schema.ts'
 import {
+  removeCompositionCapabilityMemberRoots,
   resolveCompositionCapabilities,
   type CompositionCapabilityResolutionHandle,
   type CompositionCapabilityRuntime,
@@ -65,6 +66,7 @@ import {
   type CompositionRootPublicationRuntime,
   type PlanCompositionRootPublicationOptions,
   type PublishCompositionRootOptions,
+  type CompositionPublicationExternalState,
 } from '../root/composition-root-publisher.ts'
 import {
   DEFAULT_BUCK_ISOLATION_DIR,
@@ -168,10 +170,16 @@ export interface CompositionApplyPrimitives {
     readonly memberKey: string
   }) => Promise<CompositionMountedMemberInspection>
   readonly listPublishedMemberKeys: (workspaceRoot: string) => Promise<ReadonlyArray<string>>
+  readonly listCapabilityRootMemberKeys: (workspaceRoot: string) => Promise<ReadonlyArray<string>>
   readonly teardownMount: (input: {
     readonly workspaceRoot: string
     readonly memberKey: string
   }) => Promise<CpAMemberMountResult>
+  readonly removeMemberCapabilityRoots: (input: {
+    readonly workspaceRoot: string
+    readonly memberKey: string
+    readonly runtime: CompositionCapabilityRuntime
+  }) => Promise<void>
   readonly recoverOverlay: (input: {
     readonly request: DistOverlayRecoveryRequest
     readonly runtime: DistOverlayRuntime
@@ -190,6 +198,12 @@ export interface CompositionApplyPrimitives {
   readonly publishRoot: (
     input: PublishCompositionRootOptions,
   ) => Promise<CompositionRootPublicationResult>
+}
+
+/** One prepared root-local Watchman change and its durable prior-state compensation record. */
+export interface CompositionWatchmanProjectReconciliation {
+  readonly state: CompositionPublicationExternalState
+  readonly reconcile: () => Promise<void>
 }
 
 /** All process and lifecycle capabilities are explicit. PATH is never a fallback. */
@@ -211,14 +225,14 @@ export interface CompositionApplyRuntime {
   }
   /** Retain one published projection's Nix outputs before its resolver scratch is released. */
   readonly retainCapabilityRoots: (input: {
+    readonly workspaceRoot: string
     readonly memberKey: string
-    readonly memberRoot: string
     readonly resolution: CompositionCapabilityResolutionHandle
   }) => Promise<void>
   /** Verify the retained generation and prune stale roots only after publication commits. */
   readonly pruneCapabilityRoots: (input: {
+    readonly workspaceRoot: string
     readonly memberKey: string
-    readonly memberRoot: string
     readonly resolution: CompositionCapabilityResolutionHandle
   }) => Promise<void>
   readonly system: CompositionCapabilitySystem
@@ -233,6 +247,14 @@ export interface CompositionApplyRuntime {
   readonly overlayRuntime: DistOverlayRuntime
   readonly overlayScratch: CompositionOverlayScratchRuntime
   readonly updateLockRuntime: WorkspaceUpdateLockRuntime
+  /** Captures prior root registration before returning config reconciliation and compensation. */
+  readonly prepareWatchmanProjectReconciliation: (input: {
+    readonly workspaceRoot: string
+  }) => Promise<CompositionWatchmanProjectReconciliation>
+  /** Restores an exact root registration from durable publisher compensation state. */
+  readonly restoreWatchmanProjectState: (
+    state: CompositionPublicationExternalState,
+  ) => Promise<void>
   /** Executes exactly the supplied argv. Implementations may add environment, never arguments. */
   readonly runBuck: (argv: readonly [string, ...ReadonlyArray<string>]) => Promise<void>
   readonly primitives?: Partial<CompositionApplyPrimitives>
@@ -284,12 +306,20 @@ const defaultPrimitives: CompositionApplyPrimitives = {
     readdir(NodePath.join(workspaceRoot, 'repos')).then((entries) =>
       entries.filter((entry) => entry !== '.mr' && entry.startsWith('.') === false),
     ),
+  listCapabilityRootMemberKeys: async (workspaceRoot) =>
+    readdir(NodePath.join(workspaceRoot, '.megarepo', 'capability-roots')).catch(
+      (cause: NodeJS.ErrnoException) => {
+        if (cause.code === 'ENOENT') return []
+        throw cause
+      },
+    ),
   teardownMount: ({ workspaceRoot, memberKey }) =>
     runNode(
       teardownCpAMemberMount({
         request: { workspaceRoot, member: memberKey, dryRun: false },
       }),
     ),
+  removeMemberCapabilityRoots: removeCompositionCapabilityMemberRoots,
   inspectMountedMember: async ({ workspaceRoot, memberKey }) => {
     const publishedPath = NodePath.join(workspaceRoot, 'repos', memberKey)
     const metadata = await runNode(
@@ -963,6 +993,33 @@ const applyComposition = async ({
         ...lockedMembers.map((member) => member.key),
         ...(request.compositionConfig.ignoredMembers ?? []),
       ])
+      const removedCapabilityRootKeys = new Set<string>()
+      const removeCapabilityRoots = async (memberKey: string): Promise<void> => {
+        try {
+          await primitives.removeMemberCapabilityRoots({
+            workspaceRoot: request.workspaceRoot,
+            memberKey,
+            runtime: runtime.capabilityRuntime,
+          })
+          removedCapabilityRootKeys.add(memberKey)
+        } catch (cause) {
+          const rootsPath = NodePath.join(
+            request.workspaceRoot,
+            '.megarepo',
+            'capability-roots',
+            memberKey,
+          )
+          throw normalizeFailure({
+            cause,
+            reason: 'CapabilityFailure',
+            phase: 'Capability',
+            memberKey,
+            path: rootsPath,
+            message: `Could not remove retired capability roots for '${memberKey}'`,
+            recoveryPaths: [rootsPath],
+          })
+        }
+      }
       const publishedKeys = await primitives.listPublishedMemberKeys(request.workspaceRoot)
       for (const memberKey of publishedKeys) {
         if (expectedKeys.has(memberKey) === true) continue
@@ -979,6 +1036,18 @@ const applyComposition = async ({
             recoveryPaths: [NodePath.join(request.workspaceRoot, 'repos', memberKey)],
           })
         }
+        await removeCapabilityRoots(memberKey)
+      }
+      const capabilityRootKeys = await primitives.listCapabilityRootMemberKeys(
+        request.workspaceRoot,
+      )
+      for (const memberKey of capabilityRootKeys) {
+        if (
+          expectedKeys.has(memberKey) === true ||
+          removedCapabilityRootKeys.has(memberKey) === true
+        )
+          continue
+        await removeCapabilityRoots(memberKey)
       }
     }
 
@@ -1163,8 +1232,8 @@ const applyComposition = async ({
     const retainOwnedCapabilityRoots = async (): Promise<void> => {
       try {
         await runtime.retainCapabilityRoots({
+          workspaceRoot: request.workspaceRoot,
           memberKey: request.ownedMemberKey,
-          memberRoot: request.ownedMemberPath,
           resolution: ownedHandle,
         })
       } catch (cause) {
@@ -1201,8 +1270,8 @@ const applyComposition = async ({
     }
     try {
       await runtime.pruneCapabilityRoots({
+        workspaceRoot: request.workspaceRoot,
         memberKey: request.ownedMemberKey,
-        memberRoot: request.ownedMemberPath,
         resolution: ownedHandle,
       })
     } catch (cause) {
@@ -1236,8 +1305,8 @@ const applyComposition = async ({
       const retainMountedCapabilityRoots = async (): Promise<void> => {
         try {
           await runtime.retainCapabilityRoots({
+            workspaceRoot: request.workspaceRoot,
             memberKey: member.key,
-            memberRoot: mountedRoot,
             resolution: capability,
           })
         } catch (cause) {
@@ -1255,8 +1324,8 @@ const applyComposition = async ({
       const pruneMountedCapabilityRoots = async (): Promise<void> => {
         try {
           await runtime.pruneCapabilityRoots({
+            workspaceRoot: request.workspaceRoot,
             memberKey: member.key,
-            memberRoot: mountedRoot,
             resolution: capability,
           })
         } catch (cause) {
@@ -1348,17 +1417,7 @@ const applyComposition = async ({
         for (const member of lockedMembers) {
           let inspection = mountInspections.get(member.key)!
           const results: Array<CompositionApplyMemberResult['overlays'][number]> = []
-          const declarations =
-            mountResults.get(member.key)?._tag === 'AlreadyCurrent'
-              ? member.manifest.distOverlays.filter(
-                  (declaration) =>
-                    inspection.metadata.overlays.some(
-                      (overlay) =>
-                        overlay.target === declaration.target &&
-                        overlay.destination === declaration.destination,
-                    ) === false,
-                )
-              : member.manifest.distOverlays
+          const declarations = member.manifest.distOverlays
           for (const declaration of declarations) {
             const scratch = await runtime.overlayScratch.create({
               workspaceRoot: request.workspaceRoot,
@@ -1502,17 +1561,35 @@ const applyComposition = async ({
           await runtime.publisherRuntime.assertCapabilityProjection(input)
         },
       },
+      prepareExternalState: async () => {
+        const prepared = await runtime.prepareWatchmanProjectReconciliation({
+          workspaceRoot: request.workspaceRoot,
+        })
+        return {
+          externalState: prepared.state,
+          afterAuthorityPublished: prepared.reconcile,
+        }
+      },
+      afterAuthorityRollback: runtime.restoreWatchmanProjectState,
     } satisfies PublishCompositionRootOptions
 
     let root: CompositionRootPublicationResult
     try {
       const rootPlan = await primitives.planRoot(rootInput)
-      if (rootPlan._tag === 'Create') {
-        root = await primitives.publishRoot(rootPublicationOptions)
+      const watchmanConfigChanged =
+        (rootPlan._tag === 'Create' || rootPlan._tag === 'Update') &&
+        rootPlan.files.some((file) => file.path === '.watchmanconfig')
+      const publicationOptions = rootPublicationOptions
+      if (
+        rootPlan._tag === 'Create' ||
+        watchmanConfigChanged === true ||
+        (rootPlan._tag === 'Refused' && rootPlan.reason === 'RecoveryRequired')
+      ) {
+        root = await primitives.publishRoot(publicationOptions)
         await publishOverlays()
       } else {
         await publishOverlays()
-        root = await primitives.publishRoot(rootPublicationOptions)
+        root = await primitives.publishRoot(publicationOptions)
       }
     } catch (cause) {
       if (cause instanceof CompositionApplyError && cause.reason === 'CleanupFailure') throw cause

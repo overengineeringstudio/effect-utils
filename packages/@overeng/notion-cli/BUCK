@@ -344,7 +344,7 @@ package_bin_artifact(
     kind = "cli",
     output = "notion.js",
     package_tree = ":package_tree",
-    target = "node",
+    target = "bun",
     visibility = ["PUBLIC"],
 )
 

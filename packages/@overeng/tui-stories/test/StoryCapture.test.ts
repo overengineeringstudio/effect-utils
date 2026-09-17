@@ -1,4 +1,5 @@
-import { resolve } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname } from 'node:path'
 
 import { expect, layer } from '@effect/vitest'
 import { Context, Effect, Layer } from 'effect'
@@ -7,8 +8,7 @@ import { captureStoryProps } from '../src/StoryCapture.ts'
 import { discoverStories, type DiscoverStoriesResult } from '../src/StoryDiscovery.ts'
 import { findStory } from '../src/StoryModule.ts'
 
-const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
-const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
+const MEGAREPO_DIR = dirname(dirname(createRequire(import.meta.url).resolve('@overeng/megarepo')))
 
 /* Story discovery is slow on CI (glob + sequential imports due to Bun TDZ workaround
    can take >5s). Provide it as a layer so it runs once in beforeAll — independent of

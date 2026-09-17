@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -145,7 +153,7 @@ describe('editor view authority production flow', () => {
         runCommand,
       })
 
-      expect(calls[0]?.cwd).toBe(fixture.root)
+      expect(calls[0]?.cwd).toBe(realpathSync(fixture.root))
       expect(calls[1]?.cwd).toBe(workspaceRoot)
       expect(ownershipCandidates).toEqual(['repos/effect-utils/package.json'])
     } finally {

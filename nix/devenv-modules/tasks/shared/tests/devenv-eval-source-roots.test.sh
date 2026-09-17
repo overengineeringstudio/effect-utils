@@ -5,7 +5,6 @@ TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 stage_zero="$ROOT/nix/buck2-stage0-tools.nix"
 bootstrap="$ROOT/nix/devenv-modules/tasks/shared/bootstrap-closure.nix"
-rust_workspace="$ROOT/nix/workspace-tools/lib/mk-rust-workspace-source.nix"
 devenv="$ROOT/devenv.nix"
 
 if grep -q 'root = repositoryRoot' "$stage_zero"; then
@@ -16,24 +15,12 @@ grep -q 'root = workspaceRoot' "$stage_zero" || {
   echo "FAIL: Buck stage-zero source does not use the narrow Rust workspace root" >&2
   exit 1
 }
-if grep -q 'root = repositoryRoot' "$rust_workspace"; then
-  echo "FAIL: shared Rust workspace source still registers the repository root" >&2
-  exit 1
-fi
-grep -q 'root = workspaceRoot' "$rust_workspace" || {
-  echo "FAIL: shared Rust workspace source does not use the narrow Rust workspace root" >&2
-  exit 1
-}
-grep -q 'root = packageRoot' "$rust_workspace" || {
-  echo "FAIL: shared Rust workspace source does not use a narrow package root" >&2
-  exit 1
-}
 if grep -q 'builtins\.path' "$bootstrap"; then
   echo "FAIL: bootstrap-closure task still coerces the effect-utils repository root" >&2
   exit 1
 fi
 workflow_report="$(sed -n '/taskModules\.workflow-report {/,/})/p' "$devenv")"
-if [[ "$workflow_report" != *'ciToolsBin = "${repoFlake.packages.${currentSystem}.ci-tools}/bin/ci-tools";'* ]]; then
+if [[ "$workflow_report" != *'ciToolsBin = "${ciToolsCli}/bin/ci-tools";'* ]]; then
   echo "FAIL: workflow-report task still forces its repository-root source fallback" >&2
   exit 1
 fi

@@ -58,7 +58,7 @@ export interface CompositionCapabilityRuntime {
   /** Durability seam for published capability-root directory entries. */
   readonly directoryFsync?: (input: {
     readonly path: string
-    readonly reason: 'CapabilityLinks' | 'GenerationLink' | 'RootsLink'
+    readonly reason: 'CapabilityLinks' | 'GenerationLink' | 'MemberLink' | 'RootsLink'
     readonly sync: () => Promise<void>
   }) => Promise<void>
 }
@@ -82,10 +82,17 @@ export interface ResolveCompositionCapabilitiesInput {
   readonly dryRun: boolean
   readonly runtime: CompositionCapabilityRuntime
 }
-/** Stable publication target plus the exact resolution whose Nix outputs must survive GC. */
+/** Workspace-owned target plus the exact resolution whose Nix outputs must survive GC. */
 export interface RetainCompositionCapabilityProjectionInput {
-  readonly memberRoot: string
+  readonly workspaceRoot: string
+  readonly memberKey: string
   readonly resolution: CompositionCapabilityResolutionHandle
+  readonly runtime: CompositionCapabilityRuntime
+}
+/** Workspace-owned capability roots to remove after verified member teardown. */
+export interface RemoveCompositionCapabilityMemberRootsInput {
+  readonly workspaceRoot: string
+  readonly memberKey: string
   readonly runtime: CompositionCapabilityRuntime
 }
 
@@ -124,6 +131,10 @@ export const retainCompositionCapabilityProjection = (
 export const pruneCompositionCapabilityProjectionRoots = (
   input: RetainCompositionCapabilityProjectionInput,
 ): Promise<void> => pruneCompositionCapabilityProjectionRootsInternal(input)
+/** Remove every retained capability generation after a member mount is torn down. */
+export const removeCompositionCapabilityMemberRoots = (
+  input: RemoveCompositionCapabilityMemberRootsInput,
+): Promise<void> => removeCompositionCapabilityMemberRootsInternal(input)
 
 /** Fail-closed resolved capability lookup used by Buck/tool consumers. */
 export const resolvedCompositionCapabilityByToolId = (input: {
@@ -1003,7 +1014,7 @@ const syncCapabilityRootDirectory = async ({
   runtime,
 }: {
   readonly path: string
-  readonly reason: 'CapabilityLinks' | 'GenerationLink' | 'RootsLink'
+  readonly reason: 'CapabilityLinks' | 'GenerationLink' | 'MemberLink' | 'RootsLink'
   readonly runtime: CompositionCapabilityRuntime
 }): Promise<void> => {
   const sync = async (): Promise<void> => {
@@ -1046,6 +1057,32 @@ const ensureCapabilityRootDirectory = async ({
   })
 }
 
+const capabilityRootPaths = ({
+  workspaceRoot,
+  memberKey,
+}: {
+  readonly workspaceRoot: string
+  readonly memberKey: string
+}): {
+  readonly memberRoot: string
+  readonly megarepoPath: string
+  readonly capabilityRootsPath: string
+  readonly memberRootsPath: string
+} => {
+  assertAbsoluteNormalized({ value: workspaceRoot, name: 'workspaceRoot' })
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(memberKey) === false) {
+    throw invalidInput({ message: 'memberKey must be a canonical one-segment member key' })
+  }
+  const megarepoPath = NodePath.join(workspaceRoot, '.megarepo')
+  const capabilityRootsPath = NodePath.join(megarepoPath, 'capability-roots')
+  return {
+    memberRoot: NodePath.join(workspaceRoot, 'repos', memberKey),
+    megarepoPath,
+    capabilityRootsPath,
+    memberRootsPath: NodePath.join(capabilityRootsPath, memberKey),
+  }
+}
+
 const assertPublishedCapabilityGeneration = async ({
   memberRoot,
   resolution,
@@ -1065,27 +1102,33 @@ const assertPublishedCapabilityGeneration = async ({
 }
 
 const retainCompositionCapabilityProjectionInternal = async ({
-  memberRoot,
+  workspaceRoot,
+  memberKey,
   resolution,
   runtime,
 }: RetainCompositionCapabilityProjectionInput): Promise<void> => {
-  assertAbsoluteNormalized({ value: memberRoot, name: 'memberRoot' })
+  const { memberRoot, megarepoPath, capabilityRootsPath, memberRootsPath } = capabilityRootPaths({
+    workspaceRoot,
+    memberKey,
+  })
   await validateRuntime(runtime)
 
   const assertPublishedGeneration = (): Promise<void> =>
     assertPublishedCapabilityGeneration({ memberRoot, resolution })
 
   await assertPublishedGeneration()
-  const buck2Path = NodePath.join(memberRoot, '.buck2')
-  const rootsPath = NodePath.join(buck2Path, 'capability-roots')
-  const generationRoot = NodePath.join(rootsPath, resolution.projectionDigest)
+  const generationRoot = NodePath.join(memberRootsPath, resolution.projectionDigest)
   try {
     await ensureCapabilityRootDirectory({
-      parentPath: buck2Path,
-      path: rootsPath,
+      parentPath: megarepoPath,
+      path: capabilityRootsPath,
     })
     await ensureCapabilityRootDirectory({
-      parentPath: rootsPath,
+      parentPath: capabilityRootsPath,
+      path: memberRootsPath,
+    })
+    await ensureCapabilityRootDirectory({
+      parentPath: memberRootsPath,
       path: generationRoot,
     })
 
@@ -1134,12 +1177,17 @@ const retainCompositionCapabilityProjectionInternal = async ({
       runtime,
     })
     await syncCapabilityRootDirectory({
-      path: rootsPath,
+      path: memberRootsPath,
       reason: 'GenerationLink',
       runtime,
     })
     await syncCapabilityRootDirectory({
-      path: buck2Path,
+      path: capabilityRootsPath,
+      reason: 'MemberLink',
+      runtime,
+    })
+    await syncCapabilityRootDirectory({
+      path: megarepoPath,
       reason: 'RootsLink',
       runtime,
     })
@@ -1155,15 +1203,15 @@ const retainCompositionCapabilityProjectionInternal = async ({
 }
 
 const pruneCompositionCapabilityProjectionRootsInternal = async ({
-  memberRoot,
+  workspaceRoot,
+  memberKey,
   resolution,
   runtime,
 }: RetainCompositionCapabilityProjectionInput): Promise<void> => {
-  assertAbsoluteNormalized({ value: memberRoot, name: 'memberRoot' })
+  const { memberRoot, memberRootsPath } = capabilityRootPaths({ workspaceRoot, memberKey })
   await validateRuntime(runtime)
 
-  const rootsPath = NodePath.join(memberRoot, '.buck2', 'capability-roots')
-  const generationRoot = NodePath.join(rootsPath, resolution.projectionDigest)
+  const generationRoot = NodePath.join(memberRootsPath, resolution.projectionDigest)
   try {
     await assertPublishedCapabilityGeneration({ memberRoot, resolution })
     const generationInfo = await lstat(generationRoot)
@@ -1184,9 +1232,9 @@ const pruneCompositionCapabilityProjectionRootsInternal = async ({
     )
     await assertPublishedCapabilityGeneration({ memberRoot, resolution })
     await withOwnerWritableDirectory({
-      path: rootsPath,
+      path: memberRootsPath,
       action: async () => {
-        const entries = await readdir(rootsPath, { withFileTypes: true })
+        const entries = await readdir(memberRootsPath, { withFileTypes: true })
         await Promise.all(
           entries.map(async (entry) => {
             if (
@@ -1194,7 +1242,7 @@ const pruneCompositionCapabilityProjectionRootsInternal = async ({
               /^[0-9a-f]{64}$/u.test(entry.name) === true &&
               entry.isDirectory() === true
             ) {
-              const staleRoot = NodePath.join(rootsPath, entry.name)
+              const staleRoot = NodePath.join(memberRootsPath, entry.name)
               await makeDirectoriesOwnerWritable(staleRoot)
               await rm(staleRoot, { recursive: true })
             }
@@ -1207,7 +1255,63 @@ const pruneCompositionCapabilityProjectionRootsInternal = async ({
     throw new CompositionCapabilityResolutionError({
       reason: 'ProjectionFailure',
       message: 'Could not prune stale capability generations',
-      path: rootsPath,
+      path: memberRootsPath,
+      cause,
+    })
+  }
+}
+
+const removeCompositionCapabilityMemberRootsInternal = async ({
+  workspaceRoot,
+  memberKey,
+  runtime,
+}: RemoveCompositionCapabilityMemberRootsInput): Promise<void> => {
+  const { capabilityRootsPath, memberRootsPath } = capabilityRootPaths({
+    workspaceRoot,
+    memberKey,
+  })
+  await validateRuntime(runtime)
+  try {
+    let memberRootsInfo
+    try {
+      memberRootsInfo = await lstat(memberRootsPath)
+    } catch (cause) {
+      if (
+        typeof cause === 'object' &&
+        cause !== null &&
+        'code' in cause &&
+        cause.code === 'ENOENT'
+      ) {
+        return
+      }
+      throw cause
+    }
+    if (
+      memberRootsInfo.isDirectory() === false ||
+      memberRootsInfo.isSymbolicLink() === true ||
+      containedBy({ root: capabilityRootsPath, path: memberRootsPath }) === false ||
+      memberRootsPath === capabilityRootsPath
+    ) {
+      throw new Error(`Capability member root is not a contained directory: '${memberRootsPath}'`)
+    }
+    await withOwnerWritableDirectory({
+      path: capabilityRootsPath,
+      action: async () => {
+        await makeDirectoriesOwnerWritable(memberRootsPath)
+        await rm(memberRootsPath, { recursive: true })
+      },
+    })
+    await syncCapabilityRootDirectory({
+      path: capabilityRootsPath,
+      reason: 'MemberLink',
+      runtime,
+    })
+  } catch (cause) {
+    if (cause instanceof CompositionCapabilityResolutionError) throw cause
+    throw new CompositionCapabilityResolutionError({
+      reason: 'ProjectionFailure',
+      message: 'Could not remove retired member capability roots',
+      path: memberRootsPath,
       cause,
     })
   }

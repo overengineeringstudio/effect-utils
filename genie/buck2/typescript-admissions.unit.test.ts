@@ -34,7 +34,7 @@ describe('Buck2 TypeScript authority derivation', () => {
     )
 
     expect(authoritativeBuck2TypeScriptProjects).toEqual(packageLocalAuthorities)
-    expect(authoritativeBuck2TypeScriptProjects).toHaveLength(39)
+    expect(authoritativeBuck2TypeScriptProjects).toHaveLength(40)
   })
 
   it('gives every root TypeScript project one Buck typecheck target', () => {
@@ -204,8 +204,7 @@ describe('Buck2 test lane registry', () => {
     )
 
     expect(lane).toEqual({
-      collectionTarget:
-        'effect_utils//packages/@overeng/effect-schema-form-aria:test_collect',
+      collectionTarget: 'effect_utils//packages/@overeng/effect-schema-form-aria:test_collect',
       excludes: [],
       packageName: 'effect-schema-form-aria',
       packagePath: 'packages/@overeng/effect-schema-form-aria',

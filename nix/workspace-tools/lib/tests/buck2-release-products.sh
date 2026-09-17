@@ -53,7 +53,7 @@ expect_failure() {
 }
 
 summary="$(eval_loader "$repo_root/nix/buck2-products")"
-expected_names='["ci-tools","genie","genie-bootstrap-closure-check","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
+expected_names='["ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 
 jq -e --argjson expected "$expected_names" '
   .fullyPublished == true and
@@ -70,6 +70,86 @@ jq -e --argjson expected "$expected_names" '
     .value.url == "https://github.com/overengineeringstudio/effect-utils/releases/download/\(.value.tag)/\(.value.name)"
   )
 ' <<<"$summary" >/dev/null
+
+candidate_summary="$(nix eval --impure --json --expr "let
+  productNames = builtins.fromJSON ''$expected_names'';
+  products = builtins.listToAttrs (
+    builtins.map (
+      name: {
+        inherit name;
+        value = throw \"candidate selection forced JavaScript product \${name}\";
+      }
+    ) productNames
+  );
+  pkgs.lib = {
+    all = builtins.all;
+    filterAttrs =
+      predicate: attrs:
+      builtins.listToAttrs (
+        builtins.map (
+          name: {
+            inherit name;
+            value = builtins.getAttr name attrs;
+          }
+        ) (
+          builtins.filter (
+            name: predicate name (builtins.getAttr name attrs)
+          ) (builtins.attrNames attrs)
+        )
+      );
+  };
+  candidatesFor =
+    path: nativeProducts:
+    builtins.attrNames (import path {
+      inherit pkgs products nativeProducts;
+      typeProofCompilerBin = \"/nix/store/test-tsgo/bin/tsgo\";
+    });
+  withoutNative = {};
+  withNative = {
+    \"typescript-api-server\" = throw \"candidate selection forced native product\";
+  };
+in {
+  candidatesWithoutNative =
+    candidatesFor $repo_root/nix/workspace-tools/lib/buck2-product-candidates.nix withoutNative;
+  candidatesWithNative =
+    candidatesFor $repo_root/nix/workspace-tools/lib/buck2-product-candidates.nix withNative;
+  cliPackagesWithoutNative =
+    candidatesFor $repo_root/nix/workspace-tools/lib/mk-cli-packages.nix withoutNative;
+  cliPackagesWithNative =
+    candidatesFor $repo_root/nix/workspace-tools/lib/mk-cli-packages.nix withNative;
+}")"
+
+jq -e '
+  .candidatesWithoutNative == [
+    "ci-tools",
+    "gh-ci-utils",
+    "megarepo",
+    "notion-cli",
+    "notion-md",
+    "npm-release",
+    "oxc-config",
+    "tui-stories"
+  ] and
+  .candidatesWithNative == [
+    "ci-tools",
+    "genie",
+    "genie-bootstrap-closure-check",
+    "gh-ci-utils",
+    "megarepo",
+    "notion-cli",
+    "notion-md",
+    "npm-release",
+    "oxc-config",
+    "tui-stories"
+  ] and
+  .cliPackagesWithoutNative == ["ci-tools", "megarepo"] and
+  .cliPackagesWithNative == [
+    "ci-tools",
+    "genie",
+    "genie-bootstrap-closure-check",
+    "megarepo"
+  ]
+' <<<"$candidate_summary" >/dev/null
 
 mkdir -p "$tmp/products"
 cp "$repo_root/nix/buck2-products/default.nix" "$tmp/products/default.nix"
@@ -165,7 +245,7 @@ if ! jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck2-product-publication-plan/v1" and
   .repository == "overengineeringstudio/effect-utils" and
   [.products[].productName] == $expected and
-  (.products | length == 11) and
+  (.products | length == 12) and
   all(
     .products[];
     (.candidateTarget | test("^([A-Za-z0-9_]+)?//")) and

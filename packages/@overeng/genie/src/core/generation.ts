@@ -96,7 +96,9 @@ export const pinStagedModuleIdentity = ({
   const rewrites = parsed.module.importMetas.flatMap(
     ({ start, end }): { start: number; end: number; text: string }[] => {
       const scanner = createScanner(true, undefined, sourceCode, end)
-      if (scanner.scan() !== SyntaxKind.DotToken) return []
+      const accessToken = scanner.scan()
+      if (accessToken !== SyntaxKind.DotToken && accessToken !== SyntaxKind.QuestionDotToken)
+        return []
       if (scanner.scan() !== SyntaxKind.Identifier) return []
 
       const field = scanner.getTokenText()

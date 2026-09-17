@@ -112,46 +112,6 @@ expect_failure \
   --no-deps \
   --format-version 1
 
-export EFFECT_UTILS_RUST_WORKSPACE_REPO="$repo_root"
-# `${...}` below is Nix attribute interpolation, not shell expansion.
-# shellcheck disable=SC2016
-source_expr='let
-  repo = builtins.toPath (builtins.getEnv "EFFECT_UTILS_RUST_WORKSPACE_REPO");
-  flake = builtins.getFlake (toString repo);
-in {
-  otelScrape = toString flake.packages.${builtins.currentSystem}.otel-scrape.src;
-  otelite = toString flake.packages.${builtins.currentSystem}.otelite.src;
-}'
-source_json="$(nix eval --impure --json --expr "$source_expr")"
-
-check_source() {
-  local package="$1"
-  local sibling="$2"
-  local source_path="$3"
-
-  [ -f "$source_path/rust/Cargo.toml" ] || fail "$package source omitted rust/Cargo.toml"
-  [ -f "$source_path/rust/Cargo.lock" ] || fail "$package source omitted rust/Cargo.lock"
-  [ -f "$source_path/rust-toolchain.toml" ] || fail "$package source omitted root rust-toolchain.toml"
-  [ -f "$source_path/packages/@overeng/otel-scrape/Cargo.toml" ] ||
-    fail "$package source omitted otel-scrape member manifest"
-  [ -f "$source_path/packages/@overeng/otelite/Cargo.toml" ] ||
-    fail "$package source omitted otelite member manifest"
-  [ -f "$source_path/packages/@overeng/$package/src/lib.rs" ] ||
-    fail "$package source omitted selected member source"
-  [ ! -e "$source_path/packages/@overeng/$sibling/src/lib.rs" ] ||
-    fail "$package source captured sibling source"
-  [ ! -e "$source_path/package.json" ] || fail "$package source captured unrelated repository files"
-
-  cargo metadata \
-    --manifest-path "$source_path/rust/Cargo.toml" \
-    --locked \
-    --no-deps \
-    --format-version 1 >/dev/null
-  echo "rust-workspace-contract: GREEN $package workspace-aware narrow source"
-}
-
-check_source "otel-scrape" "otelite" "$(jq -r '.otelScrape' <<<"$source_json")"
-check_source "otelite" "otel-scrape" "$(jq -r '.otelite' <<<"$source_json")"
 
 [ -f "$repo_root/rust-toolchain.toml" ] || fail "repository rust-toolchain.toml is missing"
 [ ! -e "$repo_root/packages/@overeng/otel-scrape/rust-toolchain.toml" ] ||

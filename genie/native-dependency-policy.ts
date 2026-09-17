@@ -80,10 +80,9 @@ export const nativeDependencyPolicy = {
  * `graft: 'fetch-only'` families are excluded: their prebuilt platform
  * tarballs are ordinary locked packages that need no grafted store entry.
  */
-export const nixGraftedStoreOverridePackages: Readonly<Record<string, true>> =
-  Object.fromEntries(
-    Object.entries(nativeDependencyPolicy as Record<string, NativeDependencyPolicyEntry>).flatMap(
-      ([name, entry]) =>
-        entry._tag === 'nix-grafted' && entry.graft === 'link' ? [[name, true] as const] : [],
-    ),
-  )
+export const nixGraftedStoreOverridePackages: Readonly<Record<string, true>> = Object.fromEntries(
+  Object.entries(nativeDependencyPolicy as Record<string, NativeDependencyPolicyEntry>).flatMap(
+    ([name, entry]) =>
+      entry._tag === 'nix-grafted' && entry.graft === 'link' ? [[name, true] as const] : [],
+  ),
+)

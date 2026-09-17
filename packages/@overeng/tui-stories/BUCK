@@ -830,7 +830,7 @@ package_bin_artifact(
     kind = "cli",
     output = "tui-stories.js",
     package_tree = ":package_tree",
-    target = "node",
+    target = "bun",
     visibility = ["PUBLIC"],
 )
 

@@ -1034,6 +1034,7 @@ const assertByteOwnedFiniteSnapshot = ({
 }
 
 const hardenSnapshot = (snapshotDir: string): void => {
+  requireDirectory({ path: snapshotDir, field: 'snapshot hardening root' })
   const finite = pathExists(join(snapshotDir, '.backing'))
   const visit = (directory: string): void => {
     for (const name of readdirSync(directory)) {
@@ -1237,7 +1238,9 @@ const prepareSnapshotRetention = ({
 }
 
 const makeDirectoriesWritable = (root: string): void => {
-  chmodSync(root, (statSync(root).mode & 0o777) | 0o700)
+  requireDirectory({ path: root, field: 'snapshot writable root' })
+  const status = lstatSync(root)
+  chmodSync(root, (status.mode & 0o777) | 0o700)
   for (const name of readdirSync(root)) {
     const path = join(root, name)
     if (lstatSync(path).isDirectory() === true) makeDirectoriesWritable(path)
@@ -1251,11 +1254,13 @@ const renameReadOnlySnapshot = ({
   source: string
   destination: string
 }): void => {
-  const sourceMode = statSync(source).mode & 0o777
+  requireDirectory({ path: source, field: 'snapshot quarantine source' })
+  const sourceMode = lstatSync(source).mode & 0o777
   chmodSync(source, sourceMode | 0o200)
   try {
     renameSync(source, destination)
   } catch (error) {
+    requireDirectory({ path: source, field: 'snapshot quarantine source' })
     chmodSync(source, sourceMode)
     throw error
   }
@@ -1571,6 +1576,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
     const snapshotDir = join(paths.storeDir, snapshotName)
     let record: EditorViewRecord | undefined
     if (existsSync(snapshotDir) === true) {
+      requireDirectory({ path: snapshotDir, field: 'snapshot' })
       const existing = readRecord(join(snapshotDir, 'editor-view.json'))
       record = expectedRecord({
         options,

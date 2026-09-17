@@ -113,7 +113,7 @@ const retiredProviderTerms = [
 
 describe('declared-closure package projection', () => {
   it('publishes editor views for the complete workspace package registry', () => {
-    expect(editorViewConsumerPackagePaths).toHaveLength(38)
+    expect(editorViewConsumerPackagePaths).toHaveLength(39)
     expect(editorViewConsumerPackagePaths).toEqual(
       Object.values(buck2TypeScriptAdmissions)
         .map((admission) => admission.packagePath)
@@ -721,11 +721,7 @@ describe('derived test collection targets', () => {
     expect(lane?.unboundedFiles).toEqual([])
     expect(lane?.unboundedTaskName).toBeUndefined()
     expect(admitted?.output).toContain(
-      [
-        'vitest_test(',
-        '    name = "test",',
-        '    package_tree = ":test_package_tree",',
-      ].join('\n'),
+      ['vitest_test(', '    name = "test",', '    package_tree = ":test_package_tree",'].join('\n'),
     )
     expect(admitted?.output).toContain(
       [

@@ -111,20 +111,38 @@ describe('decodeTestAuthority', () => {
     )
   })
 
-  it('rejects multiple lanes for one package until lane membership is unambiguous', () => {
+  it('accepts disjoint lanes for one package', () => {
     const lanes = conformantLanes()
-    const packagePath = lanes[0]!.packagePath
-    const target = `effect_utils//${packagePath}:unit`
-    const duplicatePackage = {
-      ...lanes[1]!,
-      collectionTarget: `${target}_collect`,
-      packageName: lanes[0]!.packageName,
-      packagePath,
-      target,
-      taskName: `test:${lanes[0]!.packageName}:unit`,
+    const primary = {
+      ...lanes[0]!,
+      selectedTestFiles: ['src/a.test.ts'],
+      sourceOwners: { 'src/b.test.ts': 'test:pkg-00:unit' },
+      testFiles: ['src/a.test.ts', 'src/b.test.ts'],
     }
-    expect(() => decode([lanes[0]!, duplicatePackage, ...lanes.slice(2)])).toThrow(
-      /more than one lane per package is not supported/,
+    const target = 'effect_utils//packages/@overeng/pkg-00:unit'
+    const secondary = {
+      ...primary,
+      collectionTarget: `${target}_collect`,
+      selectedTestFiles: ['src/b.test.ts'],
+      sourceOwners: { 'src/a.test.ts': 'test:pkg-00' },
+      target,
+      taskName: 'test:pkg-00:unit',
+    }
+
+    expect(() => decode([primary, secondary, ...lanes.slice(1)])).not.toThrow()
+  })
+
+  it('rejects overlapping lanes for one package', () => {
+    const lanes = conformantLanes()
+    const target = 'effect_utils//packages/@overeng/pkg-00:unit'
+    const overlapping = {
+      ...lanes[0]!,
+      collectionTarget: `${target}_collect`,
+      target,
+      taskName: 'test:pkg-00:unit',
+    }
+    expect(() => decode([lanes[0]!, overlapping, ...lanes.slice(1)])).toThrow(
+      /both claim bounded ownership of src\/a.test.ts/,
     )
   })
 
@@ -311,6 +329,35 @@ describe('ownershipForFile', () => {
     ).toStrictEqual({ kind: 'source', taskName: 'test:external' })
   })
 
+  it('selects the bounded owner across disjoint lanes for one package', () => {
+    const primary = lane({
+      selectedTestFiles: ['src/a.test.ts', 'src/b.test.ts'],
+      excludes: ['src/b.test.ts'],
+      sourceOwners: { 'src/b.test.ts': 'test:alpha:unit' },
+      testFiles: ['src/a.test.ts', 'src/b.test.ts'],
+    })
+    const unitTarget = 'effect_utils//packages/@overeng/alpha:unit'
+    const unit = lane({
+      collectionTarget: `${unitTarget}_collect`,
+      selectedTestFiles: ['src/b.test.ts'],
+      sourceOwners: { 'src/a.test.ts': 'test:alpha' },
+      target: unitTarget,
+      taskName: 'test:alpha:unit',
+      testFiles: ['src/a.test.ts', 'src/b.test.ts'],
+    })
+
+    expect(
+      ownershipForFile({
+        file: 'packages/@overeng/alpha/src/b.test.ts',
+        lanes: [primary, unit],
+      }),
+    ).toStrictEqual({
+      kind: 'buck',
+      collectionTarget: `${unitTarget}_collect`,
+      packageRelative: 'src/b.test.ts',
+    })
+  })
+
   it('falls back to the conventional task for a package outside the registry', () => {
     expect(ownershipForFile({ file: 'packages/@overeng/zeta/src/z.test.ts', lanes })).toStrictEqual(
       { kind: 'source', taskName: 'test:zeta' },
@@ -394,6 +441,14 @@ describe('decodeCollectionArtifact', () => {
       decoded: { schemaVersion: 1, tests: [{ file: '/abs/x.test.ts', name: 'x' }] },
     })
     expect('error' in result && result.error).toMatch(/not a normalized package-relative path/)
+  })
+
+  it('rejects an empty test name', () => {
+    const result = decodeCollectionArtifact({
+      artifactPath,
+      decoded: { schemaVersion: 1, tests: [{ file: 'src/x.test.ts', name: '' }] },
+    })
+    expect('error' in result && result.error).toMatch(/name must not be empty/)
   })
 
   it('rejects entries that are not byte-sorted by file then name', () => {

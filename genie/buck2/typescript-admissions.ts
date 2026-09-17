@@ -1,6 +1,6 @@
-import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import { buck2TypeScriptAdmission as effectSocketAdmission } from '../../context/effect/socket/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as opentuiAdmission } from '../../context/opentui/BUCK.genie.ts'
+import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import { buck2TypeScriptAdmission as agentSessionIngestAdmission } from '../../packages/@overeng/agent-session-ingest/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'

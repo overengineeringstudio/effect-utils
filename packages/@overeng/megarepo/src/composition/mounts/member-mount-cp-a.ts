@@ -1616,43 +1616,6 @@ export const materializeCpAMemberMount = ({
         cpPath: runtime.cpPath,
       })
       yield* io({
-        path: NodePath.join(stagePath, '.buck2', 'capability-roots'),
-        message: `Cannot strip runtime capability roots from candidate '${stagePath}'`,
-        reason: 'StageInvalid',
-        try: () =>
-          rm(NodePath.join(stagePath, '.buck2', 'capability-roots'), {
-            recursive: true,
-            force: true,
-          }),
-      })
-      if (oldIdentity._tag === 'Owned') {
-        const liveRootsPath = NodePath.join(destinationPath, '.buck2', 'capability-roots')
-        const liveRoots = yield* lstatMaybe(liveRootsPath)
-        if (liveRoots !== undefined) {
-          if (liveRoots.isDirectory() === false || liveRoots.isSymbolicLink() === true) {
-            return yield* error({
-              reason: 'DestinationRefused',
-              path: liveRootsPath,
-              message: `Published capability roots are not a directory for '${request.member}'`,
-              recoveryPaths: [destinationPath, stagePath, transactionPath],
-            })
-          }
-          const stagedRootsPath = NodePath.join(stagePath, '.buck2', 'capability-roots')
-          yield* io({
-            path: stagedRootsPath,
-            message: `Cannot prepare retained capability roots in candidate '${stagePath}'`,
-            reason: 'StageInvalid',
-            try: () => mkdir(stagedRootsPath, { recursive: true }),
-          })
-          yield* runCommand({
-            binary: runtime.cpPath,
-            args: ['-a', `${liveRootsPath}${NodePath.sep}.`, stagedRootsPath],
-            path: stagedRootsPath,
-            commandName: 'GNU cp -a retained capability roots copy',
-          })
-        }
-      }
-      yield* io({
         path: stagePath,
         message: `Capability check failed for cp-a candidate '${stagePath}'`,
         reason: 'CapabilityCheckFailed',
