@@ -26,6 +26,21 @@ let apiBaseUrl = ''
 let deploymentCommitShas: Record<string, string> = {}
 let aliasHolder: { readonly deploymentId: string; readonly projectId?: string } | undefined
 
+const vercelTokenSentinel = 'ci-tools-vercel-token-sentinel'
+const vercelAuthTokenEnv = 'CI_TOOLS_VERCEL_TOKEN_SENTINEL'
+
+const expectVercelAuthViaEnvironment = (log: string) => {
+  const invocations = log.trim().split('\n')
+  expect(invocations).not.toHaveLength(0)
+  for (const invocation of invocations) {
+    expect(invocation).toContain(`VERCEL_TOKEN=${vercelTokenSentinel}`)
+    expect(invocation).toContain('args=')
+    const args = invocation.slice(invocation.indexOf('args=') + 'args='.length)
+    expect(args).not.toContain(vercelTokenSentinel)
+    expect(args).not.toMatch(/(?:^|\s)--token(?:\s|$)/u)
+  }
+}
+
 const testProcessEnv = () => {
   const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
   return env
@@ -69,6 +84,8 @@ const runCiTools = async (opts: {
       'vercel',
       '--vercel-bin',
       opts.fakeVercelBin,
+      '--auth-token-env',
+      vercelAuthTokenEnv,
       '--vercel-api-base-url',
       apiBaseUrl,
       '--created-at-utc',
@@ -83,7 +100,7 @@ const runCiTools = async (opts: {
         ...testProcessEnv(),
         FORCE_COLOR: '0',
         OTEL_EXPORTER_OTLP_ENDPOINT: '',
-        VERCEL_TOKEN: 'fake-token',
+        [vercelAuthTokenEnv]: vercelTokenSentinel,
         VERCEL_ORG_ID: 'fake-org',
         VERCEL_PROJECT_ID: 'fake-project',
         VERCEL_SCOPE: 'fake-scope',
@@ -199,7 +216,7 @@ describe('ci-tools deploy vercel', () => {
       fakeVercelBin,
       `#!/usr/bin/env bash
 set -euo pipefail
-printf 'cwd=%s VERCEL_PROJECT_ID=%s VERCEL_ORG_ID=%s args=%s\\n' "$PWD" "\${VERCEL_PROJECT_ID:-}" "\${VERCEL_ORG_ID:-}" "$*" >> "${logPath}"
+printf 'cwd=%s VERCEL_PROJECT_ID=%s VERCEL_ORG_ID=%s VERCEL_TOKEN=%s args=%s\\n' "$PWD" "\${VERCEL_PROJECT_ID:-}" "\${VERCEL_ORG_ID:-}" "\${VERCEL_TOKEN:-}" "$*" >> "${logPath}"
 if [ "\${1:-}" = "pull" ]; then
   mkdir -p .vercel
   printf '{"settings":{}}\\n' > .vercel/project.json
@@ -231,7 +248,7 @@ if [ "\${1:-}" = "deploy" ]; then
     exit 0
   fi
   if [ "\${FAKE_VERCEL_MODE:-success}" = "unauthorized" ]; then
-    echo 'Error: invalid token fake-token' >&2
+    echo 'Error: invalid token ${vercelTokenSentinel}' >&2
     exit 1
   fi
   printf 'https://deploy-web.vercel.app\\n'
@@ -279,6 +296,9 @@ exit 1
           'team',
           '--scope-env',
           'VERCEL_SCOPE',
+          '--e2e-allow-shared-project',
+          '--e2e-reserved-alias-prefix',
+          'web',
           '--github-output-file',
           githubOutputFile,
           '--github-env-file',
@@ -293,11 +313,13 @@ exit 1
       expect(result.status).toBe(0)
       expect(result.stdout).toContain('Vercel deploy URL: https://web-pr-123-team.vercel.app')
       const log = readFileSync(workspace.logPath, 'utf8')
-      expect(log).toContain('args=deploy --prebuilt --yes --scope fake-scope --token fake-token')
+      expect(log).toContain('args=deploy --prebuilt --yes --scope fake-scope')
       expect(log).toContain(
         'args=alias https://deploy-web.vercel.app web-pr-123-team.vercel.app --scope fake-scope',
       )
+      expect(log).toContain('args=alias rm web-pr-123-team.vercel.app --yes --scope fake-scope')
       expect(log).toContain('VERCEL_PROJECT_ID=fake-project')
+      expectVercelAuthViaEnvironment(log)
 
       const record = readRecord(reportFile)
       expect(record.status).toBe('success')
@@ -359,17 +381,14 @@ exit 1
       expect(result.stdout).toContain('Pulling Vercel project settings and env for app')
       expect(result.stdout).toContain('Building app locally with vercel build')
       const log = readFileSync(workspace.logPath, 'utf8')
-      expect(log).toContain(
-        'args=pull --yes --environment production --scope fake-scope --token fake-token',
-      )
-      expect(log).toContain('args=build --yes --prod --scope fake-scope --token fake-token')
-      expect(log).toContain(
-        'args=deploy --prebuilt --yes --prod --scope fake-scope --token fake-token',
-      )
+      expect(log).toContain('args=pull --yes --environment production --scope fake-scope')
+      expect(log).toContain('args=build --yes --prod --scope fake-scope')
+      expect(log).toContain('args=deploy --prebuilt --yes --prod --scope fake-scope')
       expect(log).toContain(
         'args=alias https://deploy-web.vercel.app app.example.com --scope fake-scope',
       )
       expect(log).toContain(`cwd=${realpathSync(workspace.root)} VERCEL_PROJECT_ID=fake-project`)
+      expectVercelAuthViaEnvironment(log)
       expect(existsSync(join(workspace.root, 'app', 'vercel.json'))).toBe(false)
       expect(existsSync(join(workspace.root, '.vercel'))).toBe(false)
       expect(readRecord(reportFile).data).toMatchObject({
@@ -574,7 +593,7 @@ exit 1
           '--mode',
           'preview',
         ],
-        env: { VERCEL_TOKEN: undefined },
+        env: { [vercelAuthTokenEnv]: undefined },
       })
       expect(result.status).not.toBe(0)
       expect(existsSync(workspace.logPath)).toBe(false)
@@ -639,8 +658,8 @@ exit 1
         env: { FAKE_VERCEL_MODE: 'unauthorized' },
       })
       expect(result.status).not.toBe(0)
-      expect(`${result.stdout}\n${result.stderr}`).not.toContain('fake-token')
-      expect(JSON.stringify(readRecord(reportFile))).not.toContain('fake-token')
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain(vercelTokenSentinel)
+      expect(JSON.stringify(readRecord(reportFile))).not.toContain(vercelTokenSentinel)
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }
