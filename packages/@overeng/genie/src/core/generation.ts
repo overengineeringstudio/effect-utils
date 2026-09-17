@@ -125,7 +125,6 @@ export const pinStagedModuleIdentity = ({
     )
 }
 
-
 const resolveRelativeImportPath = async ({
   importerPath,
   specifier,
