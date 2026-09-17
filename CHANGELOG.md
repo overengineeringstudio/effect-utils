@@ -316,6 +316,15 @@ All notable changes to this project will be documented in this file.
   the Nix build-time snapshot (a newly added rule previously reported "not found
   in plugin 'overeng'"). Covered by
   `nix/devenv-modules/tasks/shared/tests/oxlint-plugin-injection.test.sh`.
+- **@overeng/genie**: every TypeScript API session now awaits complete `tsgo`
+  child-process termination instead of resolving at `API.close()`. `close()`
+  ends the child's stdin but returns in about 1 ms while the child is still
+  alive, leaving unjoined process lifetime behind every session — harmless on
+  Linux but stalling Vitest's close phase past its deadline on macOS. The new
+  `closeApi` boundary joins the erased `client.process` handle after `close()`
+  (upstream exposes no public join surface; pinned to `typescript@7.0.2`), and
+  both session runners use it on all paths including throws. Covered by
+  `src/runtime/node/ts-api.unit.test.ts`. Closes #1298.
 
 ### Changed
 
