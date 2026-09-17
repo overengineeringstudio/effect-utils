@@ -964,6 +964,13 @@ describe('ci workflow standard job helpers', () => {
               prepareEffectUtilsCompositionStep,
               standardCIEnv,
             } from './genie/ci-workflow.ts'
+            import { readFileSync } from 'node:fs'
+            const generatedWorkflow = Bun.YAML.parse(
+              readFileSync('.github/workflows/ci.yml', 'utf8'),
+            )
+            const pnpmRegressionStep = generatedWorkflow.jobs['pnpm-regression'].steps.find(
+              (step) => step.name === 'pnpm regression suite',
+            )
             const trustTier = ${JSON.stringify(trustTier)}
             const workflow = ciWorkflow({
               actionlint: false,
@@ -983,6 +990,7 @@ describe('ci workflow standard job helpers', () => {
                 artifactName: 'baseline',
                 outputDir: 'tmp/baseline',
               }).env.GITHUB_TOKEN,
+              pnpmRegressionStepEnv: pnpmRegressionStep.env,
               comparisonHasToken: Object.hasOwn(
                 compareCiMeasurementsStep().env,
                 'GITHUB_TOKEN',
@@ -1024,6 +1032,7 @@ describe('ci workflow standard job helpers', () => {
         compositionStepEnv: expectedTokenEnv,
         devenvStepEnv: expectedTokenEnv,
         ghStepEnv: '${{ github.token }}',
+        pnpmRegressionStepEnv: expectedTokenEnv,
         comparisonHasToken: false,
         disabledComparisonHasToken: false,
         commentComparisonTokens: {

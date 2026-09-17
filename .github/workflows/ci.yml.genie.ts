@@ -502,6 +502,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   'pnpm-regression': job({
     step: {
       name: 'pnpm regression suite',
+      env: githubTokenEnv(),
       run: withCiSourceRoot(
         [
           'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
