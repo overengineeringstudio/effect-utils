@@ -4,7 +4,12 @@ import {
   vercelDeployJobs as buildVercelDeployJobs,
   vercelDeployStep as buildVercelDeployStep,
 } from '../deploy-preview/vercel.ts'
-import { bashShellDefaults, linuxX64Runner, runDevenvTasksBefore } from './shared.ts'
+import {
+  bashShellDefaults,
+  githubTokenEnv,
+  linuxX64Runner,
+  runDevenvTasksBefore,
+} from './shared.ts'
 
 export {
   workflowReportOutputName as deployPreviewWorkflowReportOutputName,
@@ -67,6 +72,14 @@ export const notifyAlignmentJob = (opts: {
 // Vercel Deploy Helpers
 // =============================================================================
 
+const withGithubTokenEnv = (step: Record<string, unknown>): Record<string, unknown> => ({
+  ...step,
+  env: {
+    ...((step.env as Record<string, string> | undefined) ?? {}),
+    ...githubTokenEnv(),
+  },
+})
+
 /**
  * Deploy a single Vercel project via devenv task.
  * Prod on push-to-main/schedule/dispatch, preview on PRs.
@@ -74,7 +87,7 @@ export const notifyAlignmentJob = (opts: {
  * to both GITHUB_ENV and GITHUB_OUTPUT.
  */
 export const vercelDeployStep = (project: { name: string; urlEnvKey?: string }) =>
-  buildVercelDeployStep({ project, runDevenvTasksBefore })
+  withGithubTokenEnv(buildVercelDeployStep({ project, runDevenvTasksBefore }))
 
 /**
  * Configure git author so Vercel Deployment Protection
@@ -122,12 +135,19 @@ export const vercelDeployJobs = (opts: {
     project: VercelProject,
   ) => Record<string, unknown>
 }): Record<string, Record<string, unknown>> => {
+  const deployStepDecorator = (
+    step: Record<string, unknown>,
+    project: VercelProject,
+  ): Record<string, unknown> =>
+    withGithubTokenEnv(opts.deployStepDecorator?.(step, project) ?? step)
+
   return buildVercelDeployJobs({
     ...opts,
     runDevenvTasksBefore,
     deployCommentPermissions,
     bashShellDefaults,
     commentRunner: linuxX64Runner,
+    deployStepDecorator,
   })
 }
 
@@ -140,4 +160,8 @@ export const vercelDeployJobs = (opts: {
  * Runs `netlify:deploy` with prod/PR mode based on the event trigger.
  * Gracefully skips if NETLIFY_AUTH_TOKEN is not available.
  */
-export const netlifyDeployStep = () => buildNetlifyDeployStep(runDevenvTasksBefore)
+export const netlifyDeployStep = (env: Record<string, string> = {}) =>
+  withGithubTokenEnv({
+    ...buildNetlifyDeployStep(runDevenvTasksBefore),
+    env,
+  })

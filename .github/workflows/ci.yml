@@ -8551,8 +8551,8 @@ jobs:
             echo "workflow_report_path=$workflow_report_path" >> "$GITHUB_OUTPUT"
           fi
         env:
-          GITHUB_TOKEN: ${{ github.token }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Collect workflow report bundle
         shell: bash
         env:

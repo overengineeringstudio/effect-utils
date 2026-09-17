@@ -1211,13 +1211,9 @@ const deployJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     steps: [
       ...baseSteps,
-      {
-        ...netlifyDeployStep(),
-        env: {
-          ...githubTokenEnv(),
-          NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
-        },
-      },
+      netlifyDeployStep({
+        NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+      }),
       workflowReportCollectorStep({
         workflowReportFlakeRef,
         bundleId: 'storybook-preview',

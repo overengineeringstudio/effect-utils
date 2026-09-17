@@ -961,8 +961,12 @@ describe('ci workflow standard job helpers', () => {
               devenvTaskStep,
               downloadPreviousGitHubArtifactStep,
               githubTokenEnv,
+              netlifyDeployStep,
               prepareEffectUtilsCompositionStep,
+              prSnapshotPackJob,
               standardCIEnv,
+              vercelDeployJobs,
+              vercelDeployStep,
             } from './genie/ci-workflow.ts'
             import { readFileSync } from 'node:fs'
             const generatedWorkflow = Bun.YAML.parse(
@@ -976,6 +980,34 @@ describe('ci workflow standard job helpers', () => {
                 (job.steps ?? []).map((step) => ({ jobId, step })),
             )
             const expectedGitHubToken = '$' + '{{ github.token }}'
+            const devenvRunMarker = '$' + '{DEVENV_BIN:?DEVENV_BIN not set}'
+            const generatedDevenvAuthMissing = generatedSteps
+              .filter(({ step }) => {
+                const run = typeof step.run === 'string' ? step.run : ''
+                return run.includes(devenvRunMarker)
+              })
+              .filter(({ step }) => step.env?.GITHUB_TOKEN !== expectedGitHubToken)
+              .map(({ jobId, step }) => jobId + ': ' + step.name)
+            const netlifyStep = netlifyDeployStep({
+              NETLIFY_AUTH_TOKEN: 'netlify-secret',
+            })
+            const vercelStep = vercelDeployStep({ name: 'docs' })
+            const vercelJobStep = vercelDeployJobs({
+              projects: [{ name: 'docs', projectIdEnv: 'VERCEL_PROJECT_ID_DOCS' }],
+              runner: ['ubuntu-latest'],
+              baseSteps: [],
+              env: {},
+              includeComment: false,
+              deployStepDecorator: (step) => ({
+                ...step,
+                env: { ...(step.env ?? {}), VERCEL_AUTH_TOKEN: 'vercel-secret' },
+              }),
+            })['deploy-docs'].steps.find((step) => step.name === 'Deploy docs to Vercel')
+            const snapshotPackStep = prSnapshotPackJob({
+              topologyPath: 'release-topology.json',
+              setupStepsAfterCheckout: [],
+              packTask: 'release:pack',
+            })['pack-pr-snapshot'].steps.find((step) => step.name === 'Pack exact-SHA snapshot')
             const directNixAuthMissing = generatedSteps
               .filter(({ step }) => {
                 const run = typeof step.run === 'string' ? step.run : ''
@@ -1033,6 +1065,11 @@ describe('ci workflow standard job helpers', () => {
               }).env.GITHUB_TOKEN,
               pnpmRegressionStepEnv: pnpmRegressionStep.env,
               sourceShapeStepEnv: sourceShapeStep?.env,
+              generatedDevenvAuthMissing,
+              netlifyStepEnv: netlifyStep.env,
+              vercelStepEnv: vercelStep.env,
+              vercelJobStepEnv: vercelJobStep?.env,
+              snapshotPackStepEnv: snapshotPackStep?.env,
               directNixAuthMissing,
               scriptBackedNixAuthMissing,
               localOnlyStepTokenPresence,
@@ -1081,6 +1118,21 @@ describe('ci workflow standard job helpers', () => {
         sourceShapeStepEnv: {
           ARTIFACT_DIR: 'tmp/source-shape-ci/current/effect-utils',
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
+          ...expectedTokenEnv,
+        },
+        generatedDevenvAuthMissing: [],
+        netlifyStepEnv: {
+          NETLIFY_AUTH_TOKEN: 'netlify-secret',
+          ...expectedTokenEnv,
+        },
+        vercelStepEnv: expectedTokenEnv,
+        vercelJobStepEnv: {
+          VERCEL_AUTH_TOKEN: 'vercel-secret',
+          ...expectedTokenEnv,
+        },
+        snapshotPackStepEnv: {
+          GIT_SHA: '${{ github.event.pull_request.head.sha }}',
+          PR_NUMBER: '${{ github.event.pull_request.number }}',
           ...expectedTokenEnv,
         },
         directNixAuthMissing: [],
