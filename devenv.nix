@@ -117,7 +117,6 @@ let
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
 
-
   # The generated root package manifest is the workspace package authority.
   # Consuming it here removes the former hand-maintained Nix package list and
   # makes Genie freshness the single stage-zero synchronization boundary.

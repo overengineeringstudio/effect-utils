@@ -10,7 +10,8 @@ import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/unstable/process/ChildProcess'
 import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
-import ts from 'typescript'
+import { parseSync } from 'oxc-parser'
+import { createScanner, SyntaxKind } from 'typescript/unstable/ast'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
@@ -50,25 +51,6 @@ type ImportMetaIdentityField = 'url' | 'dirname' | 'filename'
 const isImportMetaIdentityField = (name: string): name is ImportMetaIdentityField =>
   name === 'url' || name === 'dirname' || name === 'filename'
 
-const scriptKindForSourcePath = (sourcePath: string): ts.ScriptKind => {
-  switch (path.extname(sourcePath)) {
-    case '.tsx': {
-      return ts.ScriptKind.TSX
-    }
-    case '.jsx': {
-      return ts.ScriptKind.JSX
-    }
-    case '.js':
-    case '.mjs':
-    case '.cjs': {
-      return ts.ScriptKind.JS
-    }
-    default: {
-      return ts.ScriptKind.TS
-    }
-  }
-}
-
 const importMetaIdentityLiteral = ({
   field,
   sourcePath,
@@ -91,13 +73,11 @@ const importMetaIdentityLiteral = ({
  * would then resolve neither a repository nor a package. Pinning the literal before bundling
  * keeps that identity exact, so no path-shape recovery is needed downstream.
  *
- * The rewrite is syntax-aware: only the exact spans of `import.meta.{url,dirname,filename}`
- * property accesses that the TypeScript parser reports as executable expressions are replaced.
- * A textual pass cannot make that distinction and would also rewrite the same characters inside
- * comments, string literals, and template-literal text — a generator that documents or emits
- * `import.meta.url` (genie itself generates TypeScript) would have its output silently altered.
- * Every byte outside those spans, including arbitrary whitespace within a matched access, is
- * preserved verbatim.
+ * The rewrite is syntax-aware: Oxc identifies the executable `import.meta` expressions, and the
+ * TypeScript scanner identifies the accessed member while preserving interleaved trivia. A textual
+ * pass cannot make that distinction and would also rewrite the same characters inside comments,
+ * regular expressions, JSX text, string literals, and template-literal text. Every byte outside the
+ * matched property-access spans is preserved verbatim.
  */
 export const pinStagedModuleIdentity = ({
   sourceCode,
@@ -106,38 +86,30 @@ export const pinStagedModuleIdentity = ({
   sourceCode: string
   sourcePath: string
 }): string => {
-  const sourceFile = ts.createSourceFile(
-    sourcePath,
-    sourceCode,
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ false,
-    scriptKindForSourcePath(sourcePath),
-  )
-
-  const rewrites: { start: number; end: number; text: string }[] = []
-
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isPropertyAccessExpression(node) === true &&
-      ts.isMetaProperty(node.expression) === true &&
-      node.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
-      node.expression.name.text === 'meta' &&
-      ts.isIdentifier(node.name) === true &&
-      isImportMetaIdentityField(node.name.text) === true
-    ) {
-      rewrites.push({
-        // `pos` includes leading trivia (comments keep their own bytes); `getStart` lands on the
-        // `import` keyword itself, so only the access expression is replaced.
-        start: node.getStart(sourceFile),
-        end: node.end,
-        text: importMetaIdentityLiteral({ field: node.name.text, sourcePath }),
-      })
-      return
-    }
-    ts.forEachChild(node, visit)
+  const parsed = parseSync(sourcePath, sourceCode, { sourceType: 'module' })
+  if (parsed.errors.length > 0) {
+    throw new Error(
+      `Cannot pin import.meta identity in ${sourcePath}: ${parsed.errors.map((error) => error.message).join('; ')}`,
+    )
   }
 
-  ts.forEachChild(sourceFile, visit)
+  const rewrites = parsed.module.importMetas.flatMap(
+    ({ start, end }): { start: number; end: number; text: string }[] => {
+      const scanner = createScanner(true, undefined, sourceCode, end)
+      if (scanner.scan() !== SyntaxKind.DotToken) return []
+      if (scanner.scan() !== SyntaxKind.Identifier) return []
+
+      const field = scanner.getTokenText()
+      if (isImportMetaIdentityField(field) === false) return []
+      return [
+        {
+          start,
+          end: scanner.getTokenEnd(),
+          text: importMetaIdentityLiteral({ field, sourcePath }),
+        },
+      ]
+    },
+  )
 
   if (rewrites.length === 0) return sourceCode
 

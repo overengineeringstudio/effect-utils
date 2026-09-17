@@ -4,8 +4,8 @@
 # Projection source: packages/@overeng/agent-session-ingest/BUCK.genie.ts
 # Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b22f32a6bd8df09d87969ca414afb6833f1a944e70dafd825b86beb9706580ca
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/agent-session-ingest/src/**/*.cts, packages/@overeng/agent-session-ingest/src/**/*.js, packages/@overeng/agent-session-ingest/src/**/*.mts, packages/@overeng/agent-session-ingest/src/**/*.spec.cjs, packages/@overeng/agent-session-ingest/src/**/*.spec.jsx, packages/@overeng/agent-session-ingest/src/**/*.spec.mjs, packages/@overeng/agent-session-ingest/src/**/*.test.cjs, packages/@overeng/agent-session-ingest/src/**/*.test.jsx, packages/@overeng/agent-session-ingest/src/**/*.test.mjs, packages/@overeng/agent-session-ingest/src/**/*.ts, packages/@overeng/agent-session-ingest/src/**/*.tsx, packages/@overeng/agent-session-ingest/src/**/__snapshots__/*.snap, packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
+# Semantic fingerprint: sha256:25cabbf9d1b83b7e754341f83cd1217e7cb2792eaa2c60fa0657f10ef7a9c466
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/agent-session-ingest/src/**/*.cts, packages/@overeng/agent-session-ingest/src/**/*.js, packages/@overeng/agent-session-ingest/src/**/*.mts, packages/@overeng/agent-session-ingest/src/**/*.spec.cjs, packages/@overeng/agent-session-ingest/src/**/*.spec.jsx, packages/@overeng/agent-session-ingest/src/**/*.spec.mjs, packages/@overeng/agent-session-ingest/src/**/*.test.cjs, packages/@overeng/agent-session-ingest/src/**/*.test.jsx, packages/@overeng/agent-session-ingest/src/**/*.test.mjs, packages/@overeng/agent-session-ingest/src/**/*.ts, packages/@overeng/agent-session-ingest/src/**/*.tsx, packages/@overeng/agent-session-ingest/src/**/__snapshots__/*.snap, packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -102,6 +102,16 @@ package_view(
         "src/watch.ts": "src/watch.ts",
         "tsconfig.json": "tsconfig.json",
     },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
+    },
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -140,6 +150,16 @@ package_view(
         "src/watch.ts": "src/watch.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",

@@ -321,6 +321,11 @@ const removeGenerationManifestRecord = async ({
   await writeFile(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
 }
 
+const readGenerationManifest = async (fixture: Fixture) =>
+  JSON.parse(
+    await readFile(NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH), 'utf8'),
+  ) as { files: Array<{ path: string }> }
+
 describe('composition root publisher', () => {
   it.effect('plans first-create bytes without mutating the filesystem', () =>
     Effect.scoped(
@@ -405,9 +410,7 @@ describe('composition root publisher', () => {
 
         expect(result.changedPaths).toContain('.watchmanconfig')
         expect((yield* readGenerated(fixture, '.watchmanconfig')).toString()).toBe('{}\n')
-        const upgradedManifest = JSON.parse(
-          (yield* readGenerated(fixture, COMPOSITION_GENERATION_MANIFEST_PATH)).toString(),
-        ) as { files: Array<{ path: string }> }
+        const upgradedManifest = yield* Effect.promise(() => readGenerationManifest(fixture))
         expect(upgradedManifest.files.map((file) => file.path)).toContain('.watchmanconfig')
       }),
     ),
