@@ -9,12 +9,28 @@
       "target": "effect_utils//packages/@overeng/effect-distributed-lock:dist-package"
     },
     {
+      "name": "@overeng/notion-core",
+      "target": "effect_utils//packages/@overeng/notion-core:dist-package"
+    },
+    {
+      "name": "@overeng/notion-effect-client",
+      "target": "effect_utils//packages/@overeng/notion-effect-client:dist-package"
+    },
+    {
+      "name": "@overeng/notion-effect-schema",
+      "target": "effect_utils//packages/@overeng/notion-effect-schema:dist-package"
+    },
+    {
       "name": "@overeng/otel-contract",
       "target": "effect_utils//packages/@overeng/otel-contract:dist-package"
     },
     {
       "name": "@overeng/utils",
       "target": "effect_utils//packages/@overeng/utils:dist-package"
+    },
+    {
+      "name": "@overeng/utils-dev",
+      "target": "effect_utils//packages/@overeng/utils-dev:dist-package"
     },
     {
       "name": "ci-tools",
@@ -66,7 +82,7 @@
     }
   ],
   "provenance": {
-    "fingerprint": "sha256:62bc4ab220014e2b147cffc3d38cc8d4add6dadb3825b592c4d332b06bce557b",
+    "fingerprint": "sha256:be481d9497c2053acfe6f1d7ce10c3ccafea3c0f420923716e758eb0f7d53d30",
     "generator": "effect-utils/genie/buck2-javascript-release-targets",
     "regenerationCommand": "devenv tasks run genie:run",
     "semanticInputs": [

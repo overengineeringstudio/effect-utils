@@ -57,7 +57,7 @@ expect_failure() {
 }
 
 summary="$(eval_loader "$repo_root/nix/buck2-products")"
-expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/otel-contract","@overeng/utils","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
+expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/otel-contract","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 
 jq -e --argjson expected "$expected_names" '
   .fullyPublished == true and

@@ -1,6 +1,8 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
+load("//buck2/products:defs.bzl", "npm_package_product")
+
 # Projection source: packages/@overeng/notion-effect-schema/BUCK.genie.ts
 # Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
@@ -207,5 +209,18 @@ vitest_test(
 vitest_collect(
     name = "test_collect",
     package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-notion-effect-schema.tgz",
+    dist = ":dist",
+    package_json = "package.json",
+    product_name = "@overeng/notion-effect-schema",
+    transport_slug = "overeng-notion-effect-schema",
+    package_dependencies = [
+        "//packages/@overeng/notion-core:dist-package",
+    ],
     visibility = ["PUBLIC"],
 )
