@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-distributed-lock/BUCK.genie.ts
 # Projection schema version: 8
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:192001f16b463fda373fac3c7b4abd25b7aaa402b2df87744a1d20f4b76c4376
+# Semantic fingerprint: sha256:847a6068fd08229e54990acf6036be0b4e984441ce5208b0b0d719cf32677794
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/src/**/*.cts, packages/@overeng/effect-distributed-lock/src/**/*.js, packages/@overeng/effect-distributed-lock/src/**/*.mts, packages/@overeng/effect-distributed-lock/src/**/*.spec.cjs, packages/@overeng/effect-distributed-lock/src/**/*.spec.jsx, packages/@overeng/effect-distributed-lock/src/**/*.spec.mjs, packages/@overeng/effect-distributed-lock/src/**/*.test.cjs, packages/@overeng/effect-distributed-lock/src/**/*.test.jsx, packages/@overeng/effect-distributed-lock/src/**/*.test.mjs, packages/@overeng/effect-distributed-lock/src/**/*.ts, packages/@overeng/effect-distributed-lock/src/**/*.tsx, packages/@overeng/effect-distributed-lock/src/**/__snapshots__/*.snap, packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -51,6 +51,13 @@ package_view(
         "src/mod.ts": "src/mod.ts",
         "tsconfig.json": "tsconfig.json",
     },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+    },
     runtime = "//:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -68,6 +75,13 @@ package_view(
         "src/mod.ts": "src/mod.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
+        "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
     strip_project_references = True,
     runtime = "//:package_tree_runtime",
