@@ -7,7 +7,7 @@ describe('editor view authority orchestration', () => {
     const plan = editorViewPlan({ cell: 'workspace_cell' })
 
     expect(plan.packages.map(({ packagePath }) => packagePath)).toEqual(editorViewPackagePaths)
-    expect(plan.packages).toHaveLength(39)
+    expect(plan.packages).toHaveLength(40)
     expect(plan.packages[0]?.editor).toMatchObject({
       cell: 'workspace_cell',
       inputsManifestTarget: 'workspace_cell//:editor_view_inputs',
