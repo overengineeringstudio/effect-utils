@@ -10,12 +10,20 @@ import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/unstable/process/ChildProcess'
 import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
-import ts from 'typescript'
+import type { Node } from 'typescript/unstable/ast'
+import {
+  isIdentifier,
+  isMetaProperty,
+  isPropertyAccessExpression,
+  SyntaxKind,
+} from 'typescript/unstable/ast'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
+import { runTsFileAnalysis } from '../runtime/node/ts-api.ts'
+import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
 import { ensureImportMapResolver, isCompiledBinary } from './discovery.ts'
 import {
@@ -50,25 +58,6 @@ type ImportMetaIdentityField = 'url' | 'dirname' | 'filename'
 const isImportMetaIdentityField = (name: string): name is ImportMetaIdentityField =>
   name === 'url' || name === 'dirname' || name === 'filename'
 
-const scriptKindForSourcePath = (sourcePath: string): ts.ScriptKind => {
-  switch (path.extname(sourcePath)) {
-    case '.tsx': {
-      return ts.ScriptKind.TSX
-    }
-    case '.jsx': {
-      return ts.ScriptKind.JSX
-    }
-    case '.js':
-    case '.mjs':
-    case '.cjs': {
-      return ts.ScriptKind.JS
-    }
-    default: {
-      return ts.ScriptKind.TS
-    }
-  }
-}
-
 const importMetaIdentityLiteral = ({
   field,
   sourcePath,
@@ -99,30 +88,34 @@ const importMetaIdentityLiteral = ({
  * Every byte outside those spans, including arbitrary whitespace within a matched access, is
  * preserved verbatim.
  */
-export const pinStagedModuleIdentity = ({
+const pinStagedModuleIdentityWithAnalysis = async ({
+  analysis,
   sourceCode,
   sourcePath,
 }: {
+  analysis: TsFileAnalysisSession
   sourceCode: string
   sourcePath: string
-}): string => {
-  const sourceFile = ts.createSourceFile(
-    sourcePath,
-    sourceCode,
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ false,
-    scriptKindForSourcePath(sourcePath),
-  )
+}): Promise<string> => {
+  const outcome = await analysis.analyze(sourcePath)
+  if (outcome.kind !== 'analyzed') {
+    const reason =
+      outcome.kind === 'failed'
+        ? outcome.reason
+        : `unsupported source extension ${path.extname(sourcePath)}`
+    throw new Error(`Cannot pin import.meta identity in ${sourcePath}: ${reason}`)
+  }
 
+  const sourceFile = outcome.analysis.sourceFile
   const rewrites: { start: number; end: number; text: string }[] = []
 
-  const visit = (node: ts.Node): void => {
+  const visit = (node: Node): void => {
     if (
-      ts.isPropertyAccessExpression(node) === true &&
-      ts.isMetaProperty(node.expression) === true &&
-      node.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+      isPropertyAccessExpression(node) === true &&
+      isMetaProperty(node.expression) === true &&
+      node.expression.keywordToken === SyntaxKind.ImportKeyword &&
       node.expression.name.text === 'meta' &&
-      ts.isIdentifier(node.name) === true &&
+      isIdentifier(node.name) === true &&
       isImportMetaIdentityField(node.name.text) === true
     ) {
       rewrites.push({
@@ -134,10 +127,16 @@ export const pinStagedModuleIdentity = ({
       })
       return
     }
-    ts.forEachChild(node, visit)
+    node.forEachChild((child) => {
+      visit(child)
+      return undefined
+    })
   }
 
-  ts.forEachChild(sourceFile, visit)
+  sourceFile.forEachChild((node) => {
+    visit(node)
+    return undefined
+  })
 
   if (rewrites.length === 0) return sourceCode
 
@@ -150,6 +149,18 @@ export const pinStagedModuleIdentity = ({
       sourceCode,
     )
 }
+
+export const pinStagedModuleIdentity = ({
+  sourceCode,
+  sourcePath,
+}: {
+  sourceCode: string
+  sourcePath: string
+}): Promise<string> =>
+  runTsFileAnalysis({
+    cwd: path.dirname(sourcePath),
+    use: (analysis) => pinStagedModuleIdentityWithAnalysis({ analysis, sourceCode, sourcePath }),
+  })
 
 const resolveRelativeImportPath = async ({
   importerPath,
@@ -289,9 +300,13 @@ const stageCompiledBinaryImportGraph = ({
     const stagedPaths = new Map<string, string>()
     const relativeEntryPath = entryPath.replace(/^(?:[A-Za-z]:)?[\\/]+/, '')
 
-    const stageModule = (
-      sourcePath: string,
-    ): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
+    const stageModule = ({
+      analysis,
+      sourcePath,
+    }: {
+      analysis: TsFileAnalysisSession
+      sourcePath: string
+    }): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
       Effect.gen(function* () {
         const existingStagePath = stagedPaths.get(sourcePath)
         if (existingStagePath !== undefined) {
@@ -314,9 +329,19 @@ const stageCompiledBinaryImportGraph = ({
               cause: error,
             }),
         })
+        const pinnedSource = yield* Effect.tryPromise({
+          try: () => pinStagedModuleIdentityWithAnalysis({ analysis, sourceCode, sourcePath }),
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to pin import.meta identity in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
+
 
         const transformedSource = yield* resolveImportMapsInSource({
-          sourceCode,
+          sourceCode: pinnedSource,
           sourcePath,
         }).pipe(
           Effect.mapError(
@@ -342,10 +367,7 @@ const stageCompiledBinaryImportGraph = ({
         yield* Effect.tryPromise({
           try: async () => {
             await nodeFs.mkdir(path.dirname(stagePath), { recursive: true })
-            await nodeFs.writeFile(
-              stagePath,
-              pinStagedModuleIdentity({ sourceCode: transformedSource, sourcePath }),
-            )
+            await nodeFs.writeFile(stagePath, transformedSource)
             await mirrorNodeModulesSearchPaths({ sourcePath, tempRoot })
           },
           catch: (error) =>
@@ -357,13 +379,29 @@ const stageCompiledBinaryImportGraph = ({
         })
 
         for (const relativeImportPath of relativeImportPaths) {
-          yield* stageModule(relativeImportPath)
+          yield* stageModule({ analysis, sourcePath: relativeImportPath })
         }
 
         return stagePath
       })
 
-    const stagedEntryPath = yield* stageModule(entryPath)
+    const context = yield* Effect.context<FileSystem.FileSystem>()
+    const stagedEntryPath = yield* Effect.tryPromise({
+      try: () =>
+        runTsFileAnalysis({
+          cwd: path.dirname(entryPath),
+          use: (analysis) =>
+            Effect.runPromiseWith(context)(stageModule({ analysis, sourcePath: entryPath })),
+        }),
+      catch: (error) =>
+        error instanceof GenieImportError
+          ? error
+          : new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to analyze compiled-binary staging graph for ${entryPath}: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+    })
     const bundleResult = yield* Effect.tryPromise({
       try: () =>
         Bun.build({
