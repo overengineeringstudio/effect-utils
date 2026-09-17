@@ -63,7 +63,7 @@ let
       CLI_BUILD_STAMP = buildStamp;
       GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
       GENIE_EXPORT_TYPE_PROOF_COMPILER = typeProofCompilerBin;
-      GENIE_TYPESCRIPT_API_SERVER = "${pkgs.typescript-go}/bin/tsgo";
+      GENIE_TYPESCRIPT_API_SERVER = "${pkgs.typescript}/bin/tsc";
     };
     expectedExternalCapabilities = [
       "actionlint"
