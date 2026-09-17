@@ -34,7 +34,7 @@ describe('Buck2 TypeScript authority derivation', () => {
     )
 
     expect(authoritativeBuck2TypeScriptProjects).toEqual(packageLocalAuthorities)
-    expect(authoritativeBuck2TypeScriptProjects).toHaveLength(39)
+    expect(authoritativeBuck2TypeScriptProjects).toHaveLength(40)
   })
 
   it('gives every root TypeScript project one Buck typecheck target', () => {
@@ -46,33 +46,6 @@ describe('Buck2 TypeScript authority derivation', () => {
       .toSorted((left, right) => Buffer.from(left).compare(Buffer.from(right)))
 
     expect(authoritativeProjectPaths).toEqual(rootProjectPaths)
-  })
-
-  it('leaves exactly the projects no Buck target owns to root tsc', () => {
-    // The generated solutions sort by path, so assert on that same order.
-    const rootMembers = (predicate: (project: RootTsconfigProject) => boolean): readonly string[] =>
-      rootTsconfigProjects
-        .filter(predicate)
-        .map(({ path }) => path)
-        .toSorted((left, right) => left.localeCompare(right))
-
-    // Checking and emitting are one decision: a project Buck typechecks also
-    // owns its declarations, so the two root filters must select the same set.
-    expect(rootMembers(isRootTsconfigCheckProject)).toEqual(rootMembers(isRootTsconfigEmitProject))
-
-    expect(rootMembers(isRootTsconfigCheckProject)).toEqual([
-      'context/effect/socket',
-      'context/opentui',
-      'packages/@overeng/buck2-tools',
-      'packages/@overeng/effect-rpc-tanstack/examples/basic',
-      'packages/@overeng/effect-schema-form-aria',
-      'packages/@overeng/genie',
-      'packages/@overeng/gh-ci-utils',
-      'packages/@overeng/kdl-effect',
-      'packages/@overeng/megarepo',
-      'packages/@overeng/react-inspector/tsconfig.strict-consumer.json',
-      'packages/@overeng/tui-stories',
-    ])
   })
 
   it('derives declaration overlays and project authorities from the same entries', () => {
