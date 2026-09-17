@@ -473,12 +473,14 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   'test-playwright-utils': job({
     step: {
       name: 'Utils Playwright tests',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:pw:utils'),
     },
   }),
   'test-playwright-tui-react': job({
     step: {
       name: 'TUI React Playwright tests',
+      env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:pw:tui-react'),
     },
   }),
