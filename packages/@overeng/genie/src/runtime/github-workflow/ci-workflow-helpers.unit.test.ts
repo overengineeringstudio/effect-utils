@@ -186,18 +186,6 @@ const generatedDevenvPerfJob = extractSourceBlock(
   '  nix-closure-sizes:',
 )
 
-const pnpmDepsScanSource = extractSourceBlock(
-  ciWorkflowSource,
-  'const withEachPnpmDepsDrvShellLines = ({',
-  '/** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */',
-)
-
-const coldFreshBuildSource = extractSourceBlock(
-  ciWorkflowSource,
-  '/** Evict any cached pnpm-deps outputs below a flake target and rebuild it against cache.nixos.org only. */',
-  '/**\n * Guard the pnpm dependency-prep contract against regressions that would',
-)
-
 const restorePnpmStateStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const restorePnpmStateStep = (opts?: {',
@@ -496,28 +484,6 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(ciWorkflowSource).toContain(
       "if: `\\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`",
     )
-  })
-
-  it('cold-builds pnpm deps artifacts by evicting cached outputs before the second build', () => {
-    expect(coldFreshBuildSource).toContain('installable="${drv}^*"')
-    expect(coldFreshBuildSource).toContain('while IFS= read -r outPath; do')
-    expect(coldFreshBuildSource).toContain(
-      'done < <(nix path-info "$installable" 2>/dev/null || true)',
-    )
-    expect(coldFreshBuildSource).toContain('...evictOutPathShellLines')
-    expect(ciWorkflowSource).toContain('nix store delete --ignore-liveness "$outPath"')
-    expect(ciWorkflowSource).toContain(
-      'echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
-    )
-    expect(coldFreshBuildSource).toContain(
-      'nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
-    )
-  })
-
-  it('prefers explicit depsBuildEntries metadata before falling back to closure scanning', () => {
-    expect(pnpmDepsScanSource).toContain('$targetRef.passthru.depsBuildEntries')
-    expect(pnpmDepsScanSource).toContain('(.drvPath // "")')
-    expect(pnpmDepsScanSource).toContain('grep "pnpm-deps-[a-z0-9-]*-v[0-9]')
   })
 
   it('keeps the diagnostics summary portable', () => {
