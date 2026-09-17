@@ -118,6 +118,10 @@ package_view(
         "tsconfig.json": "tsconfig.json",
         "tsconfig.strict-consumer.json": "tsconfig.strict-consumer.json",
     },
+    workspace_dist = {
+    },
+    workspace_dependency_views = {
+    },
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -178,6 +182,10 @@ package_view(
         "tsconfig.strict-consumer.json": "tsconfig.strict-consumer.json",
         "vitest.config.ts": "vitest.config.ts",
         "vitest.setup.ts": "vitest.setup.ts",
+    },
+    workspace_dist = {
+    },
+    workspace_dependency_views = {
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
