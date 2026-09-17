@@ -18,6 +18,16 @@
 let
   importProduct = import ./javascript-product-import.nix { inherit pkgs; };
   opentuiCoreNative = import ../../opentui-core-native.nix { inherit pkgs; };
+  opentuiCoreExternalModules = [
+    "@opentui/core-darwin-arm64"
+    "@opentui/core-darwin-x64"
+    "@opentui/core-linux-arm64"
+    "@opentui/core-linux-arm64-musl"
+    "@opentui/core-linux-x64"
+    "@opentui/core-linux-x64-musl"
+    "@opentui/core-win32-arm64"
+    "@opentui/core-win32-x64"
+  ];
   buck2 = import ../../buck2.nix { inherit pkgs; };
   # The stamp every CLI's `resolveCliVersion()` parses for human-readable
   # version output. Buck produces platform-invariant bytes, so the host-facing
@@ -44,22 +54,27 @@ let
       // options
     );
 
-  # `oxfmt` is on PATH because genie calls the executable formatter interface
-  # for generated files; `actionlint` and the type-proof compiler are absolute
-  # binaries so no generated-file check depends on ambient PATH state.
+  # `oxfmt` is on PATH because genie calls the executable formatter interface.
+  # `actionlint`, the export type-proof compiler and the matching TypeScript API
+  # server are absolute binaries, so generated-file checks never depend on PATH.
   genie = mk "genie" {
     binaryName = "genie";
     environment = {
       CLI_BUILD_STAMP = buildStamp;
       GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
       GENIE_EXPORT_TYPE_PROOF_COMPILER = typeProofCompilerBin;
+      GENIE_TYPESCRIPT_API_SERVER = "${pkgs.typescript-go}/bin/tsgo";
     };
     expectedExternalCapabilities = [
       "actionlint"
       "effect-tsgo"
+      "opentui-core-native"
       "oxfmt"
+      "typescript-api-server"
     ];
+    expectedExternalModules = opentuiCoreExternalModules;
     expectedProductKind = "cli";
+    nativeNodePackages = opentuiCoreNative.packages;
     pathPackages = [ oxfmtPkg ];
     smokeTestArgs = [ "--dry-run" ];
   };
@@ -121,16 +136,7 @@ let
     # and the whole family is listed because the bytes are the same on every
     # host. Sourced from the tracked descriptor, so a change in what the
     # product asks for fails the import instead of the program.
-    expectedExternalModules = [
-      "@opentui/core-darwin-arm64"
-      "@opentui/core-darwin-x64"
-      "@opentui/core-linux-arm64"
-      "@opentui/core-linux-arm64-musl"
-      "@opentui/core-linux-x64"
-      "@opentui/core-linux-x64-musl"
-      "@opentui/core-win32-arm64"
-      "@opentui/core-win32-x64"
-    ];
+    expectedExternalModules = opentuiCoreExternalModules;
     expectedProductKind = "cli";
     generateCompletions = false;
     nativeNodePackages = opentuiCoreNative.packages;

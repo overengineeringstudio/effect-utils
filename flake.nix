@@ -40,6 +40,7 @@
         pkgs = import nixpkgs { inherit system; };
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
+        mkPnpmCliSupport = import ./nix/workspace-tools/lib/mk-pnpm-cli-support.nix { inherit pkgs; };
         rootPath = self.outPath;
         oxlintNpm = import ./nix/oxlint-npm.nix {
           inherit pkgs;
@@ -102,7 +103,13 @@
           src = self;
           dirty = true;
         };
-        cliPackages = buck2ProductCandidates;
+        cliPackages = buck2ProductCandidates // {
+          genie = buck2ProductCandidates.genie.overrideAttrs (old: {
+            passthru = (old.passthru or { }) // {
+              inherit (mkPnpmCliSupport) alignAggregateManifestSpecifiersScript;
+            };
+          });
+        };
       in
       {
         packages =
