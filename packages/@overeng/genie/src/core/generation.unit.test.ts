@@ -161,12 +161,7 @@ describe('pinStagedModuleIdentity', () => {
 
   it('pins identity in TSX sources', async () => {
     const sourcePath = path.join(tempRoot, 'generators/view.genie.tsx')
-    expect(
-      await pin(
-        'export const view = () => <div title={import.meta.url} />',
-        sourcePath,
-      ),
-    ).toBe(
+    expect(await pin('export const view = () => <div title={import.meta.url} />', sourcePath)).toBe(
       `export const view = () => <div title={${JSON.stringify(pathToFileURL(sourcePath).href)}} />`,
     )
   })

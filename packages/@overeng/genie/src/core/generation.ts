@@ -339,7 +339,6 @@ const stageCompiledBinaryImportGraph = ({
             }),
         })
 
-
         const transformedSource = yield* resolveImportMapsInSource({
           sourceCode: pinnedSource,
           sourcePath,
