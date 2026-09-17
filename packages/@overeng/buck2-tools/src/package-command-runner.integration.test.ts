@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { text as streamText } from 'node:stream/consumers'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -46,7 +47,7 @@ writeFileSync(process.argv[2]!, 'mutated')
       })
       const [exitCode, stderr] = await Promise.all([
         child.exited,
-        new Response(child.stderr as ReadableStream<Uint8Array>).text(),
+        streamText(child.stderr),
       ])
 
       expect(exitCode).toBe(1)
