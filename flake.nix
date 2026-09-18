@@ -17,6 +17,10 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     tsgo.url = "github:Effect-TS/tsgo";
+    weaver-flake = {
+      url = "path:./nix/weaver-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -25,6 +29,7 @@
       nixpkgs,
       flake-utils,
       tsgo,
+      weaver-flake,
       ...
     }:
     let
@@ -67,6 +72,17 @@
           bun = pkgs.bun;
           products = trackedBuck2Products.products;
         };
+        weaver = weaver-flake.packages.${system}.weaver;
+        semconv-model = weaver-flake.packages.${system}.semconv-model;
+        semconv-model-capability = pkgs.runCommand "buck2-semconv-model-capability" { } ''
+          mkdir -p "$out/bin" "$out/share"
+          ln -s ${semconv-model} "$out/share/semconv-model"
+          cat > "$out/bin/semconv-model" <<EOF
+          #!${pkgs.runtimeShell}
+          printf '%s\\n' "$out/share/semconv-model"
+          EOF
+          chmod +x "$out/bin/semconv-model"
+        '';
         capabilityPackages = {
           inherit buck2;
           bun = pkgs.bun;
@@ -101,6 +117,8 @@
           oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
             inherit pkgs oxlintNpm;
           };
+          inherit weaver;
+          semconv-model = semconv-model-capability;
         };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;

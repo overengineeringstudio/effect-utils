@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d01cd05dc66ce370c04ce653238598cd494037c8acdf26a9bd006118d624a0c2
+# Semantic fingerprint: sha256:2dbc358373115f186595810d0bf17fa013d60dbe0278f093b2ac65e3cc1c1cf7
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, package.json.genie.ts, packages/@overeng/buck2-tools/BUCK.genie.ts, packages/@overeng/buck2-tools/BUCK.genie.ts, packages/@overeng/buck2-tools/package.json.genie.ts, packages/@overeng/buck2-tools/src/**/*.cts, packages/@overeng/buck2-tools/src/**/*.js, packages/@overeng/buck2-tools/src/**/*.mts, packages/@overeng/buck2-tools/src/**/*.spec.cjs, packages/@overeng/buck2-tools/src/**/*.spec.jsx, packages/@overeng/buck2-tools/src/**/*.spec.mjs, packages/@overeng/buck2-tools/src/**/*.test.cjs, packages/@overeng/buck2-tools/src/**/*.test.jsx, packages/@overeng/buck2-tools/src/**/*.test.mjs, packages/@overeng/buck2-tools/src/**/*.ts, packages/@overeng/buck2-tools/src/**/*.tsx, packages/@overeng/buck2-tools/src/**/__snapshots__/*.snap, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/buck2-tools/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -46,6 +46,8 @@ export_materialization_inputs([
     "src/static-check-runner.ts",
     "src/typescript-runner.ts",
     "src/typescript-runner.unit.test.ts",
+    "src/weaver-check-runner.ts",
+    "src/weaver-check-runner.unit.test.ts",
 ])
 
 static_source_set(
@@ -99,6 +101,8 @@ package_view(
         "src/static-check-runner.ts": "src/static-check-runner.ts",
         "src/typescript-runner.ts": "src/typescript-runner.ts",
         "src/typescript-runner.unit.test.ts": "src/typescript-runner.unit.test.ts",
+        "src/weaver-check-runner.ts": "src/weaver-check-runner.ts",
+        "src/weaver-check-runner.unit.test.ts": "src/weaver-check-runner.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {

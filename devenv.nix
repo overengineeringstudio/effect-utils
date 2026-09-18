@@ -91,10 +91,8 @@ let
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
     bootstrap-closure = import ./nix/devenv-modules/tasks/shared/bootstrap-closure.nix;
-    weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
     weaver-diff = import ./nix/devenv-modules/tasks/shared/weaver-diff.nix;
     weaver-live-check = import ./nix/devenv-modules/tasks/shared/weaver-live-check.nix;
-    weaver-version-smoke = import ./nix/devenv-modules/tasks/shared/weaver-version-smoke.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
     devenv-module-tests = ./nix/devenv-modules/tasks/local/devenv-module-tests.nix;
   };
@@ -651,9 +649,7 @@ in
           "mr:source-policy-check"
           "nix:flake:check"
           "test:run"
-          "weaver:check"
           "weaver:diff"
-          "weaver:version-smoke"
           "workspace:check"
         ];
       };
@@ -680,10 +676,6 @@ in
       checkAllTypecheckTask = "buck2:check";
     })
     (taskModules.devenv-eval-input-budget { })
-    (taskModules.weaver { })
-    # Wire the additive weaver gate into `check:all` only (not `check:quick`, which stays fast):
-    # `after` list options merge across modules, so this appends without redefining check:all.
-    { tasks."check:all".after = [ "weaver:check" ]; }
     # Bootstrap-safe import-closure gate (issue #884): fast local feedback for the bootstrap contract.
     # Fails (zero-tolerance, no baseline) on ANY `// @genie-bootstrap` generator whose transitive
     # runtime closure reaches a runtime-only package (which would break `genie --phase bootstrap` on a
@@ -706,10 +698,6 @@ in
     # ephemeral port, depends on export-flush timing), so it lives in CI rather than gating every
     # local `check:all` on capture reliability.
     (taskModules.weaver-live-check { installTask = "buck2:editor:publish"; })
-    # Version-pin consistency smoke (SC-DQ4): catches weaver/semconv pin drift the content
-    # gate (weaver:check) silently degrades past (a bumped version with a stale FOD hash).
-    (taskModules.weaver-version-smoke { })
-    { tasks."check:all".after = [ "weaver:version-smoke" ]; }
     (taskModules.clean { packages = allPackages; })
     # Pnpm remains only as a lockfile authoring tool. It cannot materialize a
     # workspace dependency graph or publish node_modules.
@@ -1300,12 +1288,14 @@ in
   tasks."buck2:quick" = {
     description = "Build the admitted quick Buck aggregate";
     after = [ "buck2:check" ];
+    # trace-audit-allow: buck2AggregateExec wraps the command with trace.exec.
     exec = buck2AggregateExec "buck2:quick" "//:quick";
   };
 
   tasks."buck2:all" = {
     description = "Build the complete admitted Buck aggregate";
     after = [ "buck2:check" ];
+    # trace-audit-allow: buck2AggregateExec wraps the command with trace.exec.
     exec = buck2AggregateExec "buck2:all" "//:all";
   };
 

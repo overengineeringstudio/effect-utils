@@ -12,7 +12,7 @@ describe('root Buck aggregate projection', () => {
         testTargets: ['//packages/@example/alpha:test'],
       }),
     ).toEqual({
-      quick: ['//packages/@example/alpha:typecheck'],
+      quick: ['//packages/@example/alpha:typecheck', ':weaver_check', ':weaver_version_smoke'],
       all: [
         ':quick',
         '//packages/@example/alpha:dist',
@@ -30,11 +30,15 @@ describe('root Buck aggregate projection', () => {
     expect(output).toContain('name = "static_sources"')
     expect(output).toContain('name = "quick"')
     expect(output).toContain('name = "all"')
+    expect(output).toContain('check_aggregate(')
+    expect(output).toContain('weaver_checks(')
   })
 
-  it('keeps the production quick target set equal to the admission registry', () => {
-    expect(planRootBuckAggregates().quick).toEqual(
-      authoritativeBuck2TypeScriptProjects.map((project) => project.typecheckTarget),
-    )
+  it('adds measured sub-five-second Weaver gates to the production quick target set', () => {
+    expect(planRootBuckAggregates().quick).toEqual([
+      ...authoritativeBuck2TypeScriptProjects.map((project) => project.typecheckTarget),
+      ':weaver_check',
+      ':weaver_version_smoke',
+    ])
   })
 })

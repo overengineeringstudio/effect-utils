@@ -348,11 +348,7 @@ const job = ({
   ],
 })
 
-const multiPlatformJob = (step: {
-  name: string
-  run: string
-  env?: Record<string, string>
-}) => ({
+const multiPlatformJob = (step: { name: string; run: string; env?: Record<string, string> }) => ({
   if: normalCiIf,
   strategy: {
     'fail-fast': false,
@@ -490,15 +486,11 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       run: runDevenvTasksBefore('cargo:check'),
     },
   }),
-  // Additive Weaver semantic-conventions gates, in one lane (GEN-R09 block-vs-degrade): each
-  // `weaver:*` task BLOCKS on a validation failure but DEGRADES to a warning (exit 0) if the
-  // weaver flake / upstream semconv FOD is unavailable, so it never wedges the product lanes.
-  //   - weaver:check      (SC-R10) registry schema/policy validation
-  //   - weaver:diff       (SC-R11) compat-diff vs the merge-base baseline (blocks on a REMOVED
-  //                        attribute/signal). Needs baseline history: the fetch step below
-  //                        un-shallows the checkout so `merge-base origin/main HEAD` resolves —
-  //                        without it weaver:diff silently degrades (nothing to diff against).
-  //   - weaver:live-check (SC-R12) e2e: emitted OTLP conforms to the registry
+  // Weaver checks that intentionally remain outside Buck:
+  //   - weaver:diff       (SC-R11) compares the merge-base-relative compatibility baseline.
+  //                        The fetch step below unshallows the checkout so the baseline exists.
+  //   - weaver:live-check (SC-R12) exercises the subprocess/network OTLP path.
+  // The bounded registry and version checks run through Buck's quick aggregate in the same lane.
   weaver: job({
     extraSteps: [
       {
@@ -515,9 +507,9 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       },
     ],
     step: {
-      name: 'Weaver registry gates (check + diff + live-check)',
+      name: 'Weaver registry gates (Buck quick + diff + live-check)',
       env: githubTokenEnv(),
-      run: runDevenvTasksBefore('weaver:check', 'weaver:diff', 'weaver:live-check'),
+      run: runDevenvTasksBefore('buck2:quick', 'weaver:diff', 'weaver:live-check'),
     },
     timeoutMinutes: 60,
   }),
@@ -725,8 +717,7 @@ const extraJobs: Record<string, any> = {
         name: 'Prove fresh-root remote action and test-cache hits',
         env: {
           ...githubTokenEnv(),
-          BUCK2_REMOTE_CACHE_BASIC_AUTH:
-            '${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}',
+          BUCK2_REMOTE_CACHE_BASIC_AUTH: '${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}',
         },
         run: [
           'set -euo pipefail',

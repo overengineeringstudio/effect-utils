@@ -10,7 +10,7 @@
 # against the PR's BASELINE (the merge-base with `origin/main`, so a PR that is merely behind main
 # does not false-positive on attributes main added after the fork point) via
 # `weaver registry diff`, resolving the upstream OTel semconv HERMETICALLY against the local Nix
-# FOD (`nix/weaver-flake#semconv-model`) — the same offline rewrite `weaver:check` uses (SC-A03).
+# FOD (`nix/weaver-flake#semconv-model`) — the same model projected into `//:weaver_check` (SC-A03).
 #
 # Breaking-change gate (empirically grounded against weaver 0.24.2 — see spec §"Weaver gate
 # wiring", SC-R11):
@@ -24,7 +24,7 @@
 # templates — e.g. stability regressions, requirement-level tightening) is a documented follow-up;
 # `removed` + resolution-failure is the verified minimum that catches the common break.
 #
-# Block-vs-degrade (GEN-R09), mirroring weaver:check:
+# Block-vs-degrade (GEN-R09), specific to this merge-base-relative check:
 #   - a weaver VALIDATION result (breaking change) BLOCKS;
 #   - weaver UNAVAILABILITY (flake build/eval failure, binary missing) DEGRADES to a warning
 #     (exit 0) in a separate lane, so a broken toolchain never wedges unrelated work.

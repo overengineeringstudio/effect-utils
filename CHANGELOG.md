@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
   projections shared with composed roots, registry-derived `//:quick` and
   `//:all` aggregates, check-verb wiring, and a guard against untracked
   Buck-versus-legacy producer overlap.
+- **Buck2 checks**: Move bounded Weaver registry conformance and version-pin
+  validation into hermetic Buck targets backed by Nix capability projections;
+  keep merge-base compatibility diff and live OTLP validation in their
+  effectful devenv lane.
 
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full
