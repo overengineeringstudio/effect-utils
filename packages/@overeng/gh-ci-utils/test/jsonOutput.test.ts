@@ -1,7 +1,7 @@
-import * as fs from 'node:fs'
 import { Effect, Schema } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
+import * as stdoutModule from '../../tui-react/src/effect/stdout.node.ts'
 import { CiStateSchema } from '../src/isomorphic/renderers/CiOutput/schema.ts'
 import {
   createSingleRunState,
@@ -95,10 +95,15 @@ describe('CLI JSON output contracts', () => {
 
   it('emits valid, non-secret auth login and status JSON to stdout', async () => {
     const lines: Array<string> = []
-    const stdout = vi.spyOn(fs, 'writeSync').mockImplementation(((fd, buffer) => {
-      if (fd === 1) lines.push(String(buffer))
-      return typeof buffer === 'string' ? buffer.length : (buffer as Uint8Array).length
-    }) as typeof fs.writeSync)
+    const push = (text: string): void => {
+      for (const line of text.split('\n')) {
+        if (line.length > 0) lines.push(line)
+      }
+    }
+    // `writeStdoutLineSync` calls `writeStdoutSync` through a module-local
+    // binding, so both exports need spies (same as captureStdoutLines).
+    const lineSpy = vi.spyOn(stdoutModule, 'writeStdoutLineSync').mockImplementation(push)
+    const rawSpy = vi.spyOn(stdoutModule, 'writeStdoutSync').mockImplementation(push)
     try {
       await Effect.runPromise(
         reportAuthResult({
@@ -120,12 +125,7 @@ describe('CLI JSON output contracts', () => {
         }),
       )
 
-      const documents = lines.flatMap((chunk) =>
-        String(chunk)
-          .split('\n')
-          .filter((line) => line.length > 0)
-          .map((line) => JSON.parse(line)),
-      )
+      const documents = lines.map((line) => JSON.parse(line))
       expect(documents).toEqual([
         {
           _tag: 'Authenticated',
@@ -137,16 +137,20 @@ describe('CLI JSON output contracts', () => {
       ])
       expect(lines.join('\n')).not.toContain('must-not-be-rendered')
     } finally {
-      stdout.mockRestore()
+      lineSpy.mockRestore()
+      rawSpy.mockRestore()
     }
   })
 
   it('writes the human status line to stdout in non-JSON modes', async () => {
     const lines: Array<string> = []
-    const stdout = vi.spyOn(fs, 'writeSync').mockImplementation(((fd, buffer) => {
-      if (fd === 1) lines.push(String(buffer))
-      return typeof buffer === 'string' ? buffer.length : (buffer as Uint8Array).length
-    }) as typeof fs.writeSync)
+    const push = (text: string): void => {
+      for (const line of text.split('\n')) {
+        if (line.length > 0) lines.push(line)
+      }
+    }
+    const lineSpy = vi.spyOn(stdoutModule, 'writeStdoutLineSync').mockImplementation(push)
+    const rawSpy = vi.spyOn(stdoutModule, 'writeStdoutSync').mockImplementation(push)
     try {
       for (const output of ['tty', 'ci', 'ci-plain', 'log', 'auto'] as const) {
         lines.length = 0
@@ -156,7 +160,8 @@ describe('CLI JSON output contracts', () => {
         expect(lines.join('')).toContain('No active session.')
       }
     } finally {
-      stdout.mockRestore()
+      lineSpy.mockRestore()
+      rawSpy.mockRestore()
     }
   })
 })
