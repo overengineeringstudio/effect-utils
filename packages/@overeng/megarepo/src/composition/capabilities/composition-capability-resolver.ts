@@ -12,11 +12,8 @@ import {
   readdir,
   readlink,
   realpath,
-  rename,
   rm,
   stat,
-  symlink,
-  writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as NodePath from 'node:path'
@@ -30,6 +27,15 @@ import {
   type BuckMemberCapability,
   type BuckMemberManifest,
 } from '@overeng/megarepo/buck2-manifest'
+
+import {
+  capabilityRootBuckBytes as rootBuckBytes,
+  capabilityToolBuckBytes as toolBuckBytes,
+  computeCapabilityProjectionGeneration as computeGeneration,
+  projectResolvedCapabilities,
+  renderCapabilityProjectionDefs as renderDefs,
+} from './capability-projection.ts'
+export { makeCapabilityProjectionManifest } from './capability-projection.ts'
 
 import {
   CompositionCapabilityResolutionError,
@@ -49,6 +55,7 @@ export interface CompositionCapabilityRuntime {
   readonly nixPath: string
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly nonce?: () => string
+  readonly projectionPath?: string
   readonly afterCandidateCreated?: (candidateRoot: string) => Promise<void>
   readonly beforeProjectionDigest?: (input: {
     readonly candidateRoot: string
@@ -86,6 +93,7 @@ export interface ResolveCompositionCapabilitiesInput {
 export interface RetainCompositionCapabilityProjectionInput {
   readonly workspaceRoot: string
   readonly memberKey: string
+  readonly projectionRoot: string
   readonly resolution: CompositionCapabilityResolutionHandle
   readonly runtime: CompositionCapabilityRuntime
 }
@@ -112,12 +120,19 @@ export const compositionCapabilityRuntimeFromEnv = (
       message: 'Missing pinned capability runtime path in MR_CAPABILITY_NIX_BIN',
     })
   }
-  return { nixPath, env }
+  const projectionPath = env['MR_CAPABILITY_PROJECTION']
+  return {
+    nixPath,
+    env,
+    ...(projectionPath === undefined || projectionPath.length === 0 ? {} : { projectionPath }),
+  }
 }
 
 /** Validate a capability projection without executing member-controlled code. */
 export const checkCompositionCapabilityProjection = (input: { readonly memberRoot: string }) =>
-  checkCompositionCapabilityProjectionInternal(input)
+  inspectCompositionCapabilityProjection({
+    projectionPath: NodePath.join(input.memberRoot, '.buck2', 'capabilities'),
+  }).then(() => undefined)
 
 /** Resolve declared capabilities using trusted mr-owned projection code. */
 export const resolveCompositionCapabilities = (input: ResolveCompositionCapabilitiesInput) =>
@@ -736,111 +751,6 @@ export const CapabilityProjectionManifestJsonSchema = ToolProjectionManifestJson
 /** Decoded per-tool projected manifest: the tool's pinned realization, closure, and protocol. */
 export type CapabilityProjectionManifest = ToolProjectionManifest
 
-/** Binds a projected tool to its exact Nix realization, independent of executable depth. */
-export const makeCapabilityProjectionManifest = ({
-  platform,
-  resolved,
-}: {
-  readonly platform: 'x86_64-linux' | 'aarch64-linux' | 'aarch64-macos'
-  readonly resolved: ResolvedCompositionCapability
-}): CapabilityProjectionManifest => ({
-  closureIdentity: resolved.nixOutputPath,
-  closureStorePaths: resolved.closureStorePaths,
-  contentDigest: resolved.executableDigest.slice('sha256:'.length),
-  executableStorePath: resolved.executablePath,
-  executionPlatform: platform,
-  protocol: resolved.capability.protocol,
-  runtimeContract: 'native-executable/v1',
-  schema: 'effect-utils/buck2-support-tools/v1',
-  toolId: resolved.capability.toolId,
-})
-const toolBuckBytes =
-  'export_file(name = "executable", src = "executable", visibility = ["PUBLIC"])\n' +
-  'export_file(name = "manifest", src = "manifest.json", visibility = ["PUBLIC"])\n'
-const rootBuckBytes = '# Generated from exact Nix realizations.\n'
-
-const atomicWrite = async ({ path, bytes }: { readonly path: string; readonly bytes: string }) => {
-  const temporary = `${path}.tmp-${randomUUID()}`
-  await writeFile(temporary, bytes, { flag: 'wx' })
-  await rename(temporary, path)
-}
-
-const manifestBytes = (manifest: ToolProjectionManifest): string =>
-  `${Schema.encodeSync(ToolProjectionManifestJson)(manifest)}\n`
-
-const computeGeneration = (
-  files: ReadonlyArray<{ readonly path: string; readonly bytes: string }>,
-) => {
-  const framed = files
-    .toSorted((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
-    .map(({ path, bytes }) => `${createHash('sha256').update(bytes).digest('hex')}  ./${path}\n`)
-    .join('')
-  const payloadDigest = createHash('sha256').update(framed).digest('hex')
-  return createHash('sha256').update(`${payloadDigest}  -\n`).digest('hex')
-}
-
-const renderDefs = ({
-  generation,
-  platform,
-  manifests,
-}: {
-  readonly generation: string
-  readonly platform: string
-  readonly manifests: ReadonlyArray<ToolProjectionManifest>
-}) =>
-  [
-    `GENERATION = "${generation}"`,
-    'CAPABILITIES = {',
-    `  "${platform}": {`,
-    ...manifests.map(
-      (manifest) =>
-        `    "${manifest.toolId}": {"generation": "${generation}", "contentDigest": "${manifest.contentDigest}", "closureIdentity": "${manifest.closureIdentity}", "executableStorePath": "${manifest.executableStorePath}", "closureStorePaths": [${manifest.closureStorePaths.map((path) => `"${path}"`).join(', ')}]},`,
-    ),
-    '  },',
-    '}',
-    '',
-  ].join('\n')
-
-const projectResolvedCapabilities = async ({
-  candidateRoot,
-  platform,
-  resolved,
-}: {
-  readonly candidateRoot: string
-  readonly platform: 'x86_64-linux' | 'aarch64-linux' | 'aarch64-macos'
-  readonly resolved: ReadonlyArray<ResolvedCompositionCapability>
-}) => {
-  const manifests = resolved.map((resolvedCapability) =>
-    makeCapabilityProjectionManifest({ platform, resolved: resolvedCapability }),
-  )
-  const files = manifests.flatMap((manifest) => [
-    { path: `${platform}/${manifest.toolId}/BUCK`, bytes: toolBuckBytes },
-    { path: `${platform}/${manifest.toolId}/manifest.json`, bytes: manifestBytes(manifest) },
-  ])
-  const generation = computeGeneration(files)
-  const projectionPath = NodePath.join(candidateRoot, '.buck2', 'capabilities')
-  const generationRoot = NodePath.join(projectionPath, 'generations', generation, platform)
-  await mkdir(generationRoot, { recursive: true })
-  await Promise.all(
-    manifests.map(async (manifest) => {
-      const directory = NodePath.join(generationRoot, manifest.toolId)
-      await mkdir(directory)
-      await symlink(manifest.executableStorePath, NodePath.join(directory, 'executable'))
-      await atomicWrite({
-        path: NodePath.join(directory, 'manifest.json'),
-        bytes: manifestBytes(manifest),
-      })
-      await atomicWrite({ path: NodePath.join(directory, 'BUCK'), bytes: toolBuckBytes })
-    }),
-  )
-  await atomicWrite({ path: NodePath.join(projectionPath, 'BUCK'), bytes: rootBuckBytes })
-  await atomicWrite({
-    path: NodePath.join(projectionPath, 'defs.bzl'),
-    bytes: renderDefs({ generation, platform, manifests }),
-  })
-  return { projectionPath, generation }
-}
-
 /**
  * A projected closure must be complete, canonical, and present: strictly sorted unique store
  * paths, containing the tool's own realization, each still valid in the local store.
@@ -873,43 +783,34 @@ const assertProjectedClosure = async ({
     }),
   )
 }
-const readPublishedProjectionGeneration = async ({
-  memberRoot,
-}: {
-  readonly memberRoot: string
-}): Promise<{
-  readonly defs: string
+type InspectedCapabilityProjection = {
   readonly generation: string
+  readonly manifests: ReadonlyArray<ToolProjectionManifest>
+  readonly platform: string
+}
+
+const inspectCompositionCapabilityProjection = async ({
+  projectionPath,
+}: {
   readonly projectionPath: string
-}> => {
-  const projectionPath = NodePath.join(memberRoot, '.buck2', 'capabilities')
+}): Promise<InspectedCapabilityProjection> => {
   const defs = await readFile(NodePath.join(projectionPath, 'defs.bzl'), 'utf8')
   const match = /^GENERATION = "([0-9a-f]{64})"$/mu.exec(defs)
   if (match === null) {
     throw invalidInput({ message: 'Capability defs generation is invalid', path: projectionPath })
   }
-  return { defs, generation: match[1]!, projectionPath }
-}
-
-/** Validate a capability projection without executing member-controlled code. */
-const checkCompositionCapabilityProjectionInternal = async ({
-  memberRoot,
-}: {
-  readonly memberRoot: string
-}): Promise<void> => {
-  const { defs, generation, projectionPath } = await readPublishedProjectionGeneration({
-    memberRoot,
-  })
+  const generation = match[1]!
   if ((await readFile(NodePath.join(projectionPath, 'BUCK'), 'utf8')) !== rootBuckBytes) {
     throw invalidInput({ message: 'Capability root BUCK is invalid', path: projectionPath })
   }
   const generationRoot = NodePath.join(projectionPath, 'generations', generation)
   const platforms = await readdir(generationRoot)
-  if (platforms.length !== 1)
+  if (platforms.length !== 1) {
     throw invalidInput({
       message: 'Capability generation must contain one platform',
       path: generationRoot,
     })
+  }
   const platform = platforms[0]!
   const toolRoot = NodePath.join(generationRoot, platform)
   const tools = (await readdir(toolRoot)).toSorted()
@@ -956,6 +857,7 @@ const checkCompositionCapabilityProjectionInternal = async ({
       path: projectionPath,
     })
   }
+  return { generation, manifests, platform }
 }
 
 const withOwnerWritableDirectory = async <A>({
@@ -1084,15 +986,16 @@ const capabilityRootPaths = ({
 }
 
 const assertPublishedCapabilityGeneration = async ({
-  memberRoot,
+  projectionRoot,
   resolution,
 }: {
-  readonly memberRoot: string
+  readonly projectionRoot: string
   readonly resolution: CompositionCapabilityResolutionHandle
 }): Promise<void> => {
-  await checkCompositionCapabilityProjection({ memberRoot })
-  const { generation, projectionPath } = await readPublishedProjectionGeneration({ memberRoot })
-  if (generation !== resolution.projectionDigest) {
+  await checkCompositionCapabilityProjection({ memberRoot: projectionRoot })
+  const projectionPath = NodePath.join(projectionRoot, '.buck2', 'capabilities')
+  const inspected = await inspectCompositionCapabilityProjection({ projectionPath })
+  if (inspected.generation !== resolution.projectionDigest) {
     throw new CompositionCapabilityResolutionError({
       reason: 'ProjectionFailure',
       message: 'Published capability generation does not match its resolved projection',
@@ -1104,17 +1007,18 @@ const assertPublishedCapabilityGeneration = async ({
 const retainCompositionCapabilityProjectionInternal = async ({
   workspaceRoot,
   memberKey,
+  projectionRoot,
   resolution,
   runtime,
 }: RetainCompositionCapabilityProjectionInput): Promise<void> => {
-  const { memberRoot, megarepoPath, capabilityRootsPath, memberRootsPath } = capabilityRootPaths({
+  const { megarepoPath, capabilityRootsPath, memberRootsPath } = capabilityRootPaths({
     workspaceRoot,
     memberKey,
   })
   await validateRuntime(runtime)
 
   const assertPublishedGeneration = (): Promise<void> =>
-    assertPublishedCapabilityGeneration({ memberRoot, resolution })
+    assertPublishedCapabilityGeneration({ projectionRoot, resolution })
 
   await assertPublishedGeneration()
   const generationRoot = NodePath.join(memberRootsPath, resolution.projectionDigest)
@@ -1205,15 +1109,16 @@ const retainCompositionCapabilityProjectionInternal = async ({
 const pruneCompositionCapabilityProjectionRootsInternal = async ({
   workspaceRoot,
   memberKey,
+  projectionRoot,
   resolution,
   runtime,
 }: RetainCompositionCapabilityProjectionInput): Promise<void> => {
-  const { memberRoot, memberRootsPath } = capabilityRootPaths({ workspaceRoot, memberKey })
+  const { memberRootsPath } = capabilityRootPaths({ workspaceRoot, memberKey })
   await validateRuntime(runtime)
 
   const generationRoot = NodePath.join(memberRootsPath, resolution.projectionDigest)
   try {
-    await assertPublishedCapabilityGeneration({ memberRoot, resolution })
+    await assertPublishedCapabilityGeneration({ projectionRoot, resolution })
     const generationInfo = await lstat(generationRoot)
     if (generationInfo.isDirectory() === false || generationInfo.isSymbolicLink() === true) {
       throw new Error(`Capability generation root is not a directory: '${generationRoot}'`)
@@ -1230,7 +1135,7 @@ const pruneCompositionCapabilityProjectionRootsInternal = async ({
         }
       }),
     )
-    await assertPublishedCapabilityGeneration({ memberRoot, resolution })
+    await assertPublishedCapabilityGeneration({ projectionRoot, resolution })
     await withOwnerWritableDirectory({
       path: memberRootsPath,
       action: async () => {
@@ -1451,7 +1356,7 @@ const resolveCompositionCapabilitiesInternal = async (
       CompositionCapabilitySystemSchema,
       strictParseOptions,
     )(input.system)
-    await validateRuntime(input.runtime)
+    if (input.runtime.projectionPath === undefined) await validateRuntime(input.runtime)
     const capabilities = buckMemberProjectedCapabilities(manifest).toSorted((left, right) =>
       left.toolId < right.toolId ? -1 : left.toolId > right.toolId ? 1 : 0,
     )
@@ -1471,6 +1376,70 @@ const resolveCompositionCapabilitiesInternal = async (
     )
     const plannedCandidateRoot = NodePath.join(plannedPrivateRoot, 'candidate')
     const projectorPlatform = platformFor(system)
+    if (input.runtime.projectionPath !== undefined) {
+      const inspected = await inspectCompositionCapabilityProjection({
+        projectionPath: input.runtime.projectionPath,
+      })
+      if (inspected.platform !== projectorPlatform) {
+        throw invalidInput({
+          message: `Capability projection platform '${inspected.platform}' does not match '${projectorPlatform}'`,
+          path: input.runtime.projectionPath,
+        })
+      }
+      const manifestByToolId = Object.fromEntries(
+        inspected.manifests.map((projected) => [projected.toolId, projected]),
+      )
+      const resolved = await Promise.all(
+        capabilities.map(async (capability): Promise<ResolvedCompositionCapability> => {
+          const projected = manifestByToolId[capability.toolId]
+          if (projected === undefined || projected.protocol !== capability.protocol) {
+            throw invalidInput({
+              message: `Nix capability projection does not satisfy '${capability.toolId}'`,
+              path: input.runtime.projectionPath,
+            })
+          }
+          const declaredExecutable = await realpath(
+            NodePath.join(projected.closureIdentity, capability.executable),
+          )
+          if (declaredExecutable !== projected.executableStorePath) {
+            throw invalidInput({
+              message: `Nix capability projection executable disagrees for '${capability.toolId}'`,
+              path: projected.executableStorePath,
+            })
+          }
+          return {
+            capability,
+            nixOutputPath: projected.closureIdentity,
+            executablePath: projected.executableStorePath,
+            executableDigest: `sha256:${projected.contentDigest}`,
+            closureStorePaths: projected.closureStorePaths,
+          }
+        }),
+      )
+      if (input.dryRun === true) {
+        return {
+          _tag: 'Planned',
+          system,
+          projectorPlatform,
+          candidateRoot: input.runtime.projectionPath,
+          nixCommands: [],
+        }
+      }
+      return {
+        _tag: 'Resolved',
+        system,
+        projectorPlatform,
+        candidateRoot: input.runtime.projectionPath,
+        projectionPath: input.runtime.projectionPath,
+        projectionDigest: inspected.generation,
+        capabilities: resolved,
+        capabilitiesByToolId: Object.fromEntries(
+          resolved.map((capability) => [capability.capability.toolId, capability]),
+        ),
+        nixCommands: [],
+        release: async () => {},
+      }
+    }
     const capabilityCommandsFor = (privateRoot: string) =>
       capabilities.map((capability) => {
         const installable = `${roots.memberRoot}#${capability.flakePackage}^out`
@@ -1543,7 +1512,7 @@ const resolveCompositionCapabilitiesInternal = async (
     await assertDirectoryIdentity(candidateIdentity)
 
     const projected = await projectResolvedCapabilities({
-      candidateRoot,
+      projectionPath: NodePath.join(candidateRoot, '.buck2', 'capabilities'),
       platform: projectorPlatform,
       resolved,
     })

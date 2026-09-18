@@ -982,23 +982,21 @@ describe('composition root publisher', () => {
     ),
   )
 
-  it.effect('fails closed when a member carries Buck root authority files', () =>
+  it.effect('accepts standalone Buck root files inside a composed member', () =>
     Effect.scoped(
       Effect.gen(function* () {
-        for (const rootFile of ['.buckconfig', '.buckroot']) {
-          const fixture = yield* makeFixture({ members: ['alpha'] })
-          yield* Effect.promise(() =>
-            writeFile(NodePath.join(fixture.root, 'repos/alpha', rootFile), ''),
-          )
-          const plan = yield* planCompositionRootPublication(
-            planOptionsFor({ fixture, memberKeys: ['alpha'] }),
-          )
-          expect(plan._tag).toBe('Refused')
-          if (plan._tag === 'Refused') {
-            expect(plan.reason).toBe('InvalidMemberManifest')
-            expect(plan.path).toBe(NodePath.join(fixture.root, 'repos/alpha', rootFile))
-          }
-        }
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* Effect.promise(() =>
+          Promise.all(
+            ['.buckconfig', '.buckroot'].map((rootFile) =>
+              writeFile(NodePath.join(fixture.root, 'repos/alpha', rootFile), ''),
+            ),
+          ),
+        )
+        const plan = yield* planCompositionRootPublication(
+          planOptionsFor({ fixture, memberKeys: ['alpha'] }),
+        )
+        expect(plan._tag).toBe('Create')
       }),
     ),
   )
