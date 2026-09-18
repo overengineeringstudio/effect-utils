@@ -7,5 +7,7 @@ export default defineConfig({
     server: { deps: { inline: ['@effect/vitest'] } },
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    // TODO(#1298): Remove after the tsgo/Vite handle lifecycle has a principled fix.
+    teardownTimeout: 30_000,
   },
 })

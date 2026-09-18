@@ -10,11 +10,20 @@ import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/unstable/process/ChildProcess'
 import * as CommandExecutor from 'effect/unstable/process/ChildProcessSpawner'
+import type { Node } from 'typescript/unstable/ast'
+import {
+  isIdentifier,
+  isMetaProperty,
+  isPropertyAccessExpression,
+  SyntaxKind,
+} from 'typescript/unstable/ast'
 
 import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
+import { runTsFileAnalysis } from '../runtime/node/ts-api.ts'
+import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
 import { ensureImportMapResolver, isCompiledBinary } from './discovery.ts'
 import {
@@ -43,6 +52,116 @@ const IMPORT_SPECIFIER_REGEX = /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?(['"]
 
 const isRelativeImportSpecifier = (specifier: string): boolean =>
   specifier.startsWith('./') === true || specifier.startsWith('../') === true
+
+type ImportMetaIdentityField = 'url' | 'dirname' | 'filename'
+
+const isImportMetaIdentityField = (name: string): name is ImportMetaIdentityField =>
+  name === 'url' || name === 'dirname' || name === 'filename'
+
+const importMetaIdentityLiteral = ({
+  field,
+  sourcePath,
+}: {
+  field: ImportMetaIdentityField
+  sourcePath: string
+}): string => {
+  if (field === 'url') return JSON.stringify(pathToFileURL(sourcePath).href)
+  if (field === 'dirname') return JSON.stringify(path.dirname(sourcePath))
+  return JSON.stringify(sourcePath)
+}
+
+/**
+ * Rewrites a staged module's own `import.meta` identity to its original source location.
+ *
+ * The staged graph is bundled into a single temporary entry before import, and a bundle has
+ * exactly one `import.meta`: every module would otherwise report the bundle path. Generators
+ * that derive their repository-relative identity from `import.meta.url` — every
+ * `defineRepoContext`/`modulePathFromUrl` caller, including the Cargo Buck projections —
+ * would then resolve neither a repository nor a package. Pinning the literal before bundling
+ * keeps that identity exact, so no path-shape recovery is needed downstream.
+ *
+ * The rewrite is syntax-aware: only the exact spans of `import.meta.{url,dirname,filename}`
+ * property accesses that the TypeScript parser reports as executable expressions are replaced.
+ * A textual pass cannot make that distinction and would also rewrite the same characters inside
+ * comments, string literals, and template-literal text — a generator that documents or emits
+ * `import.meta.url` (genie itself generates TypeScript) would have its output silently altered.
+ * Every byte outside those spans, including arbitrary whitespace within a matched access, is
+ * preserved verbatim.
+ */
+const pinStagedModuleIdentityWithAnalysis = async ({
+  analysis,
+  sourceCode,
+  sourcePath,
+}: {
+  analysis: TsFileAnalysisSession
+  sourceCode: string
+  sourcePath: string
+}): Promise<string> => {
+  const outcome = await analysis.analyze(sourcePath)
+  if (outcome.kind !== 'analyzed') {
+    const reason =
+      outcome.kind === 'failed'
+        ? outcome.reason
+        : `unsupported source extension ${path.extname(sourcePath)}`
+    throw new Error(`Cannot pin import.meta identity in ${sourcePath}: ${reason}`)
+  }
+
+  const sourceFile = outcome.analysis.sourceFile
+  const rewrites: { start: number; end: number; text: string }[] = []
+
+  const visit = (node: Node): void => {
+    if (
+      isPropertyAccessExpression(node) === true &&
+      isMetaProperty(node.expression) === true &&
+      node.expression.keywordToken === SyntaxKind.ImportKeyword &&
+      node.expression.name.text === 'meta' &&
+      isIdentifier(node.name) === true &&
+      isImportMetaIdentityField(node.name.text) === true
+    ) {
+      rewrites.push({
+        // `pos` includes leading trivia (comments keep their own bytes); `getStart` lands on the
+        // `import` keyword itself, so only the access expression is replaced.
+        start: node.getStart(sourceFile),
+        end: node.end,
+        text: importMetaIdentityLiteral({ field: node.name.text, sourcePath }),
+      })
+      return
+    }
+    node.forEachChild((child) => {
+      visit(child)
+      return undefined
+    })
+  }
+
+  sourceFile.forEachChild((node) => {
+    visit(node)
+    return undefined
+  })
+
+  if (rewrites.length === 0) return sourceCode
+
+  // Apply back-to-front so earlier spans keep their original offsets. Spans never nest (a match
+  // is not descended into), so ordering by start is total.
+  return rewrites
+    .toSorted((left, right) => left.start - right.start)
+    .reduceRight(
+      (code, { start, end, text }) => `${code.slice(0, start)}${text}${code.slice(end)}`,
+      sourceCode,
+    )
+}
+
+/** Pins import-meta identity reads to the staged module's original source URL. */
+export const pinStagedModuleIdentity = ({
+  sourceCode,
+  sourcePath,
+}: {
+  sourceCode: string
+  sourcePath: string
+}): Promise<string> =>
+  runTsFileAnalysis({
+    cwd: path.dirname(sourcePath),
+    use: (analysis) => pinStagedModuleIdentityWithAnalysis({ analysis, sourceCode, sourcePath }),
+  })
 
 const resolveRelativeImportPath = async ({
   importerPath,
@@ -109,6 +228,60 @@ const collectRelativeImportPaths = async ({
   )
 }
 
+const hasFileSystemErrorCode = ({ error, code }: { error: unknown; code: string }): boolean =>
+  typeof error === 'object' && error !== null && 'code' in error && error.code === code
+
+const mirrorNodeModulesSearchPaths = async ({
+  sourcePath,
+  tempRoot,
+}: {
+  sourcePath: string
+  tempRoot: string
+}): Promise<void> => {
+  const sourceRoot = path.parse(sourcePath).root
+  const sourceDirs: string[] = []
+  let sourceDir = path.dirname(sourcePath)
+
+  while (true) {
+    sourceDirs.push(sourceDir)
+    if (sourceDir === sourceRoot) {
+      break
+    }
+    sourceDir = path.dirname(sourceDir)
+  }
+
+  await Promise.all(
+    sourceDirs.map(async (currentSourceDir) => {
+      const sourceNodeModules = path.join(currentSourceDir, 'node_modules')
+      try {
+        const stat = await nodeFs.lstat(sourceNodeModules)
+        if (stat.isDirectory() === false && stat.isSymbolicLink() === false) {
+          return
+        }
+
+        const stagedDir = path.join(tempRoot, path.relative(sourceRoot, currentSourceDir))
+        const stagedNodeModules = path.join(stagedDir, 'node_modules')
+        await nodeFs.mkdir(stagedDir, { recursive: true })
+        try {
+          await nodeFs.symlink(
+            sourceNodeModules,
+            stagedNodeModules,
+            process.platform === 'win32' ? 'junction' : 'dir',
+          )
+        } catch (error) {
+          if (hasFileSystemErrorCode({ error, code: 'EEXIST' }) === false) {
+            throw error
+          }
+        }
+      } catch (error) {
+        if (hasFileSystemErrorCode({ error, code: 'ENOENT' }) === false) {
+          throw error
+        }
+      }
+    }),
+  )
+}
+
 const stageCompiledBinaryImportGraph = ({
   entryPath,
 }: {
@@ -128,9 +301,13 @@ const stageCompiledBinaryImportGraph = ({
     const stagedPaths = new Map<string, string>()
     const relativeEntryPath = entryPath.replace(/^(?:[A-Za-z]:)?[\\/]+/, '')
 
-    const stageModule = (
-      sourcePath: string,
-    ): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
+    const stageModule = ({
+      analysis,
+      sourcePath,
+    }: {
+      analysis: TsFileAnalysisSession
+      sourcePath: string
+    }): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
       Effect.gen(function* () {
         const existingStagePath = stagedPaths.get(sourcePath)
         if (existingStagePath !== undefined) {
@@ -153,9 +330,18 @@ const stageCompiledBinaryImportGraph = ({
               cause: error,
             }),
         })
+        const pinnedSource = yield* Effect.tryPromise({
+          try: () => pinStagedModuleIdentityWithAnalysis({ analysis, sourceCode, sourcePath }),
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to pin import.meta identity in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
 
         const transformedSource = yield* resolveImportMapsInSource({
-          sourceCode,
+          sourceCode: pinnedSource,
           sourcePath,
         }).pipe(
           Effect.mapError(
@@ -182,24 +368,76 @@ const stageCompiledBinaryImportGraph = ({
           try: async () => {
             await nodeFs.mkdir(path.dirname(stagePath), { recursive: true })
             await nodeFs.writeFile(stagePath, transformedSource)
+            await mirrorNodeModulesSearchPaths({ sourcePath, tempRoot })
           },
           catch: (error) =>
             new GenieImportError({
               genieFilePath: entryPath,
-              message: `Failed to write staged module ${stagePath}: ${safeErrorString(error)}`,
+              message: `Failed to stage module ${sourcePath}: ${safeErrorString(error)}`,
               cause: error,
             }),
         })
 
         for (const relativeImportPath of relativeImportPaths) {
-          yield* stageModule(relativeImportPath)
+          yield* stageModule({ analysis, sourcePath: relativeImportPath })
         }
 
         return stagePath
       })
 
-    const stagePath = yield* stageModule(entryPath)
-    return { stagePath, tempRoot }
+    const context = yield* Effect.context<FileSystem.FileSystem>()
+    const stagedEntryPath = yield* Effect.tryPromise({
+      try: () =>
+        runTsFileAnalysis({
+          cwd: path.dirname(entryPath),
+          use: (analysis) =>
+            Effect.runPromiseWith(context)(stageModule({ analysis, sourcePath: entryPath })),
+        }),
+      catch: (error) =>
+        error instanceof GenieImportError
+          ? error
+          : new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to analyze compiled-binary staging graph for ${entryPath}: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+    })
+    const bundleResult = yield* Effect.tryPromise({
+      try: () =>
+        Bun.build({
+          entrypoints: [stagedEntryPath],
+          naming: 'genie-entry.js',
+          outdir: path.join(tempRoot, 'bundle'),
+          root: tempRoot,
+          target: 'bun',
+          throw: false,
+          treeShaking: false,
+        }),
+      catch: (error) =>
+        new GenieImportError({
+          genieFilePath: entryPath,
+          message: `Failed to bundle staged import graph for ${entryPath}: ${safeErrorString(error)}`,
+          cause: error,
+        }),
+    })
+    if (bundleResult.success === false) {
+      return yield* new GenieImportError({
+        genieFilePath: entryPath,
+        message: `Failed to bundle staged import graph for ${entryPath}: ${bundleResult.logs.map(safeErrorString).join('\n')}`,
+        cause: bundleResult.logs,
+      })
+    }
+
+    const bundledEntryPath = bundleResult.outputs[0]?.path
+    if (bundledEntryPath === undefined) {
+      return yield* new GenieImportError({
+        genieFilePath: entryPath,
+        message: `Failed to bundle staged import graph for ${entryPath}: Bun produced no output`,
+        cause: new Error('Bun produced no output'),
+      })
+    }
+
+    return { stagePath: bundledEntryPath, tempRoot }
   })
 
 const removeStagedCompiledBinaryImportGraph = ({
