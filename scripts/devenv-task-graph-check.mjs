@@ -390,6 +390,16 @@ ok({
     buckToolchainSource.includes('name = "archive_tool"') === true,
   name: 'Buck toolchains live in the buck2/toolchains package',
 })
+const configuredToolchainSource = readFileSync(
+  `${root}/buck2/toolchains/configured.bzl`,
+  'utf8',
+)
+ok({
+  condition:
+    buckToolchainSource.includes('load("@capabilities//:defs.bzl"') === true &&
+    configuredToolchainSource.includes('load("@capabilities//:defs.bzl"') === true,
+  name: 'capability Starlark loads use external-cell import syntax',
+})
 ok({
   condition: existsSync(`${root}/toolchains`) === false,
   name: 'no legacy top-level toolchains directory remains',
