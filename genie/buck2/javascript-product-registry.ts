@@ -38,6 +38,7 @@ export const javaScriptProductRegistry = {
     },
     {
       entrypoint: 'bin/bootstrap-closure-check.ts',
+      externalCapabilities: ['typescript-api-server'],
       kind: 'cli',
       output: 'genie-bootstrap-closure-check.js',
       productName: 'genie-bootstrap-closure-check',
@@ -106,6 +107,13 @@ export const javaScriptProductRegistry = {
       output: 'oxc-config.js',
       productName: 'oxc-config',
       targetName: 'oxc-config-candidate',
+    },
+    {
+      entrypoint: 'src/stylex-upstream-plugin.ts',
+      kind: 'module',
+      output: 'oxc-config-stylex-upstream-plugin.js',
+      productName: 'oxc-config-stylex-upstream-plugin',
+      targetName: 'oxc-config-stylex-upstream-plugin-candidate',
     },
   ],
   'packages/@overeng/tui-stories': [

@@ -9,7 +9,6 @@ import {
   prepareCiScriptsStep,
   prepareEffectUtilsCompositionStep,
   notifyAlignmentJob,
-  evictCachedPnpmDepsStep,
   pnpmBuilderContractStep,
   preparePinnedDevenvStep,
   installNixStep,
@@ -29,14 +28,12 @@ import {
   namespaceRunner,
   nixClosureMeasurementSteps,
   sourceShapeMeasurementStep,
-  validateColdPnpmDepsStep,
   nixDiagnosticsArtifactStep,
   workflowReportCommentBodyStep,
   workflowReportCollectorStep,
   workflowReportPublisherStep,
   deployPreviewWorkflowReportPathOutputName,
   netlifyDeployStep,
-  nixCacheSetupStep,
   validateNixStoreStep,
   withCiSourceRoot,
   defaultRefPolicyCheckJob,
@@ -66,10 +63,6 @@ const baseSteps = [
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
   validateNixStoreStep,
-  evictCachedPnpmDepsStep({
-    flakeRef: '.#oxlint-npm',
-    name: 'Evict cached pnpm deps for oxlint-npm',
-  }),
   /**
    * Temporary debug switch for #272 to validate failure-path diagnostics without waiting for a real flake.
    * Remove once #201/#272 are root-caused and diagnostics instrumentation is removed.
@@ -516,9 +509,9 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     // and the genie policy source, both present here without node_modules.
     extraSteps: [nativeDepPolicyAuditStep],
   }),
-  // After the cutover `mk-pnpm-cli` has no in-repo CLI consumer left: it is exercised only by
-  // its own contract suite here and, through `mk-pnpm-deps.nix`, by the oxc-config plugin FOD.
-  // That makes this lane the sole remaining guard on the shared pnpm deps helper.
+  // `mk-pnpm-cli` and `mk-pnpm-deps` remain reusable public helpers, so their
+  // own contract suite keeps this lane even though no repository JavaScript
+  // product consumes them.
   'pnpm-regression': job({
     step: {
       name: 'pnpm regression suite',
@@ -701,7 +694,8 @@ const extraJobs: Record<string, any> = {
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \\',
             '  genie/buck2/typescript-package-projection.unit.test.ts \\',
             '  genie/buck2/javascript-candidates.unit.test.ts \\',
-            '  packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts',
+            '  packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \\',
+            '  packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts',
           ].join('\n'),
         ),
       },
@@ -725,7 +719,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(default\\.nix|manifest\\.json|publish\\.sh)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(default\\.nix|manifest\\.json|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
             'if [ -n "$tracked_editor$tracked_product" ]; then',
             '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
             '  exit 1',

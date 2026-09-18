@@ -3,6 +3,7 @@ import process from 'node:process'
 import { describe, expect, it } from 'vitest'
 
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import releaseTargetsProjection from '../../nix/buck2-products/targets.json.genie.ts'
 import { withJavaScriptCandidates } from './javascript-candidates.ts'
 import {
   javaScriptProductPublications,
@@ -79,6 +80,13 @@ const expectedPublications = [
     runtimeKind: 'node',
   },
   {
+    label: '//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate',
+    module: 'oxc-config-stylex-upstream-plugin.js',
+    productKind: 'module',
+    productName: 'oxc-config-stylex-upstream-plugin',
+    runtimeKind: 'node',
+  },
+  {
     label: '//packages/@overeng/tui-stories:tui-stories-candidate',
     module: 'tui-stories.js',
     productKind: 'cli',
@@ -94,9 +102,9 @@ const expectUnique = (values: readonly string[]): void => {
 }
 
 describe('JavaScript product registry', () => {
-  it('declares the ten exact publication labels and product contracts', () => {
+  it('declares the eleven exact publication labels and product contracts', () => {
     expect(javaScriptProductPublications).toEqual(expectedPublications)
-    expect(javaScriptProductPublications).toHaveLength(10)
+    expect(javaScriptProductPublications).toHaveLength(11)
   })
 
   it('keeps every publication identity and package-local target unique', () => {
@@ -115,6 +123,51 @@ describe('JavaScript product registry', () => {
         javaScriptProductRegistry[packagePath as keyof typeof javaScriptProductRegistry],
       )
     }
+  })
+
+  it('declares the two oxc-config plugin entry points as separate products', () => {
+    expect(javaScriptProductsFor('packages/@overeng/oxc-config')).toEqual([
+      expect.objectContaining({
+        entrypoint: 'src/mod.ts',
+        productName: 'oxc-config',
+      }),
+      expect.objectContaining({
+        entrypoint: 'src/stylex-upstream-plugin.ts',
+        productName: 'oxc-config-stylex-upstream-plugin',
+      }),
+    ])
+  })
+
+  it('projects the registry into the fingerprinted release target inventory', () => {
+    const inventory = JSON.parse(releaseTargetsProjection.stringify(genieContext)) as {
+      products: Array<{ name: string; target: string }>
+      provenance: {
+        fingerprint: string
+        generator: string
+        regenerationCommand: string
+        semanticInputs: string[]
+        source: string
+      }
+      schemaVersion: number
+    }
+
+    expect(inventory).toEqual({
+      products: expectedPublications.map(({ label, productName }) => ({
+        name: productName,
+        target: `effect_utils${label}`,
+      })),
+      provenance: {
+        fingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        generator: 'effect-utils/genie/buck2-javascript-release-targets',
+        regenerationCommand: 'devenv tasks run genie:run',
+        semanticInputs: [
+          'genie/buck2/javascript-product-registry.ts',
+          'nix/buck2-products/targets.json.genie.ts',
+        ],
+        source: 'nix/buck2-products/targets.json.genie.ts',
+      },
+      schemaVersion: 1,
+    })
   })
 
   it('keeps product targets clear of TypeScript authority targets', () => {

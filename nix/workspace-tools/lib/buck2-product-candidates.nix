@@ -8,6 +8,7 @@
 {
   pkgs,
   products,
+  nativeProducts ? (import ../../buck2-native-products { inherit pkgs; }).products,
   typeProofCompilerBin,
   oxfmtPkg ? pkgs.oxfmt,
   gitRev ? "unknown",
@@ -63,7 +64,7 @@ let
       CLI_BUILD_STAMP = buildStamp;
       GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
       GENIE_EXPORT_TYPE_PROOF_COMPILER = typeProofCompilerBin;
-      GENIE_TYPESCRIPT_API_SERVER = "${pkgs.typescript}/bin/tsc";
+      GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
     };
     expectedExternalCapabilities = [
       "actionlint"
@@ -79,8 +80,10 @@ let
     smokeTestArgs = [ "--dry-run" ];
   };
   genie-bootstrap-closure-check = mk "genie-bootstrap-closure-check" {
+    environment.GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
     binaryName = "genie-bootstrap-closure-check";
     expectedProductKind = "cli";
+    expectedExternalCapabilities = [ "typescript-api-server" ];
     smokeTestArgs = [ "--help" ];
   };
   ci-tools = mk "ci-tools" {
@@ -180,17 +183,32 @@ let
     pathPackages = [ pkgs.nodejs ];
     smokeTestArgs = [ "--help" ];
   };
-  # A module product, not a CLI: consumers import the file, so the candidate
-  # publishes a stable `lib/oxc-config.js` and proves it is importable.
+  # These are module products, not CLIs: consumers import the files. The
+  # composed package publishes stable paths for both oxlint plugin entries and
+  # keeps their independently attested product boundaries visible in passthru.
   oxcConfigModule = mk "oxc-config" {
     expectedProductKind = "module";
     generateCompletions = false;
   };
-  oxc-config = pkgs.runCommand "oxc-config-buck2-candidate" { } ''
-    mkdir -p "$out/lib"
-    ln -s ${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath} "$out/lib/oxc-config.js"
-    ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node -e 'import(process.argv[1])' "$out/lib/oxc-config.js"
-  '';
+  oxcConfigStylexUpstreamModule = mk "oxc-config-stylex-upstream-plugin" {
+    expectedProductKind = "module";
+    generateCompletions = false;
+  };
+  oxc-config =
+    pkgs.runCommand "oxc-config-buck2-candidate"
+      {
+        passthru = {
+          pluginPath = "${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath}";
+          stylexUpstreamPluginPath = "${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModule.checkedDescriptor.modulePath}";
+        };
+      }
+      ''
+        mkdir -p "$out/lib"
+        ln -s ${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath} "$out/lib/oxc-config.js"
+        ln -s ${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModule.checkedDescriptor.modulePath} "$out/lib/stylex-upstream-plugin.js"
+        ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node -e 'Promise.all(process.argv.slice(1).map((path) => import(path)))' \
+          "$out/lib/oxc-config.js" "$out/lib/stylex-upstream-plugin.js"
+      '';
   # A candidate exists only when every product it composes is published, so an
   # unpublished product surfaces as a missing attribute instead of a candidate
   # wired to absent bytes.
@@ -205,7 +223,10 @@ let
     ];
     notion-md = [ "notion-md" ];
     npm-release = [ "npm-release" ];
-    oxc-config = [ "oxc-config" ];
+    oxc-config = [
+      "oxc-config"
+      "oxc-config-stylex-upstream-plugin"
+    ];
     tui-stories = [ "tui-stories" ];
   };
   candidates = {
