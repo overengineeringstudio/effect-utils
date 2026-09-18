@@ -1,4 +1,4 @@
-# Decision 0031: Static operation authority follows bounded inputs
+# Decision 0036: Static operation authority follows bounded inputs
 
 ## Status
 
@@ -31,7 +31,7 @@ The remaining aggregate boundaries are classified rather than disguised:
   not bounded repository-static actions.
 - `source-shape` remains a CI measurement producer: its run-stamped comparison artifact is evidence,
   not a reproducible build product.
-- Generation freshness remains the stage-zero exception in Decision 0030. Default-ref policy is the
+- Generation freshness remains the stage-zero exception in Decision 0035. Default-ref policy is the
   corresponding pre-composition trust-gate exception.
 
 ## Consequences
