@@ -139,14 +139,23 @@ EOF
 chmod +x "$tmpdir/bin/otel-span"
 
 export PATH="$tmpdir/bin:$PATH"
+export OTEL_SPAN_BIN="$tmpdir/bin/otel-span"
+export OTEL_SCRAPE_ENABLED=0
 export OTEL_SPAN_SPOOL_DIR="$tmpdir/spool"
 mkdir -p "$OTEL_SPAN_SPOOL_DIR"
 export OTEL_TASK_TRACEPARENT="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
 export DEVENV_ROOT="$tmpdir/workspace"
 : > "$tmpdir/spans.ndjson"
 
+set +e
 stdout="$(cd "$tmpdir" && bash "$tmpdir/ts-check.exec.sh" 2>&1)"
+ts_check_status=$?
+set -e
 echo "$stdout" > "$tmpdir/stdout.txt"
+if [ "$ts_check_status" -ne 0 ]; then
+  echo "$stdout" >&2
+  fail "ts:check exec failed with exit $ts_check_status"
+fi
 
 # 1. Effect lint warnings must be re-surfaced (not swallowed by the parser path).
 grep -q "warning TS377030" "$tmpdir/stdout.txt" \
