@@ -152,12 +152,23 @@ export const runCommand = Cli.Command.make('run', {
     Cli.Flag.withDefault('CI'),
     Cli.Flag.withDescription('Workflow name (default: CI)'),
   ),
+  field: Cli.Flag.keyValuePair('field').pipe(
+    Cli.Flag.withDescription(
+      'Workflow dispatch input as key=value (repeatable, e.g. --field image=abc)',
+    ),
+    Cli.Flag.optional,
+  ),
+  inputs: Cli.Flag.string('inputs').pipe(
+    Cli.Flag.withDescription('Workflow dispatch inputs as a JSON object (script escape hatch)'),
+    Cli.Flag.optional,
+  ),
   target: targetArg,
   watch: watchOption,
   watchMode: watchModeOption,
   timeout: timeoutOption,
 }).pipe(
-  Cli.Command.withHandler(({ output, workflow, target: targetInput, watch, watchMode, timeout }) =>
+  Cli.Command.withHandler(
+    ({ output, workflow, field, inputs, target: targetInput, watch, watchMode, timeout }) =>
     Effect.scoped(
       Effect.gen(function* () {
         const tui = (yield* MutationApp.run(
@@ -192,10 +203,18 @@ export const runCommand = Cli.Command.make('run', {
 
         const { repo: targetRepo, branch } = target
 
+        const dispatchInputs = yield* parseDispatchInputs({ field, inputs }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ConfigError({ message: `Invalid workflow dispatch inputs: ${cause}`, cause }),
+          ),
+        )
+
         const dispatched = yield* github.dispatchWorkflow({
           repo: targetRepo,
           workflow,
           ref: branch,
+          inputs: dispatchInputs,
         })
         const runId = dispatched.workflow_run_id
         tui.dispatch({
@@ -228,9 +247,45 @@ Examples:
   gh-ci-utils run                             Dispatch CI on current branch
   gh-ci-utils run -w                          Dispatch and watch (exit on first failure)
   gh-ci-utils run --workflow Deploy            Dispatch specific workflow
+  gh-ci-utils run --field image=abc            Dispatch with workflow inputs
   gh-ci-utils run owner/repo@main -w          Cross-repo dispatch`,
   ),
 )
+
+/**
+ * Merge `--field key=value` pairs with the `--inputs` JSON object.
+ * Repeated `--field` wins over a colliding JSON key; both absent means no inputs.
+ */
+export const parseDispatchInputs = ({
+  field,
+  inputs,
+}: {
+  field: Option.Option<Record<string, string>>
+  inputs: Option.Option<string>
+}): Effect.Effect<Record<string, string> | undefined, string> =>
+  Effect.gen(function* () {
+    const fromJson: Record<string, string> =
+      Option.isNone(inputs) || inputs.value.trim().length === 0
+        ? {}
+        : (yield* Effect.try({
+            try: () => {
+              const parsed: unknown = JSON.parse(inputs.value)
+              if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                throw new Error('expected a JSON object')
+              }
+              for (const [key, value] of Object.entries(parsed)) {
+                if (typeof value !== 'string') throw new Error(`input ${key} must be a string`)
+              }
+              return parsed as Record<string, string>
+            },
+            catch: (cause) => String((cause as Error).message ?? cause),
+          }))
+    const merged: Record<string, string> = {
+      ...fromJson,
+      ...(Option.isSome(field) ? field.value : {}),
+    }
+    return Object.keys(merged).length === 0 ? undefined : merged
+  })
 
 // =============================================================================
 // cancel command

@@ -43,6 +43,7 @@ interface RecordedRequest {
   readonly method: string
   readonly url: string
   readonly authorization: string
+  readonly userAgent: string
   readonly body: string | null
 }
 
@@ -73,6 +74,7 @@ const runWithSyntheticAppClient = async <TValue, TError>({
           method: request.method,
           url: url.toString(),
           authorization: request.headers['authorization'] ?? '',
+          userAgent: request.headers['user-agent'] ?? '',
           body:
             request.body._tag === 'Uint8Array' ? new TextDecoder().decode(request.body.body) : null,
         })
@@ -216,6 +218,12 @@ describe('GitHubClient paginated workflow selection', () => {
       'Bearer installation-test-token',
       'Bearer installation-test-token',
       'Bearer installation-test-token',
+    ])
+    expect(requests.map((request) => request.userAgent)).toEqual([
+      'gh-ci-utils/0.1.0',
+      'gh-ci-utils/0.1.0',
+      'gh-ci-utils/0.1.0',
+      'gh-ci-utils/0.1.0',
     ])
     expect(requests[3]?.body).toBe('{"ref":"feature/synthetic-dispatch","return_run_details":true}')
     expect(result).toEqual({
