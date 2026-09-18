@@ -25,6 +25,7 @@ const ciWorkflowSource = [
   'ci-workflow/setup.ts',
   'ci-workflow/measurements.ts',
   'ci-workflow/reporting.ts',
+  'ci-workflow/default-ref-policy-script.ts',
   'ci-workflow/megarepo.ts',
   'ci-workflow/merge-queue.ts',
   'ci-workflow/deploy.ts',
@@ -148,13 +149,13 @@ const mainOnlyCheckContexts: Record<string, true> = {
   'test-live-deploy-ci-tools': true,
   'deploy-storybooks': true,
 }
-const matrixCheckJobs = new Set(['test', 'nix-check', 'nix-fod-check'])
+const matrixCheckJobs: Record<string, true> = { test: true }
 const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
 
 const generatedNonAdvisoryCheckContexts = generatedCiJobKeys
   .flatMap((jobKey) => {
     if (jobKey === 'ci-measurements-report') return ['ci/measurements-report']
-    if (matrixCheckJobs.has(jobKey) === true) {
+    if (matrixCheckJobs[jobKey] === true) {
       return matrixRunners.map((runner) => `${jobKey} (${runner})`)
     }
     return [jobKey]
@@ -208,12 +209,11 @@ const resolveDevenvScript = readFileSync(resolveDevenvScriptUrl, 'utf8')
 const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const applyMegarepoLockStep = (opts?: { skip?: string[]; cacheableStore?: boolean }) => {',
-  'export type DefaultRefPolicyCheckStepOptions = {',
+  "export const mergeQueueAdmissionLabel = 'mq:ci-admitted' as const",
 )
-const defaultRefPolicyCheckStepSource = extractSourceBlock(
-  ciWorkflowSource,
-  'export type DefaultRefPolicyCheckStepOptions = {',
-  '/** Fail when first-party megarepo/flake/devenv inputs target non-default refs. */',
+const defaultRefPolicySource = readFileSync(
+  new URL('../../../../../../genie/ci-workflow/default-ref-policy-script.ts', import.meta.url),
+  'utf8',
 )
 const mergeQueueSource = extractSourceBlock(
   ciWorkflowSource,
@@ -718,37 +718,33 @@ printf '%s\\n' "$NIX_OUTPUT"
     expect(megarepoTaskModuleSource).not.toContain('.value.members[].name')
   })
 
-  it('normalizes GitHub branch refs through an explicit default-ref policy option', () => {
-    expect(defaultRefPolicyCheckStepSource).toContain('normalizeGitBranchRefs?: boolean')
-    expect(defaultRefPolicyCheckStepSource).toContain('NORMALIZE_GIT_BRANCH_REFS')
-    expect(defaultRefPolicyCheckStepSource).toContain("ref.startsWith('refs/heads/')")
+  it('keeps the source-policy trust gate available before composition', () => {
+    expect(defaultRefPolicySource).toContain('NORMALIZE_GIT_BRANCH_REFS')
+    expect(defaultRefPolicySource).toContain("ref.startsWith('refs/heads/')")
   })
 
   it('allows only explicitly opted-in immutable legacy member refs', () => {
-    expect(defaultRefPolicyCheckStepSource).toContain('allowLegacyMemberCommitRefs?: boolean')
-    expect(defaultRefPolicyCheckStepSource).toContain('ALLOW_LEGACY_MEMBER_COMMIT_REFS')
-    expect(defaultRefPolicyCheckStepSource).toContain("memberName.endsWith('-legacy')")
-    expect(defaultRefPolicyCheckStepSource).toContain(
+    expect(defaultRefPolicySource).toContain('ALLOW_LEGACY_MEMBER_COMMIT_REFS')
+    expect(defaultRefPolicySource).toContain("memberName.endsWith('-legacy')")
+    expect(defaultRefPolicySource).toContain(
       'const immutableCommitRef = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i',
     )
-    expect(defaultRefPolicyCheckStepSource).toContain(
+    expect(defaultRefPolicySource).toContain(
       'isAllowedLegacyMemberRef({ memberName, ref: normalizedRef })',
     )
   })
 
   it('retries temporary git repository cleanup after reachability checks', () => {
-    expect(defaultRefPolicyCheckStepSource).toContain(
+    expect(defaultRefPolicySource).toContain(
       'fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })',
     )
   })
 
-  it('uses the same Nix-provided Node runtime for default-ref policy checks', () => {
-    expect(ciWorkflowSource).toContain('nix shell nixpkgs#nodejs_24 -c node')
-  })
-
-  it('provides a dedicated default-ref policy job so regular jobs keep their signal', () => {
-    expect(ciWorkflowSource).toContain('export const defaultRefPolicyCheckJob')
-    expect(ciWorkflowSource).toContain('name === undefined ? {} : { name }')
+  it('runs the dedicated default-ref policy job before composition', () => {
+    expect(generatedWorkflowSource).toContain("'default-ref-policy': {")
+    expect(generatedWorkflowSource).toContain('defaultRefPolicyCheckJob({')
+    expect(generatedWorkflowSource).not.toContain("runDevenvTasksBefore('policy:default-ref')")
+    expect(ciWorkflowSource).toContain('defaultRefPolicyCheckJob')
     expect(ciWorkflowSource).toContain('defaultRefPolicyCheckStep(stepOpts)')
   })
 })
@@ -1331,7 +1327,6 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
     expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')
     expect(generatedCiWorkflowYamlSource).toContain('}}-test-${{ strategy.job-index }}')
-    expect(generatedCiWorkflowYamlSource).toContain('}}-nix-check-${{ strategy.job-index }}')
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
     expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
     expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')
@@ -1455,6 +1450,19 @@ describe('effect-utils CI composition workspace', () => {
       ].join('\n'),
     )
     writeFileSync(
+      join(fakeBin, 'chmod'),
+      [
+        '#!/usr/bin/env bash',
+        'set -euo pipefail',
+        'if [ "${RUNNER_OS:-}" = "macOS" ]; then',
+        '  for arg in "$@"; do',
+        '    if [ "$arg" = "--" ]; then printf "chmod: --: No such file or directory\\n" >&2; exit 1; fi',
+        '  done',
+        'fi',
+        'PATH="${PATH#*:}" exec chmod "$@"',
+      ].join('\n'),
+    )
+    writeFileSync(
       join(mrOut, 'bin', 'mr'),
       [
         '#!/usr/bin/env bash',
@@ -1505,6 +1513,7 @@ describe('effect-utils CI composition workspace', () => {
       ].join('\n'),
     )
     chmodSync(join(fakeBin, 'nix'), 0o755)
+    chmodSync(join(fakeBin, 'chmod'), 0o755)
     chmodSync(join(mrOut, 'bin', 'mr'), 0o755)
 
     const env = {
@@ -1700,28 +1709,31 @@ describe('effect-utils CI composition workspace', () => {
         ([, name, body]) => [name!, body!] as const,
       ),
     )
-    const exemptions = new Set([
-      'default-ref-policy',
-      'nix-fod-check',
-      'source-shape',
-      'ci-measurements-report',
-      'notify-alignment',
-    ])
+    const exemptions: Record<string, true> = {
+      'default-ref-policy': true,
+      'source-shape': true,
+      'ci-measurements-report': true,
+      'notify-alignment': true,
+    }
     expect(
       [...blocks.keys()].filter(
         (name) => blocks.get(name)?.includes('Prepare effect-utils composition') !== true,
       ),
-    ).toEqual([...exemptions])
+    ).toEqual(Object.keys(exemptions))
     for (const [name, block] of blocks) {
       const taskIndex = block.indexOf('tasks run ')
       if (taskIndex < 0) continue
-      expect(exemptions.has(name), name).toBe(false)
+      expect(exemptions[name] === true, name).toBe(false)
       const compositionIndex = block.indexOf('Prepare effect-utils composition')
       expect(compositionIndex, name).toBeGreaterThanOrEqual(0)
       expect(compositionIndex, name).toBeLessThan(taskIndex)
       expect(block.indexOf('Cleanup effect-utils composition'), name).toBeGreaterThan(taskIndex)
     }
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^\s+(?:buck2|\.\/[^ ]*buck2)\s/m)
+    expect(blocks.has('nix-fod-check')).toBe(false)
+    expect(blocks.has('nix-check')).toBe(false)
+    expect(generatedCiWorkflowYamlSource).not.toContain('Evict cached pnpm deps for oxlint-npm')
+    expect(generatedCiWorkflowYamlSource).not.toContain('.#oxc-config-plugin-pnpm-deps')
   })
 
   it('keeps pull-request source execution credentialless and read-only', () => {
@@ -1758,8 +1770,8 @@ describe('effect-utils CI composition workspace', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/pnpm-store-pure-v1',
     )
-    expect(generatedCiWorkflowYamlSource).toContain(
-      '${{ runner.temp }}/composition-state/nix-cache',
+    expect(prepareEffectUtilsCompositionScriptSource).toContain(
+      '${RUNNER_TEMP:?RUNNER_TEMP not set}/composition-state/nix-cache',
     )
     expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/${{ github.run_id }}',

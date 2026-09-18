@@ -5,7 +5,12 @@ use buck2_tool_core::{
 use clap::{Args, Parser, Subcommand};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{collections::BTreeSet, fs, os::unix::fs::PermissionsExt, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+};
 use tar::{Builder, EntryType, Header};
 
 #[derive(Parser)]
@@ -25,6 +30,8 @@ enum Command {
 struct PackageArgs {
     #[arg(long)]
     executable: PathBuf,
+    #[arg(long)]
+    support_tree: Option<PathBuf>,
     #[arg(long)]
     entrypoint: String,
     #[arg(long)]
@@ -131,11 +138,15 @@ struct ProgramHeader {
     file_size: u64,
 }
 
-fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
+fn elf_identity(
+    bytes: &[u8],
+    architecture: &str,
+    runtime_contract: &str,
+) -> ToolResult<(Endian, &'static str, Vec<ProgramHeader>)> {
     if bytes.get(..4) != Some(b"\x7fELF") || bytes.get(4) != Some(&2) {
         return Err(fail(
             "BUCK2_PRODUCT_ELF",
-            "elf-dynamic/v1 requires an ELF64 executable",
+            format!("{runtime_contract} requires an ELF64 executable"),
         ));
     }
     let endian = match bytes.get(5) {
@@ -186,6 +197,11 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
             file_size: read_u64(bytes, offset + 32, endian)?,
         });
     }
+    Ok((endian, machine, headers))
+}
+
+fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
+    let (endian, machine, headers) = elf_identity(bytes, architecture, "elf-dynamic/v1")?;
     let interpreter_header = headers
         .iter()
         .find(|header| header.kind == 3)
@@ -325,16 +341,47 @@ fn elf_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
     }))
 }
 
+fn elf_static_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
+    let (_, machine, headers) = elf_identity(bytes, architecture, "elf-static/v1")?;
+    if !headers.iter().any(|header| header.kind == 1) {
+        return Err(fail(
+            "BUCK2_PRODUCT_ELF",
+            "elf-static/v1 requires a loadable ELF segment",
+        ));
+    }
+    if headers.iter().any(|header| header.kind == 3) {
+        return Err(fail("BUCK2_PRODUCT_ELF", "elf-static/v1 forbids PT_INTERP"));
+    }
+    if headers.iter().any(|header| header.kind == 2) {
+        return Err(fail(
+            "BUCK2_PRODUCT_ELF",
+            "elf-static/v1 forbids PT_DYNAMIC",
+        ));
+    }
+    Ok(json!({
+        "elfClass": "ELF64",
+        "inspectionContract": "elf-static/v1",
+        "kind": "elf-static",
+        "machine": machine,
+    }))
+}
+
 fn be_u32(bytes: &[u8], offset: usize) -> ToolResult<u32> {
     read_u32(bytes, offset, Endian::Big)
 }
 
-fn is_ad_hoc_signature(bytes: &[u8], offset: usize, size: usize) -> ToolResult<bool> {
+fn mach_o_signing_policy(bytes: &[u8], offset: usize, size: usize) -> ToolResult<&'static str> {
+    let signature_end = offset
+        .checked_add(size)
+        .ok_or_else(|| fail("BUCK2_PRODUCT_MACHO", "invalid Mach-O code signature range"))?;
     let signature = bytes
-        .get(offset..offset + size)
+        .get(offset..signature_end)
         .ok_or_else(|| fail("BUCK2_PRODUCT_MACHO", "truncated Mach-O code signature"))?;
     if be_u32(signature, 0)? != 0xfade_0cc0 {
-        return Ok(false);
+        return Err(fail(
+            "BUCK2_PRODUCT_MACHO",
+            "Mach-O code signature is not a superblob",
+        ));
     }
     let declared_size = usize::try_from(be_u32(signature, 4)?)
         .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid code signature size"))?;
@@ -348,24 +395,71 @@ fn is_ad_hoc_signature(bytes: &[u8], offset: usize, size: usize) -> ToolResult<b
             "malformed code signature superblob",
         ));
     }
+    let mut code_directory_found = false;
     let mut ad_hoc_code_directory = false;
+    let mut cms_size = None;
     for index in 0..count {
         let entry = 12 + index * 8;
         let slot = be_u32(signature, entry)?;
         let blob_offset = usize::try_from(be_u32(signature, entry + 4)?)
             .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid code signature offset"))?;
         if slot == 0x1_0000 {
-            return Ok(false);
+            if blob_offset > declared_size.saturating_sub(8) {
+                return Err(fail("BUCK2_PRODUCT_MACHO", "invalid CMS signature offset"));
+            }
+            if cms_size.is_some() {
+                return Err(fail("BUCK2_PRODUCT_MACHO", "duplicate CMS signature blob"));
+            }
+            let magic = be_u32(signature, blob_offset)?;
+            let blob_size = usize::try_from(be_u32(signature, blob_offset + 4)?)
+                .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid CMS signature size"))?;
+            if magic != 0xfade_0b01
+                || blob_size < 8
+                || blob_offset.saturating_add(blob_size) > declared_size
+            {
+                return Err(fail("BUCK2_PRODUCT_MACHO", "invalid CMS signature blob"));
+            }
+            cms_size = Some(blob_size);
         }
         if slot == 0 || (0x1000..=0x1005).contains(&slot) {
+            if blob_offset > declared_size.saturating_sub(16) {
+                return Err(fail("BUCK2_PRODUCT_MACHO", "invalid CodeDirectory offset"));
+            }
             let magic = be_u32(signature, blob_offset)?;
-            if !(0xfade_0c02..=0xfade_0c04).contains(&magic) {
+            let blob_size = usize::try_from(be_u32(signature, blob_offset + 4)?)
+                .map_err(|_| fail("BUCK2_PRODUCT_MACHO", "invalid CodeDirectory size"))?;
+            if !(0xfade_0c02..=0xfade_0c04).contains(&magic)
+                || blob_size < 16
+                || blob_offset.saturating_add(blob_size) > declared_size
+            {
                 return Err(fail("BUCK2_PRODUCT_MACHO", "invalid CodeDirectory blob"));
             }
+            code_directory_found = true;
             ad_hoc_code_directory |= be_u32(signature, blob_offset + 12)? & 0x2 != 0;
         }
     }
-    Ok(ad_hoc_code_directory)
+    if !code_directory_found {
+        return Err(fail(
+            "BUCK2_PRODUCT_MACHO",
+            "Mach-O CodeDirectory is missing",
+        ));
+    }
+    match (ad_hoc_code_directory, cms_size) {
+        (true, Some(8)) => Ok("adhoc/v1"),
+        (false, Some(size)) if size > 8 => Ok("embedded/v1"),
+        (true, Some(_)) => Err(fail(
+            "BUCK2_PRODUCT_MACHO",
+            "ad-hoc Mach-O CodeDirectory has a non-empty CMS signature",
+        )),
+        (false, _) => Err(fail(
+            "BUCK2_PRODUCT_MACHO",
+            "non-ad-hoc Mach-O CodeDirectory has no embedded CMS signature",
+        )),
+        (true, None) => Err(fail(
+            "BUCK2_PRODUCT_MACHO",
+            "ad-hoc Mach-O CodeDirectory has no empty CMS wrapper",
+        )),
+    }
 }
 
 fn packed_version(value: u32) -> String {
@@ -486,12 +580,7 @@ fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
     let (signature_offset, signature_size) = signature
         .filter(|(_, size)| *size > 0)
         .ok_or_else(|| fail("BUCK2_PRODUCT_MACHO", "Mach-O has no code signature"))?;
-    if !is_ad_hoc_signature(bytes, signature_offset, signature_size)? {
-        return Err(fail(
-            "BUCK2_PRODUCT_MACHO",
-            "Mach-O signature is not ad hoc",
-        ));
-    }
+    let signing_policy = mach_o_signing_policy(bytes, signature_offset, signature_size)?;
     Ok(json!({
         "architecture": observed_architecture,
         "dylibs": dylibs,
@@ -500,7 +589,7 @@ fn mach_o_runtime(bytes: &[u8], architecture: &str) -> ToolResult<Value> {
         "kind": "mach-o-dynamic",
         "minimumOs": minimum_os.ok_or_else(|| fail("BUCK2_PRODUCT_MACHO", "Mach-O has no LC_BUILD_VERSION"))?,
         "rpathPolicy": "empty/v1",
-        "signingPolicy": "adhoc/v1",
+        "signingPolicy": signing_policy,
     }))
 }
 
@@ -525,29 +614,127 @@ fn tar_header(path: &str, size: u64, kind: EntryType, mode: u32) -> ToolResult<H
     Ok(header)
 }
 
-fn archive(executable: &[u8], entrypoint: &str) -> ToolResult<Vec<u8>> {
+fn collect_support_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut BTreeMap<String, Vec<u8>>,
+) -> ToolResult<()> {
+    let mut entries = fs::read_dir(directory)
+        .map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read support tree: {error}"),
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read support tree: {error}"),
+            )
+        })?;
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+    for entry in entries {
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not inspect support-tree entry: {error}"),
+            )
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                "support tree must not contain symlinks",
+            ));
+        }
+        if metadata.is_dir() {
+            collect_support_files(root, &path, files)?;
+        } else if metadata.is_file() {
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|error| fail("BUCK2_PRODUCT_INPUT", error.to_string()))?
+                .to_str()
+                .ok_or_else(|| fail("BUCK2_PRODUCT_INPUT", "support-tree path is not UTF-8"))?;
+            let relative = normalized_relative(relative, "support-tree path")?.to_owned();
+            let bytes = fs::read(&path).map_err(|error| {
+                fail(
+                    "BUCK2_PRODUCT_INPUT",
+                    format!("could not read support-tree file: {error}"),
+                )
+            })?;
+            files.insert(relative, bytes);
+        } else {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                "support tree must contain only regular files and directories",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn archive(
+    executable: &[u8],
+    entrypoint: &str,
+    support_tree: Option<&Path>,
+) -> ToolResult<Vec<u8>> {
+    let mut files = BTreeMap::new();
+    if let Some(root) = support_tree {
+        let metadata = fs::symlink_metadata(root).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("support tree is unavailable: {error}"),
+            )
+        })?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                "support tree must be a regular non-symlink directory",
+            ));
+        }
+        collect_support_files(root, root, &mut files)?;
+    }
+    if files
+        .insert(entrypoint.to_owned(), executable.to_vec())
+        .is_some()
+    {
+        return Err(fail(
+            "BUCK2_PRODUCT_INPUT",
+            "support tree collides with the executable entrypoint",
+        ));
+    }
+
+    let mut directories = BTreeSet::new();
+    for path in files.keys() {
+        let components = path.split('/').collect::<Vec<_>>();
+        for end in 1..components.len() {
+            directories.insert(components[..end].join("/"));
+        }
+    }
+
     let mut bytes = Vec::new();
     {
         let mut builder = Builder::new(&mut bytes);
-        let components = entrypoint.split('/').collect::<Vec<_>>();
-        for end in 1..components.len() {
-            let directory = components[..end].join("/");
-            let mut header = tar_header(&directory, 0, EntryType::Directory, 0o555)?;
+        for directory in directories {
+            let header = tar_header(&directory, 0, EntryType::Directory, 0o555)?;
             builder
                 .append(&header, std::io::empty())
                 .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
-            header.set_cksum();
         }
-        let header = tar_header(
-            entrypoint,
-            u64::try_from(executable.len())
-                .map_err(|_| fail("BUCK2_PRODUCT_TAR", "executable is too large"))?,
-            EntryType::Regular,
-            0o555,
-        )?;
-        builder
-            .append(&header, executable)
-            .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
+        for (path, contents) in files {
+            let mode = if path == entrypoint { 0o555 } else { 0o444 };
+            let header = tar_header(
+                &path,
+                u64::try_from(contents.len())
+                    .map_err(|_| fail("BUCK2_PRODUCT_TAR", "product file is too large"))?,
+                EntryType::Regular,
+                mode,
+            )?;
+            builder
+                .append(&header, contents.as_slice())
+                .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
+        }
         builder
             .finish()
             .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
@@ -610,6 +797,15 @@ fn package(args: PackageArgs) -> ToolResult<()> {
             }
             elf_runtime(&executable, &args.platform_architecture)?
         }
+        "elf-static/v1" => {
+            if args.platform_os != "linux" || args.platform_abi != "glibc" {
+                return Err(fail(
+                    "BUCK2_PRODUCT_PLATFORM",
+                    "elf-static/v1 requires linux/glibc",
+                ));
+            }
+            elf_static_runtime(&executable, &args.platform_architecture)?
+        }
         "mach-o-dynamic/v1" => {
             if args.platform_os != "darwin" || args.platform_abi != "darwin" {
                 return Err(fail(
@@ -647,7 +843,7 @@ fn package(args: PackageArgs) -> ToolResult<()> {
     safe_text(&provenance.recipe, "provenance recipe")?;
     safe_text(&provenance.toolchain, "provenance toolchain")?;
 
-    let artifact = archive(&executable, &entrypoint)?;
+    let artifact = archive(&executable, &entrypoint, args.support_tree.as_deref())?;
     let digest = sha256_sri(&sha256_bytes(&artifact))?;
     let descriptor = json!({
         "entrypoints": [entrypoint],
@@ -744,11 +940,40 @@ mod tests {
         fixture
     }
 
+    #[cfg(target_os = "linux")]
+    fn static_elf_fixture(root: &Path) -> PathBuf {
+        let mut bytes = fs::read(std::env::current_exe().unwrap()).unwrap();
+        let endian = match bytes[5] {
+            1 => Endian::Little,
+            2 => Endian::Big,
+            _ => panic!("test executable is not ELF"),
+        };
+        let program_offset = usize_from(read_u64(&bytes, 32, endian).unwrap()).unwrap();
+        let entry_size = usize::from(read_u16(&bytes, 54, endian).unwrap());
+        let entry_count = usize::from(read_u16(&bytes, 56, endian).unwrap());
+        for index in 0..entry_count {
+            let header = program_offset + index * entry_size;
+            if !matches!(read_u32(&bytes, header, endian).unwrap(), 2 | 3) {
+                continue;
+            }
+            let replacement = match endian {
+                Endian::Little => 4u32.to_le_bytes(),
+                Endian::Big => 4u32.to_be_bytes(),
+            };
+            bytes[header..header + 4].copy_from_slice(&replacement);
+        }
+        let fixture = root.join("fixture-static-elf");
+        fs::write(&fixture, bytes).unwrap();
+        fs::set_permissions(&fixture, fs::Permissions::from_mode(0o555)).unwrap();
+        fixture
+    }
+
     fn args(root: &Path, executable: PathBuf) -> PackageArgs {
         let provenance = root.join("provenance.json");
         fs::write(&provenance, br#"{"schema":"buck-build-provenance/v1","recipe":"effect-utils/v1","toolchain":"rust-test"}"#).unwrap();
         PackageArgs {
             executable,
+            support_tree: None,
             entrypoint: "bin/tool".into(),
             artifact: root.join("artifact.tar"),
             name: "tool".into(),
@@ -796,10 +1021,64 @@ mod tests {
         assert!(entries.next().is_none());
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn packages_a_static_elf_under_the_static_runtime_contract() {
+        let temporary = tempdir().unwrap();
+        let mut arguments = args(temporary.path(), static_elf_fixture(temporary.path()));
+        arguments.runtime_contract = "elf-static/v1".into();
+        package(arguments).unwrap();
+        let descriptor: Value =
+            serde_json::from_slice(&fs::read(temporary.path().join("descriptor.json")).unwrap())
+                .unwrap();
+        assert_eq!(descriptor["runtime"]["kind"], "elf-static");
+        assert_eq!(descriptor["runtime"]["inspectionContract"], "elf-static/v1");
+        assert_eq!(descriptor["runtime"]["machine"], std::env::consts::ARCH);
+    }
+
+    fn signature_with_cms(code_directory_flags: u32, cms_size: u32) -> Vec<u8> {
+        let declared_size = 44 + cms_size;
+        let mut signature = Vec::new();
+        for value in [
+            0xfade_0cc0u32,
+            declared_size,
+            2,
+            0,
+            28,
+            0x1_0000,
+            44,
+            0xfade_0c02,
+            16,
+            0,
+            code_directory_flags,
+            0xfade_0b01,
+            cms_size,
+        ] {
+            signature.extend_from_slice(&value.to_be_bytes());
+        }
+        signature.resize(usize::try_from(declared_size).unwrap(), 0);
+        signature
+    }
+
+    #[test]
+    fn distinguishes_ad_hoc_and_embedded_mach_o_signatures() {
+        let ad_hoc = signature_with_cms(0x2, 8);
+        assert_eq!(
+            mach_o_signing_policy(&ad_hoc, 0, ad_hoc.len()).unwrap(),
+            "adhoc/v1"
+        );
+
+        let embedded = signature_with_cms(0, 16);
+        assert_eq!(
+            mach_o_signing_policy(&embedded, 0, embedded.len()).unwrap(),
+            "embedded/v1"
+        );
+    }
+
     #[test]
     fn archive_bytes_are_deterministic_and_normalized() {
-        let first = archive(b"executable", "libexec/example/tool").unwrap();
-        let second = archive(b"executable", "libexec/example/tool").unwrap();
+        let first = archive(b"executable", "libexec/example/tool", None).unwrap();
+        let second = archive(b"executable", "libexec/example/tool", None).unwrap();
         assert_eq!(first, second);
         let mut archive = tar::Archive::new(first.as_slice());
         let entries = archive
@@ -820,6 +1099,42 @@ mod tests {
                 (PathBuf::from("libexec"), 0o555, 0),
                 (PathBuf::from("libexec/example"), 0o555, 0),
                 (PathBuf::from("libexec/example/tool"), 0o555, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn archives_support_tree_files_next_to_the_entrypoint() {
+        let temporary = tempdir().unwrap();
+        let support_tree = temporary.path().join("support");
+        fs::create_dir_all(support_tree.join("bin")).unwrap();
+        fs::write(support_tree.join("bin/lib.d.ts"), b"interface Array {}").unwrap();
+        fs::write(support_tree.join("bin/tsc.sig"), b"signature").unwrap();
+        let bytes = archive(
+            b"executable",
+            "bin/typescript-api-server",
+            Some(&support_tree),
+        )
+        .unwrap();
+        let mut archive = tar::Archive::new(bytes.as_slice());
+        let entries = archive
+            .entries()
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (
+                    entry.path().unwrap().into_owned(),
+                    entry.header().mode().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            entries,
+            vec![
+                (PathBuf::from("bin"), 0o555),
+                (PathBuf::from("bin/lib.d.ts"), 0o444),
+                (PathBuf::from("bin/tsc.sig"), 0o444),
+                (PathBuf::from("bin/typescript-api-server"), 0o555),
             ]
         );
     }

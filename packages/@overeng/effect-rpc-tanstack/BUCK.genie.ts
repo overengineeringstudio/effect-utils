@@ -15,11 +15,7 @@ export const buck2TypeScriptAdmission = {
       distTarget: '//packages/@overeng/utils:dist',
     },
   ],
-  editorViewConsumer: false,
-  authority: {
-    declarationEntrypoint: 'src/mod.d.ts',
-    projectFile: 'tsconfig.json',
-  },
+  authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
   tests: [
     {
       name: 'test',

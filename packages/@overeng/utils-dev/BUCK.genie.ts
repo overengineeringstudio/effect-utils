@@ -7,11 +7,9 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/utils-dev',
   projectionSource: 'packages/@overeng/utils-dev/BUCK.genie.ts',
   sourceRoots: ['src'],
-  editorViewConsumer: false,
-  authority: {
-    declarationEntrypoint: 'src/node-vitest/mod.d.ts',
-    projectFile: 'tsconfig.json',
-  },
+  authorities: [
+    { declarationEntrypoint: 'src/node-vitest/mod.d.ts', projectFile: 'tsconfig.json' },
+  ],
   tests: [
     {
       name: 'test',

@@ -146,9 +146,9 @@ describe('inspect --output json contract', () => {
 
   it('round-trips a loaded state through the schema unchanged', () => {
     const state = loadedState(reportedNamespace)
-    expect(
-      Schema.decodeUnknownSync(Schema.fromJsonString(InspectStateSchema))(encodeJson(state)),
-    ).toEqual(state)
+    expect(Schema.decodeSync(Schema.fromJsonString(InspectStateSchema))(encodeJson(state))).toEqual(
+      state,
+    )
   })
 
   it('rejects a disposition outside the four it is allowed to claim', () => {
@@ -157,9 +157,7 @@ describe('inspect --output json contract', () => {
       ...(typeof encoded === 'object' && encoded !== null ? encoded : {}),
       assessment: { disposition: 'healthy', evidence: [], limitations: [] },
     })
-    expect(() =>
-      Schema.decodeUnknownSync(Schema.fromJsonString(InspectStateSchema))(tampered),
-    ).toThrow()
+    expect(() => Schema.decodeSync(Schema.fromJsonString(InspectStateSchema))(tampered)).toThrow()
   })
 })
 

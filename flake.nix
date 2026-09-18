@@ -38,34 +38,19 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        rootPath = self.outPath;
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         mkPnpmCliSupport = import ./nix/workspace-tools/lib/mk-pnpm-cli-support.nix { inherit pkgs; };
-        rootPath = self.outPath;
-        oxlintNpm = import ./nix/oxlint-npm.nix {
-          inherit pkgs;
-          bun = pkgs.bun;
-          src = self;
-        };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
         providerCliPackages = {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
           netlify-cli = import ./nix/provider-clis/netlify-cli { inherit pkgs; };
         };
-        # Rust packages (otelite, otel-scrape) built via
-        # rustPlatform.buildRustPackage, separate from the Bun CLIs. otelite (a
-        # local OTLP capture tool) was effect-utils' first Rust package.
-        otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
-          inherit pkgs;
-        };
-        otel-scrape = import (rootPath + "/packages/@overeng/otel-scrape/nix/build.nix") {
-          inherit
-            pkgs
-            gitRev
-            commitTs
-            dirty
-            ;
-        };
+        # Buck is the sole producer for shipped Rust CLIs. Nix imports the exact
+        # reviewed per-tuple release assets and revalidates their descriptors,
+        # payloads, native runtime contracts, and entrypoints.
+        nativeProductPackages = (import ./nix/buck2-native-products { inherit pkgs; }).products;
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
         buck2-go = import ./nix/go.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
@@ -75,10 +60,52 @@
               inherit pkgs;
               nixpkgsRevision = nixpkgs.rev;
             };
-        # Buck is the sole producer for admitted repository products. The
-        # unadmitted gh-ci-utils CLI keeps its source-built Nix package until a
-        # later authority transfer explicitly admits it.
+        # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products { inherit pkgs; };
+        oxlintNpm = import ./nix/oxlint-npm.nix {
+          inherit pkgs;
+          bun = pkgs.bun;
+          products = trackedBuck2Products.products;
+        };
+        capabilityPackages = {
+          inherit buck2;
+          bun = pkgs.bun;
+          buck2-node = pkgs.writeShellScriptBin "node" ''
+            exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"
+          '';
+          inherit buck2-go;
+          buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
+            exec ${pkgs.python3}/bin/python3 "$@"
+          '';
+          buck2-archive-tool = buck2-stage0-tools.archive-tool;
+          buck2-product = buck2-stage0-tools.product;
+          buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
+            exec ${pkgs.coreutils}/bin/readlink "$@"
+          '';
+          buck2-rust-compiler = buck2-rust-toolchain-capability.packages.rust-compiler;
+          buck2-rust-rustdoc = buck2-rust-toolchain-capability.packages.rust-rustdoc;
+          buck2-rust-clippy-driver = buck2-rust-toolchain-capability.packages.rust-clippy-driver;
+          buck2-rust-c-compiler = buck2-rust-toolchain-capability.packages.rust-c-compiler;
+          buck2-rust-cxx-compiler = buck2-rust-toolchain-capability.packages.rust-cxx-compiler;
+          buck2-rust-linker = buck2-rust-toolchain-capability.packages.rust-linker;
+          buck2-rust-archiver = buck2-rust-toolchain-capability.packages.rust-archiver;
+          buck2-rust-dwp = buck2-rust-toolchain-capability.packages.rust-dwp;
+          buck2-rust-nm = buck2-rust-toolchain-capability.packages.rust-nm;
+          buck2-rust-objcopy = buck2-rust-toolchain-capability.packages.rust-objcopy;
+          buck2-rust-objdump = buck2-rust-toolchain-capability.packages.rust-objdump;
+          buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
+          buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
+          buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
+          effect-tsgo = tsgo.packages.${system}.effect-tsgo;
+          oxfmt = pkgs.oxfmt;
+          oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
+            inherit pkgs oxlintNpm;
+          };
+        };
+        buck2Capabilities = import ./nix/buck2-capabilities.nix {
+          inherit pkgs capabilityPackages;
+          src = rootPath;
+        };
         buck2ProductCandidates = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
           inherit
             pkgs
@@ -87,21 +114,9 @@
             dirty
             ;
           products = trackedBuck2Products.products;
+          nativeProducts = nativeProductPackages;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
-        };
-        ghCiUtils = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
-          inherit
-            pkgs
-            gitRev
-            commitTs
-            dirty
-            ;
-          src = self;
-        };
-        ghCiUtilsDirty = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
-          inherit pkgs gitRev commitTs;
-          src = self;
-          dirty = true;
+          capabilityProjection = buck2Capabilities;
         };
         cliPackages = buck2ProductCandidates // {
           genie = buck2ProductCandidates.genie.overrideAttrs (old: {
@@ -110,98 +125,68 @@
             };
           });
         };
+        cliPackagesDirty = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
+          inherit
+            pkgs
+            gitRev
+            commitTs
+            ;
+          dirty = true;
+          products = trackedBuck2Products.products;
+          nativeProducts = nativeProductPackages;
+          typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
+          capabilityProjection = buck2Capabilities;
+        };
+        ghCiUtils = cliPackages.gh-ci-utils;
+        ghCiUtilsDirty = cliPackagesDirty.gh-ci-utils;
       in
       {
         packages =
           cliPackages
           // providerCliPackages
+          // nativeProductPackages
+          // capabilityPackages
           // {
-            inherit
-              buck2
-              otelite
-              otel-scrape
-              ;
-            # Hub toolchain authority realization: the exact Bun every Buck JS/TS action uses.
-            bun = pkgs.bun;
-            # Hub toolchain authority realization: the exact Node every Buck Vitest lane
-            # that exercises Node built-ins runs on.
-            buck2-node = pkgs.writeShellScriptBin "node" ''
-              exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"
-            '';
-            # Hub toolchain authority realization: the exact Go distribution every
-            # Buck Go action compiles with — the OFFICIAL release archive, not
-            # `pkgs.go`, whose patched stdlib puts three absolute store paths into
-            # every product it compiles (decision 0029, `nix/go.nix`). `bin/go` is a
-            # real file in that archive, so the resolver's realpath lands on
-            # /nix/store/<realization>/bin/go and no wrapper is needed.
-            inherit buck2-go;
-            # Hub toolchain authority realization: prelude's bootstrap interpreter.
-            buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
-              exec ${pkgs.python3}/bin/python3 "$@"
-            '';
-            buck2-archive-tool = buck2-stage0-tools.archive-tool;
-            buck2-product = buck2-stage0-tools.product;
-            # Composition-wrapper capability realization for the
-            # `gnu/coreutils/v9` readlink executable. Keep a real executable
-            # file at this path so capability resolution can attest it.
-            buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
-              exec ${pkgs.coreutils}/bin/readlink "$@"
-            '';
-            buck2-rust-compiler = buck2-rust-toolchain-capability.packages.rust-compiler;
-            buck2-rust-rustdoc = buck2-rust-toolchain-capability.packages.rust-rustdoc;
-            buck2-rust-clippy-driver = buck2-rust-toolchain-capability.packages.rust-clippy-driver;
-            buck2-rust-c-compiler = buck2-rust-toolchain-capability.packages.rust-c-compiler;
-            buck2-rust-cxx-compiler = buck2-rust-toolchain-capability.packages.rust-cxx-compiler;
-            buck2-rust-linker = buck2-rust-toolchain-capability.packages.rust-linker;
-            buck2-rust-archiver = buck2-rust-toolchain-capability.packages.rust-archiver;
-            buck2-rust-dwp = buck2-rust-toolchain-capability.packages.rust-dwp;
-            buck2-rust-nm = buck2-rust-toolchain-capability.packages.rust-nm;
-            buck2-rust-objcopy = buck2-rust-toolchain-capability.packages.rust-objcopy;
-            buck2-rust-objdump = buck2-rust-toolchain-capability.packages.rust-objdump;
-            buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
-            buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
-            buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
+            buck2-capabilities = buck2Capabilities;
             cli-build-stamp = cliBuildStamp.package;
-            effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             gh-ci-utils = ghCiUtils;
             gh-ci-utils-dirty = ghCiUtilsDirty;
-            "gh-ci-utils-pnpm-deps" = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
-            # The oxlint plugin bundle keeps its pnpm FOD as first-class outputs:
-            # `nix/oxlint-npm.nix` needs the pnpm-built plugin bundle, which the
-            # `oxc-config` JavaScript product does not replace. The bundle exposes
-            # Evergreen producer metadata; its raw FOD remains directly addressable.
-            # The `oxc-config` package itself is merged in from `cliPackages`.
-            "oxc-config-plugin" = oxlintNpm.pluginBundle;
-            "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.depsBuildsByInstallRoot.root;
-            # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
             oxlint-npm = oxlintNpm;
-            # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
-            oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
-              inherit pkgs oxlintNpm;
-            };
             node-pty-native = nodePtyNative;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
           };
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
-          genie = cliPackages.genie.outPath;
           ci-tools = cliPackages.ci-tools.outPath;
           gh-ci-utils = ghCiUtils.outPath;
           megarepo = cliPackages.megarepo.outPath;
           tui-stories = cliPackages.tui-stories.outPath;
           notion-cli = cliPackages.notion-cli.outPath;
           notion-md = cliPackages.notion-md.outPath;
+        }
+        // pkgs.lib.optionalAttrs (cliPackages ? genie) {
+          genie = cliPackages.genie.outPath;
         };
         cliOutPathsDirty = {
           gh-ci-utils = ghCiUtilsDirty.outPath;
         };
 
-        apps.update-bun-hashes = flake-utils.lib.mkApp {
-          drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
+        apps = {
+          update-bun-hashes = flake-utils.lib.mkApp {
+            drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
+          };
+        }
+        // pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
+          otelite = flake-utils.lib.mkApp {
+            drv = nativeProductPackages.otelite;
+            exePath = "/bin/otelite";
+          };
+          otel-scrape = flake-utils.lib.mkApp {
+            drv = nativeProductPackages.otel-scrape;
+            exePath = "/bin/otel-scrape";
+          };
         };
-        apps.otelite = flake-utils.lib.mkApp { drv = otelite; };
-        apps.otel-scrape = flake-utils.lib.mkApp { drv = otel-scrape; };
       }
     )
     // {
@@ -312,21 +297,20 @@
           // args
         );
 
-      # npm oxlint with NAPI bindings for JavaScript plugin support.
-      # When `src` is provided (the effect-utils source), the @overeng/oxc-config
-      # plugin is bundled alongside and exposed via passthru.pluginPath.
-      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; src = inputs.effect-utils; }
+      # npm oxlint with NAPI bindings plus the two tracked immutable
+      # @overeng/oxc-config JavaScript plugin products.
+      # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; }
       lib.mkOxlintNpm =
         {
           pkgs,
           bun,
-          src ? null,
+          products ? (import ./nix/buck2-products { inherit pkgs; }).products,
         }:
-        import ./nix/oxlint-npm.nix { inherit pkgs bun src; };
+        import ./nix/oxlint-npm.nix { inherit pkgs bun products; };
 
-      # oxlint wrapper that auto-injects the @overeng/oxc-config plugin when
-      # the project config contains overeng/* rules. Falls through to plain
-      # oxlint-npm otherwise.
+      # oxlint wrapper that substitutes the overeng and @stylexjs configured
+      # entries with their separate tracked module paths. Projects without
+      # either namespace pass through to plain oxlint-npm.
       # Usage: effectUtils.lib.mkOxlintWithPlugins { inherit pkgs; oxlintNpm = effectUtils.packages.\${system}.oxlint-npm; }
       lib.mkOxlintWithPlugins =
         {

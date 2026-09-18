@@ -55,7 +55,9 @@ const assertPortablePath = ({
     fail(`${field} must be a non-empty portable relative path: ${JSON.stringify(value)}`)
   }
   if (
-    value.split('/').some((component) => component === '' || component === '.' || component === '..')
+    value
+      .split('/')
+      .some((component) => component === '' || component === '.' || component === '..')
   ) {
     fail(`${field} must be normalized: ${JSON.stringify(value)}`)
   }
@@ -159,7 +161,9 @@ const materializeTree = async ({
       const target = await readlink(currentSource)
       if (isAbsolute(target) === true)
         fail(`source symlink has an absolute target: ${currentSource} -> ${target}`)
-      if (isInside({ root: sourceRoot, candidate: resolve(dirname(currentSource), target) }) === false)
+      if (
+        isInside({ root: sourceRoot, candidate: resolve(dirname(currentSource), target) }) === false
+      )
         fail(`source symlink target escapes its declared tree: ${currentSource} -> ${target}`)
       let canonicalTarget: string
       try {
@@ -174,7 +178,9 @@ const materializeTree = async ({
         throw error
       }
       if (isInside({ root: sourceRoot, candidate: canonicalTarget }) === false)
-        fail(`source symlink chained target escapes its declared tree: ${currentSource} -> ${target}`)
+        fail(
+          `source symlink chained target escapes its declared tree: ${currentSource} -> ${target}`,
+        )
       await symlink(target, currentDestination)
       return
     }
@@ -390,8 +396,7 @@ export const assembleStoreScc = async (options: SccOptions): Promise<void> => {
   for (const member of options.members) {
     assertStoreKey({ value: member.storeKey, field: 'member key' })
     assertPortablePath({ value: member.packageName, field: 'member package name' })
-    if (members.has(member.storeKey) === true)
-      fail(`duplicate member namespace ${member.storeKey}`)
+    if (members.has(member.storeKey) === true) fail(`duplicate member namespace ${member.storeKey}`)
     members.set(member.storeKey, member)
   }
   if (members.size < 1) fail('a component must declare at least one member')
@@ -417,8 +422,14 @@ export const assembleStoreScc = async (options: SccOptions): Promise<void> => {
       }
       for (const edge of options.internal) {
         assertPortablePath({ value: edge.name, field: 'component edge name' })
-        const source = requireMember({ field: 'component edge source', storeKey: edge.sourceStoreKey })
-        const target = requireMember({ field: 'component edge target', storeKey: edge.targetStoreKey })
+        const source = requireMember({
+          field: 'component edge source',
+          storeKey: edge.sourceStoreKey,
+        })
+        const target = requireMember({
+          field: 'component edge target',
+          storeKey: edge.targetStoreKey,
+        })
         await addRelativeLink({
           containedIn: stage,
           linkPath: join(memberNodeModules({ root: stage, storeKey: source.storeKey }), edge.name),
@@ -447,8 +458,14 @@ export const assembleStoreScc = async (options: SccOptions): Promise<void> => {
       for (const bin of options.bins) {
         assertPortablePath({ value: bin.name, field: 'component bin name' })
         assertPortablePath({ value: bin.executable, field: 'component bin executable' })
-        const source = requireMember({ field: 'component bin source', storeKey: bin.sourceStoreKey })
-        const target = requireMember({ field: 'component bin target', storeKey: bin.targetStoreKey })
+        const source = requireMember({
+          field: 'component bin source',
+          storeKey: bin.sourceStoreKey,
+        })
+        const target = requireMember({
+          field: 'component bin target',
+          storeKey: bin.targetStoreKey,
+        })
         await addRelativeLink({
           containedIn: stage,
           linkPath: join(
@@ -615,7 +632,7 @@ export const runStoreAssemblyCli = async (args: readonly string[]): Promise<void
   const memberBins: SccBinEdge[] = []
   const memberExternalBins: SccExternalBinEdge[] = []
 
-  for (let index = 0; index < args.length; ) {
+  for (let index = 0; index < args.length;) {
     const flag = args[index]
     const take = (count: number): readonly string[] => {
       const values = takeArguments({ args, count, flag: flag ?? '', index })

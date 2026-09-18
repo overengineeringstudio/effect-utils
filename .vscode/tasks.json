@@ -2,78 +2,20 @@
   "version": "2.0.0",
   "tasks": [
     // ============================================================
-    // install
+    // dependency views
     // ============================================================
     {
-      "label": "install",
+      "label": "publish dependencies",
       "type": "shell",
-      "command": "devenv tasks run pnpm:install",
+      "command": "devenv tasks run buck2:editor:publish",
       "problemMatcher": [],
       "presentation": {
         "focus": true,
         "panel": "shared",
-        "group": "install",
+        "group": "dependency views",
         "showReuseMessage": false,
         "clear": false,
         "close": true
-      }
-    },
-
-    // ============================================================
-    // ts
-    // ============================================================
-    {
-      "label": "ts",
-      "type": "shell",
-      "command": "devenv tasks run ts:check",
-      "problemMatcher": ["$tsc"],
-      "presentation": {
-        "focus": false,
-        "panel": "shared",
-        "group": "ts",
-        "showReuseMessage": false,
-        "clear": false
-      }
-    },
-    {
-      "label": "ts:build-watch",
-      "type": "shell",
-      "command": "devenv tasks run ts:build-watch",
-      "problemMatcher": ["$tsc-watch"],
-      "isBackground": true,
-      "presentation": {
-        "focus": false,
-        "panel": "shared",
-        "group": "ts",
-        "showReuseMessage": false,
-        "clear": false
-      }
-    },
-    {
-      "label": "ts:clean",
-      "type": "shell",
-      "command": "devenv tasks run ts:clean",
-      "problemMatcher": ["$tsc"],
-      "presentation": {
-        "focus": false,
-        "panel": "shared",
-        "group": "ts",
-        "showReuseMessage": false,
-        "clear": false
-      }
-    },
-    {
-      "label": "ts:clean:build-watch",
-      "type": "shell",
-      "command": "devenv tasks run ts:clean && devenv tasks run ts:build-watch",
-      "problemMatcher": ["$tsc-watch"],
-      "isBackground": true,
-      "presentation": {
-        "focus": false,
-        "panel": "shared",
-        "group": "ts",
-        "showReuseMessage": false,
-        "clear": false
       }
     },
 
@@ -108,7 +50,7 @@
     },
 
     // ============================================================
-    // buck2 — Buck owns typecheck + dist for the authoritative packages
+    // buck2 — complete TypeScript check and declaration authority
     // ============================================================
     {
       "label": "buck2:check",
@@ -171,19 +113,6 @@
     // ============================================================
     // misc
     // ============================================================
-    {
-      "label": "build",
-      "type": "shell",
-      "command": "devenv tasks run ts:build",
-      "problemMatcher": ["$tsc"],
-      "presentation": {
-        "focus": true,
-        "panel": "shared",
-        "group": "misc",
-        "showReuseMessage": false,
-        "clear": false
-      }
-    },
     {
       "label": "clean",
       "type": "shell",

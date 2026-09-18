@@ -1,5 +1,6 @@
 import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-admissions.ts'
 import { buck2TypeScriptPackageProjection } from '../../../genie/buck2/typescript-package-projection.ts'
+import { createGenieOutput } from '../genie/src/runtime/core.ts'
 
 export const buck2TypeScriptAdmission = {
   dependencyImporter: '//buck2/dependencies:importer_packages_overeng_utils_07fe64e7b8ad',
@@ -24,25 +25,44 @@ export const buck2TypeScriptAdmission = {
       distTarget: '//packages/@overeng/utils-dev:dist',
     },
   ],
-  editorViewConsumer: false,
-  authority: {
-    declarationEntrypoint: 'src/isomorphic/mod.d.ts',
-    projectFile: 'tsconfig.json',
-  },
+  authorities: [{ declarationEntrypoint: 'src/isomorphic/mod.d.ts', projectFile: 'tsconfig.json' }],
   tests: [
     {
       name: 'test',
       runner: 'vitest',
-      // The otel identity and telemetry suites spawn the `otelite` binary and the `cmd` suite
-      // runs real children while writing under the repository root, so all three stay
-      // unbounded (decision 0026) under the devenv `test:utils` task.
+      // These suites need authority the Buck sandbox intentionally does not grant: otel identity
+      // and telemetry spawn `otelite`, cmd runs real children while writing under the repository
+      // root, and watch depends on host filesystem notifications and timing. Keep their exact
+      // source-side complement visible under `test:utils:unbounded` (decision 0026).
       excludes: [
+        'src/browser/__tests__/BroadcastLogger.pw.test.ts',
         'src/node/cmd.unit.test.ts',
         'src/node/otel-identity.test.ts',
         'src/node/otel-telemetry.test.ts',
+        'src/node/watch.unit.test.ts',
       ],
+      sourceOwners: {
+        'src/browser/__tests__/BroadcastLogger.pw.test.ts': 'test:pw:utils',
+      },
     },
   ],
 } as const satisfies Buck2TypeScriptAdmission
 
-export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)
+const projection = buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)
+
+export default createGenieOutput({
+  ...projection,
+  stringify: (context) => `load("//buck2/products:defs.bzl", "npm_package_product")
+
+${projection.stringify(context)}
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-utils.tgz",
+    dist = ":dist",
+    package_json = "package.json",
+    product_name = "@overeng/utils",
+    visibility = ["PUBLIC"],
+)
+`,
+})

@@ -149,8 +149,12 @@ const fake = ({
       throw new Error('unexpected materialization')
     },
     listPublishedMemberKeys: async () => [],
+    listCapabilityRootMemberKeys: async () => [],
     teardownMount: async () => {
       throw new Error('unexpected teardown')
+    },
+    removeMemberCapabilityRoots: async () => {
+      throw new Error('unexpected capability root removal')
     },
     inspectMountedMember: async () => ({ identity: { dev: 1, ino: 2 }, metadata: metadata() }),
     recoverOverlay: async () => {
@@ -189,12 +193,23 @@ const fake = ({
         return {
           ...input,
           operation: 'InstallOwnedCapabilityProjection',
-          steps: ['ValidateOwnedMember', 'InstallProjectionAtomically', 'CheckProjection'],
+          steps: [
+            'ValidateOwnedMember',
+            'InstallProjectionAtomically',
+            'CheckProjection',
+            'RetainProjectionRoots',
+          ],
         }
       },
       install: async () => {
         throw new Error('dry-run installed owned projection')
       },
+    },
+    retainCapabilityRoots: async () => {
+      throw new Error('dry-run retained capability roots')
+    },
+    pruneCapabilityRoots: async () => {
+      throw new Error('dry-run pruned capability roots')
     },
     system: 'x86_64-linux',
     platform: 'linux',
@@ -219,6 +234,12 @@ const fake = ({
       },
     },
     updateLockRuntime: {},
+    prepareWatchmanProjectReconciliation: async () => {
+      throw new Error('dry-run prepared Watchman reconciliation')
+    },
+    restoreWatchmanProjectState: async () => {
+      throw new Error('dry-run restored Watchman state')
+    },
     runBuck: async () => {
       throw new Error('dry-run ran Buck')
     },

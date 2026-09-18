@@ -16,15 +16,14 @@ export type RunnerProfile = (typeof RUNNER_PROFILES)[number]
 
 /** Core CI job keys used for the typed product-job block in the workflow generator. */
 export const CORE_CI_JOB_NAMES = [
-  // Split typecheck authority: `buck2:check` for Buck-authoritative packages, `ts:check:strict`
-  // for the residual root TypeScript solution. This lane runs both, so there is no separate
-  // `buck2` lane — `buck2:check` would otherwise be paid twice on independent runners.
+  // Buck owns every TypeScript project and declaration producer. Keep it in the existing
+  // typecheck lane rather than paying for the same complete authority surface twice.
   'typecheck',
   'lint',
   'test',
+  'test-playwright-utils',
+  'test-playwright-tui-react',
   'test-megarepo-cold-gc',
-  'nix-check',
-  'nix-fod-check',
   'pnpm-builder-contract',
   'pnpm-regression',
   'bundle-smoke',
@@ -98,7 +97,7 @@ export const REQUIRED_CI_JOB_NAMES = [
   ...EXTRA_CI_JOB_NAMES,
 ] as const satisfies readonly CIJobName[]
 
-const matrixCIJobNames = ['test', 'nix-check', 'nix-fod-check'] as const
+const matrixCIJobNames = ['test'] as const
 
 /** GitHub status-check context names emitted by a workflow job key. */
 export const ciJobCheckContexts = (jobName: CIJobName) => {

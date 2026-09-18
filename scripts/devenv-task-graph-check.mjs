@@ -62,16 +62,19 @@ const dependencies = new Map([...tasks.keys()].map((name) => [name, new Set()]))
 const ensureTask = (name) => {
   if (dependencies.has(name) === false) dependencies.set(name, new Set())
 }
+const missingDependencies = []
 for (const [name, task] of tasks) {
   for (const dependency of task.after ?? []) {
     const upstream = dependencyName(dependency)
     if (upstream === undefined) continue
     ensureTask(upstream)
+    if (tasks.has(upstream) === false) missingDependencies.push(`${name}.after -> ${upstream}`)
     dependencies.get(name).add(upstream)
   }
   for (const dependency of task.before ?? []) {
     const downstream = dependencyName(dependency)
     if (downstream === undefined) continue
+    if (tasks.has(downstream) === false) missingDependencies.push(`${name}.before -> ${downstream}`)
     ensureTask(downstream)
     dependencies.get(downstream).add(name)
   }
@@ -86,6 +89,11 @@ const ok = ({ condition, name, detail = '' }) => {
   testCount += 1
   console.log(`ok ${testCount} - ${name}`)
 }
+ok({
+  condition: missingDependencies.length === 0,
+  name: 'every task dependency resolves to an evaluated task',
+  detail: missingDependencies.join(', '),
+})
 const requireTask = (name) => {
   const task = tasks.get(name)
   ok({ condition: task !== undefined, name: `evaluated graph contains ${name}` })
@@ -103,19 +111,48 @@ const reaches = ({ start, target }) => {
 }
 
 for (const name of [
+  'check:quick',
+  'check:all',
+  'nix:check:quick',
+  'nix:flake:check',
+  'setup:strict',
+  'genie:run',
+  'genie:check',
+  'mr:apply',
+  'buck2:check',
+  'buck2:quick',
+  'buck2:all',
+  'check:buck2-producer-overlap',
+  'buck2:typescript:materialize-dist',
+  'buck2:editor:bootstrap',
+  'buck2:editor:materialize',
+  'buck2:editor:authority',
+  'buck2:editor:publish',
+  'buck2:editor:check',
+  'test:run',
+  'test:buck2:unit',
+])
+  requireTask(name)
+for (const name of [
   'ts:check',
   'ts:check:strict',
   'ts:build',
   'ts:build-watch',
-  'check:quick',
-  'check:all',
-  'buck2:check',
-  'buck2:typescript:materialize-dist',
-  'buck2:tui-core:publish-editor',
-  'buck2:tui-core:check-editor',
-  'test:run',
-])
-  requireTask(name)
+  'ts:emit',
+  'pnpm:install',
+  'pnpm:link-native-node-packages',
+]) {
+  ok({
+    condition: tasks.has(name) === false,
+    name: `${name} is absent after its Buck authority cutover`,
+  })
+}
+for (const name of ['nix:build', 'nix:check']) {
+  ok({
+    condition: tasks.has(name) === false,
+    name: `${name} is absent without repository pnpm FOD producers`,
+  })
+}
 
 const visiting = new Set()
 const visited = new Set()
@@ -135,43 +172,116 @@ try {
 }
 
 const materializer = 'buck2:typescript:materialize-dist'
-// Buck owns typecheck and dist for the authoritative packages; the root `tsc` tasks own only
-// the residual projects, and those consume Buck-owned declarations through the dist overlays
-// the materializer publishes. Every root TypeScript task must therefore run after it.
-for (const name of ['ts:check', 'ts:check:strict', 'ts:build', 'ts:build-watch', 'check:quick']) {
+for (const [checkTask, aggregateTask] of [
+  ['check:quick', 'buck2:quick'],
+  ['check:all', 'buck2:all'],
+]) {
   ok({
-    condition: reaches({ start: name, target: materializer }),
-    name: `${name} reaches ${materializer}`,
+    condition: reaches({ start: checkTask, target: aggregateTask }),
+    name: `${checkTask} reaches ${aggregateTask}`,
+  })
+  ok({
+    condition: reaches({ start: checkTask, target: 'check:buck2-producer-overlap' }),
+    name: `${checkTask} reaches the Buck producer overlap guard`,
   })
 }
-// `test:run` is only the baseline-collection gate: it must keep its per-package fan-out, or the
-// gate would observe an incomplete managed-test summary directory and pass vacuously.
-const testRunPackageTasks = [...(dependencies.get('test:run') ?? [])].filter(
-  (name) => name.startsWith('test:') === true,
-)
 ok({
-  condition: testRunPackageTasks.length > 0,
-  name: 'test:run aggregates per-package test tasks',
+  condition: reaches({ start: 'check:quick', target: 'nix:check:quick' }),
+  name: 'check:quick retains the empty Nix fingerprint aggregate',
 })
-// Test execution is still source-owned, so `test:run` deliberately does NOT depend on Buck or
-// on `mr:apply`. Buck owns the declared test inputs: `buck2:check` builds every admitted
-// package's `:test` lane, and that ordering is asserted with the other Buck tasks below.
-// `mr apply` both reconciles the workspace and installs the `.buck2/capabilities`
-// projection that Buck analysis of `//buck2/toolchains` reads, so it is the single
-// ordering barrier for every task that invokes Buck.
+ok({
+  condition: reaches({ start: 'check:all', target: 'nix:flake:check' }),
+  name: 'check:all retains repository-wide Nix flake validation',
+})
+// `test:run` must schedule the one Buck aggregate and the source-side batches which own
+// packages absent from the authority plus admitted lanes' exact unbounded complements. Either
+// edge going missing would silently omit a disjoint side of the test partition.
+const testRunDependencies = [...(dependencies.get('test:run') ?? [])]
+ok({
+  condition: testRunDependencies.includes('test:buck2:unit'),
+  name: 'test:run executes the Buck-owned bounded partition',
+})
+ok({
+  condition: testRunDependencies.some((name) => name.startsWith('test:run:batch:') === true),
+  name: 'test:run executes the source-owned complement partition',
+})
+// `genie:check` is the source-side stage-zero guard against a graph proving its own stale
+// projection. `mr apply` runs only after that proof, then reconciles the workspace and
+// installs the `.buck2/capabilities` projection Buck analysis reads. Together they are the
+// ordering barriers for every public task that invokes Buck.
+const buck2TestAuthority = JSON.parse(readFileSync(`${root}/buck2-test-authority.json`, 'utf8'))
+if (buck2TestAuthority.schemaVersion !== 2 || Array.isArray(buck2TestAuthority.lanes) === false) {
+  throw new Error('buck2-test-authority.json does not match schemaVersion 2')
+}
+for (const lane of buck2TestAuthority.lanes) {
+  if (
+    typeof lane.taskName !== 'string' ||
+    typeof lane.sourceOwners !== 'object' ||
+    lane.sourceOwners === null ||
+    Array.isArray(lane.sourceOwners) === true
+  ) {
+    throw new Error('buck2-test-authority.json contains a malformed lane')
+  }
+}
+const buck2TestLaneTaskNames = buck2TestAuthority.lanes.map(({ taskName }) => taskName)
+const buck2UnboundedTaskNames = buck2TestAuthority.lanes.flatMap(({ unboundedTaskName }) =>
+  unboundedTaskName === undefined ? [] : [unboundedTaskName],
+)
+const buck2ExternalOwnerTaskNames = [
+  ...new Set(buck2TestAuthority.lanes.flatMap(({ sourceOwners }) => Object.values(sourceOwners))),
+]
+for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames]) {
+  ok({
+    condition: tasks.has(name),
+    name: `${name} exists as a source-side test owner`,
+  })
+}
 for (const name of [
-  materializer,
-  'buck2:check',
-  'buck2:editor-authority',
-  'buck2:tui-core:publish-editor',
-  'buck2:tui-core:check-editor',
-  'buck2:nix-bridge:check',
+  'buck2:editor:authority',
+  'buck2:editor:publish',
+  'buck2:editor:check',
+  'lint:check:asset-import-needs-type-reference',
+  'lint:check:format',
+  'lint:check:genie:coverage',
+  'lint:check:oxlint',
+  'workspace:check',
+  'test:buck2:unit',
+  ...buck2TestLaneTaskNames,
 ]) {
   ok({
     condition: reaches({ start: name, target: 'mr:apply' }),
-    name: `${name} waits for workspace reconciliation and the capability projection`,
+    name: `${name} waits for workspace reconciliation`,
+  })
+  ok({
+    condition: reaches({ start: name, target: 'genie:check' }),
+    name: `${name} waits for source-side generation freshness`,
   })
 }
+for (const name of ['buck2:check', 'buck2:quick', 'buck2:all', 'buck2:nix-bridge:check']) {
+  ok({
+    condition: reaches({ start: name, target: 'mr:apply' }) === false,
+    name: `${name} remains standalone`,
+  })
+}
+ok({
+  condition:
+    reaches({ start: 'buck2:editor:bootstrap', target: 'mr:setup' }) === true &&
+    reaches({ start: 'buck2:editor:bootstrap', target: 'genie:check' }) === false,
+  name: 'editor bootstrap materializes committed dependencies before freshness without claiming it',
+})
+
+ok({
+  condition:
+    reaches({
+      start: 'buck2:typescript:materialize-dist',
+      target: 'buck2:editor:materialize',
+    }) === true && reaches({ start: 'setup:strict', target: 'buck2:editor:materialize' }) === true,
+  name: 'mutating setup and dist publication share the ordered editor materialization barrier',
+})
+ok({
+  condition: reaches({ start: 'genie:check', target: 'genie:run' }) === false,
+  name: 'standalone generation freshness never invokes the projection producer',
+})
 
 const source = readFileSync(`${root}/devenv.nix`, 'utf8')
 const taskSource = (name) => {
@@ -180,6 +290,26 @@ const taskSource = (name) => {
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
+
+const editorMaterializeSource = taskSource('buck2:editor:materialize')
+const orderedMaterializationSteps = [
+  'devenv tasks run mr:setup',
+  'devenv tasks run buck2:editor:bootstrap --mode single',
+  'devenv tasks run genie:run --mode single',
+  'devenv tasks run genie:check --mode single',
+  'devenv tasks run mr:apply --mode single',
+  'devenv tasks run buck2:editor:publish --mode single',
+]
+const orderedMaterializationOffsets = orderedMaterializationSteps.map((step) =>
+  editorMaterializeSource.indexOf(step),
+)
+ok({
+  condition: orderedMaterializationOffsets.every(
+    (offset, index) =>
+      offset !== -1 && (index === 0 || offset > orderedMaterializationOffsets[index - 1]),
+  ),
+  name: 'editor materialization runs bootstrap, generation, freshness, composition, and publication in order',
+})
 
 const materializerSource = taskSource(materializer)
 const typescriptAuthorityRuntimePath = 'genie/buck2/typescript-authority-runtime.ts'
@@ -196,43 +326,62 @@ ok({
 })
 ok({
   condition:
-    typescriptAuthorityRuntimeSource.includes('authoritativeBuck2TypeScriptAdmissions') === true &&
+    typescriptAuthorityRuntimeSource.includes('authoritativeBuck2TypeScriptDeclarations') ===
+      true &&
+    typescriptAuthorityRuntimeSource.includes('authoritativeBuck2TypeScriptProjects') === true &&
     typescriptAuthorityRuntimeSource.includes('admissions.map(') === true &&
     typescriptAuthorityRuntimeSource.includes('scripts/typescript-materialize-dist.sh') === true &&
     typescriptAuthorityRuntimeSource.includes('packages/@overeng/tui-core') === false &&
     typescriptAuthorityRuntimeSource.includes('packages/@overeng/tui-react') === false,
-  name: 'TypeScript authority runtime derives materialization from the registry',
+  name: 'TypeScript authority runtime derives checking and publication from the registry',
 })
 ok({
   condition:
     source.includes('composed_workspace_root()') === true &&
     source.includes('worktree list --porcelain -z') === true &&
     source.includes('backlink=') === true &&
-    materializerSource.includes('TYPESCRIPT_DIST_MODE=publish') === true &&
-    materializerSource.includes('TYPESCRIPT_DIST_MODE=check') === true &&
-    materializerSource.includes('TSGO_BIN=') === true &&
-    materializerSource.includes('DIFF_BIN=') === true,
-  name: 'materializer publishes from a composition root and checks freshness standalone',
+    materializerSource.includes('requires a composed megarepo workspace') === true &&
+    materializerSource.includes('WORKSPACE_ROOT=') === true &&
+    materializerSource.includes('TYPESCRIPT_DIST_MODE=') === false &&
+    materializerSource.includes('TSGO_BIN=') === false,
+  name: 'materializer publishes only from a reciprocal composition root',
 })
 
-for (const name of ['buck2:tui-core:publish-editor', 'buck2:tui-core:check-editor']) {
-  const task = taskSource(name)
+const editorViewHelper = source.slice(
+  source.indexOf('  editorViewExec ='),
+  source.indexOf('\nin\n{', source.indexOf('  editorViewExec =')),
+)
+for (const term of ['--isolation-dir', 'buck-out']) {
   ok({
-    condition: task.includes('--isolation-dir') === false,
-    name: `${name} has no dynamic isolation directory`,
+    condition: editorViewHelper.includes(term) === false,
+    name: `whole-workspace editor publisher has no ${term} lifecycle`,
   })
-  ok({ condition: /buck2[^\n]*\bkill\b/.test(task) === false, name: `${name} has no daemon kill` })
-  ok({ condition: task.includes('buck-out') === false, name: `${name} has no buck-out cleanup` })
 }
+ok({
+  condition: /\bbuck2[^\n]*\bkill\b/.test(editorViewHelper) === false,
+  name: 'whole-workspace editor publisher never kills the shared Buck daemon',
+})
 
 const buckCheckSource = taskSource('buck2:check')
+const buckQuickSource = taskSource('buck2:quick')
+const buckAllSource = taskSource('buck2:all')
+const producerOverlapSource = taskSource('check:buck2-producer-overlap')
 ok({
   condition:
-    buckCheckSource.includes('realpath "$root/../.."') === true &&
-    buckCheckSource.includes('$workspace_root/.megarepo/bin/buck2') === true &&
-    buckCheckSource.includes(typescriptAuthorityRuntimePath) === true &&
-    buckCheckSource.includes('build "$buck"') === true,
-  name: 'buck2:check resolves the composition wrapper and dispatches the authority runtime',
+    source.includes('buck2AggregateExec =') === true &&
+    buckCheckSource.includes('audit providers') === true &&
+    buckCheckSource.includes('typescript-authority-runtime.ts') === false &&
+    buckQuickSource.includes('buck2AggregateExec "buck2:quick" "//:quick"') === true &&
+    buckAllSource.includes('buck2AggregateExec "buck2:all" "//:all"') === true &&
+    buckQuickSource.includes('--local-only') === false &&
+    buckAllSource.includes('--local-only') === false,
+  name: 'Buck check tasks separate provider audit from standalone cache-enabled aggregates',
+})
+ok({
+  condition:
+    producerOverlapSource.includes('genie/buck2/producer-overlap.ts') === true &&
+    producerOverlapSource.includes('task-config-devenv-config-task-config') === true,
+  name: 'producer overlap guard reads the evaluated task registry',
 })
 const buckToolchainSource = readFileSync(`${root}/buck2/toolchains/BUCK`, 'utf8')
 ok({
@@ -240,6 +389,16 @@ ok({
     buckToolchainSource.includes('bun_toolchain(') === true &&
     buckToolchainSource.includes('name = "archive_tool"') === true,
   name: 'Buck toolchains live in the buck2/toolchains package',
+})
+const configuredToolchainSource = readFileSync(
+  `${root}/buck2/toolchains/configured.bzl`,
+  'utf8',
+)
+ok({
+  condition:
+    buckToolchainSource.includes('load("@capabilities//:defs.bzl"') === true &&
+    configuredToolchainSource.includes('load("@capabilities//:defs.bzl"') === true,
+  name: 'capability Starlark loads use external-cell import syntax',
 })
 ok({
   condition: existsSync(`${root}/toolchains`) === false,

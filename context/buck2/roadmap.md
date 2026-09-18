@@ -99,13 +99,39 @@ resolution paths.
 
 ## Phase 5 — Rust operations and products
 
-**Entry conditions:** Cargo metadata binding, target and feature semantics,
-platform toolchains, third-party source supply, strict fixup handling, and
-independent Nix import are proved for the exact operation tuple.
+- The complete five-member Rust workspace now compiles through Buck: otelite,
+  otel-scrape, archive-tool, core, and product. Cargo manifests and the root
+  lock remain request and resolution authority; generated first-party rules and
+  the strict Reindeer graph project that authority without a second lock.
+- Third-party Rust sources are Buck-fetched per
+  [decision 0023](./.decisions/0023-buck-fetched-rust-crates.md): Reindeer uses
+  `vendor = false`, 126 `http_archive` targets take their sha256 from the
+  authoritative lock, and build/buildscript actions remain offline. The former
+  Nix vendor realization, vendor symlink task, and vendored Cargo config are
+  gone.
+- `otelite` and `otel-scrape` emit strict `buck-build-product/v1` products for
+  x86_64 Linux glibc, aarch64 Linux glibc, and aarch64 Darwin. Every tuple was
+  executed natively, published under an immutable payload-addressed release,
+  and independently imported through Nix with descriptor, digest, archive,
+  runtime, entrypoint, and ad-hoc-signature validation.
+- Flake packages/apps, devenv, and the reusable observability module now consume
+  only the reviewed native-product manifest. The two
+  `rustPlatform.buildRustPackage` product derivations, their shared narrow-source
+  helper, and the direct Cargo release build are deleted. The independently
+  realized Nix providers for stage-zero archive/product tools remain the
+  intentional cycle-breaking boundary admitted by
+  [decision 0010](./.decisions/0010-admit-rust-stage-zero-support-tools.md).
+- The CI `cargo` operation remains outside Buck by policy: it aggregates the
+  workspace contract, Cargo tests, Clippy, and rustfmt. Buck owns Rust
+  compilation and shipped products; the operation ledger does not claim that
+  the broader source-quality lane moved with them.
+- Zero repository JavaScript pnpm-deps FOD producers remain. The last one,
+  `oxc-config`, now emits its first-party plugin and StyleX upstream namespace
+  shim as two explicit Buck module products; Nix imports their reviewed,
+  content-addressed artifacts without rebuilding package sources. The
+  repository CLI products remain on the same manifest-pinned import boundary.
 
-**Sequence:** Admit deterministic Cargo operations before product builds.
-Transfer each repository tool or product only after its Buck output passes the
-independent BuildProduct import boundary.
+## Phase 6 — composed consumers
 
 **Dissolution target:** Delete Cargo or Nix source producers, vendoring tasks
 and configuration, hand-maintained repository adapters that projection

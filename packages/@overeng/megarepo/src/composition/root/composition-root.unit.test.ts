@@ -447,6 +447,7 @@ describe('composition root goldens', () => {
     expect(text(output.get('.buckconfig')!)).toBe(`[cells]
   workspace = .
   prelude = prelude
+  capabilities = .buck2/capabilities
   alpha = repos/alpha
 
 [cell_aliases]
@@ -481,6 +482,18 @@ describe('composition root goldens', () => {
   ignore = **/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,repos/.staging-*,repos/alpha/**/dist,repos/alpha/.git,target,tmp
 `)
     expect(output.get('.buckroot')?.bytes).toHaveLength(0)
+    expect(JSON.parse(text(output.get('.watchmanconfig')!))).toEqual({
+      ignore_dirs: [
+        '.devenv',
+        '.megarepo',
+        'buck-out',
+        'node_modules',
+        'repos/alpha/node_modules',
+        'repos/alpha/target',
+        'target',
+        'tmp',
+      ],
+    })
     expect(output.get('BUCK')?.bytes).toHaveLength(0)
   })
 
@@ -506,6 +519,7 @@ describe('composition root goldens', () => {
     expect(config).toBe(`[cells]
   workspace = .
   prelude = prelude
+  capabilities = .buck2/capabilities
   alpha = repos/alpha
   beta = repos/beta-source
 
@@ -537,6 +551,7 @@ describe('composition root goldens', () => {
     const output = filesByPath(input({ members: [alphaMember] }))
     const config = text(output.get('.buckconfig')!)
     const cellsSection = config.match(/\[cells\]\n([\s\S]*?)\n\n\[cell_aliases\]/u)?.[1]
+    expect(cellsSection).toContain('  capabilities = .buck2/capabilities')
     expect(cellsSection).not.toMatch(/^\s+(?:toolchains|none)\s*=/mu)
     expect(config).toContain('  toolchains = alpha')
     expect(config).toContain('  fbsource = prelude')
@@ -737,6 +752,66 @@ describe('ignore projection', () => {
     expect(ignore).toContain('.buck2/capabilities.candidate.*')
     expect(ignore).toEqual([...ignore].sort(compareCodeUnits))
   })
+
+  it('emits only concrete composition-derived directories without hiding source or capabilities', () => {
+    const config = JSON.parse(
+      text(
+        filesByPath(
+          input({
+            members: [
+              {
+                memberKey: 'alpha',
+                manifest: manifest({
+                  cell: 'alpha',
+                  projectIgnore: [
+                    '**/dist',
+                    '.buck2/capabilities.candidate.*',
+                    'generated',
+                    'packages/.editor-view',
+                    '.buck2',
+                  ],
+                  distOverlays: [{ target: '//packages:dist', destination: 'packages/dist' }],
+                }),
+              },
+            ],
+            additionalProjectIgnores: [
+              'repos/retired',
+              'repos/x/.buck2',
+              'repos/x/.buck2/capabilities',
+              'repos/x/.buck2/capabilities/generated',
+            ],
+          }),
+        ).get('.watchmanconfig')!,
+      ),
+    ) as { readonly ignore_dirs: ReadonlyArray<string> }
+
+    expect(config.ignore_dirs).toEqual([
+      '.devenv',
+      '.megarepo',
+      'buck-out',
+      'node_modules',
+      'repos/alpha/generated',
+      'repos/alpha/node_modules',
+      'repos/alpha/packages/.editor-view',
+      'repos/alpha/packages/dist',
+      'repos/alpha/target',
+      'repos/retired',
+      'target',
+      'tmp',
+    ])
+    expect(config.ignore_dirs).not.toContain('repos/alpha/**/dist')
+    expect(config.ignore_dirs.some((path) => path.includes('*'))).toBe(false)
+    expect(config.ignore_dirs.some((path) => path.includes('.buck2/capabilities'))).toBe(false)
+    for (const protectedPath of [
+      'repos/alpha/.buck2',
+      'repos/x/.buck2',
+      'repos/x/.buck2/capabilities',
+      'repos/x/.buck2/capabilities/generated',
+    ]) {
+      expect(config.ignore_dirs).not.toContain(protectedPath)
+    }
+    expect(config.ignore_dirs.some((path) => path.includes('/src'))).toBe(false)
+  })
 })
 
 describe('generation manifest and output schema', () => {
@@ -747,6 +822,7 @@ describe('generation manifest and output schema', () => {
       '.buckroot',
       '.megarepo/bin/buck2',
       '.megarepo/composition-generation.json',
+      '.watchmanconfig',
       'BUCK',
       '.buckconfig',
     ])

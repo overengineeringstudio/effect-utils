@@ -2,15 +2,16 @@
 # Source: BUCK.genie.ts
 
 # Projection source: packages/@overeng/notion-effect-schema/BUCK.genie.ts
-# Projection schema version: 6
+# Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:63d19403bf8bc62c8793aa059b3ce2e84bf7137908a0c0d4c4957e7e003dc72d
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-effect-schema/src/**/*.cts, packages/@overeng/notion-effect-schema/src/**/*.js, packages/@overeng/notion-effect-schema/src/**/*.mts, packages/@overeng/notion-effect-schema/src/**/*.spec.cjs, packages/@overeng/notion-effect-schema/src/**/*.spec.jsx, packages/@overeng/notion-effect-schema/src/**/*.spec.mjs, packages/@overeng/notion-effect-schema/src/**/*.test.cjs, packages/@overeng/notion-effect-schema/src/**/*.test.jsx, packages/@overeng/notion-effect-schema/src/**/*.test.mjs, packages/@overeng/notion-effect-schema/src/**/*.ts, packages/@overeng/notion-effect-schema/src/**/*.tsx, packages/@overeng/notion-effect-schema/src/**/__snapshots__/*.snap, packages/@overeng/notion-effect-schema/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
+# Semantic fingerprint: sha256:0975db5b4a70e909e7b4722f82e737a4e81743468bc351611bf1a58da2141169
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-core/package.json.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-effect-schema/src/**/*.cts, packages/@overeng/notion-effect-schema/src/**/*.js, packages/@overeng/notion-effect-schema/src/**/*.mts, packages/@overeng/notion-effect-schema/src/**/*.spec.cjs, packages/@overeng/notion-effect-schema/src/**/*.spec.jsx, packages/@overeng/notion-effect-schema/src/**/*.spec.mjs, packages/@overeng/notion-effect-schema/src/**/*.test.cjs, packages/@overeng/notion-effect-schema/src/**/*.test.jsx, packages/@overeng/notion-effect-schema/src/**/*.test.mjs, packages/@overeng/notion-effect-schema/src/**/*.ts, packages/@overeng/notion-effect-schema/src/**/*.tsx, packages/@overeng/notion-effect-schema/src/**/__snapshots__/*.snap, packages/@overeng/notion-effect-schema/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
 load("//buck2:editor_view.bzl", "editor_view_inputs")
-load("//buck2:javascript.bzl", "vitest_test")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
 
 export_file(
@@ -50,6 +51,14 @@ export_materialization_inputs([
     "src/users.ts",
     "src/webhook.ts",
 ])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/notion-effect-schema",
+    srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
 
 alias(
     name = "node_modules",
@@ -109,7 +118,7 @@ package_view(
         "node_modules/@overeng/notion-core/node_modules": "//packages/@overeng/notion-core:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
-    runtime = "//:package_tree_runtime",
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
 )
@@ -161,7 +170,8 @@ package_view(
         "node_modules/@overeng/notion-core/node_modules": "//packages/@overeng/notion-core:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
-    runtime = "//:package_tree_runtime",
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
 )
@@ -190,6 +200,12 @@ tsgo_emit(
 
 vitest_test(
     name = "test",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_collect",
     package_tree = ":test_package_tree",
     visibility = ["PUBLIC"],
 )

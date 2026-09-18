@@ -2,6 +2,7 @@
 
 load("//buck2/dependencies:defs.bzl", "PnpmPlatformGatedPackagesInfo")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
+load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 JavaScriptModuleInfo = provider(fields = {
     "module": Artifact,
@@ -105,7 +106,7 @@ package_bin_check = rule(
             providers = [BunToolchainInfo],
         )),
         "_runner": attrs.default_only(attrs.dep(
-            default = "//:package_command_runtime",
+            default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
         )),
     },
@@ -138,7 +139,7 @@ package_bin_build = rule(
             providers = [BunToolchainInfo],
         )),
         "_runner": attrs.default_only(attrs.dep(
-            default = "//:package_command_runtime",
+            default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
         )),
     },
@@ -195,7 +196,7 @@ package_bin = rule(
             providers = [BunToolchainInfo],
         )),
         "_runner": attrs.default_only(attrs.dep(
-            default = "//:package_command_runtime",
+            default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
         )),
     },
@@ -264,7 +265,7 @@ def _package_bundle_impl(ctx):
         args,
         category = "package_bin_artifact",
         local_only = True,
-        allow_cache_upload = False,
+        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
     )
     return [
         DefaultInfo(
@@ -300,7 +301,7 @@ _package_bin_artifact = rule(
             providers = [PnpmPlatformGatedPackagesInfo],
         )),
         "_runner": attrs.default_only(attrs.dep(
-            default = "//:package_command_runtime",
+            default = "//packages/@overeng/buck2-tools:package_command_runtime",
             providers = [DefaultInfo],
         )),
     },

@@ -1,16 +1,19 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
+load("//buck2/products:defs.bzl", "npm_package_product")
+
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
-# Projection schema version: 6
+# Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:42c024fbb09725fa5330539e0e030d151e88daf0065c163b6f91bd7e1fb87a58
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.js, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.spec.cjs, packages/@overeng/utils/src/**/*.spec.jsx, packages/@overeng/utils/src/**/*.spec.mjs, packages/@overeng/utils/src/**/*.test.cjs, packages/@overeng/utils/src/**/*.test.jsx, packages/@overeng/utils/src/**/*.test.mjs, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/src/**/__snapshots__/*.snap, packages/@overeng/utils/tsconfig.json.genie.ts
+# Semantic fingerprint: sha256:331e7e40bfcac4b1e88db12f9d26282b66b0ee1b48e8ae8dd8bce91afa75f465
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts, packages/@overeng/utils/src/**/*.cts, packages/@overeng/utils/src/**/*.js, packages/@overeng/utils/src/**/*.mts, packages/@overeng/utils/src/**/*.spec.cjs, packages/@overeng/utils/src/**/*.spec.jsx, packages/@overeng/utils/src/**/*.spec.mjs, packages/@overeng/utils/src/**/*.test.cjs, packages/@overeng/utils/src/**/*.test.jsx, packages/@overeng/utils/src/**/*.test.mjs, packages/@overeng/utils/src/**/*.ts, packages/@overeng/utils/src/**/*.tsx, packages/@overeng/utils/src/**/__snapshots__/*.snap, packages/@overeng/utils/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
 load("//buck2:editor_view.bzl", "editor_view_inputs")
-load("//buck2:javascript.bzl", "vitest_test")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
 
 export_file(
@@ -128,6 +131,14 @@ export_materialization_inputs([
     "src/node/watch.unit.test.ts",
     "src/node/workspace.ts",
 ])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/utils",
+    srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
 
 alias(
     name = "node_modules",
@@ -268,7 +279,7 @@ package_view(
         "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
-    runtime = "//:package_tree_runtime",
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
 )
@@ -401,7 +412,8 @@ package_view(
         "node_modules/@overeng/otel-contract/node_modules": "//packages/@overeng/otel-contract:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
-    runtime = "//:package_tree_runtime",
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
 )
@@ -434,9 +446,33 @@ vitest_test(
     name = "test",
     package_tree = ":test_package_tree",
     excludes = [
+        "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/watch.unit.test.ts",
     ],
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_collect",
+    package_tree = ":test_package_tree",
+    excludes = [
+        "src/browser/__tests__/BroadcastLogger.pw.test.ts",
+        "src/node/cmd.unit.test.ts",
+        "src/node/otel-identity.test.ts",
+        "src/node/otel-telemetry.test.ts",
+        "src/node/watch.unit.test.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-utils.tgz",
+    dist = ":dist",
+    package_json = "package.json",
+    product_name = "@overeng/utils",
     visibility = ["PUBLIC"],
 )

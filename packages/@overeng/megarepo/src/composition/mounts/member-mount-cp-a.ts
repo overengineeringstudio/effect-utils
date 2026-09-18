@@ -118,6 +118,13 @@ export interface CpAMemberMountRuntime extends CpAMemberMountDurabilityRuntime {
     readonly stagePath: string
     readonly capabilitiesPath: string
   }) => Promise<void>
+  /**
+   * Retain runtime capability sidecars after publication but before old-tree cleanup.
+   * Rejection rolls the filesystem publication back.
+   */
+  readonly retainPublishedCapabilities?: (input: {
+    readonly destinationPath: string
+  }) => Promise<void>
   /** Deterministic crash-boundary seam. Throwing preserves the transaction for recovery. */
   readonly afterPhase?: (phase: CpAMemberMountPhaseHint) => Promise<void>
   /** Boundary after the final missing check and immediately before no-clobber first publish. */
@@ -295,7 +302,7 @@ const metadataScanMatches = ({
   )
 }
 
-const metadataEqual = ({
+const mountAuthorityEqual = ({
   left,
   right,
 }: {
@@ -319,17 +326,6 @@ const metadataEqual = ({
       other !== undefined &&
       overlay.target === other.target &&
       overlay.destination === other.destination
-    )
-  }) &&
-  left.overlays.length === right.overlays.length &&
-  left.overlays.every((overlay, index) => {
-    const other = right.overlays[index]
-    return (
-      other !== undefined &&
-      overlay.target === other.target &&
-      overlay.destination === other.destination &&
-      overlay.digest === other.digest &&
-      overlay.count === other.count
     )
   })
 
@@ -1499,7 +1495,7 @@ export const materializeCpAMemberMount = ({
         ? 'FirstPublish'
         : oldIdentity._tag === 'LegacySymlink'
           ? 'LegacyConversion'
-          : metadataEqual({ left: oldIdentity.metadata, right: newMetadata }) === true
+          : mountAuthorityEqual({ left: oldIdentity.metadata, right: newMetadata }) === true
             ? 'AlreadyCurrent'
             : 'Advance'
     const nonce = runtime.nonce?.() ?? `${process.pid}-${randomBytes(8).toString('hex')}`
@@ -1524,14 +1520,20 @@ export const materializeCpAMemberMount = ({
       stagePath,
       transactionPath,
       oldIdentity,
-      newMetadata,
+      newMetadata:
+        operation === 'AlreadyCurrent' && oldIdentity._tag === 'Owned'
+          ? oldIdentity.metadata
+          : newMetadata,
       steps: [...planSteps(operation)],
     }
 
     if (operation === 'AlreadyCurrent') {
+      if (oldIdentity._tag !== 'Owned') {
+        throw new TypeError(`Already-current mount '${request.member}' has no owned metadata`)
+      }
       return request.dryRun === true
         ? { _tag: 'DryRun' as const, plan }
-        : { _tag: 'AlreadyCurrent' as const, destinationPath, metadata: newMetadata }
+        : { _tag: 'AlreadyCurrent' as const, destinationPath, metadata: oldIdentity.metadata }
     }
     if (operation !== 'FirstPublish') {
       yield* ensureExchangeAllowed({
@@ -1764,6 +1766,78 @@ export const materializeCpAMemberMount = ({
       }
       yield* assertOldAtStage({ stagePath, oldIdentity })
     }
+    if (runtime.retainPublishedCapabilities !== undefined) {
+      const retentionResult = yield* io({
+        path: destinationPath,
+        message: `Cannot retain published capabilities for '${request.member}'`,
+        reason: 'CapabilityRetentionFailed',
+        recoveryPaths: [destinationPath, stagePath, transactionPath],
+        try: () => runtime.retainPublishedCapabilities!({ destinationPath }),
+      }).pipe(Effect.result)
+      if (retentionResult._tag === 'Failure') {
+        const rollbackRoots = [
+          { path: destinationPath, identity: candidateIdentity },
+          ...(operation !== 'FirstPublish' && oldIdentity._tag === 'Owned'
+            ? [{ path: stagePath, identity: oldIdentity.identity }]
+            : []),
+        ]
+        yield* withDarwinMovableProtectedRoots({
+          platform: runtime.platform ?? process.platform,
+          roots: rollbackRoots,
+          recoveryPaths: [destinationPath, stagePath, transactionPath],
+          effect: runCommand({
+            binary: runtime.mvPath,
+            args:
+              operation === 'FirstPublish'
+                ? ['-T', '--no-clobber', '--no-copy', destinationPath, stagePath]
+                : ['-T', '--exchange', '--no-copy', stagePath, destinationPath],
+            path: destinationPath,
+            commandName: 'GNU mv capability-retention rollback',
+            recoveryPaths: [destinationPath, stagePath, transactionPath],
+          }),
+        })
+        yield* syncDirectory({
+          runtime,
+          path: NodePath.dirname(destinationPath),
+          reason: 'Exchange',
+        })
+        if (operation === 'FirstPublish') {
+          if ((yield* lstatMaybe(destinationPath)) !== undefined) {
+            return yield* error({
+              reason: 'ExchangeValidationFailed',
+              path: destinationPath,
+              message: 'Capability-retention rollback left the first-published candidate live',
+              recoveryPaths: [destinationPath, stagePath, transactionPath],
+            })
+          }
+        } else {
+          if (oldIdentity._tag === 'Missing') {
+            return yield* error({
+              reason: 'ExchangeValidationFailed',
+              path: destinationPath,
+              message: 'Capability-retention rollback lost its recorded old identity',
+              recoveryPaths: [destinationPath, stagePath, transactionPath],
+            })
+          }
+          yield* assertOldAtStage({ stagePath: destinationPath, oldIdentity })
+        }
+        yield* teardownBoundDirectory({ path: stagePath, identity: candidateIdentity })
+        yield* syncDirectory({
+          runtime,
+          path: NodePath.dirname(stagePath),
+          reason: 'CandidateCleanup',
+        })
+        yield* removeTransaction({ path: transactionPath, runtime })
+        return yield* retentionResult.failure
+      }
+    }
+    transaction = yield* updatePhase({
+      transactionPath,
+      transaction,
+      phaseHint: 'CapabilitiesRetained',
+      runtime,
+    })
+    yield* runPhaseHook({ runtime, phase: 'CapabilitiesRetained', transaction })
     yield* writeOwnedCpAMountMetadata({
       workspaceRoot: request.workspaceRoot,
       metadata: newMetadata,
@@ -1949,9 +2023,9 @@ const publishMetadataFromTransaction = ({
   })
 
 /**
- * Reconcile process interruption from observed inode and R6 identities, never phase hints. Directory
- * fsync checkpoints order namespace durability across power loss; they do not fsync every staged file
- * byte, so recovery treats failed R6 observation as ambiguous rather than claiming full byte durability.
+ * Reconcile process interruption from observed inode/R6 identities plus the fsync'd capability
+ * retention commit marker. Before that marker recovery rolls publication back; afterward it may
+ * safely publish metadata and clean the old tree.
  */
 export const recoverCpAMemberMount = ({
   request: untrustedRequest,
@@ -2000,6 +2074,145 @@ export const recoverCpAMemberMount = ({
         destinationPath: transaction.destinationPath,
       }
     })
+
+    const capabilitiesRetained =
+      transaction.phaseHint === 'CapabilitiesRetained' ||
+      transaction.phaseHint === 'MetadataPublished' ||
+      transaction.phaseHint === 'Cleanup'
+
+    if (capabilitiesRetained === false) {
+      if (transaction.operation === 'FirstPublish') {
+        if (destination._tag === 'Missing' && stage._tag === 'Missing') {
+          yield* removeTransaction({ path: transactionPath, runtime })
+          return {
+            _tag: 'Recovered' as const,
+            action: 'RolledBack' as const,
+            destinationPath: transaction.destinationPath,
+          }
+        }
+        if (
+          destination._tag === 'Missing' &&
+          (stage._tag === 'New' || stage._tag === 'NewPartial')
+        ) {
+          return yield* rollbackCandidate
+        }
+        if (destination._tag === 'New' && stage._tag === 'Missing') {
+          const candidateIdentity = transaction.newIdentity.candidateIdentity
+          if (candidateIdentity === null) {
+            return yield* error({
+              reason: 'AmbiguousRecovery',
+              path: transaction.destinationPath,
+              message: 'Cannot roll back an unretained publication without its candidate identity',
+              recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+            })
+          }
+          const recoveryPaths = [
+            transaction.destinationPath,
+            transaction.stagePath,
+            transactionPath,
+          ]
+          yield* withDarwinMovableProtectedRoots({
+            platform,
+            roots: [{ path: transaction.destinationPath, identity: candidateIdentity }],
+            recoveryPaths,
+            effect: runCommand({
+              binary: runtime.mvPath,
+              args: [
+                '-T',
+                '--no-clobber',
+                '--no-copy',
+                transaction.destinationPath,
+                transaction.stagePath,
+              ],
+              path: transaction.destinationPath,
+              commandName: 'GNU mv recovery capability-retention rollback',
+              recoveryPaths,
+            }),
+          })
+          yield* syncDirectory({
+            runtime,
+            path: NodePath.dirname(transaction.destinationPath),
+            reason: 'Exchange',
+          })
+          return yield* rollbackCandidate
+        }
+      } else {
+        if (destination._tag === 'Old' && stage._tag === 'Missing') {
+          yield* removeTransaction({ path: transactionPath, runtime })
+          return {
+            _tag: 'Recovered' as const,
+            action: 'RolledBack' as const,
+            destinationPath: transaction.destinationPath,
+          }
+        }
+        if (destination._tag === 'Old' && (stage._tag === 'New' || stage._tag === 'NewPartial')) {
+          return yield* rollbackCandidate
+        }
+        if (destination._tag === 'New' && stage._tag === 'Old') {
+          const candidateIdentity = transaction.newIdentity.candidateIdentity
+          const recoveryPaths = [
+            transaction.destinationPath,
+            transaction.stagePath,
+            transactionPath,
+          ]
+          yield* withDarwinMovableProtectedRoots({
+            platform,
+            roots: [
+              ...(candidateIdentity === null
+                ? []
+                : [{ path: transaction.destinationPath, identity: candidateIdentity }]),
+              ...(transaction.oldIdentity._tag === 'Owned'
+                ? [
+                    {
+                      path: transaction.stagePath,
+                      identity: transaction.oldIdentity.identity,
+                    },
+                  ]
+                : []),
+            ],
+            recoveryPaths,
+            effect: runCommand({
+              binary: runtime.mvPath,
+              args: [
+                '-T',
+                '--exchange',
+                '--no-copy',
+                transaction.stagePath,
+                transaction.destinationPath,
+              ],
+              path: transaction.destinationPath,
+              commandName: 'GNU mv recovery capability-retention exchange rollback',
+              recoveryPaths,
+            }),
+          })
+          yield* syncDirectory({
+            runtime,
+            path: NodePath.dirname(transaction.destinationPath),
+            reason: 'Exchange',
+          })
+          if (transaction.oldIdentity._tag === 'Missing') {
+            return yield* error({
+              reason: 'AmbiguousRecovery',
+              path: transaction.destinationPath,
+              message: 'Recovery exchange rollback lacks the recorded old identity',
+              recoveryPaths,
+            })
+          }
+          yield* assertOldAtStage({
+            stagePath: transaction.destinationPath,
+            oldIdentity: transaction.oldIdentity,
+          })
+          return yield* rollbackCandidate
+        }
+      }
+      return yield* error({
+        reason: 'AmbiguousRecovery',
+        path: transactionPath,
+        message: 'Unretained mount transaction cannot be rolled back from observed identities',
+        recoveryPaths: [transaction.destinationPath, transaction.stagePath, transactionPath],
+        cause: { destination: destination._tag, stage: stage._tag },
+      })
+    }
 
     if (transaction.operation === 'FirstPublish') {
       if (destination._tag === 'Missing' && stage._tag === 'Missing') {

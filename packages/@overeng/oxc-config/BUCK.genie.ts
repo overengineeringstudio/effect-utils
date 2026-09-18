@@ -9,11 +9,7 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/oxc-config',
   projectionSource: 'packages/@overeng/oxc-config/BUCK.genie.ts',
   sourceRoots: ['src'],
-  editorViewConsumer: false,
-  authority: {
-    declarationEntrypoint: 'src/mod.d.ts',
-    projectFile: 'tsconfig.json',
-  },
+  authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
   tests: [
     {
       name: 'test',

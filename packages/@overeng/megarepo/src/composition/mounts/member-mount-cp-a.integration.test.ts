@@ -23,6 +23,7 @@ import { expect } from 'vitest'
 
 import { resolvePinnedCoreutils } from '../../test-utils/coreutils.ts'
 import { makeCanonicalTempDirectoryScoped } from '../../test-utils/temp-root.ts'
+import { publishDistOverlay } from '../overlays/dist-overlay-lifecycle.ts'
 import {
   cpAMemberMountDestinationPath,
   cpAMemberMountTransactionPath,
@@ -276,6 +277,70 @@ describe('cp-a member mount lifecycle', () => {
   )
 
   it.effect(
+    'preserves validated published overlays when the immutable mount authority is unchanged',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      const declaration = { target: '//pkg:dist', destination: 'dir/dist' } as const
+      const mountRequest = requestFor({
+        fixture,
+        sourcePath: fixture.sourceA,
+        lockedCommit: 'a'.repeat(40),
+        distOverlays: [declaration],
+      })
+      const mounted = yield* materializeCpAMemberMount({
+        request: mountRequest,
+        runtime: runtimeFor(fixture),
+      })
+      expect(mounted._tag).toBe('Published')
+      if (mounted._tag !== 'Published') return
+
+      const artifactPath = NodePath.join(fixture.workspaceRoot, 'artifact')
+      yield* Effect.promise(async () => {
+        await mkdir(artifactPath)
+        await writeFile(NodePath.join(artifactPath, 'bundle.js'), 'built\n')
+        await chmod(NodePath.join(artifactPath, 'bundle.js'), 0o444)
+      })
+      const mountInfo = yield* Effect.promise(() => lstat(fixture.destinationPath))
+      const overlay = yield* publishDistOverlay({
+        request: {
+          workspaceRoot: fixture.workspaceRoot,
+          member: fixture.member,
+          expectedMountIdentity: { dev: mountInfo.dev, ino: mountInfo.ino },
+          expectedMetadata: mounted.metadata,
+          target: declaration.target,
+          destination: declaration.destination,
+          artifactPath,
+          cpPath: fixture.cpPath,
+          mvPath: fixture.mvPath,
+          dryRun: false,
+        },
+        runtime: {
+          assertUpdateLockOwned: async () => undefined,
+          nonce: () => 'mount-current',
+        },
+      })
+      expect(overlay._tag).toBe('Published')
+      if (overlay._tag !== 'Published') return
+
+      const repeated = yield* materializeCpAMemberMount({
+        request: mountRequest,
+        runtime: runtimeFor(fixture),
+      })
+      expect(repeated._tag).toBe('AlreadyCurrent')
+      if (repeated._tag !== 'AlreadyCurrent') return
+      expect(repeated.metadata).toEqual(overlay.metadata)
+      expect(
+        yield* Effect.promise(() =>
+          readFile(
+            NodePath.join(fixture.destinationPath, declaration.destination, 'bundle.js'),
+            'utf8',
+          ),
+        ),
+      ).toBe('built\n')
+    }, withNode),
+  )
+
+  it.effect(
     'first-publishes independent protected inodes, literal symlinks, and replaced capabilities without touching source',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
@@ -342,6 +407,47 @@ describe('cp-a member mount lifecycle', () => {
           }),
         ),
       ).toBe(true)
+    }, withNode),
+  )
+
+  it.effect(
+    'rolls an advance back without deleting prior workspace-owned roots when retention fails',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      yield* firstPublish(fixture)
+      const oldRoot = NodePath.join(
+        fixture.workspaceRoot,
+        '.megarepo',
+        'capability-roots',
+        fixture.member,
+        'a'.repeat(64),
+      )
+      yield* Effect.promise(async () => {
+        await mkdir(oldRoot, { recursive: true })
+        await writeFile(NodePath.join(oldRoot, 'old-tool'), 'keep\n')
+      })
+
+      const result = yield* advance(fixture, {
+        retainPublishedCapabilities: async ({ destinationPath }) => {
+          expect(destinationPath).toBe(fixture.destinationPath)
+          expect(await readFile(NodePath.join(oldRoot, 'old-tool'), 'utf8')).toBe('keep\n')
+          throw new Error('retention failed')
+        },
+      }).pipe(Effect.result)
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') {
+        expect(result.failure.reason).toBe('CapabilityRetentionFailed')
+      }
+      expect(
+        yield* Effect.promise(() =>
+          readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
+        ),
+      ).toBe('A\n')
+      expect(
+        yield* Effect.promise(() => readFile(NodePath.join(oldRoot, 'old-tool'), 'utf8')),
+      ).toBe('keep\n')
+      expect(yield* pathExists(stagePath(fixture))).toBe(false)
+      expect(yield* pathExists(fixture.transactionPath)).toBe(false)
     }, withNode),
   )
 
@@ -608,7 +714,7 @@ describe('cp-a member mount lifecycle', () => {
   )
 
   it.effect(
-    'restores retained Darwin stage and destination roots after an exchange command failure',
+    'restores retained Darwin roots and rolls an unretained candidate back after exchange failure',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
       yield* firstPublish(fixture)
@@ -649,12 +755,13 @@ describe('cp-a member mount lifecycle', () => {
         },
         runtime: { mvPath: fixture.mvPath, platform: 'darwin' },
       })
-      expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledForward' })
+      expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledBack' })
       expect(
         yield* Effect.promise(() =>
           readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
         ),
-      ).toBe('B\n')
+      ).toBe('A\n')
+      expect(yield* pathExists(stagePath(fixture))).toBe(false)
       expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
     }, withNode),
   )
@@ -734,6 +841,8 @@ describe('cp-a member mount lifecycle', () => {
         'fsync:FirstPublish',
         'fsync:TransactionReplace',
         'phase:Exchanged',
+        'fsync:TransactionReplace',
+        'phase:CapabilitiesRetained',
         'fsync:MetadataPublish',
         'fsync:TransactionReplace',
         'phase:MetadataPublished',
@@ -776,10 +885,7 @@ describe('cp-a member mount lifecycle', () => {
         })
         expect(recovered).toMatchObject({
           _tag: 'Recovered',
-          action:
-            failureReason === 'TransactionCreate' || failureReason === 'StageCreate'
-              ? 'RolledBack'
-              : 'RolledForward',
+          action: failureReason === 'MetadataPublish' ? 'RolledForward' : 'RolledBack',
         })
         expect(yield* pathExists(fixture.transactionPath)).toBe(false)
       }
@@ -949,20 +1055,33 @@ describe('cp-a transaction recovery fault matrix', () => {
   )
 
   it.effect(
-    're-protects a writable staged root before rolling forward a Darwin first publish',
+    'rolls back first publication when an unsynced workspace root is lost before the retention marker',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
+      const unsyncedRoot = NodePath.join(
+        fixture.workspaceRoot,
+        '.megarepo',
+        'capability-roots',
+        fixture.member,
+        'b'.repeat(64),
+        'buck2',
+      )
       yield* firstPublish(fixture, {
         afterPhase: async (phase) => {
-          if (phase === 'Staged') throw new Error('crash')
+          if (phase !== 'Exchanged') return
+          await mkdir(NodePath.dirname(unsyncedRoot), { recursive: true })
+          await writeFile(unsyncedRoot, 'unsynced\n')
+          throw new Error('crash')
         },
       }).pipe(Effect.result)
+      yield* Effect.promise(() => unlink(unsyncedRoot))
+      expect(yield* pathExists(unsyncedRoot)).toBe(false)
       expect(
         yield* Effect.promise(() =>
-          readFile(NodePath.join(stagePath(fixture), 'version.txt'), 'utf8'),
+          readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
         ),
       ).toBe('A\n')
-      yield* Effect.promise(() => chmod(stagePath(fixture), 0o755))
+      yield* Effect.promise(() => chmod(fixture.destinationPath, 0o755))
       const recovered = yield* recoverCpAMemberMount({
         request: {
           workspaceRoot: fixture.workspaceRoot,
@@ -971,18 +1090,15 @@ describe('cp-a transaction recovery fault matrix', () => {
         },
         runtime: { mvPath: fixture.mvPath, platform: 'darwin' },
       })
-      expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledForward' })
-      expect(
-        yield* Effect.promise(() =>
-          readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
-        ),
-      ).toBe('A\n')
-      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
+      expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledBack' })
+      expect(yield* pathExists(fixture.destinationPath)).toBe(false)
+      expect(yield* pathExists(stagePath(fixture))).toBe(false)
+      expect(yield* pathExists(fixture.transactionPath)).toBe(false)
     }, withNode),
   )
 
   it.effect(
-    're-protects exchanged roots left writable by a Darwin crash before rolling forward',
+    'rolls an interrupted advance back when exchange landed before the retention marker',
     Effect.fnUntraced(function* () {
       const fixture = yield* makeFixture()
       yield* firstPublish(fixture)
@@ -1008,6 +1124,75 @@ describe('cp-a transaction recovery fault matrix', () => {
         },
         runtime: { mvPath: fixture.mvPath, platform: 'darwin' },
       })
+      expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledBack' })
+      expect(
+        yield* Effect.promise(() =>
+          readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
+        ),
+      ).toBe('A\n')
+      expect(yield* pathExists(stagePath(fixture))).toBe(false)
+      expect(yield* pathExists(fixture.transactionPath)).toBe(false)
+      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
+    }, withNode),
+  )
+
+  it.effect(
+    'rolls a first publication forward after the durable retention marker',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      let retained = false
+      yield* firstPublish(fixture, {
+        retainPublishedCapabilities: async () => {
+          retained = true
+        },
+        afterPhase: async (phase) => {
+          if (phase !== 'CapabilitiesRetained') return
+          expect(retained).toBe(true)
+          throw new Error('crash')
+        },
+      }).pipe(Effect.result)
+      const recovered = yield* recoverCpAMemberMount({
+        request: {
+          workspaceRoot: fixture.workspaceRoot,
+          member: fixture.member,
+          allowVerifiedDarwinAdvance: false,
+        },
+        runtime: { mvPath: fixture.mvPath, platform: 'linux' },
+      })
+      expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledForward' })
+      expect(
+        yield* Effect.promise(() =>
+          readFile(NodePath.join(fixture.destinationPath, 'version.txt'), 'utf8'),
+        ),
+      ).toBe('A\n')
+      expect(yield* pathExists(fixture.transactionPath)).toBe(false)
+    }, withNode),
+  )
+
+  it.effect(
+    'rolls an advance forward after the durable retention marker',
+    Effect.fnUntraced(function* () {
+      const fixture = yield* makeFixture()
+      yield* firstPublish(fixture)
+      let retained = false
+      yield* advance(fixture, {
+        retainPublishedCapabilities: async () => {
+          retained = true
+        },
+        afterPhase: async (phase) => {
+          if (phase !== 'CapabilitiesRetained') return
+          expect(retained).toBe(true)
+          throw new Error('crash')
+        },
+      }).pipe(Effect.result)
+      const recovered = yield* recoverCpAMemberMount({
+        request: {
+          workspaceRoot: fixture.workspaceRoot,
+          member: fixture.member,
+          allowVerifiedDarwinAdvance: false,
+        },
+        runtime: { mvPath: fixture.mvPath, platform: 'linux' },
+      })
       expect(recovered).toMatchObject({ _tag: 'Recovered', action: 'RolledForward' })
       expect(
         yield* Effect.promise(() =>
@@ -1015,7 +1200,7 @@ describe('cp-a transaction recovery fault matrix', () => {
         ),
       ).toBe('B\n')
       expect(yield* pathExists(stagePath(fixture))).toBe(false)
-      expect(yield* modeOf(fixture.destinationPath)).toBe(0o555)
+      expect(yield* pathExists(fixture.transactionPath)).toBe(false)
     }, withNode),
   )
 

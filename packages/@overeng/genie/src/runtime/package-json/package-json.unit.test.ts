@@ -30,6 +30,12 @@ const mockWorkspaceRootContext: GenieContext = {
   location: '.',
   cwd: '/workspace',
 }
+const strictProofRuntime = createNodePackageJsonValidationRuntime({
+  typeProofCompiler: {
+    kind: 'custom',
+    path: path.resolve(import.meta.dirname, '../../../node_modules/.bin/tsc'),
+  },
+})
 
 const createTempRepo = (...memberPaths: string[]) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-package-json-'))
@@ -870,9 +876,23 @@ describe('packageJson', () => {
     fs.writeFileSync(path.join(repo.repoRoot, 'package.json'), '{"name":"repo"}\n')
     fs.writeFileSync(path.join(packageDir, 'package.json'), '{"name":"@test/package"}\n')
     fs.writeFileSync(path.join(packageDir, 'src/mod.ts'), 'export const value = 1\n')
+    const compilerBin = path.join(repo.repoRoot, 'fake-tsgo')
+    fs.writeFileSync(
+      compilerBin,
+      [
+        '#!/usr/bin/env bash',
+        'if [ "$1" = "--version" ]; then',
+        '  echo "Fake TypeScript 1.0.0"',
+        'fi',
+      ].join('\n'),
+    )
+    fs.chmodSync(compilerBin, 0o755)
+    const runtime = createNodePackageJsonValidationRuntime({
+      typeProofCompiler: { path: compilerBin, kind: 'tsgo' },
+    })
 
     const validate = async () =>
-      await nodePackageJsonValidationRuntime.validateExportEnvironments({
+      await strictProofRuntime.validateExportEnvironments({
         cwd: repo.repoRoot,
         location: 'packages/pkg',
         packageName: '@test/package',
@@ -1158,12 +1178,11 @@ describe('packageJson', () => {
     const issues = await result.validate?.({
       cwd: repoRoot,
       location: 'packages/@overeng/genie',
-      validation: { packageJson: nodePackageJsonValidationRuntime },
+      validation: { packageJson: strictProofRuntime },
     })
 
     expect(issues).toEqual([])
   }, 30_000)
-
   it('preserves non-emitted metadata when provided as the second argument', async () => {
     const result = packageJson(
       {

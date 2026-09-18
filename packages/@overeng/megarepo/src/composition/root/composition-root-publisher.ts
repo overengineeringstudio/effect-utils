@@ -97,6 +97,14 @@ const ObsoleteTransactionFileSchema = Schema.Struct({
 })
 type ObsoleteTransactionFile = typeof ObsoleteTransactionFileSchema.Type
 
+/** Durable compensation state for one external side effect tied to root authority. */
+export const CompositionPublicationExternalStateSchema = Schema.TaggedStruct('WatchmanProject', {
+  phase: Schema.Literal('CompensationRequired'),
+  priorWatched: Schema.Boolean,
+}).annotate({ identifier: 'Megarepo.CompositionPublicationExternalState' })
+export type CompositionPublicationExternalState =
+  typeof CompositionPublicationExternalStateSchema.Type
+
 /** Candidate/backup ownership manifest for one serialized publication attempt. */
 export const CompositionPublicationTransactionSchema = Schema.Struct({
   schemaVersion: Schema.Literal(COMPOSITION_ROOT_SCHEMA_VERSION),
@@ -107,6 +115,7 @@ export const CompositionPublicationTransactionSchema = Schema.Struct({
   obsoleteFiles: Schema.Array(ObsoleteTransactionFileSchema).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
+  externalState: Schema.optional(CompositionPublicationExternalStateSchema),
 })
   .check(
     Schema.makeFilter((transaction) => {
@@ -189,6 +198,8 @@ export interface CompositionRootPublicationRuntime {
   readonly simulateProcessFaultAfterCandidate?: (path: string) => boolean
   /** Deterministic process-death seam after one final file is durable. */
   readonly simulateProcessFaultAfterPublishedFile?: (path: string) => boolean
+  /** Deterministic process-death seam after external reconciliation, before commit is durable. */
+  readonly simulateProcessFaultAfterAuthorityPublished?: () => boolean
 }
 
 /** Complete explicit inputs for composition-root publication. */
@@ -203,6 +214,18 @@ export interface PublishCompositionRootOptions {
   readonly runtime: CompositionRootPublicationRuntime
   /** Runs after `.buckconfig` is durable, before the transaction is committed or cleaned. */
   readonly afterAuthorityPublished?: () => Promise<void>
+  /** Schema-backed state retained until external compensation or forward commit succeeds. */
+  readonly externalState?: CompositionPublicationExternalState
+  /**
+   * Captures compensation state after stale-transaction recovery and before a newly changed
+   * `.watchmanconfig` is published.
+   */
+  readonly prepareExternalState?: () => Promise<{
+    readonly externalState: CompositionPublicationExternalState
+    readonly afterAuthorityPublished: () => Promise<void>
+  }>
+  /** Restores persisted external state after filesystem authority, before recovery metadata clears. */
+  readonly afterAuthorityRollback?: (state: CompositionPublicationExternalState) => Promise<void>
 }
 
 /** Read-only composition-root planning inputs. */
@@ -273,6 +296,13 @@ export interface CompositionRootPublicationResult {
 export interface TeardownCompositionRootOptions {
   readonly workspaceRoot: AbsoluteDirPath
   readonly lock: CompositionPublisherLockOptions
+  /**
+   * Deregisters the exact composition-root Watchman watch before generated authority is removed.
+   * Required with `registerWatchmanProject` when the owned generation includes `.watchmanconfig`.
+   */
+  readonly deregisterWatchmanProject?: (workspaceRoot: AbsoluteDirPath) => Promise<void>
+  /** Restores that exact watch if teardown fails before removing `.watchmanconfig`. */
+  readonly registerWatchmanProject?: (workspaceRoot: AbsoluteDirPath) => Promise<void>
   readonly beforeRemoveFile?: (path: string) => Promise<void>
 }
 
@@ -1103,12 +1133,14 @@ const restoreObsoleteTransactionFile = async ({
 const rollbackTransaction = async ({
   workspaceRoot,
   transactionRecord,
+  restoreExternalState,
 }: {
   readonly workspaceRoot: string
   readonly transactionRecord: {
     readonly transaction: CompositionPublicationTransaction
     readonly snapshot: FileSnapshot
   }
+  readonly restoreExternalState?: (state: CompositionPublicationExternalState) => Promise<void>
 }): Promise<void> => {
   const config = transactionRecord.transaction.files.find((file) => file.path === '.buckconfig')!
   const nonConfig = transactionRecord.transaction.files.filter(
@@ -1120,6 +1152,16 @@ const rollbackTransaction = async ({
   for (const file of nonConfig.toReversed()) await restoreTransactionFile({ workspaceRoot, file })
   // Authority is restored only after every non-config path is back in its previous state.
   await restoreTransactionFile({ workspaceRoot, file: config })
+  if (transactionRecord.transaction.externalState !== undefined) {
+    if (restoreExternalState === undefined) {
+      throw failure({
+        reason: 'RecoveryRefused',
+        path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
+        message: 'External compensation state requires an explicit restoration capability',
+      })
+    }
+    await restoreExternalState(transactionRecord.transaction.externalState)
+  }
   for (const file of transactionRecord.transaction.files) {
     const candidate = await verifyOwnedArtifact({
       workspaceRoot,
@@ -1160,7 +1202,7 @@ const assertTransactionLockIdentity = ({
   readonly lock: CompositionPublisherLock
   readonly path: string
 }): void => {
-  if (transaction.lockToken !== lock.token || transaction.lockOwner !== lock.owner) {
+  if (transaction.lockOwner !== lock.owner || transaction.lockToken !== lock.token) {
     throw failure({
       reason: 'RecoveryRefused',
       path,
@@ -1172,9 +1214,11 @@ const assertTransactionLockIdentity = ({
 const recoverTransaction = async ({
   workspaceRoot,
   lock,
+  restoreExternalState,
 }: {
   readonly workspaceRoot: string
   readonly lock: CompositionPublisherLock
+  readonly restoreExternalState?: (state: CompositionPublicationExternalState) => Promise<void>
 }): Promise<void> => {
   const [record, committedRecord] = await Promise.all([
     readTransactionMaybe(workspaceRoot),
@@ -1258,16 +1302,21 @@ const recoverTransaction = async ({
     lock,
     path: finalPathFor(workspaceRoot, TRANSACTION_PATH),
   })
-  // Without a committed phase, recovery cannot assume the external callback completed.
-  await rollbackTransaction({ workspaceRoot, transactionRecord: record })
+  await rollbackTransaction({
+    workspaceRoot,
+    transactionRecord: record,
+    ...(restoreExternalState === undefined ? {} : { restoreExternalState }),
+  })
 }
 
 const acquireLock = async ({
   workspaceRoot,
   options,
+  restoreExternalState,
 }: {
   readonly workspaceRoot: string
   readonly options: CompositionPublisherLockOptions
+  readonly restoreExternalState?: (state: CompositionPublicationExternalState) => Promise<void>
 }): Promise<{ readonly lock: CompositionPublisherLock; readonly snapshot: FileSnapshot }> => {
   let requested: CompositionPublisherLock
   try {
@@ -1296,7 +1345,11 @@ const acquireLock = async ({
         message: `Composition publisher lock is held by ${existing.lock.owner}; exact token recovery is required`,
       })
     }
-    await recoverTransaction({ workspaceRoot, lock: existing.lock })
+    await recoverTransaction({
+      workspaceRoot,
+      lock: existing.lock,
+      ...(restoreExternalState === undefined ? {} : { restoreExternalState }),
+    })
     await removeExact({ path: finalPathFor(workspaceRoot, LOCK_PATH), expected: existing.snapshot })
   } else if (
     (await readTransactionMaybe(workspaceRoot)) !== undefined ||
@@ -1363,18 +1416,20 @@ const decodeGenerationManifest = ({
 
 const assertManifestShape = ({
   manifest,
-  expectedPaths,
+  expectedPathSets,
   path,
 }: {
   readonly manifest: CompositionGenerationManifest
-  readonly expectedPaths: ReadonlyArray<string>
+  readonly expectedPathSets: ReadonlyArray<ReadonlyArray<string>>
   readonly path: string
 }): void => {
   const actual = manifest.files.map((file) => file.path)
-  if (
-    actual.length !== expectedPaths.length ||
-    actual.some((value, index) => value !== expectedPaths[index]) === true
-  ) {
+  const matchesExpectedSet = expectedPathSets.some(
+    (expectedPaths) =>
+      actual.length === expectedPaths.length &&
+      actual.every((value, index) => value === expectedPaths[index]),
+  )
+  if (matchesExpectedSet === false) {
     throw failure({
       reason: 'InvalidGenerationManifest',
       path,
@@ -1473,16 +1528,6 @@ const validatePublicationState = async ({
       })
     }
     manifest = decodeGenerationManifest({ snapshot: manifestSnapshot, path: manifestPath })
-    const manifestPaths = new Set(manifest.files.map((file) => file.path))
-    for (const expectedPath of expectedGeneratedPaths(files)) {
-      if (manifestPaths.has(expectedPath) === false) {
-        throw failure({
-          reason: 'InvalidGenerationManifest',
-          path: manifestPath,
-          message: `Generation manifest does not own required path ${expectedPath}: ${manifestPath}`,
-        })
-      }
-    }
   }
   const configPath = finalPathFor(workspaceRoot, '.buckconfig')
   if (manifest === undefined && (await snapshotMaybe(configPath)) !== undefined) {
@@ -1494,6 +1539,7 @@ const validatePublicationState = async ({
   }
 
   const desiredPaths = new Set(expectedGeneratedPaths(files))
+  const manifestPaths = new Set(manifest?.files.map((file) => file.path))
   const obsoleteFiles: ObsoleteGeneratedFile[] = []
   if (manifest !== undefined) {
     for (const record of manifest.files) {
@@ -1532,6 +1578,18 @@ const validatePublicationState = async ({
         ? manifestSnapshot
         : await snapshotMaybe(path)
     snapshots.set(file.path, snapshot)
+    if (
+      manifest !== undefined &&
+      file.path !== COMPOSITION_GENERATION_MANIFEST_PATH &&
+      manifestPaths.has(file.path) === false &&
+      snapshot !== undefined
+    ) {
+      throw failure({
+        reason: 'ForeignPath',
+        path,
+        message: `Refusing unowned path missing from generation manifest: ${path}`,
+      })
+    }
     if (
       manifest === undefined &&
       snapshot !== undefined &&
@@ -1590,16 +1648,6 @@ const loadMembers = async ({
         path: memberRoot,
         message: `Member root is missing or not a directory: ${memberRoot}`,
       })
-    }
-    for (const forbiddenRootFile of ['.buckconfig', '.buckroot']) {
-      const forbiddenPath = NodePath.join(memberRoot, forbiddenRootFile)
-      if ((await lstatMaybe(forbiddenPath)) !== undefined) {
-        throw failure({
-          reason: 'InvalidMemberManifest',
-          path: forbiddenPath,
-          message: `Member root must not carry ${forbiddenRootFile}: ${memberRoot}`,
-        })
-      }
     }
     const manifestPath = NodePath.join(memberRoot, BUCK_MEMBER_MANIFEST_FILENAME)
     try {
@@ -1724,10 +1772,12 @@ const makeTransaction = ({
   lock,
   output,
   state,
+  externalState,
 }: {
   readonly lock: CompositionPublisherLock
   readonly output: ReadonlyArray<GeneratedCompositionFile>
   readonly state: PublicationValidationState
+  readonly externalState?: CompositionPublicationExternalState
 }): CompositionPublicationTransaction | undefined => {
   const changed = output.filter((file) => {
     const snapshot = state.snapshots.get(file.path)
@@ -1778,6 +1828,7 @@ const makeTransaction = ({
     phase: 'AuthorityPending',
     files,
     obsoleteFiles,
+    ...(externalState === undefined ? {} : { externalState }),
   })
 }
 
@@ -2172,7 +2223,23 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
         const workspaceRoot = NodePath.resolve(options.workspaceRoot)
         await validateWorkspaceRoot(workspaceRoot)
         await ensureDirectory(workspaceRoot, '.megarepo')
-        const acquired = await acquireLock({ workspaceRoot, options: options.lock })
+        if (
+          (options.afterAuthorityPublished === undefined) !==
+          (options.externalState === undefined)
+        ) {
+          throw failure({
+            reason: 'InvalidInput',
+            path: workspaceRoot,
+            message: 'External reconciliation requires matching durable compensation state',
+          })
+        }
+        const acquired = await acquireLock({
+          workspaceRoot,
+          options: options.lock,
+          ...(options.afterAuthorityRollback === undefined
+            ? {}
+            : { restoreExternalState: options.afterAuthorityRollback }),
+        })
         let leaveForRecovery = false
         try {
           const { members, output } = await prepareComposition({
@@ -2187,16 +2254,42 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
           })
           await ensureDirectory(workspaceRoot, '.megarepo/bin')
           const state = await validatePublicationState({ workspaceRoot, files: output.files })
-          const transaction = makeTransaction({
+          let externalState = options.externalState
+          let afterAuthorityPublished = options.afterAuthorityPublished
+          let transaction = makeTransaction({
             lock: acquired.lock,
             output: output.files,
             state,
+            ...(externalState === undefined ? {} : { externalState }),
           })
           if (transaction === undefined) {
             return {
               changedPaths: [],
               memberManifests: members.map(({ memberKey, manifest }) => ({ memberKey, manifest })),
             }
+          }
+          if (
+            externalState === undefined &&
+            transaction.files.some((file) => file.path === '.watchmanconfig') === true &&
+            options.prepareExternalState !== undefined
+          ) {
+            const prepared = await options.prepareExternalState()
+            externalState = prepared.externalState
+            afterAuthorityPublished = prepared.afterAuthorityPublished
+            const forwardTransaction = makeTransaction({
+              lock: acquired.lock,
+              output: output.files,
+              state,
+              externalState,
+            })
+            if (forwardTransaction === undefined) {
+              throw failure({
+                reason: 'RecoveryRefused',
+                path: workspaceRoot,
+                message: 'Changed Watchman publication disappeared during external preparation',
+              })
+            }
+            transaction = forwardTransaction
           }
           let authorityCommitted = false
           try {
@@ -2216,7 +2309,10 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
               output: output.files,
               runtime: options.runtime,
             })
-            await options.afterAuthorityPublished?.()
+            await afterAuthorityPublished?.()
+            if (options.runtime.simulateProcessFaultAfterAuthorityPublished?.() === true) {
+              throw new SimulatedProcessFault('.watchmanconfig')
+            }
             const committedRecord = await writeCommittedTransaction({ workspaceRoot, transaction })
             authorityCommitted = true
             await options.runtime.afterAuthorityCommitted?.()
@@ -2246,10 +2342,16 @@ export const publishCompositionRoot = Effect.fn('megarepo/composition-root/publi
             const current = await readTransactionMaybe(workspaceRoot)
             if (current !== undefined) {
               try {
-                await rollbackTransaction({ workspaceRoot, transactionRecord: current })
+                await rollbackTransaction({
+                  workspaceRoot,
+                  transactionRecord: current,
+                  ...(options.afterAuthorityRollback === undefined
+                    ? {}
+                    : { restoreExternalState: options.afterAuthorityRollback }),
+                })
               } catch {
-                // A foreign replacement can make restoration unsafe. Preserve the original refusal
-                // plus the exact-token lock/manifest so no later publisher mistakes it for clean state.
+                // Filesystem or external compensation is incomplete. Preserve the original cause
+                // plus the exact-token lock/manifest so recovery can retry without losing context.
                 leaveForRecovery = true
               }
             } else {
@@ -2312,8 +2414,15 @@ const validateTeardownState = async ({
     })
   }
   const manifest = decodeGenerationManifest({ snapshot: manifestSnapshot, path: manifestPath })
-  const canonical = ['.buckconfig', '.buckroot', '.megarepo/bin/buck2', 'BUCK'].toSorted()
-  assertManifestShape({ manifest, expectedPaths: canonical, path: manifestPath })
+  const canonical = [
+    '.buckconfig',
+    '.buckroot',
+    '.megarepo/bin/buck2',
+    '.watchmanconfig',
+    'BUCK',
+  ].toSorted()
+  const legacy = canonical.filter((path) => path !== '.watchmanconfig')
+  assertManifestShape({ manifest, expectedPathSets: [canonical, legacy], path: manifestPath })
   const files = new Map<string, FileSnapshot>()
   for (const record of manifest.files) {
     const path = finalPathFor(workspaceRoot, record.path)
@@ -2334,7 +2443,7 @@ const validateTeardownState = async ({
   return { manifestSnapshot, manifest, files }
 }
 
-/** Remove only immediately revalidated generated files and now-empty generator-owned directories. */
+/** Deregister owned external state, then remove verified generated files and empty directories. */
 export const teardownCompositionRoot = Effect.fn('megarepo/composition-root/teardown')(
   (options: TeardownCompositionRootOptions) =>
     Effect.tryPromise({
@@ -2345,11 +2454,30 @@ export const teardownCompositionRoot = Effect.fn('megarepo/composition-root/tear
         const acquired = await acquireLock({ workspaceRoot, options: options.lock })
         const removedPaths: string[] = []
         const removedDirectories: string[] = []
+        let watchmanDeregistered = false
         try {
           const state = await validateTeardownState({ workspaceRoot })
+          if (state.files.has('.watchmanconfig') === true) {
+            if (
+              options.deregisterWatchmanProject === undefined ||
+              options.registerWatchmanProject === undefined
+            ) {
+              throw failure({
+                reason: 'InvalidInput',
+                path: finalPathFor(workspaceRoot, '.watchmanconfig'),
+                message:
+                  'Watchman deregistration and recovery are required before composition-root teardown',
+              })
+            }
+            await options.deregisterWatchmanProject(workspaceRoot as AbsoluteDirPath)
+            watchmanDeregistered = true
+          }
           const removalOrder = [
             ...state.manifest.files.filter((file) => file.path === '.buckconfig'),
-            ...state.manifest.files.filter((file) => file.path !== '.buckconfig'),
+            ...state.manifest.files.filter(
+              (file) => file.path !== '.buckconfig' && file.path !== '.watchmanconfig',
+            ),
+            ...state.manifest.files.filter((file) => file.path === '.watchmanconfig'),
           ]
           for (const record of removalOrder) {
             await options.beforeRemoveFile?.(record.path)
@@ -2380,6 +2508,20 @@ export const teardownCompositionRoot = Effect.fn('megarepo/composition-root/tear
               }
             }
           }
+        } catch (cause) {
+          if (watchmanDeregistered === true && removedPaths.includes('.watchmanconfig') === false) {
+            try {
+              await options.registerWatchmanProject!(workspaceRoot as AbsoluteDirPath)
+            } catch (recoveryCause) {
+              throw failure({
+                reason: 'IoFailure',
+                path: finalPathFor(workspaceRoot, '.watchmanconfig'),
+                message: 'Composition-root teardown failed and the Watchman watch was not restored',
+                cause: { teardownCause: cause, recoveryCause },
+              })
+            }
+          }
+          throw cause
         } finally {
           await releaseLock({ workspaceRoot, acquired })
         }

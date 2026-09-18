@@ -112,21 +112,6 @@ Key features:
 - **Read-only protection** - Generated files are read-only by default
 - **CI integration** - `--check` mode verifies files are up to date
 
-### Rebuild and reload binaries
-
-```bash
-devenv tasks run nix:build:genie
-devenv tasks run nix:build
-devenv tasks run nix:check
-```
-
-After `pnpm-lock.yaml` changes:
-
-```bash
-refresh Nix FOD hashes for genie
-refresh all stale Nix FOD hashes with your repo workflow
-```
-
 ## Quick Start
 
 ### Enter the dev shell
@@ -137,22 +122,23 @@ This repo uses `devenv` to provide a consistent toolchain. Run commands inside t
 devenv shell
 ```
 
-### Install Dependencies
+### Publish Dependency Views
 
 ```bash
-devenv tasks run bun:install
+devenv tasks run buck2:editor:publish
 ```
 
-### Build All Packages
+### Check All TypeScript Projects
 
 ```bash
-devenv tasks run ts:build
+devenv tasks run buck2:check
 ```
 
-Fast emit-only build (skips full type checking):
+Publish Buck-produced declarations to package `dist` directories for source-side
+consumers such as type-aware lint:
 
 ```bash
-devenv tasks run ts:emit
+devenv tasks run buck2:typescript:materialize-dist
 ```
 
 ### Run Tests
@@ -174,16 +160,10 @@ devenv tasks run test:watch
 
 ### Type Checking
 
-Continuous type checking across the entire monorepo (project references):
+Buck is the only repository-wide TypeScript check authority:
 
 ```bash
-devenv tasks run ts:build-watch
-```
-
-Or one-off type check:
-
-```bash
-devenv tasks run ts:check
+devenv tasks run buck2:check
 ```
 
 ### Linting

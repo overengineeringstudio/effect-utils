@@ -2,6 +2,7 @@ import process from 'node:process'
 
 import { describe, expect, it } from 'vitest'
 
+import releaseTargetsProjection from '../../nix/buck2-products/targets.json.genie.ts'
 import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { withJavaScriptCandidates } from './javascript-candidates.ts'
 import {
@@ -37,6 +38,13 @@ const expectedPublications = [
     runtimeKind: 'bun',
   },
   {
+    label: '//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate',
+    module: 'gh-ci-utils.js',
+    productKind: 'cli',
+    productName: 'gh-ci-utils',
+    runtimeKind: 'node',
+  },
+  {
     label: '//packages/@overeng/megarepo:megarepo-candidate',
     module: 'mr.js',
     productKind: 'cli',
@@ -48,7 +56,7 @@ const expectedPublications = [
     module: 'notion.js',
     productKind: 'cli',
     productName: 'notion-cli',
-    runtimeKind: 'node',
+    runtimeKind: 'bun',
   },
   {
     label: '//packages/@overeng/notion-cli:notion-db-candidate',
@@ -79,11 +87,18 @@ const expectedPublications = [
     runtimeKind: 'node',
   },
   {
+    label: '//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate',
+    module: 'oxc-config-stylex-upstream-plugin.js',
+    productKind: 'module',
+    productName: 'oxc-config-stylex-upstream-plugin',
+    runtimeKind: 'node',
+  },
+  {
     label: '//packages/@overeng/tui-stories:tui-stories-candidate',
     module: 'tui-stories.js',
     productKind: 'cli',
     productName: 'tui-stories',
-    runtimeKind: 'node',
+    runtimeKind: 'bun',
   },
 ] as const
 
@@ -94,9 +109,9 @@ const expectUnique = (values: readonly string[]): void => {
 }
 
 describe('JavaScript product registry', () => {
-  it('declares the ten exact publication labels and product contracts', () => {
+  it('declares the twelve exact publication labels and product contracts', () => {
     expect(javaScriptProductPublications).toEqual(expectedPublications)
-    expect(javaScriptProductPublications).toHaveLength(10)
+    expect(javaScriptProductPublications).toHaveLength(12)
   })
 
   it('keeps every publication identity and package-local target unique', () => {
@@ -111,19 +126,63 @@ describe('JavaScript product registry', () => {
 
   it('serves each package entrypoint from the sole registry declaration', () => {
     for (const packagePath of productPackagePaths) {
-      expect(
-        javaScriptProductsFor(packagePath as keyof typeof javaScriptProductRegistry),
-      ).toBe(javaScriptProductRegistry[packagePath as keyof typeof javaScriptProductRegistry])
+      expect(javaScriptProductsFor(packagePath as keyof typeof javaScriptProductRegistry)).toBe(
+        javaScriptProductRegistry[packagePath as keyof typeof javaScriptProductRegistry],
+      )
     }
   })
 
-  it('keeps product package admissions editor non-consumers with targets clear of authority', () => {
+  it('declares the two oxc-config plugin entry points as separate products', () => {
+    expect(javaScriptProductsFor('packages/@overeng/oxc-config')).toEqual([
+      expect.objectContaining({
+        entrypoint: 'src/mod.ts',
+        productName: 'oxc-config',
+      }),
+      expect.objectContaining({
+        entrypoint: 'src/stylex-upstream-plugin.ts',
+        productName: 'oxc-config-stylex-upstream-plugin',
+      }),
+    ])
+  })
+
+  it('projects the registry into the fingerprinted release target inventory', () => {
+    const inventory = JSON.parse(releaseTargetsProjection.stringify(genieContext)) as {
+      products: Array<{ name: string; target: string }>
+      provenance: {
+        fingerprint: string
+        generator: string
+        regenerationCommand: string
+        semanticInputs: string[]
+        source: string
+      }
+      schemaVersion: number
+    }
+
+    expect(inventory).toEqual({
+      products: expectedPublications.map(({ label, productName }) => ({
+        name: productName,
+        target: `effect_utils${label}`,
+      })),
+      provenance: {
+        fingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        generator: 'effect-utils/genie/buck2-javascript-release-targets',
+        regenerationCommand: 'devenv tasks run genie:run',
+        semanticInputs: [
+          'genie/buck2/javascript-product-registry.ts',
+          'nix/buck2-products/targets.json.genie.ts',
+        ],
+        source: 'nix/buck2-products/targets.json.genie.ts',
+      },
+      schemaVersion: 1,
+    })
+  })
+
+  it('keeps product targets clear of TypeScript authority targets', () => {
     const admissions = Object.values(buck2TypeScriptAdmissions)
     const authorityTargetNames: Record<string, true> = { typecheck: true, dist: true }
     for (const packagePath of productPackagePaths) {
       const admission = admissions.find((candidate) => candidate.packagePath === packagePath)
       expect(admission, `missing TypeScript admission for ${packagePath}`).toBeDefined()
-      expect(admission?.editorViewConsumer).toBe(false)
       for (const product of javaScriptProductsFor(
         packagePath as keyof typeof javaScriptProductRegistry,
       )) {

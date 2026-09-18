@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Buck2 checks**: Add standalone project roots, Nix-owned capability
+  projections shared with composed roots, registry-derived `//:quick` and
+  `//:all` aggregates, check-verb wiring, and a guard against untracked
+  Buck-versus-legacy producer overlap.
+
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full
   checks.
@@ -33,6 +38,9 @@ All notable changes to this project will be documented in this file.
   cross-repository reuse, cost ledger, falsification spikes), open for
   acceptance or rejection. Roadmap Phase 6 and the composition open questions
   reference the proposal; no ratified requirement changes.
+- **Buck2**: added a root-owned `capabilities//` cell, declared-closure support
+  for pnpm tarball URL lock entries, and a deterministic npm tarball product
+  for the Buck-built `@overeng/utils` dist tree.
 - **@overeng/notion-effect-client**: added bounded file uploads through the shared
   HTTP client, with single-part uploads through 20 MiB, sequential 10 MiB
   multipart uploads above that threshold, and a configurable `maxBytes` limit
@@ -198,6 +206,10 @@ All notable changes to this project will be documented in this file.
 - **Genie CI**: Stop exposing `GITHUB_TOKEN` through the standard job
   environment. GitHub CLI and authenticated Nix steps now receive it only in
   their step-local environment.
+- **@overeng/megarepo**: Generate bounded, composition-owned Watchman root
+  configuration, reload only the affected project watch when it changes,
+  durably restore the prior registration across rollback and interrupted
+  publication recovery, and preserve member source and capability invalidation.
 
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
@@ -245,6 +257,21 @@ All notable changes to this project will be documented in this file.
   top-level Buck member manifest fields while retaining strict validation of
   known fields; generate composed roots during `store worktree new`; and
   preserve failed `mr` exit codes in shared devenv tasks.
+- **@overeng/genie**: YAML block scalars no longer indent empty lines, keeping
+  generated workflows free of trailing whitespace.
+
+- **@overeng/megarepo**: unchanged composed members now preserve validated
+  published overlays instead of advancing the member mount and rebuilding every
+  declared overlay. Aggregate no-op apply skips Buck when all overlay identities
+  are already current.
+
+- **@overeng/megarepo**: composition capability realizations stay GC-rooted
+  until their resolution handles are released, preventing automatic Nix GC from
+  deleting projected executables during long aggregate overlay publication.
+
+- **nix/oxlint-with-plugins.nix**: include `tsgolint` in the wrapper's runtime
+  closure so type-aware linting remains hermetic inside Buck actions rather than
+  depending on the developer shell's `PATH`.
 - **CI**: keep draft assistant PRs mergeable by completing the auto-review job
   successfully when no review request is needed.
 - **CI**: stop requiring `main`-only Notion integration, live-deploy, and
@@ -362,6 +389,40 @@ All notable changes to this project will be documented in this file.
   reports 12.4.1, the store layout stays `v11`, and `pnpm install
 --frozen-lockfile --ignore-scripts` over all 39 workspace projects succeeds
   with the lockfile unchanged.
+- **Buck2 / TypeScript authority**: transfer all 39 TypeScript projects to
+  package-local Buck targets, including the independent React Inspector strict
+  consumer and the five bootstrap-critical packages. Delete the root
+  `tsconfig.check.json` / `tsconfig.emit.json` producers and `ts:*` task graph;
+  CI and aggregate checks now use `buck2:check` as the only check authority.
+  Declaration publication accepts only Buck products from a reciprocal
+  composition worktree, with no source-compiler comparison fallback. The
+  staged Buck action runners move into their owning `@overeng/buck2-tools`
+  package so admitting that package does not leave its sources root-owned.
+- **Buck2 / static authority**: move formatting, type-aware linting, repository
+  policy, workspace inventory, and bundle smoke checks to Buck actions over
+  generated source sets. The census derives pnpm members from the generated
+  workspace manifest and includes Nix-only Cargo packages, so nested workspace
+  members and non-pnpm Buck packages cannot silently leave the static-check
+  surface.
+
+- **Buck2 / editor authority**: replace the repository pnpm install with 39
+  atomically published Buck dependency views: one root source-generator closure
+  plus every workspace package. A committed-graph bootstrap makes
+  `genie:check` runnable without trusting stale generated graph evidence; fresh
+  generation and composition then replay whole-workspace ownership, publication,
+  and staleness checks. Source tests resolve the Nix-built `node-pty` through a
+  process-wide Node resolver hook instead of mutating published `node_modules`.
+  Root install, native graft, package-specific editor tasks, install dashboards,
+  and install-dependent CI and developer entrypoints are removed.
+
+- **Buck2 / Rust product authority**: compile the complete five-member Rust
+  workspace through Buck, fetch Cargo-locked third-party crates as hash-pinned
+  Buck archives, and publish `otelite` plus `otel-scrape` as strict,
+  content-addressed native products for x86_64 Linux, aarch64 Linux, and
+  aarch64 Darwin. Nix now independently verifies and imports those immutable
+  assets; flake packages, apps, devenv, and observability consume the imports.
+  The superseded `rustPlatform.buildRustPackage` product derivations, their
+  narrow-source helper, and the direct Cargo release build are removed.
 
 - **pnpm**: move the ecosystem pin from pnpm 11.8.0 to 12.3.4 and retire the
   separate lock mutator. pnpm 12 ships the CLI as a native Rust executable, so
@@ -1209,12 +1270,23 @@ publish exited 1` with nothing to diagnose it by. `CpAMemberMountError` now
   workflow drops from 518,102 to 466,190 bytes, leaving 33,810 bytes below the
   enforced admission ceiling.
 
+- **Buck2 unit tests**: transfer 32 bounded package lanes to hermetic Buck
+  execution, publish exact Vitest collection artifacts, and generate a
+  fail-closed ownership partition for all 433 repository test files.
+  Source-side complements and dedicated integration/Playwright owners remain
+  explicit; the baseline gate independently reconciles the filesystem census,
+  generated authority, Buck collection results, and source reports.
+- **@overeng/tui-react**: restore its dedicated Playwright owner and current
+  seven-tab Storybook contracts, make preview state updates observable, expose
+  terminal text to assistive technology, and keep Node-only stdout modules
+  outside browser evaluation.
+
 ### Removed
 
 - **context/effect-4/**: the flip-era migration docs (alignment register, idiom
   catalog, differential recipes, ops manuals). The executable
   baseline-collection gate moved to
-  `@overeng/utils-dev/check-baseline-test-collection.ts`. The empty
+  `@overeng/utils-dev/src/check-baseline-test-collection.ts`. The empty
   `utilsPatches` projection registry is gone from genie config.
 - Retire the dormant Buck closure-compiler and package-evidence regime, including
   its unused Buck rules, Rust tools, Nix capabilities, and projection tests;

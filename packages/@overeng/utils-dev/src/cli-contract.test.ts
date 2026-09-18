@@ -63,10 +63,32 @@ describe('normalizeCliOutput', () => {
     it('masks volatile fiber ids, package versions, and source positions when enabled', () => {
       const input =
         '[time] ERROR (#73): ~effect/cli/CliError/ShowHelp\n' +
-        'at effect@4.0.0-rc.112/node_modules/effect/dist/unstable/cli/Command.js:1077:34'
-      expect(normalizeCliOutput({ input, effectCliInternals: true })).toBe(
+        'at effect@4.0.0-rc.112/node_modules/effect/dist/unstable/cli/Command.js:1077:34\n' +
+        'at /repo/node_modules/.pnpm/effect@4.0.0-rc.112/node_modules/effect/dist/unstable/cli/Command.js:1075:34\n' +
+        'at /tmp/buck-out/entry/node_modules/effect/dist/unstable/cli/Command.js:1070:34'
+      expect(
+        normalizeCliOutput({ input, repoRoot: '/repo', effectCliInternals: true }),
+      ).toBe(
         '[time] ERROR (#<fiber>): ~effect/cli/CliError/ShowHelp\n' +
+          'at effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>\n' +
+          'at <repo>/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>\n' +
           'at effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>',
+      )
+    })
+
+    it('masks Effect frames materialized through a Buck dependency view', () => {
+      const input =
+        'at <anonymous> (/repo/buck2/dependencies/__entry_effect_4_0_0_rc_112_e9a91e66f1f2__/entry/node_modules/effect/dist/unstable/cli/Command.js:1077:34)'
+      expect(normalizeCliOutput({ input, effectCliInternals: true })).toBe(
+        'at <anonymous> (effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>)',
+      )
+    })
+
+    it('masks Effect frames materialized through an editor dependency view', () => {
+      const input =
+        'at <anonymous> (/repo/packages/.editor-view/.store/root-abcd/.backing/0143/node_modules/effect/dist/unstable/cli/Command.js:1077:34)'
+      expect(normalizeCliOutput({ input, repoRoot: '/repo', effectCliInternals: true })).toBe(
+        'at <anonymous> (<repo>/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>)',
       )
     })
   })

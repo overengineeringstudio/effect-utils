@@ -5,9 +5,9 @@
 #     (inputs.effect-utils.devenvModules.tasks.nix-cli {
 #       cliPackages = [
 #         {
-#           name = "oxlint-npm";
-#           flakeRef = ".#oxlint-npm";
-#           hashSource = "nix/oxc-config-plugin.nix";
+#           name = "source-built-cli";
+#           flakeRef = ".#source-built-cli";
+#           hashSource = "nix/source-built-cli.nix";
 #           lockfile = "pnpm-lock.yaml";
 #         }
 #       ];
@@ -44,6 +44,7 @@
 #   - nix:flake:check - Runs `nix flake check` (validates entire flake, all packages)
 {
   cliPackages ? [ ],
+  dependencyTask ? "pnpm:install",
 }:
 { pkgs, lib, ... }:
 let
@@ -311,9 +312,9 @@ let
     "nix:check:${pkg.name}" = {
       description = "Check if ${pkg.name} hash is stale (full build)";
       exec = trace.exec "nix:check:${pkg.name}" "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'";
-      # Depends on the full workspace pnpm:install so the staged build inputs
-      # stay synchronized with the authoritative repo-root lockfile.
-      after = lib.optional (pkg ? lockfile) "pnpm:install";
+      # Consumers may order lockfile-backed inputs after their dependency
+      # publisher. A null task keeps the Nix check independent.
+      after = lib.optional (pkg ? lockfile && dependencyTask != null) dependencyTask;
     };
   };
 
@@ -349,15 +350,30 @@ let
   hasPackages = cliPackages != [ ];
 
 in
-lib.mkIf hasPackages {
+{
   tasks = lib.mkMerge (
-    # Per-package tasks
-    (map mkBuildTask cliPackages)
-    ++ (map mkCheckTask cliPackages)
-    ++ (map mkQuickCheckTask packagesWithLockfile)
-    ++
-      # Aggregate tasks
-      [
+    [
+      {
+        # These are repository-wide Nix validation surfaces, not pnpm FOD
+        # surfaces. Keep them present even when no source-built CLI packages
+        # remain so check:quick and check:all retain valid dependency edges.
+        "nix:check:quick" = {
+          description = "Quick lockfile fingerprint check for all CLI packages";
+          after = map (p: "nix:check:quick:${p.name}") packagesWithLockfile;
+        };
+
+        "nix:flake:check" = {
+          description = "Full nix flake validation (builds all flake packages)";
+          exec = trace.exec "nix:flake:check" "${pkgs.nix}/bin/nix flake check";
+        };
+      }
+    ]
+    ++ lib.optionals hasPackages (
+      # Source-build and FOD checks exist only when consumers declare packages.
+      (map mkBuildTask cliPackages)
+      ++ (map mkCheckTask cliPackages)
+      ++ (map mkQuickCheckTask packagesWithLockfile)
+      ++ [
         {
           "nix:build" = {
             description = "Build all CLI Nix packages";
@@ -367,19 +383,10 @@ lib.mkIf hasPackages {
           "nix:check" = {
             description = "Check if any CLI hashes are stale (for CI, full build)";
             exec = trace.exec "nix:check" "${sequentialNixCheckScript}";
-            after = lib.optional (packagesWithLockfile != [ ]) "pnpm:install";
-          };
-
-          "nix:check:quick" = {
-            description = "Quick lockfile fingerprint check for all CLI packages";
-            after = map (p: "nix:check:quick:${p.name}") packagesWithLockfile;
-          };
-
-          "nix:flake:check" = {
-            description = "Full nix flake validation (builds all flake packages)";
-            exec = trace.exec "nix:flake:check" "${pkgs.nix}/bin/nix flake check";
+            after = lib.optional (packagesWithLockfile != [ ] && dependencyTask != null) dependencyTask;
           };
         }
       ]
+    )
   );
 }

@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
+import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import {
   createGenieOutput,
   type GenieOutput,
@@ -68,6 +69,7 @@ const snapshotBaselineFor = (testModule: string): string =>
 
 const commonSemanticInputs = [
   'buck2/dependencies/BUCK.genie.ts',
+  'buck2/static_checks.bzl',
   'buck2/dependencies/pnpm-lock.sha256.json.genie.ts',
   'genie/buck2/mod.ts',
   'genie/buck2/typescript-package-projection.ts',
@@ -89,7 +91,7 @@ const safeSourceSegment = (segment: string): boolean =>
   segment !== '..' &&
   segment.includes('/') === false &&
   segment.includes('\\') === false &&
-  /^[A-Za-z0-9._@+-]+$/.test(segment)
+  /^[A-Za-z0-9._@+$-]+$/.test(segment)
 
 const discoverPackageFiles = ({
   packagePath,
@@ -139,6 +141,23 @@ const discoverPackageFiles = ({
   return sources.toSorted((left, right) => compareStrings({ left, right }))
 }
 
+/** Complete byte-sorted test-module census staged for one package's declared lanes. */
+export const discoverCollectableTestModules = ({
+  packagePath,
+  repoRoot,
+  sourceRoots,
+}: {
+  readonly packagePath: string
+  readonly repoRoot?: string
+  readonly sourceRoots: readonly string[]
+}): readonly string[] =>
+  discoverPackageFiles({
+    packagePath,
+    ...(repoRoot === undefined ? {} : { repoRoot }),
+    sourceRoots,
+    admit: isCollectableTestModule,
+  })
+
 const admitSourceExtension = (relativePath: string): boolean =>
   sourceExtensionSet[path.posix.extname(relativePath)] === true
 
@@ -161,29 +180,6 @@ const discoverPackageSources = ({
 
 /** The one rule for which declarations are published verbatim instead of compiled. */
 const isHandwrittenDeclaration = (relativePath: string): boolean => relativePath.endsWith('.d.ts')
-
-/**
- * Handwritten declarations a package publishes verbatim into its `dist`.
- *
- * The emit action copies these instead of compiling them, so the detached
- * materializer has to stage the identical set before it compares a published
- * `dist`. Both the projection and that materializer derive the set here;
- * restating the rule is how every copied declaration used to read as staleness.
- */
-export const buck2TypeScriptDeclarationSources = ({
-  packagePath,
-  repoRoot,
-  sourceRoots,
-}: {
-  readonly packagePath: string
-  readonly repoRoot?: string
-  readonly sourceRoots: readonly string[]
-}): readonly string[] =>
-  discoverPackageSources({
-    packagePath,
-    ...(repoRoot === undefined ? {} : { repoRoot }),
-    sourceRoots,
-  }).filter(isHandwrittenDeclaration)
 
 const starlarkString = (value: string): string => JSON.stringify(value)
 
@@ -242,6 +238,20 @@ const testRuleNames = {
   vitest: 'vitest_test',
 } as const satisfies Readonly<Record<string, string>>
 
+/** Rule that reports one Vitest lane's test inventory instead of running it. */
+const vitestCollectRuleName = 'vitest_collect'
+/** Suffix of the collection target derived beside a Vitest execution lane. */
+export const buck2TestCollectionTargetSuffix = '_collect'
+/**
+ * Attributes the collect rule does not accept. Both bound a running test, and collection
+ * runs none; everything else the execution lane validated is passed through unchanged so the
+ * inventory is the selection the lane executes rather than a second, drifting declaration.
+ */
+const collectUnsupportedAttributes: Readonly<Record<string, true>> = {
+  hook_timeout_ms: true,
+  timeout_ms: true,
+}
+
 /** Attested support tool in the hub toolchains package; the runner never resolves from PATH. */
 export type Buck2TestToolLabel = `//buck2/toolchains:${string}`
 
@@ -252,6 +262,13 @@ type Buck2TypeScriptPackageTestTargetBase = {
   readonly testFiles?: readonly string[]
   /** Package-relative paths removed from the lane's selection. */
   readonly excludes?: readonly string[]
+  /**
+   * Source tasks that own specific files outside the bounded selection. Keys are
+   * package-relative test paths; every other unbounded file uses the derived complement task.
+   */
+  readonly sourceOwners?: Readonly<Record<string, string>>
+  /** Extra ordering required by the derived source-side complement task. */
+  readonly unboundedAfter?: readonly string[]
   /** Literal environment the action declares; the runner rejects non-literal values. */
   readonly env?: Readonly<Record<string, string>>
   /** Repository-relative sources exposed to the lane under an environment name. */
@@ -316,7 +333,11 @@ export type Buck2TypeScriptPackageTestDataRoot = {
 
 type ProjectedTestTarget = {
   readonly name: string
+  /** Derived sibling that collects this lane's inventory; only Vitest lanes have one. */
+  readonly collectName: string | undefined
   readonly rule: (typeof testRuleNames)[keyof typeof testRuleNames]
+  /** Every rule symbol the projected targets need loaded, in declaration order. */
+  readonly rules: readonly string[]
   readonly configuredInputKeys: readonly (readonly [string, string])[]
   readonly lines: readonly string[]
   readonly semanticData: unknown
@@ -431,6 +452,16 @@ const projectTestTarget = ({
     .toSorted((left, right) => compareStrings({ left, right }))
     .map((value) => requireEnvironmentName({ field: 'test inherited env name', value }))
   const cacheable = target.cacheable ?? true
+  if (target.runner === 'vitest' && inheritedEnv.length > 0) {
+    throw new Error(
+      `Vitest target ${target.name} cannot inherit ${inheritedEnv.join(', ')} because its derived collection action requires every input in the action identity`,
+    )
+  }
+  if (target.runner === 'vitest' && cacheable === false) {
+    throw new Error(
+      `Vitest target ${target.name} cannot be uncacheable because its derived collection action has no per-action remote-cache read switch`,
+    )
+  }
   if (inheritedEnv.length > 0 && cacheable === true) {
     throw new Error(
       `Test target ${target.name} inherits ${inheritedEnv.join(', ')} from the ambient environment, whose values are outside the action identity, so it must declare cacheable: false`,
@@ -545,23 +576,51 @@ const projectTestTarget = ({
     ],
   ]
   const rule = testRuleNames[target.runner]
+  const renderTarget = ({
+    attributes,
+    name,
+    rule: targetRule,
+  }: {
+    attributes: readonly (readonly [string, readonly string[] | undefined])[]
+    name: string
+    rule: string
+  }): readonly string[] => [
+    `${targetRule}(`,
+    `    name = ${starlarkString(name)},`,
+    '    package_tree = ":test_package_tree",',
+    ...attributes
+      .toSorted(([left], [right]) => compareStrings({ left, right }))
+      .flatMap(([, lines]) => lines ?? []),
+    renderBuck2Visibility({ visibility }),
+    ')',
+    '',
+  ]
+  // Collection is the same lane observed instead of executed, so it is derived from the
+  // attribute set the execution lane already validated — including the derived
+  // `read_config` keys, which the invoking task therefore supplies exactly once.
+  const collectName =
+    vitest === undefined ? undefined : `${target.name}${buck2TestCollectionTargetSuffix}`
   return {
     name: target.name,
+    collectName,
     rule,
+    rules: collectName === undefined ? [rule] : [rule, vitestCollectRuleName],
     configuredInputKeys,
     lines: [
-      `${rule}(`,
-      `    name = ${starlarkString(target.name)},`,
-      '    package_tree = ":test_package_tree",',
-      ...optionalAttributes
-        .toSorted(([left], [right]) => compareStrings({ left, right }))
-        .flatMap(([, lines]) => lines ?? []),
-      renderBuck2Visibility({ visibility }),
-      ')',
-      '',
+      ...renderTarget({ attributes: optionalAttributes, name: target.name, rule }),
+      ...(collectName === undefined
+        ? []
+        : renderTarget({
+            attributes: optionalAttributes.filter(
+              ([attribute]) => collectUnsupportedAttributes[attribute] !== true,
+            ),
+            name: collectName,
+            rule: vitestCollectRuleName,
+          })),
     ],
     semanticData: {
       cacheable,
+      collectName,
       configInputs,
       configuredInputKeys,
       env,
@@ -587,9 +646,17 @@ export type Buck2WorkspaceSibling = {
   readonly sourceRoots?: readonly string[]
 }
 
-export type Buck2TypeScriptAuthorityMetadata = {
-  readonly declarationEntrypoint: string
+export type Buck2TypeScriptProjectAuthorityMetadata = {
+  /** Repository project identity; defaults to the package path for its primary project. */
+  readonly projectPath?: string
+  /** Package-relative tsconfig consumed by this project's typecheck action. */
   readonly projectFile: string
+  /** Package-local typecheck target; defaults to `typecheck` for the primary project. */
+  readonly typecheckTargetName?: string
+  /** Required only when this project publishes declarations through the package `dist` target. */
+  readonly declarationEntrypoint?: string
+  /** Package-relative compiler inputs outside the declared source roots. */
+  readonly projectInputs?: readonly string[]
 }
 
 export type Buck2TypeScriptPackageProjection = {
@@ -599,7 +666,11 @@ export type Buck2TypeScriptPackageProjection = {
   readonly projectionSource: string
   readonly sourceRoots: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
-  readonly authority?: Buck2TypeScriptAuthorityMetadata
+  /** Project-level authority declarations; one package may own more than one root project. */
+  readonly authorities: readonly [
+    Buck2TypeScriptProjectAuthorityMetadata,
+    ...Buck2TypeScriptProjectAuthorityMetadata[],
+  ]
   readonly tests?: Buck2TypeScriptPackageTests
   readonly testDataRoots?: readonly Buck2TypeScriptPackageTestDataRoot[]
 }
@@ -611,14 +682,67 @@ export const buck2TypeScriptPackageProjection = ({
   projectionSource,
   sourceRoots,
   workspaceSiblings = [],
-  authority,
+  authorities,
   tests,
   testDataRoots = [],
 }: Buck2TypeScriptPackageProjection): GenieOutput<unknown> => {
-  const projectFile = authority?.projectFile ?? 'tsconfig.json'
-  if (safeSourceSegment(projectFile) === false) {
-    throw new Error(`Unsafe package project file: ${projectFile}`)
+  const projectAuthorities = authorities.map((authority) => {
+    const projectPath = authority.projectPath ?? packagePath
+    if (projectPath !== packagePath && projectPath.startsWith(`${packagePath}/`) === false) {
+      throw new Error(`TypeScript authority project is outside its package: ${projectPath}`)
+    }
+    if (safeSourceSegment(authority.projectFile) === false) {
+      throw new Error(`Unsafe package project file: ${authority.projectFile}`)
+    }
+    const typecheckTargetName =
+      authority.typecheckTargetName ?? (projectPath === packagePath ? 'typecheck' : undefined)
+    if (typecheckTargetName === undefined) {
+      throw new Error(`Additional TypeScript project ${projectPath} must name its typecheck target`)
+    }
+    if (testTargetNamePattern.test(typecheckTargetName) === false) {
+      throw new Error(`Unsafe TypeScript typecheck target name: ${typecheckTargetName}`)
+    }
+    if (authority.declarationEntrypoint !== undefined && projectPath !== packagePath) {
+      throw new Error(`Only the primary package project may publish declarations: ${projectPath}`)
+    }
+    const projectInputs = [...(authority.projectInputs ?? [])]
+      .map((value) => requireRelativeTestPath({ field: 'TypeScript project input', value }))
+      .toSorted((left, right) => compareStrings({ left, right }))
+    for (const projectInput of projectInputs) {
+      if (admitSourceExtension(projectInput) === false) {
+        throw new Error(`TypeScript project input has an unsupported extension: ${projectInput}`)
+      }
+      if (existsSync(path.join(process.cwd(), packagePath, projectInput)) === false) {
+        throw new Error(`TypeScript project input does not exist: ${packagePath}/${projectInput}`)
+      }
+    }
+    return { ...authority, projectInputs, projectPath, typecheckTargetName }
+  })
+  const primaryProjects = projectAuthorities.filter(
+    ({ projectPath }) => projectPath === packagePath,
+  )
+  if (primaryProjects.length !== 1) {
+    throw new Error(`${packagePath} must declare exactly one primary TypeScript authority project`)
   }
+  const projectPaths = projectAuthorities.map(({ projectPath }) => projectPath)
+  const targetNames = projectAuthorities.map(({ typecheckTargetName }) => typecheckTargetName)
+  if (new Set(projectPaths).size !== projectPaths.length) {
+    throw new Error(`Duplicate TypeScript authority project path in ${packagePath}`)
+  }
+  if (new Set(targetNames).size !== targetNames.length) {
+    throw new Error(`Duplicate TypeScript typecheck target in ${packagePath}`)
+  }
+  if (
+    projectAuthorities.filter(({ declarationEntrypoint }) => declarationEntrypoint !== undefined)
+      .length > 1
+  ) {
+    throw new Error(`${packagePath} declares more than one TypeScript declaration publisher`)
+  }
+  const primaryAuthority = primaryProjects[0]
+  if (primaryAuthority === undefined) {
+    throw new Error(`${packagePath} has no primary TypeScript authority project`)
+  }
+  const projectFile = primaryAuthority.projectFile
   // One walk, two trees: the compile tree takes the TypeScript sources that emit,
   // typecheck and materialization own, while the test tree also takes the modules the
   // runners collect (`.jsx` specs) and the snapshot baselines those modules read back.
@@ -628,7 +752,12 @@ export const buck2TypeScriptPackageProjection = ({
     admit: (relativePath) =>
       admitSourceExtension(relativePath) === true || isCollectableTestModule(relativePath) === true,
   })
-  const packageSources = censusFiles.filter(admitSourceExtension)
+  const packageSources = [
+    ...new Set([
+      ...censusFiles.filter(admitSourceExtension),
+      ...projectAuthorities.flatMap(({ projectInputs }) => projectInputs),
+    ]),
+  ].toSorted((left, right) => compareStrings({ left, right }))
   if (packageSources.length === 0) {
     throw new Error('Package source census found no TypeScript inputs')
   }
@@ -669,9 +798,33 @@ export const buck2TypeScriptPackageProjection = ({
         `The first declared test target of ${packageName} must be named ${defaultTestTargetName}, not ${tests[0].name}`,
       )
     }
-    const names = testTargets.map((target) => target.name)
+    // Declared and derived names share one Buck namespace, so a lane literally named
+    // `<other lane>_collect` would silently shadow that lane's inventory target.
+    const names = testTargets.flatMap((target) =>
+      target.collectName === undefined ? [target.name] : [target.name, target.collectName],
+    )
     if (new Set(names).size !== names.length) {
       throw new Error(`Duplicate test target names for ${packageName}: ${names.join(', ')}`)
+    }
+  }
+  const reservedTargetNames = new Set([
+    'dist',
+    'editor_inputs',
+    'editor_view_inputs',
+    'node_modules',
+    'package.json',
+    'package_tree',
+    'static_sources',
+    'test_package_tree',
+    ...testTargets.flatMap(({ collectName, name }) =>
+      collectName === undefined ? [name] : [name, collectName],
+    ),
+  ])
+  for (const typecheckTargetName of targetNames) {
+    if (reservedTargetNames.has(typecheckTargetName)) {
+      throw new Error(
+        `TypeScript target ${typecheckTargetName} collides with generated Buck target in ${packagePath}`,
+      )
     }
   }
   // Every lane runs inside the test package tree, so the config it loads and the files that
@@ -705,8 +858,15 @@ export const buck2TypeScriptPackageProjection = ({
       emptyCensusMessage: `Test data census found no ${dataRoot.extensions.join(', ')} inputs under ${packagePath}/${dataRoot.root}`,
     })
   })
-  const projectFileEntries: readonly (readonly [string, string])[] =
-    projectFile === 'tsconfig.json' ? [] : [[projectFile, projectFile]]
+  const projectFileEntries: readonly (readonly [string, string])[] = [
+    ...new Set(
+      projectAuthorities
+        .map(({ projectFile: authorityProjectFile }) => authorityProjectFile)
+        .filter((authorityProjectFile) => authorityProjectFile !== 'tsconfig.json'),
+    ),
+  ]
+    .toSorted((left, right) => compareStrings({ left, right }))
+    .map((authorityProjectFile) => [authorityProjectFile, authorityProjectFile] as const)
   const identityEntries = (files: readonly string[]): readonly (readonly [string, string])[] =>
     files.map((file) => [file, file] as const)
   // The compile tree: typecheck, emit and the editor read it, so it carries the TypeScript
@@ -782,12 +942,22 @@ export const buck2TypeScriptPackageProjection = ({
       sibling.packageTreeTarget,
     ])
     .toSorted(([left], [right]) => compareStrings({ left, right }))
+  const staticSourceExcludes = rootWorkspaceMemberPaths
+    .filter((candidate) => candidate.startsWith(`${packagePath}/`))
+    .map((candidate) => `${path.posix.relative(packagePath, candidate)}/**`)
+    .toSorted((left, right) => compareStrings({ left, right }))
   const semanticInputs = [
     ...commonSemanticInputs,
+    'package.json.genie.ts',
     projectionSource,
     `${packagePath}/package.json.genie.ts`,
     `${packagePath}/tsconfig.json.genie.ts`,
-    ...(projectFile === 'tsconfig.json' ? [] : [`${packagePath}/${projectFile}.genie.ts`]),
+    ...projectFileEntries.map(
+      ([authorityProjectFile]) => `${packagePath}/${authorityProjectFile}.genie.ts`,
+    ),
+    ...projectAuthorities.flatMap(({ projectInputs }) =>
+      projectInputs.map((projectInput) => `${packagePath}/${projectInput}`),
+    ),
     ...sourceRoots.flatMap((sourceRoot) =>
       sourceExtensions.map((extension) => `${packagePath}/${sourceRoot}/**/*${extension}`),
     ),
@@ -827,8 +997,9 @@ export const buck2TypeScriptPackageProjection = ({
     declarationSources,
     packageTreeRuntime: packageTreeRuntime.label,
     packageTreeRuntimeEntry: runtimeEntry,
-    projectFile,
+    projectAuthorities,
     sourceRoots,
+    staticSourceExcludes,
     testDataFiles,
     testDataRoots,
     testPackageFiles: testPackageFileEntries.map(([destination]) => destination),
@@ -838,14 +1009,66 @@ export const buck2TypeScriptPackageProjection = ({
   }
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-typescript-package-projection',
-    schemaVersion: 6,
+    schemaVersion: 11,
     semanticData: data,
   })
+
+  const renderTypecheckTarget = ({
+    name,
+    targetProjectFile,
+  }: {
+    readonly name: string
+    readonly targetProjectFile: string
+  }): readonly string[] => [
+    'tsgo_typecheck(',
+    `    name = ${starlarkString(name)},`,
+    '    package_tree = ":package_tree",',
+    ...(targetProjectFile === 'tsconfig.json'
+      ? []
+      : [`    project = ${starlarkString(targetProjectFile)},`]),
+    renderBuck2Visibility({ visibility }),
+    ')',
+    '',
+  ]
+  const renderDistTarget = ({
+    declarationEntrypoint,
+    targetProjectFile,
+  }: {
+    readonly declarationEntrypoint: string
+    readonly targetProjectFile: string
+  }): readonly string[] => [
+    'tsgo_emit(',
+    '    name = "dist",',
+    '    package_tree = ":package_tree",',
+    ...renderMap({
+      name: 'declaration_sources',
+      entries: declarationSources.map((source) => [source, source]),
+    }),
+    ...(targetProjectFile === 'tsconfig.json'
+      ? []
+      : [`    project = ${starlarkString(targetProjectFile)},`]),
+    `    declaration_entrypoint = ${starlarkString(declarationEntrypoint)},`,
+    renderBuck2Visibility({ visibility }),
+    ')',
+    '',
+  ]
+  const typeScriptTargetLines = projectAuthorities.flatMap((authority) => [
+    ...renderTypecheckTarget({
+      name: authority.typecheckTargetName,
+      targetProjectFile: authority.projectFile,
+    }),
+    ...(authority.declarationEntrypoint === undefined
+      ? []
+      : renderDistTarget({
+          declarationEntrypoint: authority.declarationEntrypoint,
+          targetProjectFile: authority.projectFile,
+        })),
+  ])
 
   const stringify = (): string => {
     const lines = [
       `# Projection source: ${projectionSource}`,
-      '# Projection schema version: 6',
+      '# Projection schema version: 11',
       '# Projection generator: effect-utils/genie/buck2-typescript-package-projection',
       `# Semantic fingerprint: ${fingerprint}`,
       `# Semantic inputs: ${semanticInputs.join(', ')}`,
@@ -853,15 +1076,27 @@ export const buck2TypeScriptPackageProjection = ({
       '',
       'load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")',
       'load("//buck2:editor_view.bzl", "editor_view_inputs")',
+      'load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")',
       ...(testTargets.length === 0
         ? []
         : [
-            `load("//buck2:javascript.bzl", ${[...new Set(testTargets.map((target) => target.rule))]
+            `load("//buck2:javascript.bzl", ${[
+              ...new Set(testTargets.flatMap((target) => target.rules)),
+            ]
               .toSorted((left, right) => compareStrings({ left, right }))
               .map((rule) => starlarkString(rule))
               .join(', ')})`,
           ]),
-      'load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")',
+      `load("//buck2:typescript.bzl", ${[
+        ...(projectAuthorities.some(
+          ({ declarationEntrypoint }) => declarationEntrypoint !== undefined,
+        )
+          ? ['tsgo_emit']
+          : []),
+        'tsgo_typecheck',
+      ]
+        .map((rule) => starlarkString(rule))
+        .join(', ')})`,
       '',
       'export_file(',
       '    name = "package.json",',
@@ -872,6 +1107,14 @@ export const buck2TypeScriptPackageProjection = ({
       'export_materialization_inputs([',
       ...packageSources.map((source) => `    ${starlarkString(source)},`),
       '])',
+      '',
+      'static_source_set(',
+      '    name = "static_sources",',
+      '    node_modules = ":node_modules",',
+      `    prefix = ${starlarkString(packagePath)},`,
+      `    srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES${staticSourceExcludes.length === 0 ? '' : ` + ${JSON.stringify(staticSourceExcludes)}`}),`,
+      renderBuck2Visibility({ visibility }),
+      ')',
       '',
       'alias(',
       '    name = "node_modules",',
@@ -911,6 +1154,7 @@ export const buck2TypeScriptPackageProjection = ({
               name: 'workspace_dependency_views',
               entries: workspaceDependencyViewEntries,
             }),
+            '    strip_project_references = True,',
             `    runtime = ${starlarkString(packageTreeRuntime.label)},`,
             `    runtime_entry = ${starlarkString(runtimeEntry)},`,
             renderBuck2Visibility({ visibility }),
@@ -924,27 +1168,7 @@ export const buck2TypeScriptPackageProjection = ({
       renderBuck2Visibility({ visibility }),
       ')',
       '',
-      'tsgo_typecheck(',
-      '    name = "typecheck",',
-      '    package_tree = ":package_tree",',
-      ...(projectFile === 'tsconfig.json' ? [] : [`    project = ${starlarkString(projectFile)},`]),
-      renderBuck2Visibility({ visibility }),
-      ')',
-      '',
-      'tsgo_emit(',
-      '    name = "dist",',
-      '    package_tree = ":package_tree",',
-      ...renderMap({
-        name: 'declaration_sources',
-        entries: declarationSources.map((source) => [source, source]),
-      }),
-      ...(projectFile === 'tsconfig.json' ? [] : [`    project = ${starlarkString(projectFile)},`]),
-      ...(authority === undefined
-        ? []
-        : [`    declaration_entrypoint = ${starlarkString(authority.declarationEntrypoint)},`]),
-      renderBuck2Visibility({ visibility }),
-      ')',
-      '',
+      ...typeScriptTargetLines,
       ...testTargets.flatMap((target) => target.lines),
     ]
     return lines.join('\n')
