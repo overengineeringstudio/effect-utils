@@ -27,30 +27,32 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 mkdir -p "$tmpdir/bin"
 
-# Extract the real ts:check exec script so we test the shipped parser, not a copy.
-nix eval --impure --raw --expr "
-  let
-    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
-    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    evaluated = pkgs.lib.evalModules {
-      modules = [
-        ({ ... }: {
-          options.tasks = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
-          options.processes = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
-          options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
-        })
-        ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
-          tsconfigFile = \"tsconfig.check.json\";
-        }) {
-          pkgs = pkgs;
-          lib = pkgs.lib;
-          config = { };
-        })
-      ];
-    };
-  in evaluated.config.tasks.\"ts:check\".exec
-" > "$tmpdir/ts-check.exec.sh"
-chmod +x "$tmpdir/ts-check.exec.sh"
+# Build the real ts:check exec script so every referenced Nix store dependency
+# is realized before the hermetic test process executes it.
+ts_check_script="$(
+  nix build --impure --no-link --print-out-paths --expr "
+    let
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      evaluated = pkgs.lib.evalModules {
+        modules = [
+          ({ ... }: {
+            options.tasks = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
+            options.processes = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
+            options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
+          })
+          ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
+            tsconfigFile = \"tsconfig.check.json\";
+          }) {
+            pkgs = pkgs;
+            lib = pkgs.lib;
+            config = { };
+          })
+        ];
+      };
+    in pkgs.writeShellScript \"ts-check-exec\" evaluated.config.tasks.\"ts:check\".exec
+  "
+)"
 
 # Stub tsgo: ignore args, emit the captured diagnostics fixture, exit 0.
 cat > "$tmpdir/bin/tsgo" <<EOF
@@ -159,26 +161,13 @@ stdout="$(
       OTEL_SPAN_SPOOL_DIR="$OTEL_SPAN_SPOOL_DIR" \
       OTEL_TASK_TRACEPARENT="$OTEL_TASK_TRACEPARENT" \
       DEVENV_ROOT="$DEVENV_ROOT" \
-      bash "$tmpdir/ts-check.exec.sh" 2>&1
+      bash "$ts_check_script" 2>&1
 )"
 ts_check_status=$?
 set -e
 echo "$stdout" > "$tmpdir/stdout.txt"
 if [ "$ts_check_status" -ne 0 ]; then
   echo "$stdout" >&2
-  (
-    cd "$tmpdir" \
-      && env -i \
-        HOME="$tmpdir" \
-        PATH="$PATH" \
-        TMPDIR="$tmpdir" \
-        OTEL_SPAN_BIN="$OTEL_SPAN_BIN" \
-        OTEL_SCRAPE_ENABLED="$OTEL_SCRAPE_ENABLED" \
-        OTEL_SPAN_SPOOL_DIR="$OTEL_SPAN_SPOOL_DIR" \
-        OTEL_TASK_TRACEPARENT="$OTEL_TASK_TRACEPARENT" \
-        DEVENV_ROOT="$DEVENV_ROOT" \
-        bash -x "$tmpdir/ts-check.exec.sh"
-  ) >&2 || true
   fail "ts:check exec failed with exit $ts_check_status"
 fi
 
