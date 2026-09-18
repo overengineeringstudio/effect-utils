@@ -1,4 +1,4 @@
-import { Console, Effect, Option, Schema, Stream } from 'effect'
+import { Effect, Option, Schema, Stream } from 'effect'
 /**
  * gh-ci-utils auth
  *
@@ -14,6 +14,7 @@ import {
   outputModeLayer,
   outputOption,
   resolveOutputMode,
+  writeStdoutLineSync,
 } from '@overeng/tui-react/node'
 
 import { ConfigError } from '../../isomorphic/Errors.ts'
@@ -54,7 +55,16 @@ const authOutputForSession = (session: SessionData | undefined): AuthOutput =>
 
 const encodeAuthOutput = Schema.encodeSync(Schema.fromJsonString(AuthOutputSchema))
 
-/** Emit structured stdout in JSON modes, otherwise preserve the command's human log line. */
+/**
+ * Emit the auth result on the stdout data channel in every mode.
+ *
+ * JSON modes write the encoded AuthOutput document; human modes write the
+ * status line. Both use the synchronous fd writer because `auth status`
+ * installs `outputModeLayer` (which captures `Effect.log`/`console.*` into an
+ * in-memory buffer for progressive React modes) without mounting a React view
+ * that would consume the buffer — so `Effect.log` alone renders nothing in
+ * tty/ci/ci-plain. The fd write also survives forced process exit.
+ */
 export const reportAuthResult = ({
   output,
   session,
@@ -64,9 +74,13 @@ export const reportAuthResult = ({
   session: SessionData | undefined
   humanMessage: string
 }) =>
-  resolveOutputMode(output)._tag === 'json'
-    ? Console.log(encodeAuthOutput(authOutputForSession(session)))
-    : Effect.log(humanMessage)
+  Effect.sync(() =>
+    writeStdoutLineSync(
+      resolveOutputMode(output)._tag === 'json'
+        ? encodeAuthOutput(authOutputForSession(session))
+        : humanMessage,
+    ),
+  )
 
 /**
  * Launch Playwright browser for GitHub login and extract the user_session cookie.

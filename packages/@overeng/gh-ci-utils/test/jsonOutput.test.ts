@@ -1,3 +1,4 @@
+import * as fs from 'node:fs'
 import { Effect, Schema } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -93,7 +94,11 @@ describe('CLI JSON output contracts', () => {
   })
 
   it('emits valid, non-secret auth login and status JSON to stdout', async () => {
-    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const lines: Array<string> = []
+    const stdout = vi.spyOn(fs, 'writeSync').mockImplementation(((fd, buffer) => {
+      if (fd === 1) lines.push(String(buffer))
+      return typeof buffer === 'string' ? buffer.length : (buffer as Uint8Array).length
+    }) as typeof fs.writeSync)
     try {
       await Effect.runPromise(
         reportAuthResult({
@@ -115,7 +120,12 @@ describe('CLI JSON output contracts', () => {
         }),
       )
 
-      const documents = stdout.mock.calls.map(([line]) => JSON.parse(String(line)))
+      const documents = lines.flatMap((chunk) =>
+        String(chunk)
+          .split('\n')
+          .filter((line) => line.length > 0)
+          .map((line) => JSON.parse(line)),
+      )
       expect(documents).toEqual([
         {
           _tag: 'Authenticated',
@@ -125,7 +135,26 @@ describe('CLI JSON output contracts', () => {
         },
         { _tag: 'Unauthenticated' },
       ])
-      expect(stdout.mock.calls.join('\n')).not.toContain('must-not-be-rendered')
+      expect(lines.join('\n')).not.toContain('must-not-be-rendered')
+    } finally {
+      stdout.mockRestore()
+    }
+  })
+
+  it('writes the human status line to stdout in non-JSON modes', async () => {
+    const lines: Array<string> = []
+    const stdout = vi.spyOn(fs, 'writeSync').mockImplementation(((fd, buffer) => {
+      if (fd === 1) lines.push(String(buffer))
+      return typeof buffer === 'string' ? buffer.length : (buffer as Uint8Array).length
+    }) as typeof fs.writeSync)
+    try {
+      for (const output of ['tty', 'ci', 'ci-plain', 'log', 'auto'] as const) {
+        lines.length = 0
+        await Effect.runPromise(
+          reportAuthResult({ output, session: undefined, humanMessage: 'No active session.' }),
+        )
+        expect(lines.join('')).toContain('No active session.')
+      }
     } finally {
       stdout.mockRestore()
     }
