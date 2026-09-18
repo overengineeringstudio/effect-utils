@@ -645,7 +645,7 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
         '--declaration',
         'true',
         '--emitDeclarationOnly',
-        options.emitDeclarationOnly ? 'true' : 'false',
+        options.emitDeclarationOnly === true ? 'true' : 'false',
         '--pretty',
         'false',
       ],
