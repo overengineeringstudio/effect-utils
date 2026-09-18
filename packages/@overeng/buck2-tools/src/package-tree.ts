@@ -263,17 +263,17 @@ const workspacePackageRoot = (destination: string): string | undefined => {
   if (components[0] !== 'node_modules') return undefined
   const first = components[1]
   if (first === undefined) {
-    invalidArguments(`workspace file must be inside a package: ${destination}`)
+    return invalidArguments(`workspace file must be inside a package: ${destination}`)
   }
   if (first.startsWith('@') === true) {
     const name = components[2]
     if (name === undefined || components.length < 4) {
-      invalidArguments(`workspace file must be inside a scoped package: ${destination}`)
+      return invalidArguments(`workspace file must be inside a scoped package: ${destination}`)
     }
     return `${first}/${name}`
   }
   if (components.length < 3) {
-    invalidArguments(`workspace file must be inside a package: ${destination}`)
+    return invalidArguments(`workspace file must be inside a package: ${destination}`)
   }
   return first
 }
