@@ -111,11 +111,37 @@ describe('decodeTestAuthority', () => {
     )
   })
 
-  it('rejects multiple lanes for one package until lane membership is unambiguous', () => {
+  it('accepts disjoint named lanes for one package', () => {
+    const lanes = conformantLanes()
+    const packagePath = lanes[0]!.packagePath
+    const packageName = lanes[0]!.packageName
+    const target = `effect_utils//${packagePath}:unit`
+    const testFiles = ['src/a.test.ts', 'src/b.test.ts']
+    const primary = {
+      ...lanes[0]!,
+      selectedTestFiles: ['src/a.test.ts'],
+      sourceOwners: { 'src/b.test.ts': `test:${packageName}:unit` },
+      testFiles,
+    }
+    const unit = {
+      ...lanes[1]!,
+      collectionTarget: `${target}_collect`,
+      packageName,
+      packagePath,
+      selectedTestFiles: ['src/b.test.ts'],
+      sourceOwners: { 'src/a.test.ts': `test:${packageName}` },
+      target,
+      taskName: `test:${packageName}:unit`,
+      testFiles,
+    }
+    expect(() => decode([primary, unit, ...lanes.slice(2)])).not.toThrow()
+  })
+
+  it('rejects overlapping bounded selections across lanes for one package', () => {
     const lanes = conformantLanes()
     const packagePath = lanes[0]!.packagePath
     const target = `effect_utils//${packagePath}:unit`
-    const duplicatePackage = {
+    const duplicateSelection = {
       ...lanes[1]!,
       collectionTarget: `${target}_collect`,
       packageName: lanes[0]!.packageName,
@@ -123,8 +149,8 @@ describe('decodeTestAuthority', () => {
       target,
       taskName: `test:${lanes[0]!.packageName}:unit`,
     }
-    expect(() => decode([lanes[0]!, duplicatePackage, ...lanes.slice(2)])).toThrow(
-      /more than one lane per package is not supported/,
+    expect(() => decode([lanes[0]!, duplicateSelection, ...lanes.slice(2)])).toThrow(
+      /bounded selections overlap/,
     )
   })
 
@@ -309,6 +335,33 @@ describe('ownershipForFile', () => {
     expect(
       ownershipForFile({ file: 'packages/@overeng/alpha/src/external.test.ts', lanes }),
     ).toStrictEqual({ kind: 'source', taskName: 'test:external' })
+  })
+
+  it('prefers the bounded lane when another lane delegates the same file to it', () => {
+    const bundleLane = lane({
+      collectionTarget: 'effect_utils//packages/@overeng/alpha:bundle_smoke_collect',
+      selectedTestFiles: ['src/bundle.test.ts'],
+      sourceOwners: { 'src/a.test.ts': 'test:alpha' },
+      target: 'effect_utils//packages/@overeng/alpha:bundle_smoke',
+      taskName: 'test:alpha:bundle_smoke',
+      testFiles: ['src/a.test.ts', 'src/bundle.test.ts'],
+    })
+    const primaryLane = lane({
+      selectedTestFiles: ['src/a.test.ts'],
+      sourceOwners: { 'src/bundle.test.ts': 'test:alpha:bundle_smoke' },
+      testFiles: ['src/a.test.ts', 'src/bundle.test.ts'],
+    })
+
+    expect(
+      ownershipForFile({
+        file: 'packages/@overeng/alpha/src/a.test.ts',
+        lanes: [bundleLane, primaryLane],
+      }),
+    ).toStrictEqual({
+      kind: 'buck',
+      collectionTarget: 'effect_utils//packages/@overeng/alpha:test_collect',
+      packageRelative: 'src/a.test.ts',
+    })
   })
 
   it('falls back to the conventional task for a package outside the registry', () => {

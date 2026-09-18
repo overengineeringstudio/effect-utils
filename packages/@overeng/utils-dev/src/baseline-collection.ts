@@ -288,9 +288,33 @@ export const decodeTestAuthority = ({
   ) {
     issues.push('lanes are not byte-sorted by target, or declare a duplicate target')
   }
-  const packagePaths = lanes.map(({ packagePath }) => packagePath)
-  if (new Set(packagePaths).size !== packagePaths.length) {
-    issues.push('more than one lane per package is not supported')
+  const lanesByPackage = Map.groupBy(lanes, ({ packagePath }) => packagePath)
+  for (const [packagePath, packageLanes] of lanesByPackage) {
+    if (packageLanes.length < 2) continue
+    const [first, ...rest] = packageLanes
+    if (
+      rest.some(
+        ({ testFiles }) =>
+          testFiles.length !== first!.testFiles.length ||
+          testFiles.some((file, index) => file !== first!.testFiles[index]),
+      ) === true
+    ) {
+      issues.push(`lanes for ${packagePath} do not declare the same test census`)
+    }
+    const boundedOwners = new Map<string, string>()
+    for (const lane of packageLanes) {
+      for (const file of lane.selectedTestFiles) {
+        if (lane.excludes.includes(file) === true) continue
+        const owner = boundedOwners.get(file)
+        if (owner !== undefined) {
+          issues.push(
+            `bounded selections overlap for ${packagePath}/${file}: ${owner} and ${lane.target}`,
+          )
+        } else {
+          boundedOwners.set(file, lane.target)
+        }
+      }
+    }
   }
   for (const parent of lanes) {
     const child = lanes.find(
@@ -325,9 +349,9 @@ export const decodeTestAuthority = ({
 /**
  * Resolves which evidence owes proof for one repository-relative test file.
  *
- * Every admitted lane records its complete test census, exact bounded selection,
- * exceptional source owners, and derived source complement. The decoder rejects duplicate
- * and nested lane paths, so the result has one possible owner.
+ * Multiple lanes may share one package census. A bounded selection is the canonical owner;
+ * other lanes delegate that file to its source task. Files outside every bounded selection
+ * must resolve to one source task across all package lanes.
  */
 export const ownershipForFile = ({
   file,
@@ -336,41 +360,64 @@ export const ownershipForFile = ({
   readonly file: string
   readonly lanes: readonly TestAuthorityLane[]
 }): FileOwnership => {
-  const lane = lanes.find(({ packagePath }) => file.startsWith(`${packagePath}/`))
-  if (lane === undefined) {
-    // A package the Buck registry does not carry keeps its conventional source task.
+  const packageLanes = lanes.filter(({ packagePath }) => file.startsWith(`${packagePath}/`))
+  const firstLane = packageLanes[0]
+  if (firstLane === undefined) {
     const packageDirectory = /^packages\/@overeng\/([^/]+)\//.exec(file)?.[1]
     return packageDirectory === undefined
       ? { kind: 'unowned', reason: 'this baseline file is outside the packages/@overeng layout' }
       : { kind: 'source', taskName: `test:${packageDirectory}` }
   }
-  const packageRelative = file.slice(lane.packagePath.length + 1)
-  if (lane.testFiles.includes(packageRelative) === false) {
+  const packageRelative = file.slice(firstLane.packagePath.length + 1)
+  if (
+    packageLanes.some(({ testFiles }) => testFiles.includes(packageRelative) === false) === true
+  ) {
     return {
       kind: 'unowned',
-      reason: `lane ${lane.target} does not record this file in its test census`,
+      reason: `package lanes do not consistently record ${packageRelative} in their test census`,
     }
   }
-  if (
-    lane.selectedTestFiles.includes(packageRelative) === true &&
-    lane.excludes.includes(packageRelative) === false
-  ) {
-    if (lane.runner !== 'vitest' || lane.collectionTarget === undefined) {
+  const boundedLanes = packageLanes.filter(
+    ({ excludes, selectedTestFiles }) =>
+      selectedTestFiles.includes(packageRelative) === true &&
+      excludes.includes(packageRelative) === false,
+  )
+  if (boundedLanes.length > 1) {
+    return {
+      kind: 'unowned',
+      reason: `${packageRelative} is selected by multiple bounded lanes`,
+    }
+  }
+  const boundedLane = boundedLanes[0]
+  if (boundedLane !== undefined) {
+    if (boundedLane.runner !== 'vitest' || boundedLane.collectionTarget === undefined) {
       return {
         kind: 'unowned',
-        reason: `lane ${lane.target} is a bounded ${lane.runner} lane with no collection target, so this baseline file has no collection evidence`,
+        reason: `lane ${boundedLane.target} is a bounded ${boundedLane.runner} lane with no collection target, so this baseline file has no collection evidence`,
       }
     }
-    return { kind: 'buck', collectionTarget: lane.collectionTarget, packageRelative }
+    return { kind: 'buck', collectionTarget: boundedLane.collectionTarget, packageRelative }
   }
-  const sourceOwner = lane.sourceOwners[packageRelative]
-  if (sourceOwner !== undefined) return { kind: 'source', taskName: sourceOwner }
-  return lane.unboundedTaskName === undefined
-    ? {
-        kind: 'unowned',
-        reason: `lane ${lane.target} records this file as source-owned but declares no owner`,
-      }
-    : { kind: 'source', taskName: lane.unboundedTaskName }
+  const sourceTasks = new Set(
+    packageLanes.flatMap((lane) => {
+      const explicitOwner = lane.sourceOwners[packageRelative]
+      if (explicitOwner !== undefined) return [explicitOwner]
+      return lane.unboundedFiles.includes(packageRelative) === true &&
+        lane.unboundedTaskName !== undefined
+        ? [lane.unboundedTaskName]
+        : []
+    }),
+  )
+  if (sourceTasks.size === 1) {
+    return { kind: 'source', taskName: [...sourceTasks][0]! }
+  }
+  return {
+    kind: 'unowned',
+    reason:
+      sourceTasks.size === 0
+        ? `package lanes declare no owner for ${packageRelative}`
+        : `package lanes disagree on the source owner for ${packageRelative}`,
+  }
 }
 
 /**
