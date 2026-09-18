@@ -30,6 +30,8 @@ describe('root Buck aggregate projection', () => {
     expect(output).toContain('name = "static_sources"')
     expect(output).toContain('name = "quick"')
     expect(output).toContain('name = "all"')
+    expect(output).toContain('"000": "//context/effect/socket:typecheck"')
+    expect(output).not.toContain('srcs = [')
   })
 
   it('keeps the production quick target set equal to the admission registry', () => {
