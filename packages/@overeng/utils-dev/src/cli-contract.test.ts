@@ -63,9 +63,11 @@ describe('normalizeCliOutput', () => {
     it('masks volatile fiber ids, package versions, and source positions when enabled', () => {
       const input =
         '[time] ERROR (#73): ~effect/cli/CliError/ShowHelp\n' +
-        'at effect@4.0.0-rc.112/node_modules/effect/dist/unstable/cli/Command.js:1077:34'
+        'at effect@4.0.0-rc.112/node_modules/effect/dist/unstable/cli/Command.js:1077:34\n' +
+        'at /tmp/buck-out/entry/node_modules/effect/dist/unstable/cli/Command.js:1070:34'
       expect(normalizeCliOutput({ input, effectCliInternals: true })).toBe(
         '[time] ERROR (#<fiber>): ~effect/cli/CliError/ShowHelp\n' +
+          'at effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>\n' +
           'at effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>',
       )
     })
