@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/utils**: `createStylexVitePlugins` now pre-bundles the StyleX
+  runtime (`@stylexjs/stylex`, a dependency of the consumer) in dev by adding
+  it to `optimizeDeps.include`, so its first discovery cannot re-optimize
+  dependencies mid-session and full-page-reload a running story or browser
+  test; Vite consumers can drop their app-local `@stylexjs/stylex`
+  `optimizeDeps.include` entries.
+
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full
   checks.
@@ -193,12 +200,6 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **@overeng/ci-tools**: Pass Vercel authentication to child processes through
-  `VERCEL_TOKEN` instead of exposing the configured token in command arguments.
-- **Genie CI**: Stop exposing `GITHUB_TOKEN` through the standard job
-  environment. GitHub CLI and authenticated Nix steps now receive it only in
-  their step-local environment.
-
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
   **Workspace boundary**: pnpm discovers the workspace by walking up from the
@@ -228,11 +229,12 @@ All notable changes to this project will be documented in this file.
   even when the wrapper was evaluated elsewhere. Previously the lookup
   walked into ancestor `node_modules` and spawned a half-installed copy,
   failing aarch64 pnpm builds with a bare spawnSync ENOENT.
-- **Nix (mk-pnpm-deps)**: aggregate-manifest alignment now parses the lockfile
-  directly with Bun and visits every YAML document. The previous `yq` → JSON
-  stream boundary first failed on concatenated JSON, then assumed exactly two
-  importer documents. Removing that boundary handles one or many documents
-  through the same path and rejects duplicate importer ownership explicitly.
+- **Nix (mk-pnpm-deps)**: the aggregate-manifest alignment query now merges
+  importer maps across lockfile documents (`yq ea ... '[.importers] |
+.[0] * .[1]'`). pnpm 12 writes two-document lockfiles and the previous
+  bare `.importers` query emitted one JSON document per input document,
+  which the single-parse consumer rejected with `Unexpected non-whitespace
+character after JSON`, failing every build against such a lockfile.
 - **@overeng/megarepo**: `StoreLayer` now resolves a symlinked store root to
   its real path before building the Store. Git registers worktrees under real
   paths while member identity checks compare paths lexically, so a default

@@ -76,6 +76,50 @@ describe('createStylexVitePlugins', () => {
     }).toEqual({ resolved: `\0${stylexVirtualCssId}`, moduleSideEffects: true })
   })
 
+  it('pre-bundles the StyleX runtime inside dev-server start-up', () => {
+    const plugins = createInternal()
+    const prebundle = plugins.find((plugin) => plugin.name === 'overeng:stylex:prebundle-runtime')
+    const config =
+      typeof prebundle?.config === 'function' ? prebundle.config : prebundle?.config?.handler
+
+    expect({
+      apply: prebundle?.apply,
+      // Delta-only: Vite merges `config` hook results by array concatenation,
+      // so echoing existing entries back would duplicate them.
+      withoutEntry: config?.call(
+        {} as never,
+        { optimizeDeps: { include: ['react-dom'] } } as never,
+        {} as never,
+      ),
+      alreadyIncluded: config?.call(
+        {} as never,
+        { optimizeDeps: { include: ['@stylexjs/stylex'] } } as never,
+        {} as never,
+      ),
+      absent: config?.call({} as never, {} as never, {} as never),
+    }).toEqual({
+      apply: 'serve',
+      withoutEntry: { optimizeDeps: { include: ['@stylexjs/stylex'] } },
+      alreadyIncluded: { optimizeDeps: { include: [] } },
+      absent: { optimizeDeps: { include: ['@stylexjs/stylex'] } },
+    })
+  })
+
+  it('de-opts StyleX source packages without ever excluding the runtime', () => {
+    const [compiler] = createInternal({ externalPackages: ['@acme/design-tokens'] })
+    const config =
+      typeof compiler?.config === 'function' ? compiler.config : compiler?.config?.handler
+    const returned = config?.call({} as never, {} as never, {} as never) as
+      | { optimizeDeps?: { exclude?: string[] } }
+      | undefined
+
+    // The pre-bundle include composes with these excludes only because they
+    // name source packages that depend on the runtime, never the runtime
+    // itself.
+    expect(returned?.optimizeDeps?.exclude).toContain('@acme/design-tokens')
+    expect(returned?.optimizeDeps?.exclude).not.toContain('@stylexjs/stylex')
+  })
+
   // Two guards, because the failure they protect against is silent and neither
   // catches it alone. A nominal bundler type in this signature forces every
   // consumer onto effect-utils' Vite major: a consumer on another major then

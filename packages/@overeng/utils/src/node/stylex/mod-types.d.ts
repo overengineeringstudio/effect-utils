@@ -42,6 +42,12 @@ export interface StylexVitePlugin {
  * Shared StyleX Vite integration: compiled CSS enters the bundle as a virtual
  * CSS module in the module graph rather than by picking an emitted asset by
  * filename.
+ *
+ * The returned plugins also pre-bundle the StyleX runtime
+ * (`@stylexjs/stylex`, a dependency of the consumer, not of this package) by
+ * adding it to `optimizeDeps.include` in dev, so its first discovery cannot
+ * re-optimize dependencies and reload the page under a running story or
+ * test.
  */
 export declare const createStylexVitePlugins: (
   options?: StylexVitePluginsOptions,

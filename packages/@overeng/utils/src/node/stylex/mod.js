@@ -1,6 +1,6 @@
 import { unplugin as stylex } from '@stylexjs/unplugin'
 
-/** @import { Plugin, ResolvedConfig } from 'vite' */
+/** @import { Plugin, ResolvedConfig, UserConfig } from 'vite' */
 
 /**
  * Module specifier of the virtual stylesheet holding all compiled StyleX rules.
@@ -23,6 +23,14 @@ const resolvedStylexVirtualCssId = `\0${stylexVirtualCssId}`
  * so CSS tooling in between never chokes on it.
  */
 const pendingCssPlaceholder = '#--overeng-stylex--{compiled:pending}'
+/**
+ * The StyleX runtime, named for Vite's dev-server dependency pre-bundler.
+ *
+ * It is a dependency of the consumer, not of this package, so the bare name
+ * is the whole integration: `optimizeDeps.include` accepts bare specifiers
+ * and resolves them from the consuming tree.
+ */
+const stylexRuntimePackage = '@stylexjs/stylex'
 
 /** @param {string} id */
 const stripQuery = (id) => id.split('?')[0] ?? id
@@ -123,6 +131,37 @@ export const createStylexVitePlugins = ({
     writeBundle: _appendToDisk,
     ...compiler
   } = upstream
+  /**
+   * Keeps StyleX runtime pre-bundling inside dev-server start-up.
+   *
+   * The dev scanner only schedules pre-bundling for what it can see up
+   * front, and the StyleX-carrying source packages are deliberately
+   * de-opted by the compiler plugin's `optimizeDeps.exclude` so their stylex
+   * code is transformed instead of pre-bundled. When that makes the
+   * runtime's first discovery land mid-session, Vite re-optimizes and
+   * full-page-reloads (`optimized dependencies changed`), tearing down
+   * whichever story or browser test is running. Including the runtime by
+   * name moves that work into server start-up.
+   *
+   * The hook returns only the missing name, never the whole entry list:
+   * Vite merges `config` hook results by array concatenation, so echoing
+   * existing entries back would duplicate them. And the include composes
+   * with the upstream excludes by construction — those only ever name
+   * source packages that *depend on* the runtime, never the runtime itself.
+   */
+  /** @type {Plugin} */
+  const prebundleRuntime = {
+    name: 'overeng:stylex:prebundle-runtime',
+    apply: 'serve',
+    config: (/** @type {UserConfig | undefined} */ config) => ({
+      optimizeDeps: {
+        include:
+          config?.optimizeDeps?.include?.includes(stylexRuntimePackage) === true
+            ? []
+            : [stylexRuntimePackage],
+      },
+    }),
+  }
 
   const entryIds = new Set(entries)
 
@@ -195,5 +234,10 @@ export const createStylexVitePlugins = ({
     },
   }
 
-  return [/** @type {Plugin} */ (compiler), injectEntryImport, lateSwapCompiledCss]
+  return [
+    /** @type {Plugin} */ (compiler),
+    prebundleRuntime,
+    injectEntryImport,
+    lateSwapCompiledCss,
+  ]
 }

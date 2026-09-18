@@ -56,7 +56,7 @@ it('loads the StyleX Vite entry from a node_modules-installed consumer', () => {
         `  false,`,
         `  'bundle',`,
         `)`,
-        `if (loaded === null || loaded.config.plugins?.[0]?.length !== 3) {`,
+        `if (loaded === null || loaded.config.plugins?.[0]?.length !== 4) {`,
         `  throw new Error('Vite config did not load the StyleX plugins')`,
         `}`,
         '',
