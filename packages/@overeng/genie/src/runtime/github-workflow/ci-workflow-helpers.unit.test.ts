@@ -186,18 +186,6 @@ const generatedDevenvPerfJob = extractSourceBlock(
   '  nix-closure-sizes:',
 )
 
-const pnpmDepsScanSource = extractSourceBlock(
-  ciWorkflowSource,
-  'const withEachPnpmDepsDrvShellLines = ({',
-  '/** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */',
-)
-
-const coldFreshBuildSource = extractSourceBlock(
-  ciWorkflowSource,
-  '/** Evict any cached pnpm-deps outputs below a flake target and rebuild it against cache.nixos.org only. */',
-  '/**\n * Guard the pnpm dependency-prep contract against regressions that would',
-)
-
 const restorePnpmStateStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const restorePnpmStateStep = (opts?: {',
@@ -496,28 +484,6 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(ciWorkflowSource).toContain(
       "if: `\\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`",
     )
-  })
-
-  it('cold-builds pnpm deps artifacts by evicting cached outputs before the second build', () => {
-    expect(coldFreshBuildSource).toContain('installable="${drv}^*"')
-    expect(coldFreshBuildSource).toContain('while IFS= read -r outPath; do')
-    expect(coldFreshBuildSource).toContain(
-      'done < <(nix path-info "$installable" 2>/dev/null || true)',
-    )
-    expect(coldFreshBuildSource).toContain('...evictOutPathShellLines')
-    expect(ciWorkflowSource).toContain('nix store delete --ignore-liveness "$outPath"')
-    expect(ciWorkflowSource).toContain(
-      'echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
-    )
-    expect(coldFreshBuildSource).toContain(
-      'nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
-    )
-  })
-
-  it('prefers explicit depsBuildEntries metadata before falling back to closure scanning', () => {
-    expect(pnpmDepsScanSource).toContain('$targetRef.passthru.depsBuildEntries')
-    expect(pnpmDepsScanSource).toContain('(.drvPath // "")')
-    expect(pnpmDepsScanSource).toContain('grep "pnpm-deps-[a-z0-9-]*-v[0-9]')
   })
 
   it('keeps the diagnostics summary portable', () => {
@@ -1499,7 +1465,12 @@ describe('effect-utils CI composition workspace', () => {
         'if [ "$1" = "--cwd" ]; then',
         '  workspace="$2"; shift 2',
         '  test "$*" = "apply --worktree-mode tracking --lock-sync off --output ci"',
-        '  mkdir -p "$workspace/.megarepo/bin"',
+        '  if [ -f "$workspace/.megarepo/composition-generation.json" ]; then exit 0; fi',
+        '  bare="$(git -C "$workspace" rev-parse --path-format=absolute --git-common-dir)"',
+        '  stage="${workspace}.member-stage"',
+        '  git --git-dir="$bare" worktree move "$workspace" "$stage"',
+        '  mkdir -p "$workspace/repos" "$workspace/.megarepo/bin"',
+        '  git --git-dir="$bare" worktree move "$stage" "$workspace/repos/effect-utils"',
         '  printf \'{}\\n\' > "$workspace/.megarepo/composition-generation.json"',
         '  printf \'[cells]\\n\' > "$workspace/.buckconfig"',
         '  printf \'#!/usr/bin/env bash\\nexit 0\\n\' > "$workspace/.megarepo/bin/buck2"',
@@ -1522,12 +1493,15 @@ describe('effect-utils CI composition workspace', () => {
         'test -n "$repo" && test -n "$ref" && test -n "$base" && test "$porcelain" -eq 1',
         'bare="$MEGAREPO_STORE/github.com/$repo/.bare"',
         'workspace="$MEGAREPO_STORE/github.com/$repo/refs/heads/$ref"',
-        'member="$workspace/repos/effect-utils"',
         'git --git-dir="$bare" update-ref "refs/heads/$ref" "$base"',
-        'mkdir -p "$workspace/repos"',
-        'git --git-dir="$bare" worktree add "$member" "$ref" >/dev/null',
+        'mkdir -p "$(dirname "$workspace")"',
+        'git --git-dir="$bare" worktree add "$workspace" "$ref" >/dev/null',
         'if [ -f "$fake_root/fail" ]; then exit 37; fi',
-        'printf \'%s\\n\' "$member"',
+        'if [ "${FAKE_MR_OUTPUT_MEMBER_ROOT:-0}" = 1 ]; then',
+        '  printf \'%s\\n\' "$workspace/repos/effect-utils"',
+        'else',
+        '  printf \'%s\\n\' "$workspace"',
+        'fi',
       ].join('\n'),
     )
     chmodSync(join(fakeBin, 'nix'), 0o755)
@@ -1657,6 +1631,22 @@ describe('effect-utils CI composition workspace', () => {
     20_000,
   )
 
+  it('accepts a member-root porcelain result from the release CLI', async () => {
+    const fixture = makeFixture('Linux')
+    try {
+      const result = await runComposition(fixture, { FAKE_MR_OUTPUT_MEMBER_ROOT: '1' })
+      expect(result.status, result.stderr).toBe(0)
+      const member = join(
+        fixture.runnerTemp,
+        'megarepo-store/100/2/unit_job/github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job/repos/effect-utils',
+      )
+      expect(git(member, 'rev-parse', 'HEAD')).toBe(fixture.sha)
+      await expect(cleanupComposition(fixture)).resolves.toMatchObject({ status: 0 })
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true, maxRetries: 10, retryDelay: 20 })
+    }
+  }, 20_000)
+
   it('cleans a direct-final-path worktree after generation fails', async () => {
     const fixture = makeFixture('Linux')
     try {
@@ -1671,8 +1661,7 @@ describe('effect-utils CI composition workspace', () => {
         store,
         'github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job',
       )
-      const member = join(workspace, 'repos/effect-utils')
-      expect(git(member, 'symbolic-ref', 'HEAD')).toBe('refs/heads/ci-100-2-unit_job')
+      expect(git(workspace, 'symbolic-ref', 'HEAD')).toBe('refs/heads/ci-100-2-unit_job')
 
       const cleanup = await cleanupComposition(fixture)
       expect(cleanup.status, cleanup.stderr).toBe(0)
@@ -1690,7 +1679,7 @@ describe('effect-utils CI composition workspace', () => {
       const store = fixture.env.MEGAREPO_STORE!
       const member = join(
         store,
-        'github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job/repos/effect-utils',
+        'github.com/overengineeringstudio/effect-utils/refs/heads/ci-100-2-unit_job',
       )
       git(member, 'switch', '-c', 'unrelated')
 

@@ -21,13 +21,20 @@ export const javaScriptProductRegistry = {
   'packages/@overeng/genie': [
     {
       entrypoint: 'bin/genie.tsx',
-      externalCapabilities: ['actionlint', 'effect-tsgo', 'oxfmt'],
+      externalCapabilities: [
+        'actionlint',
+        'effect-tsgo',
+        'opentui-core-native',
+        'oxfmt',
+        'typescript-api-server',
+      ],
       kind: 'cli',
       output: 'genie.js',
       productName: 'genie',
       runtime: 'bun',
       smokeArgs: ['--dry-run'],
       targetName: 'genie-candidate',
+      treeShaking: false,
     },
     {
       entrypoint: 'bin/bootstrap-closure-check.ts',

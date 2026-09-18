@@ -33,7 +33,7 @@ if grep -q 'builtins\.path' "$bootstrap"; then
   exit 1
 fi
 workflow_report="$(sed -n '/taskModules\.workflow-report {/,/})/p' "$devenv")"
-if [[ "$workflow_report" != *'ciToolsBin = "${repoFlake.packages.${currentSystem}.ci-tools}/bin/ci-tools";'* ]]; then
+if [[ "$workflow_report" != *'ciToolsBin = "${ciToolsCli}/bin/ci-tools";'* ]]; then
   echo "FAIL: workflow-report task still forces its repository-root source fallback" >&2
   exit 1
 fi

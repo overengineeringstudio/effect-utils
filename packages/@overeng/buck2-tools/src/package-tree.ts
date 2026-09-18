@@ -1,6 +1,7 @@
 #!/usr/bin/env -S bun
 import {
   constants,
+  existsSync,
   copyFileSync,
   lstatSync,
   mkdirSync,
@@ -20,9 +21,10 @@ import { canonicalizePath } from './real-path.ts'
  * How one package view obtains its `node_modules` boundary.
  *
  * `copy` is the legacy per-importer closure projection: every dependency byte
- * is duplicated into the package tree. `link` is the normalized-store form: the
- * view owns only package sources and workspace dist boundaries and reaches its
- * dependencies through one relative link to a metadata-only importer view.
+ * is duplicated into the package tree. `link` is the normalized-store form:
+ * the view owns only package sources and workspace dist boundaries. It either
+ * links the complete importer view or projects its first-hop links around
+ * authoritative workspace declaration overlays.
  */
 export type PackageTreeDependencies =
   | { readonly kind: 'empty' }
@@ -35,6 +37,7 @@ export type PackageTreeOptions = {
   readonly dependencies: PackageTreeDependencies
   readonly files: ReadonlyMap<string, string>
   readonly workspaceFiles: ReadonlyMap<string, string>
+  readonly workspaceDependencyViews: ReadonlyMap<string, string>
   readonly workspaceLinks: ReadonlyMap<string, string>
 }
 
@@ -92,11 +95,17 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
   let dependencies: PackageTreeDependencies | undefined
   const files = new Map<string, string>()
   const workspaceFiles = new Map<string, string>()
+  const workspaceDependencyViews = new Map<string, string>()
   const workspaceLinks = new Map<string, string>()
 
   for (let index = 0; index < args.length;) {
     const flag = requireValue({ args, index, flag: 'argument' })
-    if (flag === '--file' || flag === '--workspace-file' || flag === '--workspace-link') {
+    if (
+      flag === '--file' ||
+      flag === '--workspace-file' ||
+      flag === '--workspace-dependency-view' ||
+      flag === '--workspace-link'
+    ) {
       const destination = requireRelativePath({
         value: requireValue({ args, index: index + 1, flag }),
         field: `${flag} destination`,
@@ -104,7 +113,13 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
       const value = requireValue({ args, index: index + 2, flag })
       if (flag === '--workspace-link') requireRelativePath({ value, field: `${flag} target` })
       const values =
-        flag === '--file' ? files : flag === '--workspace-file' ? workspaceFiles : workspaceLinks
+        flag === '--file'
+          ? files
+          : flag === '--workspace-file'
+            ? workspaceFiles
+            : flag === '--workspace-dependency-view'
+              ? workspaceDependencyViews
+              : workspaceLinks
       setUnique({ values, key: destination, value, field: flag })
       index += 3
       continue
@@ -129,6 +144,7 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
       ),
     files,
     workspaceFiles,
+    workspaceDependencyViews,
     workspaceLinks,
   }
 }
@@ -242,6 +258,90 @@ const cloneTree = ({
   }
 }
 
+const workspacePackageRoot = (destination: string): string | undefined => {
+  const components = destination.split('/')
+  if (components[0] !== 'node_modules') return undefined
+  const first = components[1]
+  if (first === undefined) {
+    return invalidArguments(`workspace file must be inside a package: ${destination}`)
+  }
+  if (first.startsWith('@') === true) {
+    const name = components[2]
+    if (name === undefined || components.length < 4) {
+      return invalidArguments(`workspace file must be inside a scoped package: ${destination}`)
+    }
+    return `${first}/${name}`
+  }
+  if (components.length < 3) {
+    return invalidArguments(`workspace file must be inside a package: ${destination}`)
+  }
+  return first
+}
+
+const addExternalLink = ({
+  allow,
+  destination,
+  source,
+}: {
+  readonly allow: Set<string>
+  readonly destination: string
+  readonly source: string
+}): void => {
+  mkdirSync(dirname(destination), { recursive: true })
+  const target = relative(dirname(destination), resolve(source))
+  if (isAbsolute(target) === true || target.length === 0) {
+    invalidArguments(`dependency entry cannot be represented as a relative path: ${source}`)
+  }
+  symlinkSync(target, destination)
+  statSync(destination)
+  allow.add(destination)
+}
+
+const projectDependencyView = ({
+  allow,
+  destination,
+  source,
+  workspacePackages,
+}: {
+  readonly allow: Set<string>
+  readonly destination: string
+  readonly source: string
+  readonly workspacePackages: ReadonlySet<string>
+}): void => {
+  if (lstatSync(source).isDirectory() === false) {
+    invalidArguments(`dependency view must be a directory: ${source}`)
+  }
+  mkdirSync(destination)
+  const workspaceScopes = new Set(
+    [...workspacePackages]
+      .filter((packageName) => packageName.startsWith('@'))
+      .map((packageName) => packageName.split('/')[0]!),
+  )
+  for (const entry of readdirSync(source, { withFileTypes: true }).toSorted((left, right) =>
+    left.name.localeCompare(right.name, 'en'),
+  )) {
+    const sourceEntry = join(source, entry.name)
+    const destinationEntry = join(destination, entry.name)
+    if (workspacePackages.has(entry.name) === true) continue
+    if (workspaceScopes.has(entry.name) === false) {
+      addExternalLink({ allow, destination: destinationEntry, source: sourceEntry })
+      continue
+    }
+    if (entry.isDirectory() === false) {
+      invalidArguments(`dependency view scope must be a directory: ${sourceEntry}`)
+    }
+    mkdirSync(destinationEntry)
+    for (const scopedEntry of readdirSync(sourceEntry).toSorted()) {
+      if (workspacePackages.has(`${entry.name}/${scopedEntry}`) === true) continue
+      addExternalLink({
+        allow,
+        destination: join(destinationEntry, scopedEntry),
+        source: join(sourceEntry, scopedEntry),
+      })
+    }
+  }
+}
+
 const destinationInside = ({
   root,
   relativePath,
@@ -266,12 +366,36 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
   rmSync(output, { recursive: true, force: true })
   mkdirSync(output, { recursive: true })
   try {
+    const allowedExternalLinks = new Set<string>()
+    const workspacePackages = new Set(
+      [...options.workspaceFiles.keys()]
+        .map(workspacePackageRoot)
+        .filter((packageName): packageName is string => packageName !== undefined),
+    )
+    if (options.workspaceDependencyViews.size > 0 && options.dependencies.kind !== 'link') {
+      invalidArguments('workspace dependency views require a linked dependency view')
+    }
+    for (const destination of options.workspaceDependencyViews.keys()) {
+      const components = destination.split('/')
+      const expectedLength = components[1]?.startsWith('@') === true ? 4 : 3
+      if (
+        components[0] !== 'node_modules' ||
+        components.at(-1) !== 'node_modules' ||
+        components.length !== expectedLength
+      ) {
+        invalidArguments(
+          `workspace dependency view must target package node_modules: ${destination}`,
+        )
+      }
+      const packageName = workspacePackageRoot(destination)
+      if (packageName === undefined || workspacePackages.has(packageName) === false) {
+        invalidArguments(
+          `workspace dependency view has no matching workspace overlay: ${destination}`,
+        )
+      }
+    }
     if (options.dependencies.kind === 'link') {
-      for (const destination of [
-        ...options.files.keys(),
-        ...options.workspaceFiles.keys(),
-        ...options.workspaceLinks.keys(),
-      ]) {
+      for (const destination of [...options.files.keys(), ...options.workspaceLinks.keys()]) {
         const normalized = requireRelativePath({ value: destination, field: 'destination' })
         if (normalized === 'node_modules' || normalized.startsWith('node_modules/') === true) {
           invalidArguments(`destination enters linked dependency view: ${destination}`)
@@ -283,25 +407,43 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
     } else if (options.dependencies.kind === 'copy') {
       cloneTree({ source: options.dependencies.path, destination: join(output, 'node_modules') })
     } else {
-      // The dependency view is a separate declared artifact, so this first hop
-      // deliberately leaves the package tree. It is the only outward link the
-      // containment check accepts, and it is relative so the pair relocates
-      // together.
       const link = join(output, 'node_modules')
-      const relativeTarget = relative(output, resolve(options.dependencies.path))
-      if (isAbsolute(relativeTarget) === true || relativeTarget.length === 0) {
-        invalidArguments(
-          `dependency view cannot be represented as a relative path: ${options.dependencies.path}`,
-        )
+      if (workspacePackages.size === 0) {
+        addExternalLink({
+          allow: allowedExternalLinks,
+          destination: link,
+          source: options.dependencies.path,
+        })
+      } else {
+        projectDependencyView({
+          allow: allowedExternalLinks,
+          destination: link,
+          source: options.dependencies.path,
+          workspacePackages,
+        })
       }
-      symlinkSync(relativeTarget, link)
-      statSync(link)
     }
     for (const [destination, source] of [...options.files, ...options.workspaceFiles]) {
       cloneTree({
         source,
         destination: destinationInside({ root: output, relativePath: destination }),
       })
+    }
+    for (const [destination, source] of options.workspaceDependencyViews) {
+      if (lstatSync(source).isDirectory() === false) {
+        invalidArguments(`workspace dependency package view must be a directory: ${source}`)
+      }
+      const dependencyDestination = destinationInside({ root: output, relativePath: destination })
+      const packageDestination = dirname(dependencyDestination)
+      for (const entry of readdirSync(source).toSorted()) {
+        const entryDestination = join(packageDestination, entry)
+        if (existsSync(entryDestination) === true) continue
+        addExternalLink({
+          allow: allowedExternalLinks,
+          destination: entryDestination,
+          source: join(source, entry),
+        })
+      }
     }
     for (const [linkPath, targetPath] of options.workspaceLinks) {
       const link = destinationInside({ root: output, relativePath: linkPath })
@@ -318,10 +460,7 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       statSync(link)
     }
     assertContainedSymlinks({
-      allow:
-        options.dependencies.kind === 'link'
-          ? new Set([join(output, 'node_modules')])
-          : new Set<string>(),
+      allow: allowedExternalLinks,
       root: output,
     })
   } catch (error) {

@@ -47,6 +47,8 @@ export const ciWorkflowNixGcRaceRetryWrapperPath = 'genie/ci-scripts/run-with-ni
 export const ciWorkflowJobLocalRustStateScriptPath =
   'genie/ci-scripts/prepare-job-local-rust-state.sh'
 export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'
+export const ciWorkflowEvictPnpmDepsCachedOutputsScriptPath =
+  'genie/ci-scripts/evict-pnpm-deps-cached-outputs.sh'
 
 export const ciWorkflowResolveDevenvScript = String.raw`#!/usr/bin/env bash
 set -euo pipefail
@@ -324,6 +326,12 @@ export const ciWorkflowSupportFiles = {
   jobLocalRustState: {
     path: ciWorkflowJobLocalRustStateScriptPath,
     output: textArtifact(ciWorkflowJobLocalRustStateScript),
+  },
+  evictPnpmDepsCachedOutputs: {
+    path: ciWorkflowEvictPnpmDepsCachedOutputsScriptPath,
+    get output() {
+      return sharedScriptArtifact(ciWorkflowEvictPnpmDepsCachedOutputsScriptPath)
+    },
   },
   resolveDevenv: {
     path: ciWorkflowResolveDevenvScriptPath,
