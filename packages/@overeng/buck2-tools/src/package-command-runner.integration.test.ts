@@ -45,10 +45,7 @@ writeFileSync(process.argv[2]!, 'mutated')
         stdout: 'ignore',
         stderr: 'pipe',
       })
-      const [exitCode, stderr] = await Promise.all([
-        child.exited,
-        streamText(child.stderr),
-      ])
+      const [exitCode, stderr] = await Promise.all([child.exited, streamText(child.stderr)])
 
       expect(exitCode).toBe(1)
       expect(stderr).toContain('declared inputs changed while mutate.ts was running')
