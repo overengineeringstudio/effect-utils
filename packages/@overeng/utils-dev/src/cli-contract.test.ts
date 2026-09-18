@@ -64,10 +64,14 @@ describe('normalizeCliOutput', () => {
       const input =
         '[time] ERROR (#73): ~effect/cli/CliError/ShowHelp\n' +
         'at effect@4.0.0-rc.112/node_modules/effect/dist/unstable/cli/Command.js:1077:34\n' +
+        'at /repo/node_modules/.pnpm/effect@4.0.0-rc.112/node_modules/effect/dist/unstable/cli/Command.js:1075:34\n' +
         'at /tmp/buck-out/entry/node_modules/effect/dist/unstable/cli/Command.js:1070:34'
-      expect(normalizeCliOutput({ input, effectCliInternals: true })).toBe(
+      expect(
+        normalizeCliOutput({ input, repoRoot: '/repo', effectCliInternals: true }),
+      ).toBe(
         '[time] ERROR (#<fiber>): ~effect/cli/CliError/ShowHelp\n' +
           'at effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>\n' +
+          'at <repo>/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>\n' +
           'at effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>',
       )
     })
