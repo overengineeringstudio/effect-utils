@@ -39,9 +39,11 @@ const renderFilegroup = ({ name, srcs }: { name: string; srcs: readonly string[]
   [
     'filegroup(',
     `    name = ${JSON.stringify(name)},`,
-    '    srcs = [',
-    ...srcs.map((target) => `        ${JSON.stringify(target)},`),
-    '    ],',
+    '    srcs = {',
+    ...srcs.map(
+      (target, index) => `        ${JSON.stringify(index.toString().padStart(3, '0'))}: ${JSON.stringify(target)},`,
+    ),
+    '    },',
     '    visibility = ["PUBLIC"],',
     ')',
   ].join('\n')

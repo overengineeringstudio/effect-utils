@@ -1324,12 +1324,14 @@ in
   tasks."buck2:quick" = {
     description = "Build the admitted quick Buck aggregate";
     after = [ "buck2:check" ];
+    # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
     exec = buck2AggregateExec "buck2:quick" "//:quick";
   };
 
   tasks."buck2:all" = {
     description = "Build the complete admitted Buck aggregate";
     after = [ "buck2:check" ];
+    # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
     exec = buck2AggregateExec "buck2:all" "//:all";
   };
 
@@ -1391,6 +1393,9 @@ in
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
+    # Buck2 expands the cache header in the daemon; keep the optional credential
+    # defined so unauthenticated cache reads work when SecretSpec is not active.
+    export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
     capability_parent="$WORKSPACE_ROOT/.buck2"
     capability_link="$capability_parent/capabilities"
     ${pkgs.coreutils}/bin/mkdir -p "$capability_parent"
