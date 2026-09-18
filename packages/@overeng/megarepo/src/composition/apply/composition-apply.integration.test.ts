@@ -71,6 +71,7 @@ const mountMetadata = ({
 
 interface FixtureOptions {
   readonly members?: ReadonlyArray<{ readonly key: string; readonly overlays: number }>
+  readonly platformHub?: string
   readonly rootMode?: 'first' | 'update' | 'nochange' | 'overlay-failure' | 'recovery'
   readonly capabilityFailure?: string
   readonly mountFailure?: string
@@ -96,13 +97,19 @@ const fixture = async (options: FixtureOptions = {}) => {
   const workspaceRoot = NodePath.join(root, 'workspace')
   const ownedPath = NodePath.join(workspaceRoot, 'repos', 'owned')
   const locked = options.members ?? [{ key: 'dep', overlays: 1 }]
+  const platformHub = options.platformHub ?? 'owned'
   const manifests = new Map<string, BuckMemberManifest>([
-    [ownedPath, memberManifest({ key: 'owned', cell: 'z_owned', buck: true })],
+    [ownedPath, memberManifest({ key: 'owned', cell: 'z_owned', buck: platformHub === 'owned' })],
     ...locked.map(
       ({ key, overlays }, index) =>
         [
           NodePath.join(root, 'store', key),
-          memberManifest({ key, cell: `${String.fromCharCode(97 + index)}_${key}`, overlays }),
+          memberManifest({
+            key,
+            cell: `${String.fromCharCode(97 + index)}_${key}`,
+            overlays,
+            buck: platformHub === key,
+          }),
         ] as const,
     ),
   ])
@@ -111,7 +118,7 @@ const fixture = async (options: FixtureOptions = {}) => {
     ownedMemberKey: 'owned',
     ownedMemberPath: ownedPath,
     compositionConfig: new CompositionGeneratorConfig({
-      platformHub: 'owned',
+      platformHub,
       isolationDir: 'fixed',
     }),
     ...(options.cacheSections === undefined ? {} : { cacheSections: options.cacheSections }),
@@ -182,16 +189,16 @@ const fixture = async (options: FixtureOptions = {}) => {
       calls.push(`cap:${key}`)
       if (options.capabilityFailure === key) throw new Error('capability failed')
       const executablePath =
-        key === 'owned' ? '/nix/store/buck/bin/buck2' : `/nix/store/${key}/bin/tool`
+        key === platformHub ? '/nix/store/buck/bin/buck2' : `/nix/store/${key}/bin/tool`
       const executableCapability =
-        key === 'owned'
+        key === platformHub
           ? resolvedManifest.capabilities.find(
               (capability): capability is BuckMemberCapability =>
                 'toolId' in capability && capability.toolId === 'buck2',
             )
           : undefined
-      if (key === 'owned' && executableCapability === undefined) {
-        throw new Error('owned member fixture must declare the buck2 executable capability')
+      if (key === platformHub && executableCapability === undefined) {
+        throw new Error('platform hub fixture must declare the buck2 executable capability')
       }
       const resolvedCapability =
         executableCapability === undefined
@@ -616,6 +623,22 @@ describe('composition apply integration', () => {
       }
     },
   )
+
+  it('publishes the platform hub capability projection when another member is owned', async () => {
+    const value = await fixture({ platformHub: 'dep' })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      expect(value.calls).toContain('owned:dep:install')
+      expect(value.calls).toContain('retain:dep')
+      expect(value.calls).toContain('prune:dep')
+      expect(value.calls).not.toContain('owned:owned:install')
+    } finally {
+      await value.cleanup()
+    }
+  })
 
   it('publishes and reconciles changed Watchman config before an update can invoke Buck', async () => {
     const value = await fixture({ rootMode: 'update', watchmanConfigChanged: true })
