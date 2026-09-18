@@ -206,11 +206,13 @@ export interface CompositionApplyRuntime {
     readonly plan: (input: {
       readonly memberKey: string
       readonly ownedMemberPath: string
+      readonly workspaceRoot: string
       readonly projectionPath: string
     }) => Promise<CompositionOwnedCapabilityProjectionPlan>
     readonly install: (input: {
       readonly memberKey: string
       readonly ownedMemberPath: string
+      readonly workspaceRoot: string
       readonly projectionPath: string
       readonly projectionDigest: string
       readonly retainPublishedCapabilities: () => Promise<void>
@@ -218,6 +220,7 @@ export interface CompositionApplyRuntime {
   }
   /** Retain one published projection's Nix outputs before its resolver scratch is released. */
   readonly retainCapabilityRoots: (input: {
+
     readonly memberKey: string
     readonly memberRoot: string
     readonly resolution: CompositionCapabilityResolutionHandle
@@ -1022,6 +1025,18 @@ const applyComposition = async ({
       capabilityResults.set(member.key, capabilityResult)
       if (capabilityResult._tag === 'Resolved') handles.push({ member, handle: capabilityResult })
     }
+    const platformHubMember = members.find(
+      (member) => member.key === request.compositionConfig.platformHub,
+    )
+    if (platformHubMember === undefined) {
+      throw failure({
+        reason: 'CapabilityFailure',
+        phase: 'Capability',
+        memberKey: request.compositionConfig.platformHub,
+        message: 'Configured platform hub is not a composition member',
+        recoveryPaths: [],
+      })
+    }
 
     for (const member of lockedMembers) {
       await primitives.assertLockedSourceClean({
@@ -1084,16 +1099,17 @@ const applyComposition = async ({
         }
         steps.push({ _tag: 'Capability', memberKey: member.key, owned: member.owned, plan: result })
       }
-      const ownedCapability = capabilityResults.get(request.ownedMemberKey)!
-      const ownedPlan = await runtime.ownedCapabilityProjection.plan({
-        memberKey: request.ownedMemberKey,
-        ownedMemberPath: request.ownedMemberPath,
-        projectionPath: ownedCapability.candidateRoot,
+      const hubCapability = capabilityResults.get(request.compositionConfig.platformHub)!
+      const hubPlan = await runtime.ownedCapabilityProjection.plan({
+        memberKey: request.compositionConfig.platformHub,
+        ownedMemberPath: platformHubMember.root,
+        workspaceRoot: request.workspaceRoot,
+        projectionPath: hubCapability.candidateRoot,
       })
       steps.push({
         _tag: 'OwnedCapabilityProjection',
-        memberKey: request.ownedMemberKey,
-        plan: ownedPlan,
+        memberKey: request.compositionConfig.platformHub,
+        plan: hubPlan,
       })
       for (const member of lockedMembers) {
         const capability = capabilityResults.get(member.key)!
@@ -1165,17 +1181,19 @@ const applyComposition = async ({
       return { _tag: 'DryRun', steps, defaultCwd: request.ownedMemberPath }
     }
 
-    const ownedHandle = handles.find(({ member }) => member.owned === true)?.handle
-    if (ownedHandle === undefined) {
+    const hubHandle = handles.find(
+      ({ member }) => member.key === request.compositionConfig.platformHub,
+    )?.handle
+    if (hubHandle === undefined) {
       throw failure({
         reason: 'CapabilityFailure',
         phase: 'Capability',
-        memberKey: request.ownedMemberKey,
-        message: `Owned member '${request.ownedMemberKey}' has no realized capability projection`,
+        memberKey: request.compositionConfig.platformHub,
+        message: `Platform hub '${request.compositionConfig.platformHub}' has no realized capability projection`,
         recoveryPaths: [],
       })
     }
-    const retainOwnedCapabilityRoots = async (): Promise<void> => {
+    const retainRootCapabilityRoots = async (): Promise<void> => {
       try {
         await runtime.retainCapabilityRoots({
           memberKey: request.ownedMemberKey,
@@ -1187,9 +1205,9 @@ const applyComposition = async ({
           cause,
           reason: 'CapabilityFailure',
           phase: 'Capability',
-          memberKey: request.ownedMemberKey,
-          path: request.ownedMemberPath,
-          message: `Could not retain owned capability roots for '${request.ownedMemberKey}'`,
+          memberKey: request.compositionConfig.platformHub,
+          path: platformHubMember.root,
+          message: `Could not retain root capability projection for platform hub '${request.compositionConfig.platformHub}'`,
           recoveryPaths: [],
         })
       }
@@ -1197,20 +1215,21 @@ const applyComposition = async ({
     let ownedProjection: CompositionOwnedCapabilityProjectionResult
     try {
       ownedProjection = await runtime.ownedCapabilityProjection.install({
-        memberKey: request.ownedMemberKey,
-        ownedMemberPath: request.ownedMemberPath,
-        projectionPath: ownedHandle.projectionPath,
-        projectionDigest: ownedHandle.projectionDigest,
-        retainPublishedCapabilities: retainOwnedCapabilityRoots,
+        memberKey: request.compositionConfig.platformHub,
+        ownedMemberPath: platformHubMember.root,
+        workspaceRoot: request.workspaceRoot,
+        projectionPath: hubHandle.projectionPath,
+        projectionDigest: hubHandle.projectionDigest,
+        retainPublishedCapabilities: retainRootCapabilityRoots,
       })
     } catch (cause) {
       throw normalizeFailure({
         cause,
         reason: 'CapabilityFailure',
         phase: 'Capability',
-        memberKey: request.ownedMemberKey,
-        path: request.ownedMemberPath,
-        message: `Could not install and retain owned capability projection for '${request.ownedMemberKey}'`,
+        memberKey: request.compositionConfig.platformHub,
+        path: platformHubMember.root,
+        message: `Could not install and retain root capability projection for platform hub '${request.compositionConfig.platformHub}'`,
         recoveryPaths: [],
       })
     }
@@ -1225,9 +1244,9 @@ const applyComposition = async ({
         cause,
         reason: 'CapabilityFailure',
         phase: 'Capability',
-        memberKey: request.ownedMemberKey,
-        path: request.ownedMemberPath,
-        message: `Could not prune stale owned capability roots for '${request.ownedMemberKey}'`,
+        memberKey: request.compositionConfig.platformHub,
+        path: platformHubMember.root,
+        message: `Could not prune stale root capability projection for platform hub '${request.compositionConfig.platformHub}'`,
         recoveryPaths: [],
       })
     }
@@ -1251,6 +1270,7 @@ const applyComposition = async ({
       const retainMountedCapabilityRoots = async (): Promise<void> => {
         try {
           await runtime.retainCapabilityRoots({
+
             memberKey: member.key,
             memberRoot: mountedRoot,
             resolution: capability,
@@ -1270,6 +1290,7 @@ const applyComposition = async ({
       const pruneMountedCapabilityRoots = async (): Promise<void> => {
         try {
           await runtime.pruneCapabilityRoots({
+
             memberKey: member.key,
             memberRoot: mountedRoot,
             resolution: capability,

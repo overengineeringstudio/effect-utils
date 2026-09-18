@@ -23,18 +23,15 @@ The mr-generated root `.buckconfig` (validated on real content):
 
 ```ini
 [cells]
-  workspace = .                        # the synthesized shell; declares no targets
+  workspace = .                        # the synthesized shell
   prelude = prelude
-  toolchains = toolchains
-  none = none
+  capabilities = .buck2/capabilities  # root-owned, Nix-produced projection
   <member-cell> = repos/<member>       # one line per member incl. the owned repo
 [cell_aliases]
   config = prelude
   ovr_config = prelude
-  fbcode = none
-  fbsource = none
-  fbcode_macros = none
-  buck = none
+  fbsource = prelude
+  toolchains = <hub>
 [external_cells]
   prelude = bundled
 [parser]
@@ -110,18 +107,19 @@ shared-pin contract, not silent inheritance.
 owns the invocation wrapper that fixes it (COMP-R07); an unwrapped `buck2` call
 relies on the default and is consistent by accident only.
 
-Member repositories ship no `.buckconfig` project root of their own: deleting
-effect-utils' `.buckconfig` is part of landing the generator, so the
-unsupported bare-checkout shape fails loudly instead of silently building a
-cache island. (A member's `.buckconfig` is inert under composition — only its
-`[cell_aliases]` are honored — so nothing else is lost.) The gitignored
-`.buck2/capabilities` cell is per-host projected state with exactly one
-producer, mr's composition capability resolver: the mount pipeline projects it
-per read-only mount, and `mr apply` installs it into the owned member. A member
-ships no projector of its own, and a member-shipped script under `scripts/` is
-inert data the resolver never reads or executes. Buck analysis of the hub's
-`buck2/toolchains` package reads that projection, so every task that invokes
-Buck is ordered after `mr apply`.
+Member repositories can also be standalone Buck project roots. Their tracked
+`.buckconfig` declares the member cell at `.`, the bundled Prelude, and the
+root-owned `capabilities//` cell. The devenv shell links the pure
+`packages.<system>.buck2-capabilities` output at `.buck2/capabilities`; no
+projector runs during shell entry.
+
+The same Nix output is the only capability projection used by composition.
+`mr apply` treats the member manifest as data, verifies the projection's exact
+BUCK and `defs.bzl` bytes, platform, tool and executable identities, closure
+paths, and generation, then atomically links the output at the composition
+root's `.buck2/capabilities`. A member-shipped projector remains inert data.
+Hub toolchains address the projection through `capabilities//`, so read-only
+member mounts do not carry or mutate a projection.
 
 ## Workspace Anatomy
 

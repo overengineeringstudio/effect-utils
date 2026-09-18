@@ -6,9 +6,9 @@ import process from 'node:process'
 import type { BuckMemberCapability } from '../../buck2-manifest.ts'
 import type { ResolvedCompositionCapability } from './composition-capability-resolver-schema.ts'
 
-type CapabilityProjectionPlatform = 'aarch64-linux' | 'aarch64-macos' | 'x86_64-linux'
+export type CapabilityProjectionPlatform = 'aarch64-linux' | 'aarch64-macos' | 'x86_64-linux'
 
-type CapabilityProjectionManifest = {
+export type CapabilityProjectionManifest = {
   readonly closureIdentity: string
   readonly closureStorePaths: readonly string[]
   readonly contentDigest: string
@@ -20,7 +20,7 @@ type CapabilityProjectionManifest = {
   readonly toolId: string
 }
 
-const makeCapabilityProjectionManifest = ({
+export const makeCapabilityProjectionManifest = ({
   platform,
   resolved,
 }: {
@@ -38,15 +38,15 @@ const makeCapabilityProjectionManifest = ({
   toolId: resolved.capability.toolId,
 })
 
-const capabilityToolBuckBytes =
+export const capabilityToolBuckBytes =
   'export_file(name = "executable", src = "executable", visibility = ["PUBLIC"])\n' +
   'export_file(name = "manifest", src = "manifest.json", visibility = ["PUBLIC"])\n'
-const capabilityRootBuckBytes = '# Generated from exact Nix realizations.\n'
+export const capabilityRootBuckBytes = '# Generated from exact Nix realizations.\n'
 
 const manifestBytes = (manifest: CapabilityProjectionManifest): string =>
   `${JSON.stringify(manifest)}\n`
 
-const computeCapabilityProjectionGeneration = (
+export const computeCapabilityProjectionGeneration = (
   files: ReadonlyArray<{ readonly path: string; readonly bytes: string }>,
 ): string => {
   const framed = files
@@ -57,7 +57,7 @@ const computeCapabilityProjectionGeneration = (
   return createHash('sha256').update(`${payloadDigest}  -\n`).digest('hex')
 }
 
-const renderCapabilityProjectionDefs = ({
+export const renderCapabilityProjectionDefs = ({
   generation,
   platform,
   manifests,
@@ -79,7 +79,7 @@ const renderCapabilityProjectionDefs = ({
     '',
   ].join('\n')
 
-const projectResolvedCapabilities = async ({
+export const projectResolvedCapabilities = async ({
   projectionPath,
   platform,
   resolved,
@@ -221,7 +221,8 @@ const main = async (): Promise<void> => {
     )
   }
   const input = decodeNixProjectionInput(JSON.parse(await readFile(inputPath, 'utf8')))
-  const resolved = await Promise.all(input.map(resolveNixProjectionInput))
+  const resolved: ResolvedCompositionCapability[] = []
+  for (const capability of input) resolved.push(await resolveNixProjectionInput(capability))
   await projectResolvedCapabilities({ projectionPath: outputPath, platform, resolved })
 }
 

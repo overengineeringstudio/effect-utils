@@ -224,6 +224,7 @@ for runtime_name in \
   MR_COMPOSITION_GIT_BIN \
   MR_COMPOSITION_WATCHMAN_BIN \
   MR_CAPABILITY_NIX_BIN \
+  MR_CAPABILITY_PROJECTION \
   MR_CAPABILITY_MV_BIN
 do
   if ! grep -F "env.$runtime_name =" "$devenv_file" >/dev/null; then
