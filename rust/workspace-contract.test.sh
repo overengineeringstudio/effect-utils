@@ -113,45 +113,39 @@ expect_failure \
   --format-version 1
 
 export EFFECT_UTILS_RUST_WORKSPACE_REPO="$repo_root"
-# `${...}` below is Nix attribute interpolation, not shell expansion.
+# Evaluate the same native-product import the flake uses. The import verifies
+# every committed descriptor digest, release hash, platform tuple, and Buck
+# target before exposing the manifest.
 # shellcheck disable=SC2016
-source_expr='let
+native_products_expr='let
   repo = builtins.toPath (builtins.getEnv "EFFECT_UTILS_RUST_WORKSPACE_REPO");
   flake = builtins.getFlake (toString repo);
+  pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+  nativeProducts = import (repo + "/nix/buck2-native-products") { inherit pkgs; };
 in {
-  otelScrape = toString flake.packages.${builtins.currentSystem}.otel-scrape.src;
-  otelite = toString flake.packages.${builtins.currentSystem}.otelite.src;
+  inherit (nativeProducts) manifest targets;
 }'
-source_json="$(nix eval --impure --json --expr "$source_expr")"
+native_products_json="$(nix eval --impure --json --expr "$native_products_expr")"
 
-check_source() {
-  local package="$1"
-  local sibling="$2"
-  local source_path="$3"
-
-  [ -f "$source_path/rust/Cargo.toml" ] || fail "$package source omitted rust/Cargo.toml"
-  [ -f "$source_path/rust/Cargo.lock" ] || fail "$package source omitted rust/Cargo.lock"
-  [ -f "$source_path/rust-toolchain.toml" ] || fail "$package source omitted root rust-toolchain.toml"
-  [ -f "$source_path/packages/@overeng/otel-scrape/Cargo.toml" ] ||
-    fail "$package source omitted otel-scrape member manifest"
-  [ -f "$source_path/packages/@overeng/otelite/Cargo.toml" ] ||
-    fail "$package source omitted otelite member manifest"
-  [ -f "$source_path/packages/@overeng/$package/src/lib.rs" ] ||
-    fail "$package source omitted selected member source"
-  [ ! -e "$source_path/packages/@overeng/$sibling/src/lib.rs" ] ||
-    fail "$package source captured sibling source"
-  [ ! -e "$source_path/package.json" ] || fail "$package source captured unrelated repository files"
-
-  cargo metadata \
-    --manifest-path "$source_path/rust/Cargo.toml" \
-    --locked \
-    --no-deps \
-    --format-version 1 >/dev/null
-  echo "rust-workspace-contract: GREEN $package workspace-aware narrow source"
-}
-
-check_source "otel-scrape" "otelite" "$(jq -r '.otelScrape' <<<"$source_json")"
-check_source "otelite" "otel-scrape" "$(jq -r '.otelite' <<<"$source_json")"
+jq -e '
+  .targets.products as $targets |
+  .targets.platforms as $platforms |
+  (.manifest.schema == "effect-utils/buck2-native-release-products/v1") and
+  (.targets.schema == "effect-utils/buck2-native-release-targets/v1") and
+  (($targets | map(.name) | sort) == ["otel-scrape", "otelite"]) and
+  ((.manifest.products | length) == (($targets | length) * ($platforms | length))) and
+  all(.manifest.products[]; . as $entry |
+    ($entry.descriptorSha256 | test("^sha256:[0-9a-f]{64}$")) and
+    ($entry.descriptor.payload.digest.algorithm == "sha256") and
+    ($entry.release.hash == $entry.descriptor.payload.digest.sri) and
+    any($targets[];
+      .name == $entry.descriptor.name and
+      .target == $entry.descriptor.semanticProvenance.target
+    )
+  )
+' <<<"$native_products_json" >/dev/null ||
+  fail "Buck native-product manifest provenance is incomplete or inconsistent"
+echo "rust-workspace-contract: GREEN Buck native-product manifest provenance"
 
 [ -f "$repo_root/rust-toolchain.toml" ] || fail "repository rust-toolchain.toml is missing"
 [ ! -e "$repo_root/packages/@overeng/otel-scrape/rust-toolchain.toml" ] ||
