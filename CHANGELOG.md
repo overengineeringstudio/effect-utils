@@ -200,6 +200,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/gh-ci-utils**: `auth status` (and `auth login` result lines) now
+  render in every output mode. Human modes previously emitted only `Effect.log`,
+  which `outputModeLayer` captures into an in-memory buffer for progressive
+  React modes (`tty`/`ci`/`ci-plain`) with no mounted view, so stdout and
+  stderr stayed empty. Results now go through the synchronous fd writer:
+  the JSON document on stdout in JSON modes, the human status line on stdout
+  otherwise.
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
   **Workspace boundary**: pnpm discovers the workspace by walking up from the
