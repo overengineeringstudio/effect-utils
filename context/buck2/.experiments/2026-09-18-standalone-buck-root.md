@@ -20,21 +20,59 @@ Use a fresh `git worktree add` checkout with no megarepo state for the standalon
 
 ## Result
 
-The measurement set is pending. The shared heavy-command gate did not grant the final validation command within three hours. The worker followed the task's stop rule instead of running outside the gate.
+Revision `e2073b0882` passed the standalone Buck proofs:
 
-Evidence collected before the prolonged gate wait:
+- A fresh detached Git worktree with no megarepo state built
+  `//packages/@overeng/tui-core:typecheck`.
+- `mr store worktree new --commit e2073b0882` produced the compatibility-control
+  worktree, and the same target built there.
+- The full `//:quick` aggregate completed from the plain worktree.
+- After adding a deliberate `number`-to-`string` error to the admitted
+  `tui-core` source, `//:quick` failed at
+  `//packages/@overeng/tui-core:typecheck` with TS2322. Restoring the source
+  returned the worktree to a clean state.
+- Three unchanged reruns completed in 16-18 ms with no network traffic and no
+  scheduled command summary, which is Buck's zero-command result.
 
-- The pure `packages.x86_64-linux.buck2-capabilities` derivation built and linked `.buck2/capabilities` to its Nix store output.
-- The first standalone `buck2:quick` attempt reached Buck from the repository root, but the shared Watchman service failed root synchronization after a 57-second connection timeout. This was recorded as Axe feedback.
-- A subsequent gated `buck2:check` retry waited on the cross-worker serialization lock for more than three hours and exited without running.
-- A cached devenv evaluation completed in 1.24 seconds during the failed validation attempt. This is diagnostic evidence only, not an accepted shell-entry sample.
+All accepted samples ran through the shared heavy-command gate. The readings
+below were captured immediately before each timed sample.
 
-No timing row has the required `n >= 3` and per-sample gate readings yet. No acceptance claim is made from these partial observations.
+| Regime | Elapsed samples | Resource readings before samples | Result |
+| --- | --- | --- | --- |
+| Unchanged `//:quick` | 17 ms, 18 ms, 16 ms; median 17 ms | `MemAvailable` 25,741,880 / 25,705,348 / 25,677,884 KiB; slice memory 84,167,573,504 / 84,169,175,040 / 84,181,024,768 bytes; PSI `some avg60` 0.78 / 0.78 / 0.78 | PASS: all samples are below the 5 s BUCK-R07 warm no-op budget |
+| Fresh `buck-out`, warm shared cache | 18.077 s, 8.443 s, 6.412 s; median 8.443 s | `MemAvailable` 25,086,560 / 27,771,072 / 27,709,148 KiB; slice memory 81,304,829,952 / 82,396,282,880 / 82,268,454,912 bytes; PSI `some avg60` 1.38 / 1.08 / 0.95 | PASS: all samples are below the 3 min BUCK-R07 budget; each reported 1,208 cached commands, 100% cache hits, and zero local commands |
+| Warm `devenv shell -- true` | 505 ms, 424 ms, 446 ms; median 446 ms | `MemAvailable` 25,855,352 / 25,799,616 / 25,786,556 KiB; slice memory 81,212,649,472 / 81,204,805,632 / 81,209,909,248 bytes; PSI `some avg60` 1.18 / 1.18 / 1.14 | PASS: all samples are below the 20 s shell-entry budget |
+
+The `check:quick` before/after comparison did not produce accepted performance
+samples. The parent revision exited after 20.327 s and the S8 revision exited
+after 19.465 s. Both clean store worktrees failed at the same pre-existing
+composition boundary: `mr:setup` and `mr:source-policy-check` reject the flat
+store worktree as a legacy workspace before `buck2:quick` can run. These are
+failure latencies, not benchmark values.
+
+One earlier unchanged rerun also hit the shared Watchman service's 57-second
+reconnect timeout after the cold aggregate populated the worktree. A subsequent
+fresh-output series and the accepted unchanged series completed without that
+failure, so the accepted timing rows do not include the failed attempt.
+
+Strict VRS validation remains blocked by the pre-existing decision-shape errors
+in decisions 0035 and 0036 (`Status:`, `Context`, `Evidence and Argument`, and
+`Options` are absent according to the current strict schema).
 
 ## Conclusion
 
-The source and focused tests are ready for review, but R16 performance acceptance remains open. Complete the four measurement regimes and both fresh-worktree proofs when the shared heavy-command gate becomes available.
+The standalone Buck root and aggregate meet the BUCK-R07 warm and fresh-context
+budgets. Shell entry also remains within its accepted budget. The composed
+store-worktree target control and the broken-package control both behave as
+required.
+
+`check:quick` is not proven green from a flat store worktree. Its retained
+source-side residual gates still require a non-legacy composed workspace, so no
+before/after performance claim is made for that verb.
 
 ## VRS Impact
 
-This experiment exercises the standalone-root, aggregate, and shell-entry budgets. It does not change their thresholds or authority. The pending result must not be used to close the associated authority-ledger rows.
+This experiment closes the standalone-root, aggregate, cache, and shell-entry
+measurement gaps. It does not change their thresholds or authority. The
+`check:quick` evidence remains open until the composition-dependent residual
+gates have a runnable composed control.
