@@ -2,6 +2,7 @@ import { Effect, Schema } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
 import * as stdoutModule from '@overeng/tui-react/node'
+
 import { CiStateSchema } from '../src/isomorphic/renderers/CiOutput/schema.ts'
 import {
   createSingleRunState,
