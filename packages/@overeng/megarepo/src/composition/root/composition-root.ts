@@ -844,6 +844,7 @@ const renderBuckconfig = (input: NormalizedCompositionRootInput): string => {
     '[cells]',
     '  workspace = .',
     '  prelude = prelude',
+    '  capabilities = .buck2/capabilities',
     ...input.members.map((member) => `  ${member.manifest.cell} = ${member.manifest.mount}`),
     '',
     '[cell_aliases]',

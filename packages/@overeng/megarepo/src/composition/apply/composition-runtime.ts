@@ -225,7 +225,7 @@ export const compositionApplyRuntimeFromEnv = ({
     },
     mountRecoveryRuntime: { mvPath, platform },
     publisherRuntime: {
-      assertCapabilityProjection: ({ memberRoot }) => check(memberRoot),
+      assertCapabilityProjection: ({ workspaceRoot: requestedRoot }) => check(requestedRoot),
     },
     publisherLock: {
       owner: `mr:${process.pid}`,

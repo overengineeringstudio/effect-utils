@@ -69,6 +69,45 @@
           bun = pkgs.bun;
           products = trackedBuck2Products.products;
         };
+        capabilityPackages = {
+          inherit buck2;
+          bun = pkgs.bun;
+          buck2-node = pkgs.writeShellScriptBin "node" ''
+            exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"
+          '';
+          inherit buck2-go;
+          buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
+            exec ${pkgs.python3}/bin/python3 "$@"
+          '';
+          buck2-archive-tool = buck2-stage0-tools.archive-tool;
+          buck2-product = buck2-stage0-tools.product;
+          buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
+            exec ${pkgs.coreutils}/bin/readlink "$@"
+          '';
+          buck2-rust-compiler = buck2-rust-toolchain-capability.packages.rust-compiler;
+          buck2-rust-rustdoc = buck2-rust-toolchain-capability.packages.rust-rustdoc;
+          buck2-rust-clippy-driver = buck2-rust-toolchain-capability.packages.rust-clippy-driver;
+          buck2-rust-c-compiler = buck2-rust-toolchain-capability.packages.rust-c-compiler;
+          buck2-rust-cxx-compiler = buck2-rust-toolchain-capability.packages.rust-cxx-compiler;
+          buck2-rust-linker = buck2-rust-toolchain-capability.packages.rust-linker;
+          buck2-rust-archiver = buck2-rust-toolchain-capability.packages.rust-archiver;
+          buck2-rust-dwp = buck2-rust-toolchain-capability.packages.rust-dwp;
+          buck2-rust-nm = buck2-rust-toolchain-capability.packages.rust-nm;
+          buck2-rust-objcopy = buck2-rust-toolchain-capability.packages.rust-objcopy;
+          buck2-rust-objdump = buck2-rust-toolchain-capability.packages.rust-objdump;
+          buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
+          buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
+          buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
+          effect-tsgo = tsgo.packages.${system}.effect-tsgo;
+          oxfmt = pkgs.oxfmt;
+          oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
+            inherit pkgs oxlintNpm;
+          };
+        };
+        buck2Capabilities = import ./nix/buck2-capabilities.nix {
+          inherit pkgs capabilityPackages;
+          src = rootPath;
+        };
         buck2ProductCandidates = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
           inherit
             pkgs
@@ -78,6 +117,7 @@
             ;
           products = trackedBuck2Products.products;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
+          capabilityProjection = buck2Capabilities;
         };
         ghCiUtils = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
           inherit
@@ -100,58 +140,17 @@
             };
           });
         };
+
       in
       {
         packages =
           cliPackages
           // providerCliPackages
           // nativeProductPackages
+          // capabilityPackages
           // {
-            inherit
-              buck2
-              ;
-            # Hub toolchain authority realization: the exact Bun every Buck JS/TS action uses.
-            bun = pkgs.bun;
-            # Hub toolchain authority realization: the exact Node every Buck Vitest lane
-            # that exercises Node built-ins runs on.
-            buck2-node = pkgs.writeShellScriptBin "node" ''
-              exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"
-            '';
-            # Hub toolchain authority realization: the exact Go distribution every
-            # Buck Go action compiles with — the OFFICIAL release archive, not
-            # `pkgs.go`, whose patched stdlib puts three absolute store paths into
-            # every product it compiles (decision 0029, `nix/go.nix`). `bin/go` is a
-            # real file in that archive, so the resolver's realpath lands on
-            # /nix/store/<realization>/bin/go and no wrapper is needed.
-            inherit buck2-go;
-            # Hub toolchain authority realization: prelude's bootstrap interpreter.
-            buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
-              exec ${pkgs.python3}/bin/python3 "$@"
-            '';
-            buck2-archive-tool = buck2-stage0-tools.archive-tool;
-            buck2-product = buck2-stage0-tools.product;
-            # Composition-wrapper capability realization for the
-            # `gnu/coreutils/v9` readlink executable. Keep a real executable
-            # file at this path so capability resolution can attest it.
-            buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
-              exec ${pkgs.coreutils}/bin/readlink "$@"
-            '';
-            buck2-rust-compiler = buck2-rust-toolchain-capability.packages.rust-compiler;
-            buck2-rust-rustdoc = buck2-rust-toolchain-capability.packages.rust-rustdoc;
-            buck2-rust-clippy-driver = buck2-rust-toolchain-capability.packages.rust-clippy-driver;
-            buck2-rust-c-compiler = buck2-rust-toolchain-capability.packages.rust-c-compiler;
-            buck2-rust-cxx-compiler = buck2-rust-toolchain-capability.packages.rust-cxx-compiler;
-            buck2-rust-linker = buck2-rust-toolchain-capability.packages.rust-linker;
-            buck2-rust-archiver = buck2-rust-toolchain-capability.packages.rust-archiver;
-            buck2-rust-dwp = buck2-rust-toolchain-capability.packages.rust-dwp;
-            buck2-rust-nm = buck2-rust-toolchain-capability.packages.rust-nm;
-            buck2-rust-objcopy = buck2-rust-toolchain-capability.packages.rust-objcopy;
-            buck2-rust-objdump = buck2-rust-toolchain-capability.packages.rust-objdump;
-            buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
-            buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
-            buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
+            buck2-capabilities = buck2Capabilities;
             cli-build-stamp = cliBuildStamp.package;
-            effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             gh-ci-utils = ghCiUtils;
             gh-ci-utils-dirty = ghCiUtilsDirty;
             "gh-ci-utils-pnpm-deps" = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
@@ -161,10 +160,6 @@
             # npm oxlint with NAPI bindings. Its two JavaScript plugins are
             # immutable Buck module products imported from the tracked manifest.
             oxlint-npm = oxlintNpm;
-            # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
-            oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
-              inherit pkgs oxlintNpm;
-            };
             node-pty-native = nodePtyNative;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {

@@ -1594,16 +1594,6 @@ const loadMembers = async ({
         message: `Member root is missing or not a directory: ${memberRoot}`,
       })
     }
-    for (const forbiddenRootFile of ['.buckconfig', '.buckroot']) {
-      const forbiddenPath = NodePath.join(memberRoot, forbiddenRootFile)
-      if ((await lstatMaybe(forbiddenPath)) !== undefined) {
-        throw failure({
-          reason: 'InvalidMemberManifest',
-          path: forbiddenPath,
-          message: `Member root must not carry ${forbiddenRootFile}: ${memberRoot}`,
-        })
-      }
-    }
     const manifestPath = NodePath.join(memberRoot, BUCK_MEMBER_MANIFEST_FILENAME)
     try {
       members.push({
