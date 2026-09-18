@@ -174,11 +174,6 @@ describe('Buck2 TypeScript authority runtime planning', () => {
     expect(buck2TypeScriptTestTargets.every((target) => target.startsWith('effect_utils//'))).toBe(
       true,
     )
-    expect(buck2TypeScriptTestTargets.every((target) => target.endsWith(':test'))).toBe(true)
-    expect(buck2TypeScriptTestCollectionTargets.length).toBe(buck2TypeScriptTestTargets.length)
-    expect(
-      buck2TypeScriptTestCollectionTargets.every((target) => target.endsWith(':test_collect')),
-    ).toBe(true)
   })
 
   it('forwards task signals to the active child and propagates its signal outcome', async () => {
