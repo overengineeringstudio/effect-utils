@@ -21,8 +21,24 @@ const packageProductPublications = [
     productName: '@overeng/effect-distributed-lock',
   },
   {
+    label: '//packages/@overeng/notion-core:dist-package',
+    productName: '@overeng/notion-core',
+  },
+  {
+    label: '//packages/@overeng/notion-effect-client:dist-package',
+    productName: '@overeng/notion-effect-client',
+  },
+  {
+    label: '//packages/@overeng/notion-effect-schema:dist-package',
+    productName: '@overeng/notion-effect-schema',
+  },
+  {
     label: '//packages/@overeng/otel-contract:dist-package',
     productName: '@overeng/otel-contract',
+  },
+  {
+    label: '//packages/@overeng/utils-dev:dist-package',
+    productName: '@overeng/utils-dev',
   },
   {
     label: '//packages/@overeng/utils:dist-package',

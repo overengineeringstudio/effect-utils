@@ -82,6 +82,9 @@ import {
   nativeDependencyPolicy,
   type NativeDependencyPolicyEntry,
 } from './native-dependency-policy.ts'
+export { deriveBuck2PackagePin } from './package-publication.ts'
+export type { Buck2PackagePin } from './package-publication.ts'
+
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {

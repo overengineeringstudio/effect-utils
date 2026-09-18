@@ -1,6 +1,8 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
+load("//buck2/products:defs.bzl", "npm_package_product")
+
 # Projection source: packages/@overeng/notion-effect-client/BUCK.genie.ts
 # Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
@@ -335,6 +337,30 @@ vitest_collect(
         "src/test/integration/search.integration.test.ts",
         "src/test/integration/users.integration.test.ts",
         "src/test/otelite-span-shape.test.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "publish-dist",
+    package_tree = ":package_tree",
+    declaration_entrypoint = "src/mod.d.ts",
+    emit_declaration_only = False,
+)
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-notion-effect-client.tgz",
+    dist = ":publish-dist",
+    package_json = "package.json",
+    product_name = "@overeng/notion-effect-client",
+    transport_slug = "overeng-notion-effect-client",
+    package_dependencies = [
+        "//packages/@overeng/content-address:dist-package",
+        "//packages/@overeng/notion-core:dist-package",
+        "//packages/@overeng/notion-effect-schema:dist-package",
+        "//packages/@overeng/otel-contract:dist-package",
+        "//packages/@overeng/utils:dist-package",
     ],
     visibility = ["PUBLIC"],
 )

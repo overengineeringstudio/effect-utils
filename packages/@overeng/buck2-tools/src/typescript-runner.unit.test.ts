@@ -51,7 +51,7 @@ it('preserves an error message when the runtime stack omits it', () => {
   )
 })
 
-describe('TypeScript emit declaration command', () => {
+describe('TypeScript command contracts', () => {
   it('parses explicit normalized declaration paths', () => {
     const options = parseEmitOptions([
       '/nix/store/toolchain/bin/tsgo',
@@ -60,13 +60,31 @@ describe('TypeScript emit declaration command', () => {
       'dist',
       'src/mod.d.ts',
       '/output',
+      'true',
       '--copy-declaration',
       'src/vite-types.d.ts',
       '--read-root',
       '/dependency-view',
     ])
 
-    expect(options.declarationSources).toEqual(['src/vite-types.d.ts'])
+    expect(options).toMatchObject({
+      declarationSources: ['src/vite-types.d.ts'],
+      emitDeclarationOnly: true,
+    })
+  })
+
+  it('allows publication emit to include JavaScript', () => {
+    const options = parseEmitOptions([
+      '/nix/store/toolchain/bin/tsgo',
+      '/package-tree',
+      'tsconfig.json',
+      'dist',
+      'src/mod.d.ts',
+      '/output',
+      'false',
+    ])
+
+    expect(options.emitDeclarationOnly).toBe(false)
   })
 
   it('parses canonical repeatable declared read roots', () => {
@@ -114,6 +132,7 @@ describe('TypeScript emit declaration command', () => {
           'dist',
           'src/mod.d.ts',
           '/output',
+          'true',
           '--copy-declaration',
           declarationPath,
         ]),

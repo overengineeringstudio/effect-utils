@@ -93,6 +93,7 @@ def _tsgo_emit_impl(ctx):
         ctx.attrs.out_dir,
         ctx.attrs.declaration_entrypoint,
         directory.as_output(),
+        "true" if ctx.attrs.emit_declaration_only else "false",
     ])
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
@@ -123,6 +124,7 @@ tsgo_emit = rule(
         "project": attrs.string(default = "tsconfig.json"),
         "out_dir": attrs.string(default = "dist"),
         "declaration_entrypoint": attrs.string(default = "src/mod.d.ts"),
+        "emit_declaration_only": attrs.bool(default = True),
         "declaration_sources": attrs.dict(
             key = attrs.string(),
             value = attrs.source(),

@@ -56,10 +56,17 @@ export default createGenieOutput({
 
 ${projection.stringify(context)}
 
+tsgo_emit(
+    name = "publish-dist",
+    package_tree = ":package_tree",
+    declaration_entrypoint = "src/isomorphic/mod.d.ts",
+    emit_declaration_only = False,
+)
+
 npm_package_product(
     name = "dist-package",
     archive_name = "overeng-utils.tgz",
-    dist = ":dist",
+    dist = ":publish-dist",
     package_json = "package.json",
     product_name = "@overeng/utils",
     transport_slug = "overeng-utils",
