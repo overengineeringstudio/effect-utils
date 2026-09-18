@@ -82,7 +82,7 @@ const loadFileConfig = (
           (cause) => new ConfigError({ message: `Failed to read config: ${configPath}`, cause }),
         ),
       )
-    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(GhCiUtilsFileConfig))(raw).pipe(
+    return yield* Schema.decodeEffect(Schema.fromJsonString(GhCiUtilsFileConfig))(raw).pipe(
       Effect.mapError(
         (cause) => new ConfigError({ message: 'Invalid gh-ci-utils config format', cause }),
       ),
