@@ -141,6 +141,7 @@
             ;
           products = trackedBuck2Products.products;
           typeProofCompilerBin = "${tsgo.packages.${system}.tsgo}/bin/tsgo";
+          capabilityProjection = buck2Capabilities;
         };
         ghCiUtils = import (rootPath + "/packages/@overeng/gh-ci-utils/nix/build.nix") {
           inherit
@@ -163,6 +164,7 @@
             };
           });
         };
+
       in
       {
         buckProducts = trackedBuck2Products;
@@ -185,10 +187,6 @@
               }) buckProductsFromSource
             );
             oxlint-npm = oxlintNpm;
-            # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
-            oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
-              inherit pkgs oxlintNpm;
-            };
             node-pty-native = nodePtyNative;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") { }

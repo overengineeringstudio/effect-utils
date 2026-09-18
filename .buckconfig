@@ -1,0 +1,35 @@
+[cells]
+  effect_utils = .
+  capabilities = .buck2/capabilities
+  prelude = prelude
+
+[cell_aliases]
+  config = prelude
+  ovr_config = prelude
+  fbsource = prelude
+  toolchains = effect_utils
+
+[external_cells]
+  prelude = bundled
+
+[parser]
+  target_platform_detector_spec = target:effect_utils//...->effect_utils//buck2/platforms:host_platform
+
+[build]
+  execution_platforms = effect_utils//buck2/platforms:host_execution_platform
+
+[buck2]
+  file_watcher = notify
+  default_allow_cache_upload = true
+  digest_algorithms = SHA256
+
+[buck2_re_client]
+  action_cache_address = grpc://dev3:41045
+  cas_address = grpc://dev3:41045
+  engine_address = grpc://dev3:41045
+  http_headers = authorization: Basic $BUCK2_REMOTE_CACHE_BASIC_AUTH
+  instance_name = effect-utils
+  tls = false
+
+[project]
+  ignore = **/__pycache__,**/dist,**/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,packages/.editor-view,target,tmp

@@ -157,3 +157,31 @@ schema.
   by its own `contentDigest` instead of by whole-projection `GENERATION`, and
   whether the remaining top-level `rust-*`/`archive-tool`/`product` capabilities
   should also move under named authorities.
+
+## Amendment 1 — Nix Owns The Capability Projection
+
+Accepted 2026-09-17 for the standalone Buck root and aggregate cutover.
+
+The flake is now the sole producer of capability projection bytes.
+`packages.<system>.buck2-capabilities` reads the tracked `buck2-member.json`,
+realizes the manifest's `flakePackage` outputs, obtains each transitive runtime
+closure through `pkgs.closureInfo`, and invokes the shared TypeScript projection
+renderer in a pure derivation. The derivation does not invoke Nix recursively.
+
+The resolver remains the verification boundary, not a second producer. With
+`MR_CAPABILITY_PROJECTION`, it checks the Nix output's platform, exact root and
+tool BUCK bytes, manifests, executable digests and store paths, closure
+membership, and generation identity. `mr apply` then atomically links that
+verified output at the composition root's `.buck2/capabilities`. A standalone
+devenv shell links the same output at the standalone root. Both roots declare
+that directory as the `capabilities//` cell, and hub toolchains use only
+cross-cell labels into it.
+
+This amendment supersedes the “mr's resolver is the sole producer” row and
+paragraph above. The invariant remains one producer, one tool set, and one
+generation digest; ownership moves from mr's imperative resolver path to the
+flake's pure package output. The resolver and atomic installer remain
+load-bearing consumers and verifiers. The legacy resolver projection path stays
+available only through the absence of `MR_CAPABILITY_PROJECTION` until
+composition adoption reaches L3; it is not used by the standalone or composed
+effect-utils paths.

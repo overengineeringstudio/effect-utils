@@ -10,6 +10,7 @@
   products,
   nativeProducts ? (import ../../buck2-native-products { inherit pkgs; }).products,
   typeProofCompilerBin,
+  capabilityProjection ? null,
   oxfmtPkg ? pkgs.oxfmt,
   gitRev ? "unknown",
   commitTs ? 0,
@@ -105,6 +106,9 @@ let
       MR_COMPOSITION_PLATFORM = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux";
       MR_COMPOSITION_SYSTEM = pkgs.stdenv.hostPlatform.system;
       MR_COMPOSITION_WATCHMAN_BIN = "${pkgs.watchman}/bin/watchman";
+    }
+    // pkgs.lib.optionalAttrs (capabilityProjection != null) {
+      MR_CAPABILITY_PROJECTION = "${capabilityProjection}";
     };
     expectedExternalCapabilities = [
       "buck2"
