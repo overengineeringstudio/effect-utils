@@ -362,6 +362,15 @@ All notable changes to this project will be documented in this file.
   reports 12.4.1, the store layout stays `v11`, and `pnpm install
 --frozen-lockfile --ignore-scripts` over all 39 workspace projects succeeds
   with the lockfile unchanged.
+- **Buck2 / TypeScript authority**: transfer all 39 TypeScript projects to
+  package-local Buck targets, including the independent React Inspector strict
+  consumer and the five bootstrap-critical packages. Delete the root
+  `tsconfig.check.json` / `tsconfig.emit.json` producers and `ts:*` task graph;
+  CI and aggregate checks now use `buck2:check` as the only check authority.
+  Declaration publication accepts only Buck products from a reciprocal
+  composition worktree, with no source-compiler comparison fallback. The
+  staged Buck action runners move into their owning `@overeng/buck2-tools`
+  package so admitting that package does not leave its sources root-owned.
 
 - **pnpm**: move the ecosystem pin from pnpm 11.8.0 to 12.3.4 and retire the
   separate lock mutator. pnpm 12 ships the CLI as a native Rust executable, so

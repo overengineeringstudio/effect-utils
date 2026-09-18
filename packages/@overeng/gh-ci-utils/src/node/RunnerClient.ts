@@ -57,7 +57,7 @@ export const fetchRunnerHostJobs = (
 
 /** Fetch active jobs from all runner hosts. */
 export const fetchAllRunnerJobs = (hosts: readonly string[]) =>
-  Effect.all(hosts.map(fetchRunnerHostJobs), { concurrency: 'unbounded' }).pipe(
+  Effect.forEach(hosts, fetchRunnerHostJobs, { concurrency: 'unbounded' }).pipe(
     Effect.map((results) =>
       results.flatMap((result) => (result.status === 'reachable' ? result.jobs : [])),
     ),
