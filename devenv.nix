@@ -447,6 +447,7 @@ let
       lib.nameValuePair lane.taskName {
         description = "Execute the bounded ${lane.packageName} unit-test lane under Buck";
         after = [ "mr:apply" ] ++ lib.optional (lane ? unboundedTaskName) lane.unboundedTaskName;
+        # trace-audit-allow: buck2UnitTestExec applies trace.exec with this task name.
         exec = buck2UnitTestExec {
           name = lane.taskName;
           targets = [ lane.target ];
@@ -1336,6 +1337,7 @@ in
   tasks."test:buck2:unit" = {
     description = "Execute every admitted bounded unit-test lane under Buck";
     after = [ "mr:apply" ];
+    # trace-audit-allow: buck2UnitTestExec applies trace.exec with this aggregate task name.
     exec = buck2UnitTestExec {
       name = "test:buck2:unit";
       targets = map (lane: lane.target) buck2TestLanes;

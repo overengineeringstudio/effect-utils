@@ -43,5 +43,10 @@ pkgs.runCommand "gh-ci-utils"
   ''
     mkdir -p $out/bin
     makeWrapper ${unwrapped}/bin/gh-ci-utils $out/bin/gh-ci-utils \
-      --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.git pkgs.gh ]}
+      --prefix PATH : ${
+        pkgs.lib.makeBinPath [
+          pkgs.git
+          pkgs.gh
+        ]
+      }
   ''
