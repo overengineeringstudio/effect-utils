@@ -176,7 +176,11 @@ describe('CLI JSON output contracts', () => {
     const rawSpy = vi.spyOn(stdoutModule, 'writeStdoutSync').mockImplementation(push)
     try {
       await Effect.runPromise(
-        reportAuthResult({ output: 'auto', session: undefined, humanMessage: 'No active session.' }),
+        reportAuthResult({
+          output: 'auto',
+          session: undefined,
+          humanMessage: 'No active session.',
+        }),
       )
       expect(lines.map((line) => JSON.parse(line))).toEqual([{ _tag: 'Unauthenticated' }])
     } finally {
