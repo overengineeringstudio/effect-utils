@@ -77,8 +77,9 @@ const runFallbackScenario = async (repos: readonly string[]) => {
 
   await Effect.gen(function* () {
     const client = yield* GitHubClient
-    yield* Effect.all(
-      repos.map((repo) => client.listWorkflowRunsByStatus({ repo, status: 'completed' })),
+    yield* Effect.forEach(
+      repos,
+      (repo) => client.listWorkflowRunsByStatus({ repo, status: 'completed' }),
       { concurrency: 'unbounded' },
     )
   }).pipe(
