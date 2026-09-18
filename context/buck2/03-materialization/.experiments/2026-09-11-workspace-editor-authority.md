@@ -77,6 +77,6 @@ language-server evidence for the same atomic pointer and settle-signal mechanism
 
 Closes the package and root source-generator surface of decision 0015,
 supersedes the old `tui-core`-only task contract, and completes the root
-package-manager installation producer deletion. Decision 0030 records the
+package-manager installation producer deletion. Decision 0035 records the
 narrow committed-graph bootstrap exception that keeps source freshness
 non-circular.
