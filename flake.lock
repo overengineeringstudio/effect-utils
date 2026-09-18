@@ -70,7 +70,8 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "tsgo": "tsgo"
+        "tsgo": "tsgo",
+        "weaver-flake": "weaver-flake"
       }
     },
     "systems": {
@@ -124,6 +125,22 @@
         "rev": "f3b04fe05642d53b4ff126a4af05fe2587b43748",
         "type": "github"
       }
+    },
+    "weaver-flake": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "path": "./nix/weaver-flake",
+        "type": "path"
+      },
+      "original": {
+        "path": "./nix/weaver-flake",
+        "type": "path"
+      },
+      "parent": []
     }
   },
   "root": "root",

@@ -106,8 +106,8 @@ const composition = registryFromMembers({
   upstream: [
     {
       // Pinned upstream OTel semconv. weaver resolves `http.*` refs against this dependency.
-      // The `weaver:check` task materializes it hermetically as a local FS path (SC-A03,
-      // confirmed working with 0.24.2). The committed string is the portable git-URL form.
+      // The Buck `//:weaver_check` target materializes it hermetically as a local FS path
+      // (SC-A03, confirmed working with 0.24.2). The committed string is the portable git-URL form.
       dependency: {
         name: 'otel',
         registry_path: `https://github.com/open-telemetry/semantic-conventions.git@${PINNED_UPSTREAM_SEMCONV_VERSION}[model]`,

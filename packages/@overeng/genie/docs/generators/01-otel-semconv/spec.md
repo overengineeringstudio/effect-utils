@@ -204,17 +204,15 @@ the public fragments), following the megarepo alignment propagation order.
 
 ## Weaver gate wiring (SC-R10, SC-R11, SC-R12)
 
-- **check (SC-R10):** devenv task `weaver:check` → `weaver registry check -r <dir> --future`,
-  wired into `check:all` and CI. Weaver is pinned via the from-source flake `nix/weaver-flake/`
-  (v0.24.2), NOT `nixpkgs#weaver`; the upstream semconv is pinned to a Weaver-compatible
-  `@vX.Y.Z[model]` tag (v1.37.0 clean under `--future` with 0.23/0.24; ≤v1.36 fail on their own
-  unstructured-deprecated). The gate resolves the upstream dependency **hermetically** against a
-  local Nix FOD (`nix/weaver-flake#semconv-model`): it copies the emitted YAML to a scratch dir
-  and rewrites the committed portable git-URL `registry_path` to the local FOD path, so check is
-  offline/deterministic (SC-A03). **Block-vs-degrade contract:** a weaver _validation_ failure
-  (check/diff/live-check exits nonzero) blocks; weaver _unavailability_ (flake build/eval
-  failure, binary missing) degrades to a warning in a separate lane and must NOT wedge unrelated
-  work (GEN-R09) — the flake build is lane-separated from the validation.
+- **check (SC-R10):** Buck target `//:weaver_check` runs
+  `weaver registry check -r <dir> --future` and is part of `//:all`. Weaver is pinned via the
+  from-source flake `nix/weaver-flake/` (v0.24.2), NOT `nixpkgs#weaver`; the upstream semconv is
+  pinned to a Weaver-compatible `@vX.Y.Z[model]` tag (v1.37.0 clean under `--future` with
+  0.23/0.24; ≤v1.36 fail on their own unstructured-deprecated). Buck receives both realizations
+  as exact Nix capability inputs. The action copies the emitted YAML to a scratch directory and
+  rewrites the committed portable git-URL `registry_path` to the local semconv-model store path,
+  so the check is offline and deterministic (SC-A03). Capability realization or validation
+  failure blocks the target; there is no degraded-success path.
 - **Fidelity coverage:** the gate runs against the _actually emitted_ registry (not a separate
   fixture) and exercises each fidelity delta with a dedicated attribute
   (`deprecated:{reason:renamed}`, a multi-member enum with per-member `stability`, a
@@ -360,10 +358,10 @@ bindings that didn't change.
   bridge spans. Ongoing repo-wide sweep completeness remains SC-DQ1's concern, not this one.
 - **SC-DQ4 Weaver version churn — RESOLVED:** the update cadence / compatibility matrix
   between pinned Weaver, pinned upstream semconv, and the emitted schema is governed by the
-  [version-bump runbook](./version-bump-runbook.md) plus the `weaver:version-smoke` CI gate
-  (wired into `check:all`), which asserts the Weaver and semconv pins stay consistent across
-  `flake.nix` and `registry.ts`. weaver 0.24.2 `--future` is clean with semconv v1.37.0;
-  ≤v1.36 fail on their own unstructured-`deprecated`.
+  [version-bump runbook](./version-bump-runbook.md) plus the Buck
+  `//:weaver_version_smoke` target in `//:all`, which asserts that the Weaver and semconv pins
+  stay consistent across `flake.nix` and `registry.ts`. weaver 0.24.2 `--future` is clean with
+  semconv v1.37.0; ≤v1.36 fail on their own unstructured-`deprecated`.
 - **SC-DQ6 Metric-label key projection — RESOLVED:** one namespaced key per concept on every
   signal (registry key dotted, metric wire renders underscore by default); existing metrics
   migrate retention-first, with a central collector OTTL bridge only for long-window metrics. See
