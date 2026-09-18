@@ -215,6 +215,9 @@ All notable changes to this project will be documented in this file.
   `api.github.com` request (installation-token POST, REST GET/POST/text, and
   GraphQL). GitHub rejects REST requests without a User-Agent header (403),
   which made every GitHub-App-backed read fail at token creation.
+- **@overeng/gh-ci-utils**: the final Nix package preserves the generated
+  bash, fish, and zsh completions (`${unwrapped}/share` links through to
+  `$out/share`), so Home Manager installs shell support with the binary.
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
   **Workspace boundary**: pnpm discovers the workspace by walking up from the
