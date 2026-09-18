@@ -26,6 +26,13 @@ const GITHUB_API_BASE = 'https://api.github.com'
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'
 
 /**
+ * GitHub rejects REST requests without a User-Agent header (403), so every
+ * api.github.com request carries one. Browser-session requests to
+ * github.com are exempt — a custom agent would break those cookie flows.
+ */
+const GITHUB_USER_AGENT = 'gh-ci-utils/0.1.0'
+
+/**
  * REST and GraphQL are billed from separate buckets with separate resets, so
  * their numbers must never be mixed.
  */
@@ -297,6 +304,7 @@ const makeGitHubClient = Effect.gen(function* () {
             HttpClientRequest.setHeaders({
               Authorization: `Bearer ${appJwt}`,
               Accept: 'application/vnd.github+json',
+              'User-Agent': GITHUB_USER_AGENT,
               'X-GitHub-Api-Version': '2022-11-28',
             }),
           ),
@@ -483,6 +491,7 @@ const makeGitHubClient = Effect.gen(function* () {
             HttpClientRequest.setHeaders({
               Authorization: `Bearer ${token}`,
               Accept: 'application/vnd.github+json',
+              'User-Agent': GITHUB_USER_AGENT,
               'X-GitHub-Api-Version': '2022-11-28',
               ...(cached ? { 'If-None-Match': cached.etag } : {}),
             }),
@@ -569,6 +578,7 @@ const makeGitHubClient = Effect.gen(function* () {
         HttpClientRequest.setHeaders({
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
+          'User-Agent': GITHUB_USER_AGENT,
           'X-GitHub-Api-Version': '2022-11-28',
         }),
       )
@@ -658,6 +668,7 @@ const makeGitHubClient = Effect.gen(function* () {
             HttpClientRequest.setHeaders({
               Authorization: `Bearer ${token}`,
               Accept: 'application/vnd.github+json',
+              'User-Agent': GITHUB_USER_AGENT,
               'X-GitHub-Api-Version': '2022-11-28',
             }),
           ),
@@ -1155,6 +1166,7 @@ const makeGitHubClient = Effect.gen(function* () {
             HttpClientRequest.setHeaders({
               Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
+              'User-Agent': GITHUB_USER_AGENT,
             }),
             HttpClientRequest.bodyJsonUnsafe({ query, variables }),
           ),
