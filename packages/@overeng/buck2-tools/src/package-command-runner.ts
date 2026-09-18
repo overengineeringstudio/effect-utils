@@ -931,39 +931,56 @@ const projectProductDescriptor = ({
 
 /** One deterministic npm package archive projection. */
 export type DistPackageCommand = {
+  readonly dependencyDescriptors: readonly string[]
+  readonly dependencyPayloads: readonly string[]
   readonly descriptor: string
   readonly dist: string
   readonly output: string
   readonly packageJson: string
   readonly productName: string
   readonly targetIdentity: string
+  readonly transportSlug: string
 }
 
 /** Parses the dist-package projection command emitted by `buck2/products.bzl`. */
 const parseDistPackageCommand = (argv: readonly string[]): DistPackageCommand => {
+  const dependencyDescriptors: string[] = []
+  const dependencyPayloads: string[] = []
   const values: Record<string, string> = {}
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index] ?? fail('missing dist-package argument')
     const value = argv[index + 1] ?? fail(`missing value for ${flag}`)
-    if (
-      flag !== '--descriptor' &&
-      flag !== '--dist' &&
-      flag !== '--output' &&
-      flag !== '--package-json' &&
-      flag !== '--product-name' &&
-      flag !== '--target-identity'
+    if (flag === '--dependency-descriptor') {
+      dependencyDescriptors.push(value)
+    } else if (flag === '--dependency-payload') {
+      dependencyPayloads.push(value)
+    } else if (
+      flag === '--descriptor' ||
+      flag === '--dist' ||
+      flag === '--output' ||
+      flag === '--package-json' ||
+      flag === '--product-name' ||
+      flag === '--target-identity' ||
+      flag === '--transport-slug'
     ) {
+      values[flag] = value
+    } else {
       fail(`unknown argument: ${flag}`)
     }
-    values[flag] = value
+  }
+  if (dependencyDescriptors.length !== dependencyPayloads.length) {
+    fail('dist-package dependency descriptors and payloads must be paired')
   }
   return {
+    dependencyDescriptors,
+    dependencyPayloads,
     descriptor: values['--descriptor'] ?? fail('dist-package descriptor output is missing'),
     dist: values['--dist'] ?? fail('dist-package dist input is missing'),
     output: values['--output'] ?? fail('dist-package archive output is missing'),
     packageJson: values['--package-json'] ?? fail('dist-package package.json input is missing'),
     productName: values['--product-name'] ?? fail('dist-package product name is missing'),
     targetIdentity: values['--target-identity'] ?? fail('dist-package target identity is missing'),
+    transportSlug: values['--transport-slug'] ?? fail('dist-package transport slug is missing'),
   }
 }
 
@@ -1085,6 +1102,145 @@ const projectDistExportTargets = ({
   )
 }
 
+type PackageDependencyDescriptor = {
+  readonly integrity: string
+  readonly releaseUrl: string
+}
+
+const readPackageDependencyDescriptors = ({
+  descriptorPaths,
+  payloadPaths,
+}: {
+  readonly descriptorPaths: readonly string[]
+  readonly payloadPaths: readonly string[]
+}): ReadonlyMap<string, PackageDependencyDescriptor> => {
+  if (descriptorPaths.length !== payloadPaths.length) {
+    fail('dependency descriptors and payloads must be paired')
+  }
+  const descriptors = new Map<string, PackageDependencyDescriptor>()
+  for (const [index, path] of descriptorPaths.entries()) {
+    const payloadPath = resolve(payloadPaths[index]!)
+    const payloadStat = lstatSync(payloadPath, { throwIfNoEntry: false })
+    if (payloadStat?.isFile() !== true || payloadStat.isSymbolicLink() === true) {
+      fail(`dependency payload is not a regular file: ${payloadPath}`)
+    }
+    const payloadBytes = readFileSync(payloadPath)
+    const decoded: unknown = JSON.parse(readFileSync(resolve(path), 'utf8'))
+    if (decoded === null || typeof decoded !== 'object' || Array.isArray(decoded) === true) {
+      fail(`dependency descriptor is not an object: ${path}`)
+    }
+    const descriptor = decoded as Record<string, unknown>
+    if (descriptor['schema'] !== 'effect-utils/npm-package-product/v2') {
+      fail(`dependency descriptor has unsupported schema: ${path}`)
+    }
+    const productName = descriptor['productName']
+    if (
+      typeof productName !== 'string' ||
+      /^@[a-z0-9~][a-z0-9._~-]*\/[a-z0-9~][a-z0-9._~-]*$/.test(productName) === false
+    ) {
+      fail(`dependency descriptor has invalid product name: ${path}`)
+    }
+    if (typeof descriptor['version'] !== 'string' || descriptor['version'].length === 0) {
+      fail(`dependency descriptor has no version: ${path}`)
+    }
+    const transportSlug = descriptor['transportSlug']
+    if (
+      typeof transportSlug !== 'string' ||
+      /^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(transportSlug) === false
+    ) {
+      fail(`dependency descriptor has invalid transport slug: ${path}`)
+    }
+    const sha256 = descriptor['sha256']
+    if (typeof sha256 !== 'string' || /^[0-9a-f]{64}$/.test(sha256) === false) {
+      fail(`dependency descriptor has invalid SHA-256 digest: ${path}`)
+    }
+    const integrity = descriptor['sha512']
+    if (typeof integrity !== 'string' || /^sha512-[A-Za-z0-9+/]{86}==$/.test(integrity) === false) {
+      fail(`dependency descriptor has invalid SHA-512 integrity: ${path}`)
+    }
+    const actualSha256 = new Bun.CryptoHasher('sha256').update(payloadBytes).digest('hex')
+    if (actualSha256 !== sha256) {
+      fail(`dependency descriptor SHA-256 does not match its payload: ${path}`)
+    }
+    const actualSha512 = `sha512-${new Bun.CryptoHasher('sha512').update(payloadBytes).digest('base64')}`
+    if (actualSha512 !== integrity) {
+      fail(`dependency descriptor SHA-512 does not match its payload: ${path}`)
+    }
+    if (descriptor['modulePath'] !== `${transportSlug}.tgz`) {
+      fail(`dependency descriptor archive does not match its transport slug: ${path}`)
+    }
+    const tag = `buck2-package-v1-${transportSlug}-${sha256}`
+    const name = `${sha256}-${transportSlug}.tgz`
+    const releaseUrl = `https://github.com/overengineeringstudio/effect-utils/releases/download/${tag}/${name}`
+    const release = descriptor['release']
+    if (
+      release === null ||
+      typeof release !== 'object' ||
+      Array.isArray(release) === true ||
+      Reflect.get(release, 'tag') !== tag ||
+      Reflect.get(release, 'name') !== name ||
+      Reflect.get(release, 'url') !== releaseUrl ||
+      Object.keys(release).toSorted().join(',') !== 'name,tag,url'
+    ) {
+      fail(`dependency descriptor release does not match its digest: ${path}`)
+    }
+    if (descriptors.has(productName) === true) {
+      fail(`duplicate dependency descriptor for ${productName}`)
+    }
+    descriptors.set(productName, { integrity, releaseUrl })
+  }
+  return descriptors
+}
+
+const LOCAL_RUNTIME_SPECIFIER = /^(?:catalog|workspace):/
+const FORBIDDEN_RUNTIME_SPECIFIER = /^(?:catalog|file|link|workspace):/
+
+const projectRuntimeDependencies = ({
+  dependencyDescriptors,
+  value,
+}: {
+  readonly dependencyDescriptors: ReadonlyMap<string, PackageDependencyDescriptor>
+  readonly value: unknown
+}): {
+  readonly descriptorDependencies: Readonly<
+    Record<string, { readonly integrity: string; readonly url: string }>
+  >
+  readonly manifestDependencies: Readonly<Record<string, string>> | undefined
+} => {
+  if (value === undefined) {
+    return { descriptorDependencies: {}, manifestDependencies: undefined }
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value) === true) {
+    fail('package manifest dependencies must be an object')
+  }
+  const descriptorDependencies: Record<
+    string,
+    { readonly integrity: string; readonly url: string }
+  > = {}
+  const manifestDependencies: Record<string, string> = {}
+  for (const [name, specifier] of Object.entries(value)) {
+    if (typeof specifier !== 'string') {
+      fail(`runtime dependency ${name} must have a string specifier`)
+    }
+    const dependency = dependencyDescriptors.get(name)
+    const rewritten =
+      dependency !== undefined && LOCAL_RUNTIME_SPECIFIER.test(specifier) === true
+        ? dependency.releaseUrl
+        : specifier
+    if (FORBIDDEN_RUNTIME_SPECIFIER.test(rewritten) === true) {
+      fail(`runtime dependency ${name} retains a local specifier: ${specifier}`)
+    }
+    manifestDependencies[name] = rewritten
+    if (rewritten !== specifier && dependency !== undefined) {
+      descriptorDependencies[name] = {
+        integrity: dependency.integrity,
+        url: dependency.releaseUrl,
+      }
+    }
+  }
+  return { descriptorDependencies, manifestDependencies }
+}
+
 /** Packs a TypeScript dist tree and its publication manifest as a deterministic npm tarball. */
 const packDistPackage = async (command: DistPackageCommand): Promise<void> => {
   const packageJson = JSON.parse(readFileSync(resolve(command.packageJson), 'utf8')) as Record<
@@ -1095,6 +1251,10 @@ const packDistPackage = async (command: DistPackageCommand): Promise<void> => {
     fail(
       `package manifest name ${String(packageJson['name'])} does not match ${command.productName}`,
     )
+  }
+  const version = packageJson['version']
+  if (typeof version !== 'string' || version.length === 0) {
+    fail('package manifest has no version')
   }
   const publishConfig = packageJson['publishConfig']
   if (
@@ -1108,7 +1268,26 @@ const packDistPackage = async (command: DistPackageCommand): Promise<void> => {
     dist: resolve(command.dist),
     value: (publishConfig as Record<string, unknown>)['exports'],
   })
-  const publishedManifest = { ...packageJson, exports, private: false }
+  const dependencyDescriptors = readPackageDependencyDescriptors({
+    descriptorPaths: command.dependencyDescriptors,
+    payloadPaths: command.dependencyPayloads,
+  })
+  const dependencies = projectRuntimeDependencies({
+    dependencyDescriptors,
+    value: packageJson['dependencies'],
+  })
+  const optionalDependencies = projectRuntimeDependencies({
+    dependencyDescriptors,
+    value: packageJson['optionalDependencies'],
+  })
+  const publishedManifest: Record<string, unknown> = { ...packageJson, exports }
+  if (dependencies.manifestDependencies !== undefined) {
+    publishedManifest['dependencies'] = dependencies.manifestDependencies
+  }
+  if (optionalDependencies.manifestDependencies !== undefined) {
+    publishedManifest['optionalDependencies'] = optionalDependencies.manifestDependencies
+  }
+  delete publishedManifest['private']
   const manifestBytes = new TextEncoder().encode(
     `${JSON.stringify(publishedManifest, undefined, 2)}\n`,
   )
@@ -1127,12 +1306,17 @@ const packDistPackage = async (command: DistPackageCommand): Promise<void> => {
   const archive = gzipSync(tar, { level: 9 })
   await mkdir(dirname(resolve(command.output)), { recursive: true })
   await writeFile(resolve(command.output), archive)
-  const digest = new Bun.CryptoHasher('sha256').update(archive).digest('base64')
+  const sha256 = new Bun.CryptoHasher('sha256').update(archive).digest('hex')
+  const sha256Integrity = new Bun.CryptoHasher('sha256').update(archive).digest('base64')
+  const sha512 = `sha512-${new Bun.CryptoHasher('sha512').update(archive).digest('base64')}`
+  const releaseTag = `buck2-package-v1-${command.transportSlug}-${sha256}`
+  const releaseName = `${sha256}-${command.transportSlug}.tgz`
+  const releaseUrl = `https://github.com/overengineeringstudio/effect-utils/releases/download/${releaseTag}/${releaseName}`
   await writeFile(
     resolve(command.descriptor),
     `${JSON.stringify(
       {
-        schema: 'effect-utils/npm-package-product/v1',
+        schema: 'effect-utils/npm-package-product/v2',
         productName: command.productName,
         productKind: 'package',
         runtimeKind: 'node',
@@ -1140,7 +1324,7 @@ const packDistPackage = async (command: DistPackageCommand): Promise<void> => {
         runtimeContractVersion: 'v1',
         platform: PORTABLE_PRODUCT_PLATFORM,
         modulePath: basename(command.output),
-        integrity: `sha256-${digest}`,
+        integrity: `sha256-${sha256Integrity}`,
         sizeBytes: archive.byteLength,
         target: command.targetIdentity,
         externalCapabilities: [],
@@ -1149,6 +1333,19 @@ const packDistPackage = async (command: DistPackageCommand): Promise<void> => {
           configuredTarget: command.targetIdentity,
           dependencyClosureIdentity: `dist=${command.targetIdentity}`,
           module: command.targetIdentity,
+        },
+        transportSlug: command.transportSlug,
+        version,
+        dependencies: {
+          ...dependencies.descriptorDependencies,
+          ...optionalDependencies.descriptorDependencies,
+        },
+        sha256,
+        sha512,
+        release: {
+          tag: releaseTag,
+          name: releaseName,
+          url: releaseUrl,
         },
       },
       undefined,

@@ -4,6 +4,7 @@ set -euo pipefail
 
 repo_root="${BUCK2_RELEASE_PRODUCTS_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 targets="$repo_root/nix/buck2-products/targets.json"
+manifest="$repo_root/nix/buck2-products/manifest.json"
 repository="overengineeringstudio/effect-utils"
 dry_run=false
 proposal=""
@@ -49,7 +50,8 @@ while (($#)); do
 done
 
 [[ -f "$targets" && ! -L "$targets" ]] || fail "target inventory must be a regular, non-symlink file: $targets"
-for tool in jq sha256sum tr; do
+[[ -f "$manifest" && ! -L "$manifest" ]] || fail "manifest must be a regular, non-symlink file: $manifest"
+for tool in jq sha256sum sha512sum tr; do
   command -v "$tool" >/dev/null || fail "$tool is required"
 done
 
@@ -67,7 +69,7 @@ target_check='
   (all(.products[];
     type == "object" and
     ((keys | sort) == ["name", "target"]) and
-    (.name | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._+-]*$")) and
+    (.name | type == "string" and (test("^[A-Za-z0-9][A-Za-z0-9._+-]*$") or test("^@[a-z0-9~][a-z0-9._~-]*/[a-z0-9~][a-z0-9._~-]*$"))) and
     (.target | type == "string" and test("^([A-Za-z0-9_]+)?//[^[:space:]\\[\\]]+:[^[:space:]\\[\\]]+$"))
   )) and
   ([.products[].name] | length == (unique | length)) and
@@ -113,7 +115,7 @@ if $dry_run; then
   exit 0
 fi
 
-for tool in buck2 gh nix sha256sum stat cmp cp mktemp realpath git; do
+for tool in buck2 gh nix sha256sum sha512sum stat cmp cp mktemp realpath git; do
   command -v "$tool" >/dev/null || fail "$tool is required"
 done
 
@@ -206,6 +208,7 @@ entries="$stage/entries.jsonl"
 declare -a release_assets=()
 declare -a release_tags=()
 declare -a asset_names=()
+declare -a release_prereleases=()
 for row in "${product_rows[@]}"; do
   IFS=$'\t' read -r product_name target <<<"$row"
   source_module="${outputs[$target]}"
@@ -214,25 +217,69 @@ for row in "${product_rows[@]}"; do
   [[ -f "$source_descriptor" && ! -L "$source_descriptor" ]] || fail "$product_name descriptor output is not a regular file"
 
   descriptor="$(jq -cS . "$source_descriptor")" || fail "$product_name descriptor is not JSON"
-  if ! jq -e --arg name "$product_name" --arg target "$target" '
-    (keys | sort) == ["externalCapabilities","externalModules","integrity","modulePath","platform","productKind","productName","provenance","runtimeContract","runtimeContractVersion","runtimeKind","schema","sizeBytes","target"] and
-    .schema == "effect-utils/javascript-product/v2" and
-    .productName == $name and .target == $target and
-    (.productKind == "cli" or .productKind == "module") and
-    (.runtimeKind == "bun" or .runtimeKind == "node") and
-    .runtimeContract == "javascript-esm" and .runtimeContractVersion == "v1" and
-    .platform == {"abi":"any","architecture":"any","os":"any"} and
-    (.modulePath | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._+-]*(/[A-Za-z0-9][A-Za-z0-9._+-]*)*$")) and
-    (.integrity | type == "string" and test("^sha256-[A-Za-z0-9+/]{43}=$")) and
-    (.sizeBytes | type == "number" and . > 0 and floor == .) and
-    (.externalCapabilities | type == "array" and all(.[]; type == "string")) and
-    (.externalModules | type == "array" and all(.[]; type == "string")) and
-    (.provenance | type == "object" and
-      (keys | sort) == ["configuredTarget","dependencyClosureIdentity","module"] and
-      all(.[]; type == "string" and contains("/nix/store/") == false)
-    )' <<<"$descriptor" >/dev/null; then
-    fail "$product_name descriptor violates effect-utils/javascript-product/v2"
-  fi
+  descriptor_schema="$(jq -r '.schema // empty' <<<"$descriptor")"
+  case "$descriptor_schema" in
+    effect-utils/javascript-product/v2)
+      if ! jq -e --arg name "$product_name" --arg target "$target" '
+        (keys | sort) == ["externalCapabilities","externalModules","integrity","modulePath","platform","productKind","productName","provenance","runtimeContract","runtimeContractVersion","runtimeKind","schema","sizeBytes","target"] and
+        .schema == "effect-utils/javascript-product/v2" and
+        .productName == $name and .target == $target and
+        (.productKind == "cli" or .productKind == "module") and
+        (.runtimeKind == "bun" or .runtimeKind == "node") and
+        .runtimeContract == "javascript-esm" and .runtimeContractVersion == "v1" and
+        .platform == {"abi":"any","architecture":"any","os":"any"} and
+        (.modulePath | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._+-]*(/[A-Za-z0-9][A-Za-z0-9._+-]*)*$")) and
+        (.integrity | type == "string" and test("^sha256-[A-Za-z0-9+/]{43}=$")) and
+        (.sizeBytes | type == "number" and . > 0 and floor == .) and
+        (.externalCapabilities | type == "array" and all(.[]; type == "string")) and
+        (.externalModules | type == "array" and all(.[]; type == "string")) and
+        (.provenance | type == "object" and
+          (keys | sort) == ["configuredTarget","dependencyClosureIdentity","module"] and
+          all(.[]; type == "string" and contains("/nix/store/") == false)
+        )' <<<"$descriptor" >/dev/null; then
+        fail "$product_name descriptor violates effect-utils/javascript-product/v2"
+      fi
+      transport_slug="$product_name"
+      release_prerelease=false
+      ;;
+    effect-utils/npm-package-product/v2)
+      if ! jq -e --arg name "$product_name" --arg target "$target" '
+        (keys | sort) == ["dependencies","externalCapabilities","externalModules","integrity","modulePath","platform","productKind","productName","provenance","release","runtimeContract","runtimeContractVersion","runtimeKind","schema","sha256","sha512","sizeBytes","target","transportSlug","version"] and
+        .schema == "effect-utils/npm-package-product/v2" and
+        .productName == $name and .target == $target and
+        (.productName | type == "string" and test("^@[a-z0-9~][a-z0-9._~-]*/[a-z0-9~][a-z0-9._~-]*$")) and
+        (.transportSlug | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._+-]*$")) and
+        .modulePath == (.transportSlug + ".tgz") and
+        (.version | type == "string" and length > 0) and
+        .productKind == "package" and .runtimeKind == "node" and
+        .runtimeContract == "npm-package" and .runtimeContractVersion == "v1" and
+        .platform == {"abi":"any","architecture":"any","os":"any"} and
+        (.integrity | type == "string" and test("^sha256-[A-Za-z0-9+/]{43}=$")) and
+        (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.sha512 | type == "string" and test("^sha512-[A-Za-z0-9+/]{86}==$")) and
+        (.sizeBytes | type == "number" and . > 0 and floor == .) and
+        (.dependencies | type == "object" and all(to_entries[];
+          (.key | test("^@[a-z0-9~][a-z0-9._~-]*/[a-z0-9~][a-z0-9._~-]*$")) and
+          (.value | type == "object" and (keys | sort) == ["integrity","url"]) and
+          (.value.integrity | type == "string" and test("^sha512-[A-Za-z0-9+/]{86}==$")) and
+          (.value.url | type == "string" and test("^https://github\\.com/overengineeringstudio/effect-utils/releases/download/[^[:space:]]+/[^[:space:]/]+$"))
+        )) and
+        (.release | type == "object" and (keys | sort) == ["name","tag","url"] and all(.[]; type == "string")) and
+        (.externalCapabilities | type == "array" and all(.[]; type == "string")) and
+        (.externalModules | type == "array" and all(.[]; type == "string")) and
+        (.provenance | type == "object" and
+          (keys | sort) == ["configuredTarget","dependencyClosureIdentity","module"] and
+          all(.[]; type == "string" and contains("/nix/store/") == false)
+        )' <<<"$descriptor" >/dev/null; then
+        fail "$product_name descriptor violates effect-utils/npm-package-product/v2"
+      fi
+      transport_slug="$(jq -r '.transportSlug' <<<"$descriptor")"
+      release_prerelease=true
+      ;;
+    *)
+      fail "$product_name descriptor has unsupported schema: $descriptor_schema"
+      ;;
+  esac
 
   module_path="$(jq -r '.modulePath' <<<"$descriptor")"
   # The release asset name embeds the module path verbatim and a GitHub asset
@@ -241,7 +288,7 @@ for row in "${product_rows[@]}"; do
   # something the loader would reject.
   [[ "$module_path" != */* ]] ||
     fail "$product_name module path is not one release-asset-safe path segment: $module_path"
-  product_stage="$stage/products/$product_name"
+  product_stage="$stage/products/$transport_slug"
   mkdir -p "$product_stage"
   staged_module="$product_stage/$module_path"
   cp -- "$source_module" "$staged_module"
@@ -257,28 +304,64 @@ for row in "${product_rows[@]}"; do
   integrity_hex="$(nix hash convert --hash-algo sha256 --to base16 "$integrity")"
   [[ "$module_sha256" == "$integrity_hex" ]] || fail "$product_name module digest does not match its descriptor"
 
-  tag="buck2-product-v3-$product_name-$module_sha256"
-  asset_name="$module_sha256-$module_path"
+  if [[ "$descriptor_schema" == "effect-utils/npm-package-product/v2" ]]; then
+    [[ "$(jq -r '.sha256' <<<"$descriptor")" == "$module_sha256" ]] ||
+      fail "$product_name package sha256 does not match its payload"
+    module_sha512="$(sha512sum "$staged_module")"
+    module_sha512="${module_sha512%% *}"
+    descriptor_sha512_hex="$(nix hash convert --hash-algo sha512 --to base16 "$(jq -r '.sha512' <<<"$descriptor")")"
+    [[ "$module_sha512" == "$descriptor_sha512_hex" ]] ||
+      fail "$product_name package sha512 does not match its payload"
+    tag="buck2-package-v1-$transport_slug-$module_sha256"
+    asset_name="$module_sha256-$transport_slug.tgz"
+  else
+    tag="buck2-product-v3-$product_name-$module_sha256"
+    asset_name="$module_sha256-$module_path"
+  fi
   release_url="https://github.com/$repository/releases/download/$tag/$asset_name"
+  if [[ "$descriptor_schema" == "effect-utils/npm-package-product/v2" ]] &&
+    ! jq -e --arg tag "$tag" --arg name "$asset_name" --arg url "$release_url" \
+      '.release == {tag:$tag,name:$name,url:$url}' <<<"$descriptor" >/dev/null; then
+    fail "$product_name package descriptor release does not match its payload"
+  fi
   # GitHub derives the asset name from the uploaded file's basename; a "#name"
   # suffix only sets the asset's display label. The contracted asset name is
   # therefore produced as a real filename here, in its own per-product
   # directory so identical basenames across products cannot collide.
-  asset_stage="$stage/release-assets/$product_name"
+  asset_stage="$stage/release-assets/$transport_slug"
   mkdir -p "$asset_stage"
   release_asset="$asset_stage/$asset_name"
   cp -- "$staged_module" "$release_asset"
   cmp -- "$source_module" "$release_asset" || fail "$product_name release asset bytes differ from the module output"
   [[ "${release_asset##*/}" == "$asset_name" ]] ||
     fail "$product_name release asset filename is not the contracted asset name"
-  jq -cnS \
-    --argjson descriptor "$descriptor" \
-    --arg descriptorSha256 "$descriptor_sha256" \
-    --arg tag "$tag" --arg name "$asset_name" --arg url "$release_url" --arg hash "$integrity" \
-    '{descriptor:$descriptor, descriptorSha256:$descriptorSha256, release:{tag:$tag,name:$name,url:$url,hash:$hash}}' >>"$entries"
+  if [[ "$descriptor_schema" == "effect-utils/npm-package-product/v2" ]]; then
+    producer_commit="$publication_commit"
+    manifest_descriptor_sha256="$(jq -r --arg name "$product_name" '
+      first(.products[] | select(.descriptor.productName == $name) | .descriptorSha256)
+    ' "$manifest")"
+    if [[ "$manifest_descriptor_sha256" == "$descriptor_sha256" ]]; then
+      producer_commit="$(jq -r --arg name "$product_name" '
+        first(.products[] | select(.descriptor.productName == $name) | .producerCommit)
+      ' "$manifest")"
+    fi
+    jq -cnS \
+      --argjson descriptor "$descriptor" \
+      --arg descriptorSha256 "$descriptor_sha256" \
+      --arg producerCommit "$producer_commit" \
+      --arg tag "$tag" --arg name "$asset_name" --arg url "$release_url" --arg hash "$integrity" \
+      '{descriptor:$descriptor, descriptorSha256:$descriptorSha256, producerCommit:$producerCommit, release:{tag:$tag,name:$name,url:$url,hash:$hash}}' >>"$entries"
+  else
+    jq -cnS \
+      --argjson descriptor "$descriptor" \
+      --arg descriptorSha256 "$descriptor_sha256" \
+      --arg tag "$tag" --arg name "$asset_name" --arg url "$release_url" --arg hash "$integrity" \
+      '{descriptor:$descriptor, descriptorSha256:$descriptorSha256, release:{tag:$tag,name:$name,url:$url,hash:$hash}}' >>"$entries"
+  fi
   release_assets+=("$release_asset")
   release_tags+=("$tag")
   asset_names+=("$asset_name")
+  release_prereleases+=("$release_prerelease")
 done
 
 proposal_stage="$stage/manifest.json"
@@ -293,12 +376,17 @@ jq -sS '{schema:"effect-utils/buck2-release-products/v1",products:.}' "$entries"
 # asset, as an immutable published release". Idempotent reuse and
 # post-publication verification share it so the two can never drift apart.
 release_holds_staged_module() {
-  local release_json="$1" expected_name="$2" asset_file="$3" expected_digest
+  local release_json="$1" expected_name="$2" asset_file="$3" expected_prerelease="${4:-}" expected_digest
   expected_digest="$(sha256sum "$asset_file")"
   expected_digest="sha256:${expected_digest%% *}"
-  jq -e --arg name "$expected_name" --arg digest "$expected_digest" \
-    '.draft == false and .immutable == true and (.assets | length == 1) and .assets[0].name == $name and .assets[0].digest == $digest' \
-    <<<"$release_json" >/dev/null
+  jq -e --arg name "$expected_name" --arg digest "$expected_digest" --arg prerelease "$expected_prerelease" '
+    .draft == false and
+    .immutable == true and
+    ($prerelease != "true" or .prerelease == true) and
+    (.assets | length == 1) and
+    .assets[0].name == $name and
+    .assets[0].digest == $digest
+  ' <<<"$release_json" >/dev/null
 }
 
 # Complete reuse preflight: every desired tag the listing already reported is
@@ -323,7 +411,8 @@ for index in "${!release_tags[@]}"; do
     fail "$tag already exists as an unpublished draft release (id $listed_ids); publish or delete it manually, then rerun"
   published="$(gh api "repos/$repository/releases/tags/$tag")" ||
     fail "$tag already exists but could not be read; refusing to publish over it"
-  release_holds_staged_module "$published" "${asset_names[$index]}" "${release_assets[$index]}" ||
+  release_holds_staged_module "$published" "${asset_names[$index]}" "${release_assets[$index]}" \
+    "${release_prereleases[$index]}" ||
     fail "$tag already exists and does not hold exactly the staged module; refusing to touch it"
   # GitHub attests every immutable release automatically; `gh release
   # verify-asset` is the documented check for that release attestation, and it
@@ -336,6 +425,7 @@ for index in "${!release_tags[@]}"; do
   tag="${release_tags[$index]}"
   asset_name="${asset_names[$index]}"
   release_asset="${release_assets[$index]}"
+  release_prerelease="${release_prereleases[$index]}"
 
   # Already verified in the preflight: never created, uploaded to or patched.
   if [[ "${verified_reuse[$index]}" == true ]]; then
@@ -345,11 +435,15 @@ for index in "${!release_tags[@]}"; do
 
   created="$(gh api --method POST "repos/$repository/releases" \
     -f tag_name="$tag" -f name="$tag" -f target_commitish="$publication_commit" \
-    -F draft=true -F prerelease=false -F generate_release_notes=false)"
+    -F draft=true -F prerelease="$release_prerelease" -F generate_release_notes=false)"
   release_id="$(jq -er '.id | select(type == "number")' <<<"$created")" || fail "GitHub did not return a draft release id"
   cleanup_draft_release_id="$release_id"
-  jq -e --arg tag "$tag" '.draft == true and .tag_name == $tag and (.assets | length == 0)' <<<"$created" >/dev/null ||
-    fail "new release is not the requested empty draft"
+  jq -e --arg tag "$tag" --arg prerelease "$release_prerelease" '
+    .draft == true and
+    .tag_name == $tag and
+    (.assets | length == 0) and
+    ($prerelease != "true" or .prerelease == true)
+  ' <<<"$created" >/dev/null || fail "new release is not the requested empty draft"
 
   # The uploaded path's basename is the asset name GitHub records; a "#label"
   # suffix would only set a display label, so none is passed.
@@ -360,7 +454,7 @@ for index in "${!release_tags[@]}"; do
   cleanup_draft_release_id=""
 
   published="$(gh api "repos/$repository/releases/tags/$tag")"
-  release_holds_staged_module "$published" "$asset_name" "$release_asset" ||
+  release_holds_staged_module "$published" "$asset_name" "$release_asset" "$release_prerelease" ||
     fail "$tag asset set or digest does not match the staged module"
   gh release verify-asset "$tag" "$release_asset" --repo "$repository" >/dev/null
 done

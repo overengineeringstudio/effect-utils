@@ -38,6 +38,17 @@ def _validate_npm_package_name(value):
         if character not in allowed:
             fail("npm_package_product product_name contains an unsupported character: {}".format(character))
 
+def _validate_transport_slug(value):
+    if not value:
+        fail("npm_package_product transport_slug must not be empty")
+    alphanumeric = "abcdefghijklmnopqrstuvwxyz0123456789"
+    allowed = alphanumeric + "-._"
+    if value[0] not in alphanumeric:
+        fail("npm_package_product transport_slug must start with a lowercase ASCII letter or digit")
+    for character in value.elems():
+        if character not in allowed:
+            fail("npm_package_product transport_slug contains an unsupported character: {}".format(character))
+
 
 def _runner(ctx):
     return cmd_args(
@@ -252,28 +263,41 @@ def package_tree_product_executable(
 
 def _npm_package_product_impl(ctx):
     _validate_npm_package_name(ctx.attrs.product_name)
+    _validate_transport_slug(ctx.attrs.transport_slug)
+    expected_archive_name = "{}.tgz".format(ctx.attrs.transport_slug)
+    if ctx.attrs.archive_name != expected_archive_name:
+        fail("npm_package_product archive_name must be {} for transport_slug {}".format(
+            expected_archive_name,
+            ctx.attrs.transport_slug,
+        ))
     dist = ctx.attrs.dist[TsgoEmitInfo]
     payload = ctx.actions.declare_output(ctx.attrs.archive_name)
     descriptor = ctx.actions.declare_output("descriptor.json")
     toolchain = ctx.attrs._bun[BunToolchainInfo]
+    args = cmd_args([
+        toolchain.executable,
+        _runner(ctx),
+        "dist-package",
+        "--descriptor",
+        descriptor.as_output(),
+        "--dist",
+        dist.directory,
+        "--output",
+        payload.as_output(),
+        "--package-json",
+        ctx.attrs.package_json,
+        "--product-name",
+        ctx.attrs.product_name,
+        "--target-identity",
+        str(ctx.label.raw_target()),
+        "--transport-slug",
+        ctx.attrs.transport_slug,
+    ])
+    for dependency in ctx.attrs.package_dependencies:
+        args.add("--dependency-descriptor", dependency[BuildProductInfo].descriptor)
+        args.add("--dependency-payload", dependency[BuildProductInfo].payload)
     ctx.actions.run(
-        cmd_args([
-            toolchain.executable,
-            _runner(ctx),
-            "dist-package",
-            "--descriptor",
-            descriptor.as_output(),
-            "--dist",
-            dist.directory,
-            "--output",
-            payload.as_output(),
-            "--package-json",
-            ctx.attrs.package_json,
-            "--product-name",
-            ctx.attrs.product_name,
-            "--target-identity",
-            str(ctx.label.raw_target()),
-        ]),
+        args,
         category = "npm_package_product",
         local_only = True,
         allow_cache_upload = True,
@@ -295,8 +319,10 @@ _npm_package_product = rule(
     attrs = {
         "archive_name": attrs.string(),
         "dist": attrs.dep(providers = [TsgoEmitInfo]),
+        "package_dependencies": attrs.list(attrs.dep(providers = [BuildProductInfo]), default = []),
         "package_json": attrs.source(),
         "product_name": attrs.string(),
+        "transport_slug": attrs.string(),
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
@@ -314,7 +340,9 @@ def npm_package_product(
         dist,
         package_json,
         product_name,
+        transport_slug,
         archive_name,
+        package_dependencies = [],
         **kwargs):
     """Packages one TypeScript dist tree as a deterministic npm tarball."""
     _npm_package_product(
@@ -322,7 +350,9 @@ def npm_package_product(
         dist = dist,
         package_json = package_json,
         product_name = product_name,
+        transport_slug = transport_slug,
         archive_name = archive_name,
+        package_dependencies = package_dependencies,
         **kwargs
     )
 

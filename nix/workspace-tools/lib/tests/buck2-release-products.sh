@@ -33,6 +33,10 @@ eval_loader() {
     descriptorsAreDerivations = builtins.all (
       product: (product.descriptor.type or null) == \"derivation\"
     ) (builtins.attrValues tracked.products);
+    packageMetadata = builtins.mapAttrs (_: product: {
+      producerCommit = product.producerCommit or null;
+      sha512 = product.expectedModuleSha512 or null;
+    }) tracked.products;
   }"
 }
 
@@ -53,7 +57,7 @@ expect_failure() {
 }
 
 summary="$(eval_loader "$repo_root/nix/buck2-products")"
-expected_names='["ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
+expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/otel-contract","@overeng/utils","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 
 jq -e --argjson expected "$expected_names" '
   .fullyPublished == true and
@@ -64,9 +68,16 @@ jq -e --argjson expected "$expected_names" '
   all(
     .releases | to_entries[];
     .key as $product |
-    (.value.tag | sub("^buck2-product-v3-\($product)-"; "")) as $digest |
-    ($digest | test("^[0-9a-f]{64}$")) and
-    (.value.name | startswith("\($digest)-")) and
+    if ($product | startswith("@")) then
+      ($product | ltrimstr("@") | gsub("/"; "-")) as $slug |
+      (.value.tag | sub("^buck2-package-v1-\($slug)-"; "")) as $digest |
+      ($digest | test("^[0-9a-f]{64}$")) and
+      .value.name == "\($digest)-\($slug).tgz"
+    else
+      (.value.tag | sub("^buck2-product-v3-\($product)-"; "")) as $digest |
+      ($digest | test("^[0-9a-f]{64}$")) and
+      (.value.name | startswith("\($digest)-"))
+    end and
     .value.url == "https://github.com/overengineeringstudio/effect-utils/releases/download/\(.value.tag)/\(.value.name)"
   )
 ' <<<"$summary" >/dev/null
@@ -156,6 +167,93 @@ cp "$repo_root/nix/buck2-products/default.nix" "$tmp/products/default.nix"
 cp "$repo_root/nix/buck2-products/targets.json" "$tmp/products/targets.json"
 chmod u+w "$tmp/products/targets.json"
 
+package_sha256="$(printf 'scoped package fixture\n' | sha256sum)"
+package_sha256="${package_sha256%% *}"
+package_integrity="$(nix hash convert --hash-algo sha256 --to sri "$package_sha256")"
+package_sha512_hex="$(printf 'scoped package fixture\n' | sha512sum)"
+package_sha512_hex="${package_sha512_hex%% *}"
+package_sha512="$(nix hash convert --hash-algo sha512 --to sri "$package_sha512_hex")"
+package_tag="buck2-package-v1-overeng-utils-$package_sha256"
+package_asset="$package_sha256-overeng-utils.tgz"
+package_url="https://github.com/overengineeringstudio/effect-utils/releases/download/$package_tag/$package_asset"
+package_descriptor="$tmp/package-descriptor.json"
+package_entry="$tmp/package-entry.json"
+package_manifest="$tmp/package-manifest.json"
+jq -nS \
+  --arg integrity "$package_integrity" \
+  --arg sha256 "$package_sha256" \
+  --arg sha512 "$package_sha512" \
+  --arg tag "$package_tag" \
+  --arg asset "$package_asset" \
+  --arg url "$package_url" \
+  '{
+    dependencies: {
+      "@overeng/content-address": {
+        integrity: $sha512,
+        url: ("https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-package-v1-content-address-" + $sha256 + "/" + $sha256 + "-content-address.tgz")
+      }
+    },
+    externalCapabilities: [],
+    externalModules: [],
+    integrity: $integrity,
+    modulePath: "overeng-utils.tgz",
+    platform: { abi: "any", architecture: "any", os: "any" },
+    productKind: "package",
+    productName: "@overeng/utils",
+    provenance: {
+      configuredTarget: "root//packages/@overeng/utils:dist-package",
+      dependencyClosureIdentity: "package-fixture-closure",
+      module: "root//packages/@overeng/utils:dist-package"
+    },
+    release: { tag: $tag, name: $asset, url: $url },
+    runtimeContract: "npm-package",
+    runtimeContractVersion: "v1",
+    runtimeKind: "node",
+    schema: "effect-utils/npm-package-product/v2",
+    sha256: $sha256,
+    sha512: $sha512,
+    sizeBytes: 23,
+    target: "root//packages/@overeng/utils:dist-package",
+    transportSlug: "overeng-utils",
+    version: "0.0.0"
+  }' >"$package_descriptor"
+package_descriptor_sha="$(jq -cS . "$package_descriptor" | tr -d '\n' | sha256sum)"
+package_descriptor_sha="${package_descriptor_sha%% *}"
+jq -nS \
+  --slurpfile descriptor "$package_descriptor" \
+  --arg descriptorSha256 "$package_descriptor_sha" \
+  --arg producerCommit "$(printf '%040d' 1)" \
+  --arg tag "$package_tag" \
+  --arg name "$package_asset" \
+  --arg url "$package_url" \
+  --arg hash "$package_integrity" \
+  '{
+    descriptor: $descriptor[0],
+    descriptorSha256: $descriptorSha256,
+    producerCommit: $producerCommit,
+    release: { tag: $tag, name: $name, url: $url, hash: $hash }
+  }' >"$package_entry"
+jq -sS \
+  --slurpfile package "$package_entry" \
+  '{schema:"effect-utils/buck2-release-products/v1",products:[.[0].products[0],$package[0]]}' \
+  "$repo_root/nix/buck2-products/manifest.json" >"$package_manifest"
+cp "$package_manifest" "$tmp/products/manifest.json"
+package_summary="$(eval_loader "$tmp/products")"
+jq -e \
+  --arg tag "$package_tag" \
+  --arg name "$package_asset" \
+  --arg url "$package_url" \
+  --arg integrity "$package_integrity" \
+  --arg sha512 "$package_sha512_hex" '
+  .fullyPublished == true and
+  .declaredProductNames == ["@overeng/utils","ci-tools"] and
+  .publishedProductNames == ["@overeng/utils","ci-tools"] and
+  .descriptorsAreDerivations == true and
+  .releases["@overeng/utils"] == {tag:$tag,name:$name,url:$url,hash:$integrity} and
+  .packageMetadata["@overeng/utils"] == {producerCommit:"0000000000000000000000000000000000000001",sha512:$sha512} and
+  .packageMetadata["ci-tools"] == {producerCommit:null,sha512:null}
+' <<<"$package_summary" >/dev/null
+
 write_mutation() {
   jq "$1" "$repo_root/nix/buck2-products/manifest.json" >"$tmp/products/manifest.json"
 }
@@ -206,6 +304,27 @@ expect_failure "duplicate declared target" "target inventory product targets mus
 
 write_target_mutation '.products[0].target += "[descriptor]"'
 expect_failure "configured declared target" "target inventory products are malformed"
+write_mutation '.products[0].descriptor.productName = "@overeng/utils"'
+expect_failure "scoped JavaScript product" "descriptor has an unsafe product name"
+
+write_package_mutation() {
+  jq "$1" "$package_manifest" >"$tmp/products/manifest.json"
+}
+
+write_package_mutation '.products[1].descriptor.sha256 = ("0" * 64)'
+expect_failure "package sha256 mismatch" "package sha256 does not match integrity"
+
+write_package_mutation '.products[1].descriptor.sha512 = "sha512-invalid"'
+expect_failure "package sha512 refusal" "package sha512 must be an SRI SHA-512 digest"
+
+write_package_mutation '.products[1].descriptor.dependencies["@overeng/content-address"].url = "workspace:^"'
+expect_failure "package unresolved dependency refusal" "has an invalid package dependency release"
+
+write_package_mutation '.products[1].descriptor.release.tag += "-mutable"'
+expect_failure "package descriptor release drift" "package descriptor release does not match its payload"
+
+write_package_mutation '.products[1].producerCommit = "not-a-commit"'
+expect_failure "package producer commit refusal" "producerCommit must be lowercase commit hex"
 
 jq -r '.releases | to_entries[] | "buck2-release-products-test: \(.key) \(.value.tag)"' <<<"$summary"
 
@@ -245,7 +364,7 @@ if ! jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck2-product-publication-plan/v1" and
   .repository == "overengineeringstudio/effect-utils" and
   [.products[].productName] == $expected and
-  (.products | length == 12) and
+  (.products | length == ($expected | length)) and
   all(
     .products[];
     (.candidateTarget | test("^([A-Za-z0-9_]+)?//")) and
@@ -256,6 +375,23 @@ if ! jq -e --argjson expected "$expected_names" '
   printf '%s\n' "$plan" >&2
   exit 1
 fi
+
+if ! scoped_plan="$(PATH="$tmp/bin:$PATH" bash "$publisher" --dry-run --inventory "$package_manifest" 2>"$plan_stderr")"; then
+  echo "buck2-release-products-test: scoped publisher dry-run failed" >&2
+  sed -n '1,160p' "$plan_stderr" >&2
+  exit 1
+fi
+if ! jq -e '
+  [.products[].productName] == ["@overeng/utils","ci-tools"] and
+  (.products[] | select(.productName == "@overeng/utils") |
+    .candidateTarget == "root//packages/@overeng/utils:dist-package" and
+    .descriptorTarget == "root//packages/@overeng/utils:dist-package[descriptor]")
+' <<<"$scoped_plan" >/dev/null; then
+  echo "buck2-release-products-test: publisher dry-run lost the scoped package identity" >&2
+  printf '%s\n' "$scoped_plan" >&2
+  exit 1
+fi
+test ! -e "$tmp/unexpected-tools"
 
 publish_failure="$tmp/publish-failure.log"
 if GITHUB_EVENT_NAME=pull_request PATH="$tmp/bin:$PATH" bash "$publisher" --dry-run >"$publish_failure" 2>&1; then
@@ -360,7 +496,7 @@ printf '{}\n' >"$live/outputs.json"
 # descriptor, a target inventory entry and a Buck output mapping. Scenarios then
 # compose generated-inventory-shaped target sets, so partially published
 # multi-product runs are testable.
-declare -A live_tag=() live_asset=() live_module=()
+declare -A live_tag=() live_asset=() live_module=() live_target=()
 live_add_product() {
   local name="$1" module_path="$2" body="$3"
   local target="root//live:$name"
@@ -402,6 +538,7 @@ live_add_product() {
   asset="$sha-$module_path"
   jq -nS --arg name "$name" --arg target "$target" \
     '{name:$name,target:$target}' >"$live/target-$name.json"
+  live_target["$name"]="$live/target-$name.json"
   jq --arg target "$target" --arg module "$module" --arg descriptor "$descriptor" \
     '.[$target] = $module | .[$target + "[descriptor]"] = $descriptor' \
     "$live/outputs.json" >"$live/outputs.next.json"
@@ -411,13 +548,97 @@ live_add_product() {
   live_module["$name"]="$module"
 }
 
+live_add_package() {
+  local name="$1" transport_slug="$2" body="$3"
+  local target="root//packages/$name:dist-package"
+  local module_path="$transport_slug.tgz"
+  local module="$live/build/$module_path"
+  printf '%s\n' "$body" >"$module"
+  local size sha sri sha512_hex sha512 descriptor descriptor_sha tag asset url
+  size="$(stat -c '%s' "$module")"
+  sha="$(sha256sum "$module")"
+  sha="${sha%% *}"
+  sri="$(nix hash convert --hash-algo sha256 --to sri "$sha")"
+  sha512_hex="$(sha512sum "$module")"
+  sha512_hex="${sha512_hex%% *}"
+  sha512="$(nix hash convert --hash-algo sha512 --to sri "$sha512_hex")"
+  tag="buck2-package-v1-$transport_slug-$sha"
+  asset="$sha-$transport_slug.tgz"
+  url="https://github.com/overengineeringstudio/effect-utils/releases/download/$tag/$asset"
+  descriptor="$live/build/$transport_slug.product.json"
+  jq -nS \
+    --arg name "$name" \
+    --arg target "$target" \
+    --arg modulePath "$module_path" \
+    --arg transportSlug "$transport_slug" \
+    --arg integrity "$sri" \
+    --arg sha256 "$sha" \
+    --arg sha512 "$sha512" \
+    --arg tag "$tag" \
+    --arg asset "$asset" \
+    --arg url "$url" \
+    --argjson sizeBytes "$size" \
+    '{
+      dependencies: {},
+      externalCapabilities: [],
+      externalModules: [],
+      integrity: $integrity,
+      modulePath: $modulePath,
+      platform: { abi: "any", architecture: "any", os: "any" },
+      productKind: "package",
+      productName: $name,
+      provenance: {
+        configuredTarget: ($target + " (live-test-cfg)"),
+        dependencyClosureIdentity: "live-package-closure",
+        module: $target
+      },
+      release: { tag: $tag, name: $asset, url: $url },
+      runtimeContract: "npm-package",
+      runtimeContractVersion: "v1",
+      runtimeKind: "node",
+      schema: "effect-utils/npm-package-product/v2",
+      sha256: $sha256,
+      sha512: $sha512,
+      sizeBytes: $sizeBytes,
+      target: $target,
+      transportSlug: $transportSlug,
+      version: "0.0.0"
+    }' >"$descriptor"
+  descriptor_sha="$(jq -cS . "$descriptor" | tr -d '\n' | sha256sum)"
+  descriptor_sha="${descriptor_sha%% *}"
+  jq -nS \
+    --slurpfile descriptor "$descriptor" \
+    --arg descriptorSha256 "$descriptor_sha" \
+    --arg producerCommit "$(printf '%040d' 2)" \
+    --arg tag "$tag" \
+    --arg name "$asset" \
+    --arg url "$url" \
+    --arg hash "$sri" \
+    '{
+      descriptor: $descriptor[0],
+      descriptorSha256: $descriptorSha256,
+      producerCommit: $producerCommit,
+      release: { tag: $tag, name: $name, url: $url, hash: $hash }
+    }' >"$live/entry-$transport_slug.json"
+  jq -nS --arg name "$name" --arg target "$target" \
+    '{name:$name,target:$target}' >"$live/target-$transport_slug.json"
+  jq --arg target "$target" --arg module "$module" --arg descriptor "$descriptor" \
+    '.[$target] = $module | .[$target + "[descriptor]"] = $descriptor' \
+    "$live/outputs.json" >"$live/outputs.next.json"
+  mv "$live/outputs.next.json" "$live/outputs.json"
+  live_tag["$name"]="$tag"
+  live_asset["$name"]="$asset"
+  live_module["$name"]="$module"
+  live_target["$name"]="$live/target-$transport_slug.json"
+}
+
 live_inventory() {
   local path="$1"
   shift
   local name fingerprint
   local -a entries=()
   for name in "$@"; do
-    entries+=("$live/target-$name.json")
+    entries+=("${live_target[$name]}")
   done
   jq -sS '{
     products: .,
@@ -446,10 +667,14 @@ live_inventory() {
 
 live_add_product live-product live-product.mjs 'export const liveProduct = "live";'
 live_add_product live-second live-second.mjs 'export const liveSecond = "second";'
+live_add_package @overeng/utils overeng-utils 'scoped package live payload'
 live_expected_tag="${live_tag[live-product]}"
 live_expected_asset="${live_asset[live-product]}"
+live_package_tag="${live_tag["@overeng/utils"]}"
+live_package_asset="${live_asset["@overeng/utils"]}"
 live_inventory "$live/inventory.json" live-product
 live_inventory "$live/inventory-both.json" live-product live-second
+live_inventory "$live/inventory-package.json" @overeng/utils
 
 cat >"$live/bin/buck2" <<EOF
 #!/usr/bin/env bash
@@ -569,12 +794,14 @@ case "$sub" in
         ;;
       POST:*/releases)
         tag="${field[tag_name]:-}"
+        prerelease="${field[prerelease]:-false}"
         printf 'CREATE-DRAFT %s\n' "$tag" >>"$log"
+        printf 'PRERELEASE %s %s\n' "$tag" "$prerelease" >>"$log"
         id="$(cat "$state/next-id")"
         printf '%s\n' "$((id + 1))" >"$state/next-id"
         printf '%s\n' "$tag" >"$state/by-id/$id"
-        jq -cn --arg tag "$tag" --argjson id "$id" \
-          '{id: $id, draft: true, immutable: false, tag_name: $tag, assets: []}' \
+        jq -cn --arg tag "$tag" --argjson id "$id" --argjson prerelease "$prerelease" \
+          '{id: $id, draft: true, prerelease: $prerelease, immutable: false, tag_name: $tag, assets: []}' \
           >"$(release_file "$tag")"
         cat "$(release_file "$tag")"
         ;;
@@ -722,10 +949,13 @@ live_run() {
   local label="$1"
   local targets="$2"
   local expect="$3"
+  local proposal="${4:-}"
   local log="$live/$label.log"
   local status=0
+  local -a publisher_args=(--targets "$targets")
+  [[ -z "$proposal" ]] || publisher_args+=(--proposal "$proposal")
   env -u GITHUB_SHA -u GITHUB_EVENT_NAME GH_FAKE_STATE="$live_state" PATH="$live/bin:$PATH" \
-    bash "$publisher" --targets "$targets" >"$log" 2>&1 || status=$?
+    bash "$publisher" "${publisher_args[@]}" >"$log" 2>&1 || status=$?
   if [[ "$expect" == ok && "$status" -ne 0 ]]; then
     echo "buck2-release-products-test: expected live $label to succeed" >&2
     sed -n '1,160p' "$log" >&2
@@ -759,13 +989,13 @@ live_listed() {
 # be wrong; the listing row stays published, so an override models a by-tag
 # read that disagrees with the listing rather than a listed draft.
 live_published_release() {
-  local tag="$1" name="$2" file="$3" override="${4:-.}" digest id
+  local tag="$1" name="$2" file="$3" override="${4:-.}" prerelease="${5:-false}" digest id
   digest="$(sha256sum "$file")"
   id="$live_next_existing_id"
   live_next_existing_id=$((id + 1))
   jq -cn --arg tag "$tag" --argjson id "$id" --arg name "$name" \
-    --arg digest "sha256:${digest%% *}" \
-    "{id: \$id, draft: false, immutable: true, tag_name: \$tag, assets: [{name: \$name, digest: \$digest}]} | ($override)" \
+    --argjson prerelease "$prerelease" --arg digest "sha256:${digest%% *}" \
+    "{id: \$id, draft: false, prerelease: \$prerelease, immutable: true, tag_name: \$tag, assets: [{name: \$name, digest: \$digest}]} | ($override)" \
     >"$live_state/by-tag/$tag.json"
   printf '%s\n' "$tag" >"$live_state/by-id/$id"
   live_listed "$tag" "$id" false
@@ -793,6 +1023,7 @@ live_expect() {
   if ! grep -Fqx -- "$line" "$live_calls"; then
     echo "buck2-release-products-test: live $label did not perform: $line" >&2
     sed -n '1,80p' "$live_calls" >&2
+    sed -n '1,160p' "$live/$label.log" >&2
     exit 1
   fi
 }
@@ -825,6 +1056,7 @@ live_uploaded_asset() {
 # that with GitHub and then delete it.
 live_scenario upload-failure fail-upload
 live_expect upload-failure "CREATE-DRAFT $live_expected_tag"
+live_expect upload-failure "PRERELEASE $live_expected_tag false"
 live_expect upload-failure "UPLOAD $live_expected_asset"
 # The stub names the asset after the uploaded file, so this line also proves
 # the uploaded path's basename is exactly the contracted asset name, and that
@@ -979,6 +1211,32 @@ live_reject preflight-mismatch 'VERIFY-ASSET'
 grep -F "does not hold exactly the staged module" "$live/preflight-mismatch.log" >/dev/null
 echo "buck2-release-products-test: live preflight mismatch blocked every product"
 
-cmp "$repo_root/nix/buck2-products/targets.json" "$tmp/targets.before.json"
+# Scoped npm artifacts use their transport slug for the immutable release
+# identity and are always published as prereleases.
+live_prepare package-publish
+live_realized 1
+live_run package-publish "$live/inventory-package.json" ok "$live/package-proposal.json"
+live_expect package-publish "CREATE-DRAFT $live_package_tag"
+live_expect package-publish "PRERELEASE $live_package_tag true"
+live_expect package-publish "UPLOAD $live_package_asset"
+live_expect package-publish "VERIFY-ASSET $live_package_tag $live_package_asset"
+live_uploaded_asset package-publish "$live_package_tag" "$live_package_asset" \
+  "${live_module["@overeng/utils"]}"
+jq -e '.prerelease == true' "$live/state-package-publish/by-tag/$live_package_tag.json" >/dev/null
+jq -e '.products[0].producerCommit == "0000000000000000000000000000000000000001"' \
+  "$live/package-proposal.json" >/dev/null
+live_reject package-publish 'DELETE-RELEASE'
+
+# Package reruns accept only the same immutable prerelease and perform no
+# mutation after verifying its bytes and release attestation.
+live_prepare package-reuse
+live_published_release "$live_package_tag" "$live_package_asset" \
+  "${live_module["@overeng/utils"]}" . true
+live_realized 1
+live_run package-reuse "$live/inventory-package.json" ok
+live_expect package-reuse "GET-BY-TAG $live_package_tag"
+live_expect package-reuse "VERIFY-ASSET $live_package_tag $live_package_asset"
+live_expect_reuse_only package-reuse
+grep -F "reusing verified release: $live_package_tag" "$live/package-reuse.log" >/dev/null
 cmp "$repo_root/nix/buck2-products/manifest.json" "$tmp/manifest.before.json"
 echo "buck2-release-products-test: OK"

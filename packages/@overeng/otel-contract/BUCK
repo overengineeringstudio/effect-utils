@@ -1,6 +1,8 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
+load("//buck2/products:defs.bzl", "npm_package_product")
+
 # Projection source: packages/@overeng/otel-contract/BUCK.genie.ts
 # Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
@@ -173,6 +175,19 @@ vitest_collect(
         "src/raw-otel-boundary.unit.test.ts",
         "src/registry-live-check.integration.test.ts",
         "src/registry-seam.unit.test.ts",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-otel-contract.tgz",
+    dist = ":dist",
+    package_json = "package.json",
+    product_name = "@overeng/otel-contract",
+    transport_slug = "overeng-otel-contract",
+    package_dependencies = [
+        "//packages/@overeng/content-address:dist-package",
     ],
     visibility = ["PUBLIC"],
 )
