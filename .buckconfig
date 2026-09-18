@@ -19,7 +19,7 @@
   execution_platforms = effect_utils//buck2/platforms:host_execution_platform
 
 [buck2]
-  file_watcher = watchman
+  file_watcher = notify
   default_allow_cache_upload = true
   digest_algorithms = SHA256
 

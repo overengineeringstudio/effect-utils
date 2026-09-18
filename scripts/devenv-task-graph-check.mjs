@@ -401,6 +401,19 @@ ok({
     configuredToolchainSource.includes('load("@capabilities//:defs.bzl"') === true,
   name: 'capability Starlark loads use external-cell import syntax',
 })
+const standaloneBuckConfig = readFileSync(`${root}/.buckconfig`, 'utf8')
+const compositionRootSource = readFileSync(
+  `${root}/packages/@overeng/megarepo/src/composition/root/composition-root.ts`,
+  'utf8',
+)
+ok({
+  condition:
+    standaloneBuckConfig.includes('file_watcher = notify') === true &&
+    standaloneBuckConfig.includes('file_watcher = watchman') === false &&
+    compositionRootSource.includes("lines.push('', '[buck2]', '  file_watcher = watchman')") ===
+      true,
+  name: 'standalone roots use notify while composed roots retain Watchman',
+})
 ok({
   condition: existsSync(`${root}/toolchains`) === false,
   name: 'no legacy top-level toolchains directory remains',
