@@ -212,10 +212,17 @@ vitest_collect(
     visibility = ["PUBLIC"],
 )
 
+tsgo_emit(
+    name = "publish-dist",
+    package_tree = ":package_tree",
+    declaration_entrypoint = "src/mod.d.ts",
+    emit_declaration_only = False,
+)
+
 npm_package_product(
     name = "dist-package",
     archive_name = "overeng-notion-effect-schema.tgz",
-    dist = ":dist",
+    dist = ":publish-dist",
     package_json = "package.json",
     product_name = "@overeng/notion-effect-schema",
     transport_slug = "overeng-notion-effect-schema",

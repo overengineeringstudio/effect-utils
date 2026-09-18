@@ -53,6 +53,10 @@ All notable changes to this project will be documented in this file.
   `@overeng/notion-core`, `@overeng/notion-effect-schema`, and
   `@overeng/notion-effect-client`, plus a pure Genie helper that derives and
   verifies consumer URL and integrity pins from `megarepo.lock`.
+- **Buck2**: added immutable package publication rows for `@overeng/content-address`,
+  `@overeng/effect-distributed-lock`, `@overeng/otel-contract`, and
+  `@overeng/utils`, with publication-specific TypeScript emits that include
+  runtime JavaScript without changing declaration-only editor artifacts.
 
 - **@overeng/megarepo**: composition-enabled branch worktrees are now created
   directly at their final `P/repos/<owned>` path and use Git registration as

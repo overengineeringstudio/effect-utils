@@ -33,10 +33,17 @@ export default createGenieOutput({
 
 ${projection.stringify(context)}
 
+tsgo_emit(
+    name = "publish-dist",
+    package_tree = ":package_tree",
+    declaration_entrypoint = "src/mod.d.ts",
+    emit_declaration_only = False,
+)
+
 npm_package_product(
     name = "dist-package",
     archive_name = "overeng-effect-distributed-lock.tgz",
-    dist = ":dist",
+    dist = ":publish-dist",
     package_json = "package.json",
     product_name = "@overeng/effect-distributed-lock",
     transport_slug = "overeng-effect-distributed-lock",

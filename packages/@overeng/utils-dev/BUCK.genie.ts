@@ -36,10 +36,17 @@ export default createGenieOutput({
   stringify: (context) => `load("//buck2/products:defs.bzl", "npm_package_product")
 
 ${projection.stringify(context)}
+tsgo_emit(
+    name = "publish-dist",
+    package_tree = ":package_tree",
+    declaration_entrypoint = "src/node-vitest/mod.d.ts",
+    emit_declaration_only = False,
+)
+
 npm_package_product(
     name = "dist-package",
     archive_name = "overeng-utils-dev.tgz",
-    dist = ":dist",
+    dist = ":publish-dist",
     package_json = "package.json",
     product_name = "@overeng/utils-dev",
     transport_slug = "overeng-utils-dev",

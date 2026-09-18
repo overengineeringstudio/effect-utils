@@ -38,6 +38,7 @@ type TypecheckOptions = {
 
 type EmitOptions = {
   readonly declarationEntrypoint: string
+  readonly emitDeclarationOnly: boolean
   readonly declarationSources: readonly string[]
   readonly outDir: string
   readonly output: string
@@ -108,6 +109,12 @@ const requireTsgo = (value: string): string => {
   return value
 }
 
+const requireBoolean = (options: { readonly name: string; readonly value: string }): boolean => {
+  if (options.value === 'true') return true
+  if (options.value === 'false') return false
+  return fail(`${options.name} must be "true" or "false": ${options.value}`)
+}
+
 const parseReadRoots = (options: {
   readonly args: readonly string[]
   readonly command: string
@@ -152,12 +159,12 @@ export const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions
 
 /** Parses the fail-closed emit command contract for focused rule/runner tests. */
 export const parseEmitOptions = (args: readonly string[]): EmitOptions => {
-  requireMinimumArgumentCount({ args, command: 'emit', count: 6 })
+  requireMinimumArgumentCount({ args, command: 'emit', count: 7 })
   const declarationSources: string[] = []
   const readRoots = parseReadRoots({
     args,
     command: 'emit',
-    from: 6,
+    from: 7,
     declarationSources,
   })
   return {
@@ -177,6 +184,10 @@ export const parseEmitOptions = (args: readonly string[]): EmitOptions => {
       value: requireArgument({ args, index: 4, name: 'declaration entrypoint' }),
     }),
     output: requireArgument({ args, index: 5, name: 'output' }),
+    emitDeclarationOnly: requireBoolean({
+      name: 'emit declaration only',
+      value: requireArgument({ args, index: 6, name: 'emit declaration only' }),
+    }),
     declarationSources,
   }
 }
@@ -634,7 +645,7 @@ const runEmit = async (options: EmitOptions): Promise<number> => {
         '--declaration',
         'true',
         '--emitDeclarationOnly',
-        'true',
+        options.emitDeclarationOnly ? 'true' : 'false',
         '--pretty',
         'false',
       ],
