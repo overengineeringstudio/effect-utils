@@ -234,5 +234,10 @@ export const createStylexVitePlugins = ({
     },
   }
 
-  return [/** @type {Plugin} */ (compiler), prebundleRuntime, injectEntryImport, lateSwapCompiledCss]
+  return [
+    /** @type {Plugin} */ (compiler),
+    prebundleRuntime,
+    injectEntryImport,
+    lateSwapCompiledCss,
+  ]
 }
