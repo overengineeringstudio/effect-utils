@@ -19,13 +19,14 @@ const LOCAL_SOURCE_SUFFIX_PATTERN = / — running from local source \([^)]+\)/gu
 const EFFECT_CLI_FIBER_PATTERN = /(?<=ERROR \(#)\d+(?=\): ~effect\/cli\/)/gu
 
 const EFFECT_CLI_FRAME_PATTERN =
-  /effect@4\.0\.0-rc\.\d+\/node_modules\/effect\/dist\/unstable\/cli\/Command\.js:\d+:\d+/gu
+  /(?:(?:<repo>|\/[^\s()]*)\/node_modules\/\.pnpm\/effect@4\.0\.0-rc\.\d+\/node_modules\/effect|effect@4\.0\.0-rc\.\d+\/node_modules\/effect|\/[^\s()]*buck-out[^\s()]*\/node_modules\/effect)\/dist\/unstable\/cli\/Command\.js:\d+:\d+/gu
 
 /** Replacement token written into the baseline in place of a log timestamp. */
 export const TIME_TOKEN = '[time]'
 
 /** Replacement token written into the baseline in place of the checkout root. */
 export const REPO_TOKEN = '<repo>'
+const EFFECT_CLI_FRAME_TOKEN = `${REPO_TOKEN}/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>`
 
 /** Raw CLI output plus the explicit masking policy applied before baseline comparison. */
 export interface NormalizeCliOutputPolicy {
@@ -48,8 +49,8 @@ export interface NormalizeCliOutputPolicy {
    */
   readonly repoRoot?: string | undefined
   /**
-   * Mask volatile Effect CLI fiber ids, package prerelease versions, and
-   * internal source positions. Default: `false`.
+   * Canonicalize Effect CLI installation paths and mask volatile fiber ids,
+   * package prerelease versions, and internal source positions. Default: `false`.
    */
   readonly effectCliInternals?: boolean | undefined
 }
@@ -80,10 +81,7 @@ export const normalizeCliOutput = ({
   if (effectCliInternals === true) {
     output = output
       .replace(EFFECT_CLI_FIBER_PATTERN, '<fiber>')
-      .replace(
-        EFFECT_CLI_FRAME_PATTERN,
-        'effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>',
-      )
+      .replace(EFFECT_CLI_FRAME_PATTERN, EFFECT_CLI_FRAME_TOKEN)
   }
   return output.replace(LOCAL_SOURCE_SUFFIX_PATTERN, '')
 }

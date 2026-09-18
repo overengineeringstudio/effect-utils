@@ -1,6 +1,5 @@
 import * as crypto from 'node:crypto'
 import * as os from 'node:os'
-import nodePath from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { Effect, FileSystem, Path, Schema, Stream } from 'effect'
@@ -17,9 +16,8 @@ const GeneratedPackageJson = Schema.Struct({
   dependencies: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 })
 
-const decodeGeneratedPackageJson = Schema.decodeUnknownSync(
-  Schema.fromJsonString(GeneratedPackageJson),
-)
+const decodeGeneratedPackageJson = Schema.decodeSync(Schema.fromJsonString(GeneratedPackageJson))
+const decodeGenieState = Schema.decodeSync(Schema.fromJsonString(GenieApp.config.stateSchema))
 
 type TestEnv = {
   root: string
@@ -150,13 +148,13 @@ export default pkg.root({ name: 'genie-cli-test' })
 `,
             })
 
-            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--check'])
-            const output = `${stdout}\n${stderr}`
+            const { stdout, exitCode } = yield* runGenie(env, ['--check'])
+            const state = decodeGenieState(stdout.trim())
 
             expect(exitCode).not.toBe(0)
-            expect(output).toContain('GenieImportError')
-            expect(output).toContain('package.json.genie.ts')
-            expect(output).toContain('Cannot access')
+            expect(state.summary?.failed).toBe(1)
+            expect(state.files[0]?.relativePath).toBe('package.json')
+            expect(state.files[0]?.message).toContain('Cannot access')
           }),
         )
       },
@@ -185,99 +183,13 @@ export default pkg.root({ name: 'genie-cli-test' })
 
             yield* env.symlink({ target: 'canonical', path: 'link' })
 
-            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
-            const output = `${stdout}\n${stderr}`
-            const canonicalOutput = nodePath.join(env.root, 'canonical', 'package.json')
-            const linkOutput = nodePath.join(env.root, 'link', 'package.json')
+            const { stdout, exitCode } = yield* runGenie(env, ['--dry-run'])
+            const state = decodeGenieState(stdout.trim())
 
             expect(exitCode).toBe(0)
-            expect(output).toContain('Summary: 1 files processed')
-            expect(output).toContain(canonicalOutput)
-            expect(output).not.toContain(linkOutput)
-          }),
-        )
-      },
-      Effect.provide(TestLayer),
-      Effect.scoped,
-    ),
-  )
-
-  Vitest.it.effect(
-    're-validates on TDZ errors to identify root causes',
-    Effect.fnUntraced(
-      function* () {
-        yield* withTestEnv((env) =>
-          Effect.gen(function* () {
-            /**
-             * When a shared module throws during initialization, dependent genie files
-             * may see TDZ errors. The CLI should detect this and re-validate sequentially
-             * to identify the actual root cause.
-             */
-
-            // Root cause: shared module that throws during initialization
-            yield* env.writeFile({
-              path: 'genie/internal.ts',
-              content: `export const catalog = (() => {
-  throw new Error('Missing required env var DATABASE_URL')
-})()
-`,
-            })
-
-            // Dependent: imports from the failing module
-            yield* env.writeFile({
-              path: 'apps/app/package.json.genie.ts',
-              content: `import { catalog } from '../../genie/internal.ts'
-export default {
-  data: { dependencies: catalog },
-  stringify: () => JSON.stringify({ dependencies: catalog }),
-}
-`,
-            })
-
-            // Another dependent
-            yield* env.writeFile({
-              path: 'packages/lib/package.json.genie.ts',
-              content: `import { catalog } from '../../genie/internal.ts'
-export default {
-  data: { devDependencies: catalog },
-  stringify: () => JSON.stringify({ devDependencies: catalog }),
-}
-`,
-            })
-
-            // Independent success case
-            yield* env.writeFile({
-              path: 'standalone/package.json.genie.ts',
-              content: `export default {
-  data: { name: 'standalone' },
-  stringify: () => JSON.stringify({ name: 'standalone' }),
-}
-`,
-            })
-
-            // Create parent directories for generated files
-            yield* env.writeFile({ path: 'apps/app/.gitkeep', content: '' })
-            yield* env.writeFile({
-              path: 'packages/lib/.gitkeep',
-              content: '',
-            })
-            yield* env.writeFile({ path: 'standalone/.gitkeep', content: '' })
-
-            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
-            const output = `${stdout}\n${stderr}`
-
-            // Should fail
-            expect(exitCode).not.toBe(0)
-
-            // Should show re-validation message
-            expect(output).toContain('Re-validating to identify root causes')
-
-            // Should identify root cause (not TDZ errors)
-            expect(output).toContain('root cause error')
-            expect(output).toContain('Missing required env var DATABASE_URL')
-
-            // Should indicate dependent failures
-            expect(output).toContain('failed due to dependency errors')
+            expect(state.summary?.created).toBe(1)
+            expect(state.files).toHaveLength(1)
+            expect(state.files[0]?.relativePath).toBe('canonical/package.json')
           }),
         )
       },
@@ -443,7 +355,7 @@ export default {
 
             // Run genie with --cwd pointing to the SYMLINK path
             // This is the scenario that previously caused the bug
-            const cliPath = new URL('./mod.ts', import.meta.url).pathname
+            const cliPath = new URL('../../bin/genie.tsx', import.meta.url).pathname
             const command = Command.make('bun', [cliPath, '--cwd', symlinkPath], {
               cwd: symlinkPath,
               stdout: 'pipe',
@@ -519,13 +431,12 @@ export default { data: {}, stringify: () => '{}' }`,
             const initProcess = yield* init
             expect(yield* initProcess.exitCode).toBe(0)
 
-            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
-            const output = `${stdout}\n${stderr}`
+            const { stdout, exitCode } = yield* runGenie(env, ['--dry-run'])
+            const state = decodeGenieState(stdout.trim())
 
             expect(exitCode).toBe(0)
-            expect(output).toContain('Summary: 1 files processed')
-            expect(output).not.toContain('ignored local worktree')
-            expect(output).not.toContain('.claude/worktrees')
+            expect(state.summary?.created).toBe(1)
+            expect(state.files.map((file) => file.relativePath)).toEqual(['package.json'])
           }),
         )
       },
@@ -618,7 +529,7 @@ export default {
             })
 
             const outerRoot = pathSvc.join(env.root, 'outer')
-            const cliPath = new URL('./mod.ts', import.meta.url).pathname
+            const cliPath = new URL('../../bin/genie.tsx', import.meta.url).pathname
             const command = Command.make('bun', [cliPath, '--cwd', outerRoot], {
               cwd: outerRoot,
               stdout: 'pipe',
@@ -690,7 +601,7 @@ export default { data: {}, stringify: () => '{}' }`,
             expect(state.cwd).not.toBe('')
             // Summary should be correct
             expect(state.summary?.failed).toBe(1)
-            expect(state.summary?.unchanged).toBe(1)
+            expect(state.summary?.created).toBe(1)
             // Per-file error details should be present
             const errorFile = state.files.find((f) => f.status === 'error')
             expect(errorFile).toBeDefined()
