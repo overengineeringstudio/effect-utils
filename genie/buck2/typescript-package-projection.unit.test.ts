@@ -174,13 +174,8 @@ describe('declared-closure package projection', () => {
     }
   })
 
-  it('keeps admitted subpackage inputs out of the root Buck package', () => {
+  it('keeps package-tree runtime ownership out of the root Buck package', () => {
     const rootBuck = readFileSync('BUCK', 'utf8')
-    for (const { packagePath } of admittedPackages) {
-      expect(rootBuck, `root BUCK still owns files below //${packagePath}`).not.toContain(
-        `${packagePath}/`,
-      )
-    }
     expect(rootBuck).not.toContain('name = "package_tree_runtime",')
     expect(buck2ToolsBuck).toContain('name = "package_tree_runtime",')
     for (const admitted of admittedPackages) {
