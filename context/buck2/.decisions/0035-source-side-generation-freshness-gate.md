@@ -1,4 +1,4 @@
-# Decision 0030: Source-side generation freshness gates Buck entrypoints
+# Decision 0035: Source-side generation freshness gates Buck entrypoints
 
 ## Status
 
