@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -6,9 +8,29 @@ import { describe, expect, it } from 'vitest'
 import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
 
 const cliPath = fileURLToPath(new URL('../bin/genie.tsx', import.meta.url))
-/* Absolute checkout root of this worktree — v4 CLI error rendering embeds
- * stack-frame paths under it; snapshots must not gate on the machine. */
-const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url))
+// Prefer the checkout root. Buck's hermetic test package tree deliberately has
+// no repository metadata, so retain the package root as a fallback instead of
+// deriving either root from import.meta.url's environment-dependent depth.
+const repoRoot = (() => {
+  let dir = dirname(fileURLToPath(import.meta.url))
+  let packageTreeRoot: string | undefined
+  for (;;) {
+    if (existsSync(join(dir, '.git')) === true) return dir
+    if (
+      packageTreeRoot === undefined &&
+      existsSync(join(dir, 'package.json')) === true &&
+      existsSync(join(dir, 'bin', 'genie.tsx')) === true
+    ) {
+      packageTreeRoot = dir
+    }
+    const parent = dirname(dir)
+    if (parent === dir) {
+      if (packageTreeRoot !== undefined) return packageTreeRoot
+      throw new Error('repo or package-tree root not found')
+    }
+    dir = parent
+  }
+})()
 
 /**
  * CLI contract capture: `status` and `signal` are cross-major invariants; stdout/stderr help,
