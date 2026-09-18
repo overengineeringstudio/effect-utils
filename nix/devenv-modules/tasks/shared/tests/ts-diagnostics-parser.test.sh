@@ -166,6 +166,19 @@ set -e
 echo "$stdout" > "$tmpdir/stdout.txt"
 if [ "$ts_check_status" -ne 0 ]; then
   echo "$stdout" >&2
+  (
+    cd "$tmpdir" \
+      && env -i \
+        HOME="$tmpdir" \
+        PATH="$PATH" \
+        TMPDIR="$tmpdir" \
+        OTEL_SPAN_BIN="$OTEL_SPAN_BIN" \
+        OTEL_SCRAPE_ENABLED="$OTEL_SCRAPE_ENABLED" \
+        OTEL_SPAN_SPOOL_DIR="$OTEL_SPAN_SPOOL_DIR" \
+        OTEL_TASK_TRACEPARENT="$OTEL_TASK_TRACEPARENT" \
+        DEVENV_ROOT="$DEVENV_ROOT" \
+        bash -x "$tmpdir/ts-check.exec.sh"
+  ) >&2 || true
   fail "ts:check exec failed with exit $ts_check_status"
 fi
 
