@@ -71,7 +71,7 @@ const mountMetadata = ({
 
 interface FixtureOptions {
   readonly members?: ReadonlyArray<{ readonly key: string; readonly overlays: number }>
-  readonly rootMode?: 'first' | 'update' | 'nochange' | 'overlay-failure'
+  readonly rootMode?: 'first' | 'update' | 'nochange' | 'overlay-failure' | 'recovery'
   readonly capabilityFailure?: string
   readonly mountFailure?: string
   readonly lockFailure?: boolean
@@ -81,6 +81,14 @@ interface FixtureOptions {
   readonly alreadyCurrent?: boolean
   readonly currentOverlayCount?: number
   readonly releaseFailures?: ReadonlyArray<string>
+  readonly retainFailure?: string
+  readonly publishedMemberKeys?: ReadonlyArray<string>
+  readonly capabilityRootMemberKeys?: ReadonlyArray<string>
+  readonly teardownFailure?: string
+  readonly rootRemovalFailure?: string
+  readonly watchmanConfigChanged?: boolean
+  readonly watchmanFailure?: boolean
+  readonly rootFailureAfterReconcile?: boolean
 }
 
 const fixture = async (options: FixtureOptions = {}) => {
@@ -236,27 +244,43 @@ const fixture = async (options: FixtureOptions = {}) => {
         'MaterializeCpAMemberMount',
       ],
     }),
-    materializeMount: async ({ request: mount }) => {
+    materializeMount: async ({ request: mount, runtime }) => {
       calls.push(`mount:${mount.member}:${mount.allowVerifiedDarwinAdvance}`)
       if (options.mountFailure === mount.member) throw new Error('mount failed')
       const manifest = manifests.get(mount.sourcePath)!
       const current = inspections.get(mount.member)!
-      return options.alreadyCurrent === true || options.currentOverlayCount !== undefined
-        ? {
-            _tag: 'AlreadyCurrent',
-            destinationPath: NodePath.join(workspaceRoot, 'repos', mount.member),
-            metadata: current.metadata,
-          }
-        : {
-            _tag: 'Published',
-            operation: 'FirstPublish',
-            destinationPath: NodePath.join(workspaceRoot, 'repos', mount.member),
-            metadata: mountMetadata({ workspaceRoot, key: mount.member, manifest }),
-          }
+      if (options.alreadyCurrent === true || options.currentOverlayCount !== undefined) {
+        return {
+          _tag: 'AlreadyCurrent',
+          destinationPath: NodePath.join(workspaceRoot, 'repos', mount.member),
+          metadata: current.metadata,
+        }
+      }
+      const published = {
+        _tag: 'Published' as const,
+        operation: 'FirstPublish' as const,
+        destinationPath: NodePath.join(workspaceRoot, 'repos', mount.member),
+        metadata: mountMetadata({ workspaceRoot, key: mount.member, manifest }),
+      }
+      await runtime.retainPublishedCapabilities?.({
+        destinationPath: published.destinationPath,
+      })
+      calls.push(`mount-committed:${mount.member}`)
+      return published
     },
-    listPublishedMemberKeys: async () => [],
-    teardownMount: async () => {
-      throw new Error('unexpected teardown')
+    listPublishedMemberKeys: async () => options.publishedMemberKeys ?? [],
+    listCapabilityRootMemberKeys: async () => options.capabilityRootMemberKeys ?? [],
+    teardownMount: async ({ memberKey }) => {
+      calls.push(`teardown:${memberKey}`)
+      if (options.teardownFailure === memberKey) throw new Error('teardown failed')
+      return {
+        _tag: 'TornDown',
+        destinationPath: NodePath.join(workspaceRoot, 'repos', memberKey),
+      }
+    },
+    removeMemberCapabilityRoots: async ({ memberKey }) => {
+      calls.push(`remove-roots:${memberKey}`)
+      if (options.rootRemovalFailure === memberKey) throw new Error('root removal failed')
     },
     inspectMountedMember: async ({ memberKey }) => inspections.get(memberKey)!,
     recoverOverlay: async ({ request: recovery }) => {
@@ -304,10 +328,41 @@ const fixture = async (options: FixtureOptions = {}) => {
     }),
     planRoot: async (input) => {
       rootCacheSections.push(input.cacheSections)
+      const configFiles =
+        options.rootMode === 'first' || options.watchmanConfigChanged === true
+          ? [
+              {
+                path: '.watchmanconfig',
+                old:
+                  options.rootMode === 'first'
+                    ? undefined
+                    : { mode: 0o644 as const, sha256: `sha256:${'1'.repeat(64)}` },
+                new: { mode: 0o644 as const, sha256: `sha256:${'2'.repeat(64)}` },
+              },
+              {
+                path: '.buckconfig',
+                old:
+                  options.rootMode === 'first'
+                    ? undefined
+                    : { mode: 0o644 as const, sha256: `sha256:${'3'.repeat(64)}` },
+                new: { mode: 0o644 as const, sha256: `sha256:${'4'.repeat(64)}` },
+              },
+            ]
+          : []
+      if (options.rootMode === 'recovery') {
+        return {
+          _tag: 'Refused',
+          reason: 'RecoveryRequired',
+          path: NodePath.join(workspaceRoot, '.megarepo/composition-publication.json'),
+          message: 'publisher recovery required',
+          files: [],
+          configLast: false,
+        }
+      }
       return options.rootMode === 'first'
-        ? { _tag: 'Create', files: [], configLast: true }
+        ? { _tag: 'Create', files: configFiles, configLast: true }
         : options.rootMode === 'update'
-          ? { _tag: 'Update', files: [], configLast: true }
+          ? { _tag: 'Update', files: configFiles, configLast: true }
           : { _tag: 'NoChange', files: [], configLast: true }
     },
     publishRoot: async (input) => {
@@ -329,13 +384,33 @@ const fixture = async (options: FixtureOptions = {}) => {
         calls.push('root:nochange')
         return { changedPaths: [], memberManifests: [] }
       }
+      if (options.rootMode === 'recovery') {
+        calls.push('root:recover')
+        await input.afterAuthorityRollback?.({
+          _tag: 'WatchmanProject',
+          phase: 'CompensationRequired',
+          priorWatched: true,
+        })
+      }
+      const prepared =
+        options.rootMode === 'first' ||
+        options.rootMode === 'recovery' ||
+        options.watchmanConfigChanged === true
+          ? await input.prepareExternalState?.()
+          : undefined
       try {
         calls.push('root:authority')
-        await input.afterAuthorityPublished?.()
+        await prepared?.afterAuthorityPublished()
+        if (options.rootFailureAfterReconcile === true) {
+          throw new Error('root commit failed after Watchman reconciliation')
+        }
         calls.push('root:commit')
-        return { changedPaths: ['.buckconfig'], memberManifests: [] }
+        return { changedPaths: ['.watchmanconfig', '.buckconfig'], memberManifests: [] }
       } catch (cause) {
         calls.push('root:rollback')
+        if (prepared !== undefined) {
+          await input.afterAuthorityRollback?.(prepared.externalState)
+        }
         throw cause
       }
     },
@@ -346,10 +421,16 @@ const fixture = async (options: FixtureOptions = {}) => {
       plan: async (input) => ({
         ...input,
         operation: 'InstallOwnedCapabilityProjection',
-        steps: ['ValidateOwnedMember', 'InstallProjectionAtomically', 'CheckProjection'],
+        steps: [
+          'ValidateOwnedMember',
+          'InstallProjectionAtomically',
+          'CheckProjection',
+          'RetainProjectionRoots',
+        ],
       }),
       install: async (input) => {
         calls.push(`owned:${input.memberKey}:install`)
+        await input.retainPublishedCapabilities()
         return {
           memberKey: input.memberKey,
           projectionPath: input.projectionPath,
@@ -357,6 +438,15 @@ const fixture = async (options: FixtureOptions = {}) => {
           changed: true,
         }
       },
+    },
+    retainCapabilityRoots: async ({ workspaceRoot: retainedWorkspaceRoot, memberKey }) => {
+      expect(retainedWorkspaceRoot).toBe(workspaceRoot)
+      calls.push(`retain:${memberKey}`)
+      if (options.retainFailure === memberKey) throw new Error('capability retention failed')
+    },
+    pruneCapabilityRoots: async ({ workspaceRoot: prunedWorkspaceRoot, memberKey }) => {
+      expect(prunedWorkspaceRoot).toBe(workspaceRoot)
+      calls.push(`prune:${memberKey}`)
     },
     system: options.allowDarwin === true ? 'aarch64-darwin' : 'x86_64-linux',
     platform: options.allowDarwin === true ? 'darwin' : 'linux',
@@ -394,6 +484,27 @@ const fixture = async (options: FixtureOptions = {}) => {
       },
     },
     updateLockRuntime: {},
+    prepareWatchmanProjectReconciliation: async ({ workspaceRoot: reconciledRoot }) => {
+      expect(reconciledRoot).toBe(workspaceRoot)
+      calls.push('watchman:prepare')
+      return {
+        state: {
+          _tag: 'WatchmanProject',
+          phase: 'CompensationRequired',
+          priorWatched: true,
+        },
+        reconcile: async () => {
+          calls.push('watchman:reconcile')
+          if (options.watchmanFailure === true) {
+            throw new Error('watchman reconciliation failed')
+          }
+        },
+      }
+    },
+    restoreWatchmanProjectState: async (state) => {
+      expect(state).toMatchObject({ _tag: 'WatchmanProject', priorWatched: true })
+      calls.push('watchman:rollback')
+    },
     runBuck: async (argv) => {
       calls.push(`buck:${argv.join('|')}`)
       await mkdir(argv.at(-1)!, { recursive: true })
@@ -471,10 +582,31 @@ describe('composition apply integration', () => {
         )
         if (rootMode === 'first') {
           expect(rootIndex).toBeLessThan(overlayIndex)
+          expect(value.calls.indexOf('watchman:reconcile')).toBeGreaterThan(rootIndex)
+          expect(value.calls.indexOf('watchman:reconcile')).toBeLessThan(
+            value.calls.indexOf('root:commit'),
+          )
         } else {
           expect(rootIndex).toBeGreaterThan(overlayIndex)
+          expect(value.calls).not.toContain('watchman:reconcile')
         }
         expect(value.calls.indexOf('cap:owned:release')).toBeGreaterThan(overlayIndex)
+        expect(value.calls.indexOf('retain:owned')).toBeGreaterThan(
+          value.calls.indexOf('owned:owned:install'),
+        )
+        expect(value.calls.indexOf('retain:owned')).toBeLessThan(
+          value.calls.indexOf('mount:dep:false'),
+        )
+        expect(value.calls.indexOf('retain:dep')).toBeGreaterThan(
+          value.calls.indexOf('mount:dep:false'),
+        )
+        expect(value.calls.indexOf('prune:dep')).toBeGreaterThan(
+          value.calls.indexOf('mount-committed:dep'),
+        )
+        expect(value.calls.indexOf('prune:dep')).toBeGreaterThan(value.calls.indexOf('retain:dep'))
+        expect(value.calls.indexOf('cap:owned:release')).toBeGreaterThan(
+          value.calls.indexOf('prune:dep'),
+        )
         if (rootMode !== 'first') {
           expect(rootIndex).toBeGreaterThan(value.calls.indexOf('cap:owned:release'))
         }
@@ -484,6 +616,93 @@ describe('composition apply integration', () => {
       }
     },
   )
+
+  it('publishes and reconciles changed Watchman config before an update can invoke Buck', async () => {
+    const value = await fixture({ rootMode: 'update', watchmanConfigChanged: true })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      const authority = value.calls.indexOf('root:authority')
+      const reconcile = value.calls.indexOf('watchman:reconcile')
+      const commit = value.calls.indexOf('root:commit')
+      const overlay = value.calls.findIndex((call) => call.startsWith('overlay:dep:'))
+      expect(authority).toBeLessThan(reconcile)
+      expect(reconcile).toBeLessThan(commit)
+      expect(commit).toBeLessThan(overlay)
+    } finally {
+      await value.cleanup()
+    }
+  })
+  it('recovers then reconciles forward Watchman config before any overlay invokes Buck', async () => {
+    const value = await fixture({ rootMode: 'recovery' })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      const recovery = value.calls.indexOf('root:recover')
+      const rollback = value.calls.indexOf('watchman:rollback')
+      const prepare = value.calls.indexOf('watchman:prepare')
+      const authority = value.calls.indexOf('root:authority')
+      const reconcile = value.calls.indexOf('watchman:reconcile')
+      const commit = value.calls.indexOf('root:commit')
+      const overlay = value.calls.findIndex((call) => call.startsWith('overlay:dep:'))
+      expect(recovery).toBeGreaterThanOrEqual(0)
+      expect(recovery).toBeLessThan(rollback)
+      expect(rollback).toBeLessThan(prepare)
+      expect(prepare).toBeLessThan(authority)
+      expect(authority).toBeLessThan(reconcile)
+      expect(reconcile).toBeLessThan(commit)
+      expect(commit).toBeLessThan(overlay)
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('rolls root publication back when changed Watchman config cannot be reconciled', async () => {
+    const value = await fixture({
+      rootMode: 'update',
+      watchmanConfigChanged: true,
+      watchmanFailure: true,
+    })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      expect(value.calls).toContain('watchman:reconcile')
+      expect(value.calls).toContain('root:rollback')
+      expect(value.calls).toContain('watchman:rollback')
+      expect(value.calls.some((call) => call.startsWith('overlay:dep:'))).toBe(false)
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('restores the prior Watchman state when root commit fails after reconciliation', async () => {
+    const value = await fixture({
+      rootMode: 'update',
+      watchmanConfigChanged: true,
+      rootFailureAfterReconcile: true,
+    })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      expect(value.calls).toContain('watchman:reconcile')
+      expect(value.calls).toContain('root:rollback')
+      expect(value.calls).toContain('watchman:rollback')
+      expect(value.calls.indexOf('root:rollback')).toBeLessThan(
+        value.calls.indexOf('watchman:rollback'),
+      )
+      expect(value.calls.some((call) => call.startsWith('overlay:dep:'))).toBe(false)
+    } finally {
+      await value.cleanup()
+    }
+  })
 
   it('forwards an explicit cache override unchanged to root planning and publication', async () => {
     const cacheSections: NonNullable<CompositionApplyRequest['cacheSections']> = [
@@ -530,12 +749,85 @@ describe('composition apply integration', () => {
         expect(command).toContain('|--out|')
       }
       expect(value.calls.at(-1)).toBe('lock:release')
+      expect(value.calls.filter((call) => call.startsWith('retain:'))).toEqual([
+        'retain:owned',
+        'retain:beta',
+        'retain:alpha',
+      ])
+      expect(value.calls.filter((call) => call.startsWith('prune:'))).toEqual([
+        'prune:owned',
+        'prune:beta',
+        'prune:alpha',
+      ])
     } finally {
       await value.cleanup()
     }
   })
 
-  it('skips Buck and overlay publication for validated already-current overlays', async () => {
+  it('removes retired member capability roots only after verified mount teardown', async () => {
+    const value = await fixture({ publishedMemberKeys: ['owned', 'dep', 'retired'] })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      expect(value.calls.filter((call) => call.startsWith('teardown:'))).toEqual([
+        'teardown:retired',
+      ])
+      expect(value.calls.filter((call) => call.startsWith('remove-roots:'))).toEqual([
+        'remove-roots:retired',
+      ])
+      expect(value.calls.indexOf('teardown:retired')).toBeLessThan(
+        value.calls.indexOf('remove-roots:retired'),
+      )
+      expect(value.calls.indexOf('remove-roots:retired')).toBeLessThan(
+        value.calls.indexOf('cap:owned'),
+      )
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('retries retired capability-root removal after its mount is already absent', async () => {
+    const value = await fixture({ capabilityRootMemberKeys: ['retired'] })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      expect(value.calls.filter((call) => call.startsWith('teardown:'))).toEqual([])
+      expect(value.calls.filter((call) => call.startsWith('remove-roots:'))).toEqual([
+        'remove-roots:retired',
+      ])
+      expect(value.calls.indexOf('remove-roots:retired')).toBeLessThan(
+        value.calls.indexOf('cap:owned'),
+      )
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('preserves retired member capability roots when mount teardown fails', async () => {
+    const value = await fixture({
+      publishedMemberKeys: ['retired'],
+      teardownFailure: 'retired',
+    })
+    try {
+      await expect(
+        Effect.runPromise(compositionApply({ request: value.request, runtime: value.runtime })),
+      ).rejects.toMatchObject({
+        reason: 'MountFailure',
+        phase: 'Mount',
+        memberKey: 'retired',
+      })
+      expect(value.calls).toContain('teardown:retired')
+      expect(value.calls).not.toContain('remove-roots:retired')
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('rebuilds overlays for validated already-current mounts', async () => {
     const value = await fixture({ alreadyCurrent: true })
     try {
       const result = await Effect.runPromise(
@@ -543,21 +835,23 @@ describe('composition apply integration', () => {
       )
       expect(result._tag).toBe('Applied')
       if (result._tag !== 'Applied') return
-      expect(result.members.every((member) => member.overlays.length === 0)).toBe(true)
       const mountedMembers = result.members.filter((member) => member.owned === false)
+      expect(mountedMembers[0]?.overlays).toHaveLength(1)
       expect(mountedMembers).toHaveLength(1)
       for (const member of mountedMembers) {
         expect(member.mount?._tag).toBe('AlreadyCurrent')
       }
-      expect(value.calls.some((call) => call.startsWith('scratch:'))).toBe(false)
-      expect(value.calls.some((call) => call.startsWith('buck:'))).toBe(false)
-      expect(value.calls.some((call) => call.startsWith('overlay:'))).toBe(false)
+      expect(value.calls.filter((call) => call.startsWith('scratch:dep:create'))).toHaveLength(1)
+      expect(value.calls.filter((call) => call.startsWith('buck:'))).toHaveLength(1)
+      expect(value.calls.filter((call) => call.startsWith('overlay:dep://pkg:'))).toEqual([
+        'overlay:dep://pkg:dist0',
+      ])
     } finally {
       await value.cleanup()
     }
   })
 
-  it('builds only missing overlays for an otherwise current mount', async () => {
+  it('rebuilds every overlay for an otherwise current mount', async () => {
     const value = await fixture({
       members: [{ key: 'dep', overlays: 2 }],
       currentOverlayCount: 1,
@@ -571,11 +865,13 @@ describe('composition apply integration', () => {
       const mountedMember = result.members.find((member) => member.owned === false)
       expect(mountedMember?.mount?._tag).toBe('AlreadyCurrent')
       expect(mountedMember?.overlays.map((overlay) => overlay.destinationPath)).toEqual([
+        NodePath.join(value.root, 'workspace', 'repos', 'dep', 'pkg/dist0'),
         NodePath.join(value.root, 'workspace', 'repos', 'dep', 'pkg/dist1'),
       ])
-      expect(value.calls.filter((call) => call.startsWith('scratch:dep:create'))).toHaveLength(1)
-      expect(value.calls.filter((call) => call.startsWith('buck:'))).toHaveLength(1)
+      expect(value.calls.filter((call) => call.startsWith('scratch:dep:create'))).toHaveLength(2)
+      expect(value.calls.filter((call) => call.startsWith('buck:'))).toHaveLength(2)
       expect(value.calls.filter((call) => call.startsWith('overlay:dep://pkg:'))).toEqual([
+        'overlay:dep://pkg:dist0',
         'overlay:dep://pkg:dist1',
       ])
     } finally {
@@ -599,6 +895,54 @@ describe('composition apply integration', () => {
       expect(value.calls.some((call) => call.startsWith('mount:'))).toBe(false)
       expect(value.calls.some((call) => call.startsWith('root:'))).toBe(false)
       expect(value.calls).toContain('cap:alpha:release')
+      expect(value.calls.at(-1)).toBe('lock:release')
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('propagates owned root retention failure before mounts and releases resolver scratch', async () => {
+    const value = await fixture({ retainFailure: 'owned' })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      if (result._tag !== 'Failure') return
+      expect(result.failure).toMatchObject({
+        reason: 'CapabilityFailure',
+        phase: 'Capability',
+        memberKey: 'owned',
+      })
+      expect(value.calls).toContain('owned:owned:install')
+      expect(value.calls).toContain('retain:owned')
+      expect(value.calls.some((call) => call.startsWith('mount:'))).toBe(false)
+      expect(value.calls).toContain('cap:owned:release')
+      expect(value.calls.at(-1)).toBe('lock:release')
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('propagates mounted root retention failure after mount publication', async () => {
+    const value = await fixture({ retainFailure: 'dep' })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      if (result._tag !== 'Failure') return
+      expect(result.failure).toMatchObject({
+        reason: 'CapabilityFailure',
+        phase: 'Capability',
+        memberKey: 'dep',
+      })
+      expect(value.calls.indexOf('retain:dep')).toBeGreaterThan(
+        value.calls.indexOf('mount:dep:false'),
+      )
+      expect(value.calls.some((call) => call.startsWith('root:'))).toBe(false)
+      expect(value.calls).toContain('cap:dep:release')
+      expect(value.calls).toContain('cap:owned:release')
       expect(value.calls.at(-1)).toBe('lock:release')
     } finally {
       await value.cleanup()

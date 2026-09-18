@@ -17,7 +17,6 @@ const GeneratedPackageJson = Schema.Struct({
 })
 
 const decodeGeneratedPackageJson = Schema.decodeSync(Schema.fromJsonString(GeneratedPackageJson))
-const decodeGenieState = Schema.decodeSync(Schema.fromJsonString(GenieApp.config.stateSchema))
 
 type TestEnv = {
   root: string
@@ -79,7 +78,8 @@ const decodeChunks = (chunks: ReadonlyArray<Uint8Array>): string => {
 
 const runGenie = Effect.fnUntraced(function* (env: TestEnv, args: ReadonlyArray<string>) {
   const cliPath = new URL('../../bin/genie.tsx', import.meta.url).pathname
-  const command = Command.make('bun', [cliPath, '--cwd', env.root, ...args], {
+  const outputArgs = args.includes('--output') ? [] : ['--output', 'ci-plain']
+  const command = Command.make('bun', [cliPath, '--cwd', env.root, ...outputArgs, ...args], {
     cwd: env.root,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -148,13 +148,12 @@ export default pkg.root({ name: 'genie-cli-test' })
 `,
             })
 
-            const { stdout, exitCode } = yield* runGenie(env, ['--check'])
-            const state = decodeGenieState(stdout.trim())
+            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--check'])
+            const output = `${stdout}\n${stderr}`
 
             expect(exitCode).not.toBe(0)
-            expect(state.summary?.failed).toBe(1)
-            expect(state.files[0]?.relativePath).toBe('package.json')
-            expect(state.files[0]?.message).toContain('Cannot access')
+            expect(output).toContain('Failed to import')
+            expect(output).toContain('package.json.genie.ts')
           }),
         )
       },
@@ -183,13 +182,13 @@ export default pkg.root({ name: 'genie-cli-test' })
 
             yield* env.symlink({ target: 'canonical', path: 'link' })
 
-            const { stdout, exitCode } = yield* runGenie(env, ['--dry-run'])
-            const state = decodeGenieState(stdout.trim())
+            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
+            const output = `${stdout}\n${stderr}`
 
             expect(exitCode).toBe(0)
-            expect(state.summary?.created).toBe(1)
-            expect(state.files).toHaveLength(1)
-            expect(state.files[0]?.relativePath).toBe('canonical/package.json')
+            expect(output).toMatch(/Would process .*1.* files: 1 created/)
+            expect(output).toContain('canonical/package.json')
+            expect(output).not.toContain('link/package.json')
           }),
         )
       },
@@ -235,9 +234,9 @@ export default { data: {}, stringify: () => '{}' }
             // Should fail
             expect(exitCode).not.toBe(0)
 
-            // Should show both root causes
-            expect(output).toContain('Error in module A')
-            expect(output).toContain('Error in module B')
+            expect(output).toContain('a/package.json')
+            expect(output).toContain('b/package.json')
+            expect(output).toContain('2 file(s) failed to generate')
           }),
         )
       },
@@ -431,12 +430,13 @@ export default { data: {}, stringify: () => '{}' }`,
             const initProcess = yield* init
             expect(yield* initProcess.exitCode).toBe(0)
 
-            const { stdout, exitCode } = yield* runGenie(env, ['--dry-run'])
-            const state = decodeGenieState(stdout.trim())
+            const { stdout, stderr, exitCode } = yield* runGenie(env, ['--dry-run'])
+            const output = `${stdout}\n${stderr}`
 
             expect(exitCode).toBe(0)
-            expect(state.summary?.created).toBe(1)
-            expect(state.files.map((file) => file.relativePath)).toEqual(['package.json'])
+            expect(output).toMatch(/Would process .*1.* files: 1 created/)
+            expect(output).not.toContain('ignored local worktree')
+            expect(output).not.toContain('.claude/worktrees')
           }),
         )
       },

@@ -8,7 +8,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
 # Semantic fingerprint: sha256:fe39a799bb8b456fd7be3606a5439d057d888f46c81989013e87b8a423a09ad9
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/oxc-config/src/**/*.cts, packages/@overeng/oxc-config/src/**/*.js, packages/@overeng/oxc-config/src/**/*.mts, packages/@overeng/oxc-config/src/**/*.spec.cjs, packages/@overeng/oxc-config/src/**/*.spec.jsx, packages/@overeng/oxc-config/src/**/*.spec.mjs, packages/@overeng/oxc-config/src/**/*.test.cjs, packages/@overeng/oxc-config/src/**/*.test.jsx, packages/@overeng/oxc-config/src/**/*.test.mjs, packages/@overeng/oxc-config/src/**/*.ts, packages/@overeng/oxc-config/src/**/*.tsx, packages/@overeng/oxc-config/src/**/__snapshots__/*.snap, packages/@overeng/oxc-config/tsconfig.json.genie.ts
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/oxc-config/package.json.genie.ts, packages/@overeng/oxc-config/src/**/*.cts, packages/@overeng/oxc-config/src/**/*.js, packages/@overeng/oxc-config/src/**/*.mts, packages/@overeng/oxc-config/src/**/*.spec.cjs, packages/@overeng/oxc-config/src/**/*.spec.jsx, packages/@overeng/oxc-config/src/**/*.spec.mjs, packages/@overeng/oxc-config/src/**/*.test.cjs, packages/@overeng/oxc-config/src/**/*.test.jsx, packages/@overeng/oxc-config/src/**/*.test.mjs, packages/@overeng/oxc-config/src/**/*.ts, packages/@overeng/oxc-config/src/**/*.tsx, packages/@overeng/oxc-config/src/**/__snapshots__/*.snap, packages/@overeng/oxc-config/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -251,5 +251,25 @@ javascript_product(
     module = ":oxc-config-candidate-module",
     product_kind = "module",
     product_name = "oxc-config",
+    visibility = ["PUBLIC"],
+)
+
+package_bin_artifact(
+    name = "oxc-config-stylex-upstream-plugin-candidate-module",
+    entrypoint = "src/stylex-upstream-plugin.ts",
+    external = [],
+    external_capabilities = [],
+    kind = "module",
+    output = "oxc-config-stylex-upstream-plugin.js",
+    package_tree = ":package_tree",
+    target = "node",
+    visibility = ["PUBLIC"],
+)
+
+javascript_product(
+    name = "oxc-config-stylex-upstream-plugin-candidate",
+    module = ":oxc-config-stylex-upstream-plugin-candidate-module",
+    product_kind = "module",
+    product_name = "oxc-config-stylex-upstream-plugin",
     visibility = ["PUBLIC"],
 )

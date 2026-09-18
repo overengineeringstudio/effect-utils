@@ -1,12 +1,13 @@
-import { pnpmWorkspaceMemberPaths } from '../../genie/packages.ts'
+import { nixOnlyPackages } from '../../genie/packages.ts'
+import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 
-
-const declaredPackages = pnpmWorkspaceMemberPaths
+const declaredPackages = rootWorkspaceMemberPaths
 
 const sourceSets = [
   '//:static_sources',
-  ...pnpmWorkspaceMemberPaths.map((packagePath) => `//${packagePath}:static_sources`),
+  ...rootWorkspaceMemberPaths.map((packagePath) => `//${packagePath}:static_sources`),
+  ...nixOnlyPackages.map(({ cratePath }) => `//${cratePath}:static_sources`),
 ].toSorted()
 
 if (new Set(sourceSets).size !== sourceSets.length) {

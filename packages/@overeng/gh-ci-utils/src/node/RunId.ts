@@ -386,14 +386,13 @@ const resolveActiveBranchRun = Effect.fn('resolve-active-branch-run')(
 )
 
 const requireLocalRepo = (localRepo: Option.Option<string>) =>
-  Effect.fromOption(localRepo).pipe(
-    Effect.mapError(
-      () =>
-        new ConfigError({
-          message: 'No local repo available. Use owner/repo as target to specify.',
-          cause: 'no local repo',
-        }),
-    ),
+  Effect.fromOption(
+    localRepo,
+    () =>
+      new ConfigError({
+        message: 'No local repo available. Use owner/repo as target to specify.',
+        cause: 'no local repo',
+      }),
   )
 
 /** Resolve a supported branch or repository-default workflow dispatch target. */

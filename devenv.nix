@@ -30,6 +30,7 @@ let
     builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
+  trackedBuck2Products = import ./nix/buck2-products { pkgs = flakePkgs; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
@@ -38,11 +39,11 @@ let
   };
   restate = import ./nix/restate.nix { pkgs = restatePkgs; };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
-  # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
+  # Use npm oxlint with NAPI bindings and the two tracked Buck plugin modules.
   oxlintNpm = import ./nix/oxlint-npm.nix {
     pkgs = flakePkgs;
     bun = flakePkgs.bun;
-    src = repoFlake;
+    products = trackedBuck2Products.products;
   };
   oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
     inherit pkgs oxlintNpm;
@@ -82,11 +83,11 @@ let
     workflow-report = import ./nix/devenv-modules/tasks/shared/workflow-report.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
     lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
+    nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
-    nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
     bootstrap-closure = import ./nix/devenv-modules/tasks/shared/bootstrap-closure.nix;
     weaver = import ./nix/devenv-modules/tasks/shared/weaver.nix;
@@ -115,24 +116,6 @@ let
   ghCiUtilsCli = repoPackages.gh-ci-utils;
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
-  # The only Nix-managed pnpm dependency hash left: the oxlint plugin bundle is
-  # an npm-plugin artifact, so no JavaScript product import replaces it.
-  nixCliPackages = [
-    {
-      name = "gh-ci-utils";
-      flakeRef = ".#gh-ci-utils";
-      hashSource = "packages/@overeng/gh-ci-utils/nix/build.nix";
-      lockfile = "pnpm-lock.yaml";
-      packageJson = "packages/@overeng/gh-ci-utils/package.json";
-    }
-    {
-      name = "oxlint-npm";
-      flakeRef = ".#oxlint-npm";
-      hashSource = "nix/oxc-config-plugin.nix";
-      lockfile = "pnpm-lock.yaml";
-      packageJson = "packages/@overeng/oxc-config/package.json";
-    }
-  ];
 
   # The generated root package manifest is the workspace package authority.
   # Consuming it here removes the former hand-maintained Nix package list and
@@ -202,7 +185,7 @@ let
   buck2TestAuthorityFile = ./buck2-test-authority.json;
   buck2TestAuthority = builtins.fromJSON (builtins.readFile buck2TestAuthorityFile);
   # Deliberate floor, not a derived value: shrinking the registry means editing this number.
-  buck2TestAuthorityMinimumLanes = 32;
+  buck2TestAuthorityMinimumLanes = 34;
   buck2TestAuthorityLanes =
     if (buck2TestAuthority.schemaVersion or null) == 2 then
       buck2TestAuthority.lanes
@@ -419,6 +402,7 @@ let
       lib.nameValuePair lane.taskName {
         description = "Execute the bounded ${lane.packageName} unit-test lane under Buck";
         after = [ "mr:apply" ] ++ lib.optional (lane ? unboundedTaskName) lane.unboundedTaskName;
+        # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
         exec = buck2UnitTestExec {
           name = lane.taskName;
           targets = [ lane.target ];
@@ -673,6 +657,9 @@ in
     taskModules.genie
     (taskModules.megarepo { mrPkg = mrCli; })
     (taskModules.lint-nix { })
+    # No repository JavaScript package is source-built by Nix anymore. Import
+    # the empty module contract to retain repository-wide flake validation.
+    (taskModules.nix-cli { cliPackages = [ ]; })
     (taskModules.check {
       extraChecks = [
         "devenv:trace-audit"
@@ -727,6 +714,7 @@ in
     (taskModules.test-playwright {
       playwrightPkg = inputs.playwright.packages.${currentSystem}.playwright;
       installTask = "buck2:editor:publish";
+      playwrightBin = "node_modules/.bin/playwright";
       packages = [
         {
           path = "packages/@overeng/utils";
@@ -808,24 +796,13 @@ in
       # Reuse the Genie semantic-input SSOT in the cheap Git-index outer
       # fingerprint so a warm shell cannot bypass projection invalidation.
       extraFingerprintGlobs = genieExtraInputGlobs;
-      # Bootstrap the source-generator closure from committed projections,
-      # regenerate, recompose the fresh graph, then publish authoritative views.
-      optionalTasks = [
-        "mr:setup"
-        "buck2:editor:bootstrap"
-        "genie:run"
-        "mr:apply"
-        "buck2:editor:publish"
-      ];
+      # Run the one ordered mutating entrypoint. Its internal task sequence
+      # preserves generator/freshness/composition/publication happens-before.
+      optionalTasks = [ "buck2:editor:materialize" ];
       completionsCliNames = [
         "genie"
         "mr"
       ];
-    })
-    # Nix CLI build and hash management
-    (taskModules.nix-cli {
-      cliPackages = nixCliPackages;
-      dependencyTask = null;
     })
     (taskModules.secretspec { })
     taskModules.devenv-module-tests
@@ -849,10 +826,12 @@ in
   tasks."lint:check:genie".after = [ "buck2:editor:bootstrap" ];
   tasks."genie:watch".after = [ "buck2:editor:bootstrap" ];
   tasks."lint:check:lockfile".description =
-    lib.mkForce "Verify lockfile and package specifiers through source-side Genie freshness";
+    lib.mkForce "Verify pnpm-lock.yaml matches generated package.json specifiers";
   tasks."lint:check:lockfile".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:lockfile".exec = lib.mkForce (
-    trace.exec "lint:check:lockfile" "exec genie --check"
+    trace.exec "lint:check:lockfile" ''
+      pnpm install --frozen-lockfile --ignore-scripts --lockfile-only
+    ''
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
   tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish" ];
@@ -884,6 +863,7 @@ in
   tasks."lint:check:asset-import-needs-type-reference" = {
     after = [ "mr:apply" ];
     description = "Require travelling type references for compiled asset imports through Buck";
+    # trace-audit-allow: buck2BuildExec returns a trace.exec-wrapped command.
     exec = buck2BuildExec {
       name = "lint:check:asset-import-needs-type-reference";
       targets = [ "effect_utils//buck2/static:check_policy" ];
@@ -898,6 +878,7 @@ in
   tasks."workspace:check" = {
     after = [ "mr:apply" ];
     description = "Validate generated workspace package inventory through Buck";
+    # trace-audit-allow: buck2BuildExec returns a trace.exec-wrapped command.
     exec = buck2BuildExec {
       name = "workspace:check";
       targets = [ "effect_utils//buck2/static:check_policy" ];
@@ -1039,6 +1020,7 @@ in
   tasks."bundle:smoke" = {
     after = [ "mr:apply" ];
     description = "Bundle representative public entries through Buck with Vite/Rollup";
+    # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "bundle:smoke";
       targets = [ "effect_utils//packages/@overeng/pty-effect:bundle_smoke" ];
@@ -1178,24 +1160,46 @@ in
   tasks."buck2:editor:bootstrap" = {
     description = "Bootstrap source-generator dependencies from the committed Buck graph";
     after = [ "mr:setup" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec "bootstrap";
+  };
+
+  # Authoring and declaration publication need generated projections to be
+  # updated before freshness is checked, but standalone genie:check must remain
+  # mutation-free. Keep that mutating sequence in one explicit entrypoint
+  # rather than adding global edges between genie:run and genie:check.
+  tasks."buck2:editor:materialize" = {
+    description = "Regenerate, freshness-check, recompose, and publish every editor dependency view in order";
+    exec = trace.exec "buck2:editor:materialize" ''
+      set -euo pipefail
+      export DEVENV_TUI=false
+      devenv tasks run mr:setup
+      devenv tasks run buck2:editor:bootstrap --mode single
+      devenv tasks run genie:run --mode single
+      devenv tasks run genie:check --mode single
+      devenv tasks run mr:apply --mode single
+      devenv tasks run buck2:editor:publish --mode single
+    '';
   };
 
   tasks."buck2:editor:authority" = {
     description = "Prove complete Buck ownership of every workspace editor dependency view";
     after = [ "mr:apply" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec "authority";
   };
 
   tasks."buck2:editor:publish" = {
     description = "Atomically publish every Buck-owned workspace editor dependency view";
     after = [ "mr:apply" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec "publish";
   };
 
   tasks."buck2:editor:check" = {
     description = "Fail when any published workspace editor dependency view is stale";
     after = [ "mr:apply" ];
+    # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec "check";
   };
 
@@ -1215,10 +1219,7 @@ in
 
   tasks."buck2:typescript:materialize-dist" = {
     description = "Atomically materialize all Buck-owned TypeScript declarations";
-    after = [
-      "mr:apply"
-      "genie:run"
-    ];
+    after = [ "buck2:editor:materialize" ];
     exec = trace.exec "buck2:typescript:materialize-dist" ''
       set -euo pipefail
       ${composedWorkspaceRootPredicate}
@@ -1287,6 +1288,7 @@ in
   tasks."test:buck2:unit" = {
     description = "Execute every admitted bounded unit-test lane under Buck";
     after = [ "mr:apply" ];
+    # trace-audit-allow: buck2UnitTestExec returns a trace.exec-wrapped command.
     exec = buck2UnitTestExec {
       name = "test:buck2:unit";
       targets = map (lane: lane.target) buck2TestLanes;

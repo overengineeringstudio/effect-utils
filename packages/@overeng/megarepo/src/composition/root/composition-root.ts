@@ -771,21 +771,58 @@ export const encodeCompositionRootOutput = (
 ): typeof CompositionRootOutputSchema.Encoded =>
   Schema.encodeSync(CompositionRootOutputSchema, strictParseOptions)(output)
 
+const ROOT_GENERATED_DIRECTORIES = [
+  '.devenv',
+  '.megarepo',
+  'buck-out',
+  'node_modules',
+  'target',
+  'tmp',
+] as const
+
+const MEMBER_GENERATED_DIRECTORIES = ['node_modules', 'target'] as const
+
 const ROOT_PROJECT_IGNORES = [
   '.git',
-  '.devenv',
-  'node_modules',
+  ...ROOT_GENERATED_DIRECTORIES.filter((directory) => directory !== '.megarepo'),
   '**/node_modules',
   '**/node_modules/**',
-  'target',
   '**/target',
   '**/target/**',
-  'tmp',
-  'buck-out',
   'repos/.staging-*',
   '.buck2/capabilities.candidate.*',
 ] as const
 
+const containsCapabilityProjection = (path: string): boolean => {
+  const segments = path.split('/')
+  return segments.some(
+    (segment, index) =>
+      segment === '.buck2' &&
+      (index === segments.length - 1 || segments[index + 1] === 'capabilities'),
+  )
+}
+
+const isConcreteWatchmanIgnore = (path: string): boolean =>
+  /[*?[\]{}]/u.test(path) === false &&
+  path !== '.git' &&
+  path.endsWith('/.git') === false &&
+  containsCapabilityProjection(path) === false
+
+const watchmanIgnoreDirectories = (input: NormalizedCompositionRootInput): ReadonlyArray<string> =>
+  canonicalStringSet([
+    ...ROOT_GENERATED_DIRECTORIES,
+    ...input.additionalProjectIgnores.filter(isConcreteWatchmanIgnore),
+    ...input.members.flatMap(({ manifest }) => [
+      ...MEMBER_GENERATED_DIRECTORIES.map((directory) => `${manifest.mount}/${directory}`),
+      ...manifest.projectIgnore
+        .filter(isConcreteWatchmanIgnore)
+        .map((directory) => `${manifest.mount}/${directory}`),
+      ...manifest.distOverlays.map(({ destination }) => `${manifest.mount}/${destination}`),
+    ]),
+  ])
+
+const renderWatchmanConfig = (input: NormalizedCompositionRootInput): string =>
+  `${JSON.stringify({ ignore_dirs: watchmanIgnoreDirectories(input) }, undefined, 2)}\n`
 const utf8 = (value: string): Uint8Array => textEncoder.encode(value)
 const sha256 = (bytes: Uint8Array): string =>
   `sha256:${createHash('sha256').update(bytes).digest('hex')}`
@@ -940,6 +977,11 @@ export const generateCompositionRoot = (rawInput: CompositionRootInput): Composi
   })
   const ownedFiles: ReadonlyArray<GeneratedCompositionFile> = [
     generatedFile({ path: '.buckroot', mode: 0o644, content: '' }),
+    generatedFile({
+      path: '.watchmanconfig',
+      mode: 0o644,
+      content: renderWatchmanConfig(input),
+    }),
     generatedFile({ path: 'BUCK', mode: 0o644, content: '' }),
     generatedFile({
       path: '.megarepo/bin/buck2',

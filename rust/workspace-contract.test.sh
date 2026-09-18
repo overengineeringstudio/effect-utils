@@ -132,7 +132,7 @@ jq -e '
   .targets.platforms as $platforms |
   (.manifest.schema == "effect-utils/buck2-native-release-products/v1") and
   (.targets.schema == "effect-utils/buck2-native-release-targets/v1") and
-  (($targets | map(.name) | sort) == ["otel-scrape", "otelite"]) and
+  (($targets | map(.name) | sort) == ["otel-scrape", "otelite", "typescript-api-server"]) and
   ((.manifest.products | length) == (($targets | length) * ($platforms | length))) and
   all(.manifest.products[]; . as $entry |
     ($entry.descriptorSha256 | test("^sha256:[0-9a-f]{64}$")) and

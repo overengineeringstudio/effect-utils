@@ -516,6 +516,9 @@ importers:
       jsonc-parser:
         specifier: 3.3.1
         version: 3.3.1
+      oxc-parser:
+        specifier: 0.127.0
+        version: 0.127.0
       react:
         specifier: 19.2.8
         version: 19.2.8

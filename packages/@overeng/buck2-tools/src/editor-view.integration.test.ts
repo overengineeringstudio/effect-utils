@@ -8,6 +8,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  renameSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -249,6 +250,26 @@ describe('editor view publisher', () => {
     }
   })
 
+  it('atomically rebuilds a selected snapshot whose retained bytes became invalid', async () => {
+    const fixture = makeFixture()
+    try {
+      const first = await publishEditorView(fixture.options)
+      const snapshotDir = join(fixture.editorRoot, first.snapshot)
+      const snapshotDependency = join(snapshotDir, 'node_modules', 'dep', 'index.js')
+      makeWritable(snapshotDir)
+      writeFileSync(snapshotDependency, 'export default "corrupt"\n')
+
+      const repaired = await publishEditorView(fixture.options)
+
+      expect(repaired.snapshot).toBe(first.snapshot)
+      expect(currentTarget(fixture)).toBe(first.snapshot)
+      expect(readFileSync(snapshotDependency, 'utf8')).toBe('export default 1\n')
+      expect(readdirSync(fixture.editorRoot).filter((name) => name.startsWith('.gc-'))).toEqual([])
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   it('publishes the source-generator dependency closure at the repository root', async () => {
     const fixture = makeFixture()
     try {
@@ -337,6 +358,38 @@ describe('editor view publisher', () => {
       cleanup(fixture)
     }
   })
+  it('refuses a deterministic snapshot symlink without mutating its external target', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      const snapshotDir = join(fixture.editorRoot, record.snapshot)
+      chmodSync(snapshotDir, 0o700)
+      chmodSync(join(fixture.editorRoot, '.store'), 0o700)
+      const externalSnapshot = join(fixture.root, 'external-snapshot')
+      renameSync(snapshotDir, externalSnapshot)
+      symlinkSync(externalSnapshot, snapshotDir, 'dir')
+      const externalMode = statSync(externalSnapshot).mode & 0o777
+      const externalNodeModules = join(externalSnapshot, 'node_modules')
+      const externalNodeModulesMode = statSync(externalNodeModules).mode & 0o777
+      const externalRecord = readFileSync(join(externalSnapshot, 'editor-view.json'), 'utf8')
+      const externalContent = readFileSync(join(externalNodeModules, 'dep', 'index.js'), 'utf8')
+
+      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+        'snapshot must be a real directory',
+      )
+
+      expect(lstatSync(snapshotDir).isSymbolicLink()).toBe(true)
+      expect(statSync(externalSnapshot).mode & 0o777).toBe(externalMode)
+      expect(statSync(externalNodeModules).mode & 0o777).toBe(externalNodeModulesMode)
+      expect(readFileSync(join(externalSnapshot, 'editor-view.json'), 'utf8')).toBe(externalRecord)
+      expect(readFileSync(join(externalNodeModules, 'dep', 'index.js'), 'utf8')).toBe(
+        externalContent,
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   it('keeps the current and previous snapshots while preserving in-flight candidates', async () => {
     const fixture = makeFixture()
     try {
@@ -656,6 +709,7 @@ describe('editor view publisher', () => {
 
   it('leaves the old view current when byte snapshot creation fails before flip', async () => {
     const fixture = makeFixture()
+    rmSync(join(fixture.packageDir, 'node_modules'), { recursive: true })
     try {
       await publishEditorView(fixture.options)
       const oldTarget = currentTarget(fixture)
@@ -680,6 +734,7 @@ describe('editor view publisher', () => {
 
   it('rejects an existing lock and requires exact-token explicit recovery', async () => {
     const fixture = makeFixture()
+    rmSync(join(fixture.packageDir, 'node_modules'), { recursive: true })
     try {
       mkdirSync(fixture.editorRoot, { recursive: true })
       const lock = join(fixture.editorRoot, '.publish.lock')

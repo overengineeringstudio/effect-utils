@@ -2,11 +2,11 @@ import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
+import { rootWorkspaceMemberPaths } from '../../package.json.genie.ts'
 import {
   createGenieOutput,
   type GenieOutput,
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
-import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 import { javaScriptActionRuntime, packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
@@ -942,13 +942,13 @@ export const buck2TypeScriptPackageProjection = ({
       sibling.packageTreeTarget,
     ])
     .toSorted(([left], [right]) => compareStrings({ left, right }))
-  const staticSourceExcludes = pnpmWorkspaceMemberPaths
+  const staticSourceExcludes = rootWorkspaceMemberPaths
     .filter((candidate) => candidate.startsWith(`${packagePath}/`))
     .map((candidate) => `${path.posix.relative(packagePath, candidate)}/**`)
     .toSorted((left, right) => compareStrings({ left, right }))
   const semanticInputs = [
     ...commonSemanticInputs,
-    'genie/packages.ts',
+    'package.json.genie.ts',
     projectionSource,
     `${packagePath}/package.json.genie.ts`,
     `${packagePath}/tsconfig.json.genie.ts`,

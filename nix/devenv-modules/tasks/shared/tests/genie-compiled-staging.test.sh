@@ -8,7 +8,10 @@ echo "Running Genie compiled import staging cleanup test..."
 echo ""
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf "$tmpdir"' EXIT
+cleanup() {
+  rm -rf "$tmpdir"
+}
+trap cleanup EXIT
 # Genie reports realpath-resolved module locations, so the identity assertions below must compare
 # against a canonical prefix (`mktemp -d` hands out `/var/...` on macOS, a symlink to
 # `/private/var/...`, and `TMPDIR` itself is commonly a symlinked path).
@@ -20,6 +23,32 @@ compiled_genie="$tmpdir/genie-compiled"
 
 mkdir -p "$workspace/lib" "$tmp_root"
 ln -s "$ROOT/packages/@overeng/genie/node_modules" "$workspace/node_modules"
+
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64)
+    oxc_native="binding-darwin-arm64"
+    ;;
+  Darwin-x86_64)
+    oxc_native="binding-darwin-x64"
+    ;;
+  Linux-aarch64)
+    oxc_native="binding-linux-arm64-gnu"
+    ;;
+  Linux-x86_64)
+    oxc_native="binding-linux-x64-gnu"
+    ;;
+  *)
+    echo "Unsupported native dependency platform: $(uname -s)-$(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+oxc_parser_path="$(realpath "$ROOT/node_modules/oxc-parser")"
+oxc_native_library="$(dirname "$oxc_parser_path")/@oxc-parser/$oxc_native/parser.${oxc_native#binding-}.node"
+if [ ! -f "$oxc_native_library" ]; then
+  echo "Expected one installed Oxc native library for $oxc_native" >&2
+  exit 1
+fi
 
 cat > "$workspace/lib/payload.ts" <<'EOF'
 import { Schema } from 'effect'
@@ -61,13 +90,15 @@ fi
 echo "Test 1: compiled Genie generates output and exits"
 (
   cd "$ROOT"
-  bun build packages/@overeng/genie/bin/genie.tsx --compile --no-tree-shaking --outfile "$compiled_genie" >/dev/null
+  bun build packages/@overeng/genie/bin/genie.tsx --compile --no-tree-shaking \
+    --external '@opentui/core-*' --outfile "$compiled_genie" >/dev/null
 )
 
 for _ in 1 2 3; do
   rm -f "$workspace/demo.json"
   env -u OTEL_EXPORTER_OTLP_ENDPOINT \
     GENIE_TYPESCRIPT_API_SERVER="$typescript_api_server" \
+    NAPI_RS_NATIVE_LIBRARY_PATH="$oxc_native_library" \
     TMPDIR="$tmp_root" \
     timeout 20s "$compiled_genie" --cwd "$workspace" --output json >/dev/null
 done
@@ -121,6 +152,7 @@ EOF
 chmod +x "$fake_compiler"
 
 env -u OTEL_EXPORTER_OTLP_ENDPOINT \
+  NAPI_RS_NATIVE_LIBRARY_PATH="$oxc_native_library" \
   GENIE_EXPORT_TYPE_PROOF_COMPILER="$fake_compiler" \
   GENIE_TYPESCRIPT_API_SERVER="$typescript_api_server" \
   TMPDIR="$tmp_root" \
@@ -160,6 +192,7 @@ EOF
 
 env -u OTEL_EXPORTER_OTLP_ENDPOINT \
   GENIE_TYPESCRIPT_API_SERVER="$typescript_api_server" \
+  NAPI_RS_NATIVE_LIBRARY_PATH="$oxc_native_library" \
   TMPDIR="$tmp_root" \
   timeout 20s "$compiled_genie" --cwd "$identity_repo" --output json >/dev/null
 

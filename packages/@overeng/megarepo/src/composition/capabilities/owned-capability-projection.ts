@@ -19,7 +19,13 @@ const generationPattern = /^[0-9a-f]{64}$/u
 export class OwnedCapabilityProjectionError extends Schema.TaggedError<OwnedCapabilityProjectionError>()(
   'OwnedCapabilityProjectionError',
   {
-    reason: Schema.Literals(['InvalidInput', 'CopyFailed', 'VerificationFailed', 'PublishFailed']),
+    reason: Schema.Literals([
+      'InvalidInput',
+      'CopyFailed',
+      'VerificationFailed',
+      'PublishFailed',
+      'RetentionFailed',
+    ]),
     path: Schema.String,
     message: Schema.String,
     cause: Schema.optional(Schema.Defect()),
@@ -35,6 +41,17 @@ export interface OwnedCapabilityProjectionRuntime {
   readonly beforeCopy?: (capabilityParent: string) => Promise<void>
   /** Deterministic race seam; production runtimes must not provide it. */
   readonly beforePublish?: (capabilityParent: string) => Promise<void>
+  /** Test seam for observing durable namespace boundaries. */
+  readonly directoryFsync?: (input: {
+    readonly path: string
+    readonly reason: 'OwnedProjectionPublish' | 'OwnedProjectionRollback'
+    readonly sync: () => Promise<void>
+  }) => Promise<void>
+  /** Retain the newly active projection before the old projection is removed. */
+  readonly retainPublishedCapabilities: (input: {
+    readonly ownedMemberPath: string
+    readonly destinationPath: string
+  }) => Promise<void>
 }
 
 const failure = ({
@@ -131,6 +148,32 @@ const assertDirectoryIdentity = async (identity: DirectoryIdentity): Promise<voi
 const isErrno = ({ cause, code }: { readonly cause: unknown; readonly code: string }): boolean =>
   typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === code
 
+const syncDirectoryIdentity = async ({
+  identity,
+  reason,
+  runtime,
+}: {
+  readonly identity: DirectoryIdentity
+  readonly reason: 'OwnedProjectionPublish' | 'OwnedProjectionRollback'
+  readonly runtime: Pick<OwnedCapabilityProjectionRuntime, 'directoryFsync'>
+}): Promise<void> => {
+  await assertDirectoryIdentity(identity)
+  const sync = async (): Promise<void> => {
+    const handle = await open(identity.path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const info = await handle.stat()
+      if (info.dev !== identity.device || info.ino !== identity.inode) {
+        throw new TypeError(`Directory identity changed at '${identity.path}'`)
+      }
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+  }
+  await (runtime.directoryFsync?.({ path: identity.path, reason, sync }) ?? sync())
+  await assertDirectoryIdentity(identity)
+}
+
 const readGeneration = async ({
   projectionPath,
   expectedParent,
@@ -202,13 +245,18 @@ export const planOwnedCapabilityProjection = async ({
     ownedMemberPath,
     projectionPath,
     operation: 'InstallOwnedCapabilityProjection',
-    steps: ['ValidateOwnedMember', 'InstallProjectionAtomically', 'CheckProjection'],
+    steps: [
+      'ValidateOwnedMember',
+      'InstallProjectionAtomically',
+      'CheckProjection',
+      'RetainProjectionRoots',
+    ],
   }
 }
 
 /**
- * Copy a checked scratch projection into the writable member and publish it with one atomic
- * directory exchange. Existing equal projections are left untouched.
+ * Copy a checked scratch projection into the writable member, publish it with one atomic directory
+ * exchange, and roll the exchange back unless stable-root retention succeeds.
  */
 export const installOwnedCapabilityProjection = async ({
   memberKey,
@@ -346,7 +394,25 @@ export const installOwnedCapabilityProjection = async ({
   }
 
   if (currentGeneration === projectionDigest) {
-    await removeStage()
+    try {
+      await runtime.retainPublishedCapabilities?.({
+        ownedMemberPath,
+        destinationPath: destination,
+      })
+      await removeStage()
+    } catch (cause) {
+      try {
+        await removeStage()
+      } catch {
+        // Never clean through a replaced parent path.
+      }
+      throw failure({
+        reason: 'RetentionFailed',
+        path: destination,
+        message: 'Could not retain the current owned capability projection',
+        cause,
+      })
+    }
     return { memberKey, projectionPath: destination, projectionDigest, changed: false }
   }
 
@@ -373,6 +439,11 @@ export const installOwnedCapabilityProjection = async ({
     ) {
       throw new TypeError('published projection generation does not match')
     }
+    await syncDirectoryIdentity({
+      identity: capabilityParentIdentity,
+      reason: 'OwnedProjectionPublish',
+      runtime,
+    })
   } catch (cause) {
     if (destinationExists === true) {
       try {
@@ -382,14 +453,99 @@ export const installOwnedCapabilityProjection = async ({
           args: ['-T', '--exchange', '--', stage, destination],
         })
         await assertDirectoryIdentity(capabilityParentIdentity)
+        await syncDirectoryIdentity({
+          identity: capabilityParentIdentity,
+          reason: 'OwnedProjectionRollback',
+          runtime,
+        })
       } catch {
         // Preserve both trees for explicit recovery when rollback cannot be proven.
+      }
+    } else {
+      try {
+        await assertDirectoryIdentity(capabilityParentIdentity)
+        const publishedGeneration = await readGeneration({
+          projectionPath: destination,
+          expectedParent: capabilityParentIdentity.realpath,
+        })
+        if (publishedGeneration !== projectionDigest) {
+          throw new TypeError('failed first publication was replaced before rollback', { cause })
+        }
+        await runExact({
+          executable: runtime.mvPath,
+          args: ['-T', '--no-clobber', '--', destination, stage],
+        })
+        await assertDirectoryIdentity(capabilityParentIdentity)
+        await syncDirectoryIdentity({
+          identity: capabilityParentIdentity,
+          reason: 'OwnedProjectionRollback',
+          runtime,
+        })
+      } catch {
+        // An absent destination means publication never moved the stage. Otherwise preserve every
+        // reachable tree for explicit recovery when rollback cannot be proven.
       }
     }
     throw failure({
       reason: 'PublishFailed',
       path: destination,
       message: 'Could not atomically publish the owned capability projection',
+      cause,
+    })
+  }
+
+  try {
+    await runtime.retainPublishedCapabilities?.({
+      ownedMemberPath,
+      destinationPath: destination,
+    })
+  } catch (cause) {
+    try {
+      await assertDirectoryIdentity(capabilityParentIdentity)
+      if (destinationExists === true) {
+        await runExact({
+          executable: runtime.mvPath,
+          args: ['-T', '--exchange', '--', stage, destination],
+        })
+        if (
+          currentGeneration === undefined ||
+          (await readGeneration({
+            projectionPath: destination,
+            expectedParent: capabilityParentIdentity.realpath,
+          })) !== currentGeneration
+        ) {
+          throw new TypeError('retention rollback did not restore the prior projection', { cause })
+        }
+      } else {
+        await runExact({
+          executable: runtime.mvPath,
+          args: ['-T', '--no-clobber', '--', destination, stage],
+        })
+        try {
+          await lstat(destination)
+          throw new TypeError('retention rollback left the first projection published', { cause })
+        } catch (missingCause) {
+          if (isErrno({ cause: missingCause, code: 'ENOENT' }) === false) throw missingCause
+        }
+      }
+      await syncDirectoryIdentity({
+        identity: capabilityParentIdentity,
+        reason: 'OwnedProjectionRollback',
+        runtime,
+      })
+      await removeStage()
+    } catch (rollbackCause) {
+      throw failure({
+        reason: 'RetentionFailed',
+        path: destination,
+        message: 'Capability retention failed and owned projection rollback was not proven',
+        cause: { retentionCause: cause, rollbackCause },
+      })
+    }
+    throw failure({
+      reason: 'RetentionFailed',
+      path: destination,
+      message: 'Capability retention failed; the owned projection was rolled back',
       cause,
     })
   }

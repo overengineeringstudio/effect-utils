@@ -75,6 +75,22 @@ describe('normalizeCliOutput', () => {
           'at effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>',
       )
     })
+
+    it('masks Effect frames materialized through a Buck dependency view', () => {
+      const input =
+        'at <anonymous> (/repo/buck2/dependencies/__entry_effect_4_0_0_rc_112_e9a91e66f1f2__/entry/node_modules/effect/dist/unstable/cli/Command.js:1077:34)'
+      expect(normalizeCliOutput({ input, effectCliInternals: true })).toBe(
+        'at <anonymous> (effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>)',
+      )
+    })
+
+    it('masks Effect frames materialized through an editor dependency view', () => {
+      const input =
+        'at <anonymous> (/repo/packages/.editor-view/.store/root-abcd/.backing/0143/node_modules/effect/dist/unstable/cli/Command.js:1077:34)'
+      expect(normalizeCliOutput({ input, repoRoot: '/repo', effectCliInternals: true })).toBe(
+        'at <anonymous> (<repo>/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>)',
+      )
+    })
   })
 
   describe('local-source suffix', () => {

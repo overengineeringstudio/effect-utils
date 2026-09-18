@@ -4,7 +4,7 @@
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-uEs6M5YvXu76VuzuKOnkdiwD0D1jvZf6efpoZw/Fc/o=",
+        "integrity": "sha256-1PWYRs7oHF2Iy7delxRTOxx0FpZFJaBGJLEwH89BQA0=",
         "modulePath": "ci-tools.js",
         "platform": {
           "abi": "any",
@@ -22,15 +22,15 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 1426383,
+        "sizeBytes": 1447547,
         "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
       },
-      "descriptorSha256": "7207e9a86a4a0b1d7b407bea47b16cad7fa119454df00682f78a182f6659e0fc",
+      "descriptorSha256": "3343579b866220792f9bb3ad3500215c66ab6f278c5a7d6d8911404766b0b7a2",
       "release": {
-        "hash": "sha256-uEs6M5YvXu76VuzuKOnkdiwD0D1jvZf6efpoZw/Fc/o=",
-        "name": "b84b3a33962f5eeefa56ecee28e9e4762c03d03d63bd97fa79fa68670fc573fa-ci-tools.js",
-        "tag": "buck2-product-v3-ci-tools-b84b3a33962f5eeefa56ecee28e9e4762c03d03d63bd97fa79fa68670fc573fa",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-ci-tools-b84b3a33962f5eeefa56ecee28e9e4762c03d03d63bd97fa79fa68670fc573fa/b84b3a33962f5eeefa56ecee28e9e4762c03d03d63bd97fa79fa68670fc573fa-ci-tools.js"
+        "hash": "sha256-1PWYRs7oHF2Iy7delxRTOxx0FpZFJaBGJLEwH89BQA0=",
+        "name": "d4f59846cee81c5d88cbb75e9714533b1c7416964525a04624b1301fcf41400d-ci-tools.js",
+        "tag": "buck2-product-v3-ci-tools-d4f59846cee81c5d88cbb75e9714533b1c7416964525a04624b1301fcf41400d",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-ci-tools-d4f59846cee81c5d88cbb75e9714533b1c7416964525a04624b1301fcf41400d/d4f59846cee81c5d88cbb75e9714533b1c7416964525a04624b1301fcf41400d-ci-tools.js"
       }
     },
     {
@@ -52,7 +52,7 @@
           "@opentui/core-win32-arm64",
           "@opentui/core-win32-x64"
         ],
-        "integrity": "sha256-AXQYm39u4VCkFjeks7BdMet+hVdwZYGwK0pPHbqMFAU=",
+        "integrity": "sha256-cKvtEWWkjF9l7XjxRImwjQkLgbQ38em8HOtIuGA4XeA=",
         "modulePath": "genie.js",
         "platform": {
           "abi": "any",
@@ -70,22 +70,24 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 6340482,
+        "sizeBytes": 6356717,
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "descriptorSha256": "c28d4337009cab97e9be2abe6805f226fd982db59d709455e9972e5d65b8392e",
+      "descriptorSha256": "8d215849eda5b6b65f674d03fc83408f0b7221070d9928eb6616692140520150",
       "release": {
-        "hash": "sha256-AXQYm39u4VCkFjeks7BdMet+hVdwZYGwK0pPHbqMFAU=",
-        "name": "0174189b7f6ee150a41637a4b3b05d31eb7e8557706581b02b4a4f1dba8c1405-genie.js",
-        "tag": "buck2-product-v3-genie-0174189b7f6ee150a41637a4b3b05d31eb7e8557706581b02b4a4f1dba8c1405",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-0174189b7f6ee150a41637a4b3b05d31eb7e8557706581b02b4a4f1dba8c1405/0174189b7f6ee150a41637a4b3b05d31eb7e8557706581b02b4a4f1dba8c1405-genie.js"
+        "hash": "sha256-cKvtEWWkjF9l7XjxRImwjQkLgbQ38em8HOtIuGA4XeA=",
+        "name": "70abed1165a48c5f65ed78f14489b08d090b81b437f1e9bc1ceb48b860385de0-genie.js",
+        "tag": "buck2-product-v3-genie-70abed1165a48c5f65ed78f14489b08d090b81b437f1e9bc1ceb48b860385de0",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-70abed1165a48c5f65ed78f14489b08d090b81b437f1e9bc1ceb48b860385de0/70abed1165a48c5f65ed78f14489b08d090b81b437f1e9bc1ceb48b860385de0-genie.js"
       }
     },
     {
       "descriptor": {
-        "externalCapabilities": [],
+        "externalCapabilities": [
+          "typescript-api-server"
+        ],
         "externalModules": [],
-        "integrity": "sha256-WiqkVQyTCrhBrjkvimKt30w5tTM51CFFKXgSz4ARdDM=",
+        "integrity": "sha256-SN4MPityKu/Q2F37mDPYufDOxp4RqCzj6++uZJK0nUM=",
         "modulePath": "genie-bootstrap-closure-check.js",
         "platform": {
           "abi": "any",
@@ -103,22 +105,64 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 8848384,
+        "sizeBytes": 561262,
         "target": "effect_utils//packages/@overeng/genie:genie-bootstrap-closure-check-candidate"
       },
-      "descriptorSha256": "40db4fdc19ab04316c857439394f6c6f6c6aa5feeca554c8dc788811a793126e",
+      "descriptorSha256": "00f89f944ed69f6556f0fffe34b3f850660ac46e4b18bc297f3dc6673af6db6b",
       "release": {
-        "hash": "sha256-WiqkVQyTCrhBrjkvimKt30w5tTM51CFFKXgSz4ARdDM=",
-        "name": "5a2aa4550c930ab841ae392f8a62addf4c39b53339d42145297812cf80117433-genie-bootstrap-closure-check.js",
-        "tag": "buck2-product-v3-genie-bootstrap-closure-check-5a2aa4550c930ab841ae392f8a62addf4c39b53339d42145297812cf80117433",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-bootstrap-closure-check-5a2aa4550c930ab841ae392f8a62addf4c39b53339d42145297812cf80117433/5a2aa4550c930ab841ae392f8a62addf4c39b53339d42145297812cf80117433-genie-bootstrap-closure-check.js"
+        "hash": "sha256-SN4MPityKu/Q2F37mDPYufDOxp4RqCzj6++uZJK0nUM=",
+        "name": "48de0c3e2b722aefd0d85dfb9833d8b9f0cec69e11a82ce3ebefae6492b49d43-genie-bootstrap-closure-check.js",
+        "tag": "buck2-product-v3-genie-bootstrap-closure-check-48de0c3e2b722aefd0d85dfb9833d8b9f0cec69e11a82ce3ebefae6492b49d43",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-bootstrap-closure-check-48de0c3e2b722aefd0d85dfb9833d8b9f0cec69e11a82ce3ebefae6492b49d43/48de0c3e2b722aefd0d85dfb9833d8b9f0cec69e11a82ce3ebefae6492b49d43-genie-bootstrap-closure-check.js"
       }
     },
     {
       "descriptor": {
-        "externalCapabilities": ["buck2", "coreutils", "git", "nix", "watchman"],
+        "externalCapabilities": [
+          "gh",
+          "git"
+        ],
         "externalModules": [],
-        "integrity": "sha256-+GyIZAI43WeZrEbd9KfZyDbTg5fu3E+T8yofLRl9G+I=",
+        "integrity": "sha256-qwbrhaJCOnbfz8LHXFR6+HlcEm0j0j6b/np6EIcGQTE=",
+        "modulePath": "gh-ci-utils.js",
+        "platform": {
+          "abi": "any",
+          "architecture": "any",
+          "os": "any"
+        },
+        "productKind": "cli",
+        "productName": "gh-ci-utils",
+        "provenance": {
+          "configuredTarget": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "dependencyClosureIdentity": "runtime=node;package_tree=effect_utils//packages/@overeng/gh-ci-utils:package_tree (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "module": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate-module"
+        },
+        "runtimeContract": "javascript-esm",
+        "runtimeContractVersion": "v1",
+        "runtimeKind": "node",
+        "schema": "effect-utils/javascript-product/v2",
+        "sizeBytes": 2593339,
+        "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
+      },
+      "descriptorSha256": "be4d5ccaccdb210157e50c9ad16381d4fadbcad39189062ab3fc7884c9510257",
+      "release": {
+        "hash": "sha256-qwbrhaJCOnbfz8LHXFR6+HlcEm0j0j6b/np6EIcGQTE=",
+        "name": "ab06eb85a2423a76dfcfc2c75c547af8795c126d23d23e9bfe7a7a1087064131-gh-ci-utils.js",
+        "tag": "buck2-product-v3-gh-ci-utils-ab06eb85a2423a76dfcfc2c75c547af8795c126d23d23e9bfe7a7a1087064131",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-gh-ci-utils-ab06eb85a2423a76dfcfc2c75c547af8795c126d23d23e9bfe7a7a1087064131/ab06eb85a2423a76dfcfc2c75c547af8795c126d23d23e9bfe7a7a1087064131-gh-ci-utils.js"
+      }
+    },
+    {
+      "descriptor": {
+        "externalCapabilities": [
+          "buck2",
+          "coreutils",
+          "git",
+          "nix",
+          "watchman"
+        ],
+        "externalModules": [],
+        "integrity": "sha256-3UbJ8DscnDIqfuE9U4GKREj44xjFNYM6zVBk8su+Tqw=",
         "modulePath": "mr.js",
         "platform": {
           "abi": "any",
@@ -136,22 +180,22 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3738897,
+        "sizeBytes": 3803915,
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "descriptorSha256": "1fa2bbb82d2ea2e6d2fbe52a37194d38f4c54e4e03f9cce48f15791277492735",
+      "descriptorSha256": "971b86d209be7d2bc10052d849e47992897a8f3b5ce24329aab7aaabcb474cad",
       "release": {
-        "hash": "sha256-+GyIZAI43WeZrEbd9KfZyDbTg5fu3E+T8yofLRl9G+I=",
-        "name": "f86c88640238dd6799ac46ddf4a7d9c836d38397eedc4f93f32a1f2d197d1be2-mr.js",
-        "tag": "buck2-product-v3-megarepo-f86c88640238dd6799ac46ddf4a7d9c836d38397eedc4f93f32a1f2d197d1be2",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-megarepo-f86c88640238dd6799ac46ddf4a7d9c836d38397eedc4f93f32a1f2d197d1be2/f86c88640238dd6799ac46ddf4a7d9c836d38397eedc4f93f32a1f2d197d1be2-mr.js"
+        "hash": "sha256-3UbJ8DscnDIqfuE9U4GKREj44xjFNYM6zVBk8su+Tqw=",
+        "name": "dd46c9f03b1c9c322a7ee13d53818a4448f8e318c535833acd5064f2cbbe4eac-mr.js",
+        "tag": "buck2-product-v3-megarepo-dd46c9f03b1c9c322a7ee13d53818a4448f8e318c535833acd5064f2cbbe4eac",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-megarepo-dd46c9f03b1c9c322a7ee13d53818a4448f8e318c535833acd5064f2cbbe4eac/dd46c9f03b1c9c322a7ee13d53818a4448f8e318c535833acd5064f2cbbe4eac-mr.js"
       }
     },
     {
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-quOFG53CavSQ2Gew24974iUsvl3Q81o1DS7jg+5R5Iw=",
+        "integrity": "sha256-CVyhSx/wzyGWydSolBdtASHmQ82bScEDvq7mVKFCxcc=",
         "modulePath": "notion.js",
         "platform": {
           "abi": "any",
@@ -162,27 +206,29 @@
         "productName": "notion-cli",
         "provenance": {
           "configuredTarget": "effect_utils//packages/@overeng/notion-cli:notion-cli-candidate (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
-          "dependencyClosureIdentity": "runtime=node;package_tree=effect_utils//packages/@overeng/notion-cli:package_tree (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "dependencyClosureIdentity": "runtime=bun;package_tree=effect_utils//packages/@overeng/notion-cli:package_tree (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
           "module": "effect_utils//packages/@overeng/notion-cli:notion-cli-candidate-module"
         },
         "runtimeContract": "javascript-esm",
         "runtimeContractVersion": "v1",
-        "runtimeKind": "node",
+        "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3733950,
+        "sizeBytes": 3764322,
         "target": "effect_utils//packages/@overeng/notion-cli:notion-cli-candidate"
       },
-      "descriptorSha256": "9869e33de6a7dbb2eacf08e5b6433adf7b4c451127e2113103584c0d73379082",
+      "descriptorSha256": "836726cecee9c00aa16ac094fdc15344aa126fb953e7ff191cd91dd3f20ba446",
       "release": {
-        "hash": "sha256-quOFG53CavSQ2Gew24974iUsvl3Q81o1DS7jg+5R5Iw=",
-        "name": "aae3851b9dc26af490d867b0db8f7be2252cbe5dd0f35a350d2ee383ee51e48c-notion.js",
-        "tag": "buck2-product-v3-notion-cli-aae3851b9dc26af490d867b0db8f7be2252cbe5dd0f35a350d2ee383ee51e48c",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-notion-cli-aae3851b9dc26af490d867b0db8f7be2252cbe5dd0f35a350d2ee383ee51e48c/aae3851b9dc26af490d867b0db8f7be2252cbe5dd0f35a350d2ee383ee51e48c-notion.js"
+        "hash": "sha256-CVyhSx/wzyGWydSolBdtASHmQ82bScEDvq7mVKFCxcc=",
+        "name": "095ca14b1ff0cf2196c9d4a894176d0121e643cd9b49c103beaee654a142c5c7-notion.js",
+        "tag": "buck2-product-v3-notion-cli-095ca14b1ff0cf2196c9d4a894176d0121e643cd9b49c103beaee654a142c5c7",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-notion-cli-095ca14b1ff0cf2196c9d4a894176d0121e643cd9b49c103beaee654a142c5c7/095ca14b1ff0cf2196c9d4a894176d0121e643cd9b49c103beaee654a142c5c7-notion.js"
       }
     },
     {
       "descriptor": {
-        "externalCapabilities": ["opentui-core-native"],
+        "externalCapabilities": [
+          "opentui-core-native"
+        ],
         "externalModules": [
           "@opentui/core-darwin-arm64",
           "@opentui/core-darwin-x64",
@@ -193,7 +239,7 @@
           "@opentui/core-win32-arm64",
           "@opentui/core-win32-x64"
         ],
-        "integrity": "sha256-PSNKOSAzNwdUarRFpoNY/jyDJ/mLg4PgIzerf9VcHL4=",
+        "integrity": "sha256-ye5MHTzrSQjAQ1TTGylcNTXSnEqnN1+Izw6Wo2C2ki4=",
         "modulePath": "notion-db.js",
         "platform": {
           "abi": "any",
@@ -211,22 +257,22 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 6248664,
+        "sizeBytes": 6562746,
         "target": "effect_utils//packages/@overeng/notion-cli:notion-db-candidate"
       },
-      "descriptorSha256": "1addf89342e36c0c0cd921a5efc1b845a44ea1731e55310c0eb6db0b25887456",
+      "descriptorSha256": "537d4e3d8bf974a5f7f2890328a60c8e5caefdda9ecbfb49851e93df6c53017f",
       "release": {
-        "hash": "sha256-PSNKOSAzNwdUarRFpoNY/jyDJ/mLg4PgIzerf9VcHL4=",
-        "name": "3d234a3920333707546ab445a68358fe3c8327f98b8383e02337ab7fd55c1cbe-notion-db.js",
-        "tag": "buck2-product-v3-notion-db-runtime-3d234a3920333707546ab445a68358fe3c8327f98b8383e02337ab7fd55c1cbe",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-notion-db-runtime-3d234a3920333707546ab445a68358fe3c8327f98b8383e02337ab7fd55c1cbe/3d234a3920333707546ab445a68358fe3c8327f98b8383e02337ab7fd55c1cbe-notion-db.js"
+        "hash": "sha256-ye5MHTzrSQjAQ1TTGylcNTXSnEqnN1+Izw6Wo2C2ki4=",
+        "name": "c9ee4c1d3ceb4908c04354d31b295c3535d29c4aa7375f88cf0e96a360b6922e-notion-db.js",
+        "tag": "buck2-product-v3-notion-db-runtime-c9ee4c1d3ceb4908c04354d31b295c3535d29c4aa7375f88cf0e96a360b6922e",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-notion-db-runtime-c9ee4c1d3ceb4908c04354d31b295c3535d29c4aa7375f88cf0e96a360b6922e/c9ee4c1d3ceb4908c04354d31b295c3535d29c4aa7375f88cf0e96a360b6922e-notion-db.js"
       }
     },
     {
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-IqgI0kerShDombfF5x43o4M5DHhw1uFz0KQ3JuaOyK8=",
+        "integrity": "sha256-bmck44RpUUrN2bxp8t51w+YPML3DLa3H9gEaupvDN3Q=",
         "modulePath": "notion-md.js",
         "platform": {
           "abi": "any",
@@ -244,22 +290,24 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 2292114,
+        "sizeBytes": 2315644,
         "target": "effect_utils//packages/@overeng/notion-md:notion-md-candidate"
       },
-      "descriptorSha256": "c01c073f53373024ee0d4c05c9acfb3bdb916c40dfbe3cbe968860c259eb8266",
+      "descriptorSha256": "87a8d61115b9ba267e58364e6597ac9452acdb43c12cfa060de800691a90fc08",
       "release": {
-        "hash": "sha256-IqgI0kerShDombfF5x43o4M5DHhw1uFz0KQ3JuaOyK8=",
-        "name": "22a808d247ab4a10e899b7c5e71e37a383390c7870d6e173d0a43726e68ec8af-notion-md.js",
-        "tag": "buck2-product-v3-notion-md-22a808d247ab4a10e899b7c5e71e37a383390c7870d6e173d0a43726e68ec8af",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-notion-md-22a808d247ab4a10e899b7c5e71e37a383390c7870d6e173d0a43726e68ec8af/22a808d247ab4a10e899b7c5e71e37a383390c7870d6e173d0a43726e68ec8af-notion-md.js"
+        "hash": "sha256-bmck44RpUUrN2bxp8t51w+YPML3DLa3H9gEaupvDN3Q=",
+        "name": "6e6724e38469514acdd9bc69f2de75c3e60f30bdc32dadc7f6011aba9bc33774-notion-md.js",
+        "tag": "buck2-product-v3-notion-md-6e6724e38469514acdd9bc69f2de75c3e60f30bdc32dadc7f6011aba9bc33774",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-notion-md-6e6724e38469514acdd9bc69f2de75c3e60f30bdc32dadc7f6011aba9bc33774/6e6724e38469514acdd9bc69f2de75c3e60f30bdc32dadc7f6011aba9bc33774-notion-md.js"
       }
     },
     {
       "descriptor": {
-        "externalCapabilities": ["npm"],
+        "externalCapabilities": [
+          "npm"
+        ],
         "externalModules": [],
-        "integrity": "sha256-SC80LSsPg9Jbxtku3XxX+7XxdY2nCxnShzp5qapNZW4=",
+        "integrity": "sha256-syowIz8W23x67+DZY2oimeIeylN6fJ9TUpPBg6T1dek=",
         "modulePath": "npm-release.js",
         "platform": {
           "abi": "any",
@@ -277,15 +325,15 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 1149580,
+        "sizeBytes": 1170788,
         "target": "effect_utils//packages/@overeng/npm-release:npm-release-candidate"
       },
-      "descriptorSha256": "5c055ffd9d6558d5bfcc6b808d38e5e976d23eb67568c238750bfa4e344a93da",
+      "descriptorSha256": "efa92c4287d0762b6c82cc3f7ee1766526c14aec420d4678c6c87de4e440d25e",
       "release": {
-        "hash": "sha256-SC80LSsPg9Jbxtku3XxX+7XxdY2nCxnShzp5qapNZW4=",
-        "name": "482f342d2b0f83d25bc6d92edd7c57fbb5f1758da70b19d2873a79a9aa4d656e-npm-release.js",
-        "tag": "buck2-product-v3-npm-release-482f342d2b0f83d25bc6d92edd7c57fbb5f1758da70b19d2873a79a9aa4d656e",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-npm-release-482f342d2b0f83d25bc6d92edd7c57fbb5f1758da70b19d2873a79a9aa4d656e/482f342d2b0f83d25bc6d92edd7c57fbb5f1758da70b19d2873a79a9aa4d656e-npm-release.js"
+        "hash": "sha256-syowIz8W23x67+DZY2oimeIeylN6fJ9TUpPBg6T1dek=",
+        "name": "b32a30233f16db7c7aefe0d9636a2299e21eca537a7c9f535293c183a4f575e9-npm-release.js",
+        "tag": "buck2-product-v3-npm-release-b32a30233f16db7c7aefe0d9636a2299e21eca537a7c9f535293c183a4f575e9",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-npm-release-b32a30233f16db7c7aefe0d9636a2299e21eca537a7c9f535293c183a4f575e9/b32a30233f16db7c7aefe0d9636a2299e21eca537a7c9f535293c183a4f575e9-npm-release.js"
       }
     },
     {
@@ -325,7 +373,40 @@
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-eZ76BfzmyvAqwrPxcdqyAyPhuLfIgghl+FKgNga9ccI=",
+        "integrity": "sha256-bsFZ3bdp9YvqfQV+BcI+2vdoMLY5yOaqikV8SWXTi9g=",
+        "modulePath": "oxc-config-stylex-upstream-plugin.js",
+        "platform": {
+          "abi": "any",
+          "architecture": "any",
+          "os": "any"
+        },
+        "productKind": "module",
+        "productName": "oxc-config-stylex-upstream-plugin",
+        "provenance": {
+          "configuredTarget": "effect_utils//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "dependencyClosureIdentity": "runtime=node;package_tree=effect_utils//packages/@overeng/oxc-config:package_tree (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "module": "effect_utils//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate-module"
+        },
+        "runtimeContract": "javascript-esm",
+        "runtimeContractVersion": "v1",
+        "runtimeKind": "node",
+        "schema": "effect-utils/javascript-product/v2",
+        "sizeBytes": 435977,
+        "target": "effect_utils//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate"
+      },
+      "descriptorSha256": "87184cd0d76da86f0b152bb9285a98690d31b6cc2db6fae61bbfdec2a7bf26e7",
+      "release": {
+        "hash": "sha256-bsFZ3bdp9YvqfQV+BcI+2vdoMLY5yOaqikV8SWXTi9g=",
+        "name": "6ec159ddb769f58bea7d057e05c23edaf76830b639c8e6aa8a457c4965d38bd8-oxc-config-stylex-upstream-plugin.js",
+        "tag": "buck2-product-v3-oxc-config-stylex-upstream-plugin-6ec159ddb769f58bea7d057e05c23edaf76830b639c8e6aa8a457c4965d38bd8",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-oxc-config-stylex-upstream-plugin-6ec159ddb769f58bea7d057e05c23edaf76830b639c8e6aa8a457c4965d38bd8/6ec159ddb769f58bea7d057e05c23edaf76830b639c8e6aa8a457c4965d38bd8-oxc-config-stylex-upstream-plugin.js"
+      }
+    },
+    {
+      "descriptor": {
+        "externalCapabilities": [],
+        "externalModules": [],
+        "integrity": "sha256-teQTnQo8jUwgTjWZa17YEJ/ooAUvC7GfPsF0nkiq0JI=",
         "modulePath": "tui-stories.js",
         "platform": {
           "abi": "any",
@@ -336,22 +417,22 @@
         "productName": "tui-stories",
         "provenance": {
           "configuredTarget": "effect_utils//packages/@overeng/tui-stories:tui-stories-candidate (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
-          "dependencyClosureIdentity": "runtime=node;package_tree=effect_utils//packages/@overeng/tui-stories:package_tree (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "dependencyClosureIdentity": "runtime=bun;package_tree=effect_utils//packages/@overeng/tui-stories:package_tree (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
           "module": "effect_utils//packages/@overeng/tui-stories:tui-stories-candidate-module"
         },
         "runtimeContract": "javascript-esm",
         "runtimeContractVersion": "v1",
-        "runtimeKind": "node",
+        "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 2236770,
+        "sizeBytes": 2258435,
         "target": "effect_utils//packages/@overeng/tui-stories:tui-stories-candidate"
       },
-      "descriptorSha256": "e981c502751dd987e7c4c78244321232749d4bc87d7d4543a4676043bda53bb2",
+      "descriptorSha256": "ba7f02ee6836c86dcae446dc94991a0f13b7da179a56674d138fbad7f6cdc6a2",
       "release": {
-        "hash": "sha256-eZ76BfzmyvAqwrPxcdqyAyPhuLfIgghl+FKgNga9ccI=",
-        "name": "799efa05fce6caf02ac2b3f171dab20323e1b8b7c8820865f852a03606bd71c2-tui-stories.js",
-        "tag": "buck2-product-v3-tui-stories-799efa05fce6caf02ac2b3f171dab20323e1b8b7c8820865f852a03606bd71c2",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-tui-stories-799efa05fce6caf02ac2b3f171dab20323e1b8b7c8820865f852a03606bd71c2/799efa05fce6caf02ac2b3f171dab20323e1b8b7c8820865f852a03606bd71c2-tui-stories.js"
+        "hash": "sha256-teQTnQo8jUwgTjWZa17YEJ/ooAUvC7GfPsF0nkiq0JI=",
+        "name": "b5e4139d0a3c8d4c204e35996b5ed8109fe8a0052f0bb19f3ec1749e48aad092-tui-stories.js",
+        "tag": "buck2-product-v3-tui-stories-b5e4139d0a3c8d4c204e35996b5ed8109fe8a0052f0bb19f3ec1749e48aad092",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-tui-stories-b5e4139d0a3c8d4c204e35996b5ed8109fe8a0052f0bb19f3ec1749e48aad092/b5e4139d0a3c8d4c204e35996b5ed8109fe8a0052f0bb19f3ec1749e48aad092-tui-stories.js"
       }
     }
   ],

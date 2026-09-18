@@ -23,7 +23,6 @@
  * ```
  */
 
-
 import type { GitHubWorkflowArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   defaultRefPolicyCheckStep,

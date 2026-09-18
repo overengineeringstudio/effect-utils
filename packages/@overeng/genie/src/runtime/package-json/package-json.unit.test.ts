@@ -30,6 +30,12 @@ const mockWorkspaceRootContext: GenieContext = {
   location: '.',
   cwd: '/workspace',
 }
+const strictProofRuntime = createNodePackageJsonValidationRuntime({
+  typeProofCompiler: {
+    kind: 'custom',
+    path: path.resolve(import.meta.dirname, '../../../node_modules/.bin/tsc'),
+  },
+})
 
 const createTempRepo = (...memberPaths: string[]) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-package-json-'))
@@ -886,7 +892,7 @@ describe('packageJson', () => {
     })
 
     const validate = async () =>
-      await runtime.validateExportEnvironments({
+      await strictProofRuntime.validateExportEnvironments({
         cwd: repo.repoRoot,
         location: 'packages/pkg',
         packageName: '@test/package',
@@ -1156,6 +1162,27 @@ describe('packageJson', () => {
     })
   }, 30_000)
 
+  it('accepts a strict isomorphic TypeScript proof for the pure genie runtime entry', async () => {
+    const repoRoot = path.resolve(import.meta.dirname, '../../../../../..')
+    const result = packageJson({
+      name: '@overeng/genie',
+      version: '0.0.0',
+      exports: {
+        '.': exportEntry('./src/runtime/mod.ts', {
+          environment: 'isomorphic-es2024',
+          typeProof: 'strict',
+        }),
+      },
+    })
+
+    const issues = await result.validate?.({
+      cwd: repoRoot,
+      location: 'packages/@overeng/genie',
+      validation: { packageJson: strictProofRuntime },
+    })
+
+    expect(issues).toEqual([])
+  }, 30_000)
   it('preserves non-emitted metadata when provided as the second argument', async () => {
     const result = packageJson(
       {

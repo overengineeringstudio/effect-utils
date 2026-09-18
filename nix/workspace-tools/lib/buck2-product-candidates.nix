@@ -8,6 +8,7 @@
 {
   pkgs,
   products,
+  nativeProducts ? (import ../../buck2-native-products { inherit pkgs; }).products,
   typeProofCompilerBin,
   oxfmtPkg ? pkgs.oxfmt,
   gitRev ? "unknown",
@@ -28,6 +29,7 @@ let
     "@opentui/core-win32-arm64"
     "@opentui/core-win32-x64"
   ];
+  oxcParserNative = import ../../oxc-parser-native.nix { inherit pkgs; };
   buck2 = import ../../buck2.nix { inherit pkgs; };
   # The stamp every CLI's `resolveCliVersion()` parses for human-readable
   # version output. Buck produces platform-invariant bytes, so the host-facing
@@ -63,7 +65,7 @@ let
       CLI_BUILD_STAMP = buildStamp;
       GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
       GENIE_EXPORT_TYPE_PROOF_COMPILER = typeProofCompilerBin;
-      GENIE_TYPESCRIPT_API_SERVER = "${pkgs.typescript}/bin/tsc";
+      GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
     };
     expectedExternalCapabilities = [
       "actionlint"
@@ -74,19 +76,35 @@ let
     ];
     expectedExternalModules = opentuiCoreExternalModules;
     expectedProductKind = "cli";
-    nativeNodePackages = opentuiCoreNative.packages;
+    nativeNodePackages = opentuiCoreNative.packages ++ oxcParserNative.packages;
     pathPackages = [ oxfmtPkg ];
     smokeTestArgs = [ "--dry-run" ];
   };
   genie-bootstrap-closure-check = mk "genie-bootstrap-closure-check" {
+    environment.GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
     binaryName = "genie-bootstrap-closure-check";
     expectedProductKind = "cli";
+    expectedExternalCapabilities = [ "typescript-api-server" ];
     smokeTestArgs = [ "--help" ];
   };
   ci-tools = mk "ci-tools" {
     binaryName = "ci-tools";
     environment.CLI_BUILD_STAMP = buildStamp;
     expectedProductKind = "cli";
+    smokeTestArgs = [ "--help" ];
+  };
+  gh-ci-utils = mk "gh-ci-utils" {
+    binaryName = "gh-ci-utils";
+    environment.CLI_BUILD_STAMP = buildStamp;
+    expectedExternalCapabilities = [
+      "gh"
+      "git"
+    ];
+    expectedProductKind = "cli";
+    pathPackages = [
+      pkgs.gh
+      pkgs.git
+    ];
     smokeTestArgs = [ "--help" ];
   };
   megarepo = mk "megarepo" {
@@ -101,6 +119,7 @@ let
       MR_COMPOSITION_GIT_BIN = "${pkgs.git}/bin/git";
       MR_COMPOSITION_PLATFORM = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux";
       MR_COMPOSITION_SYSTEM = pkgs.stdenv.hostPlatform.system;
+      MR_COMPOSITION_WATCHMAN_BIN = "${pkgs.watchman}/bin/watchman";
     };
     expectedExternalCapabilities = [
       "buck2"
@@ -180,22 +199,38 @@ let
     pathPackages = [ pkgs.nodejs ];
     smokeTestArgs = [ "--help" ];
   };
-  # A module product, not a CLI: consumers import the file, so the candidate
-  # publishes a stable `lib/oxc-config.js` and proves it is importable.
+  # These are module products, not CLIs: consumers import the files. The
+  # composed package publishes stable paths for both oxlint plugin entries and
+  # keeps their independently attested product boundaries visible in passthru.
   oxcConfigModule = mk "oxc-config" {
     expectedProductKind = "module";
     generateCompletions = false;
   };
-  oxc-config = pkgs.runCommand "oxc-config-buck2-candidate" { } ''
-    mkdir -p "$out/lib"
-    ln -s ${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath} "$out/lib/oxc-config.js"
-    ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node -e 'import(process.argv[1])' "$out/lib/oxc-config.js"
-  '';
-  # A candidate exists only when every product it composes is published, so an
-  # unpublished product surfaces as a missing attribute instead of a candidate
-  # wired to absent bytes.
+  oxcConfigStylexUpstreamModule = mk "oxc-config-stylex-upstream-plugin" {
+    expectedProductKind = "module";
+    generateCompletions = false;
+  };
+  oxc-config =
+    pkgs.runCommand "oxc-config-buck2-candidate"
+      {
+        passthru = {
+          pluginPath = "${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath}";
+          stylexUpstreamPluginPath = "${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModule.checkedDescriptor.modulePath}";
+        };
+      }
+      ''
+        mkdir -p "$out/lib"
+        ln -s ${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath} "$out/lib/oxc-config.js"
+        ln -s ${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModule.checkedDescriptor.modulePath} "$out/lib/stylex-upstream-plugin.js"
+        ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node -e 'Promise.all(process.argv.slice(1).map((path) => import(path)))' \
+          "$out/lib/oxc-config.js" "$out/lib/stylex-upstream-plugin.js"
+      '';
+  # A candidate exists only when every JavaScript and native product it
+  # composes is published, so an unpublished product surfaces as a missing
+  # attribute instead of a candidate wired to absent bytes.
   requiredProducts = {
     ci-tools = [ "ci-tools" ];
+    gh-ci-utils = [ "gh-ci-utils" ];
     genie = [ "genie" ];
     genie-bootstrap-closure-check = [ "genie-bootstrap-closure-check" ];
     megarepo = [ "megarepo" ];
@@ -205,12 +240,20 @@ let
     ];
     notion-md = [ "notion-md" ];
     npm-release = [ "npm-release" ];
-    oxc-config = [ "oxc-config" ];
+    oxc-config = [
+      "oxc-config"
+      "oxc-config-stylex-upstream-plugin"
+    ];
     tui-stories = [ "tui-stories" ];
+  };
+  requiredNativeProducts = {
+    genie = [ "typescript-api-server" ];
+    genie-bootstrap-closure-check = [ "typescript-api-server" ];
   };
   candidates = {
     inherit
       ci-tools
+      gh-ci-utils
       genie
       genie-bootstrap-closure-check
       megarepo
@@ -223,5 +266,7 @@ let
   };
 in
 pkgs.lib.filterAttrs (
-  name: _: pkgs.lib.all (product: products ? ${product}) requiredProducts.${name}
+  name: _:
+  pkgs.lib.all (product: products ? ${product}) requiredProducts.${name}
+  && pkgs.lib.all (product: nativeProducts ? ${product}) (requiredNativeProducts.${name} or [ ])
 ) candidates
