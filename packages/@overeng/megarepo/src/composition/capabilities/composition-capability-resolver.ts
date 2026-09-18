@@ -828,8 +828,8 @@ const inspectCompositionCapabilityProjection = async ({
       return {
         manifest,
         files: [
-          { path: `${platform}/${toolId}/BUCK`, bytes: toolBuckBytes },
-          { path: `${platform}/${toolId}/manifest.json`, bytes: encoded },
+          { path: `${platformDirectory}/${toolId}/BUCK`, bytes: toolBuckBytes },
+          { path: `${platformDirectory}/${toolId}/manifest.json`, bytes: encoded },
         ],
       }
     }),
@@ -1276,13 +1276,15 @@ const resolveCompositionCapabilitiesInternal = async (
     )
     const plannedCandidateRoot = NodePath.join(plannedPrivateRoot, 'candidate')
     const projectorPlatform = platformFor(system)
-    const projectionPath = input.runtime.projectionPath
-    if (projectionPath !== undefined) {
-      const inspected = await inspectCompositionCapabilityProjection({ projectionPath })
+    const inputProjectionPath = input.runtime.projectionPath
+    if (inputProjectionPath !== undefined) {
+      const inspected = await inspectCompositionCapabilityProjection({
+        projectionPath: inputProjectionPath,
+      })
       if (inspected.platform !== projectorPlatform) {
         throw invalidInput({
           message: `Capability projection platform '${inspected.platform}' does not match '${projectorPlatform}'`,
-          path: projectionPath,
+          path: inputProjectionPath,
         })
       }
       const manifestByToolId = Object.fromEntries(
@@ -1294,7 +1296,7 @@ const resolveCompositionCapabilitiesInternal = async (
           if (projected === undefined || projected.protocol !== capability.protocol) {
             throw invalidInput({
               message: `Nix capability projection does not satisfy '${capability.toolId}'`,
-              path: projectionPath,
+              path: inputProjectionPath,
             })
           }
           const declaredExecutable = await realpath(
@@ -1320,7 +1322,7 @@ const resolveCompositionCapabilitiesInternal = async (
           _tag: 'Planned',
           system,
           projectorPlatform,
-          candidateRoot: input.runtime.projectionPath,
+          candidateRoot: inputProjectionPath,
           nixCommands: [],
         }
       }
@@ -1328,8 +1330,8 @@ const resolveCompositionCapabilitiesInternal = async (
         _tag: 'Resolved',
         system,
         projectorPlatform,
-        candidateRoot: input.runtime.projectionPath,
-        projectionPath: input.runtime.projectionPath,
+        candidateRoot: inputProjectionPath,
+        projectionPath: inputProjectionPath,
         projectionDigest: inspected.generation,
         capabilities: resolved,
         capabilitiesByToolId: Object.fromEntries(
