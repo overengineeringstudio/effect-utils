@@ -10,30 +10,47 @@ const fail = (message: string): never => {
   throw new Error(`Buck package pin: ${message}`)
 }
 
-const record = (value: unknown, location: string): Record<string, unknown> => {
+const record = ({
+  value,
+  location,
+}: {
+  readonly value: unknown
+  readonly location: string
+}): Record<string, unknown> => {
   if (value === null || typeof value !== 'object' || Array.isArray(value) === true) {
     return fail(`${location} must be an object`)
   }
   return value as Record<string, unknown>
 }
 
-const string = (value: unknown, location: string): string =>
-  typeof value === 'string' ? value : fail(`${location} must be a string`)
+const string = ({
+  value,
+  location,
+}: {
+  readonly value: unknown
+  readonly location: string
+}): string => (typeof value === 'string' ? value : fail(`${location} must be a string`))
 
-const canonicalJson = (value: unknown, location: string): string => {
+const canonicalJson = ({
+  value,
+  location,
+}: {
+  readonly value: unknown
+  readonly location: string
+}): string => {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') {
     return JSON.stringify(value)
   }
   if (typeof value === 'number' && Number.isFinite(value) === true) return JSON.stringify(value)
   if (Array.isArray(value) === true) {
-    return `[${value.map((entry, index) => canonicalJson(entry, `${location}[${index}]`)).join(',')}]`
+    return `[${value.map((entry, index) => canonicalJson({ value: entry, location: `${location}[${index}]` })).join(',')}]`
   }
-  const object = record(value, location)
+  const object = record({ value, location })
   return `{${Object.keys(object)
     .toSorted()
     .map(
       (key) =>
-        `${JSON.stringify(key)}:${canonicalJson(object[key], `${location}.${key}`)}`,
+        `${JSON.stringify(key)}:${canonicalJson({ value: object[key], location: `${location}.${key}` })}`,
     )
     .join(',')}}`
 }
@@ -49,7 +66,7 @@ const sameReleaseBinding = ({
     readonly url: string
   }
 }): boolean => {
-  const release = record(actual, 'release')
+  const release = record({ value: actual, location: 'release' })
   return (
     release['name'] === expected.name &&
     release['tag'] === expected.tag &&
@@ -71,44 +88,63 @@ export const deriveBuck2PackagePin = ({
   readonly manifest: unknown
   readonly packageName: string
 }): Buck2PackagePin => {
-  const lockMembers = record(record(lock, 'megarepo.lock')['members'], 'megarepo.lock.members')
-  const lockedMember = record(lockMembers['effect-utils'], 'megarepo.lock.members.effect-utils')
-  const producerCommit = string(
-    lockedMember['commit'],
-    'megarepo.lock.members.effect-utils.commit',
-  )
+  const lockObject = record({ value: lock, location: 'megarepo.lock' })
+  const lockMembers = record({
+    value: lockObject['members'],
+    location: 'megarepo.lock.members',
+  })
+  const lockedMember = record({
+    value: lockMembers['effect-utils'],
+    location: 'megarepo.lock.members.effect-utils',
+  })
+  const producerCommit = string({
+    value: lockedMember['commit'],
+    location: 'megarepo.lock.members.effect-utils.commit',
+  })
   if (/^[0-9a-f]{40}$/.test(producerCommit) === false) {
     return fail('effect-utils producer commit must be full lowercase Git hex')
   }
 
-  const manifestObject = record(manifest, 'manifest')
+  const manifestObject = record({ value: manifest, location: 'manifest' })
   if (manifestObject['schema'] !== 'effect-utils/buck2-release-products/v1') {
     return fail('manifest has an unsupported schema')
   }
   const products = manifestObject['products']
   if (Array.isArray(products) === false) return fail('manifest.products must be an array')
   const matchingEntries = products.filter((value) => {
-    const entry = record(value, 'manifest.products[]')
-    const descriptor = record(entry['descriptor'], 'manifest.products[].descriptor')
+    const entry = record({ value, location: 'manifest.products[]' })
+    const descriptor = record({
+      value: entry['descriptor'],
+      location: 'manifest.products[].descriptor',
+    })
     return descriptor['productName'] === packageName
   })
   if (matchingEntries.length !== 1) {
     return fail(`manifest must contain exactly one ${packageName} product`)
   }
 
-  const entry = record(matchingEntries[0], `${packageName} entry`)
+  const entry = record({ value: matchingEntries[0], location: `${packageName} entry` })
   if (entry['producerCommit'] !== producerCommit) {
     return fail(`${packageName} producer commit does not match megarepo.lock`)
   }
-  const descriptor = record(entry['descriptor'], `${packageName} descriptor`)
+  const descriptor = record({
+    value: entry['descriptor'],
+    location: `${packageName} descriptor`,
+  })
   if (descriptor['schema'] !== 'effect-utils/npm-package-product/v2') {
     return fail(`${packageName} descriptor has an unsupported schema`)
   }
 
-  const transportSlug = string(descriptor['transportSlug'], `${packageName} transportSlug`)
-  const sha256 = string(descriptor['sha256'], `${packageName} sha256`)
-  const sha512 = string(descriptor['sha512'], `${packageName} sha512`)
-  const descriptorSha256 = string(entry['descriptorSha256'], `${packageName} descriptorSha256`)
+  const transportSlug = string({
+    value: descriptor['transportSlug'],
+    location: `${packageName} transportSlug`,
+  })
+  const sha256 = string({ value: descriptor['sha256'], location: `${packageName} sha256` })
+  const sha512 = string({ value: descriptor['sha512'], location: `${packageName} sha512` })
+  const descriptorSha256 = string({
+    value: entry['descriptorSha256'],
+    location: `${packageName} descriptorSha256`,
+  })
   if (/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(transportSlug) === false) {
     return fail(`${packageName} transport slug is unsafe`)
   }
@@ -118,7 +154,7 @@ export const deriveBuck2PackagePin = ({
   }
 
   const actualDescriptorSha256 = createHash('sha256')
-    .update(canonicalJson(descriptor, `${packageName} descriptor`))
+    .update(canonicalJson({ value: descriptor, location: `${packageName} descriptor` }))
     .digest('hex')
   if (actualDescriptorSha256 !== descriptorSha256) {
     return fail(`${packageName} descriptor SHA-256 does not match`)
@@ -138,7 +174,7 @@ export const deriveBuck2PackagePin = ({
   if (sameReleaseBinding({ actual: entry['release'], expected: expectedRelease }) === false) {
     return fail(`${packageName} tracked release binding does not match`)
   }
-  const release = record(entry['release'], `${packageName} release`)
+  const release = record({ value: entry['release'], location: `${packageName} release` })
   if (release['hash'] !== payloadIntegrity) {
     return fail(`${packageName} release SHA-256 binding does not match`)
   }
