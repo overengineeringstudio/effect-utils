@@ -799,8 +799,8 @@ const inspectCompositionCapabilityProjection = async ({
       path: generationRoot,
     })
   }
-  const platform = platforms[0]!
-  const toolRoot = NodePath.join(generationRoot, platform)
+  const platformDirectory = platforms[0]!
+  const toolRoot = NodePath.join(generationRoot, platformDirectory)
   const tools = (await readdir(toolRoot)).toSorted()
   const checked = await Promise.all(
     tools.map(async (toolId) => {
@@ -811,7 +811,7 @@ const inspectCompositionCapabilityProjection = async ({
         ToolProjectionManifestJson,
         strictParseOptions,
       )(encoded.trimEnd())
-      if (manifest.toolId !== toolId || manifest.executionPlatform !== platform) {
+      if (manifest.toolId !== toolId || manifest.executionPlatform !== platformDirectory) {
         throw invalidInput({ message: 'Capability manifest identity mismatch', path: manifestFile })
       }
       const executable = await realpath(NodePath.join(directory, 'executable'))
@@ -834,6 +834,13 @@ const inspectCompositionCapabilityProjection = async ({
       }
     }),
   )
+  const platform = checked[0]?.manifest.executionPlatform
+  if (platform === undefined) {
+    throw invalidInput({
+      message: 'Capability generation must contain at least one tool',
+      path: generationRoot,
+    })
+  }
   const manifests = checked.map(({ manifest }) => manifest)
   const files = checked.flatMap(({ files: toolFiles }) => toolFiles)
   if (
@@ -1269,14 +1276,13 @@ const resolveCompositionCapabilitiesInternal = async (
     )
     const plannedCandidateRoot = NodePath.join(plannedPrivateRoot, 'candidate')
     const projectorPlatform = platformFor(system)
-    if (input.runtime.projectionPath !== undefined) {
-      const inspected = await inspectCompositionCapabilityProjection({
-        projectionPath: input.runtime.projectionPath,
-      })
+    const projectionPath = input.runtime.projectionPath
+    if (projectionPath !== undefined) {
+      const inspected = await inspectCompositionCapabilityProjection({ projectionPath })
       if (inspected.platform !== projectorPlatform) {
         throw invalidInput({
           message: `Capability projection platform '${inspected.platform}' does not match '${projectorPlatform}'`,
-          path: input.runtime.projectionPath,
+          path: projectionPath,
         })
       }
       const manifestByToolId = Object.fromEntries(
@@ -1288,7 +1294,7 @@ const resolveCompositionCapabilitiesInternal = async (
           if (projected === undefined || projected.protocol !== capability.protocol) {
             throw invalidInput({
               message: `Nix capability projection does not satisfy '${capability.toolId}'`,
-              path: input.runtime.projectionPath,
+              path: projectionPath,
             })
           }
           const declaredExecutable = await realpath(
