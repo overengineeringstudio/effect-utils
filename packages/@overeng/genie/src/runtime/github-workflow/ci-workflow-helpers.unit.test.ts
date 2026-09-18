@@ -28,6 +28,7 @@ const ciWorkflowSource = [
   'ci-workflow/default-ref-policy-script.ts',
   'ci-workflow/megarepo.ts',
   'ci-workflow/merge-queue.ts',
+  'ci-workflow/pr-reviews.ts',
   'ci-workflow/deploy.ts',
 ]
   .map((file) =>
@@ -65,9 +66,14 @@ const generatedRepoSettings = JSON.parse(
     type: string
     parameters?: {
       required_status_checks?: Array<{ context: string }>
+      required_review_thread_resolution?: boolean
     }
   }>
 }
+const generatedRepoSettingsSource = readFileSync(
+  new URL(['../../../../../../.github', 'repo-settings.json.genie.ts'].join('/'), import.meta.url),
+  'utf8',
+)
 const vercelDeploySource = readFileSync(
   new URL(['../../../../../../genie/deploy-preview', 'vercel.ts'].join('/'), import.meta.url),
   'utf8',
@@ -808,6 +814,32 @@ describe('ci workflow merge queue helpers', () => {
       merge_group: { _tag: 'GitHubWorkflowEventAll' },
     })
   }, 20_000)
+})
+
+describe('ci workflow pr-reviews helpers', () => {
+  it('exposes a reusable review-thread resolution gate and ruleset rule', () => {
+    expect(ciWorkflowSource).toContain('export const prReviewsResolvedJobId')
+    expect(ciWorkflowSource).toContain('export const prReviewsResolvedStep')
+    expect(ciWorkflowSource).toContain('export const prReviewsResolvedJob')
+    expect(ciWorkflowSource).toContain('export const prReviewsPullRequestRule')
+    expect(ciWorkflowSource).toContain('required_review_thread_resolution: true')
+    expect(ciWorkflowSource).toContain('reviewThreads(first:100')
+    expect(ciWorkflowSource).toContain('isResolved')
+  })
+
+  it('wires pr-reviews-resolved into the generated workflow and repo settings', () => {
+    expect(generatedWorkflowSource).toContain('prReviewsResolvedJob')
+    expect(generatedWorkflowSource).toContain('[prReviewsResolvedJobId]: prReviewsResolvedJob()')
+    expect(generatedCiWorkflowYamlSource).toContain('  pr-reviews-resolved:')
+    expect(generatedCiWorkflowYamlSource).toContain('reviewThreads(first:100')
+    expect(generatedRepoSettingsSource).toContain('prReviewsPullRequestRule()')
+  })
+  it('requires thread resolution natively and as a visible CI check', () => {
+    const pullRequestRule = generatedRepoSettings.rules.find((rule) => rule.type === 'pull_request')
+    expect(pullRequestRule?.parameters?.required_review_thread_resolution).toBe(true)
+    expect(generatedRepoSettingsSource).toContain('prReviewsPullRequestRule()')
+    expect(generatedRequiredCheckContexts.includes('pr-reviews-resolved')).toBe(true)
+  })
 })
 
 describe('ci workflow shared auth helpers', () => {
@@ -1699,6 +1731,7 @@ describe('effect-utils CI composition workspace', () => {
     const exemptions = new Set([
       'default-ref-policy',
       'nix-fod-check',
+      'pr-reviews-resolved',
       'source-shape',
       'ci-measurements-report',
       'notify-alignment',

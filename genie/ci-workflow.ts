@@ -158,6 +158,15 @@ export {
   type PrSnapshotSharedOptions,
 } from './ci-workflow/pr-snapshot.ts'
 export {
+  prReviewsPullRequestRule,
+  prReviewsResolvedJob,
+  prReviewsResolvedJobId,
+  prReviewsResolvedStep,
+  type PrReviewsPullRequestRuleOptions,
+  type PrReviewsResolvedJobOptions,
+  type PrReviewsResolvedStepOptions,
+} from './ci-workflow/pr-reviews.ts'
+export {
   ciWorkflowJobLocalRustStateScript,
   ciWorkflowJobLocalRustStateScriptPath,
   ciWorkflowNixGcRaceRetryScriptPath,

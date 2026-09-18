@@ -22,6 +22,11 @@ All notable changes to this project will be documented in this file.
 - **Genie CI**: Require each repository to declare a public or private cache
   trust tier so private CI can use the shared Buck2 action cache while public CI
   stays cold.
+- **Genie CI**: Enforce resolved PR review threads before merge via the native
+  `required_review_thread_resolution` ruleset flag (live merge-time gate) plus a
+  reusable checkout-free `pr-reviews-resolved` required CI check (early visible
+  PR signal). Shared as `prReviewsPullRequestRule` / `prReviewsResolvedJob` in
+  `genie/ci-workflow.ts` (re-exported from `genie/external.ts`) for peer repos.
 
 - **@overeng/gh-ci-utils**: Migrate the CI inspection CLI into effect-utils so
   its source, tests, and Nix package have one reusable owner.
