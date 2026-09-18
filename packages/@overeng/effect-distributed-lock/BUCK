@@ -133,3 +133,13 @@ vitest_collect(
     package_tree = ":test_package_tree",
     visibility = ["PUBLIC"],
 )
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-effect-distributed-lock.tgz",
+    dist = ":dist",
+    package_json = "package.json",
+    product_name = "@overeng/effect-distributed-lock",
+    transport_slug = "overeng-effect-distributed-lock",
+    visibility = ["PUBLIC"],
+)

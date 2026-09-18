@@ -127,3 +127,13 @@ vitest_collect(
     package_tree = ":test_package_tree",
     visibility = ["PUBLIC"],
 )
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-content-address.tgz",
+    dist = ":dist",
+    transport_slug = "overeng-content-address",
+    package_json = "package.json",
+    product_name = "@overeng/content-address",
+    visibility = ["PUBLIC"],
+)

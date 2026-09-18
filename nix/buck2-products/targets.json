@@ -1,6 +1,22 @@
 {
   "products": [
     {
+      "name": "@overeng/content-address",
+      "target": "effect_utils//packages/@overeng/content-address:dist-package"
+    },
+    {
+      "name": "@overeng/effect-distributed-lock",
+      "target": "effect_utils//packages/@overeng/effect-distributed-lock:dist-package"
+    },
+    {
+      "name": "@overeng/otel-contract",
+      "target": "effect_utils//packages/@overeng/otel-contract:dist-package"
+    },
+    {
+      "name": "@overeng/utils",
+      "target": "effect_utils//packages/@overeng/utils:dist-package"
+    },
+    {
       "name": "ci-tools",
       "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
     },
@@ -50,7 +66,7 @@
     }
   ],
   "provenance": {
-    "fingerprint": "sha256:546ff155a723865914b52d8a97301ee35492c928fe4a86d4b20c4dd00083b081",
+    "fingerprint": "sha256:62bc4ab220014e2b147cffc3d38cc8d4add6dadb3825b592c4d332b06bce557b",
     "generator": "effect-utils/genie/buck2-javascript-release-targets",
     "regenerationCommand": "devenv tasks run genie:run",
     "semanticInputs": [

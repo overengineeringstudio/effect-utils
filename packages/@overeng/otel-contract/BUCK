@@ -178,3 +178,16 @@ vitest_collect(
     ],
     visibility = ["PUBLIC"],
 )
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-otel-contract.tgz",
+    dist = ":dist",
+    package_json = "package.json",
+    product_name = "@overeng/otel-contract",
+    transport_slug = "overeng-otel-contract",
+    package_dependencies = [
+        "//packages/@overeng/content-address:dist-package",
+    ],
+    visibility = ["PUBLIC"],
+)
