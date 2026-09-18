@@ -148,7 +148,19 @@ export DEVENV_ROOT="$tmpdir/workspace"
 : > "$tmpdir/spans.ndjson"
 
 set +e
-stdout="$(cd "$tmpdir" && bash "$tmpdir/ts-check.exec.sh" 2>&1)"
+stdout="$(
+  cd "$tmpdir" \
+    && env -i \
+      HOME="$tmpdir" \
+      PATH="$PATH" \
+      TMPDIR="$tmpdir" \
+      OTEL_SPAN_BIN="$OTEL_SPAN_BIN" \
+      OTEL_SCRAPE_ENABLED="$OTEL_SCRAPE_ENABLED" \
+      OTEL_SPAN_SPOOL_DIR="$OTEL_SPAN_SPOOL_DIR" \
+      OTEL_TASK_TRACEPARENT="$OTEL_TASK_TRACEPARENT" \
+      DEVENV_ROOT="$DEVENV_ROOT" \
+      bash "$tmpdir/ts-check.exec.sh" 2>&1
+)"
 ts_check_status=$?
 set -e
 echo "$stdout" > "$tmpdir/stdout.txt"
