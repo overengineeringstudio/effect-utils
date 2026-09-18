@@ -24,7 +24,7 @@ All common tasks run under `packages/@overeng/notion-react/`:
 | Live E2E (real Notion)        | `pnpm --filter @overeng/notion-react test:integration:e2e` |
 | Storybook dev server          | `pnpm --filter @overeng/notion-react storybook`            |
 | Storybook static build        | `pnpm --filter @overeng/notion-react storybook:build`      |
-| Type-check                    | `tsc --build --watch tsconfig.check.json` (from repo root) |
+| Type-check                    | `devenv tasks run buck2:check` (from repo root)            |
 | Lint                          | `oxlint`                                                   |
 | Format check / fix            | `oxfmt --check` / `oxfmt`                                  |
 
@@ -33,8 +33,8 @@ see [Testing](./testing.md#pointing-at-a-different-notion-workspace).
 
 ## Edit / test loop
 
-Run `tsc --build --watch tsconfig.check.json` in one pane and
-`pnpm vitest` in another. Use Storybook when changing web-renderer
+Run `devenv tasks run buck2:check` after TypeScript changes and use
+`pnpm vitest` as the test watch loop. Use Storybook when changing web-renderer
 visuals. For renderer changes, the mock-client integration tests
 (`pnpm --filter @overeng/notion-react test:integration`) are the
 cheapest way to verify op sequences without paying for Notion API

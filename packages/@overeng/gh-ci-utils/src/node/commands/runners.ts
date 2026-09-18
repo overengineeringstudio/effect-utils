@@ -24,8 +24,9 @@ export const runnersCommand = Cli.Command.make('runners', { output: outputOption
         )
 
         const config = yield* resolveConfig({})
-        const results = yield* Effect.all(
-          config.runnerHosts.map((host) =>
+        const results = yield* Effect.forEach(
+          config.runnerHosts,
+          (host) =>
             fetchRunnerHostJobs(host).pipe(
               Effect.map(
                 (result) =>
@@ -40,7 +41,6 @@ export const runnersCommand = Cli.Command.make('runners', { output: outputOption
                   }) satisfies HostResult,
               ),
             ),
-          ),
           { concurrency: 'unbounded' },
         )
 

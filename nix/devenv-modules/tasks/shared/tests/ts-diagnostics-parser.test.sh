@@ -27,30 +27,32 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 mkdir -p "$tmpdir/bin"
 
-# Extract the real ts:check exec script so we test the shipped parser, not a copy.
-nix eval --impure --raw --expr "
-  let
-    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
-    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    evaluated = pkgs.lib.evalModules {
-      modules = [
-        ({ ... }: {
-          options.tasks = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
-          options.processes = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
-          options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
-        })
-        ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
-          tsconfigFile = \"tsconfig.check.json\";
-        }) {
-          pkgs = pkgs;
-          lib = pkgs.lib;
-          config = { };
-        })
-      ];
-    };
-  in evaluated.config.tasks.\"ts:check\".exec
-" > "$tmpdir/ts-check.exec.sh"
-chmod +x "$tmpdir/ts-check.exec.sh"
+# Build the real ts:check exec script so every referenced Nix store dependency
+# is realized before the hermetic test process executes it.
+ts_check_script="$(
+  nix build --impure --no-link --print-out-paths --expr "
+    let
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      evaluated = pkgs.lib.evalModules {
+        modules = [
+          ({ ... }: {
+            options.tasks = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
+            options.processes = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
+            options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
+          })
+          ((import $ROOT/nix/devenv-modules/tasks/shared/ts.nix {
+            tsconfigFile = \"tsconfig.check.json\";
+          }) {
+            pkgs = pkgs;
+            lib = pkgs.lib;
+            config = { };
+          })
+        ];
+      };
+    in pkgs.writeShellScript \"ts-check-exec\" evaluated.config.tasks.\"ts:check\".exec
+  "
+)"
 
 # Stub tsgo: ignore args, emit the captured diagnostics fixture, exit 0.
 cat > "$tmpdir/bin/tsgo" <<EOF
@@ -139,14 +141,35 @@ EOF
 chmod +x "$tmpdir/bin/otel-span"
 
 export PATH="$tmpdir/bin:$PATH"
+export OTEL_SPAN_BIN="$tmpdir/bin/otel-span"
+export OTEL_SCRAPE_ENABLED=0
 export OTEL_SPAN_SPOOL_DIR="$tmpdir/spool"
 mkdir -p "$OTEL_SPAN_SPOOL_DIR"
 export OTEL_TASK_TRACEPARENT="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
 export DEVENV_ROOT="$tmpdir/workspace"
 : > "$tmpdir/spans.ndjson"
 
-stdout="$(cd "$tmpdir" && bash "$tmpdir/ts-check.exec.sh" 2>&1)"
+set +e
+stdout="$(
+  cd "$tmpdir" \
+    && env -i \
+      HOME="$tmpdir" \
+      PATH="$PATH" \
+      TMPDIR="$tmpdir" \
+      OTEL_SPAN_BIN="$OTEL_SPAN_BIN" \
+      OTEL_SCRAPE_ENABLED="$OTEL_SCRAPE_ENABLED" \
+      OTEL_SPAN_SPOOL_DIR="$OTEL_SPAN_SPOOL_DIR" \
+      OTEL_TASK_TRACEPARENT="$OTEL_TASK_TRACEPARENT" \
+      DEVENV_ROOT="$DEVENV_ROOT" \
+      bash "$ts_check_script" 2>&1
+)"
+ts_check_status=$?
+set -e
 echo "$stdout" > "$tmpdir/stdout.txt"
+if [ "$ts_check_status" -ne 0 ]; then
+  echo "$stdout" >&2
+  fail "ts:check exec failed with exit $ts_check_status"
+fi
 
 # 1. Effect lint warnings must be re-surfaced (not swallowed by the parser path).
 grep -q "warning TS377030" "$tmpdir/stdout.txt" \
@@ -169,38 +192,38 @@ flat="$(tr -d '\n ' < "$tmpdir/spans.ndjson")"
 
 # 3. Per-project spans carry their own per-project totals (0.339s and 0.274s),
 #    proving the aggregate (18.107s) was NOT mis-attributed to the last project.
-echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":0.339}' \
+grep -q '"typescript.total_time_s","value":{"doubleValue":0.339}' <<< "$flat" \
   || fail "first project span missing typescript.total_time_s=0.339"
-echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":0.274}' \
+grep -q '"typescript.total_time_s","value":{"doubleValue":0.274}' <<< "$flat" \
   || fail "second (last) project span missing total_time_s=0.274"
 
 # 4. Exactly one span is the aggregate, with the build-level total (18.107s) and
 #    projects_built count.
 agg_count=$( (echo "$flat" | grep -oE '"typescript.aggregate","value":\{"boolValue":true\}' || true) | grep -c . || true)
 [ "$agg_count" -eq 1 ] || fail "expected exactly 1 aggregate span, got $agg_count"
-echo "$flat" | grep -q '"typescript.total_time_s","value":{"doubleValue":18.107}' \
+grep -q '"typescript.total_time_s","value":{"doubleValue":18.107}' <<< "$flat" \
   || fail "aggregate span missing total_time_s=18.107"
-echo "$flat" | grep -q '"typescript.projects_built","value":{"intValue":"34"}' \
+grep -q '"typescript.projects_built","value":{"intValue":"34"}' <<< "$flat" \
   || fail "aggregate span missing projects_built=34"
-echo "$flat" | grep -q '"span.label","value":{"stringValue":"aggregate"}' \
+grep -q '"span.label","value":{"stringValue":"aggregate"}' <<< "$flat" \
   || fail "aggregate span missing span.label=aggregate"
-echo "$flat" | grep -q '"span.label","value":{"stringValue":"socket"}' \
+grep -q '"span.label","value":{"stringValue":"socket"}' <<< "$flat" \
   || fail "project span missing concise span.label"
-echo "$flat" | grep -q '"compiler.name","value":{"stringValue":"tsgo"}' \
+grep -q '"compiler.name","value":{"stringValue":"tsgo"}' <<< "$flat" \
   || fail "span missing compiler identity"
-echo "$flat" | grep -q '"diagnostics.source","value":{"stringValue":"extendedDiagnostics"}' \
+grep -q '"diagnostics.source","value":{"stringValue":"extendedDiagnostics"}' <<< "$flat" \
   || fail "span missing diagnostics source"
-echo "$flat" | grep -q '"name":"typescript.build.aggregate"' \
+grep -q '"name":"typescript.build.aggregate"' <<< "$flat" \
   || fail "aggregate span should use the stable typescript.build.aggregate name"
-echo "$flat" | grep -q '"name":"typescript.project.check"' \
+grep -q '"name":"typescript.project.check"' <<< "$flat" \
   || fail "project spans should use the stable typescript.project.check name"
-echo "$flat" | grep -q '"service.name","value":{"stringValue":"effect-utils-devenv"}' \
+grep -q '"service.name","value":{"stringValue":"effect-utils-devenv"}' <<< "$flat" \
   || fail "spans should use the unified effect-utils-devenv service"
-echo "$flat" | grep -q '"tool.name","value":{"stringValue":"typescript"}' \
+grep -q '"tool.name","value":{"stringValue":"typescript"}' <<< "$flat" \
   || fail "span missing tool.name=typescript"
-echo "$flat" | grep -q '"ts.project.name","value":{"stringValue":"socket"}' \
+grep -q '"ts.project.name","value":{"stringValue":"socket"}' <<< "$flat" \
   || fail "project span missing typed project name"
-echo "$flat" | grep -q '"tsconfig.path","value":{"stringValue":"tsconfig.check.json"}' \
+grep -q '"tsconfig.path","value":{"stringValue":"tsconfig.check.json"}' <<< "$flat" \
   || fail "project span missing typed tsconfig path"
 
 # 5. No per-project span should carry the aggregate total. (grep may match

@@ -5,9 +5,9 @@ load("//buck2:package_tools.bzl", "package_bin_artifact")
 load("//buck2/products:defs.bzl", "javascript_product")
 
 # Projection source: packages/@overeng/notion-cli/BUCK.genie.ts
-# Projection schema version: 8
+# Projection schema version: 9
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:78c3dbc30a361b9d2944429d071ee08e0216e29a4f68af2e5f5f0284cc3fc4ec
+# Semantic fingerprint: sha256:d45d4b0525d047f8a9774c2f98fcbfddda8ab27fdf712b654bf38012d4d5771d
 # Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-path/BUCK.genie.ts, packages/@overeng/effect-path/package.json.genie.ts, packages/@overeng/notion-cli/BUCK.genie.ts, packages/@overeng/notion-cli/BUCK.genie.ts, packages/@overeng/notion-cli/package.json.genie.ts, packages/@overeng/notion-cli/src/**/*.cts, packages/@overeng/notion-cli/src/**/*.js, packages/@overeng/notion-cli/src/**/*.mts, packages/@overeng/notion-cli/src/**/*.spec.cjs, packages/@overeng/notion-cli/src/**/*.spec.jsx, packages/@overeng/notion-cli/src/**/*.spec.mjs, packages/@overeng/notion-cli/src/**/*.test.cjs, packages/@overeng/notion-cli/src/**/*.test.jsx, packages/@overeng/notion-cli/src/**/*.test.mjs, packages/@overeng/notion-cli/src/**/*.ts, packages/@overeng/notion-cli/src/**/*.tsx, packages/@overeng/notion-cli/src/**/__snapshots__/*.snap, packages/@overeng/notion-cli/tsconfig.json.genie.ts, packages/@overeng/notion-datasource-sync/BUCK.genie.ts, packages/@overeng/notion-datasource-sync/package.json.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-client/package.json.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-effect-schema/package.json.genie.ts, packages/@overeng/notion-md/BUCK.genie.ts, packages/@overeng/notion-md/package.json.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/otel-contract/package.json.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-react/package.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
@@ -176,7 +176,7 @@ package_view(
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
-    runtime = "//:package_tree_runtime",
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
 )
@@ -274,7 +274,7 @@ package_view(
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
     strip_project_references = True,
-    runtime = "//:package_tree_runtime",
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
 )
