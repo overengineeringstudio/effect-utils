@@ -355,17 +355,29 @@ export const compositionApplyRuntimeFromEnv = ({
           },
         }),
     },
-    retainCapabilityRoots: ({ workspaceRoot: retainedWorkspaceRoot, memberKey, resolution }) =>
+    retainCapabilityRoots: ({
+      workspaceRoot: retainedWorkspaceRoot,
+      memberKey,
+      projectionRoot,
+      resolution,
+    }) =>
       retainCompositionCapabilityProjection({
         workspaceRoot: retainedWorkspaceRoot,
         memberKey,
+        projectionRoot,
         resolution,
         runtime: capabilityRuntime,
       }),
-    pruneCapabilityRoots: ({ workspaceRoot: prunedWorkspaceRoot, memberKey, resolution }) =>
+    pruneCapabilityRoots: ({
+      workspaceRoot: prunedWorkspaceRoot,
+      memberKey,
+      projectionRoot,
+      resolution,
+    }) =>
       pruneCompositionCapabilityProjectionRoots({
         workspaceRoot: prunedWorkspaceRoot,
         memberKey,
+        projectionRoot,
         resolution,
         runtime: capabilityRuntime,
       }),
@@ -388,7 +400,7 @@ export const compositionApplyRuntimeFromEnv = ({
     },
     mountRecoveryRuntime: { mvPath, platform },
     publisherRuntime: {
-      assertCapabilityProjection: ({ memberRoot }) => check(memberRoot),
+      assertCapabilityProjection: ({ workspaceRoot: requestedRoot }) => check(requestedRoot),
     },
     publisherLock: {
       owner: `mr:${process.pid}`,

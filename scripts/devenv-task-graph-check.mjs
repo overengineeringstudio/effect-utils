@@ -120,6 +120,9 @@ for (const name of [
   'genie:check',
   'mr:apply',
   'buck2:check',
+  'buck2:quick',
+  'buck2:all',
+  'check:buck2-producer-overlap',
   'buck2:typescript:materialize-dist',
   'buck2:editor:bootstrap',
   'buck2:editor:materialize',
@@ -169,10 +172,17 @@ try {
 }
 
 const materializer = 'buck2:typescript:materialize-dist'
-for (const name of ['check:quick', 'check:all']) {
+for (const [checkTask, aggregateTask] of [
+  ['check:quick', 'buck2:quick'],
+  ['check:all', 'buck2:all'],
+]) {
   ok({
-    condition: reaches({ start: name, target: 'buck2:check' }),
-    name: `${name} reaches the Buck-owned TypeScript gate`,
+    condition: reaches({ start: checkTask, target: aggregateTask }),
+    name: `${checkTask} reaches ${aggregateTask}`,
+  })
+  ok({
+    condition: reaches({ start: checkTask, target: 'check:buck2-producer-overlap' }),
+    name: `${checkTask} reaches the Buck producer overlap guard`,
   })
 }
 ok({
@@ -227,11 +237,9 @@ for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames])
   })
 }
 for (const name of [
-  'buck2:check',
   'buck2:editor:authority',
   'buck2:editor:publish',
   'buck2:editor:check',
-  'buck2:nix-bridge:check',
   'lint:check:asset-import-needs-type-reference',
   'lint:check:format',
   'lint:check:genie:coverage',
@@ -242,11 +250,17 @@ for (const name of [
 ]) {
   ok({
     condition: reaches({ start: name, target: 'mr:apply' }),
-    name: `${name} waits for workspace reconciliation and the capability projection`,
+    name: `${name} waits for workspace reconciliation`,
   })
   ok({
     condition: reaches({ start: name, target: 'genie:check' }),
     name: `${name} waits for source-side generation freshness`,
+  })
+}
+for (const name of ['buck2:check', 'buck2:quick', 'buck2:all', 'buck2:nix-bridge:check']) {
+  ok({
+    condition: reaches({ start: name, target: 'mr:apply' }) === false,
+    name: `${name} remains standalone`,
   })
 }
 ok({
@@ -349,13 +363,25 @@ ok({
 })
 
 const buckCheckSource = taskSource('buck2:check')
+const buckQuickSource = taskSource('buck2:quick')
+const buckAllSource = taskSource('buck2:all')
+const producerOverlapSource = taskSource('check:buck2-producer-overlap')
 ok({
   condition:
-    buckCheckSource.includes('realpath "$root/../.."') === true &&
-    buckCheckSource.includes('$workspace_root/.megarepo/bin/buck2') === true &&
-    buckCheckSource.includes(typescriptAuthorityRuntimePath) === true &&
-    buckCheckSource.includes('build "$buck"') === true,
-  name: 'buck2:check resolves the composition wrapper and dispatches the authority runtime',
+    source.includes('buck2AggregateExec =') === true &&
+    buckCheckSource.includes('audit providers') === true &&
+    buckCheckSource.includes('typescript-authority-runtime.ts') === false &&
+    buckQuickSource.includes('buck2AggregateExec "buck2:quick" "//:quick"') === true &&
+    buckAllSource.includes('buck2AggregateExec "buck2:all" "//:all"') === true &&
+    buckQuickSource.includes('--local-only') === false &&
+    buckAllSource.includes('--local-only') === false,
+  name: 'Buck check tasks separate provider audit from standalone cache-enabled aggregates',
+})
+ok({
+  condition:
+    producerOverlapSource.includes('genie/buck2/producer-overlap.ts') === true &&
+    producerOverlapSource.includes('task-config-devenv-config-task-config') === true,
+  name: 'producer overlap guard reads the evaluated task registry',
 })
 const buckToolchainSource = readFileSync(`${root}/buck2/toolchains/BUCK`, 'utf8')
 ok({
@@ -363,6 +389,16 @@ ok({
     buckToolchainSource.includes('bun_toolchain(') === true &&
     buckToolchainSource.includes('name = "archive_tool"') === true,
   name: 'Buck toolchains live in the buck2/toolchains package',
+})
+const configuredToolchainSource = readFileSync(
+  `${root}/buck2/toolchains/configured.bzl`,
+  'utf8',
+)
+ok({
+  condition:
+    buckToolchainSource.includes('load("@capabilities//:defs.bzl"') === true &&
+    configuredToolchainSource.includes('load("@capabilities//:defs.bzl"') === true,
+  name: 'capability Starlark loads use external-cell import syntax',
 })
 ok({
   condition: existsSync(`${root}/toolchains`) === false,

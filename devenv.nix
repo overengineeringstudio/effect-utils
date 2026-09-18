@@ -29,6 +29,7 @@ let
     '';
     builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
+  buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   trackedBuck2Products = import ./nix/buck2-products { pkgs = flakePkgs; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
@@ -582,6 +583,15 @@ let
       printf "%s\n" "$workspace_root"
     }
   '';
+  buck2AggregateExec =
+    taskName: target:
+    trace.exec taskName ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      export PATH=${lib.makeBinPath [ pkgs.watchman ]}
+      cd "$root"
+      exec "$BUCK2_BIN" build ${lib.escapeShellArg target}
+    '';
   editorViewExec =
     mode:
     trace.exec "buck2:editor:${mode}" ''
@@ -822,7 +832,7 @@ in
   # must first prove the graph fresh, then mr:apply and the authoritative
   # publisher replay it.
   tasks."genie:run".after = [ "buck2:editor:bootstrap" ];
-  tasks."genie:check".after = [ "buck2:editor:bootstrap" ];
+  tasks."genie:check".after = lib.mkForce [ "genie:prepare" ];
   tasks."lint:check:genie".after = [ "buck2:editor:bootstrap" ];
   tasks."genie:watch".after = [ "buck2:editor:bootstrap" ];
   tasks."lint:check:lockfile".description =
@@ -936,6 +946,7 @@ in
   env.MR_COMPOSITION_GIT_BIN = "${pkgs.git}/bin/git";
   env.MR_COMPOSITION_WATCHMAN_BIN = "${pkgs.watchman}/bin/watchman";
   env.MR_CAPABILITY_NIX_BIN = "${pkgs.nix}/bin/nix";
+  env.MR_CAPABILITY_PROJECTION = "${buck2Capabilities}";
   env.MR_CAPABILITY_MV_BIN = "${pkgs.coreutils}/bin/mv";
 
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
@@ -1149,7 +1160,7 @@ in
 
   tasks."buck2:nix-bridge:check" = {
     description = "Check the strict build-product contract and fail-closed artifact importer";
-    after = [ "mr:apply" ];
+    after = lib.mkForce [ "genie:check" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
@@ -1254,10 +1265,22 @@ in
     '';
   };
 
+  tasks."check:buck2-producer-overlap" = {
+    description = "Reject duplicate Buck and legacy TypeScript producers";
+    after = [ "genie:check" ];
+    exec = trace.exec "check:buck2-producer-overlap" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun "$root/genie/buck2/producer-overlap.ts" check \
+        "$root/.devenv/gc/task-config-devenv-config-task-config"
+    '';
+  };
+
+  # The provider audit remains separate because it validates the composed
+  # toolchain boundary rather than producing an admitted repository artifact.
   tasks."buck2:check" = {
     description = "Build every admitted TypeScript check, declared test lane, and the archive/product Buck2 surface";
     after = [
-      "mr:apply"
       "buck2:nix-bridge:check"
       "buck2:task-guards:check"
       "buck2:rust-deps:check"
@@ -1265,22 +1288,33 @@ in
     exec = trace.exec "buck2:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      export PATH=${
-        lib.makeBinPath [
-          pkgs.coreutils
-          pkgs.watchman
-        ]
-      }
-      workspace_root="$(${pkgs.coreutils}/bin/realpath "$root/../..")"
-      buck="$workspace_root/.megarepo/bin/buck2"
-      "$buck" audit providers \
-        --target-platforms effect_utils//buck2/platforms:host_platform \
-        effect_utils//buck2/toolchains:cross_cell_provider_identity \
-        effect_utils//buck2/toolchains:cross_cell_product_identity
-      exec ${pkgs.bun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
-        build "$buck"
+      export PATH=${lib.makeBinPath [ pkgs.watchman ]}
+      cd "$root"
+      exec "$BUCK2_BIN" audit providers \
+        --target-platforms //buck2/platforms:host_platform \
+        //buck2/toolchains:cross_cell_provider_identity \
+        //buck2/toolchains:cross_cell_product_identity
     '';
   };
+
+  tasks."buck2:quick" = {
+    description = "Build the admitted quick Buck aggregate";
+    after = [ "buck2:check" ];
+    # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
+    exec = buck2AggregateExec "buck2:quick" "//:quick";
+  };
+
+  tasks."buck2:all" = {
+    description = "Build the complete admitted Buck aggregate";
+    after = [ "buck2:check" ];
+    # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
+    exec = buck2AggregateExec "buck2:all" "//:all";
+  };
+
+  tasks."check:quick".after = [
+    "buck2:quick"
+    "check:buck2-producer-overlap"
+  ];
 
   # One Buck invocation executes every admitted bounded lane. This is what `test:run` waits on;
   # the per-lane `test:<package>` tasks (imported above) exist for standalone use and are not
@@ -1294,8 +1328,9 @@ in
       targets = map (lane: lane.target) buck2TestLanes;
     };
   };
-
   tasks."check:all".after = [
+    "buck2:all"
+    "check:buck2-producer-overlap"
     "cargo:check"
     "dependency-materialization:evidence:check"
   ];
@@ -1334,6 +1369,16 @@ in
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
+    # Buck2 expands the cache header in the daemon; keep the optional credential
+    # defined so unauthenticated cache reads work when SecretSpec is not active.
+    export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
+    capability_parent="$WORKSPACE_ROOT/.buck2"
+    capability_link="$capability_parent/capabilities"
+    ${pkgs.coreutils}/bin/mkdir -p "$capability_parent"
+    if [ -e "$capability_link" ] && [ ! -L "$capability_link" ]; then
+      ${pkgs.coreutils}/bin/rm -rf -- "$capability_link"
+    fi
+    ${pkgs.coreutils}/bin/ln -sfnT ${buck2Capabilities} "$capability_link"
     ${cliBuildStamp.shellHook}
   '';
 

@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Buck2 checks**: Add standalone project roots, Nix-owned capability
+  projections shared with composed roots, registry-derived `//:quick` and
+  `//:all` aggregates, check-verb wiring, and a guard against untracked
+  Buck-versus-legacy producer overlap.
+
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full
   checks.

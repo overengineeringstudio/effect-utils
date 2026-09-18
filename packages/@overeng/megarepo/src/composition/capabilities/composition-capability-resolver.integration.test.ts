@@ -258,6 +258,56 @@ describe('composition capability resolver', () => {
     },
   )
 
+  it('consumes a checked Nix projection without invoking Nix', async () => {
+    const producer = await makeFixture()
+    const consumer = await makeFixture()
+    try {
+      const produced = await resolve(producer)
+      if (produced._tag !== 'Resolved') throw new Error('unreachable')
+      const consumed = await resolve(consumer, {
+        runtime: {
+          ...consumer.runtime,
+          nixPath: '/nix-must-not-run',
+          projectionPath: produced.projectionPath,
+        },
+      })
+      if (consumed._tag !== 'Resolved') throw new Error('unreachable')
+
+      expect(consumed.capabilities).toEqual(produced.capabilities)
+      expect(consumed.projectionPath).toBe(produced.projectionPath)
+      await consumed.release()
+      await produced.release()
+    } finally {
+      await Promise.all([clean(producer), clean(consumer)])
+    }
+  })
+
+  it('rejects a Nix projection built for a different platform', async () => {
+    const producer = await makeFixture()
+    const consumer = await makeFixture()
+    try {
+      const produced = await resolve(producer)
+      if (produced._tag !== 'Resolved') throw new Error('unreachable')
+
+      await expect(
+        resolve(consumer, {
+          system: 'aarch64-linux',
+          runtime: {
+            ...consumer.runtime,
+            nixPath: '/nix-must-not-run',
+            projectionPath: produced.projectionPath,
+          },
+        }),
+      ).rejects.toMatchObject({
+        _tag: 'CompositionCapabilityResolutionError',
+        reason: 'InvalidInput',
+      })
+      await produced.release()
+    } finally {
+      await Promise.all([clean(producer), clean(consumer)])
+    }
+  })
+
   it('uses exact sorted Nix argv and pinned projector tools despite ambient PATH poison', async () => {
     const fixture = await makeFixture()
     try {
@@ -363,6 +413,7 @@ describe('composition capability resolver', () => {
       await retainCompositionCapabilityProjection({
         workspaceRoot: fixture.root,
         memberKey: 'owned',
+        projectionRoot: publishedRoot,
         resolution: result,
         runtime: durableRuntime,
       })
@@ -380,6 +431,7 @@ describe('composition capability resolver', () => {
       await retainCompositionCapabilityProjection({
         workspaceRoot: fixture.root,
         memberKey: 'owned',
+        projectionRoot: publishedRoot,
         resolution: result,
         runtime: durableRuntime,
       })
@@ -397,6 +449,7 @@ describe('composition capability resolver', () => {
       await pruneCompositionCapabilityProjectionRoots({
         workspaceRoot: fixture.root,
         memberKey: 'owned',
+        projectionRoot: publishedRoot,
         resolution: result,
         runtime: fixture.runtime,
       })
@@ -494,6 +547,7 @@ describe('composition capability resolver', () => {
         retainCompositionCapabilityProjection({
           workspaceRoot: fixture.root,
           memberKey: 'fixture',
+          projectionRoot: publishedRoot,
           resolution: result,
           runtime: {
             ...fixture.runtime,
@@ -511,6 +565,7 @@ describe('composition capability resolver', () => {
       await retainCompositionCapabilityProjection({
         workspaceRoot: fixture.root,
         memberKey: 'fixture',
+        projectionRoot: publishedRoot,
         resolution: result,
         runtime: {
           ...fixture.runtime,
@@ -560,6 +615,7 @@ describe('composition capability resolver', () => {
         retainCompositionCapabilityProjection({
           workspaceRoot: fixture.root,
           memberKey: 'fixture',
+          projectionRoot: publishedRoot,
           resolution: result,
           runtime: fixture.runtime,
         }),
@@ -615,6 +671,7 @@ describe('composition capability resolver', () => {
         retainCompositionCapabilityProjection({
           workspaceRoot: fixture.root,
           memberKey: 'fixture',
+          projectionRoot: publishedRoot,
           resolution: expected,
           runtime: fixture.runtime,
         }),

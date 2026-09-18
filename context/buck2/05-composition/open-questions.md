@@ -29,18 +29,19 @@ Remaining blocker: the constitutional edits (vision criterion 6, BUCK-R05/R06,
 COMP-R01/R02) are Johannes', and pnpm's injected-workspace pruning must be
 shown to be a strict no-op on the second install.
 
-## Open 2026-09-12: root-owned capability cell
+## Resolved 2026-09-17: root-owned capability cell
 
-The hub loads the per-host capability projection from inside its own cell
-(`buck2/toolchains/BUCK:1`, `configured.bzl:5,59`:
-`//.buck2/capabilities/…`), so mr must write the projection into every mount
-and no fetched or read-only hub can carry it
-([2026-09-12-hub-as-external-cell](./.experiments/2026-09-12-hub-as-external-cell.md)).
-Moving it to a root-provided `capabilities//` cell (declared by the root
-generator, referenced by cross-cell labels) is the right ownership boundary in
-every option on the table and is a precondition for rules-only external-cell
-distribution of the hub. Blocked on: deciding the cell's contract (visibility,
-generation identity checks) and the mr change that declares it.
+The composition root declares `capabilities = .buck2/capabilities`, and hub
+toolchains load `capabilities//:defs.bzl` plus generation-keyed labels from that
+cell. Nix is the sole producer: `packages.<system>.buck2-capabilities` derives
+the projection from the tracked member manifest and the same flake package
+outputs that the resolver consumes. The devenv shell links that store output
+for a standalone root. `mr apply` verifies the same output and atomically links
+it into the composition root. The shared TypeScript renderer defines the
+projection bytes and generation identity for both paths. This removes the
+per-mount write requirement while retaining strict manifest, platform,
+executable, closure, and generation checks. Decision 0028 Amendment 1 records
+the ownership change.
 
 ## Resolved 2026-08-30: consumers share the hub's toolchain pins
 
