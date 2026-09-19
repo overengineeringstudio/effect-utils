@@ -2,10 +2,11 @@ import { resolve } from 'node:path'
 
 import { expect, layer } from '@effect/vitest'
 import { Context, Effect, Layer } from 'effect'
+import React from 'react'
 
 import { captureStoryProps } from '../src/StoryCapture.ts'
 import { discoverStories, type DiscoverStoriesResult } from '../src/StoryDiscovery.ts'
-import { findStory } from '../src/StoryModule.ts'
+import { findStory, type ResolvedStory } from '../src/StoryModule.ts'
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
 const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
@@ -44,6 +45,45 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryCapture', (it) => {
       expect(captured.app.config.reducer).toBeDefined()
       expect(typeof captured.View).toBe('function')
       expect(captured.command).toBeTruthy()
+    }),
+  )
+
+  it.effect('captures previews from a separate physical module instance', () =>
+    Effect.promise(async () => {
+      const PreviewFromDependencyView = () => null
+      Object.defineProperty(
+        PreviewFromDependencyView,
+        Symbol.for('@overeng/tui-react/TuiStoryPreview'),
+        { value: true },
+      )
+      const View = () => null
+      const app = {
+        config: {
+          stateSchema: {},
+          actionSchema: {},
+          initial: null,
+          reducer: ({ state }: { state: unknown }) => state,
+        },
+      }
+      const story: ResolvedStory = {
+        name: 'DependencyView',
+        title: 'Test',
+        id: 'Test/DependencyView',
+        render: () =>
+          React.createElement(PreviewFromDependencyView, {
+            app,
+            View,
+            initialState: null,
+            command: 'dependency-view',
+          }),
+        args: {},
+        argTypes: {},
+        filePath: 'dependency-view.stories.tsx',
+      }
+
+      const captured = await captureStoryProps({ story })
+
+      expect(captured.command).toBe('dependency-view')
     }),
   )
 

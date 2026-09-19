@@ -292,6 +292,7 @@ const nixDiagnosticsSummaryStep = {
 } as const
 
 const jobTimeoutMinutes = 30
+const longJobTimeoutMinutes = 45
 
 /**
  * `schedule` exists only for the nightly deterministic measurement snapshot of
@@ -332,16 +333,18 @@ const measurementReportIf = [
 const job = ({
   step,
   extraSteps = [],
+  timeoutMinutes = jobTimeoutMinutes,
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   extraSteps?: readonly any[]
+  timeoutMinutes?: number
 }) => ({
   if: normalCiIf,
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
   }),
-  'timeout-minutes': jobTimeoutMinutes,
+  'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
@@ -466,12 +469,13 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   // retained source summaries, and also proves every lane's recorded census exactly matches its
   // actual collection. CI must not shard this lane: the gate needs both partitions in one job.
   test: multiPlatformJob({
-    timeoutMinutes: 45,
+    timeoutMinutes: longJobTimeoutMinutes,
     name: 'Unit tests',
     env: githubTokenEnv(),
     run: runDevenvTasksBefore('test:run'),
   }),
   'test-playwright-utils': job({
+    timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Utils Playwright tests',
       env: githubTokenEnv(),
@@ -479,6 +483,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     },
   }),
   'test-playwright-tui-react': job({
+    timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'TUI React Playwright tests',
       env: githubTokenEnv(),
@@ -563,6 +568,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   //                        without it weaver:diff silently degrades (nothing to diff against).
   //   - weaver:live-check (SC-R12) e2e: emitted OTLP conforms to the registry
   weaver: job({
+    timeoutMinutes: longJobTimeoutMinutes,
     extraSteps: [
       {
         name: 'Fetch baseline history for weaver:diff (SC-R11)',

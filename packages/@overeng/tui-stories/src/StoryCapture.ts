@@ -18,6 +18,7 @@ import { renderToString } from '@overeng/tui-react'
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { ResolvedStory } from './StoryModule.ts'
+const tuiStoryPreviewType = Symbol.for('@overeng/tui-react/TuiStoryPreview')
 
 // =============================================================================
 // Types
@@ -69,12 +70,13 @@ const extractPreviewProps = (element: ReactElement): CapturedStoryProps | undefi
 
   if (props === undefined) return undefined
 
-  // Identify TuiStoryPreview by function name. We avoid importing the actual
-  // component at runtime because @overeng/tui-react/storybook pulls in xterm.js
-  // which creates timers that prevent clean process exit in Node/Bun.
-  if (typeof type === 'function' && type.name === 'TuiStoryPreview') {
-    return extractFromProps(props)
-  }
+  // The global marker survives separate physical module instances in immutable
+  // editor dependency views. Keep the name fallback for older story packages.
+  const isPreview =
+    ((typeof type === 'function' || (typeof type === 'object' && type !== null)) &&
+      Reflect.get(type, tuiStoryPreviewType) === true) ||
+    (typeof type === 'function' && type.name === 'TuiStoryPreview')
+  if (isPreview === true) return extractFromProps(props)
 
   // Walk children recursively
   const children = props.children

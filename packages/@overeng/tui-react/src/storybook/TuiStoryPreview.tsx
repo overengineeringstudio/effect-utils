@@ -445,6 +445,9 @@ export const TuiStoryPreview = <S, A>({
     </div>
   )
 }
+Object.defineProperty(TuiStoryPreview, Symbol.for('@overeng/tui-react/TuiStoryPreview'), {
+  value: true,
+})
 
 // =============================================================================
 // Tab Button Component
