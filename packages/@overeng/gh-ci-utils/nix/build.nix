@@ -42,6 +42,9 @@ pkgs.runCommand "gh-ci-utils"
   }
   ''
     mkdir -p $out/bin
+    # `mk-pnpm-cli` generates shell completions into the unwrapped `share`
+    # tree; link it through so Home Manager picks up bash/fish/zsh support.
+    ln -s ${unwrapped}/share $out/share
     makeWrapper ${unwrapped}/bin/gh-ci-utils $out/bin/gh-ci-utils \
       --prefix PATH : ${
         pkgs.lib.makeBinPath [
