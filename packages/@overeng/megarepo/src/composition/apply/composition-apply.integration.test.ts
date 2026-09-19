@@ -96,19 +96,13 @@ const fixture = async (options: FixtureOptions = {}) => {
   const workspaceRoot = NodePath.join(root, 'workspace')
   const ownedPath = NodePath.join(workspaceRoot, 'repos', 'owned')
   const locked = options.members ?? [{ key: 'dep', overlays: 1 }]
-  const platformHub = options.platformHub ?? 'owned'
   const manifests = new Map<string, BuckMemberManifest>([
-    [ownedPath, memberManifest({ key: 'owned', cell: 'z_owned', buck: platformHub === 'owned' })],
+    [ownedPath, memberManifest({ key: 'owned', cell: 'z_owned', buck: true })],
     ...locked.map(
       ({ key, overlays }, index) =>
         [
           NodePath.join(root, 'store', key),
-          memberManifest({
-            key,
-            cell: `${String.fromCharCode(97 + index)}_${key}`,
-            overlays,
-            buck: platformHub === key,
-          }),
+          memberManifest({ key, cell: `${String.fromCharCode(97 + index)}_${key}`, overlays }),
         ] as const,
     ),
   ])
@@ -117,7 +111,7 @@ const fixture = async (options: FixtureOptions = {}) => {
     ownedMemberKey: 'owned',
     ownedMemberPath: ownedPath,
     compositionConfig: new CompositionGeneratorConfig({
-      platformHub,
+      platformHub: 'owned',
       isolationDir: 'fixed',
     }),
     ...(options.cacheSections === undefined ? {} : { cacheSections: options.cacheSections }),
@@ -188,16 +182,16 @@ const fixture = async (options: FixtureOptions = {}) => {
       calls.push(`cap:${key}`)
       if (options.capabilityFailure === key) throw new Error('capability failed')
       const executablePath =
-        key === platformHub ? '/nix/store/buck/bin/buck2' : `/nix/store/${key}/bin/tool`
+        key === 'owned' ? '/nix/store/buck/bin/buck2' : `/nix/store/${key}/bin/tool`
       const executableCapability =
-        key === platformHub
+        key === 'owned'
           ? resolvedManifest.capabilities.find(
               (capability): capability is BuckMemberCapability =>
                 'toolId' in capability && capability.toolId === 'buck2',
             )
           : undefined
-      if (key === platformHub && executableCapability === undefined) {
-        throw new Error('platform hub fixture must declare the buck2 executable capability')
+      if (key === 'owned' && executableCapability === undefined) {
+        throw new Error('owned member fixture must declare the buck2 executable capability')
       }
       const resolvedCapability =
         executableCapability === undefined
@@ -697,7 +691,6 @@ describe('composition apply integration', () => {
       await value.cleanup()
     }
   })
-
   it('forwards an explicit cache override unchanged to root planning and publication', async () => {
     const cacheSections: NonNullable<CompositionApplyRequest['cacheSections']> = [
       {

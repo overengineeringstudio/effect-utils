@@ -117,7 +117,6 @@ const RootPublicationPlanSchema = Schema.Union([
 export const CompositionOwnedCapabilityProjectionPlanSchema = Schema.Struct({
   memberKey: MemberKey,
   ownedMemberPath: AbsolutePath,
-  workspaceRoot: AbsolutePath,
   projectionPath: AbsolutePath,
   operation: Schema.Literal('InstallOwnedCapabilityProjection'),
   steps: Schema.Array(

@@ -447,7 +447,6 @@ describe('composition root goldens', () => {
     expect(text(output.get('.buckconfig')!)).toBe(`[cells]
   workspace = .
   prelude = prelude
-  capabilities = .buck2/capabilities
   alpha = repos/alpha
 
 [cell_aliases]
@@ -519,7 +518,6 @@ describe('composition root goldens', () => {
     expect(config).toBe(`[cells]
   workspace = .
   prelude = prelude
-  capabilities = .buck2/capabilities
   alpha = repos/alpha
   beta = repos/beta-source
 

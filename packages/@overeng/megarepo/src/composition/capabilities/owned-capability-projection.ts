@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, lstat, mkdir, open, realpath, rm, symlink } from 'node:fs/promises'
+import { access, lstat, mkdir, open, realpath, rm } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 import { promisify } from 'node:util'
 
@@ -196,25 +196,21 @@ const runExact = async ({
   await execFile(executable, [...args], { maxBuffer: 1024 * 1024 })
 }
 
-/** Mutation-free description of the root-owned capability projection boundary. */
+/** Mutation-free description of the owned capability projection boundary. */
 export const planOwnedCapabilityProjection = async ({
   memberKey,
   ownedMemberPath,
-  workspaceRoot,
   projectionPath,
 }: {
   readonly memberKey: string
   readonly ownedMemberPath: string
-  readonly workspaceRoot: string
   readonly projectionPath: string
 }): Promise<CompositionOwnedCapabilityProjectionPlan> => {
   normalizedAbsolute({ value: ownedMemberPath, name: 'ownedMemberPath' })
-  normalizedAbsolute({ value: workspaceRoot, name: 'workspaceRoot' })
   normalizedAbsolute({ value: projectionPath, name: 'projectionPath' })
   return {
     memberKey,
     ownedMemberPath,
-    workspaceRoot,
     projectionPath,
     operation: 'InstallOwnedCapabilityProjection',
     steps: [
@@ -227,27 +223,25 @@ export const planOwnedCapabilityProjection = async ({
 }
 
 /**
- * Link a checked Nix projection into the composition root, retain its store paths, and roll the
- * atomic exchange back unless stable-root retention succeeds.
+ * Copy a checked scratch projection into the writable member, publish it with one atomic directory
+ * exchange, and roll the exchange back unless stable-root retention succeeds.
  */
 export const installOwnedCapabilityProjection = async ({
   memberKey,
   ownedMemberPath: rawOwnedMemberPath,
-  workspaceRoot: rawWorkspaceRoot,
   projectionPath: rawProjectionPath,
   projectionDigest,
   runtime,
 }: {
   readonly memberKey: string
   readonly ownedMemberPath: string
-  readonly workspaceRoot: string
   readonly projectionPath: string
   readonly projectionDigest: string
   readonly runtime: OwnedCapabilityProjectionRuntime
 }): Promise<CompositionOwnedCapabilityProjectionResult> => {
   const ownedMemberPath = normalizedAbsolute({ value: rawOwnedMemberPath, name: 'ownedMemberPath' })
-  const workspaceRoot = normalizedAbsolute({ value: rawWorkspaceRoot, name: 'workspaceRoot' })
   const projectionPath = normalizedAbsolute({ value: rawProjectionPath, name: 'projectionPath' })
+  normalizedAbsolute({ value: runtime.cpPath, name: 'cpPath' })
   normalizedAbsolute({ value: runtime.mvPath, name: 'mvPath' })
   if (generationPattern.test(projectionDigest) === false) {
     throw failure({
@@ -257,32 +251,27 @@ export const installOwnedCapabilityProjection = async ({
     })
   }
 
-  let physicalProjection: string
-  let physicalWorkspace: string
+  let physicalOwned: string
   try {
-    const physicalOwned = await assertDirectory({ path: ownedMemberPath })
+    physicalOwned = await assertDirectory({ path: ownedMemberPath })
     await access(NodePath.join(ownedMemberPath, '.git'), constants.R_OK)
-    physicalWorkspace = await assertDirectory({ path: workspaceRoot })
-    physicalProjection = await assertDirectory({ path: projectionPath })
-    if (
-      containedBy({ root: physicalOwned, path: physicalProjection }) === true ||
-      containedBy({ root: physicalWorkspace, path: physicalProjection }) === true
-    ) {
-      throw new TypeError('Nix projection must be outside the owned member and composition root')
+    const physicalProjection = await assertDirectory({ path: projectionPath })
+    if (containedBy({ root: physicalOwned, path: physicalProjection }) === true) {
+      throw new TypeError('scratch projection must not be inside the owned member')
     }
     if ((await readGeneration({ projectionPath })) !== projectionDigest) {
-      throw new TypeError('Nix projection generation does not match its checked digest')
+      throw new TypeError('scratch projection generation does not match its checked digest')
     }
   } catch (cause) {
     throw failure({
       reason: 'VerificationFailed',
       path: projectionPath,
-      message: 'Root capability projection input failed verification',
+      message: 'Owned capability projection input failed verification',
       cause,
     })
   }
 
-  const capabilityParent = NodePath.join(workspaceRoot, '.buck2')
+  const capabilityParent = NodePath.join(ownedMemberPath, '.buck2')
   const destination = NodePath.join(capabilityParent, 'capabilities')
   let capabilityParentIdentity: DirectoryIdentity
   try {
@@ -293,13 +282,13 @@ export const installOwnedCapabilityProjection = async ({
     }
     capabilityParentIdentity = await captureContainedDirectory({
       path: capabilityParent,
-      parent: physicalWorkspace,
+      parent: physicalOwned,
     })
   } catch (cause) {
     throw failure({
       reason: 'VerificationFailed',
       path: capabilityParent,
-      message: 'Root .buck2 parent must be a real contained directory',
+      message: 'Owned .buck2 parent must be a real contained directory',
       cause,
     })
   }
@@ -309,7 +298,7 @@ export const installOwnedCapabilityProjection = async ({
     throw failure({
       reason: 'InvalidInput',
       path: capabilityParent,
-      message: 'Root capability projection nonce is not path-safe',
+      message: 'Owned capability projection nonce is not path-safe',
     })
   }
   const stage = NodePath.join(capabilityParent, `.capabilities.stage-${token}`)
@@ -323,9 +312,15 @@ export const installOwnedCapabilityProjection = async ({
     await removeStage()
     await runtime.beforeCopy?.(capabilityParent)
     await assertDirectoryIdentity(capabilityParentIdentity)
-    await symlink(projectionPath, stage)
-    if ((await realpath(stage)) !== physicalProjection) {
-      throw new TypeError('staged capability link changed')
+    await runExact({ executable: runtime.cpPath, args: ['-a', '--', projectionPath, stage] })
+    await assertDirectoryIdentity(capabilityParentIdentity)
+    if (
+      (await readGeneration({
+        projectionPath: stage,
+        expectedParent: capabilityParentIdentity.realpath,
+      })) !== projectionDigest
+    ) {
+      throw new TypeError('copied projection generation changed')
     }
   } catch (cause) {
     try {
@@ -336,42 +331,37 @@ export const installOwnedCapabilityProjection = async ({
     throw failure({
       reason: 'CopyFailed',
       path: stage,
-      message: 'Could not create a verified capability link candidate',
+      message: 'Could not create a verified private capability candidate',
       cause,
     })
   }
 
-  const readDestinationGeneration = async (): Promise<string> => {
-    const destinationInfo = await lstat(destination)
-    return destinationInfo.isSymbolicLink() === true
-      ? readGeneration({ projectionPath: await realpath(destination) })
-      : readGeneration({
-          projectionPath: destination,
-          expectedParent: capabilityParentIdentity.realpath,
-        })
-  }
   let destinationExists = true
   let currentGeneration: string | undefined
-  let destinationMatchesProjection = false
   try {
-    currentGeneration = await readDestinationGeneration()
-    destinationMatchesProjection =
-      (await lstat(destination)).isSymbolicLink() === true &&
-      (await realpath(destination)) === physicalProjection
+    await assertDirectoryIdentity(capabilityParentIdentity)
+    currentGeneration = await readGeneration({
+      projectionPath: destination,
+      expectedParent: capabilityParentIdentity.realpath,
+    })
   } catch (cause) {
     if (isErrno({ cause, code: 'ENOENT' }) === true) destinationExists = false
     else {
-      await removeStage()
+      try {
+        await removeStage()
+      } catch {
+        // Never clean through a replaced parent path.
+      }
       throw failure({
         reason: 'VerificationFailed',
         path: destination,
-        message: 'Existing root capability projection is not verifiable',
+        message: 'Existing owned capability projection is not verifiable',
         cause,
       })
     }
   }
 
-  if (destinationMatchesProjection === true && currentGeneration === projectionDigest) {
+  if (currentGeneration === projectionDigest) {
     try {
       await runtime.retainPublishedCapabilities?.({
         ownedMemberPath,
@@ -393,19 +383,29 @@ export const installOwnedCapabilityProjection = async ({
     }
     return { memberKey, projectionPath: destination, projectionDigest, changed: false }
   }
+
   try {
     await runtime.beforePublish?.(capabilityParent)
     await assertDirectoryIdentity(capabilityParentIdentity)
-    await runExact({
-      executable: runtime.mvPath,
-      args:
-        destinationExists === false
-          ? ['-T', '--no-clobber', '--', stage, destination]
-          : ['-T', '--exchange', '--', stage, destination],
-    })
+    if (destinationExists === false) {
+      await runExact({
+        executable: runtime.mvPath,
+        args: ['-T', '--no-clobber', '--', stage, destination],
+      })
+    } else {
+      await runExact({
+        executable: runtime.mvPath,
+        args: ['-T', '--exchange', '--', stage, destination],
+      })
+    }
     await assertDirectoryIdentity(capabilityParentIdentity)
-    if ((await realpath(destination)) !== physicalProjection) {
-      throw new TypeError('published capability link changed')
+    if (
+      (await readGeneration({
+        projectionPath: destination,
+        expectedParent: capabilityParentIdentity.realpath,
+      })) !== projectionDigest
+    ) {
+      throw new TypeError('published projection generation does not match')
     }
   } catch (cause) {
     if (destinationExists === true) {
@@ -417,14 +417,13 @@ export const installOwnedCapabilityProjection = async ({
         })
         await assertDirectoryIdentity(capabilityParentIdentity)
       } catch {
-        // Preserve both paths for explicit recovery when rollback cannot be proven.
+        // Preserve both trees for explicit recovery when rollback cannot be proven.
       }
-
     }
     throw failure({
       reason: 'PublishFailed',
       path: destination,
-      message: 'Could not atomically publish the root capability projection',
+      message: 'Could not atomically publish the owned capability projection',
       cause,
     })
   }
@@ -444,7 +443,10 @@ export const installOwnedCapabilityProjection = async ({
         })
         if (
           currentGeneration === undefined ||
-          (await readDestinationGeneration()) !== currentGeneration
+          (await readGeneration({
+            projectionPath: destination,
+            expectedParent: capabilityParentIdentity.realpath,
+          })) !== currentGeneration
         ) {
           throw new TypeError('retention rollback did not restore the prior projection', { cause })
         }
