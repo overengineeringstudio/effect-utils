@@ -10,9 +10,10 @@ Draft.
 ## Scope
 
 **Defines:** portable descriptor identity, payload checks, runtime inspection,
-and the Nix store import result.
+the Nix store import result, and the cache-backed bridge for generated Buck
+products.
 
-**Does not define:** transport, retention, publication, deployment, activation,
+**Does not define:** cache credentials, cache retention, deployment, activation,
 rollback, or health.
 
 ## Boundary
@@ -25,9 +26,10 @@ Buck action
                  -> immutable Nix store result
 ```
 
-Transport is an input mechanism only. Import accepts a declared local artifact
-path or fetched bytes with the same expected digest; transport identity grants
-no product authority.
+For generic build products, transport is an input mechanism only. Import accepts
+a declared local artifact path or fetched bytes with the same expected digest;
+transport identity grants no product authority. Generated JavaScript and package
+products use the stricter substitution contract below.
 
 ## Descriptor
 
@@ -73,6 +75,31 @@ it.
    passthrough metadata.
 
 Every failed step terminates import. No step invokes Buck or a package manager.
+
+## Cache-backed Product Bridge
+
+The generated product inventory is the source of truth for product name,
+version, Buck target, and output name. Each inventory entry produces one
+sandboxed Nix derivation. The derivation invokes the pinned Buck graph against a
+prepared dependency tree and emits the artifact plus
+`effect-utils/buck-product-provenance/v1`.
+
+The cache publisher builds the derivation before it performs any cache mutation.
+It validates the provenance commit, target, and artifact digest; rejects a pin
+name that already identifies another store path; pushes the store path; and
+creates an immutable Cachix pin with the product as an artifact. Anonymous HTTP
+download and digest verification complete publication.
+
+The committed `effect-utils/buck-cache-products/v2` manifest contains exact rows
+with `name`, `version`, `sha256`, `size`, `storePath`, `artifactUrl`, and
+`provenance`. The Nix loader validates every field and treats the recorded store
+path as the substitution identity. Nix obtains that immutable path from the
+configured binary cache. A validation derivation then checks the artifact
+digest, size, and provenance before exposing the product to the consumer. The
+generated source derivation remains available as the reproducible publication
+recipe, but changing later repository metadata does not change the identity of
+an already-published product. The anonymous artifact URL is an interoperability
+path, not a second source of product authority.
 
 ## Conformance
 

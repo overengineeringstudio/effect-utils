@@ -2,23 +2,29 @@ import { readFileSync } from 'node:fs'
 
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 
-const manifest = JSON.parse(readFileSync('nix/buck2-products/manifest.json', 'utf8')) as {
-  readonly products: readonly (
-    | {
-        readonly descriptor: {
-          readonly modulePath: string
-          readonly productName: string
-          readonly target: string
-        }
-      }
-    | {
-        readonly artifactUrl: string
-        readonly name: string
-        readonly provenance: { readonly target: string }
-        readonly version: string
-      }
-  )[]
-}
+const javascriptProducts = [
+  ['ci-tools', 'ci-tools.js', 'packages/@overeng/ci-tools', 'ci-tools-candidate'],
+  ['genie', 'genie.js', 'packages/@overeng/genie', 'genie-candidate'],
+  [
+    'genie-bootstrap-closure-check',
+    'genie-bootstrap-closure-check.js',
+    'packages/@overeng/genie',
+    'genie-bootstrap-closure-check-candidate',
+  ],
+  ['megarepo', 'mr.js', 'packages/@overeng/megarepo', 'megarepo-candidate'],
+  ['notion-cli', 'notion.js', 'packages/@overeng/notion-cli', 'notion-cli-candidate'],
+  [
+    'notion-db-runtime',
+    'notion-db.js',
+    'packages/@overeng/notion-cli',
+    'notion-db-candidate',
+    'packages/@overeng/notion-datasource-sync',
+  ],
+  ['notion-md', 'notion-md.js', 'packages/@overeng/notion-md', 'notion-md-candidate'],
+  ['npm-release', 'npm-release.js', 'packages/@overeng/npm-release', 'npm-release-candidate'],
+  ['oxc-config', 'oxc-config.js', 'packages/@overeng/oxc-config', 'oxc-config-candidate'],
+  ['tui-stories', 'tui-stories.js', 'packages/@overeng/tui-stories', 'tui-stories-candidate'],
+] as const
 
 const packageProducts = [
   '@overeng/content-address',
@@ -49,31 +55,15 @@ const packageEntries = packageProducts.map((name) => {
   } as const
 })
 export const buckProductSourceEntries = [
-  ...manifest.products.map((publishedProduct) => {
-    const target =
-      'descriptor' in publishedProduct
-        ? publishedProduct.descriptor.target
-        : publishedProduct.provenance.target
-    const name =
-      'descriptor' in publishedProduct
-        ? publishedProduct.descriptor.productName
-        : publishedProduct.name
-    const match = /^effect_utils\/\/(packages\/[^:]+):/.exec(target)
-    if (match === null) throw new Error(`Unsupported product target: ${target}`)
-    return {
-      kind: 'javascript',
-      name,
-      outputName:
-        'descriptor' in publishedProduct
-          ? publishedProduct.descriptor.modulePath
-          : publishedProduct.artifactUrl.split('/').at(-1)!,
-      packagePath: match[1],
-      packageTreePath:
-        name === 'notion-db-runtime' ? 'packages/@overeng/notion-datasource-sync' : match[1],
-      target,
-      version: 'descriptor' in publishedProduct ? '0.0.0' : publishedProduct.version,
-    } as const
-  }),
+  ...javascriptProducts.map(([name, outputName, packagePath, targetName, packageTreePath]) => ({
+    kind: 'javascript' as const,
+    name,
+    outputName,
+    packagePath,
+    packageTreePath: packageTreePath ?? packagePath,
+    target: `effect_utils//${packagePath}:${targetName}`,
+    version: '0.0.0',
+  })),
   ...packageEntries,
 ].toSorted((left, right) => left.name.localeCompare(right.name))
 

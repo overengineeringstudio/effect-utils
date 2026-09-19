@@ -16,6 +16,12 @@ All notable changes to this project will be documented in this file.
   dependencies mid-session and full-page-reload a running story or browser
   test; Vite consumers can drop their app-local `@stylexjs/stylex`
   `optimizeDeps.include` entries.
+- **Buck2 (experiment)**: Reconstruct the smallest JavaScript product from
+  filtered source and a prepared dependency closure inside the normal Nix
+  sandbox, and record the publication-provenance gap exposed by byte comparison.
+- **Buck2 products**: Publish source-rebuildable product derivations through the
+  `overeng-effect-utils` Cachix cache with digest-bound provenance and manifest
+  validation.
 
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full

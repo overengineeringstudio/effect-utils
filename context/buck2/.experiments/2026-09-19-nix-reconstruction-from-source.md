@@ -104,6 +104,28 @@ but no producer commit. This is a provenance gap, not a reconstruction failure.
   recursively invoke Nix. Neither mechanism alone supplies the product
   reconstruction recipe proven here.
 
+## Generated product run
+
+The generalized recipe built three generated inventory entries at producer
+commit `1192802567ca3400ffae2c9e037c766e7160e624`:
+
+| Product      | Wall clock |  Output closure |
+| ------------ | ---------: | --------------: |
+| `oxc-config` |       11 s |    65,336 bytes |
+| `ci-tools`   |       12 s |   808,728 bytes |
+| `notion-md`  |       23 s | 1,529,816 bytes |
+
+`nix build --rebuild` reproduced `oxc-config.js` at SHA-256
+`fd5b505b4056d373cd99b4d1264a3f79774381faa9cd06d1b4cb4bcef1ccf03a`.
+The historical GitHub asset still cannot be tied to a producer commit because
+the v1 manifest and descriptor did not record one. The same-commit historical
+comparison therefore remains unavailable.
+
+A local `file://` binary cache received all three store paths with `nix copy`.
+A fresh local Nix store then restored the paths from only that cache; the
+restored `oxc-config.js` had the same SHA-256 digest. This proves the
+substitution mechanism without mutating the public cache.
+
 ## Conclusion
 
 Yes: Nix can drive the pinned Buck graph inside its normal sandbox from filtered
