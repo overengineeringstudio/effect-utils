@@ -44,6 +44,12 @@ All notable changes to this project will be documented in this file.
   HTTP client, with single-part uploads through 20 MiB, sequential 10 MiB
   multipart uploads above that threshold, and a configurable `maxBytes` limit
   that defaults to 64 MiB.
+- **Buck2 (context)**: decision 0030 rejects git external cells as a
+  member-mount mechanism. The composition architecture bakeoff now compares
+  composed cells, artifact-default libraries, a narrowed hybrid, and Nix
+  outputs; records a provisional artifact-default choice for cross-repository
+  TypeScript reuse; and supersedes the earlier unaccepted artifact proposal.
+  No ratified requirement changes.
 
 - **@overeng/megarepo**: composition-enabled branch worktrees are now created
   directly at their final `P/repos/<owned>` path and use Git registration as

@@ -122,10 +122,11 @@ derivation is cited per requirement. Nothing here is new policy.
   depends on host git configuration, host identity, or platform path
   resolution. (Decision
   [0006](./.decisions/0006-test-contract-and-validation.md).)
-- **MR-R11 Composed workspace is the canonical development context:** For a
-  Buck-admitted repository, a development or agent worktree is a composed
-  workspace by default; a standalone worktree is a declared exception, not a
-  parallel default. (Decision
+- **MR-R11 Standalone worktree is the canonical development context:** For a
+  Buck-admitted repository, a development or agent worktree is a standalone
+  worktree by default; a composed workspace is a declared exception for active
+  fork co-development or generator-source imports (buck2 decision
+  [0034](../buck2/.decisions/0034-artifact-default-composition-no-registry.md)). (Decision
   [0027](../buck2/.decisions/0027-composed-default-worktrees.md); the
   multi-root soak is the named hardening gate.)
 - **MR-R12 Routine application is shape-preserving:** No routine command —

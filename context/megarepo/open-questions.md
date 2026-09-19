@@ -12,7 +12,7 @@ capability projection, dist overlays — consumed by effect-utils' own composed
 root only). Buck2 replaces none of the first two; git external cells cannot
 replace the third
 ([buck2 decision 0030](../buck2/.decisions/0030-external-cells-are-not-a-composition-mechanism.md)).
-[buck2 .proposed/artifact-composition.md](../buck2/.decisions/.proposed/artifact-composition.md)
+[buck2 decision 0034](../buck2/.decisions/0034-artifact-default-composition-no-registry.md)
 proposes to pause the third (composed-by-default reverted, MR-R11) and to
 move the effect-utils library edges from mounts to dist tarballs, leaving
 mounts for fork co-development and generator sources. Blocked on: that
