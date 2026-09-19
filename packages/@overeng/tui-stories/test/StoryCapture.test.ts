@@ -48,14 +48,9 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryCapture', (it) => {
     }),
   )
 
-  it.effect('captures previews from a separate physical module instance', () =>
+  it.effect('captures previews without relying on component identity', () =>
     Effect.promise(async () => {
       const PreviewFromDependencyView = () => null
-      Object.defineProperty(
-        PreviewFromDependencyView,
-        Symbol.for('@overeng/tui-react/TuiStoryPreview'),
-        { value: true },
-      )
       const View = () => null
       const app = {
         config: {
