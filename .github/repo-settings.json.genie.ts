@@ -1,4 +1,5 @@
 import { requiredCIJobs } from '../genie/ci.ts'
+import { prReviewsPullRequestRule } from '../genie/ci-workflow.ts'
 import {
   githubRuleset,
   type GithubRulesetArgs,
@@ -28,18 +29,10 @@ export default githubRuleset({
     },
   },
   rules: [
-    // Require PRs (no direct pushes)
-    {
-      type: 'pull_request',
-      parameters: {
-        required_approving_review_count: 0,
-        dismiss_stale_reviews_on_push: true,
-        require_code_owner_review: false,
-        require_last_push_approval: false,
-        required_review_thread_resolution: false,
-        required_reviewers: [],
-      },
-    },
+    // Require PRs (no direct pushes); all review threads must resolve before merge.
+    // `pr-reviews-resolved` is the early visible CI signal; this native flag is the
+    // live merge-time gate (thread resolution does not retrigger workflows).
+    prReviewsPullRequestRule(),
     // Require CI to pass
     {
       type: 'required_status_checks',

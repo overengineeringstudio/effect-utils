@@ -16,7 +16,7 @@
         "dismiss_stale_reviews_on_push": true,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
-        "required_review_thread_resolution": false,
+        "required_review_thread_resolution": true,
         "required_reviewers": []
       }
     },
@@ -88,6 +88,9 @@
           },
           {
             "context": "test-integration-restate"
+          },
+          {
+            "context": "pr-reviews-resolved"
           }
         ]
       }

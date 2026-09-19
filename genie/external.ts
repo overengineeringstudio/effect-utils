@@ -930,6 +930,10 @@ export const testFilesOxlintOverride = {
 // =============================================================================
 
 export {
+  prReviewsPullRequestRule,
+  prReviewsResolvedJob,
+  prReviewsResolvedJobId,
+  prReviewsResolvedStep,
   bashShellDefaults,
   checkoutStep,
   cachixCliBuildStep,

@@ -40,6 +40,8 @@ import {
   validateNixStoreStep,
   withCiSourceRoot,
   defaultRefPolicyCheckJob,
+  prReviewsResolvedJob,
+  prReviewsResolvedJobId,
   githubTokenEnv,
 } from '../../genie/ci-workflow.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
@@ -1037,6 +1039,13 @@ const extraJobs: Record<string, any> = {
     }),
     'timeout-minutes': 90,
   },
+  /**
+   * Review-thread resolution gate. Checkout-free: only calls `gh api`, so it runs on
+   * GitHub-hosted capacity instead of scarce Nix runners. The native ruleset flag is
+   * the live merge gate; this job is the early visible PR signal (thread resolution
+   * does not retrigger workflows, so re-run after resolving threads to refresh).
+   */
+  [prReviewsResolvedJobId]: prReviewsResolvedJob(),
   'nix-closure-sizes': {
     if: measurementLaneIf,
     'runs-on': namespaceRunner({

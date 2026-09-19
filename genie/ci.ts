@@ -49,6 +49,10 @@ export const EXTRA_CI_JOB_NAMES = [
   'nix-closure-sizes',
   'source-shape',
   'test-integration-restate',
+  // Review-thread resolution gate: fails while any PR review thread is unresolved.
+  // The native ruleset flag (`required_review_thread_resolution`) is the live merge
+  // gate; this job is the early visible PR signal. Merge-blocking.
+  'pr-reviews-resolved',
 ] as const
 
 /** CI job keys that run only after changes reach `main`. */
