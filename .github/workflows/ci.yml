@@ -510,11 +510,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -690,11 +685,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -856,11 +846,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1019,11 +1004,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1182,11 +1162,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1345,11 +1320,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1511,11 +1481,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1811,11 +1776,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2025,11 +1985,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2190,11 +2145,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2353,11 +2303,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2516,11 +2461,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2996,11 +2936,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -3175,11 +3110,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -4046,11 +3976,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -7484,11 +7409,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -7655,11 +7575,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -7818,11 +7733,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -8032,11 +7942,6 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Evict cached pnpm deps for oxlint-npm
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && bash ''${{ runner.temp }}/composition-state/ci-runtime/evict-pnpm-deps-cached-outputs.sh'' ''.#oxlint-npm'''
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -8201,6 +8106,8 @@ jobs:
       - test-playwright-utils
       - test-playwright-tui-react
       - test-megarepo-cold-gc
+      - nix-check
+      - nix-fod-check
       - pnpm-builder-contract
       - pnpm-regression
       - bundle-smoke
