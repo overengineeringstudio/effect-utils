@@ -81,7 +81,7 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryCapture', (it) => {
         render: () => React.createElement(DependencyView),
         args: {},
         argTypes: {},
-        filePath: 'dependency-view.stories.tsx',
+        filePath: import.meta.filename,
       }
 
       const captured = await captureStoryProps({ story })

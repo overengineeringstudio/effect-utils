@@ -8,17 +8,39 @@
  * TuiStoryPreview element props before it mounts.
  */
 
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
+
 import type { Schema } from 'effect'
 import type { Atom } from 'effect/unstable/reactivity'
-import React, { type ReactElement, type ComponentType } from 'react'
+import type { createElement, ReactElement, ComponentType } from 'react'
 
-import { renderToString } from '@overeng/tui-react'
 // Import only the type — the runtime TuiStoryPreview import pulls in xterm.js
 // which creates open handles that prevent process exit in Node/Bun.
+import type { renderToString } from '@overeng/tui-react'
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { ResolvedStory } from './StoryModule.ts'
 const storyCaptureSymbol = Symbol.for('@overeng/tui-react/TuiStoryPreview.capture')
+
+type StoryRuntime = {
+  readonly createElement: typeof createElement
+  readonly renderToString: typeof renderToString
+}
+
+const loadStoryRuntime = async (filePath: string): Promise<StoryRuntime> => {
+  const storyRequire = createRequire(filePath)
+  const [react, tuiReact] = await Promise.all([
+    // oxlint-disable-next-line import/no-dynamic-require -- story hooks require the React instance selected by the story package
+    import(pathToFileURL(storyRequire.resolve('react')).href),
+    // oxlint-disable-next-line import/no-dynamic-require -- the reconciler must use the story package's React peer instance
+    import(pathToFileURL(storyRequire.resolve('@overeng/tui-react')).href),
+  ])
+  return {
+    createElement: react.createElement,
+    renderToString: tuiReact.renderToString,
+  }
+}
 
 // =============================================================================
 // Types
@@ -135,6 +157,7 @@ export const captureStoryProps = async ({
   readonly argOverrides?: Record<string, unknown> | undefined
 }): Promise<CapturedStoryProps> => {
   const mergedArgs = { ...story.args, ...argOverrides }
+  const storyRuntime = await loadStoryRuntime(story.filePath)
 
   let captured: CapturedStoryProps | undefined
   let observedElement = '<render did not return an element>'
@@ -151,7 +174,9 @@ export const captureStoryProps = async ({
   })
   const renderPromise = (() => {
     try {
-      return renderToString({ element: React.createElement(CaptureWrapper) })
+      return storyRuntime.renderToString({
+        element: storyRuntime.createElement(CaptureWrapper),
+      })
     } finally {
       if (previousCapture === undefined) {
         Reflect.deleteProperty(globalThis, storyCaptureSymbol)
