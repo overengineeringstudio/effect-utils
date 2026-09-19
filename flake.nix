@@ -166,6 +166,9 @@
             gh-ci-utils = ghCiUtils;
             gh-ci-utils-dirty = ghCiUtilsDirty;
             "gh-ci-utils-pnpm-deps" = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
+            # Static-check executables projected as Buck capabilities. Nix realizes
+            # third-party tools; Buck owns source inputs and check execution.
+            oxfmt = pkgs.oxfmt;
             # The oxlint plugin bundle keeps its pnpm FOD as first-class outputs:
             # `nix/oxlint-npm.nix` needs the pnpm-built plugin bundle, which the
             # `oxc-config` JavaScript product does not replace. The bundle exposes

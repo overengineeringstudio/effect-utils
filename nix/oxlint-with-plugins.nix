@@ -28,8 +28,9 @@ assert oxlintNpm.pluginPath != null;
 pkgs.writeShellApplication {
   name = "oxlint";
   runtimeInputs = [
-    pkgs.jq
     pkgs.flock
+    pkgs.jq
+    pkgs.tsgolint
   ];
   text = ''
     # Rule development escape hatch: the default plugin is a Nix build-time
