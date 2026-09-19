@@ -657,7 +657,7 @@ in
           "mr:lock-sync-check"
           "mr:source-policy-check"
           "nix:flake:check"
-          "pnpm:install"
+          "buck2:editor:publish"
           "test:run"
           "weaver:check"
           "weaver:diff"
