@@ -353,10 +353,14 @@ const job = ({
   ],
 })
 
-const multiPlatformJob = (step: {
+const multiPlatformJob = ({
+  timeoutMinutes = jobTimeoutMinutes,
+  ...step
+}: {
   name: string
   run: string
   env?: Record<string, string>
+  timeoutMinutes?: number
 }) => ({
   if: normalCiIf,
   strategy: {
@@ -369,7 +373,7 @@ const multiPlatformJob = (step: {
     profile: '${{ matrix.runner }}' as RunnerProfile,
     runId: '${{ github.run_id }}',
   }),
-  'timeout-minutes': jobTimeoutMinutes,
+  'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
@@ -462,6 +466,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   // retained source summaries, and also proves every lane's recorded census exactly matches its
   // actual collection. CI must not shard this lane: the gate needs both partitions in one job.
   test: multiPlatformJob({
+    timeoutMinutes: 45,
     name: 'Unit tests',
     env: githubTokenEnv(),
     run: runDevenvTasksBefore('test:run'),
