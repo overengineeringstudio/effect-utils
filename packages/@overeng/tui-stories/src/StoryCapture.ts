@@ -60,18 +60,8 @@ export class StoryCaptureError extends Error {
  * Editor dependency views can load a separately transformed component instance, so
  * component identity and function names are not stable capture boundaries.
  */
-const hasPreviewContract = (props: Record<string, unknown>): boolean => {
-  const app = props.app
-  if (typeof app !== 'object' || app === null || !('config' in app)) return false
-  const config = app.config
-  return (
-    typeof config === 'object' &&
-    config !== null &&
-    typeof config.reducer === 'function' &&
-    'View' in props &&
-    typeof props.command === 'string'
-  )
-}
+const hasPreviewContract = (props: Record<string, unknown>): boolean =>
+  'app' in props && 'View' in props && typeof props.command === 'string'
 
 const extractPreviewProps = (element: ReactElement): CapturedStoryProps | undefined => {
   if (element === null || element === undefined) return undefined
