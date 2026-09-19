@@ -11,6 +11,7 @@ import {
   decodeCollectionArtifact,
   decodeTestAuthority,
   ownershipForFile,
+  isTestDiscoveryDirectory,
   parseShowOutput,
   repoPathFromReportName,
   taskFileStem,
@@ -75,7 +76,7 @@ const discoverTestFiles = async ({
         await readdir(directory, { withFileTypes: true })
       ).map(async (entry) => {
         const relativePath = `${prefix}/${entry.name}`
-        if (entry.isDirectory() === true) {
+        if (entry.isDirectory() === true && isTestDiscoveryDirectory(entry.name) === true) {
           return discoverTestFiles({
             directory: resolve(directory, entry.name),
             prefix: relativePath,

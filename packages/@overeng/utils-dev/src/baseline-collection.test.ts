@@ -4,6 +4,7 @@ import {
   decodeCollectionArtifact,
   decodeTestAuthority,
   minimumTestAuthorityLanes,
+  isTestDiscoveryDirectory,
   ownershipForFile,
   parseShowOutput,
   repoPathFromReportName,
@@ -57,6 +58,13 @@ const registryWith = (overrides: Partial<TestAuthorityLane>) =>
 
 const decode = (lanes: readonly unknown[]) =>
   decodeTestAuthority({ decoded: { schemaVersion: 2, lanes }, sourceLabel: 'bridge.json' })
+
+describe('isTestDiscoveryDirectory', () => {
+  it('excludes generated Buck editor views from the repository census', () => {
+    expect(isTestDiscoveryDirectory('.editor-view')).toBe(false)
+    expect(isTestDiscoveryDirectory('src')).toBe(true)
+  })
+})
 
 describe('decodeTestAuthority', () => {
   it('decodes a conformant schemaVersion 2 bridge', () => {

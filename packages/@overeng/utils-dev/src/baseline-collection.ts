@@ -55,6 +55,9 @@ export const compareAuthorityStrings = (left: string, right: string): number =>
 export const byteCompare = (left: string, right: string): number =>
   Buffer.from(left).compare(Buffer.from(right))
 
+/** Whether test discovery should descend into a repository directory. */
+export const isTestDiscoveryDirectory = (name: string): boolean => name !== '.editor-view'
+
 const isStringArray = (value: unknown): value is readonly string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string')
 
