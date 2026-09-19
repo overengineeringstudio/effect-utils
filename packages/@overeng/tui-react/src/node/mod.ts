@@ -40,3 +40,8 @@ export {
   type RunTuiMainOptions,
   type TuiRuntime,
 } from '../effect/cli.tsx'
+
+// Synchronous fd writers for the result/data channel. These bypass
+// `console.*` and the Effect logger, so they survive `LogCapture` in
+// progressive React modes and forced process exit with a slow pipe reader.
+export { writeStdoutSync, writeStdoutLineSync } from '../effect/stdout.node.ts'

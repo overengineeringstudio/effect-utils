@@ -1,6 +1,8 @@
 import { Effect, Schema } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
+import * as stdoutModule from '@overeng/tui-react/node'
+
 import { CiStateSchema } from '../src/isomorphic/renderers/CiOutput/schema.ts'
 import {
   createSingleRunState,
@@ -93,7 +95,16 @@ describe('CLI JSON output contracts', () => {
   })
 
   it('emits valid, non-secret auth login and status JSON to stdout', async () => {
-    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const lines: Array<string> = []
+    const push = (text: string): void => {
+      for (const line of text.split('\n')) {
+        if (line.length > 0) lines.push(line)
+      }
+    }
+    // `writeStdoutLineSync` calls `writeStdoutSync` through a module-local
+    // binding, so both exports need spies (same as captureStdoutLines).
+    const lineSpy = vi.spyOn(stdoutModule, 'writeStdoutLineSync').mockImplementation(push)
+    const rawSpy = vi.spyOn(stdoutModule, 'writeStdoutSync').mockImplementation(push)
     try {
       await Effect.runPromise(
         reportAuthResult({
@@ -115,7 +126,7 @@ describe('CLI JSON output contracts', () => {
         }),
       )
 
-      const documents = stdout.mock.calls.map(([line]) => JSON.parse(String(line)))
+      const documents = lines.map((line) => JSON.parse(line))
       expect(documents).toEqual([
         {
           _tag: 'Authenticated',
@@ -125,9 +136,57 @@ describe('CLI JSON output contracts', () => {
         },
         { _tag: 'Unauthenticated' },
       ])
-      expect(stdout.mock.calls.join('\n')).not.toContain('must-not-be-rendered')
+      expect(lines.join('\n')).not.toContain('must-not-be-rendered')
     } finally {
-      stdout.mockRestore()
+      lineSpy.mockRestore()
+      rawSpy.mockRestore()
+    }
+  })
+
+  it('writes the human status line to stdout in human modes', async () => {
+    const lines: Array<string> = []
+    const push = (text: string): void => {
+      for (const line of text.split('\n')) {
+        if (line.length > 0) lines.push(line)
+      }
+    }
+    const lineSpy = vi.spyOn(stdoutModule, 'writeStdoutLineSync').mockImplementation(push)
+    const rawSpy = vi.spyOn(stdoutModule, 'writeStdoutSync').mockImplementation(push)
+    try {
+      for (const output of ['tty', 'ci', 'ci-plain', 'log'] as const) {
+        lines.length = 0
+        await Effect.runPromise(
+          reportAuthResult({ output, session: undefined, humanMessage: 'No active session.' }),
+        )
+        expect(lines.join('')).toContain('No active session.')
+      }
+    } finally {
+      lineSpy.mockRestore()
+      rawSpy.mockRestore()
+    }
+  })
+
+  it('resolves auto to the JSON document where agents run (CI has no human watching)', async () => {
+    const lines: Array<string> = []
+    const push = (text: string): void => {
+      for (const line of text.split('\n')) {
+        if (line.length > 0) lines.push(line)
+      }
+    }
+    const lineSpy = vi.spyOn(stdoutModule, 'writeStdoutLineSync').mockImplementation(push)
+    const rawSpy = vi.spyOn(stdoutModule, 'writeStdoutSync').mockImplementation(push)
+    try {
+      await Effect.runPromise(
+        reportAuthResult({
+          output: 'auto',
+          session: undefined,
+          humanMessage: 'No active session.',
+        }),
+      )
+      expect(lines.map((line) => JSON.parse(line))).toEqual([{ _tag: 'Unauthenticated' }])
+    } finally {
+      lineSpy.mockRestore()
+      rawSpy.mockRestore()
     }
   })
 })
