@@ -588,4 +588,31 @@ describe('platform-gated package derivation', () => {
     ).toBe(false)
     expect(platformGatedPackageNames(libcOnly)).toEqual(['musl-only'])
   })
+
+  it('carries OpenTUI musl dispatch packages on glibc Linux for Bun', () => {
+    const opentui = translatePnpmLock({
+      lockfileText: lock({
+        importers: `  packages/app:
+    optionalDependencies:
+      '@opentui/core-linux-x64-musl':
+        specifier: 0.5.11
+        version: 0.5.11`,
+        packages: `  '@opentui/core-linux-x64-musl@0.5.11':
+    resolution: {integrity: ${archiveIntegrity}}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]`,
+        snapshots: `  '@opentui/core-linux-x64-musl@0.5.11': {}`,
+      }),
+      workspaceText,
+    })
+
+    expect(
+      packageAllowed({
+        metadata: opentui,
+        packageKey: '@opentui/core-linux-x64-musl@0.5.11',
+        platform: 'linux_x86_64',
+      }),
+    ).toBe(true)
+  })
 })

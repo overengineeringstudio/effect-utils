@@ -28,8 +28,9 @@ export const portablePnpmPlatform = 'javascript_portable' as const
 export type PnpmPlatform = keyof typeof platformValues
 
 /** Every admitted platform in deterministic order. */
-export const pnpmPlatforms: readonly PnpmPlatform[] = Object.keys(platformValues).toSorted() as
-  readonly PnpmPlatform[]
+export const pnpmPlatforms: readonly PnpmPlatform[] = Object.keys(
+  platformValues,
+).toSorted() as readonly PnpmPlatform[]
 
 const compareStrings = ({ left, right }: { left: string; right: string }): number =>
   left < right ? -1 : left > right ? 1 : 0
@@ -130,6 +131,19 @@ const platformAllows = ({
   return positive.length === 0 || positive.includes(value)
 }
 
+/**
+ * OpenTUI dispatches between glibc and musl packages at runtime under Bun, so a
+ * Linux editor view must carry both variants even though its own libc is known.
+ */
+const isOpenTuiRuntimeLibcVariant = ({
+  packageKey,
+  cpu,
+}: {
+  packageKey: string
+  cpu: string | undefined
+}): boolean =>
+  cpu !== undefined && parseVirtualStoreKey(packageKey).name === `@opentui/core-linux-${cpu}-musl`
+
 /** Whether one resolved lock package may be installed on one admitted platform. */
 export const packageAllowed = ({
   metadata,
@@ -154,11 +168,14 @@ export const packageAllowed = ({
     )
   }
   const values = platformValues[platform]
+  const libcAllowed =
+    values.os !== 'linux' ||
+    platformAllows({ constraints: packageMetadata.libc, value: values.libc }) ||
+    isOpenTuiRuntimeLibcVariant({ packageKey, cpu: values.cpu })
   return (
     platformAllows({ constraints: packageMetadata.cpu, value: values.cpu }) &&
     platformAllows({ constraints: packageMetadata.os, value: values.os }) &&
-    (values.os !== 'linux' ||
-      platformAllows({ constraints: packageMetadata.libc, value: values.libc }))
+    libcAllowed
   )
 }
 
@@ -314,7 +331,9 @@ const typesCompanionSnapshots = ({
     compareStrings({ left, right }),
   )) {
     const versions = new Set(
-      snapshotKeys.map((snapshotKey) => metadata.packages[metadata.snapshots[snapshotKey]!.package]!.version),
+      snapshotKeys.map(
+        (snapshotKey) => metadata.packages[metadata.snapshots[snapshotKey]!.package]!.version,
+      ),
     )
     if (versions.size > 1) {
       return fail(
@@ -581,7 +600,10 @@ export const computeStoreSccs = ({
       if (storeKeyOf.has(companionSnapshot) === false) continue
       targets.add(companionSnapshot)
     }
-    bySnapshot.set(snapshotKey, [...targets].toSorted((left, right) => compareStrings({ left, right })))
+    bySnapshot.set(
+      snapshotKey,
+      [...targets].toSorted((left, right) => compareStrings({ left, right })),
+    )
   }
 
   const index = new Map<string, number>()
@@ -672,7 +694,8 @@ export const makePnpmStoreProjection = ({
   const sccByStoreKey = new Map<string, number>()
   sccs.forEach((members, sccIndex) => {
     for (const member of members) {
-      if (sccByStoreKey.has(member) === true) return fail(`store key ${member} is in two components`)
+      if (sccByStoreKey.has(member) === true)
+        return fail(`store key ${member} is in two components`)
       sccByStoreKey.set(member, sccIndex)
     }
   })
