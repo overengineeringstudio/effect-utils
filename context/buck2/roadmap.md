@@ -111,6 +111,24 @@ independent BuildProduct import boundary.
 and configuration, hand-maintained repository adapters that projection
 supersedes, and each product's pnpm-deps fixed-output derivation.
 
+## Phase 5b — distribution layer (decision 0037)
+
+**Entry conditions:** Reconstruction is proven for one product (the
+`from-source` derivation) and the public and private binary caches are
+provisioned on every builder.
+
+**Sequence:** Generate a sandboxed Buck-invoking derivation per product and
+package (genie owns it; no hand-written recipes); replace the GitHub publisher
+with a cache publisher (push, digest-named pin, provenance, anonymous
+post-publish verification for public products); move private-shared products
+onto the private cache and prove the Nix-realized tarball path for one pnpm
+consumer; repin existing consumer edges from release URLs to cache URLs through
+the manifest; retire `publish.sh` and the release namespaces.
+
+**Dissolution target:** Delete the GitHub publisher, the release-asset
+verification path in the Nix bridge, and every consumer FOD that existed only
+to stage producer sources. Remote execution is not on this path (02-execution).
+
 ## Phase 6 — consumer adoption
 
 **Entry conditions:** The producer repository is closed or exposes the required
