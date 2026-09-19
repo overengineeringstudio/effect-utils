@@ -28,7 +28,6 @@ let
   productName = product.name;
   packagePath = product.packageTreePath or product.packagePath;
   outputName = product.outputName;
-  workspacePackageName = "@overeng/${builtins.baseNameOf packagePath}";
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
 in
 assert lib.assertMsg (
@@ -138,11 +137,29 @@ pkgs.stdenv.mkDerivation {
 
     mkdir -p nix-deps
     cp -a ${preparedDeps}/node_modules nix-deps/tree
-    self_link="nix-deps/tree/.pnpm/node_modules/${workspacePackageName}"
-    if [ -L "$self_link" ]; then
-      chmod u+w "$(dirname "$self_link")"
-      rm "$self_link"
-    fi
+    PREPARED_TREE="$PWD/nix-deps/tree" ${pkgs.bun}/bin/bun -e '
+      import { chmod, readdir, realpath, rm } from "node:fs/promises"
+      import { join } from "node:path"
+      const root = process.env.PREPARED_TREE
+      if (root === undefined) throw new Error("PREPARED_TREE is unset")
+      const visit = async (directory) => {
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+          const path = join(directory, entry.name)
+          if (entry.isDirectory()) {
+            await visit(path)
+          } else if (entry.isSymbolicLink()) {
+            try {
+              await realpath(path)
+            } catch (error) {
+              if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error
+              await chmod(directory, 0o755)
+              await rm(path)
+            }
+          }
+        }
+      }
+      await visit(root)
+    '
 
     cat > buck2/nix_source.bzl <<'NIX_SOURCE'
     def _source_directory_impl(ctx):
