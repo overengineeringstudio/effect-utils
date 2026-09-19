@@ -82,16 +82,17 @@ including the five previously missed classes other than `tsgo_typecheck`.
 There is no context-dependent action-key input in the remaining action: its
 digest and command are identical across contexts.
 
-The strict zero-local resolution signal is not yet met. The one remaining local
-action fails in both contexts, and failed actions do not produce a reusable
-successful cache entry. Per Amendment 1, retain DELTA-001 and stop this slice
-without changing rule or platform definitions. A following slice must remove
-the pre-existing warning at its source and repeat the same two-context proof.
+The one remaining local action does not violate key stability. It fails
+identically in both contexts, and failed actions do not produce a reusable
+successful cache entry. The separate finding is that the
+`packages/@overeng/megarepo` `preferSchemaOverJson` warning makes `//:quick`
+red on the sampled branch. The landing seat for PRs #1283 and #1301 owns that
+finding; this experiment does not fix it.
 
 ## VRS Impact
 
-This experiment falsifies context-dependent keys as the cause of S8's 633 local
-actions. It narrows [DELTA-001](../04-reuse/.delta/DELTA-001-second-context-local-reexecution.md)
-to the single non-cacheable failing `tsgo_typecheck` action. BUCK-R06 and
-REUSE-R02 remain unchanged, and DELTA-001 remains open until an unchanged
-successful `//:quick` reports zero local actions in the second context.
+This experiment resolves DELTA-001 as a test-ordering artifact: S8's sandbox
+run was the first build at its rebased revision; at one revision with the
+normal context warmed first, the sandbox reused 1,192 of 1,195 queried actions,
+and the remaining action failed identically in both contexts. DELTA-001 is
+removed. BUCK-R06 and REUSE-R02 remain unchanged.
