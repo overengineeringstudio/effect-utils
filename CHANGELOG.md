@@ -207,6 +207,10 @@ All notable changes to this project will be documented in this file.
   stderr stayed empty. Results now go through the synchronous fd writer:
   the JSON document on stdout in JSON modes, the human status line on stdout
   otherwise.
+- **@overeng/gh-ci-utils**: send `User-Agent: gh-ci-utils/0.1.0` on every
+  `api.github.com` request (installation-token POST, REST GET/POST/text, and
+  GraphQL). GitHub rejects REST requests without a User-Agent header (403),
+  which made every GitHub-App-backed read fail at token creation.
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
   **Workspace boundary**: pnpm discovers the workspace by walking up from the
