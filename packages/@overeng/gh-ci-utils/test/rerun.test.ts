@@ -121,9 +121,7 @@ describe('parseDispatchInputs', () => {
       Effect.runSync(parseDispatchInputs({ field: Option.none(), inputs: Option.none() })),
     ).toBeUndefined()
     expect(
-      Effect.runSync(
-        parseDispatchInputs({ field: Option.none(), inputs: Option.some('  ') }),
-      ),
+      Effect.runSync(parseDispatchInputs({ field: Option.none(), inputs: Option.some('  ') })),
     ).toBeUndefined()
   })
 
@@ -141,9 +139,7 @@ describe('parseDispatchInputs', () => {
   it('rejects a non-object JSON payload', () => {
     expect(
       Effect.runSync(
-        Effect.flip(
-          parseDispatchInputs({ field: Option.none(), inputs: Option.some('[1]') }),
-        ),
+        Effect.flip(parseDispatchInputs({ field: Option.none(), inputs: Option.some('[1]') })),
       ),
     ).toContain('JSON object')
   })
