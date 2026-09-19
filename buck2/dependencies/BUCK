@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:82453d65e9d1976c28c89bdf9222df0e296bd13d16f378686782b5b1ad9a8e40
+# Store fingerprint: sha256:6467fa92d55cf6784cb4d999f65a8918884b48bca4a1ed068e08296a8b8e6a9f
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 
@@ -33694,8 +33694,10 @@ pnpm_store_view(
         "vitest": "vitest@4.1.9_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@4.1.9_happy-dom@20._f830263be88a0e28\tvitest.mjs",
     },
     workspace_trees = {
+        "workspace_packages_overeng_utils_e8a24aadff3a": "//packages/@overeng/utils:package_tree",
     },
     workspace_dependencies = {
+        "@overeng/utils": "workspace_packages_overeng_utils_e8a24aadff3a",
     },
     visibility = ["PUBLIC"],
 )
