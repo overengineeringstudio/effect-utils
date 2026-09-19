@@ -64,6 +64,14 @@ from dependency-materialization
 [decision 0006](../../dependency-materialization/05-buck2-evidence/.decisions/0006-nix-exported-buck-toolchains.md);
 shared-cache reuse of a local action does not imply that contract has been met.
 
+Under BUCK-R17 the contract is realized as a worker image: an execution
+platform names the Nix closure that provides every tool its actions bind, a
+worker advertises the closures it holds as platform properties, and the
+scheduler places a cache miss only on a worker whose properties match. The
+first backend evaluated is NativeLink (cache, scheduler, one x86_64-linux
+worker) after the BUCK-R06 key-stability delta is closed; the rerunnable kit is
+in `.experiments/2026-09-19-nativelink-remote-execution.md`.
+
 A stage-zero provider binds an exact Nix realization identity, executable,
 protocol, and execution-platform constraint; a negative test proves an
 undeclared ambient copy is ignored; a graph-built replacement retires it

@@ -145,6 +145,22 @@ cross-member dependency writers, live branch sharing, duplicate build
 producers, and composition exceptions. At repository close, its residual list
 is empty and both repository and cumulative net-complexity sums are negative.
 
+## Phase 7 — action-level remote execution (BUCK-R17)
+
+**Entry conditions:** DELTA-001 (second-context key instability) is closed;
+the 0037 distribution layer is in use; an x86_64-linux worker host with
+headroom exists.
+
+**Sequence:** Define the worker image contract (02-execution open question);
+stand up NativeLink cache + scheduler + one worker beside bazel-remote; prove
+miss -> remote execution -> AC hit on real typecheck, emit, and test actions
+with local execution disabled; then decide the bazel-remote replacement in a
+decision record and retire it. Public/private trust tiers (0033) are preserved
+by separate processes.
+
+**Dissolution target:** bazel-remote and its service module once NativeLink
+carries both tiers; no second cache backend is kept indefinitely.
+
 ## Cross-phase gates
 
 - One authority transfer, ledger row, and deletion entry form the review unit.
