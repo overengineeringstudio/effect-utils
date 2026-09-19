@@ -66,6 +66,10 @@
             ;
         };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
+        oxcConfigFromSource = import ./nix/buck2-products/from-source.nix {
+          inherit pkgs buck2;
+          preparedDeps = oxlintNpm.pluginBundle.passthru.depsBuildsByInstallRoot.root;
+        };
         buck2-go = import ./nix/go.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         buck2-rust-toolchain-capability =
@@ -277,6 +281,7 @@
             "npm-release-pnpm-deps" = cliPackages.npm-release.passthru.depsBuildsByInstallRoot.root;
             oxc-config = oxlintNpm.pluginBundle;
             "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.depsBuildsByInstallRoot.root;
+            oxc-config-from-source = oxcConfigFromSource;
             # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
             oxlint-npm = oxlintNpm;
             # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
