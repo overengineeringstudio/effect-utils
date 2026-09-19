@@ -1,15 +1,28 @@
-# Decision 0035: Source-side generation freshness gates Buck entrypoints
+# 0035 Source-side generation freshness gates Buck entrypoints
 
-## Status
+Status: accepted
 
 Accepted on 2026-09-11.
 
-## Problem
+## Context
 
 Generated `BUCK`, composition, capability, dependency, and authority files define the graph Buck
 analyzes. A target inside that graph cannot prove the graph is current: stale generation can omit the
 target, omit an input, or preserve an old command and still report success. Making Buck run the
 generator would also make the consumer of generated graph state a second producer of that state.
+
+## Evidence and Argument
+
+The rejected alternatives below were ruled out by the circularity and second-producer arguments stated in the context; no measurement was taken for this boundary decision (recorded as such when the record was reshaped to the decision contract on 2026-09-19; the original 2026-09-11 text is preserved unchanged in Context, Decision, Consequences, and Options).
+
+## Options
+
+| Option                              | Tradeoff                                                                                                                                                                                                                                                                                                                                                           | Outcome  |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| Chosen                              | `genie:check` remains an explicit source-side stage-zero operation and is classified `outside-by-policy:stage-zero-bootstrap-freshness`. Every public task that enters the governed Buck authority surface depends on this check before its Buck process starts. CI invokes the same task graph; a stale projection therefore blocks the job before Buck analysis. | Accepted |
+| A Buck freshness target             | circular authority; a stale graph can omit or weaken its own verifier.                                                                                                                                                                                                                                                                                             | Rejected |
+| Regenerate during Buck analysis     | turns read-only analysis into mutation and creates a second producer race with `genie:run`.                                                                                                                                                                                                                                                                        | Rejected |
+| Rely only on a parallel CI lint job | merge blocking would catch drift eventually, but individual Buck jobs could still publish false-green evidence from stale graph state.                                                                                                                                                                                                                             | Rejected |
 
 ## Decision
 
@@ -44,11 +57,3 @@ proof target itself.
   through a committed-graph dependency bootstrap, not a root package-manager
   installation.
 - Freshness failure stops the entrypoint; Buck never runs against a graph already known to be stale.
-
-## Rejected alternatives
-
-- **A Buck freshness target:** circular authority; a stale graph can omit or weaken its own verifier.
-- **Regenerate during Buck analysis:** turns read-only analysis into mutation and creates a second
-  producer race with `genie:run`.
-- **Rely only on a parallel CI lint job:** merge blocking would catch drift eventually, but individual
-  Buck jobs could still publish false-green evidence from stale graph state.
