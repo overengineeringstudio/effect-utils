@@ -46,6 +46,7 @@ export const ciOperationDispositions = {
   'notify-alignment': 'outside-by-policy:ci-control-plane',
   'pnpm-builder-contract': 'outside-by-policy:nix-builder-contract',
   'pnpm-regression': 'outside-by-policy:nix-builder-contract',
+  'pr-reviews-resolved': 'outside-by-policy:github-review-thread-gate',
   'source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
   test: 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test-integration-notion': 'outside-by-policy:secret-service-integration',

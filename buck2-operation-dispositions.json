@@ -73,6 +73,10 @@
       "operation": "test-integration-restate"
     },
     {
+      "disposition": "outside-by-policy:github-review-thread-gate",
+      "operation": "pr-reviews-resolved"
+    },
+    {
       "disposition": "outside-by-policy:operator-benchmark",
       "operation": "devenv-perf"
     },
