@@ -463,7 +463,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -598,7 +598,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-typecheck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -638,7 +638,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -756,7 +756,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-lint"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -799,7 +799,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -917,7 +917,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-${{ strategy.job-index }}"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -957,7 +957,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1075,7 +1075,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-utils"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1115,7 +1115,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1233,7 +1233,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-tui-react"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1273,7 +1273,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1391,7 +1391,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-megarepo-cold-gc"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1434,7 +1434,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1552,7 +1552,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-check-${{ strategy.job-index }}"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1729,7 +1729,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1898,7 +1898,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-builder-contract"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1938,7 +1938,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2058,7 +2058,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-regression"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2098,7 +2098,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2216,7 +2216,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bundle-smoke"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2256,7 +2256,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2374,7 +2374,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-cargo"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2414,7 +2414,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2539,7 +2539,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-weaver"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2591,7 +2591,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2672,7 +2672,7 @@ jobs:
           '
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pr-a-inert-buck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2709,7 +2709,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -2853,7 +2853,7 @@ jobs:
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash "$proof_script"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-trusted-buck2-remote-cache-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2889,7 +2889,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3007,7 +3007,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bootstrap-cold-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -3063,7 +3063,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3820,7 +3820,7 @@ jobs:
           retention-days: 7
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     timeout-minutes: 90
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-devenv-perf"
@@ -3929,7 +3929,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -4522,7 +4522,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-closure-sizes"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -7362,7 +7362,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7485,7 +7485,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-integration-notion"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -7528,7 +7528,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7646,7 +7646,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -7686,7 +7686,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -7856,7 +7856,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -7895,7 +7895,7 @@ jobs:
       - name: Prepare effect-utils composition
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -8087,7 +8087,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Cleanup effect-utils composition
         if: always()
-        run: '$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh'
+        run: "$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-deploy-storybooks"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}

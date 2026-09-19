@@ -69,13 +69,10 @@ let
     expectedExternalCapabilities = [
       "actionlint"
       "effect-tsgo"
-      "opentui-core-native"
       "oxfmt"
       "typescript-api-server"
     ];
-    expectedExternalModules = opentuiCoreExternalModules;
     expectedProductKind = "cli";
-    nativeNodePackages = opentuiCoreNative.packages;
     pathPackages = [ oxfmtPkg ];
     smokeTestArgs = [ "--dry-run" ];
   };

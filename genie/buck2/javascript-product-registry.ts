@@ -24,7 +24,6 @@ export const javaScriptProductRegistry = {
       externalCapabilities: [
         'actionlint',
         'effect-tsgo',
-        'opentui-core-native',
         'oxfmt',
         'typescript-api-server',
       ],
