@@ -28,9 +28,8 @@ export const portablePnpmPlatform = 'javascript_portable' as const
 export type PnpmPlatform = keyof typeof platformValues
 
 /** Every admitted platform in deterministic order. */
-export const pnpmPlatforms: readonly PnpmPlatform[] = Object.keys(
-  platformValues,
-).toSorted() as readonly PnpmPlatform[]
+export const pnpmPlatforms: readonly PnpmPlatform[] = Object.keys(platformValues).toSorted() as
+  readonly PnpmPlatform[]
 
 const compareStrings = ({ left, right }: { left: string; right: string }): number =>
   left < right ? -1 : left > right ? 1 : 0
@@ -331,9 +330,7 @@ const typesCompanionSnapshots = ({
     compareStrings({ left, right }),
   )) {
     const versions = new Set(
-      snapshotKeys.map(
-        (snapshotKey) => metadata.packages[metadata.snapshots[snapshotKey]!.package]!.version,
-      ),
+      snapshotKeys.map((snapshotKey) => metadata.packages[metadata.snapshots[snapshotKey]!.package]!.version),
     )
     if (versions.size > 1) {
       return fail(
@@ -600,10 +597,7 @@ export const computeStoreSccs = ({
       if (storeKeyOf.has(companionSnapshot) === false) continue
       targets.add(companionSnapshot)
     }
-    bySnapshot.set(
-      snapshotKey,
-      [...targets].toSorted((left, right) => compareStrings({ left, right })),
-    )
+    bySnapshot.set(snapshotKey, [...targets].toSorted((left, right) => compareStrings({ left, right })))
   }
 
   const index = new Map<string, number>()
@@ -694,8 +688,7 @@ export const makePnpmStoreProjection = ({
   const sccByStoreKey = new Map<string, number>()
   sccs.forEach((members, sccIndex) => {
     for (const member of members) {
-      if (sccByStoreKey.has(member) === true)
-        return fail(`store key ${member} is in two components`)
+      if (sccByStoreKey.has(member) === true) return fail(`store key ${member} is in two components`)
       sccByStoreKey.set(member, sccIndex)
     }
   })
