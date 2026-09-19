@@ -62,16 +62,19 @@ const dependencies = new Map([...tasks.keys()].map((name) => [name, new Set()]))
 const ensureTask = (name) => {
   if (dependencies.has(name) === false) dependencies.set(name, new Set())
 }
+const missingDependencies = []
 for (const [name, task] of tasks) {
   for (const dependency of task.after ?? []) {
     const upstream = dependencyName(dependency)
     if (upstream === undefined) continue
     ensureTask(upstream)
+    if (tasks.has(upstream) === false) missingDependencies.push(`${name}.after -> ${upstream}`)
     dependencies.get(name).add(upstream)
   }
   for (const dependency of task.before ?? []) {
     const downstream = dependencyName(dependency)
     if (downstream === undefined) continue
+    if (tasks.has(downstream) === false) missingDependencies.push(`${name}.before -> ${downstream}`)
     ensureTask(downstream)
     dependencies.get(downstream).add(name)
   }
@@ -86,6 +89,11 @@ const ok = ({ condition, name, detail = '' }) => {
   testCount += 1
   console.log(`ok ${testCount} - ${name}`)
 }
+ok({
+  condition: missingDependencies.length === 0,
+  name: 'every task dependency resolves to an evaluated task',
+  detail: missingDependencies.join(', '),
+})
 const requireTask = (name) => {
   const task = tasks.get(name)
   ok({ condition: task !== undefined, name: `evaluated graph contains ${name}` })
@@ -107,16 +115,26 @@ for (const name of [
   'check:all',
   'buck2:check',
   'buck2:typescript:materialize-dist',
-  'buck2:tui-core:publish-editor',
-  'buck2:tui-core:check-editor',
+  'buck2:editor:bootstrap',
+  'buck2:editor:authority',
+  'buck2:editor:publish',
+  'buck2:editor:check',
   'test:run',
   'test:buck2:unit',
 ])
   requireTask(name)
-for (const name of ['ts:check', 'ts:check:strict', 'ts:build', 'ts:build-watch', 'ts:emit']) {
+for (const name of [
+  'ts:check',
+  'ts:check:strict',
+  'ts:build',
+  'ts:build-watch',
+  'ts:emit',
+  'pnpm:install',
+  'pnpm:link-native-node-packages',
+]) {
   ok({
     condition: tasks.has(name) === false,
-    name: `${name} is absent after the Buck authority cutover`,
+    name: `${name} is absent after its Buck authority cutover`,
   })
 }
 
@@ -190,9 +208,9 @@ for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames])
 for (const name of [
   materializer,
   'buck2:check',
-  'buck2:editor-authority',
-  'buck2:tui-core:publish-editor',
-  'buck2:tui-core:check-editor',
+  'buck2:editor:authority',
+  'buck2:editor:publish',
+  'buck2:editor:check',
   'buck2:nix-bridge:check',
   'lint:check:asset-import-needs-type-reference',
   'lint:check:format',
@@ -211,6 +229,12 @@ for (const name of [
     name: `${name} waits for source-side generation freshness`,
   })
 }
+ok({
+  condition:
+    reaches({ start: 'buck2:editor:bootstrap', target: 'mr:setup' }) === true &&
+    reaches({ start: 'buck2:editor:bootstrap', target: 'genie:check' }) === false,
+  name: 'editor bootstrap materializes committed dependencies before freshness without claiming it',
+})
 
 const source = readFileSync(`${root}/devenv.nix`, 'utf8')
 const taskSource = (name) => {
@@ -256,15 +280,20 @@ ok({
   name: 'materializer publishes only from a reciprocal composition root',
 })
 
-for (const name of ['buck2:tui-core:publish-editor', 'buck2:tui-core:check-editor']) {
-  const task = taskSource(name)
+const editorViewHelper = source.slice(
+  source.indexOf('  editorViewExec ='),
+  source.indexOf('\nin\n{', source.indexOf('  editorViewExec =')),
+)
+for (const term of ['--isolation-dir', 'buck-out']) {
   ok({
-    condition: task.includes('--isolation-dir') === false,
-    name: `${name} has no dynamic isolation directory`,
+    condition: editorViewHelper.includes(term) === false,
+    name: `whole-workspace editor publisher has no ${term} lifecycle`,
   })
-  ok({ condition: /buck2[^\n]*\bkill\b/.test(task) === false, name: `${name} has no daemon kill` })
-  ok({ condition: task.includes('buck-out') === false, name: `${name} has no buck-out cleanup` })
 }
+ok({
+  condition: /\bbuck2[^\n]*\bkill\b/.test(editorViewHelper) === false,
+  name: 'whole-workspace editor publisher never kills the shared Buck daemon',
+})
 
 const buckCheckSource = taskSource('buck2:check')
 ok({

@@ -130,6 +130,19 @@ const platformAllows = ({
   return positive.length === 0 || positive.includes(value)
 }
 
+/**
+ * OpenTUI dispatches between glibc and musl packages at runtime under Bun, so a
+ * Linux editor view must carry both variants even though its own libc is known.
+ */
+const isOpenTuiRuntimeLibcVariant = ({
+  packageKey,
+  cpu,
+}: {
+  packageKey: string
+  cpu: string | undefined
+}): boolean =>
+  cpu !== undefined && parseVirtualStoreKey(packageKey).name === `@opentui/core-linux-${cpu}-musl`
+
 /** Whether one resolved lock package may be installed on one admitted platform. */
 export const packageAllowed = ({
   metadata,
@@ -154,11 +167,14 @@ export const packageAllowed = ({
     )
   }
   const values = platformValues[platform]
+  const libcAllowed =
+    values.os !== 'linux' ||
+    platformAllows({ constraints: packageMetadata.libc, value: values.libc }) ||
+    isOpenTuiRuntimeLibcVariant({ packageKey, cpu: values.cpu })
   return (
     platformAllows({ constraints: packageMetadata.cpu, value: values.cpu }) &&
     platformAllows({ constraints: packageMetadata.os, value: values.os }) &&
-    (values.os !== 'linux' ||
-      platformAllows({ constraints: packageMetadata.libc, value: values.libc }))
+    libcAllowed
   )
 }
 

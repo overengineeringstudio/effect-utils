@@ -2,10 +2,11 @@ import { resolve } from 'node:path'
 
 import { expect, layer } from '@effect/vitest'
 import { Context, Effect, Layer } from 'effect'
+import React from 'react'
 
 import { captureStoryProps } from '../src/StoryCapture.ts'
 import { discoverStories, type DiscoverStoriesResult } from '../src/StoryDiscovery.ts'
-import { findStory } from '../src/StoryModule.ts'
+import { findStory, type ResolvedStory } from '../src/StoryModule.ts'
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
 const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
@@ -44,6 +45,48 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryCapture', (it) => {
       expect(captured.app.config.reducer).toBeDefined()
       expect(typeof captured.View).toBe('function')
       expect(captured.command).toBeTruthy()
+    }),
+  )
+
+  it.effect('captures previews rendered from a separate dependency view', () =>
+    Effect.promise(async () => {
+      const PreviewFromDependencyView = (props: Record<string, unknown>) => {
+        const capture = Reflect.get(
+          globalThis,
+          Symbol.for('@overeng/tui-react/TuiStoryPreview.capture'),
+        )
+        if (typeof capture === 'function') capture(props)
+        return null
+      }
+      const View = () => null
+      const app = {
+        config: {
+          stateSchema: {},
+          actionSchema: {},
+          initial: null,
+          reducer: ({ state }: { state: unknown }) => state,
+        },
+      }
+      const DependencyView = () =>
+        React.createElement(PreviewFromDependencyView, {
+          app,
+          View,
+          initialState: null,
+          command: 'dependency-view',
+        })
+      const story: ResolvedStory = {
+        name: 'DependencyView',
+        title: 'Test',
+        id: 'Test/DependencyView',
+        render: () => React.createElement(DependencyView),
+        args: {},
+        argTypes: {},
+        filePath: import.meta.filename,
+      }
+
+      const captured = await captureStoryProps({ story })
+
+      expect(captured.command).toBe('dependency-view')
     }),
   )
 

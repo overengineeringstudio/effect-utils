@@ -152,7 +152,7 @@ const liveNetlifyCiToolsE2EStep = {
     [
       'netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"',
       'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
-      'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
+      'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
       'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
     ].join('\n'),
   ),
@@ -214,7 +214,7 @@ const liveVercelCiToolsE2EStep = {
     [
       'vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"',
       'export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"',
-      'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install',
+      'DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
       'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts',
     ].join('\n'),
   ),
@@ -292,6 +292,7 @@ const nixDiagnosticsSummaryStep = {
 } as const
 
 const jobTimeoutMinutes = 30
+const longJobTimeoutMinutes = 45
 
 /**
  * `schedule` exists only for the nightly deterministic measurement snapshot of
@@ -332,16 +333,18 @@ const measurementReportIf = [
 const job = ({
   step,
   extraSteps = [],
+  timeoutMinutes = jobTimeoutMinutes,
 }: {
   step: { name: string; run: string; env?: Record<string, string> }
   extraSteps?: readonly any[]
+  timeoutMinutes?: number
 }) => ({
   if: normalCiIf,
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
   }),
-  'timeout-minutes': jobTimeoutMinutes,
+  'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
@@ -353,10 +356,14 @@ const job = ({
   ],
 })
 
-const multiPlatformJob = (step: {
+const multiPlatformJob = ({
+  timeoutMinutes = jobTimeoutMinutes,
+  ...step
+}: {
   name: string
   run: string
   env?: Record<string, string>
+  timeoutMinutes?: number
 }) => ({
   if: normalCiIf,
   strategy: {
@@ -369,7 +376,7 @@ const multiPlatformJob = (step: {
     profile: '${{ matrix.runner }}' as RunnerProfile,
     runId: '${{ github.run_id }}',
   }),
-  'timeout-minutes': jobTimeoutMinutes,
+  'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
@@ -462,11 +469,13 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   // retained source summaries, and also proves every lane's recorded census exactly matches its
   // actual collection. CI must not shard this lane: the gate needs both partitions in one job.
   test: multiPlatformJob({
+    timeoutMinutes: 60,
     name: 'Unit tests',
     env: githubTokenEnv(),
     run: runDevenvTasksBefore('test:run'),
   }),
   'test-playwright-utils': job({
+    timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Utils Playwright tests',
       env: githubTokenEnv(),
@@ -474,6 +483,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     },
   }),
   'test-playwright-tui-react': job({
+    timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'TUI React Playwright tests',
       env: githubTokenEnv(),
@@ -558,6 +568,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   //                        without it weaver:diff silently degrades (nothing to diff against).
   //   - weaver:live-check (SC-R12) e2e: emitted OTLP conforms to the registry
   weaver: job({
+    timeoutMinutes: longJobTimeoutMinutes,
     extraSteps: [
       {
         name: 'Fetch baseline history for weaver:diff (SC-R11)',
@@ -743,10 +754,10 @@ const extraJobs: Record<string, any> = {
             '  cd "${EFFECT_UTILS_WORKSPACE_ROOT:?EFFECT_UTILS_WORKSPACE_ROOT not set}"',
             '  buck="$PWD/.megarepo/bin/buck2"',
             '  "$buck" query effect_utils//packages/@overeng/ci-tools:ci-tools-candidate',
-            '  "$buck" query effect_utils//packages/@overeng/tui-core:editor_view_inputs',
+            '  "$buck" query effect_utils//:editor_view_inputs',
             '  "$buck" build \\',
             '    effect_utils//packages/@overeng/ci-tools:ci-tools-candidate \\',
-            '    effect_utils//packages/@overeng/tui-core:editor_view_inputs',
+            '    effect_utils//:editor_view_inputs',
             "'",
           ].join('\n'),
         ),
@@ -957,10 +968,10 @@ const extraJobs: Record<string, any> = {
       setupSteps: baseSteps,
       taskProbes: [
         {
-          task: 'pnpm:install',
-          label: 'pnpm install task',
+          task: 'buck2:editor:publish',
+          label: 'Editor dependency publication',
           group: 'workspace setup',
-          description: 'Runs the cached pnpm install devenv task.',
+          description: 'Publishes the complete Buck-owned editor dependency surface.',
           warmupRepetitions: 1,
           repetitions: 5,
         },

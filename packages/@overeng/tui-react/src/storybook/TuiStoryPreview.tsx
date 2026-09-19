@@ -122,7 +122,16 @@ export interface TuiStoryPreviewProps<S, A> {
 // =============================================================================
 
 /** Storybook preview component that renders a TuiApp with multi-tab output modes and timeline playback. */
-export const TuiStoryPreview = <S, A>({
+export const TuiStoryPreview = <S, A>(props: TuiStoryPreviewProps<S, A>): React.ReactElement => {
+  const capture = Reflect.get(globalThis, Symbol.for('@overeng/tui-react/TuiStoryPreview.capture'))
+  if (typeof capture === 'function') {
+    capture(props)
+    return <></>
+  }
+  return <TuiStoryPreviewRuntime {...props} />
+}
+
+const TuiStoryPreviewRuntime = <S, A>({
   app,
   View,
   initialState: initialStateProp,

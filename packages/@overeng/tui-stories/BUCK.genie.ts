@@ -18,7 +18,7 @@ export const buck2TypeScriptAdmission = {
     {
       packageName: '@overeng/tui-react',
       packagePath: 'packages/@overeng/tui-react',
-      distTarget: '//packages/@overeng/tui-react:dist',
+      sourceRoots: ['src'],
     },
     {
       packageName: '@overeng/utils',
@@ -31,7 +31,6 @@ export const buck2TypeScriptAdmission = {
       distTarget: '//packages/@overeng/utils-dev:dist',
     },
   ],
-  editorViewConsumer: false,
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
   tests: [
     {
