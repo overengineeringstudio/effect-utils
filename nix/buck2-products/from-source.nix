@@ -27,6 +27,7 @@ let
   target = product.target;
   productName = product.name;
   packagePath = product.packageTreePath or product.packagePath;
+  packageBase = builtins.baseNameOf packagePath;
   preparedPackageModules = preparedDeps + "/${packagePath}/node_modules";
   outputName = product.outputName;
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
@@ -139,6 +140,8 @@ pkgs.stdenv.mkDerivation {
     mkdir -p nix-deps
     cp -a ${preparedDeps}/node_modules nix-deps/tree
     chmod -R u+w nix-deps/tree
+    cp -a packages/@overeng nix-deps/tree/@overeng
+    rm -rf nix-deps/tree/@overeng/${lib.escapeShellArg packageBase}
     SOURCE_MODULES=${lib.escapeShellArg preparedPackageModules} \
       DEST_MODULES="$PWD/nix-deps/tree" \
       PREPARED_ROOT=${lib.escapeShellArg preparedDeps} \
