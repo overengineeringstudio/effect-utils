@@ -1299,10 +1299,12 @@ const makeGitHubClient = Effect.gen(function* () {
     repo,
     workflow,
     ref,
+    inputs,
   }: {
     repo: string
     workflow: string
     ref: string
+    inputs?: Record<string, string> | undefined
   }) =>
     Effect.gen(function* () {
       let page = 1
@@ -1321,7 +1323,7 @@ const makeGitHubClient = Effect.gen(function* () {
           return yield* apiPostJson({
             repo,
             path: `/repos/${repo}/actions/workflows/${match.id}/dispatches`,
-            body: { ref, return_run_details: true },
+            body: { ref, inputs, return_run_details: true },
             schema: WorkflowDispatchResponse,
           })
         }

@@ -37,6 +37,12 @@ import {
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
+const DispatchInputsSchema = Schema.Record(Schema.String, Schema.String).annotate({
+  identifier: 'JSON object with string values',
+})
+
+const decodeDispatchInputs = Schema.decodeSync(Schema.fromJsonString(DispatchInputsSchema))
+
 // =============================================================================
 // rerun command
 // =============================================================================
@@ -152,74 +158,93 @@ export const runCommand = Cli.Command.make('run', {
     Cli.Flag.withDefault('CI'),
     Cli.Flag.withDescription('Workflow name (default: CI)'),
   ),
+  field: Cli.Flag.keyValuePair('field').pipe(
+    Cli.Flag.withDescription(
+      'Workflow dispatch input as key=value (repeatable, e.g. --field image=abc)',
+    ),
+    Cli.Flag.optional,
+  ),
+  inputs: Cli.Flag.string('inputs').pipe(
+    Cli.Flag.withDescription('Workflow dispatch inputs as a JSON object (script escape hatch)'),
+    Cli.Flag.optional,
+  ),
   target: targetArg,
   watch: watchOption,
   watchMode: watchModeOption,
   timeout: timeoutOption,
 }).pipe(
-  Cli.Command.withHandler(({ output, workflow, target: targetInput, watch, watchMode, timeout }) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const tui = (yield* MutationApp.run(
-          React.createElement(MutationView, { stateAtom: MutationApp.stateAtom }),
-        )) as TuiHandle
+  Cli.Command.withHandler(
+    ({ output, workflow, field, inputs, target: targetInput, watch, watchMode, timeout }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const tui = (yield* MutationApp.run(
+            React.createElement(MutationView, { stateAtom: MutationApp.stateAtom }),
+          )) as TuiHandle
 
-        const config = yield* resolveConfig({})
-        const localRepo = Option.fromNullishOr(config.repos[0])
-        const github = yield* GitHubClient
+          const config = yield* resolveConfig({})
+          const localRepo = Option.fromNullishOr(config.repos[0])
+          const github = yield* GitHubClient
 
-        let target: { repo: string; branch: string }
-        if (Option.isSome(targetInput)) {
-          target = yield* resolveWorkflowDispatchTarget({
-            input: targetInput.value,
-            localRepo,
-            getDefaultBranch: github.getDefaultBranch,
-          })
-        } else {
-          if (Option.isNone(localRepo)) {
-            tui.dispatch({
-              _tag: 'SetError',
-              error: 'No repo configured',
-              message: 'Could not detect repo. Use owner/repo as target.',
+          let target: { repo: string; branch: string }
+          if (Option.isSome(targetInput)) {
+            target = yield* resolveWorkflowDispatchTarget({
+              input: targetInput.value,
+              localRepo,
+              getDefaultBranch: github.getDefaultBranch,
             })
-            return
+          } else {
+            if (Option.isNone(localRepo)) {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'No repo configured',
+                message: 'Could not detect repo. Use owner/repo as target.',
+              })
+              return
+            }
+            target = {
+              repo: localRepo.value,
+              branch: yield* detectCurrentBranch,
+            }
           }
-          target = {
-            repo: localRepo.value,
-            branch: yield* detectCurrentBranch,
-          }
-        }
 
-        const { repo: targetRepo, branch } = target
+          const { repo: targetRepo, branch } = target
 
-        const dispatched = yield* github.dispatchWorkflow({
-          repo: targetRepo,
-          workflow,
-          ref: branch,
-        })
-        const runId = dispatched.workflow_run_id
-        tui.dispatch({
-          _tag: 'SetDispatched',
-          runId,
-          repo: targetRepo,
-          message: `Triggered run ${runId} for ${targetRepo} on ${branch}`,
-          url: dispatched.html_url,
-        })
+          const dispatchInputs = yield* parseDispatchInputs({ field, inputs }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ConfigError({ message: `Invalid workflow dispatch inputs: ${cause}`, cause }),
+            ),
+          )
 
-        if (watch) {
-          yield* watchRun({
-            tui,
+          const dispatched = yield* github.dispatchWorkflow({
             repo: targetRepo,
-            runId,
-            intervalSeconds: 5,
-            timeoutSeconds: timeout,
-            failFast: watchMode === 'first-failure',
+            workflow,
+            ref: branch,
+            inputs: dispatchInputs,
           })
-        }
+          const runId = dispatched.workflow_run_id
+          tui.dispatch({
+            _tag: 'SetDispatched',
+            runId,
+            repo: targetRepo,
+            message: `Triggered run ${runId} for ${targetRepo} on ${branch}`,
+            url: dispatched.html_url,
+          })
 
-        yield* dispatchMeta(tui)
-      }),
-    ).pipe(Effect.provide(outputModeLayer(output))),
+          if (watch) {
+            yield* watchRun({
+              tui,
+              repo: targetRepo,
+              runId,
+              intervalSeconds: 5,
+              timeoutSeconds: timeout,
+              failFast: watchMode === 'first-failure',
+            })
+          }
+
+          yield* dispatchMeta(tui)
+        }),
+      ).pipe(Effect.provide(outputModeLayer(output))),
   ),
   Cli.Command.withDescription(
     `Dispatch a workflow and watch it
@@ -228,9 +253,36 @@ Examples:
   gh-ci-utils run                             Dispatch CI on current branch
   gh-ci-utils run -w                          Dispatch and watch (exit on first failure)
   gh-ci-utils run --workflow Deploy            Dispatch specific workflow
+  gh-ci-utils run --field image=abc            Dispatch with workflow inputs
   gh-ci-utils run owner/repo@main -w          Cross-repo dispatch`,
   ),
 )
+
+/**
+ * Merge `--field key=value` pairs with the `--inputs` JSON object.
+ * Repeated `--field` wins over a colliding JSON key; both absent means no inputs.
+ */
+export const parseDispatchInputs = ({
+  field,
+  inputs,
+}: {
+  field: Option.Option<Record<string, string>>
+  inputs: Option.Option<string>
+}): Effect.Effect<Record<string, string> | undefined, string> =>
+  Effect.gen(function* () {
+    const fromJson =
+      Option.isNone(inputs) || inputs.value.trim().length === 0
+        ? {}
+        : yield* Effect.try({
+            try: () => decodeDispatchInputs(inputs.value),
+            catch: String,
+          })
+    const merged: Record<string, string> = {
+      ...fromJson,
+      ...(Option.isSome(field) ? field.value : {}),
+    }
+    return Object.keys(merged).length === 0 ? undefined : merged
+  })
 
 // =============================================================================
 // cancel command

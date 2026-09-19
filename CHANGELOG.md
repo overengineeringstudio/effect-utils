@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/gh-ci-utils**: `run` accepts workflow-dispatch inputs via
+  repeated `--field key=value` (matching `gh workflow run -f` ergonomics)
+  and a `--inputs` JSON object for scripts. `--field` wins on key collision;
+  both absent leaves the dispatch body unchanged.
 - **@overeng/utils**: `createStylexVitePlugins` now pre-bundles the StyleX
   runtime (`@stylexjs/stylex`, a dependency of the consumer) in dev by adding
   it to `optimizeDeps.include`, so its first discovery cannot re-optimize

@@ -1,12 +1,12 @@
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
   classifyRunWatch,
   isRunAttemptReady,
+  parseDispatchInputs,
   validateMutationRunSelection,
 } from '../src/node/commands/rerun.ts'
-
 describe('isRunAttemptReady', () => {
   it('keeps waiting while GitHub still returns the completed previous attempt', () => {
     expect(isRunAttemptReady({ runAttempt: 3, previousRunAttempt: 3 })).toBe(false)
@@ -112,5 +112,35 @@ describe('validateMutationRunSelection', () => {
         'Run 456 targets stale-head-sha, not expected PR head current-head-sha; refusing to rerun the stale run',
       cause: 'stale run selection',
     })
+  })
+})
+
+describe('parseDispatchInputs', () => {
+  it('returns undefined when both sources are absent', () => {
+    expect(
+      Effect.runSync(parseDispatchInputs({ field: Option.none(), inputs: Option.none() })),
+    ).toBeUndefined()
+    expect(
+      Effect.runSync(parseDispatchInputs({ field: Option.none(), inputs: Option.some('  ') })),
+    ).toBeUndefined()
+  })
+
+  it('merges field pairs over JSON keys', () => {
+    expect(
+      Effect.runSync(
+        parseDispatchInputs({
+          field: Option.some({ image: 'abc', env: 'prod' }),
+          inputs: Option.some('{"image":"stale","extra":"kept"}'),
+        }),
+      ),
+    ).toEqual({ image: 'abc', env: 'prod', extra: 'kept' })
+  })
+
+  it('rejects a non-object JSON payload', () => {
+    expect(
+      Effect.runSync(
+        Effect.flip(parseDispatchInputs({ field: Option.none(), inputs: Option.some('[1]') })),
+      ),
+    ).toContain('JSON object')
   })
 })
