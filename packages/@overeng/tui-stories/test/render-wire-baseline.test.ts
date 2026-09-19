@@ -34,6 +34,7 @@ const captured = ({
   initialState,
   timeline,
   command,
+  storyFilePath: import.meta.filename,
 })
 
 const summarizeDecodeFailure = (error: unknown) => ({

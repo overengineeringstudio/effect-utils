@@ -33,7 +33,7 @@ import {
 const scratchDirectories: string[] = []
 
 const scratch = (prefix: string): string => {
-  const root = mkdtempSync(join(tmpdir(), prefix))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
   scratchDirectories.push(root)
   return root
 }

@@ -73,6 +73,14 @@ describe('normalizeCliOutput', () => {
           'at <repo>/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>',
       )
     })
+
+    it('normalizes Effect CLI frames from immutable editor views', () => {
+      const input =
+        'at <anonymous> (<repo>/packages/.editor-view/.store/notion-cli-deadbeef/.backing/0062/node_modules/effect/dist/unstable/cli/Command.js:1077:34)'
+      expect(normalizeCliOutput({ input, repoRoot: '/repo', effectCliInternals: true })).toBe(
+        'at <anonymous> (<repo>/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>)',
+      )
+    })
   })
 
   describe('local-source suffix', () => {

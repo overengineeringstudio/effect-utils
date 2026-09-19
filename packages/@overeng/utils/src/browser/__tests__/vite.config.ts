@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 
+const cacheDir = process.env['VITE_CACHE_DIR']
+
 export default defineConfig({
+  ...(cacheDir === undefined ? {} : { cacheDir }),
   root: __dirname + '/fixtures',
   server: {
     headers: {

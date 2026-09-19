@@ -8,17 +8,31 @@
  * TuiStoryPreview element props before it mounts.
  */
 
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
+
 import type { Schema } from 'effect'
 import type { Atom } from 'effect/unstable/reactivity'
-import React, { type ReactElement, type ComponentType } from 'react'
+import type { ReactElement, ComponentType } from 'react'
 
-import { renderToString } from '@overeng/tui-react'
 // Import only the type — the runtime TuiStoryPreview import pulls in xterm.js
 // which creates open handles that prevent process exit in Node/Bun.
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { ResolvedStory } from './StoryModule.ts'
+const storyCaptureSymbol = Symbol.for('@overeng/tui-react/TuiStoryPreview.capture')
 
+/** Load React and its reconciler from the package that owns the story module. */
+export const loadStoryRuntime = async (filePath: string) => {
+  const storyRequire = createRequire(filePath)
+  const [react, tuiReact] = await Promise.all([
+    // oxlint-disable-next-line import/no-dynamic-require -- story hooks require the React instance selected by the story package
+    import(pathToFileURL(storyRequire.resolve('react')).href),
+    // oxlint-disable-next-line import/no-dynamic-require -- the reconciler must use the story package's React peer instance
+    import(pathToFileURL(storyRequire.resolve('@overeng/tui-react')).href),
+  ])
+  return { react, tuiReact }
+}
 // =============================================================================
 // Types
 // =============================================================================
@@ -38,7 +52,10 @@ export interface CapturedStoryProps {
   readonly timeline: readonly TimelineEvent<unknown>[]
   readonly command: string
   readonly cwd?: string | undefined
+  readonly storyFilePath: string
 }
+
+type ExtractedStoryProps = Omit<CapturedStoryProps, 'storyFilePath'>
 
 /** Error raised when capturing props from a story's render function fails */
 export class StoryCaptureError extends Error {
@@ -55,26 +72,23 @@ export class StoryCaptureError extends Error {
 // =============================================================================
 
 /**
- * Walk a React element tree to find TuiStoryPreview and extract its props.
+ * Walk a React element tree to find a component with the TuiStoryPreview prop contract.
  *
- * Checks both direct type reference and component name to handle cases
- * where multiple React instances might be involved.
+ * Editor dependency views can load a separately transformed component instance, so
+ * component identity and function names are not stable capture boundaries.
  */
-const extractPreviewProps = (element: ReactElement): CapturedStoryProps | undefined => {
+const hasPreviewContract = (props: Record<string, unknown>): boolean =>
+  'app' in props && 'View' in props && typeof props.command === 'string'
+
+const extractPreviewProps = (element: ReactElement): ExtractedStoryProps | undefined => {
   if (element === null || element === undefined) return undefined
   if (typeof element !== 'object') return undefined
 
-  const type = (element as { type?: unknown }).type
   const props = (element as { props?: Record<string, unknown> }).props
 
   if (props === undefined) return undefined
 
-  // Identify TuiStoryPreview by function name. We avoid importing the actual
-  // component at runtime because @overeng/tui-react/storybook pulls in xterm.js
-  // which creates timers that prevent clean process exit in Node/Bun.
-  if (typeof type === 'function' && type.name === 'TuiStoryPreview') {
-    return extractFromProps(props)
-  }
+  if (hasPreviewContract(props) === true) return extractFromProps(props)
 
   // Walk children recursively
   const children = props.children
@@ -94,10 +108,24 @@ const extractPreviewProps = (element: ReactElement): CapturedStoryProps | undefi
   return undefined
 }
 
-/** Extract CapturedStoryProps from raw TuiStoryPreview props */
-const extractFromProps = (props: Record<string, unknown>): CapturedStoryProps => ({
-  app: props.app as CapturedStoryProps['app'],
-  View: props.View as CapturedStoryProps['View'],
+const describeElement = (element: ReactElement): string => {
+  const type = element.type
+  const typeName =
+    typeof type === 'string'
+      ? type
+      : typeof type === 'function'
+        ? type.name || '<anonymous>'
+        : typeof type === 'object' && type !== null
+          ? String(Reflect.get(type, 'displayName') ?? Reflect.get(type, 'name') ?? '<object>')
+          : String(type)
+  const props = element.props as Record<string, unknown>
+  return `type=${typeName}; props=[${Object.keys(props).toSorted().join(', ')}]`
+}
+
+/** Extract story props from raw TuiStoryPreview props */
+const extractFromProps = (props: Record<string, unknown>): ExtractedStoryProps => ({
+  app: props.app as ExtractedStoryProps['app'],
+  View: props.View as ExtractedStoryProps['View'],
   initialState: props.initialState,
   timeline: (props.timeline as readonly TimelineEvent<unknown>[]) ?? [],
   command: (props.command as string) ?? '',
@@ -123,25 +151,44 @@ export const captureStoryProps = async ({
   readonly argOverrides?: Record<string, unknown> | undefined
 }): Promise<CapturedStoryProps> => {
   const mergedArgs = { ...story.args, ...argOverrides }
+  const storyRuntime = await loadStoryRuntime(story.filePath)
 
-  let captured: CapturedStoryProps | undefined
-
+  let captured: ExtractedStoryProps | undefined
+  let observedElement = '<render did not return an element>'
   const CaptureWrapper = (): ReactElement | null => {
     const element = story.render(mergedArgs)
+    observedElement = describeElement(element)
     captured = extractPreviewProps(element)
-    return null
+    return captured === undefined ? element : null
   }
 
-  await renderToString({ element: React.createElement(CaptureWrapper) })
+  const previousCapture = Reflect.get(globalThis, storyCaptureSymbol)
+  Reflect.set(globalThis, storyCaptureSymbol, (props: Record<string, unknown>) => {
+    captured = extractFromProps(props)
+  })
+  const renderPromise = (() => {
+    try {
+      return storyRuntime.tuiReact.renderToString({
+        element: storyRuntime.react.createElement(CaptureWrapper),
+      })
+    } finally {
+      if (previousCapture === undefined) {
+        Reflect.deleteProperty(globalThis, storyCaptureSymbol)
+      } else {
+        Reflect.set(globalThis, storyCaptureSymbol, previousCapture)
+      }
+    }
+  })()
+  await renderPromise
 
   if (captured === undefined) {
     throw new StoryCaptureError({
       storyId: story.id,
       message:
         `Could not find TuiStoryPreview element in story "${story.id}". ` +
-        `The render function must return a <TuiStoryPreview> element.`,
+        `The render function must return a <TuiStoryPreview> element. Observed ${observedElement}.`,
     })
   }
 
-  return captured
+  return { ...captured, storyFilePath: story.filePath }
 }

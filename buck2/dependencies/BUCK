@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:98cc3eb33479f30ffc8a81298e73dfda9f3313b9ff2940860caf9023b2518c4f
+# Store fingerprint: sha256:82453d65e9d1976c28c89bdf9222df0e296bd13d16f378686782b5b1ad9a8e40
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 
@@ -7742,6 +7742,7 @@ pnpm_store_entry(
         },
         "linux_aarch64": {
             "@opentui/core-linux-arm64": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
+            "@opentui/core-linux-arm64-musl": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "bun-ffi-structs": ":entry_bun_ffi_structs_0_3_1_typescript_7_0_2_051e106cc9bb",
             "diff": ":entry_diff_9_0_0_5a9cf482041d",
             "marked": ":entry_marked_17_0_1_ff2a6dda0662",
@@ -7751,6 +7752,7 @@ pnpm_store_entry(
         },
         "linux_x86_64": {
             "@opentui/core-linux-x64": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
+            "@opentui/core-linux-x64-musl": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "bun-ffi-structs": ":entry_bun_ffi_structs_0_3_1_typescript_7_0_2_051e106cc9bb",
             "diff": ":entry_diff_9_0_0_5a9cf482041d",
             "marked": ":entry_marked_17_0_1_ff2a6dda0662",
@@ -14310,6 +14312,7 @@ pnpm_store_view(
         "linux_aarch64": {
             "@effect+atom-react@4.0.0-rc.112_effect@4.0.0-rc.112_react@19.2.8_scheduler@0.27.0": ":entry_effect_atom_react_4_0_0_rc_112_effect_4_0_0_rc_112_react_19_2_8_schedule_4a5859e09812",
             "@msgpackr-extract+msgpackr-extract-linux-arm64@3.0.4": ":entry_msgpackr_extract_msgpackr_extract_linux_arm64_3_0_4_cf31bccf54bd",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -14348,6 +14351,7 @@ pnpm_store_view(
         "linux_x86_64": {
             "@effect+atom-react@4.0.0-rc.112_effect@4.0.0-rc.112_react@19.2.8_scheduler@0.27.0": ":entry_effect_atom_react_4_0_0_rc_112_effect_4_0_0_rc_112_react_19_2_8_schedule_4a5859e09812",
             "@msgpackr-extract+msgpackr-extract-linux-x64@3.0.4": ":entry_msgpackr_extract_msgpackr_extract_linux_x64_3_0_4_d261ffc94c45",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -21048,6 +21052,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -21313,6 +21318,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -22153,6 +22159,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -22419,6 +22426,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -23939,6 +23947,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -24207,6 +24216,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -25058,6 +25068,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -25322,6 +25333,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -26496,6 +26508,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -26759,6 +26772,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -30055,6 +30069,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -30364,6 +30379,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -34861,6 +34877,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -35136,6 +35153,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -35987,6 +36005,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-arm64-musl@0.5.11": ":entry_opentui_core_linux_arm64_musl_0_5_11_dff8a32879b5",
             "@opentui+core-linux-arm64@0.5.11": ":entry_opentui_core_linux_arm64_0_5_11_c1c63b0c0df3",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
@@ -36250,6 +36269,7 @@ pnpm_store_view(
             "@opentelemetry+sdk-trace-web@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_web_2_11_0_opentelemetry_api_1_9_1_20e60f9183c5",
             "@opentelemetry+sdk-trace@2.11.0_@opentelemetry+api@1.9.1": ":entry_opentelemetry_sdk_trace_2_11_0_opentelemetry_api_1_9_1_6af7eb8a9633",
             "@opentelemetry+semantic-conventions@1.43.0": ":entry_opentelemetry_semantic_conventions_1_43_0_5cc6327069d1",
+            "@opentui+core-linux-x64-musl@0.5.11": ":entry_opentui_core_linux_x64_musl_0_5_11_80fd54c0c65d",
             "@opentui+core-linux-x64@0.5.11": ":entry_opentui_core_linux_x64_0_5_11_7bd266afe6f5",
             "@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10": ":entry_opentui_core_0_5_11_typescript_7_0_2_web_tree_sitter_0_25_10_8aedbdcd6736",
             "@opentui+react@0.5.11_react-devtools-core@7.0.1_react@19.2.8_typescript@7.0.2_web-tree-sitter@0.25.10_ws@8.21.3": ":entry_opentui_react_0_5_11_react_devtools_core_7_0_1_react_19_2_8_typescript_7_cb7918c1f170",
