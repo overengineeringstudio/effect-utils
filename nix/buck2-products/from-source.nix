@@ -197,6 +197,8 @@ pkgs.stdenv.mkDerivation {
               await chmod(directory, 0o755)
               await rm(path)
             }
+          } else if (entry.isFile() && entry.name === "BUCK") {
+            await rm(path)
           }
         }
       }
