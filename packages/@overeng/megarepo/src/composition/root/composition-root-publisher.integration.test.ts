@@ -405,10 +405,11 @@ describe('composition root publisher', () => {
 
         expect(result.changedPaths).toContain('.watchmanconfig')
         expect((yield* readGenerated(fixture, '.watchmanconfig')).toString()).toBe('{}\n')
-        const upgradedManifest = JSON.parse(
-          (yield* readGenerated(fixture, COMPOSITION_GENERATION_MANIFEST_PATH)).toString(),
-        ) as { files: Array<{ path: string }> }
-        expect(upgradedManifest.files.map((file) => file.path)).toContain('.watchmanconfig')
+        const upgradedManifest = (yield* readGenerated(
+          fixture,
+          COMPOSITION_GENERATION_MANIFEST_PATH,
+        )).toString()
+        expect(upgradedManifest).toContain('"path": ".watchmanconfig"')
       }),
     ),
   )
