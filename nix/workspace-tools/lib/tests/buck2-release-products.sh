@@ -681,7 +681,7 @@ cat >"$live/bin/buck2" <<EOF
 set -uo pipefail
 for arg in "\$@"; do
   case "\$arg" in
-    build|--show-full-output) continue ;;
+    build|--no-remote-cache|--show-full-output) continue ;;
   esac
   path="\$(jq -r --arg target "\$arg" '.[\$target] // empty' '$live/outputs.json')"
   [[ -n "\$path" ]] || exit 96
