@@ -16,18 +16,10 @@ grep -q 'root = workspaceRoot' "$stage_zero" || {
   echo "FAIL: Buck stage-zero source does not use the narrow Rust workspace root" >&2
   exit 1
 }
-if grep -q 'root = repositoryRoot' "$rust_workspace"; then
-  echo "FAIL: shared Rust workspace source still registers the repository root" >&2
+if [ -e "$rust_workspace" ]; then
+  echo "FAIL: retired shared Rust workspace source producer still exists" >&2
   exit 1
 fi
-grep -q 'root = workspaceRoot' "$rust_workspace" || {
-  echo "FAIL: shared Rust workspace source does not use the narrow Rust workspace root" >&2
-  exit 1
-}
-grep -q 'root = packageRoot' "$rust_workspace" || {
-  echo "FAIL: shared Rust workspace source does not use a narrow package root" >&2
-  exit 1
-}
 if grep -q 'builtins\.path' "$bootstrap"; then
   echo "FAIL: bootstrap-closure task still coerces the effect-utils repository root" >&2
   exit 1
