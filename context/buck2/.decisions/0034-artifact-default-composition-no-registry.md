@@ -141,3 +141,7 @@ Confirmed by Johannes (q29). Applied in the accepting change:
 - Replace the downstream composed-root roadmap with package-by-package adoption and the deletion ledger above.
 
 Until acceptance, all existing requirements and accepted decisions remain in force.
+
+## Amendment 1 (2026-09-19)
+
+Decision [0037](./0037-nix-substitution-is-the-distribution-layer.md) replaces the GitHub-releases durable origin: the origin is a Nix binary cache plus a sandboxed source recipe that invokes the same Buck graph, and a consumer pins by Nix substitution or by a pinned-artifact URL plus SHA-512. Every other clause of this decision stands (no registry, no source mounts, artifact-granular reuse, ledger accounting).
