@@ -85,7 +85,7 @@ pkgs.stdenv.mkDerivation {
       allow_cache_uploads = false
 
     [project]
-      ignore = **/__pycache__,**/dist,**/node_modules,**/node_modules/**,**/target,**/target/**,.devenv,.git,buck-out,node_modules,packages/.editor-view,target,tmp
+      ignore = **/__pycache__,**/dist,**/target,**/target/**,.devenv,.git,buck-out,node_modules,packages/.editor-view,target,tmp
     BUCKCONFIG
 
     mkdir -p prelude
