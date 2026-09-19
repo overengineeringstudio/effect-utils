@@ -21,6 +21,9 @@
   produced by Buck with identities that follow their result-affecting inputs.
 - One shared cache serves every worktree, machine, and composed repository:
   identical work executes once anywhere and is reused everywhere.
+- Build work runs where capacity is: an action that misses the cache can
+  execute on any fleet worker that holds its declared toolchain closure, and
+  the invoking machine only observes the result.
 - Dependency state is a Buck-produced, verified artifact — including the
   editor surface — with no hand-maintained install step and no silent drift.
 - Cross-repository reuse is artifact-granular: a producer publishes immutable,

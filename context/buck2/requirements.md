@@ -152,3 +152,10 @@ invariants named in its own document:
   wall-clock delta against the pre-admission baseline. A regression against the
   BUCK-R07 budgets or the recorded baseline blocks further widening until it is
   fixed or explicitly accepted in a decision record.
+- **BUCK-R17 Remote execution:** An admitted action can execute on a fleet
+  worker other than the invoking host through the Remote Execution API. The
+  execution platform declares the worker image as the exact Nix closure its
+  tools come from ([02-execution](./02-execution/requirements.md), decision
+  0006); a locally and a remotely executed action produce identical results
+  and identities (BUCK-R05); remote execution never widens the trust boundary
+  of a cache tier (decision 0033).
