@@ -1,0 +1,231 @@
+diff --git a/buck2/dependencies/defs.bzl b/buck2/dependencies/defs.bzl
+index 02a323f1..ec85dae9 100644
+--- a/buck2/dependencies/defs.bzl
++++ b/buck2/dependencies/defs.bzl
+@@ -43,6 +43,7 @@ maps have exactly the keys ``linux_x86_64``, ``linux_aarch64``, and
+ """
+
+ load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
++load("//buck2/platforms:defs.bzl", "root_remote_execution_enabled")
+
+ PnpmPackageInfo = provider(fields = {
+     "bins": provider_field(dict[str, str]),
+@@ -451,7 +452,7 @@ def _store_entry_impl(ctx):
+         args,
+         category = "pnpm_store_entry",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not root_remote_execution_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+@@ -565,7 +566,7 @@ def _store_scc_impl(ctx):
+         args,
+         category = "pnpm_store_scc",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not root_remote_execution_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+@@ -689,7 +690,7 @@ def _store_view_impl(ctx):
+         args,
+         category = "pnpm_store_view",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not root_remote_execution_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+diff --git a/buck2/javascript.bzl b/buck2/javascript.bzl
+index 8cd28bb1..fe2ab4fe 100644
+--- a/buck2/javascript.bzl
++++ b/buck2/javascript.bzl
+@@ -7,7 +7,7 @@ input. The runner hashes all declared inputs before and after execution.
+ load("//buck2/materialization.bzl", "PackageTreeInfo")
+ load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
+ load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
+-load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cache_enabled")
++load("//buck2/platforms:defs.bzl", "linux_aarch64_remote_execution_properties", "root_allow_cache_uploads", "root_remote_cache_enabled", "root_remote_execution_enabled")
+
+ JavaScriptExecutableInfo = provider(fields = {
+     "package_tree": Artifact,
+@@ -123,6 +123,7 @@ def _test_info(ctx, command, positional):
+         fail("tests inheriting the environment must set cacheable = False")
+     cache_enabled = ctx.attrs.cacheable and root_remote_cache_enabled()
+     cache_uploads = ctx.attrs.cacheable and root_allow_cache_uploads()
++    remote_enabled = root_remote_execution_enabled()
+     return [
+         DefaultInfo(),
+         RunInfo(args = args),
+@@ -133,10 +134,12 @@ def _test_info(ctx, command, positional):
+             labels = ctx.attrs.labels,
+             contacts = ctx.attrs.contacts,
+             default_executor = CommandExecutorConfig(
+-                local_enabled = True,
+-                remote_enabled = False,
++                local_enabled = not remote_enabled,
++                remote_enabled = remote_enabled,
+                 remote_cache_enabled = cache_enabled,
+                 allow_cache_uploads = cache_uploads,
++                remote_execution_properties = linux_aarch64_remote_execution_properties(),
++                remote_output_paths = "output_paths",
+             ),
+             run_from_project_root = False,
+             use_project_relative_paths = False,
+@@ -228,7 +231,7 @@ def _vitest_collect_impl(ctx):
+         args,
+         category = "vitest_collect",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not root_remote_execution_enabled(),
+         allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+     )
+     return [DefaultInfo(default_output = collection)]
+diff --git a/buck2/materialization.bzl b/buck2/materialization.bzl
+index 51aa2afd..47f3e67f 100644
+--- a/buck2/materialization.bzl
++++ b/buck2/materialization.bzl
+@@ -2,6 +2,7 @@
+
+ load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
+ load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
++load("//buck2/platforms:defs.bzl", "root_remote_execution_enabled")
+
+
+ PackageTreeInfo = provider(fields = {
+@@ -84,7 +85,7 @@ def _package_tree_impl(ctx):
+         args,
+         category = "package_tree",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not root_remote_execution_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+diff --git a/buck2/platforms/BUCK b/buck2/platforms/BUCK
+index 067e0b6e..a9fd694d 100644
+--- a/buck2/platforms/BUCK
++++ b/buck2/platforms/BUCK
+@@ -1,4 +1,4 @@
+-load("//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "portable_product_platform", "product_platform")
++load("//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "portable_product_platform", "product_platform", "remote_native_execution_platform")
+
+ native_execution_platform(
+     name = "exec_linux_x86_64",
+@@ -20,6 +20,17 @@ native_execution_platform(
+     visibility = ["PUBLIC"],
+ )
+
++remote_native_execution_platform(
++    name = "exec_linux_aarch64_remote",
++    constraint_values = [
++        "prelude//abi/constraints:gnu",
++        "prelude//cpu/constraints:arm64",
++        "prelude//os/constraints:linux",
++    ],
++    visibility = ["PUBLIC"],
++)
++
++
+ native_execution_platform(
+     name = "exec_macos_aarch64",
+     constraint_values = [
+diff --git a/buck2/platforms/defs.bzl b/buck2/platforms/defs.bzl
+index 9e5b1b0b..86dbf238 100644
+--- a/buck2/platforms/defs.bzl
++++ b/buck2/platforms/defs.bzl
+@@ -136,6 +136,18 @@ def root_remote_cache_enabled():
+ def root_allow_cache_uploads():
+     return read_root_config("buck2", "allow_cache_uploads", "true") == "true"
+
++def root_remote_execution_enabled():
++    return read_root_config("buck2", "remote_execution_enabled", "false") == "true"
++
++
++def linux_aarch64_remote_execution_properties():
++    return {
++        "platform": "exec_linux_aarch64_remote",
++        "OSFamily": "linux",
++        "cpu_arch": "aarch64",
++    }
++
++
+ def _native_execution_platform_impl(ctx):
+     constraints = {}
+     for dep in ctx.attrs.constraint_values:
+@@ -170,6 +182,44 @@ native_execution_platform = rule(
+     },
+ )
+
++def _remote_native_execution_platform_impl(ctx):
++    constraints = {}
++    for dep in ctx.attrs.constraint_values:
++        value = dep[ConstraintValueInfo]
++        constraints[value.setting.label] = value
++    configuration = ConfigurationInfo(constraints = constraints, values = {})
++    platform = ExecutionPlatformInfo(
++        label = ctx.label.raw_target(),
++        configuration = configuration,
++        executor_config = CommandExecutorConfig(
++            local_enabled = False,
++            remote_enabled = True,
++            remote_cache_enabled = True,
++            allow_cache_uploads = True,
++            remote_execution_properties = linux_aarch64_remote_execution_properties(),
++            remote_output_paths = "output_paths",
++            use_windows_path_separators = False,
++        ),
++    )
++    return [
++        DefaultInfo(),
++        platform,
++        PlatformInfo(label = str(ctx.label.raw_target()), configuration = configuration),
++        ExecutionPlatformRegistrationInfo(
++            platforms = [platform],
++            exec_marker_constraint = get_exec_platform_marker(),
++        ),
++    ]
++
++
++remote_native_execution_platform = rule(
++    impl = _remote_native_execution_platform_impl,
++    attrs = {
++        "constraint_values": attrs.list(attrs.dep(providers = [ConstraintValueInfo])),
++    },
++)
++
++
+ def host_platform_label():
+     host = host_info()
+     if host.os.is_linux and host.arch.is_x86_64:
+diff --git a/buck2/typescript.bzl b/buck2/typescript.bzl
+index b9734253..06d1a5b3 100644
+--- a/buck2/typescript.bzl
++++ b/buck2/typescript.bzl
+@@ -7,6 +7,7 @@ before and after execution so TypeScript actions remain write-free.
+
+ load("//buck2/materialization.bzl", "PackageTreeInfo")
+ load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
++load("//buck2/platforms:defs.bzl", "root_remote_execution_enabled")
+
+ TsgoTypecheckInfo = provider(fields = {
+     "toolchain_identity": str,
+@@ -50,7 +51,7 @@ def _tsgo_typecheck_impl(ctx):
+         args,
+         category = "tsgo_typecheck",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not root_remote_execution_enabled(),
+         allow_cache_upload = True,
+     )
+     return [
+@@ -104,7 +105,7 @@ def _tsgo_emit_impl(ctx):
+         args,
+         category = "tsgo_emit",
+         identifier = ctx.attrs.name,
+-        local_only = True,
++        local_only = not root_remote_execution_enabled(),
+         allow_cache_upload = True,
+     )
+     return [

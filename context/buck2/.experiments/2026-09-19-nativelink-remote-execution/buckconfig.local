@@ -1,0 +1,15 @@
+[build]
+  execution_platforms = effect_utils//buck2/platforms:exec_linux_aarch64_remote
+
+[buck2]
+  remote_execution_enabled = true
+  remote_cache_enabled = true
+  allow_cache_uploads = true
+
+[buck2_re_client]
+  action_cache_address = grpc://127.0.0.1:51051
+  cas_address = grpc://127.0.0.1:51051
+  engine_address = grpc://127.0.0.1:51051
+  http_headers = x-effect-utils-experiment: nativelink-remote-execution
+  instance_name = effect-utils-nativelink-re
+  tls = false
