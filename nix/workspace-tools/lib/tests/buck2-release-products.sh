@@ -57,7 +57,7 @@ expect_failure() {
 }
 
 summary="$(eval_loader "$repo_root/nix/buck2-products")"
-expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/otel-contract","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
+expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/otel-contract","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","gh-ci-utils","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 
 jq -e --argjson expected "$expected_names" '
   .fullyPublished == true and
@@ -179,6 +179,10 @@ package_url="https://github.com/overengineeringstudio/effect-utils/releases/down
 package_descriptor="$tmp/package-descriptor.json"
 package_entry="$tmp/package-entry.json"
 package_manifest="$tmp/package-manifest.json"
+package_target="$(
+  jq -r '.products[] | select(.name == "@overeng/utils") | .target' \
+    "$repo_root/nix/buck2-products/targets.json"
+)"
 jq -nS \
   --arg integrity "$package_integrity" \
   --arg sha256 "$package_sha256" \
@@ -186,6 +190,7 @@ jq -nS \
   --arg tag "$package_tag" \
   --arg asset "$package_asset" \
   --arg url "$package_url" \
+  --arg target "$package_target" \
   '{
     dependencies: {
       "@overeng/content-address": {
@@ -201,9 +206,9 @@ jq -nS \
     productKind: "package",
     productName: "@overeng/utils",
     provenance: {
-      configuredTarget: "root//packages/@overeng/utils:dist-package",
+      configuredTarget: $target,
       dependencyClosureIdentity: "package-fixture-closure",
-      module: "root//packages/@overeng/utils:dist-package"
+      module: $target
     },
     release: { tag: $tag, name: $asset, url: $url },
     runtimeContract: "npm-package",
@@ -213,7 +218,7 @@ jq -nS \
     sha256: $sha256,
     sha512: $sha512,
     sizeBytes: 23,
-    target: "root//packages/@overeng/utils:dist-package",
+    target: $target,
     transportSlug: "overeng-utils",
     version: "0.0.0"
   }' >"$package_descriptor"
@@ -235,9 +240,26 @@ jq -nS \
   }' >"$package_entry"
 jq -sS \
   --slurpfile package "$package_entry" \
-  '{schema:"effect-utils/buck2-release-products/v1",products:[.[0].products[0],$package[0]]}' \
+  '{
+    schema:"effect-utils/buck2-release-products/v1",
+    products:[
+      (.[0].products[] | select(.descriptor.productName == "ci-tools")),
+      $package[0]
+    ]
+  }' \
   "$repo_root/nix/buck2-products/manifest.json" >"$package_manifest"
 cp "$package_manifest" "$tmp/products/manifest.json"
+jq '.products |= map(select(.name == "@overeng/utils" or .name == "ci-tools"))' \
+  "$repo_root/nix/buck2-products/targets.json" >"$tmp/products/targets.next.json"
+package_targets_fingerprint="$(jq -cS '{
+  generator: .provenance.generator,
+  schemaVersion: .schemaVersion,
+  semanticData: .products
+}' "$tmp/products/targets.next.json" | tr -d '\n' | sha256sum)"
+package_targets_fingerprint="sha256:${package_targets_fingerprint%% *}"
+jq --arg fingerprint "$package_targets_fingerprint" '.provenance.fingerprint = $fingerprint' \
+  "$tmp/products/targets.next.json" >"$tmp/products/targets.json"
+cp "$tmp/products/targets.json" "$tmp/package-targets.json"
 package_summary="$(eval_loader "$tmp/products")"
 jq -e \
   --arg tag "$package_tag" \
@@ -253,8 +275,10 @@ jq -e \
   .packageMetadata["@overeng/utils"] == {producerCommit:"0000000000000000000000000000000000000001",sha512:$sha512} and
   .packageMetadata["ci-tools"] == {producerCommit:null,sha512:null}
 ' <<<"$package_summary" >/dev/null
+cp "$repo_root/nix/buck2-products/targets.json" "$tmp/products/targets.json"
 
 write_mutation() {
+  cp "$repo_root/nix/buck2-products/targets.json" "$tmp/products/targets.json"
   jq "$1" "$repo_root/nix/buck2-products/manifest.json" >"$tmp/products/manifest.json"
 }
 
@@ -304,10 +328,18 @@ expect_failure "duplicate declared target" "target inventory product targets mus
 
 write_target_mutation '.products[0].target += "[descriptor]"'
 expect_failure "configured declared target" "target inventory products are malformed"
-write_mutation '.products[0].descriptor.productName = "@overeng/utils"'
+write_mutation '.products[0].descriptor.productName = "@overeng/unsafe/package"'
+unsafe_descriptor_sha="$(
+  jq -cS '.products[0].descriptor' "$tmp/products/manifest.json" | tr -d '\n' | sha256sum
+)"
+jq --arg descriptor_sha "${unsafe_descriptor_sha%% *}" \
+  '.products[0].descriptorSha256 = $descriptor_sha' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.next.json"
+mv "$tmp/products/manifest.next.json" "$tmp/products/manifest.json"
 expect_failure "scoped JavaScript product" "descriptor has an unsafe product name"
 
 write_package_mutation() {
+  cp "$tmp/package-targets.json" "$tmp/products/targets.json"
   jq "$1" "$package_manifest" >"$tmp/products/manifest.json"
 }
 
@@ -376,16 +408,16 @@ if ! jq -e --argjson expected "$expected_names" '
   exit 1
 fi
 
-if ! scoped_plan="$(PATH="$tmp/bin:$PATH" bash "$publisher" --dry-run --inventory "$package_manifest" 2>"$plan_stderr")"; then
+if ! scoped_plan="$(PATH="$tmp/bin:$PATH" bash "$publisher" --dry-run --targets "$tmp/package-targets.json" 2>"$plan_stderr")"; then
   echo "buck2-release-products-test: scoped publisher dry-run failed" >&2
   sed -n '1,160p' "$plan_stderr" >&2
   exit 1
 fi
-if ! jq -e '
+if ! jq -e --arg target "$package_target" '
   [.products[].productName] == ["@overeng/utils","ci-tools"] and
   (.products[] | select(.productName == "@overeng/utils") |
-    .candidateTarget == "root//packages/@overeng/utils:dist-package" and
-    .descriptorTarget == "root//packages/@overeng/utils:dist-package[descriptor]")
+    .candidateTarget == $target and
+    .descriptorTarget == ($target + "[descriptor]"))
 ' <<<"$scoped_plan" >/dev/null; then
   echo "buck2-release-products-test: publisher dry-run lost the scoped package identity" >&2
   printf '%s\n' "$scoped_plan" >&2
