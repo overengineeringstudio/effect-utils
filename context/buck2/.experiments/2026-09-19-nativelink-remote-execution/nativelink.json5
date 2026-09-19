@@ -1,0 +1,99 @@
+{
+  stores: [
+    {
+      name: "CAS_FILESYSTEM",
+      filesystem: {
+        content_path: "/srv/bulk/coding-agents/tmp/nativelink/cas/content",
+        temp_path: "/srv/bulk/coding-agents/tmp/nativelink/cas/temp",
+        eviction_policy: { max_bytes: 1073741824 },
+      },
+    },
+    {
+      name: "CAS",
+      verify: {
+        backend: { ref_store: { name: "CAS_FILESYSTEM" } },
+        verify_size: true,
+        verify_hash: true,
+      },
+    },
+    {
+      name: "AC",
+      filesystem: {
+        content_path: "/srv/bulk/coding-agents/tmp/nativelink/ac/content",
+        temp_path: "/srv/bulk/coding-agents/tmp/nativelink/ac/temp",
+        eviction_policy: { max_bytes: 134217728 },
+      },
+    },
+    {
+      name: "WORKER_CAS",
+      fast_slow: {
+        fast: {
+          filesystem: {
+            content_path: "/srv/bulk/coding-agents/tmp/nativelink/worker-cas/content",
+            temp_path: "/srv/bulk/coding-agents/tmp/nativelink/worker-cas/temp",
+            eviction_policy: { max_bytes: 1073741824 },
+          },
+        },
+        slow: { ref_store: { name: "CAS" } },
+      },
+    },
+  ],
+  schedulers: [
+    {
+      name: "MAIN_SCHEDULER",
+      simple: {
+        supported_platform_properties: {
+          platform: "exact",
+          OSFamily: "exact",
+          cpu_arch: "exact",
+        },
+      },
+    },
+  ],
+  workers: [
+    {
+      local: {
+        name: "dev4-aarch64",
+        worker_api_endpoint: { uri: "grpc://127.0.0.1:51061" },
+        cas_fast_slow_store: "WORKER_CAS",
+        upload_action_result: { ac_store: "AC" },
+        work_directory: "/srv/bulk/coding-agents/tmp/nativelink/worker",
+        platform_properties: {
+          platform: { values: ["exec_linux_aarch64_remote"] },
+          OSFamily: { values: ["linux"] },
+          cpu_arch: { values: ["aarch64"] },
+        },
+      },
+    },
+  ],
+  servers: [
+    {
+      name: "client",
+      listener: { http: { socket_address: "127.0.0.1:51051" } },
+      services: {
+        cas: [{ instance_name: "effect-utils-nativelink-re", cas_store: "CAS" }],
+        ac: [{ instance_name: "effect-utils-nativelink-re", ac_store: "AC" }],
+        bytestream: [{ instance_name: "effect-utils-nativelink-re", cas_store: "CAS" }],
+        execution: [{
+          instance_name: "effect-utils-nativelink-re",
+          cas_store: "CAS",
+          scheduler: "MAIN_SCHEDULER",
+        }],
+        capabilities: [{
+          instance_name: "effect-utils-nativelink-re",
+          remote_execution: { scheduler: "MAIN_SCHEDULER" },
+        }],
+        health: {},
+      },
+    },
+    {
+      name: "worker-api",
+      listener: { http: { socket_address: "127.0.0.1:51061" } },
+      services: {
+        worker_api: { scheduler: "MAIN_SCHEDULER" },
+        health: {},
+      },
+    },
+  ],
+  global: { max_open_files: 24576 },
+}
