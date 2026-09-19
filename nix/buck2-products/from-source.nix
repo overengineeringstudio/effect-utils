@@ -27,6 +27,7 @@ let
   target = product.target;
   productName = product.name;
   packagePath = product.packageTreePath or product.packagePath;
+  preparedPackageModules = preparedDeps + "/${packagePath}/node_modules";
   outputName = product.outputName;
   safeName = lib.replaceStrings [ "@" "/" ] [ "" "-" ] productName;
 in
@@ -137,6 +138,43 @@ pkgs.stdenv.mkDerivation {
 
     mkdir -p nix-deps
     cp -a ${preparedDeps}/node_modules nix-deps/tree
+    SOURCE_MODULES=${lib.escapeShellArg preparedPackageModules} \
+      DEST_MODULES="$PWD/nix-deps/tree" \
+      PREPARED_ROOT=${lib.escapeShellArg preparedDeps} \
+      ${pkgs.bun}/bin/bun -e '
+        import { mkdir, readdir, realpath, symlink } from "node:fs/promises"
+        import { dirname, join, relative } from "node:path"
+        const source = process.env.SOURCE_MODULES
+        const destination = process.env.DEST_MODULES
+        const preparedRoot = process.env.PREPARED_ROOT
+        if (source === undefined || destination === undefined || preparedRoot === undefined) {
+          throw new Error("prepared dependency projection environment is incomplete")
+        }
+        const rootModules = join(preparedRoot, "node_modules")
+        const project = async (sourceDirectory, destinationDirectory) => {
+          await mkdir(destinationDirectory, { recursive: true })
+          for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
+            const sourcePath = join(sourceDirectory, entry.name)
+            const destinationPath = join(destinationDirectory, entry.name)
+            if (entry.isDirectory()) {
+              await project(sourcePath, destinationPath)
+            } else if (entry.isSymbolicLink()) {
+              const resolved = await realpath(sourcePath)
+              if (resolved === rootModules || resolved.startsWith(rootModules + "/")) {
+                const projectedTarget = join(destination, relative(rootModules, resolved))
+                await mkdir(dirname(destinationPath), { recursive: true })
+                await symlink(relative(dirname(destinationPath), projectedTarget), destinationPath)
+              } else if (!(resolved === preparedRoot || resolved.startsWith(join(preparedRoot, "packages") + "/"))) {
+                throw new Error(`prepared dependency link escapes its declared roots: ''${sourcePath}`)
+              }
+            } else {
+              throw new Error(`prepared dependency projection expected only directories and links: ''${sourcePath}`)
+            }
+          }
+        }
+        await project(source, destination)
+      '
+
     PREPARED_TREE="$PWD/nix-deps/tree" ${pkgs.bun}/bin/bun -e '
       import { chmod, readdir, realpath, rm } from "node:fs/promises"
       import { join } from "node:path"
