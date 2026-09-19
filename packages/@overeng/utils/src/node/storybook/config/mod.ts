@@ -128,6 +128,12 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
   const config = {
     stories,
     ...(resolvedAddons !== undefined ? { addons: resolvedAddons } : {}),
+    /* Onboarding-free Storybooks: the sidebar "Get started" checklist, the menu
+     * onboarding guide page, and the "what's new" version toast are first-run
+     * aids that reappear on fresh profiles and add noise to shared dev tooling.
+     * Suppressed centrally so every factory consumer inherits the quiet setup. */
+    core: { disableWhatsNewNotifications: true },
+    features: { menuOnboardingChecklist: false, sidebarOnboardingChecklist: false },
     framework: { name: '@storybook/react-vite', options: {} },
     viteFinal: async (storybookConfig) => {
       const typedConfig = storybookConfig as InlineConfig
@@ -189,6 +195,9 @@ export const createTuiStorybookConfig: CreateTuiStorybookConfig = <TConfig exten
   const config = {
     stories,
     ...(addons !== undefined ? { addons } : {}),
+    /* Same onboarding-free defaults as the DOM factory (see above). */
+    core: { disableWhatsNewNotifications: true },
+    features: { menuOnboardingChecklist: false, sidebarOnboardingChecklist: false },
     framework: { name: '@storybook/react-vite', options: {} },
     viteFinal: async (storybookConfig) => {
       const typedConfig = storybookConfig as InlineConfig
