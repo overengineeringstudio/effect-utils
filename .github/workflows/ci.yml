@@ -3894,6 +3894,67 @@ jobs:
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-devenv-perf"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+  pr-reviews-resolved:
+    if: ${{ github.event_name != 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check unresolved review threads
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            printf '%s\n' '::notice::pr-reviews-resolved only gates pull requests; nothing to enforce.'
+            exit 0
+          fi
+          pr_number="${{ github.event.pull_request.number }}"
+          if [[ ! "$pr_number" =~ ^[1-9][0-9]*$ ]]; then
+            printf '%s\n' '::error::pr-reviews-resolved could not determine the pull request number.'
+            exit 1
+          fi
+          owner="${GITHUB_REPOSITORY%%/*}"
+          name="${GITHUB_REPOSITORY#*/}"
+          query='query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){pageInfo{hasNextPage endCursor}nodes{isResolved}}}}}'
+          unresolved=0
+          cursor=""
+          page=0
+          while :; do
+            page=$((page + 1))
+            if [ "$page" -gt 5 ]; then
+              printf '%s\n' '::error::pr-reviews-resolved found more than 500 review threads; refusing to paginate further.'
+              exit 1
+            fi
+            if [ -z "$cursor" ]; then
+              page_json=$(gh api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number")
+            else
+              page_json=$(gh api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number" -f cursor="$cursor")
+            fi
+            page_unresolved=$(printf '%s\n' "$page_json" | jq '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved == false)] | length')
+            unresolved=$((unresolved + page_unresolved))
+            if [ "$(printf '%s\n' "$page_json" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')" != "true" ]; then
+              break
+            fi
+            cursor=$(printf '%s\n' "$page_json" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+          done
+          if [ "$unresolved" -gt 0 ]; then
+            printf '%s\n' "::error::pr-reviews-resolved found $unresolved unresolved review thread(s); resolve them before merge, then re-run this check (thread resolution does not retrigger workflows)."
+            exit 1
+          fi
+          printf '%s\n' "All review threads resolved on PR #$pr_number."
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pr-reviews-resolved"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
   nix-closure-sizes:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
     runs-on:
