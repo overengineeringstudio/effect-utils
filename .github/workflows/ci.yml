@@ -781,7 +781,7 @@ jobs:
       matrix:
         runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
     runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
