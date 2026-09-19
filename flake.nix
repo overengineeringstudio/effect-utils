@@ -68,7 +68,7 @@
           # Dirty flake inputs have no commit identity. The publisher rejects dirty trees and
           # verifies this field against HEAD before mutation, so the sentinel cannot escape.
           producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
-          repositoryRoot = rootPath;
+          repositoryRoot = ./.;
         };
         buck2-go = import ./nix/go.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
