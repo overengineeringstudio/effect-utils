@@ -467,6 +467,8 @@ package_view(
         "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/megarepo/node_modules": "//packages/@overeng/megarepo:package_tree",
+        "node_modules/@overeng/tui-react/node_modules": "//packages/@overeng/tui-react:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
@@ -859,6 +861,8 @@ package_view(
         "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/megarepo/node_modules": "//packages/@overeng/megarepo:package_tree",
+        "node_modules/@overeng/tui-react/node_modules": "//packages/@overeng/tui-react:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },

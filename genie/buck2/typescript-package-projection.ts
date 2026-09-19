@@ -937,7 +937,6 @@ export const buck2TypeScriptPackageProjection = ({
     )
     .toSorted(([left], [right]) => compareStrings({ left, right }))
   const workspaceDependencyViewEntries = workspaceSiblingProjections
-    .filter((sibling) => sibling.sourceRoots.length === 0)
     .map((sibling): readonly [string, string] => [
       `node_modules/${sibling.packageName}/node_modules`,
       sibling.packageTreeTarget,

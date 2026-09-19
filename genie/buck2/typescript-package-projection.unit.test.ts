@@ -161,17 +161,6 @@ describe('declared-closure package projection', () => {
     }
   })
 
-  it('resolves source-projected sibling dependencies from the consumer view', () => {
-    for (const tree of ['package_tree', 'test_package_tree']) {
-      const target = outputsByAdmission.tuiStories.split(
-        `package_view(\n    name = "${tree}",\n`,
-      )[1]
-      expect(target?.split('\n)\n')[0]).toContain('        "node_modules/@overeng/tui-react/src/')
-      expect(target?.split('\n)\n')[0]).not.toContain(
-        '"node_modules/@overeng/tui-react/node_modules"',
-      )
-    }
-  })
 
   it('admits the complete recursive workspace closure for tui-react', () => {
     const tuiReactView = dependencyBuck.data.store.views.find(
