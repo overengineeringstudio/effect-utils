@@ -728,6 +728,9 @@ in
     (taskModules.test-playwright {
       playwrightPkg = inputs.playwright.packages.${currentSystem}.playwright;
       installTask = "buck2:editor:publish";
+      # Launch the CLI through @playwright/test so the runner and test imports
+      # share one module instance inside the Buck editor dependency view.
+      playwrightBin = "node_modules/@playwright/test/cli.js";
       packages = [
         {
           path = "packages/@overeng/utils";
