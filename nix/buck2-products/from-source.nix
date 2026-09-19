@@ -146,7 +146,7 @@ pkgs.stdenv.mkDerivation {
       DEST_MODULES="$PWD/nix-deps/tree" \
       PREPARED_ROOT=${lib.escapeShellArg preparedDeps} \
       ${pkgs.bun}/bin/bun -e '
-        import { mkdir, readdir, realpath, symlink } from "node:fs/promises"
+        import { access, mkdir, readdir, realpath, symlink } from "node:fs/promises"
         import { dirname, join, relative } from "node:path"
         const source = process.env.SOURCE_MODULES
         const destination = process.env.DEST_MODULES
@@ -177,6 +177,19 @@ pkgs.stdenv.mkDerivation {
           }
         }
         await project(source, destination)
+        const workspaceRoot = join(preparedRoot, "packages", "@overeng")
+        for (const entry of await readdir(workspaceRoot, { withFileTypes: true })) {
+          if (!entry.isDirectory()) continue
+          const destinationPackage = join(destination, "@overeng", entry.name)
+          const sourceModules = join(workspaceRoot, entry.name, "node_modules")
+          try {
+            await access(destinationPackage)
+            await access(sourceModules)
+          } catch {
+            continue
+          }
+          await project(sourceModules, join(destinationPackage, "node_modules"))
+        }
       '
 
     PREPARED_TREE="$PWD/nix-deps/tree" ${pkgs.bun}/bin/bun -e '
