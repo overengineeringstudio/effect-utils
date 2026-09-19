@@ -106,7 +106,9 @@ dependency by Amendment 3 and does not block S8.
 
 This experiment closes the original S8 standalone-root, aggregate, watcher,
 and shell-entry measurement gaps. It also records that the amended
-same-platform cache-reuse requirement fails with 633 local actions. It does not
-change thresholds or authority. S14 owns deletion of the remaining
+same-platform cache-reuse requirement fails with 633 local actions. The open
+[reuse delta](../04-reuse/.delta/DELTA-001-second-context-local-reexecution.md)
+tracks that BUCK-R06/REUSE-R02 implementation divergence without changing
+thresholds or authority. S14 owns deletion of the remaining
 composition-dependent `check:quick` residual gates and its composed
 before/after control.
