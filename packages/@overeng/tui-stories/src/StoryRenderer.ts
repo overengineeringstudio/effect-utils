@@ -9,23 +9,10 @@
 
 import { Effect, Schema } from 'effect'
 import { Atom, AtomRegistry } from 'effect/unstable/reactivity'
-import React from 'react'
 
-import {
-  RenderConfigProvider,
-  ttyRenderConfig,
-  ciRenderConfig,
-  ciPlainRenderConfig,
-  logRenderConfig,
-  altScreenRenderConfig,
-  stripAnsi,
-  type RenderConfig,
-  TuiRegistryContext,
-  renderToString,
-} from '@overeng/tui-react'
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
-import type { CapturedStoryProps } from './StoryCapture.ts'
+import { loadStoryRuntime, type CapturedStoryProps } from './StoryCapture.ts'
 
 // =============================================================================
 // Types
@@ -67,18 +54,6 @@ export interface RenderStoryOptions {
   readonly width: number
   readonly timelineMode: TimelineMode
   readonly output: OutputMode
-}
-
-// =============================================================================
-// RenderConfig mapping
-// =============================================================================
-
-const renderConfigForMode: Record<Exclude<OutputMode, 'json' | 'ndjson'>, RenderConfig> = {
-  tty: ttyRenderConfig,
-  'alt-screen': altScreenRenderConfig,
-  ci: ciRenderConfig,
-  'ci-plain': ciPlainRenderConfig,
-  log: logRenderConfig,
 }
 
 // =============================================================================
@@ -150,34 +125,40 @@ const renderReact = ({
   captured,
   width,
   timelineMode,
-  renderConfig,
+  output,
 }: {
   readonly captured: CapturedStoryProps
   readonly width: number
   readonly timelineMode: TimelineMode
-  readonly renderConfig: RenderConfig
+  readonly output: Exclude<OutputMode, 'json' | 'ndjson'>
 }): Effect.Effect<string> =>
-  Effect.gen(function* () {
+  Effect.promise(async () => {
     const targetState = computeState({ captured, timelineMode })
     const registry = AtomRegistry.make()
     const stateAtom = Atom.make(targetState)
+    const { react, tuiReact } = await loadStoryRuntime(captured.storyFilePath)
+    const renderConfig = {
+      tty: tuiReact.ttyRenderConfig,
+      'alt-screen': tuiReact.altScreenRenderConfig,
+      ci: tuiReact.ciRenderConfig,
+      'ci-plain': tuiReact.ciPlainRenderConfig,
+      log: tuiReact.logRenderConfig,
+    }[output]
 
-    const viewElement = React.createElement(captured.View, { stateAtom })
-    const configElement = React.createElement(
-      RenderConfigProvider,
-      { config: renderConfig } as React.ComponentProps<typeof RenderConfigProvider>,
+    const viewElement = react.createElement(captured.View, { stateAtom })
+    const configElement = react.createElement(
+      tuiReact.RenderConfigProvider,
+      { config: renderConfig },
       viewElement,
     )
-    const element = React.createElement(
-      TuiRegistryContext.Provider,
+    const element = react.createElement(
+      tuiReact.TuiRegistryContext.Provider,
       { value: registry },
       configElement,
     )
+    const raw = await tuiReact.renderToString({ element, options: { width } })
 
-    const raw = yield* Effect.promise(() => renderToString({ element, options: { width } }))
-
-    // Strip ANSI for modes with colors disabled (components may emit ANSI directly)
-    return renderConfig.colors === false ? stripAnsi(raw) : raw
+    return renderConfig.colors === false ? tuiReact.stripAnsi(raw) : raw
   })
 
 // =============================================================================
@@ -272,6 +253,6 @@ export const renderStory = (options: RenderStoryOptions): Effect.Effect<string> 
     captured,
     width,
     timelineMode,
-    renderConfig: renderConfigForMode[output],
+    output,
   })
 }

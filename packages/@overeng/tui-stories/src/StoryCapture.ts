@@ -13,22 +13,17 @@ import { pathToFileURL } from 'node:url'
 
 import type { Schema } from 'effect'
 import type { Atom } from 'effect/unstable/reactivity'
-import type { createElement, ReactElement, ComponentType } from 'react'
+import type { ReactElement, ComponentType } from 'react'
 
 // Import only the type — the runtime TuiStoryPreview import pulls in xterm.js
 // which creates open handles that prevent process exit in Node/Bun.
-import type { renderToString } from '@overeng/tui-react'
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { ResolvedStory } from './StoryModule.ts'
 const storyCaptureSymbol = Symbol.for('@overeng/tui-react/TuiStoryPreview.capture')
 
-type StoryRuntime = {
-  readonly createElement: typeof createElement
-  readonly renderToString: typeof renderToString
-}
-
-const loadStoryRuntime = async (filePath: string): Promise<StoryRuntime> => {
+/** Load React and its reconciler from the package that owns the story module. */
+export const loadStoryRuntime = async (filePath: string) => {
   const storyRequire = createRequire(filePath)
   const [react, tuiReact] = await Promise.all([
     // oxlint-disable-next-line import/no-dynamic-require -- story hooks require the React instance selected by the story package
@@ -36,12 +31,8 @@ const loadStoryRuntime = async (filePath: string): Promise<StoryRuntime> => {
     // oxlint-disable-next-line import/no-dynamic-require -- the reconciler must use the story package's React peer instance
     import(pathToFileURL(storyRequire.resolve('@overeng/tui-react')).href),
   ])
-  return {
-    createElement: react.createElement,
-    renderToString: tuiReact.renderToString,
-  }
+  return { react, tuiReact }
 }
-
 // =============================================================================
 // Types
 // =============================================================================
@@ -61,7 +52,10 @@ export interface CapturedStoryProps {
   readonly timeline: readonly TimelineEvent<unknown>[]
   readonly command: string
   readonly cwd?: string | undefined
+  readonly storyFilePath: string
 }
+
+type ExtractedStoryProps = Omit<CapturedStoryProps, 'storyFilePath'>
 
 /** Error raised when capturing props from a story's render function fails */
 export class StoryCaptureError extends Error {
@@ -86,7 +80,7 @@ export class StoryCaptureError extends Error {
 const hasPreviewContract = (props: Record<string, unknown>): boolean =>
   'app' in props && 'View' in props && typeof props.command === 'string'
 
-const extractPreviewProps = (element: ReactElement): CapturedStoryProps | undefined => {
+const extractPreviewProps = (element: ReactElement): ExtractedStoryProps | undefined => {
   if (element === null || element === undefined) return undefined
   if (typeof element !== 'object') return undefined
 
@@ -128,10 +122,10 @@ const describeElement = (element: ReactElement): string => {
   return `type=${typeName}; props=[${Object.keys(props).toSorted().join(', ')}]`
 }
 
-/** Extract CapturedStoryProps from raw TuiStoryPreview props */
-const extractFromProps = (props: Record<string, unknown>): CapturedStoryProps => ({
-  app: props.app as CapturedStoryProps['app'],
-  View: props.View as CapturedStoryProps['View'],
+/** Extract story props from raw TuiStoryPreview props */
+const extractFromProps = (props: Record<string, unknown>): ExtractedStoryProps => ({
+  app: props.app as ExtractedStoryProps['app'],
+  View: props.View as ExtractedStoryProps['View'],
   initialState: props.initialState,
   timeline: (props.timeline as readonly TimelineEvent<unknown>[]) ?? [],
   command: (props.command as string) ?? '',
@@ -159,7 +153,7 @@ export const captureStoryProps = async ({
   const mergedArgs = { ...story.args, ...argOverrides }
   const storyRuntime = await loadStoryRuntime(story.filePath)
 
-  let captured: CapturedStoryProps | undefined
+  let captured: ExtractedStoryProps | undefined
   let observedElement = '<render did not return an element>'
   const CaptureWrapper = (): ReactElement | null => {
     const element = story.render(mergedArgs)
@@ -174,8 +168,8 @@ export const captureStoryProps = async ({
   })
   const renderPromise = (() => {
     try {
-      return storyRuntime.renderToString({
-        element: storyRuntime.createElement(CaptureWrapper),
+      return storyRuntime.tuiReact.renderToString({
+        element: storyRuntime.react.createElement(CaptureWrapper),
       })
     } finally {
       if (previousCapture === undefined) {
@@ -196,5 +190,5 @@ export const captureStoryProps = async ({
     })
   }
 
-  return captured
+  return { ...captured, storyFilePath: story.filePath }
 }
