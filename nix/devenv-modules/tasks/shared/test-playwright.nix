@@ -30,10 +30,11 @@ let
   mkTestTask = pkg: {
     "test:pw:${pkg.name}" = {
       description = "Run playwright tests for ${pkg.name}";
-      # Storybook otherwise discovers node_modules/.cache inside the immutable
-      # Buck editor view and fails before Playwright can start.
+      # Storybook and Vite otherwise discover caches below node_modules inside
+      # the immutable Buck editor view and fail before Playwright can start.
       exec = trace.exec "test:pw:${pkg.name}" ''
         export CACHE_DIR="''${CACHE_DIR:-''${XDG_CACHE_HOME:-''${TMPDIR:-/tmp}}/storybook/${pkg.name}}"
+        export VITE_CACHE_DIR="''${VITE_CACHE_DIR:-''${XDG_CACHE_HOME:-''${TMPDIR:-/tmp}}/vite/${pkg.name}}"
         ${playwrightBin} test
       '';
       cwd = pkg.path;
