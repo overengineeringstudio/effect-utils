@@ -3,7 +3,12 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
-      "packages/@overeng/react-inspector"
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/react-inspector",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
     ]
   },
   "name": "@overeng/react-inspector",
@@ -33,6 +38,7 @@
     "is-dom": "1.1.0"
   },
   "devDependencies": {
+    "@overeng/utils": "workspace:^",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@testing-library/react": "16.3.3",

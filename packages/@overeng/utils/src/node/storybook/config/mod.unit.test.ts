@@ -5,7 +5,7 @@ import { expect } from 'vitest'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { shouldNeverHappen } from '../../../isomorphic/core.ts'
-import { createDomStorybookConfig } from './mod.ts'
+import { createDomStorybookConfig, createTuiStorybookConfig } from './mod.ts'
 
 const runViteFinal = async () => {
   const existingPlugin = { name: 'existing' }
@@ -38,6 +38,15 @@ Vitest.describe('createDomStorybookConfig', () => {
       off: createDomStorybookConfig({}).addons,
       on: createDomStorybookConfig({ a11y: true }).addons,
     }).toEqual({ off: undefined, on: ['@storybook/addon-a11y'] })
+  })
+
+  Vitest.it('suppresses onboarding UI and version notifications in both factories', () => {
+    const expected = {
+      core: { disableWhatsNewNotifications: true },
+      features: { menuOnboardingChecklist: false, sidebarOnboardingChecklist: false },
+    }
+    expect(createDomStorybookConfig({})).toMatchObject(expected)
+    expect(createTuiStorybookConfig({})).toMatchObject(expected)
   })
 
   /**
