@@ -48,9 +48,16 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryCapture', (it) => {
     }),
   )
 
-  it.effect('captures previews without relying on component identity', () =>
+  it.effect('captures previews rendered from a separate dependency view', () =>
     Effect.promise(async () => {
-      const PreviewFromDependencyView = () => null
+      const PreviewFromDependencyView = (props: Record<string, unknown>) => {
+        const capture = Reflect.get(
+          globalThis,
+          Symbol.for('@overeng/tui-react/TuiStoryPreview.capture'),
+        )
+        if (typeof capture === 'function') capture(props)
+        return null
+      }
       const View = () => null
       const app = {
         config: {
@@ -60,17 +67,18 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryCapture', (it) => {
           reducer: ({ state }: { state: unknown }) => state,
         },
       }
+      const DependencyView = () =>
+        React.createElement(PreviewFromDependencyView, {
+          app,
+          View,
+          initialState: null,
+          command: 'dependency-view',
+        })
       const story: ResolvedStory = {
         name: 'DependencyView',
         title: 'Test',
         id: 'Test/DependencyView',
-        render: () =>
-          React.createElement(PreviewFromDependencyView, {
-            app,
-            View,
-            initialState: null,
-            command: 'dependency-view',
-          }),
+        render: () => React.createElement(DependencyView),
         args: {},
         argTypes: {},
         filePath: 'dependency-view.stories.tsx',

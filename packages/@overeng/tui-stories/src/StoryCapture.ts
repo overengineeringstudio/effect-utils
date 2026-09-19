@@ -18,6 +18,7 @@ import { renderToString } from '@overeng/tui-react'
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { ResolvedStory } from './StoryModule.ts'
+const storyCaptureSymbol = Symbol.for('@overeng/tui-react/TuiStoryPreview.capture')
 
 // =============================================================================
 // Types
@@ -126,10 +127,25 @@ export const captureStoryProps = async ({
   const CaptureWrapper = (): ReactElement | null => {
     const element = story.render(mergedArgs)
     captured = extractPreviewProps(element)
-    return null
+    return captured === undefined ? element : null
   }
 
-  await renderToString({ element: React.createElement(CaptureWrapper) })
+  const previousCapture = Reflect.get(globalThis, storyCaptureSymbol)
+  Reflect.set(globalThis, storyCaptureSymbol, (props: Record<string, unknown>) => {
+    captured = extractFromProps(props)
+  })
+  const renderPromise = (() => {
+    try {
+      return renderToString({ element: React.createElement(CaptureWrapper) })
+    } finally {
+      if (previousCapture === undefined) {
+        Reflect.deleteProperty(globalThis, storyCaptureSymbol)
+      } else {
+        Reflect.set(globalThis, storyCaptureSymbol, previousCapture)
+      }
+    }
+  })()
+  await renderPromise
 
   if (captured === undefined) {
     throw new StoryCaptureError({
