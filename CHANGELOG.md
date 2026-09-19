@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Buck2 (experiment)**: Reconstruct the smallest JavaScript product from
+  filtered source and a prepared dependency closure inside the normal Nix
+  sandbox, and record the publication-provenance gap exposed by byte comparison.
+
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full
   checks.
