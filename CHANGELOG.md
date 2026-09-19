@@ -233,6 +233,10 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- **Buck2 checks**: remove megarepo setup, apply, and validation gates from the
+  repository `check:quick` and `check:all` dependency graphs. Repository
+  composition remains available through explicit mr operations.
+
 - **nix**: the repository-local pnpm source builders for the ci-tools, Genie,
   Genie bootstrap-closure-check, megarepo, notion-cli, notion-md, npm-release,
   and tui-stories CLIs are gone, together with their fixed-output dependency

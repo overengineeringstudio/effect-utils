@@ -148,13 +148,12 @@ manifest, and kept out of action digests by the root's `[project] ignore`
 This is what gives editors and typecheck actions cross-member types through
 the unchanged `exports` types→dist mechanism.
 
-The workspace root is not a git repository; the owned member is, and it is
-the default working directory (git, devenv, genie, and pnpm all operate from
-the member; nothing operates only from the root). `buck2 build` works from
-the root, the member, and package dirs alike (COMP-R06); note `buck2 root`
-defaults to `--kind cell` (the member) — scripts wanting the workspace pass
-`--kind project`. Teardown is an mr operation (protected mounts need a
-dirs-only unprotect before removal), never a bare `rm -rf`.
+The composed workspace root is not a git repository; the owned member is, and
+it is the default working directory for explicit composition operations. Buck
+can run from the root, owned member, or a package directory (COMP-R06);
+scripts that need the composed project root pass `buck2 root --kind project`.
+Teardown is an mr operation (protected mounts need a dirs-only unprotect before
+removal), never a bare `rm -rf`.
 
 ## Composed-Exception Agent Workflow Contract — Revision 3
 
@@ -176,9 +175,9 @@ exceptional shape, agents follow these rules:
    create an independent composed checkout outside the store.
 2. Use `repos/<owned>` as the default cwd and the only source tree mutated by
    the session.
-3. Run git, devenv, Genie, pnpm, and package-local commands from the owned
-   member. A command that needs the composition root resolves it through mr or
-   `buck2 root --kind project`; it does not infer `../..` in application code.
+3. Run git, Genie, pnpm, and package-local commands from the owned member.
+   Resolve a composition root through mr or `buck2 root --kind project` only
+   for an explicit composition operation; do not infer `../..` in application code.
 4. Treat every non-owned `repos/<member>` as immutable input. Never edit,
    chmod, replace, branch, or run a producer that writes there.
 5. Treat ignored members as reference-only. They are excluded from Buck cells,
@@ -211,6 +210,12 @@ Nix-produced capability cell, and its tracked `.buckroot` prevents accidental
 discovery of an outer project. Effect-utils CI and devenv Buck tasks use this
 shape directly; a second standalone checkout at the same revision is the
 BUCK-R06 cache-reuse comparison context.
+
+`devenv tasks run check:quick` and `check:all` execute their Buck aggregates,
+lint actions, test actions, and editor-view publication from this root. The
+check graph does not run `mr:setup`, `mr:apply`, or any `mr:*` validation gate.
+Repository composition remains an explicit mr operation outside the check
+surface.
 
 The paused composed shape remains distinct until L3 cut 2: the member is
 mounted at `repos/<name>` under the same canonical cell name. Action-digest
