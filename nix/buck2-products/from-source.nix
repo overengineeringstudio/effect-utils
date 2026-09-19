@@ -180,18 +180,18 @@ pkgs.stdenv.mkDerivation {
         "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_view\")",
         "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_tree\")",
       )
-      const opening = "package_view(\\n    name = \"package_tree\",\\n"
+      const opening = "package_view(\n    name = \"package_tree\",\n"
       const blockStart = source.indexOf(opening)
       if (blockStart === -1 || source.indexOf(opening, blockStart + 1) !== -1) {
         throw new Error("Expected exactly one package_tree package_view")
       }
-      const blockEnd = source.indexOf("\\n)\\n", blockStart)
+      const blockEnd = source.indexOf("\n)\n", blockStart)
       if (blockEnd === -1) throw new Error("Unterminated package_tree package_view")
       const dependencyStart = source.indexOf("    dependency_view = \"//buck2/dependencies:view_", blockStart)
       if (dependencyStart === -1 || dependencyStart >= blockEnd) {
         throw new Error("package_tree package_view has no dependency_view")
       }
-      const dependencyEnd = source.indexOf("\\n", dependencyStart)
+      const dependencyEnd = source.indexOf("\n", dependencyStart)
       source =
         source.slice(0, blockStart) +
         source.slice(blockStart, blockEnd).replace("package_view(", "package_tree(").replace(
