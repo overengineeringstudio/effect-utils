@@ -18,7 +18,7 @@ import { renderToString } from '@overeng/tui-react'
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { ResolvedStory } from './StoryModule.ts'
-const storyCaptureSymbol = Symbol.for('@overeng/tui-react/TuiStoryPreview.capture')
+const tuiStoryPreviewType = Symbol.for('@overeng/tui-react/TuiStoryPreview')
 
 // =============================================================================
 // Types
@@ -56,23 +56,27 @@ export class StoryCaptureError extends Error {
 // =============================================================================
 
 /**
- * Walk a React element tree to find a component with the TuiStoryPreview prop contract.
+ * Walk a React element tree to find TuiStoryPreview and extract its props.
  *
- * Editor dependency views can load a separately transformed component instance, so
- * component identity and function names are not stable capture boundaries.
+ * Checks both direct type reference and component name to handle cases
+ * where multiple React instances might be involved.
  */
-const hasPreviewContract = (props: Record<string, unknown>): boolean =>
-  'app' in props && 'View' in props && typeof props.command === 'string'
-
 const extractPreviewProps = (element: ReactElement): CapturedStoryProps | undefined => {
   if (element === null || element === undefined) return undefined
   if (typeof element !== 'object') return undefined
 
+  const type = (element as { type?: unknown }).type
   const props = (element as { props?: Record<string, unknown> }).props
 
   if (props === undefined) return undefined
 
-  if (hasPreviewContract(props) === true) return extractFromProps(props)
+  // The global marker survives separate physical module instances in immutable
+  // editor dependency views. Keep the name fallback for older story packages.
+  const isPreview =
+    ((typeof type === 'function' || (typeof type === 'object' && type !== null)) &&
+      Reflect.get(type, tuiStoryPreviewType) === true) ||
+    (typeof type === 'function' && type.name === 'TuiStoryPreview')
+  if (isPreview === true) return extractFromProps(props)
 
   // Walk children recursively
   const children = props.children
@@ -127,25 +131,10 @@ export const captureStoryProps = async ({
   const CaptureWrapper = (): ReactElement | null => {
     const element = story.render(mergedArgs)
     captured = extractPreviewProps(element)
-    return captured === undefined ? element : null
+    return null
   }
 
-  const previousCapture = Reflect.get(globalThis, storyCaptureSymbol)
-  Reflect.set(globalThis, storyCaptureSymbol, (props: Record<string, unknown>) => {
-    captured = extractFromProps(props)
-  })
-  const renderPromise = (() => {
-    try {
-      return renderToString({ element: React.createElement(CaptureWrapper) })
-    } finally {
-      if (previousCapture === undefined) {
-        Reflect.deleteProperty(globalThis, storyCaptureSymbol)
-      } else {
-        Reflect.set(globalThis, storyCaptureSymbol, previousCapture)
-      }
-    }
-  })()
-  await renderPromise
+  await renderToString({ element: React.createElement(CaptureWrapper) })
 
   if (captured === undefined) {
     throw new StoryCaptureError({

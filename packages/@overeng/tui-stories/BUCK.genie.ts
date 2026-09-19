@@ -18,7 +18,7 @@ export const buck2TypeScriptAdmission = {
     {
       packageName: '@overeng/tui-react',
       packagePath: 'packages/@overeng/tui-react',
-      distTarget: '//packages/@overeng/tui-react:dist',
+      sourceRoots: ['src'],
     },
     {
       packageName: '@overeng/utils',
