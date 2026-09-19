@@ -53,6 +53,9 @@ All notable changes to this project will be documented in this file.
   `@overeng/notion-core`, `@overeng/notion-effect-schema`, and
   `@overeng/notion-effect-client`, plus a pure Genie helper that derives and
   verifies consumer URL and integrity pins from `megarepo.lock`.
+- **Buck2**: added immutable package publication rows for `@overeng/tui-core`
+  and `@overeng/tui-react`, including their artifact-backed runtime closure,
+  and made the publisher independent of private remote-cache credentials.
 - **Buck2**: added immutable package publication rows for `@overeng/content-address`,
   `@overeng/effect-distributed-lock`, `@overeng/otel-contract`, and
   `@overeng/utils`, with publication-specific TypeScript emits that include

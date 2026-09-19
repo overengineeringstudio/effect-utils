@@ -37,6 +37,14 @@ const packageProductPublications = [
     productName: '@overeng/otel-contract',
   },
   {
+    label: '//packages/@overeng/tui-core:dist-package',
+    productName: '@overeng/tui-core',
+  },
+  {
+    label: '//packages/@overeng/tui-react:dist-package',
+    productName: '@overeng/tui-react',
+  },
+  {
     label: '//packages/@overeng/utils-dev:dist-package',
     productName: '@overeng/utils-dev',
   },
@@ -51,9 +59,7 @@ const products = [...javaScriptProductPublications, ...packageProductPublication
     name: productName,
     target: `effect_utils${label}`,
   }))
-  .toSorted((left, right) =>
-    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
-  )
+  .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
 const fingerprint = buck2SemanticFingerprint({
   generator,
   schemaVersion,

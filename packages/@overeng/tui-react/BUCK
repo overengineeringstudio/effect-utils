@@ -1,6 +1,8 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
+load("//buck2/products:defs.bzl", "npm_package_product")
+
 # Projection source: packages/@overeng/tui-react/BUCK.genie.ts
 # Projection schema version: 11
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
@@ -467,5 +469,26 @@ vitest_collect(
         "NODE_BIN": "//buck2/toolchains:tool_node",
     },
     vitest_runtime = "node",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "publish-dist",
+    package_tree = ":package_tree",
+    declaration_entrypoint = "src/mod.d.ts",
+    emit_declaration_only = False,
+)
+
+npm_package_product(
+    name = "dist-package",
+    archive_name = "overeng-tui-react.tgz",
+    dist = ":publish-dist",
+    package_json = "package.json",
+    product_name = "@overeng/tui-react",
+    package_dependencies = [
+        "//packages/@overeng/tui-core:dist-package",
+        "//packages/@overeng/utils:dist-package",
+    ],
+    transport_slug = "overeng-tui-react",
     visibility = ["PUBLIC"],
 )

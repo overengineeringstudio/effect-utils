@@ -191,7 +191,7 @@ for row in "${product_rows[@]}"; do
 done
 
 build_outputs="$stage/build-outputs"
-buck2 build --show-full-output "${build_targets[@]}" >"$build_outputs"
+buck2 build --no-remote-cache --show-full-output "${build_targets[@]}" >"$build_outputs"
 declare -A outputs=()
 while IFS=' ' read -r label path extra; do
   [[ -n "$label" && -n "$path" && -z "${extra:-}" ]] || fail "Buck returned a malformed output record"

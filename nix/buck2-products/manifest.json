@@ -297,6 +297,103 @@
     },
     {
       "descriptor": {
+        "dependencies": {},
+        "externalCapabilities": [],
+        "externalModules": [],
+        "integrity": "sha256-ucy87DWgVPtclK79nl8PUCc1B0rEg83skZp8pOkyiZc=",
+        "modulePath": "overeng-tui-core.tgz",
+        "platform": {
+          "abi": "any",
+          "architecture": "any",
+          "os": "any"
+        },
+        "productKind": "package",
+        "productName": "@overeng/tui-core",
+        "provenance": {
+          "configuredTarget": "effect_utils//packages/@overeng/tui-core:dist-package",
+          "dependencyClosureIdentity": "dist=effect_utils//packages/@overeng/tui-core:dist-package",
+          "module": "effect_utils//packages/@overeng/tui-core:dist-package"
+        },
+        "release": {
+          "name": "b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997-overeng-tui-core.tgz",
+          "tag": "buck2-package-v1-overeng-tui-core-b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997",
+          "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-package-v1-overeng-tui-core-b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997/b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997-overeng-tui-core.tgz"
+        },
+        "runtimeContract": "npm-package",
+        "runtimeContractVersion": "v1",
+        "runtimeKind": "node",
+        "schema": "effect-utils/npm-package-product/v2",
+        "sha256": "b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997",
+        "sha512": "sha512-g1j567RtKH3D0fIk6ZScn2RtT8sP9DfcEBQSZw7kg4XSGAFMKJNI4AawhFmFEBuV9/wwLnBR9w37r+kOTPqCxg==",
+        "sizeBytes": 17386,
+        "target": "effect_utils//packages/@overeng/tui-core:dist-package",
+        "transportSlug": "overeng-tui-core",
+        "version": "0.1.0"
+      },
+      "descriptorSha256": "f9c3e9dd7fd8b0c7944734d60d5a83cb5353e552537200eac64f5b312fc79e5b",
+      "producerCommit": "9c035c59cc5e1fc1c6830e8ed875783a799303cd",
+      "release": {
+        "hash": "sha256-ucy87DWgVPtclK79nl8PUCc1B0rEg83skZp8pOkyiZc=",
+        "name": "b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997-overeng-tui-core.tgz",
+        "tag": "buck2-package-v1-overeng-tui-core-b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-package-v1-overeng-tui-core-b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997/b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997-overeng-tui-core.tgz"
+      }
+    },
+    {
+      "descriptor": {
+        "dependencies": {
+          "@overeng/tui-core": {
+            "integrity": "sha512-g1j567RtKH3D0fIk6ZScn2RtT8sP9DfcEBQSZw7kg4XSGAFMKJNI4AawhFmFEBuV9/wwLnBR9w37r+kOTPqCxg==",
+            "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-package-v1-overeng-tui-core-b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997/b9ccbcec35a054fb5c94aefd9e5f0f502735074ac483cdec919a7ca4e9328997-overeng-tui-core.tgz"
+          },
+          "@overeng/utils": {
+            "integrity": "sha512-zD2EdAQEmFXRcdtNf86nLp1L4of0S4cLZH2v6+Swid0XDuuxg23M+ThlMYpHrQj4iCSME8m7XvC3BN1oCIVVbA==",
+            "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-package-v1-overeng-utils-5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b/5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b-overeng-utils.tgz"
+          }
+        },
+        "externalCapabilities": [],
+        "externalModules": [],
+        "integrity": "sha256-loPc44yac+iNIagMX7flHSY3Q1i848rGM4L/1o2NH3M=",
+        "modulePath": "overeng-tui-react.tgz",
+        "platform": {
+          "abi": "any",
+          "architecture": "any",
+          "os": "any"
+        },
+        "productKind": "package",
+        "productName": "@overeng/tui-react",
+        "provenance": {
+          "configuredTarget": "effect_utils//packages/@overeng/tui-react:dist-package",
+          "dependencyClosureIdentity": "dist=effect_utils//packages/@overeng/tui-react:dist-package",
+          "module": "effect_utils//packages/@overeng/tui-react:dist-package"
+        },
+        "release": {
+          "name": "9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73-overeng-tui-react.tgz",
+          "tag": "buck2-package-v1-overeng-tui-react-9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73",
+          "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-package-v1-overeng-tui-react-9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73/9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73-overeng-tui-react.tgz"
+        },
+        "runtimeContract": "npm-package",
+        "runtimeContractVersion": "v1",
+        "runtimeKind": "node",
+        "schema": "effect-utils/npm-package-product/v2",
+        "sha256": "9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73",
+        "sha512": "sha512-WoPD5rb+0QWl9YBUpNka5nLn7BvqAWDoiihulEnPBv0VQFR/0TZD3baGTpGTYfC17lLuB1OeX/KgLMvkWKPtug==",
+        "sizeBytes": 288541,
+        "target": "effect_utils//packages/@overeng/tui-react:dist-package",
+        "transportSlug": "overeng-tui-react",
+        "version": "0.1.0"
+      },
+      "descriptorSha256": "f4db42d0f8f7b1fbafc013e25021a8b8c3b6f7beca90006028ff74fc16a50c22",
+      "producerCommit": "9c035c59cc5e1fc1c6830e8ed875783a799303cd",
+      "release": {
+        "hash": "sha256-loPc44yac+iNIagMX7flHSY3Q1i848rGM4L/1o2NH3M=",
+        "name": "9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73-overeng-tui-react.tgz",
+        "tag": "buck2-package-v1-overeng-tui-react-9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-package-v1-overeng-tui-react-9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73/9683dce38c9a73e88d21a80c5fb7e51d26374358bce3cac63382ffd68d8d1f73-overeng-tui-react.tgz"
+      }
+    },
+    {
+      "descriptor": {
         "dependencies": {
           "@overeng/effect-distributed-lock": {
             "integrity": "sha512-IVbYp8Sh92sjIty6WKX9GEqiPzHHk54tT1hq5opfpaX1DqHQNmxIdeJjscrFoRMBV772k5FfBWzuwKllhC045A==",

@@ -25,6 +25,14 @@
       "target": "effect_utils//packages/@overeng/otel-contract:dist-package"
     },
     {
+      "name": "@overeng/tui-core",
+      "target": "effect_utils//packages/@overeng/tui-core:dist-package"
+    },
+    {
+      "name": "@overeng/tui-react",
+      "target": "effect_utils//packages/@overeng/tui-react:dist-package"
+    },
+    {
       "name": "@overeng/utils",
       "target": "effect_utils//packages/@overeng/utils:dist-package"
     },
@@ -82,7 +90,7 @@
     }
   ],
   "provenance": {
-    "fingerprint": "sha256:be481d9497c2053acfe6f1d7ce10c3ccafea3c0f420923716e758eb0f7d53d30",
+    "fingerprint": "sha256:1d6ee84eb8117a4a58ad8253feed092047f8bf1a17f98c14658da5919f6e1439",
     "generator": "effect-utils/genie/buck2-javascript-release-targets",
     "regenerationCommand": "devenv tasks run genie:run",
     "semanticInputs": [
