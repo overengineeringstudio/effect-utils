@@ -55,14 +55,14 @@ not reproduced here.
 
 ### Artifact
 
-| Field | Value |
-| --- | --- |
-| Release tag | `buck2-package-v1-overeng-utils-5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b` |
-| Asset | `5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b-overeng-utils.tgz` |
-| Download size | 289,672 bytes |
-| SHA-256 | `5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b` |
-| SHA-512 | `cc3d847404049855d171db4d7fcea72e9d4be287f44b870b647dafebe4b089dd170eebb1836dccf93865318a47ad08f888248c13c9bb5ef0b704dd680885556c` |
-| SHA-512 SRI | `sha512-zD2EdAQEmFXRcdtNf86nLp1L4of0S4cLZH2v6+Swid0XDuuxg23M+ThlMYpHrQj4iCSME8m7XvC3BN1oCIVVbA==` |
+| Field         | Value                                                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Release tag   | `buck2-package-v1-overeng-utils-5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b`                                  |
+| Asset         | `5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b-overeng-utils.tgz`                                               |
+| Download size | 289,672 bytes                                                                                                                      |
+| SHA-256       | `5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b`                                                                 |
+| SHA-512       | `cc3d847404049855d171db4d7fcea72e9d4be287f44b870b647dafebe4b089dd170eebb1836dccf93865318a47ad08f888248c13c9bb5ef0b704dd680885556c` |
+| SHA-512 SRI   | `sha512-zD2EdAQEmFXRcdtNf86nLp1L4of0S4cLZH2v6+Swid0XDuuxg23M+ThlMYpHrQj4iCSME8m7XvC3BN1oCIVVbA==`                                  |
 
 The GitHub asset metadata already declared the same SHA-256 and size. The
 archive's published manifest includes two runtime URL dependencies, so pnpm 11's
@@ -94,26 +94,26 @@ This matches the deployment's existing cache-only/disposable contract in
 
 ### HTTP storage semantics
 
-| Probe | Observed result |
-| --- | --- |
-| Strict mode, unauthenticated `PUT` | `401 Unauthorized`; Basic challenge returned |
-| Strict mode, authenticated `PUT /cas/<sha256>` | `200 OK`, zero-length response; blob stored |
-| Strict mode, unauthenticated `GET` | `401 Unauthorized`; Basic challenge returned |
-| Strict mode, authenticated `GET` | `200 OK`, `Content-Length: 289672`, `application/octet-stream`; bytes matched |
-| Read-public mode, unauthenticated `GET` | `200 OK`; bytes matched; no redirect |
-| Read-public mode, unauthenticated `PUT` | `401 Unauthorized`; reads did not imply writes |
-| Authenticated `PUT` under an incorrect digest | Rejected as `500 Internal Server Error`; body named expected and actual digests; no wrong-key blob was admitted |
+| Probe                                          | Observed result                                                                                                 |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Strict mode, unauthenticated `PUT`             | `401 Unauthorized`; Basic challenge returned                                                                    |
+| Strict mode, authenticated `PUT /cas/<sha256>` | `200 OK`, zero-length response; blob stored                                                                     |
+| Strict mode, unauthenticated `GET`             | `401 Unauthorized`; Basic challenge returned                                                                    |
+| Strict mode, authenticated `GET`               | `200 OK`, `Content-Length: 289672`, `application/octet-stream`; bytes matched                                   |
+| Read-public mode, unauthenticated `GET`        | `200 OK`; bytes matched; no redirect                                                                            |
+| Read-public mode, unauthenticated `PUT`        | `401 Unauthorized`; reads did not imply writes                                                                  |
+| Authenticated `PUT` under an incorrect digest  | Rejected as `500 Internal Server Error`; body named expected and actual digests; no wrong-key blob was admitted |
 
 The wrong-digest rejection is content validation, although the HTTP status is a
 server error rather than a client-error status.
 
 ### Consumer matrix
 
-| Consumer | Unauthenticated read (`--allow_unauthenticated_reads`) | Basic-auth read (strict mode) |
-| --- | --- | --- |
-| Nix `pkgs.fetchurl` | **PASS.** Clean FOD returned the expected store path and byte comparison passed. | **FAIL.** `--option netrc-file` did not reach the sandboxed `pkgs.fetchurl` curl; four attempts returned 401. The Nix-native `nix store prefetch-file` downloader did honor the same netrc and passed, so this is specifically the current `pkgs.fetchurl` FOD boundary. |
-| pnpm URL dependency | **PASS.** The package installed and the lock recorded the CAS URL plus exact SHA-512 integrity. | **PASS.** A URL-scoped `//127.0.0.1:50046/:_auth=<base64>` caused pnpm to send valid Basic credentials; the strict server returned 200 and the frozen install completed. |
-| Buck2 native `http_file` | **PASS.** Fresh isolation downloaded once, SHA-256/size validation passed, and output bytes matched. | **FAIL.** A fresh isolation with a matching `$HOME/.netrc` returned 401; embedding userinfo in the URL also returned 401. |
+| Consumer                 | Unauthenticated read (`--allow_unauthenticated_reads`)                                               | Basic-auth read (strict mode)                                                                                                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Nix `pkgs.fetchurl`      | **PASS.** Clean FOD returned the expected store path and byte comparison passed.                     | **FAIL.** `--option netrc-file` did not reach the sandboxed `pkgs.fetchurl` curl; four attempts returned 401. The Nix-native `nix store prefetch-file` downloader did honor the same netrc and passed, so this is specifically the current `pkgs.fetchurl` FOD boundary. |
+| pnpm URL dependency      | **PASS.** The package installed and the lock recorded the CAS URL plus exact SHA-512 integrity.      | **PASS.** A URL-scoped `//127.0.0.1:50046/:_auth=<base64>` caused pnpm to send valid Basic credentials; the strict server returned 200 and the frozen install completed.                                                                                                 |
+| Buck2 native `http_file` | **PASS.** Fresh isolation downloaded once, SHA-256/size validation passed, and output bytes matched. | **FAIL.** A fresh isolation with a matching `$HOME/.netrc` returned 401; embedding userinfo in the URL also returned 401.                                                                                                                                                |
 
 `nix store prefetch-file` also passed without authentication in read-public mode
 and returned the expected SHA-256. Its strict-auth run with `netrc-file` passed,
@@ -156,25 +156,25 @@ Single samples on loopback; they establish mechanism cost, not a benchmark.
 Times are the inner command's elapsed value. The heavy-command gate's admission
 wait is excluded where noted.
 
-| Operation | Bytes | Elapsed | Result |
-| --- | ---: | ---: | --- |
-| GitHub Release download | 289,672 | 1.341 s | 200 |
-| Authenticated CAS PUT | 289,672 | 0.082 s | 200 |
-| Authenticated CAS GET | 289,672 | 0.484 s | 200, bytes equal |
-| Public CAS GET | 289,672 | 0.726 s | 200, bytes equal |
-| Wrong-digest PUT | 289,672 | 0.002 s | rejected, 500 |
-| `nix store prefetch-file`, public | 289,672 | 0.95 s | pass |
-| `nix store prefetch-file`, Basic netrc | 289,672 | 0.26 s | pass |
-| `pkgs.fetchurl`, public | 289,672 | 0.77 s | pass |
-| `pkgs.fetchurl`, Basic netrc | 0 accepted | 9.51 s | fail after four 401 attempts |
-| pnpm public install, clean store | 129 packages | 13.53 s | pass |
-| pnpm Basic install, clean store, frozen lock | 129 packages | 11.26 s | pass |
-| pnpm frozen offline, retained store | 129-package plan | 3.41 s | fail: direct tarball unavailable offline |
-| pnpm frozen offline, cleared store | 129-package plan | 2.09 s | fail: direct tarball unavailable offline |
-| Buck2 fresh public `http_file` | 289,672 | 1.15 s | pass; gate-wrapped wall 78.57 s |
-| Buck2 warm same isolation | 0 network bytes | 0.49 s | pass; gate-wrapped wall 180.74 s |
-| Buck2 fresh strict-auth with netrc | 0 accepted | 3.68 s | fail, 401 |
-| Buck2 fresh strict-auth with URL userinfo | 0 accepted | 0.85 s | fail, 401 |
+| Operation                                    |            Bytes | Elapsed | Result                                   |
+| -------------------------------------------- | ---------------: | ------: | ---------------------------------------- |
+| GitHub Release download                      |          289,672 | 1.341 s | 200                                      |
+| Authenticated CAS PUT                        |          289,672 | 0.082 s | 200                                      |
+| Authenticated CAS GET                        |          289,672 | 0.484 s | 200, bytes equal                         |
+| Public CAS GET                               |          289,672 | 0.726 s | 200, bytes equal                         |
+| Wrong-digest PUT                             |          289,672 | 0.002 s | rejected, 500                            |
+| `nix store prefetch-file`, public            |          289,672 |  0.95 s | pass                                     |
+| `nix store prefetch-file`, Basic netrc       |          289,672 |  0.26 s | pass                                     |
+| `pkgs.fetchurl`, public                      |          289,672 |  0.77 s | pass                                     |
+| `pkgs.fetchurl`, Basic netrc                 |       0 accepted |  9.51 s | fail after four 401 attempts             |
+| pnpm public install, clean store             |     129 packages | 13.53 s | pass                                     |
+| pnpm Basic install, clean store, frozen lock |     129 packages | 11.26 s | pass                                     |
+| pnpm frozen offline, retained store          | 129-package plan |  3.41 s | fail: direct tarball unavailable offline |
+| pnpm frozen offline, cleared store           | 129-package plan |  2.09 s | fail: direct tarball unavailable offline |
+| Buck2 fresh public `http_file`               |          289,672 |  1.15 s | pass; gate-wrapped wall 78.57 s          |
+| Buck2 warm same isolation                    |  0 network bytes |  0.49 s | pass; gate-wrapped wall 180.74 s         |
+| Buck2 fresh strict-auth with netrc           |       0 accepted |  3.68 s | fail, 401                                |
+| Buck2 fresh strict-auth with URL userinfo    |       0 accepted |  0.85 s | fail, 401                                |
 
 ## Conclusion
 
@@ -254,8 +254,7 @@ manifest and trust-domain contracts.
 
 ## VRS Impact
 
-This record supplies evidence for re-deriving the origin options behind decision
-0034. It changes no requirement and makes no architecture decision. It confirms
+This record supplies evidence for re-deriving the origin options behind decision 0034. It changes no requirement and makes no architecture decision. It confirms
 that bazel-remote's existing HTTP CAS is sufficient transport for all three
 read-public consumers, while separating that transport result from retention,
 provenance, authentication, offline availability, action-cache behavior, and

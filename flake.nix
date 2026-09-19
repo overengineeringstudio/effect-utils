@@ -9,6 +9,13 @@
   # Prepared pnpm trees are content-addressed against the effect-utils build
   # graph, so downstream repos should make their root nixpkgs follow
   # `effect-utils/nixpkgs` instead of overriding the input the other way around.
+  nixConfig = {
+    extra-substituters = [ "https://overeng-effect-utils.cachix.org" ];
+    extra-trusted-public-keys = [
+      "overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc="
+    ];
+  };
+
   inputs = {
     # Track nixos-unstable: it has now advanced past the crates.io
     # importCargoLock UA fix (nixpkgs#524985), so the release-26.05 detour from
@@ -52,6 +59,17 @@
         # payloads, native runtime contracts, and entrypoints.
         nativeProductPackages = (import ./nix/buck2-native-products { inherit pkgs; }).products;
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
+        mkBuckProductFromSource = import ./nix/buck2-products/from-source.nix {
+          inherit pkgs buck2;
+        };
+        buckProductsFromSource = import ./nix/buck2-products/from-source-products.nix {
+          inherit mkBuckProductFromSource;
+          preparedDeps = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
+          # Dirty flake inputs have no commit identity. The publisher rejects dirty trees and
+          # verifies this field against HEAD before mutation, so the sentinel cannot escape.
+          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
+          repositoryRoot = rootPath;
+        };
         buck2-go = import ./nix/go.nix { inherit pkgs; };
         buck2-stage0-tools = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
         buck2-rust-toolchain-capability =
@@ -160,6 +178,12 @@
             oxfmt = pkgs.oxfmt;
             # npm oxlint with NAPI bindings. Its two JavaScript plugins are
             # immutable Buck module products imported from the tracked manifest.
+            buck-products-from-source = pkgs.linkFarm "effect-utils-buck-products-from-source" (
+              pkgs.lib.mapAttrsToList (name: path: {
+                name = pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name;
+                inherit path;
+              }) buckProductsFromSource
+            );
             oxlint-npm = oxlintNpm;
             # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
             oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
@@ -167,8 +191,11 @@
             };
             node-pty-native = nodePtyNative;
           }
-          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
-          };
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") { }
+          // pkgs.lib.mapAttrs' (
+            name: value:
+            pkgs.lib.nameValuePair "buck-product-${pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-from-source" value
+          ) buckProductsFromSource;
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
           genie = cliPackages.genie.outPath;

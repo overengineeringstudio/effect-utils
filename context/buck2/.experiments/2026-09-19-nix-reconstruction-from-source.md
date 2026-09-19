@@ -28,14 +28,14 @@ no infrastructure or publication decision.
 
 ## Declared input inventory
 
-| Input | Identity / measured closure |
-| --- | --- |
-| Filtered repository source | 3,741,424 NAR bytes |
-| Prepared pnpm tree | `oxc-config-pnpm-deps-lwdqgrsq-v19-0.0.0`; 48,128,792 NAR bytes; 142 packages |
-| Buck2 | `unstable-2026-09-01`; 185,624,784-byte closure |
-| Prelude | commit `1f8c24e0b1f85e645011f93a4073b0c6c762d7b1`; 4,972,744 bytes |
-| Bun capability | Bun 1.4.2 plus sorted closure paths; 117,298,760-byte closure |
-| Build support | stdenv, bash, GNU tar/gzip, CA bundle, generated closure-info |
+| Input                      | Identity / measured closure                                                   |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| Filtered repository source | 3,741,424 NAR bytes                                                           |
+| Prepared pnpm tree         | `oxc-config-pnpm-deps-lwdqgrsq-v19-0.0.0`; 48,128,792 NAR bytes; 142 packages |
+| Buck2                      | `unstable-2026-09-01`; 185,624,784-byte closure                               |
+| Prelude                    | commit `1f8c24e0b1f85e645011f93a4073b0c6c762d7b1`; 4,972,744 bytes            |
+| Bun capability             | Bun 1.4.2 plus sorted closure paths; 117,298,760-byte closure                 |
+| Build support              | stdenv, bash, GNU tar/gzip, CA bundle, generated closure-info                 |
 
 The union actually available to the final Nix builder was 69 store paths and
 701,382,992 NAR bytes. The installed product closure is 64,856 bytes. The
