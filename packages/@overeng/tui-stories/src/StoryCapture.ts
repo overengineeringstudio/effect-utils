@@ -92,6 +92,20 @@ const extractPreviewProps = (element: ReactElement): CapturedStoryProps | undefi
   return undefined
 }
 
+const describeElement = (element: ReactElement): string => {
+  const type = element.type
+  const typeName =
+    typeof type === 'string'
+      ? type
+      : typeof type === 'function'
+        ? type.name || '<anonymous>'
+        : typeof type === 'object' && type !== null
+          ? String(Reflect.get(type, 'displayName') ?? Reflect.get(type, 'name') ?? '<object>')
+          : String(type)
+  const props = element.props as Record<string, unknown>
+  return `type=${typeName}; props=[${Object.keys(props).toSorted().join(', ')}]`
+}
+
 /** Extract CapturedStoryProps from raw TuiStoryPreview props */
 const extractFromProps = (props: Record<string, unknown>): CapturedStoryProps => ({
   app: props.app as CapturedStoryProps['app'],
@@ -123,9 +137,10 @@ export const captureStoryProps = async ({
   const mergedArgs = { ...story.args, ...argOverrides }
 
   let captured: CapturedStoryProps | undefined
-
+  let observedElement = '<render did not return an element>'
   const CaptureWrapper = (): ReactElement | null => {
     const element = story.render(mergedArgs)
+    observedElement = describeElement(element)
     captured = extractPreviewProps(element)
     return captured === undefined ? element : null
   }
@@ -152,7 +167,7 @@ export const captureStoryProps = async ({
       storyId: story.id,
       message:
         `Could not find TuiStoryPreview element in story "${story.id}". ` +
-        `The render function must return a <TuiStoryPreview> element.`,
+        `The render function must return a <TuiStoryPreview> element. Observed ${observedElement}.`,
     })
   }
 
