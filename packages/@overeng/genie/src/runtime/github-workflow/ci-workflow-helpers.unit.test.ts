@@ -1727,14 +1727,13 @@ describe('effect-utils CI composition workspace', () => {
         ([, name, body]) => [name!, body!] as const,
       ),
     )
-    const exemptions = new Set([
-      'default-ref-policy',
-      'nix-fod-check',
-      'pr-reviews-resolved',
-      'source-shape',
-      'ci-measurements-report',
-      'notify-alignment',
-    ])
+    const exemptions: Record<string, true> = {
+      'default-ref-policy': true,
+      'pr-reviews-resolved': true,
+      'source-shape': true,
+      'ci-measurements-report': true,
+      'notify-alignment': true,
+    }
     expect(
       [...blocks.keys()].filter(
         (name) => blocks.get(name)?.includes('Prepare effect-utils composition') !== true,

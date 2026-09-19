@@ -60,18 +60,9 @@
     "strictPeerDependencies": true,
     "strictStorePkgContentCheck": true,
     "supportedArchitectures": {
-      "cpu": [
-        "x64",
-        "arm64"
-      ],
-      "libc": [
-        "glibc",
-        "musl"
-      ],
-      "os": [
-        "linux",
-        "darwin"
-      ]
+      "cpu": ["x64", "arm64"],
+      "libc": ["glibc", "musl"],
+      "os": ["linux", "darwin"]
     },
     "verifyDepsBeforeRun": false,
     "verifyStoreIntegrity": true

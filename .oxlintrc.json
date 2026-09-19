@@ -1,12 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
-  "plugins": [
-    "import",
-    "typescript",
-    "unicorn",
-    "oxc",
-    "react"
-  ],
+  "plugins": ["import", "typescript", "unicorn", "oxc", "react"],
   "jsPlugins": [
     "./packages/@overeng/oxc-config/src/mod.ts",
     "./packages/@overeng/oxc-config/src/stylex-upstream-plugin.ts"
@@ -129,163 +123,83 @@
       {
         "propLimits": {
           "accentColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "backgroundColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderBlockColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderBlockEndColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderBlockStartColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderBottomColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderInlineColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderInlineEndColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderInlineStartColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderLeftColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderRightColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "borderTopColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "caretColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "color": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "columnRuleColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "outlineColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "textDecorationColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "textEmphasisColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           },
           "WebkitTapHighlightColor": {
-            "limit": [
-              "transparent",
-              "currentColor",
-              "currentcolor"
-            ],
+            "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
           }
         }
@@ -299,19 +213,13 @@
   },
   "overrides": [
     {
-      "files": [
-        "**/mod.ts"
-      ],
+      "files": ["**/mod.ts"],
       "rules": {
         "oxc/no-barrel-file": "off"
       }
     },
     {
-      "files": [
-        "**/*.stories.tsx",
-        "**/*.stories.ts",
-        "**/*.stories.jsx"
-      ],
+      "files": ["**/*.stories.tsx", "**/*.stories.ts", "**/*.stories.jsx"],
       "rules": {
         "overeng/exports-first": "off",
         "overeng/jsdoc-require-exports": "off",
@@ -325,10 +233,7 @@
       }
     },
     {
-      "files": [
-        "**/stories/_*.ts",
-        "**/stories/_*.tsx"
-      ],
+      "files": ["**/stories/_*.ts", "**/stories/_*.tsx"],
       "rules": {
         "overeng/exports-first": "off",
         "overeng/jsdoc-require-exports": "off",
@@ -336,9 +241,7 @@
       }
     },
     {
-      "files": [
-        "**/.storybook/**"
-      ],
+      "files": ["**/.storybook/**"],
       "rules": {
         "overeng/exports-first": "off",
         "overeng/jsdoc-require-exports": "off",
@@ -346,23 +249,13 @@
       }
     },
     {
-      "files": [
-        "**/vitest.config.ts",
-        "**/vite.config.ts",
-        "**/playwright.config.ts"
-      ],
+      "files": ["**/vitest.config.ts", "**/vite.config.ts", "**/playwright.config.ts"],
       "rules": {
         "overeng/jsdoc-require-exports": "off"
       }
     },
     {
-      "files": [
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx",
-        "**/test/**"
-      ],
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "**/test/**"],
       "rules": {
         "overeng/named-args": "off",
         "overeng/no-raw-otel-primitives": "off",
@@ -375,17 +268,13 @@
       }
     },
     {
-      "files": [
-        "**/*.d.ts"
-      ],
+      "files": ["**/*.d.ts"],
       "rules": {
         "typescript/consistent-type-imports": "off"
       }
     },
     {
-      "files": [
-        "**/*.gen.*"
-      ],
+      "files": ["**/*.gen.*"],
       "rules": {
         "func-style": "off",
         "import/no-commonjs": "off",
@@ -401,25 +290,19 @@
       }
     },
     {
-      "files": [
-        "**/genie/src/runtime/**"
-      ],
+      "files": ["**/genie/src/runtime/**"],
       "rules": {
         "overeng/no-external-imports": "error"
       }
     },
     {
-      "files": [
-        "**/genie/src/runtime/**/*.test.ts"
-      ],
+      "files": ["**/genie/src/runtime/**/*.test.ts"],
       "rules": {
         "overeng/no-external-imports": "off"
       }
     },
     {
-      "files": [
-        "**/genie/src/runtime/package-json/node/**"
-      ],
+      "files": ["**/genie/src/runtime/package-json/node/**"],
       "rules": {
         "overeng/no-external-imports": "off"
       }
@@ -434,80 +317,56 @@
       }
     },
     {
-      "files": [
-        "**/genie/**",
-        "**/*.genie.ts",
-        "**/examples/**"
-      ],
+      "files": ["**/genie/**", "**/*.genie.ts", "**/examples/**"],
       "rules": {
         "overeng/jsdoc-require-exports": "off"
       }
     },
     {
-      "files": [
-        "packages/@overeng/genie/src/**"
-      ],
+      "files": ["packages/@overeng/genie/src/**"],
       "rules": {
         "overeng/jsdoc-require-exports": "warn"
       }
     },
     {
-      "files": [
-        "**/*.types.ts",
-        "**/examples/**"
-      ],
+      "files": ["**/*.types.ts", "**/examples/**"],
       "rules": {
         "no-underscore-dangle": "off"
       }
     },
     {
-      "files": [
-        "**/utils-dev/src/otelite/**"
-      ],
+      "files": ["**/utils-dev/src/otelite/**"],
       "rules": {
         "overeng/named-args": "off"
       }
     },
     {
-      "files": [
-        "**/utils/src/node/otel.ts",
-        "**/utils/src/node/otel-attrs.ts"
-      ],
+      "files": ["**/utils/src/node/otel.ts", "**/utils/src/node/otel-attrs.ts"],
       "rules": {
         "oxc/no-barrel-file": "off"
       }
     },
     {
-      "files": [
-        "**/react-inspector/src/schema/mod.tsx"
-      ],
+      "files": ["**/react-inspector/src/schema/mod.tsx"],
       "rules": {
         "oxc/no-barrel-file": "off"
       }
     },
     {
-      "files": [
-        "**/restate-effect/src/testing/**"
-      ],
+      "files": ["**/restate-effect/src/testing/**"],
       "rules": {
         "import/no-cycle": "off"
       }
     },
     {
-      "files": [
-        "packages/@overeng/*/src/**/*.ts",
-        "packages/@overeng/*/src/**/*.tsx"
-      ],
+      "files": ["packages/@overeng/*/src/**/*.ts", "packages/@overeng/*/src/**/*.tsx"],
       "rules": {
         "overeng/no-raw-otel-primitives": "error",
         "overeng/otel-contract-in-seam-file": "warn"
       }
     },
     {
-      "files": [
-        "packages/@overeng/genie/src/**/*.ts",
-        "packages/@overeng/genie/src/**/*.tsx"
-      ],
+      "files": ["packages/@overeng/genie/src/**/*.ts", "packages/@overeng/genie/src/**/*.tsx"],
       "rules": {
         "overeng/no-raw-otel-primitives": "error",
         "overeng/otel-contract-in-seam-file": "error"
@@ -536,9 +395,7 @@
       }
     },
     {
-      "files": [
-        "**/restate-effect/src/**"
-      ],
+      "files": ["**/restate-effect/src/**"],
       "rules": {
         "overeng/no-raw-nondeterminism": "error",
         "overeng/no-non-durable-wait": "error"
@@ -559,9 +416,7 @@
       }
     },
     {
-      "files": [
-        "**/react-inspector/**"
-      ],
+      "files": ["**/react-inspector/**"],
       "rules": {
         "func-style": "off",
         "overeng/named-args": "off",
@@ -575,18 +430,14 @@
       }
     },
     {
-      "files": [
-        "**/gh-ci-utils/**"
-      ],
+      "files": ["**/gh-ci-utils/**"],
       "rules": {
         "overeng/explicit-boolean-compare": "off",
         "overeng/no-raw-otel-primitives": "off"
       }
     },
     {
-      "files": [
-        "**/notion-react/**"
-      ],
+      "files": ["**/notion-react/**"],
       "rules": {
         "overeng/jsdoc-require-exports": "off",
         "overeng/explicit-boolean-compare": "off",
@@ -597,10 +448,7 @@
       }
     },
     {
-      "files": [
-        "**/kdl/src/**",
-        "**/kdl-effect/src/**"
-      ],
+      "files": ["**/kdl/src/**", "**/kdl-effect/src/**"],
       "rules": {
         "no-control-regex": "off",
         "func-style": "off",

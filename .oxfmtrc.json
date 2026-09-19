@@ -7,20 +7,8 @@
   "useTabs": false,
   "trailingComma": "all",
   "experimentalSortImports": {
-    "groups": [
-      "builtin",
-      "external",
-      "internal",
-      [
-        "parent",
-        "sibling",
-        "index"
-      ]
-    ],
-    "internalPattern": [
-      "@overeng/",
-      "@local/"
-    ],
+    "groups": ["builtin", "external", "internal", ["parent", "sibling", "index"]],
+    "internalPattern": ["@overeng/", "@local/"],
     "newlinesBetween": true
   },
   "experimentalSortPackageJson": true,
