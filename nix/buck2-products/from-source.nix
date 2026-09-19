@@ -138,6 +138,7 @@ pkgs.stdenv.mkDerivation {
 
     mkdir -p nix-deps
     cp -a ${preparedDeps}/node_modules nix-deps/tree
+    chmod -R u+w nix-deps/tree
     SOURCE_MODULES=${lib.escapeShellArg preparedPackageModules} \
       DEST_MODULES="$PWD/nix-deps/tree" \
       PREPARED_ROOT=${lib.escapeShellArg preparedDeps} \
