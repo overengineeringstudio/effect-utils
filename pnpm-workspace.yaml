@@ -43,17 +43,17 @@ packages:
   - packages/@overeng/utils-dev
 
 overrides:
-  '@effect/platform-node-shared': 4.0.0-rc.112
+  "@effect/platform-node-shared": 4.0.0-rc.112
 
 patchedDependencies:
-  '@myobie/pty@0.10.0': patches/@myobie__pty@0.10.0.patch
+  "@myobie/pty@0.10.0": patches/@myobie__pty@0.10.0.patch
 
 allowUnusedPatches: true
 
 packageExtensions:
   storybook:
     dependencies:
-      '@storybook/react-vite': 10.6.0
+      "@storybook/react-vite": 10.6.0
 
 peerDependencyRules:
   allowedVersions:
@@ -63,7 +63,7 @@ peerDependencyRules:
     unplugin: '>=3.0.0'
 
 allowBuilds:
-  '@myobie/pty': false
+  "@myobie/pty": false
   esbuild: false
   fsevents: false
   msgpackr-extract: false
