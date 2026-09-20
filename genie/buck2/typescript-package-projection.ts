@@ -11,8 +11,9 @@ import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 import { javaScriptActionRuntime, packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
 
 const regenerationCommand = 'devenv tasks run genie:run' as const
-const sourceExtensions = ['.cts', '.js', '.mts', '.ts', '.tsx'] as const
+const sourceExtensions = ['.css', '.cts', '.js', '.mts', '.ts', '.tsx'] as const
 const sourceExtensionSet: Readonly<Record<string, true>> = {
+  '.css': true,
   '.cts': true,
   '.js': true,
   '.mts': true,
@@ -670,11 +671,21 @@ export type Buck2TypeScriptProjectAuthorityMetadata = {
   readonly projectInputs?: readonly string[]
 }
 
-export type Buck2TypeScriptPackageProjection = {
-  readonly dependencyImporter: `//buck2/dependencies:importer_${string}`
+type Buck2DependencyProjection =
+  | {
+      readonly dependencyImporter: `//buck2/dependencies:importer_${string}`
+      readonly dependencyTarget?: never
+    }
+  | {
+      readonly dependencyImporter?: never
+      readonly dependencyTarget: string
+    }
+
+export type Buck2TypeScriptPackageProjection = Buck2DependencyProjection & {
   readonly packageName: string
   readonly packagePath: string
   readonly projectionSource: string
+  readonly rulesCell?: `@${string}`
   readonly sourceRoots: readonly string[]
   readonly workspaceSiblings?: readonly Buck2WorkspaceSibling[]
   /** Project-level authority declarations; one package may own more than one root project. */
@@ -688,9 +699,11 @@ export type Buck2TypeScriptPackageProjection = {
 
 export const buck2TypeScriptPackageProjection = ({
   dependencyImporter,
+  dependencyTarget,
   packageName,
   packagePath,
   projectionSource,
+  rulesCell,
   sourceRoots,
   workspaceSiblings = [],
   authorities,
@@ -781,10 +794,12 @@ export const buck2TypeScriptPackageProjection = ({
       existsSync(path.join(process.cwd(), candidate, 'BUCK.genie.ts')),
     ),
   )
-  const dependencyView = dependencyImporter.replace(
+  const dependencyView = dependencyImporter?.replace(
     '//buck2/dependencies:importer_',
     '//buck2/dependencies:view_',
   )
+  const dependencyLabel = dependencyView ?? dependencyTarget
+  const rulesPrefix = rulesCell ?? ''
   const visibility = ['PUBLIC'] as const
   const runtimeEntry = stagedModuleName(packageTreeRuntime.entry)
   const sourceLabel = (repoRelativePath: string): string => {
@@ -819,6 +834,7 @@ export const buck2TypeScriptPackageProjection = ({
   }
   const reservedTargetNames = new Set([
     'dist',
+    'dist-package',
     'editor_inputs',
     'editor_view_inputs',
     'node_modules',
@@ -998,6 +1014,7 @@ export const buck2TypeScriptPackageProjection = ({
     buckPackagePaths: [...buckPackagePaths].toSorted((left, right) =>
       compareStrings({ left, right }),
     ),
+    dependencyLabel,
     dependencyView,
     packageName,
     packagePath,
@@ -1005,9 +1022,11 @@ export const buck2TypeScriptPackageProjection = ({
     collectableTestModules,
     snapshotBaselines,
     declarationSources,
-    packageTreeRuntime: packageTreeRuntime.label,
+    packageTreeRuntime:
+      rulesCell === undefined ? packageTreeRuntime.label : `${rulesCell}//:package_tree_runtime`,
     packageTreeRuntimeEntry: runtimeEntry,
     projectAuthorities,
+    rulesCell,
     sourceRoots,
     staticSourceExcludes,
     testDataFiles,
@@ -1019,7 +1038,7 @@ export const buck2TypeScriptPackageProjection = ({
   }
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-typescript-package-projection',
-    schemaVersion: 11,
+    schemaVersion: 12,
     semanticData: data,
   })
 
@@ -1044,7 +1063,7 @@ export const buck2TypeScriptPackageProjection = ({
     declarationEntrypoint,
     targetProjectFile,
   }: {
-    readonly declarationEntrypoint: string
+    readonly declarationEntrypoint?: string
     readonly targetProjectFile: string
   }): readonly string[] => [
     'tsgo_emit(',
@@ -1057,56 +1076,50 @@ export const buck2TypeScriptPackageProjection = ({
     ...(targetProjectFile === 'tsconfig.json'
       ? []
       : [`    project = ${starlarkString(targetProjectFile)},`]),
-    `    declaration_entrypoint = ${starlarkString(declarationEntrypoint)},`,
+    ...(declarationEntrypoint === undefined
+      ? []
+      : [`    declaration_entrypoint = ${starlarkString(declarationEntrypoint)},`]),
     renderBuck2Visibility({ visibility }),
     ')',
     '',
   ]
-  const typeScriptTargetLines = projectAuthorities.flatMap((authority) => [
-    ...renderTypecheckTarget({
-      name: authority.typecheckTargetName,
-      targetProjectFile: authority.projectFile,
+  const typeScriptTargetLines = [
+    ...projectAuthorities.flatMap((authority) =>
+      renderTypecheckTarget({
+        name: authority.typecheckTargetName,
+        targetProjectFile: authority.projectFile,
+      }),
+    ),
+    ...renderDistTarget({
+      declarationEntrypoint: primaryAuthority.declarationEntrypoint,
+      targetProjectFile: primaryAuthority.projectFile,
     }),
-    ...(authority.declarationEntrypoint === undefined
-      ? []
-      : renderDistTarget({
-          declarationEntrypoint: authority.declarationEntrypoint,
-          targetProjectFile: authority.projectFile,
-        })),
-  ])
+  ]
 
   const stringify = (): string => {
     const lines = [
       `# Projection source: ${projectionSource}`,
-      '# Projection schema version: 11',
+      '# Projection schema version: 12',
       '# Projection generator: effect-utils/genie/buck2-typescript-package-projection',
       `# Semantic fingerprint: ${fingerprint}`,
       `# Semantic inputs: ${semanticInputs.join(', ')}`,
       `# Regenerate: ${regenerationCommand}`,
       '',
-      'load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")',
-      'load("//buck2:editor_view.bzl", "editor_view_inputs")',
-      'load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")',
+      `load("${rulesPrefix}//buck2:materialization.bzl", "export_materialization_inputs", "${dependencyView === undefined ? 'package_tree' : 'package_view'}")`,
+      `load("${rulesPrefix}//buck2:editor_view.bzl", "editor_view_inputs")`,
+      `load("${rulesPrefix}//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")`,
       ...(testTargets.length === 0
         ? []
         : [
-            `load("//buck2:javascript.bzl", ${[
+            `load("${rulesPrefix}//buck2:javascript.bzl", ${[
               ...new Set(testTargets.flatMap((target) => target.rules)),
             ]
               .toSorted((left, right) => compareStrings({ left, right }))
               .map((rule) => starlarkString(rule))
               .join(', ')})`,
           ]),
-      `load("//buck2:typescript.bzl", ${[
-        ...(projectAuthorities.some(
-          ({ declarationEntrypoint }) => declarationEntrypoint !== undefined,
-        ) === true
-          ? ['tsgo_emit']
-          : []),
-        'tsgo_typecheck',
-      ]
-        .map((rule) => starlarkString(rule))
-        .join(', ')})`,
+      `load("${rulesPrefix}//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")`,
+      `load("${rulesPrefix}//buck2:package_tools.bzl", "npm_package_archive")`,
       '',
       'export_file(',
       '    name = "package.json",',
@@ -1128,7 +1141,7 @@ export const buck2TypeScriptPackageProjection = ({
       '',
       'alias(',
       '    name = "node_modules",',
-      `    actual = ${starlarkString(dependencyView)},`,
+      `    actual = ${starlarkString(dependencyLabel)},`,
       renderBuck2Visibility({ visibility }),
       ')',
       '',
@@ -1138,16 +1151,18 @@ export const buck2TypeScriptPackageProjection = ({
       renderBuck2Visibility({ visibility }),
       ')',
       '',
-      'package_view(',
+      `${dependencyView === undefined ? 'package_tree' : 'package_view'}(`,
       '    name = "package_tree",',
-      `    dependency_view = ${starlarkString(dependencyView)},`,
+      `    ${dependencyView === undefined ? 'node_modules' : 'dependency_view'} = ${starlarkString(
+        dependencyLabel,
+      )},`,
       ...renderMap({ name: 'files', entries: packageFileEntries }),
       ...renderMap({ name: 'workspace_dist', entries: workspaceDistEntries }),
       ...renderMap({
         name: 'workspace_dependency_views',
         entries: workspaceDependencyViewEntries,
       }),
-      `    runtime = ${starlarkString(packageTreeRuntime.label)},`,
+      `    runtime = ${starlarkString(data.packageTreeRuntime)},`,
       `    runtime_entry = ${starlarkString(runtimeEntry)},`,
       renderBuck2Visibility({ visibility }),
       ')',
@@ -1179,6 +1194,15 @@ export const buck2TypeScriptPackageProjection = ({
       ')',
       '',
       ...typeScriptTargetLines,
+      'npm_package_archive(',
+      '    name = "dist-package",',
+      '    package_tree = ":package_tree",',
+      '    dist = ":dist",',
+      `    typecheck = ${starlarkString(`:${primaryAuthority.typecheckTargetName}`)},`,
+      `    output = ${starlarkString(`${packageName.replace(/^@/u, '').replaceAll('/', '-')}.tgz`)},`,
+      renderBuck2Visibility({ visibility }),
+      ')',
+      '',
       ...testTargets.flatMap((target) => target.lines),
     ]
     return lines.join('\n')

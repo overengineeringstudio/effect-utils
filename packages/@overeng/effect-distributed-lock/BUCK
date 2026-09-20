@@ -2,10 +2,10 @@
 # Source: BUCK.genie.ts
 
 # Projection source: packages/@overeng/effect-distributed-lock/BUCK.genie.ts
-# Projection schema version: 11
+# Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:9bf749cea75e199bae03c097fe0d67da3b4afbe84ceb3ac16b4378bc008033a0
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/src/**/*.cts, packages/@overeng/effect-distributed-lock/src/**/*.js, packages/@overeng/effect-distributed-lock/src/**/*.mts, packages/@overeng/effect-distributed-lock/src/**/*.spec.cjs, packages/@overeng/effect-distributed-lock/src/**/*.spec.jsx, packages/@overeng/effect-distributed-lock/src/**/*.spec.mjs, packages/@overeng/effect-distributed-lock/src/**/*.test.cjs, packages/@overeng/effect-distributed-lock/src/**/*.test.jsx, packages/@overeng/effect-distributed-lock/src/**/*.test.mjs, packages/@overeng/effect-distributed-lock/src/**/*.ts, packages/@overeng/effect-distributed-lock/src/**/*.tsx, packages/@overeng/effect-distributed-lock/src/**/__snapshots__/*.snap, packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
+# Semantic fingerprint: sha256:1be041b7246bc1b010117af02a01734c6e269499e7e4b6637e305bbdbb4cb5f8
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/package.json.genie.ts, packages/@overeng/effect-distributed-lock/src/**/*.css, packages/@overeng/effect-distributed-lock/src/**/*.cts, packages/@overeng/effect-distributed-lock/src/**/*.js, packages/@overeng/effect-distributed-lock/src/**/*.mts, packages/@overeng/effect-distributed-lock/src/**/*.spec.cjs, packages/@overeng/effect-distributed-lock/src/**/*.spec.jsx, packages/@overeng/effect-distributed-lock/src/**/*.spec.mjs, packages/@overeng/effect-distributed-lock/src/**/*.test.cjs, packages/@overeng/effect-distributed-lock/src/**/*.test.jsx, packages/@overeng/effect-distributed-lock/src/**/*.test.mjs, packages/@overeng/effect-distributed-lock/src/**/*.ts, packages/@overeng/effect-distributed-lock/src/**/*.tsx, packages/@overeng/effect-distributed-lock/src/**/__snapshots__/*.snap, packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -13,6 +13,7 @@ load("//buck2:editor_view.bzl", "editor_view_inputs")
 load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
 load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
 
 export_file(
     name = "package.json",
@@ -117,6 +118,14 @@ tsgo_emit(
     declaration_sources = {
     },
     declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    output = "overeng-effect-distributed-lock.tgz",
     visibility = ["PUBLIC"],
 )
 

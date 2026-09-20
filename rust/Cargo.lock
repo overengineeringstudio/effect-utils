@@ -217,6 +217,7 @@ version = "0.0.0"
 dependencies = [
  "buck2-tool-core",
  "clap",
+ "flate2",
  "serde",
  "serde_json",
  "tar",

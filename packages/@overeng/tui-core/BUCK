@@ -2,10 +2,10 @@
 # Source: BUCK.genie.ts
 
 # Projection source: packages/@overeng/tui-core/BUCK.genie.ts
-# Projection schema version: 11
+# Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:37976eca81035fc2815735feb1dd4d5eb06cf15365dc57d19b3154e80196183e
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.js, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.spec.cjs, packages/@overeng/tui-core/src/**/*.spec.jsx, packages/@overeng/tui-core/src/**/*.spec.mjs, packages/@overeng/tui-core/src/**/*.test.cjs, packages/@overeng/tui-core/src/**/*.test.jsx, packages/@overeng/tui-core/src/**/*.test.mjs, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/src/**/__snapshots__/*.snap, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.js, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.spec.cjs, packages/@overeng/tui-core/test/**/*.spec.jsx, packages/@overeng/tui-core/test/**/*.spec.mjs, packages/@overeng/tui-core/test/**/*.test.cjs, packages/@overeng/tui-core/test/**/*.test.jsx, packages/@overeng/tui-core/test/**/*.test.mjs, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/test/**/__snapshots__/*.snap, packages/@overeng/tui-core/tsconfig.json.genie.ts
+# Semantic fingerprint: sha256:cfb6239cf47619e25d6d85a661cc0a6b46d16631fde792ac0a6f9f6993f905a8
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-core/package.json.genie.ts, packages/@overeng/tui-core/src/**/*.css, packages/@overeng/tui-core/src/**/*.cts, packages/@overeng/tui-core/src/**/*.js, packages/@overeng/tui-core/src/**/*.mts, packages/@overeng/tui-core/src/**/*.spec.cjs, packages/@overeng/tui-core/src/**/*.spec.jsx, packages/@overeng/tui-core/src/**/*.spec.mjs, packages/@overeng/tui-core/src/**/*.test.cjs, packages/@overeng/tui-core/src/**/*.test.jsx, packages/@overeng/tui-core/src/**/*.test.mjs, packages/@overeng/tui-core/src/**/*.ts, packages/@overeng/tui-core/src/**/*.tsx, packages/@overeng/tui-core/src/**/__snapshots__/*.snap, packages/@overeng/tui-core/test/**/*.css, packages/@overeng/tui-core/test/**/*.cts, packages/@overeng/tui-core/test/**/*.js, packages/@overeng/tui-core/test/**/*.mts, packages/@overeng/tui-core/test/**/*.spec.cjs, packages/@overeng/tui-core/test/**/*.spec.jsx, packages/@overeng/tui-core/test/**/*.spec.mjs, packages/@overeng/tui-core/test/**/*.test.cjs, packages/@overeng/tui-core/test/**/*.test.jsx, packages/@overeng/tui-core/test/**/*.test.mjs, packages/@overeng/tui-core/test/**/*.ts, packages/@overeng/tui-core/test/**/*.tsx, packages/@overeng/tui-core/test/**/__snapshots__/*.snap, packages/@overeng/tui-core/tsconfig.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -13,6 +13,7 @@ load("//buck2:editor_view.bzl", "editor_view_inputs")
 load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
 load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
 
 export_file(
     name = "package.json",
@@ -117,6 +118,14 @@ tsgo_emit(
     declaration_sources = {
     },
     declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    output = "overeng-tui-core.tgz",
     visibility = ["PUBLIC"],
 )
 

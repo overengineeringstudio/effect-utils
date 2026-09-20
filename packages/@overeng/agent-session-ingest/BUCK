@@ -2,10 +2,10 @@
 # Source: BUCK.genie.ts
 
 # Projection source: packages/@overeng/agent-session-ingest/BUCK.genie.ts
-# Projection schema version: 11
+# Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:25cabbf9d1b83b7e754341f83cd1217e7cb2792eaa2c60fa0657f10ef7a9c466
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/agent-session-ingest/src/**/*.cts, packages/@overeng/agent-session-ingest/src/**/*.js, packages/@overeng/agent-session-ingest/src/**/*.mts, packages/@overeng/agent-session-ingest/src/**/*.spec.cjs, packages/@overeng/agent-session-ingest/src/**/*.spec.jsx, packages/@overeng/agent-session-ingest/src/**/*.spec.mjs, packages/@overeng/agent-session-ingest/src/**/*.test.cjs, packages/@overeng/agent-session-ingest/src/**/*.test.jsx, packages/@overeng/agent-session-ingest/src/**/*.test.mjs, packages/@overeng/agent-session-ingest/src/**/*.ts, packages/@overeng/agent-session-ingest/src/**/*.tsx, packages/@overeng/agent-session-ingest/src/**/__snapshots__/*.snap, packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
+# Semantic fingerprint: sha256:5be4eb0819fa376e9024328c0ecb6dc24775afdb901934e8a4d03cfdd69b2027
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/agent-session-ingest/package.json.genie.ts, packages/@overeng/agent-session-ingest/src/**/*.css, packages/@overeng/agent-session-ingest/src/**/*.cts, packages/@overeng/agent-session-ingest/src/**/*.js, packages/@overeng/agent-session-ingest/src/**/*.mts, packages/@overeng/agent-session-ingest/src/**/*.spec.cjs, packages/@overeng/agent-session-ingest/src/**/*.spec.jsx, packages/@overeng/agent-session-ingest/src/**/*.spec.mjs, packages/@overeng/agent-session-ingest/src/**/*.test.cjs, packages/@overeng/agent-session-ingest/src/**/*.test.jsx, packages/@overeng/agent-session-ingest/src/**/*.test.mjs, packages/@overeng/agent-session-ingest/src/**/*.ts, packages/@overeng/agent-session-ingest/src/**/*.tsx, packages/@overeng/agent-session-ingest/src/**/__snapshots__/*.snap, packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts, packages/@overeng/utils/BUCK.genie.ts, packages/@overeng/utils/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -13,6 +13,7 @@ load("//buck2:editor_view.bzl", "editor_view_inputs")
 load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
 load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
 
 export_file(
     name = "package.json",
@@ -186,6 +187,14 @@ tsgo_emit(
     declaration_sources = {
     },
     declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    output = "overeng-agent-session-ingest.tgz",
     visibility = ["PUBLIC"],
 )
 

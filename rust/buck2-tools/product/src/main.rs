@@ -3,11 +3,12 @@ use buck2_tool_core::{
     verify_execution_capability, ToolError, ToolResult,
 };
 use clap::{Args, Parser, Subcommand};
+use flate2::{Compression, GzBuilder};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
+    fs::{self, File},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
@@ -23,7 +24,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    Package(PackageArgs),
+    Package(Box<PackageArgs>),
+    NpmPackage(NpmPackageArgs),
 }
 
 #[derive(Args)]
@@ -52,6 +54,16 @@ struct PackageArgs {
     provenance: PathBuf,
     #[arg(long)]
     descriptor: PathBuf,
+}
+
+#[derive(Args)]
+struct NpmPackageArgs {
+    #[arg(long)]
+    package_tree: PathBuf,
+    #[arg(long)]
+    dist: PathBuf,
+    #[arg(long)]
+    artifact: PathBuf,
 }
 
 #[derive(Deserialize)]
@@ -742,6 +754,167 @@ fn archive(
     Ok(bytes)
 }
 
+fn collect_npm_files(
+    root: &Path,
+    directory: &Path,
+    archive_prefix: &str,
+    files: &mut Vec<(String, PathBuf)>,
+) -> ToolResult<()> {
+    let mut entries = fs::read_dir(directory)
+        .map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read package tree: {error}"),
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read package tree: {error}"),
+            )
+        })?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        let relative = path.strip_prefix(root).map_err(|_| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                "package input escapes its declared root",
+            )
+        })?;
+        let relative_text = relative
+            .to_str()
+            .ok_or_else(|| fail("BUCK2_PRODUCT_INPUT", "package input path is not UTF-8"))?;
+        normalized_relative(relative_text, "package input path")?;
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not inspect package input: {error}"),
+            )
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("package input must not be a symlink: {relative_text}"),
+            ));
+        }
+        if metadata.is_dir() {
+            collect_npm_files(root, &path, archive_prefix, files)?;
+        } else if metadata.is_file() {
+            files.push((format!("{archive_prefix}/{relative_text}"), path));
+        } else {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("package input must be a regular file: {relative_text}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn npm_package(args: NpmPackageArgs) -> ToolResult<()> {
+    for (path, field) in [(&args.package_tree, "packageTree"), (&args.dist, "dist")] {
+        let metadata = fs::symlink_metadata(path).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("{field} directory is unavailable: {error}"),
+            )
+        })?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("{field} must be a non-symlink directory"),
+            ));
+        }
+    }
+
+    let mut files = Vec::new();
+    let mut package_entries = fs::read_dir(&args.package_tree)
+        .map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read package tree: {error}"),
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read package tree: {error}"),
+            )
+        })?;
+    package_entries.sort_by_key(|entry| entry.file_name());
+    for entry in package_entries {
+        let name = entry.file_name();
+        let name = name
+            .to_str()
+            .ok_or_else(|| fail("BUCK2_PRODUCT_INPUT", "package input path is not UTF-8"))?;
+        if name == "node_modules" || name == "dist" || name == "BUCK" || name.starts_with("BUCK.") {
+            continue;
+        }
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not inspect package input: {error}"),
+            )
+        })?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            collect_npm_files(&args.package_tree, &path, "package", &mut files)?;
+        } else if metadata.is_file() && !metadata.file_type().is_symlink() {
+            files.push((format!("package/{name}"), path));
+        } else {
+            return Err(fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("package input must be a regular file or directory: {name}"),
+            ));
+        }
+    }
+    collect_npm_files(&args.dist, &args.dist, "package/dist", &mut files)?;
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let encoder = GzBuilder::new()
+        .mtime(0)
+        .write(Vec::new(), Compression::best());
+    let mut builder = Builder::new(encoder);
+    for (archive_path, source_path) in files {
+        let metadata = fs::metadata(&source_path).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not inspect package input: {error}"),
+            )
+        })?;
+        let mode = if metadata.permissions().mode() & 0o111 == 0 {
+            0o444
+        } else {
+            0o555
+        };
+        let header = tar_header(&archive_path, metadata.len(), EntryType::Regular, mode)?;
+        let source = File::open(&source_path).map_err(|error| {
+            fail(
+                "BUCK2_PRODUCT_INPUT",
+                format!("could not read package input: {error}"),
+            )
+        })?;
+        builder
+            .append(&header, source)
+            .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
+    }
+    let encoder = builder
+        .into_inner()
+        .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
+    let bytes = encoder
+        .finish()
+        .map_err(|error| fail("BUCK2_PRODUCT_TAR", error.to_string()))?;
+    fs::write(&args.artifact, bytes).map_err(|error| {
+        fail(
+            "BUCK2_PRODUCT_OUTPUT",
+            format!("could not write npm package archive: {error}"),
+        )
+    })
+}
+
 fn validate_name(value: &str) -> ToolResult<&str> {
     if value.is_empty()
         || !value
@@ -890,7 +1063,8 @@ fn main() {
         "native-executable/v1",
     )
     .and_then(|()| match cli.command {
-        Command::Package(args) => package(args),
+        Command::Package(args) => package(*args),
+        Command::NpmPackage(args) => npm_package(args),
     });
     if let Err(error) = result {
         eprintln!("{error}");
@@ -1146,6 +1320,59 @@ mod tests {
         arguments.entrypoint = "bin/../tool".into();
         assert_eq!(package(arguments).unwrap_err().code, "BUCK2_INVALID_PATH");
         assert!(!temporary.path().join("artifact.tar").exists());
+    }
+
+    #[test]
+    fn npm_package_archive_is_deterministic_and_excludes_build_inputs() {
+        let temporary = tempdir().unwrap();
+        let package_tree = temporary.path().join("package");
+        let dist = temporary.path().join("dist");
+        fs::create_dir_all(package_tree.join("src")).unwrap();
+        fs::create_dir_all(package_tree.join("node_modules/dependency")).unwrap();
+        fs::create_dir_all(&dist).unwrap();
+        fs::write(
+            package_tree.join("package.json"),
+            b"{\"name\":\"fixture\"}\n",
+        )
+        .unwrap();
+        fs::write(
+            package_tree.join("src/mod.ts"),
+            b"export const source = true\n",
+        )
+        .unwrap();
+        fs::write(
+            package_tree.join("node_modules/dependency/index.js"),
+            b"excluded\n",
+        )
+        .unwrap();
+        fs::write(package_tree.join("BUCK"), b"excluded\n").unwrap();
+        fs::write(dist.join("mod.js"), b"export const emitted = true\n").unwrap();
+
+        let first = temporary.path().join("first.tgz");
+        let second = temporary.path().join("second.tgz");
+        for artifact in [&first, &second] {
+            npm_package(NpmPackageArgs {
+                package_tree: package_tree.clone(),
+                dist: dist.clone(),
+                artifact: artifact.clone(),
+            })
+            .unwrap();
+        }
+        assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
+        let decoder = flate2::read::GzDecoder::new(File::open(first).unwrap());
+        let paths = tar::Archive::new(decoder)
+            .entries()
+            .unwrap()
+            .map(|entry| entry.unwrap().path().unwrap().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("package/dist/mod.js"),
+                PathBuf::from("package/package.json"),
+                PathBuf::from("package/src/mod.ts"),
+            ]
+        );
     }
 
     #[cfg(target_os = "linux")]

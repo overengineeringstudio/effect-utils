@@ -22,6 +22,9 @@ All notable changes to this project will be documented in this file.
 - **Buck2 products**: Publish source-rebuildable product derivations through the
   `overeng-effect-utils` Cachix cache with digest-bound provenance and manifest
   validation.
+- **Buck2 rules distribution**: Export deterministic rules and executor-capability
+  projections plus a standalone consumer-root helper, so downstream repositories
+  can build source products without mounting effect-utils as a Buck cell.
 
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full

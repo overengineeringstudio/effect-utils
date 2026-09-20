@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 buck2-tool-core = { path = "../core" }
 clap = { version = "4", features = ["derive"] }
+flate2 = "1"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tar = { version = "0.4", default-features = false }
