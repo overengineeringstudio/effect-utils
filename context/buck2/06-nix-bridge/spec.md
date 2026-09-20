@@ -101,6 +101,19 @@ recipe, but changing later repository metadata does not change the identity of
 an already-published product. The anonymous artifact URL is an interoperability
 path, not a second source of product authority.
 
+## Private pnpm Consumption
+
+Nix realizes a private package product before dependency installation. The
+consumer staging step writes that immutable tarball path into the staged package
+manifest as a `file:` dependency. pnpm receives no cache credential and performs
+no private network fetch. The checked-in source manifest does not contain an
+absolute store path.
+
+The tarball path or filename must change when the product digest changes. The
+consumer lock records that exact `file:` identity and the package integrity.
+TypeScript checks and unit tests run against the staged install; source-workspace
+aliases do not satisfy this conformance lane.
+
 ## Conformance
 
 The contract suite must include successful canonicalization/import and negative
