@@ -6,11 +6,14 @@ import {
   cachixStep,
   checkoutStep,
   cleanupEffectUtilsCompositionStep,
+  ciOtelSpansArtifactStep,
+  ciOtelSpansSummaryStep,
   prepareCiScriptsStep,
   prepareEffectUtilsCompositionStep,
   notifyAlignmentJob,
   pnpmBuilderContractStep,
   preparePinnedDevenvStep,
+  prepareCiOtelSpoolStep,
   installNixStep,
   runDevenvTasksBefore,
   ciWorkflow,
@@ -52,6 +55,13 @@ const trustedCachixStep = {
     authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
   }),
   if: "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+} as const
+
+const trustedBuckRemoteCacheEnv = {
+  BUCK2_NO_REMOTE_CACHE:
+    "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '0' || '1' }}",
+  BUCK2_REMOTE_CACHE_BASIC_AUTH:
+    "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH || '' }}",
 } as const
 
 const baseSteps = [
@@ -339,6 +349,7 @@ const job = ({
     runId: '${{ github.run_id }}',
   }),
   'timeout-minutes': timeoutMinutes,
+  env: trustedBuckRemoteCacheEnv,
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
@@ -372,6 +383,7 @@ const multiPlatformJob = ({
   }),
   'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
+  env: trustedBuckRemoteCacheEnv,
   steps: [
     ...baseSteps,
     step,
@@ -1293,7 +1305,13 @@ const withEffectUtilsCompositionCleanup = (jobMap: Record<string, any>) =>
         steps?.some((step) => step.name === prepareEffectUtilsCompositionStep.name) === true
           ? {
               ...ciJob,
-              steps: [...steps, cleanupEffectUtilsCompositionStep],
+              steps: [
+                prepareCiOtelSpoolStep,
+                ...steps,
+                ciOtelSpansSummaryStep,
+                ciOtelSpansArtifactStep,
+                cleanupEffectUtilsCompositionStep,
+              ],
             }
           : ciJob,
       ]

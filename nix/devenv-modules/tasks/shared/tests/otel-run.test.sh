@@ -67,11 +67,13 @@ cat > "$stubbin/otel-span" <<'STUB'
 shift # drop the `run` subcommand
 trace_id=""
 positional=()
+attrs=()
 cmd=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --trace-id) trace_id="$2"; shift 2 ;;
-    --attr | --span-id | --parent-span-id | --start-time-ns | --end-time-ns) shift 2 ;;
+    --attr) attrs+=("$2"); shift 2 ;;
+    --span-id | --parent-span-id | --start-time-ns | --end-time-ns) shift 2 ;;
     --) shift; cmd=("$@"); break ;;
     *) positional+=("$1"); shift ;;
   esac
@@ -80,6 +82,7 @@ done
   echo "TRACE_ID=$trace_id"
   echo "SERVICE=${positional[0]:-}"
   echo "SPAN_NAME=${positional[1]:-}"
+  printf 'ATTR=%s\n' "${attrs[@]}"
 } >> "$OTEL_RUN_TEST_CAPTURE"
 exec "${cmd[@]}"
 STUB
@@ -155,6 +158,25 @@ env -i PATH="$stubbin:$PATH" HOME="$tmpdir" OTEL_RUN_TEST_CAPTURE="$capD" \
   "$otel_run" --label custom-label -- true 2>/dev/null || fail "--label run exited nonzero"
 [ "$(cap_val "$capD" SPAN_NAME)" = "custom-label" ] \
   && ok || fail "label: --label should override, got '$(cap_val "$capD" SPAN_NAME)'"
+
+# --- (4) ATTRIBUTES + SPOOL: forward metadata and treat a spool as durable delivery ---
+capAttr="$tmpdir/capAttr"
+errAttr="$tmpdir/errAttr"
+spool="$tmpdir/spool"
+mkdir -p "$spool"
+env -i PATH="$stubbin:$PATH" HOME="$tmpdir" \
+  OTEL_RUN_TEST_CAPTURE="$capAttr" \
+  OTEL_SPAN_SPOOL_DIR="$spool" \
+  "$otel_run" --attr ci.workflow=CI --attr ci.job=test -- true 2> "$errAttr" \
+  || fail "attribute/spool run exited nonzero"
+grep -q '^ATTR=ci.workflow=CI$' "$capAttr" \
+  && grep -q '^ATTR=ci.job=test$' "$capAttr" \
+  && ok || fail "attributes: expected repeated --attr values to reach otel-span"
+if grep -q 'WARN: no reachable OTLP endpoint' "$errAttr"; then
+  fail "spool delivery must not warn about a missing OTLP endpoint"
+else
+  ok
+fi
 
 # --- (5) EXIT CODE forwarding ---
 capE="$tmpdir/capE"

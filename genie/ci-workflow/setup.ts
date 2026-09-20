@@ -19,6 +19,7 @@ import {
   ciPnpmHome,
   ciPnpmStatePaths,
   ciPnpmStore,
+  ciCompositionStateRoot,
   withCiSourceRoot,
   type NixBinaryCache,
 } from './shared.ts'
@@ -26,8 +27,7 @@ import {
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
 
-const evictPnpmDepsCachedOutputsScript =
-  `${preparedCiRuntimeScriptsDir}/evict-pnpm-deps-cached-outputs.sh`
+const evictPnpmDepsCachedOutputsScript = `${preparedCiRuntimeScriptsDir}/evict-pnpm-deps-cached-outputs.sh`
 
 /** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
 export const evictCachedPnpmDepsStep = ({
@@ -733,6 +733,70 @@ export const standardSelfHostedPnpmCiPostSteps = (opts?: {
     saveNixCacheStep(opts?.saveNixCache),
     ...(opts?.includeDiagnosticsArtifact === false ? [] : [ciDiagnosticsArtifactStep()]),
   ] as const
+
+/** Enable file-backed OTLP delivery for every traced devenv task in this CI job. */
+export const prepareCiOtelSpoolStep = {
+  name: 'Prepare CI OpenTelemetry capture',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    `spool_dir="${ciCompositionStateRoot}/otel-spans"`,
+    'mkdir -p "$spool_dir"',
+    'printf \'OTEL_SPAN_SPOOL_DIR=%s\\n\' "$spool_dir" >> "$GITHUB_ENV"',
+    'printf \'OTEL_SPOOL_MULTI_WRITER=1\\n\' >> "$GITHUB_ENV"',
+  ].join('\n'),
+} as const
+
+/** Render the slowest traced tasks directly in the GitHub job summary. */
+export const ciOtelSpansSummaryStep = {
+  name: 'Summarize CI OpenTelemetry spans',
+  if: "always() && env.OTEL_SPAN_SPOOL_DIR != ''",
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    'shopt -s nullglob',
+    'span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)',
+    'if [ "${#span_files[@]}" -eq 0 ]; then',
+    '  echo "::notice::No CI OpenTelemetry task spans were emitted"',
+    '  exit 0',
+    'fi',
+    '{',
+    '  echo "## Slowest devenv tasks"',
+    '  echo ""',
+    '  echo "| Task | Duration | Status |"',
+    '  echo "| --- | ---: | --- |"',
+    "  while IFS=$'\\t' read -r duration task status; do",
+    '    printf \'| `%s` | %.2fs | %s |\\n\' "$task" "$duration" "$status"',
+    '  done < <(',
+    "    jq -s -r '",
+    '      [.[].resourceSpans[].scopeSpans[].spans[]',
+    '        | select(.name == "devenv.task.exec")',
+    '        | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs',
+    '        | [',
+    '            (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),',
+    '            ($attrs["task.name"] // $attrs["span.label"] // .name),',
+    '            (if (.status.code // 0) == 2 then "error" else "ok" end)',
+    '          ]',
+    '        | @tsv',
+    '      ] | .[]',
+    "    ' \"${span_files[@]}\" | sort -nr | sed -n '1,20p'",
+    '  )',
+    '} >> "$GITHUB_STEP_SUMMARY"',
+  ].join('\n'),
+} as const
+
+/** Preserve each job's OTLP payload so traces remain inspectable without network credentials. */
+export const ciOtelSpansArtifactStep = {
+  name: 'Upload CI OpenTelemetry spans',
+  if: "always() && env.OTEL_SPAN_SPOOL_DIR != ''",
+  uses: 'actions/upload-artifact@v4',
+  with: {
+    name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+    path: '${{ env.OTEL_SPAN_SPOOL_DIR }}',
+    'if-no-files-found': 'warn',
+    'retention-days': 14,
+  },
+} as const
 
 export const devenvTaskStep = (name: string, ...args: [string, ...string[]]) => ({
   name,
