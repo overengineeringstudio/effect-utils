@@ -197,8 +197,8 @@ pkgs.stdenv.mkDerivation {
                 const projectedTarget = join(destination, relative(rootModules, resolved))
                 await mkdir(dirname(destinationPath), { recursive: true })
                 await symlink(relative(dirname(destinationPath), projectedTarget), destinationPath)
-              } else if (!(resolved === preparedRoot || resolved.startsWith(join(preparedRoot, "packages") + "/"))) {
-                throw new Error(`prepared dependency link escapes its declared roots: ''${sourcePath}`)
+              } else if (!(resolved === preparedRoot || resolved.startsWith(preparedRoot + "/"))) {
+                throw new Error(`prepared dependency link escapes its prepared root: ''${sourcePath}`)
               }
             } else {
               throw new Error(`prepared dependency projection expected only directories and links: ''${sourcePath}`)
