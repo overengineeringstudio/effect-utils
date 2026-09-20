@@ -20,7 +20,7 @@ import * as NodePath from 'node:path'
 import { promisify } from 'node:util'
 
 import { describe, it } from '@effect/vitest'
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { CompositionGeneratorConfig, EffectPath } from '../../core/config.ts'
@@ -425,7 +425,11 @@ describe('composition root publisher', () => {
         )
 
         expect(result.changedPaths).toContain('.watchmanconfig')
-        expect(JSON.parse((yield* readGenerated(fixture, '.watchmanconfig')).toString())).toEqual({
+        expect(
+          Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(
+            (yield* readGenerated(fixture, '.watchmanconfig')).toString(),
+          ),
+        ).toEqual({
           ignore_dirs: [
             '.devenv',
             '.megarepo',
