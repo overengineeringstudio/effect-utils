@@ -725,7 +725,7 @@ describe('composition root publisher', () => {
               afterAuthorityRollback: async () => {
                 rollbacks += 1
                 expect(
-                  (await Effect.runPromise(readGenerated(fixture, '.buckconfig'))).toString(),
+                  await readFile(NodePath.join(fixture.root, '.buckconfig'), 'utf8'),
                 ).toContain('old:1234')
               },
             }),
