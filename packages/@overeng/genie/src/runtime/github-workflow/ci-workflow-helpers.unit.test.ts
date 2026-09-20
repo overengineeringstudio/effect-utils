@@ -336,6 +336,9 @@ describe('ci workflow retry helpers', () => {
     )
     expect(nixGcRaceRetryScriptSource).not.toContain('missing_subpath_repairs=')
     expect(nixGcRaceRetryScriptSource).toContain(
+      '[ "${repaired_missing_subpaths[0]+present}" = present ]',
+    )
+    expect(nixGcRaceRetryScriptSource).toContain(
       'rm -rf ~/.cache/nix/eval-cache-* "$nix_cache_root"/eval-cache-*',
     )
     // A second identical failure is an error carrying its own summary note and the
@@ -376,7 +379,7 @@ exit "$attempt"
     try {
       const result = spawnSync(
         'bash',
-        ['-c', '. "$RETRY_SCRIPT"; run_nix_gc_race_retry path-tracking "$FIXTURE"'],
+        ['-c', 'set -u; . "$RETRY_SCRIPT"; run_nix_gc_race_retry path-tracking "$FIXTURE"'],
         {
           encoding: 'utf8',
           env: {

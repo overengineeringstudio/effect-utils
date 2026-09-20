@@ -120,7 +120,7 @@ run_nix_gc_race_retry() {
     # note, rather than falling through to the generic "no transient signature" message or
     # burning $max attempts.
     missing_subpath_was_repaired=false
-    if [ "$saw_missing_flake_subpath" = true ]; then
+    if [ "$saw_missing_flake_subpath" = true ] && [ "${repaired_missing_subpaths[0]+present}" = present ]; then
       for repaired_missing_subpath in "${repaired_missing_subpaths[@]}"; do
         if [ "$repaired_missing_subpath" = "$missing_subpath" ]; then
           missing_subpath_was_repaired=true
