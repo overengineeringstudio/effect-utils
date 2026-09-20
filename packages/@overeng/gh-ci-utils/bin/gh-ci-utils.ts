@@ -6,6 +6,7 @@ import * as Cli from 'effect/unstable/cli'
 
 import { compactFormatError, runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
+import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { ghCiUtilsCommand } from '../src/cli.ts'
 import { GitHubAuthConfigTag, loadAuthConfig } from '../src/node/Config.ts'
@@ -16,6 +17,12 @@ import {
   TOOL_FAILURE_EXIT_CODE,
   renderToolFailure,
 } from '../src/node/lib/toolFailure.ts'
+
+const buildStamp = '__CLI_BUILD_STAMP__'
+const version = resolveCliVersion({
+  baseVersion: '0.1.0',
+  buildStamp,
+})
 
 const platformLayer = Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerNodeHttp)
 const authConfigLayer = Layer.effect(GitHubAuthConfigTag, loadAuthConfig).pipe(
@@ -44,7 +51,7 @@ const baseLayer = Layer.mergeAll(
   stderrLoggerLayer,
 )
 
-const cli = Cli.Command.runWith(ghCiUtilsCommand, { version: '0.1.0' })
+const cli = Cli.Command.runWith(ghCiUtilsCommand, { version })
 const program = cli(rewriteHelpSubcommand(process.argv.slice(2))).pipe(
   Effect.scoped,
   Effect.provide(baseLayer),
