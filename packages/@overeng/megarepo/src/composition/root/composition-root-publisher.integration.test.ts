@@ -724,9 +724,9 @@ describe('composition root publisher', () => {
               },
               afterAuthorityRollback: async () => {
                 rollbacks += 1
-                expect((await readGenerated(fixture, '.buckconfig')).toString()).toContain(
-                  'old:1234',
-                )
+                expect(
+                  (await Effect.runPromise(readGenerated(fixture, '.buckconfig'))).toString(),
+                ).toContain('old:1234')
               },
             }),
           ),
