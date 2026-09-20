@@ -41,16 +41,33 @@
 { lib }:
 let
   otelCanEmitShell = ''command -v "''${OTEL_SPAN_BIN:-otel-span}" >/dev/null 2>&1 && { [ -n "''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }'';
+  ciAttrsShell = ''
+    _otel_ci_attrs=()
+    if [ "''${GITHUB_ACTIONS:-}" = "true" ]; then
+      _otel_ci_attrs=(
+        --attr "ci.workflow=''${GITHUB_WORKFLOW:-unknown}"
+        --attr "ci.job=''${GITHUB_JOB:-unknown}"
+        --attr "ci.run.id=''${GITHUB_RUN_ID:-unknown}"
+        --attr "ci.run.attempt=''${GITHUB_RUN_ATTEMPT:-unknown}"
+        --attr "ci.event=''${GITHUB_EVENT_NAME:-unknown}"
+        --attr "ci.repository=''${GITHUB_REPOSITORY:-unknown}"
+        --attr "ci.ref=''${GITHUB_REF:-unknown}"
+        --attr "ci.sha=''${GITHUB_SHA:-unknown}"
+        --attr "runner.os=''${RUNNER_OS:-unknown}"
+        --attr "runner.arch=''${RUNNER_ARCH:-unknown}"
+      )
+    fi
+  '';
 
   # Shell condition: an OTEL task trace context is actually ACTIVE — OTEL delivery
   # is available (otelCanEmitShell) AND a well-formed W3C traceparent is present
   # (OTEL_TASK_TRACEPARENT preferred, falling back to TRACEPARENT). This is the
   # single gate that decides whether COMMAND-level instrumentation should engage.
   # tsc (ts.nix) and trace.instr (oxlint/vitest) both gate on THIS exact string so
-  # they engage/disengage together: in a non-interactive `devenv tasks run` with no
-  # span parent and no OTLP endpoint (e.g. CI), every instrumented command runs
-  # bare; under `otel-span run -- devenv tasks run …` the task span exports
-  # OTEL_TASK_TRACEPARENT into the task body, so this is true and commands wrap.
+  # they engage/disengage together: without configured delivery and a parent
+  # context, every instrumented command runs bare. Under `otel-span run --
+  # devenv tasks run …` the task span exports OTEL_TASK_TRACEPARENT into the
+  # task body, so this is true and commands wrap.
   otelTraceContextActive = ''${otelCanEmitShell} && [[ "''${OTEL_TASK_TRACEPARENT:-''${TRACEPARENT:-}}" =~ ^00-[0-9a-fA-F]{32}-[0-9a-fA-F]{16}-[0-9a-fA-F]{2}$ ]]'';
   taskFileStem =
     taskName:
@@ -167,6 +184,7 @@ let
   # adapter records where the structured-source contract is met).
   traceExec = taskName: execBody: ''
     if ${otelCanEmitShell}; then
+      ${ciAttrsShell}
       _otel_project_attr=()
       if [ -n "''${OTEL_DEVENV_PROJECT:-}" ]; then
         _otel_project_attr=(--attr "devenv.project.name=$OTEL_DEVENV_PROJECT")
@@ -178,6 +196,7 @@ let
         OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
           "''${OTEL_SPAN_BIN:-otel-span}" run "effect-utils-devenv" "devenv.task.exec" \
           "''${_otel_project_attr[@]}" \
+          "''${_otel_ci_attrs[@]}" \
           --attr "tool.name=devenv" \
           --attr "task.name=${taskName}" \
           --attr "task.phase=exec" \
@@ -197,6 +216,7 @@ let
   # and forces span status to OK (status checks aren't errors).
   traceStatus = taskName: method: statusBody: ''
     if ${otelCanEmitShell}; then
+      ${ciAttrsShell}
       _status_exit=0
       _otel_project_attr=()
       if [ -n "''${OTEL_DEVENV_PROJECT:-}" ]; then
@@ -205,6 +225,7 @@ let
       OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
         "''${OTEL_SPAN_BIN:-otel-span}" run "effect-utils-devenv" "devenv.task.status" \
         "''${_otel_project_attr[@]}" \
+        "''${_otel_ci_attrs[@]}" \
         --attr "tool.name=devenv" \
         --attr "task.name=${taskName}" \
         --attr "task.phase=status" \

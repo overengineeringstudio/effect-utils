@@ -291,6 +291,32 @@ describe('ci workflow retry helpers', () => {
     expect(ciWorkflowSource).not.toContain('if [ ! -x "$__genie_ci_retry_script" ]')
   })
 
+  it('captures ordinary CI task graphs as OpenTelemetry artifacts', () => {
+    expect(ciWorkflowSource).toContain('prepareCiOtelSpoolStep')
+    expect(ciWorkflowSource).toContain('ciOtelSpansArtifactStep')
+    expect(generatedCiWorkflowYamlSource).toContain('name: Prepare CI OpenTelemetry capture')
+    expect(generatedCiWorkflowYamlSource).toContain('OTEL_SPAN_SPOOL_DIR')
+    expect(generatedCiWorkflowYamlSource).toContain('name: Summarize CI OpenTelemetry spans')
+    expect(generatedCiWorkflowYamlSource).toContain('name: Upload CI OpenTelemetry spans')
+    const captureCount = generatedCiWorkflowYamlSource.match(
+      /name: Prepare CI OpenTelemetry capture/g,
+    )?.length
+    const uploadCount = generatedCiWorkflowYamlSource.match(
+      /name: Upload CI OpenTelemetry spans/g,
+    )?.length
+    expect(captureCount).toBeGreaterThan(0)
+    expect(uploadCount).toBe(captureCount)
+  })
+
+  it('enables Buck remote cache only for trusted main executions', () => {
+    expect(generatedCiWorkflowYamlSource).toContain(
+      "BUCK2_NO_REMOTE_CACHE: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '0' || '1' }}",
+    )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      "BUCK2_REMOTE_CACHE_BASIC_AUTH: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH || '' }}",
+    )
+  })
+
   it('routes the devenv resolution step through the shared retry wrapper', () => {
     expect(validateNixStoreStepSource).toContain('withGcRaceRetry({')
     expect(validateNixStoreStepSource).toContain('label: `resolve devenv (${lockFile})`')

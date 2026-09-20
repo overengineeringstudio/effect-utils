@@ -26,7 +26,7 @@
 # in separate Nix files, so there is no shared shell fragment to reuse yet.
 #
 # Usage:
-#   otel-run [--label <name>] [--join] [--] <command> [args...]
+#   otel-run [--label <name>] [--attr <key=value>]... [--join] [--] <command> [args...]
 #
 # Usage in a devenv module:
 #   packages = [ (import ./otel/otel-run.nix { inherit pkgs; }) ];
@@ -36,21 +36,33 @@ pkgs.writeShellScriptBin "otel-run" ''
 
   _label=""
   _join=0
+  _attrs=()
 
   # Parse otel-run's own flags; stop at `--` or the first non-flag (the command).
   while [ $# -gt 0 ]; do
     case "$1" in
       --label) _label="''${2:-}"; shift 2 ;;
       --label=*) _label="''${1#--label=}"; shift ;;
+      --attr)
+        [ -n "''${2:-}" ] || { echo "otel-run: --attr requires key=value" >&2; exit 2; }
+        _attrs+=(--attr "$2")
+        shift 2
+        ;;
+      --attr=*)
+        [ -n "''${1#--attr=}" ] || { echo "otel-run: --attr requires key=value" >&2; exit 2; }
+        _attrs+=(--attr "''${1#--attr=}")
+        shift
+        ;;
       --join) _join=1; shift ;;
       --help | -h)
         cat >&2 <<'USAGE'
-  Usage: otel-run [--label <name>] [--join] [--] <command> [args...]
+  Usage: otel-run [--label <name>] [--attr <key=value>]... [--join] [--] <command> [args...]
 
   Mint a fresh root trace around <command> and print its Grafana link.
 
-    --label <name>  Override the label derived from argv.
-    --join          Join the ambient trace instead of minting a fresh root.
+    --label <name>       Override the label derived from argv.
+    --attr <key=value>   Add an attribute to the root span. Repeat as needed.
+    --join               Join the ambient trace instead of minting a fresh root.
   USAGE
         exit 0
         ;;
@@ -106,22 +118,25 @@ pkgs.writeShellScriptBin "otel-run" ''
     ${pkgs.coreutils}/bin/timeout 1 ${pkgs.bash}/bin/bash -c "exec 3<>/dev/tcp/$_host/$_port" 2>/dev/null
   }
 
-  # Pick the first reachable endpoint: the configured one, else the standard
-  # local OTLP/HTTP ingress. Export it so both otel-span and the (possibly
-  # nested) child inherit the reachable endpoint instead of a dead collector.
+  # A spool directory is durable delivery and takes precedence over HTTP in
+  # otel-span. Only probe HTTP when no spool was configured.
   _endpoint=""
-  _endpoint_ok=0
-  for _cand in "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" "http://127.0.0.1:4318"; do
-    [ -n "$_cand" ] || continue
-    [ -n "$_endpoint" ] || _endpoint="$_cand"
-    if _probe_endpoint "$_cand"; then
-      _endpoint="$_cand"
-      _endpoint_ok=1
-      break
+  _delivery_ok=0
+  if [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "$OTEL_SPAN_SPOOL_DIR" ]; then
+    _delivery_ok=1
+  else
+    for _cand in "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" "http://127.0.0.1:4318"; do
+      [ -n "$_cand" ] || continue
+      [ -n "$_endpoint" ] || _endpoint="$_cand"
+      if _probe_endpoint "$_cand"; then
+        _endpoint="$_cand"
+        _delivery_ok=1
+        break
+      fi
+    done
+    if [ "$_delivery_ok" -eq 1 ]; then
+      export OTEL_EXPORTER_OTLP_ENDPOINT="$_endpoint"
     fi
-  done
-  if [ "$_endpoint_ok" -eq 1 ]; then
-    export OTEL_EXPORTER_OTLP_ENDPOINT="$_endpoint"
   fi
 
   # Run the command inside an otel-span root span, forwarding its exit code.
@@ -129,12 +144,12 @@ pkgs.writeShellScriptBin "otel-run" ''
   otel-span run "effect-utils-devenv" "$_label" \
     ''${_span_args[@]+"''${_span_args[@]}"} \
     --attr "span.label=$_label" \
+    ''${_attrs[@]+"''${_attrs[@]}"} \
     -- "$@" || _exit=$?
 
-  # Warn (before the link) if no OTLP endpoint was reachable, so a printed URL
-  # that will dead-link is clearly caveated rather than silently misleading.
-  if [ "$_endpoint_ok" -ne 1 ]; then
-    printf '[otel] WARN: no reachable OTLP endpoint (%s); spans may not have landed. Start the stack with: devenv up\n' "''${_endpoint:-none}" >&2
+  # Warn if neither a spool nor a reachable OTLP endpoint can receive spans.
+  if [ "$_delivery_ok" -ne 1 ]; then
+    printf '[otel] WARN: no span spool or reachable OTLP endpoint (%s); spans may not have landed. Start the stack with: devenv up\n' "''${_endpoint:-none}" >&2
   fi
 
   # Print the Grafana explore URL for the trace (mirrors otel-span's
