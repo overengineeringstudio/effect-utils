@@ -385,7 +385,7 @@ exit "$attempt"
           env: {
             ...process.env,
             ATTEMPTS: attempts,
-            CI_PROGRESS_HEARTBEAT_SECONDS: '60',
+            CI_PROGRESS_HEARTBEAT_SECONDS: '1',
             FIXTURE: fixture,
             HOME: join(root, 'home'),
             NIX_GC_RACE_MAX_RETRIES: '10',
