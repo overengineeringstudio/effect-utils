@@ -124,7 +124,7 @@ run_nix_gc_race_retry() {
   local heartbeat="${dollar}{CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local daemon_socket_retry_delay="${dollar}{NIX_DAEMON_SOCKET_RETRY_DELAY_SECONDS:-2}"
   local attempt=1
-  local missing_subpath_repairs=0
+  local repaired_missing_subpaths=()
   # The guillemets Nix wraps a flake reference in, built from their UTF-8 bytes so this
   # generator template stays ASCII: a non-ASCII literal here can be re-encoded by the
   # transpiler into an escape sequence that String.raw would emit verbatim.
@@ -132,7 +132,7 @@ run_nix_gc_race_retry() {
   flake_ref_open=$'\302\253'
   flake_ref_close=$'\302\273'
   nix_cache_root="${dollar}{XDG_CACHE_HOME:-${dollar}HOME/.cache}/nix"
-  local log log_dir stdout_pipe stderr_pipe rc path missing_subpath start now elapsed hb_pid stdout_tee_pid stderr_tee_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure saw_missing_flake_subpath had_errexit
+  local log log_dir stdout_pipe stderr_pipe rc path missing_subpath repaired_missing_subpath start now elapsed hb_pid stdout_tee_pid stderr_tee_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure saw_missing_flake_subpath missing_subpath_was_repaired had_errexit
 
   shift
   start="$(date +%s)"
@@ -230,11 +230,20 @@ run_nix_gc_race_retry() {
     rm -f "$log"
 
     # The guillemet form can also describe a path that upstream removed permanently, which
-    # no amount of cache purging fixes. Repair it once; a second identical failure is
-    # reported as the permanent path error it is, with its own summary note, rather than
-    # falling through to the generic "no transient signature" message or burning $max
-    # attempts.
-    if [ "$saw_missing_flake_subpath" = true ] && [ "$missing_subpath_repairs" -ge 1 ]; then
+    # no amount of cache purging fixes. Repair each exact path once; a repeated failure for
+    # that same path is reported as the permanent path error it is, with its own summary
+    # note, rather than falling through to the generic "no transient signature" message or
+    # burning $max attempts.
+    missing_subpath_was_repaired=false
+    if [ "$saw_missing_flake_subpath" = true ] && [ "${dollar}{repaired_missing_subpaths[0]+present}" = present ]; then
+      for repaired_missing_subpath in "${dollar}{repaired_missing_subpaths[@]}"; do
+        if [ "$repaired_missing_subpath" = "$missing_subpath" ]; then
+          missing_subpath_was_repaired=true
+          break
+        fi
+      done
+    fi
+    if [ "$missing_subpath_was_repaired" = true ]; then
       echo "::error::Nix flake input subpath still missing for $task after one cache repair: $missing_subpath; treating it as a permanent missing path"
       write_summary failure "Nix flake input subpath still missing after one cache repair: $missing_subpath"
       return "$rc"
@@ -271,7 +280,7 @@ run_nix_gc_race_retry() {
       rm -rf "${dollar}nix_cache_root"/tarball-cache-v* "${dollar}nix_cache_root"/tarball-cache
       rm -rf "${dollar}nix_cache_root"/gitv*
       rm -f "${dollar}nix_cache_root"/fetcher-cache-v*.sqlite*
-      missing_subpath_repairs=$((missing_subpath_repairs + 1))
+      repaired_missing_subpaths+=("$missing_subpath")
     fi
     if [ "$saw_daemon_socket_failure" = true ] && [ "$attempt" -lt "$max" ]; then
       sleep "$daemon_socket_retry_delay"

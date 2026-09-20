@@ -89,13 +89,12 @@ const workflowReportCommandSource = readFileSync(
   ),
   'utf8',
 )
-const nixGcRaceRetryScriptSource = readFileSync(
-  new URL(
-    ['../../../../../../genie/ci-scripts', 'nix-gc-race-retry.sh'].join('/'),
-    import.meta.url,
-  ),
-  'utf8',
+const nixGcRaceRetryScriptUrl = new URL(
+  ['../../../../../../genie/ci-scripts', 'nix-gc-race-retry.sh'].join('/'),
+  import.meta.url,
 )
+const nixGcRaceRetryScriptPath = fileURLToPath(nixGcRaceRetryScriptUrl)
+const nixGcRaceRetryScriptSource = readFileSync(nixGcRaceRetryScriptUrl, 'utf8')
 const prepareEffectUtilsCompositionScriptSource = readFileSync(
   new URL(
     ['../../../../../../genie/ci-scripts', 'prepare-effect-utils-composition.sh'].join('/'),
@@ -331,9 +330,14 @@ describe('ci workflow retry helpers', () => {
     expect(nixGcRaceRetryScriptSource).toContain('"$nix_cache_root"/tarball-cache-v*')
     expect(nixGcRaceRetryScriptSource).toContain('"$nix_cache_root"/gitv*')
     expect(nixGcRaceRetryScriptSource).toContain('"$nix_cache_root"/fetcher-cache-v*.sqlite*')
-    // The same wording can describe a permanently removed path, so the repair is bounded.
-    expect(nixGcRaceRetryScriptSource).toContain('missing_subpath_repairs')
-    expect(nixGcRaceRetryScriptSource).toContain('[ "$missing_subpath_repairs" -ge 1 ]')
+    expect(nixGcRaceRetryScriptSource).toContain('repaired_missing_subpaths')
+    expect(nixGcRaceRetryScriptSource).toContain(
+      'for repaired_missing_subpath in "${repaired_missing_subpaths[@]}"',
+    )
+    expect(nixGcRaceRetryScriptSource).not.toContain('missing_subpath_repairs=')
+    expect(nixGcRaceRetryScriptSource).toContain(
+      '[ "${repaired_missing_subpaths[0]+present}" = present ]',
+    )
     expect(nixGcRaceRetryScriptSource).toContain(
       'rm -rf ~/.cache/nix/eval-cache-* "$nix_cache_root"/eval-cache-*',
     )
@@ -349,6 +353,65 @@ describe('ci workflow retry helpers', () => {
     // sequence that String.raw would emit literally into the shipped script.
     expect(nixGcRaceRetryScriptSource).not.toContain('\\u00AB')
     expect(nixGcRaceRetryScriptSource).not.toContain('\u00AB')
+  })
+
+  it('repairs each distinct missing flake subpath once before treating a repeat as permanent', () => {
+    const root = mkdtempSync(join(tmpdir(), 'genie-nix-gc-retry-subpaths-'))
+    const fixture = join(root, 'missing-subpaths.sh')
+    const attempts = join(root, 'attempts')
+    const firstPath = '«github:NixOS/nixpkgs/first»/pkgs/first'
+    const secondPath = '«github:NixOS/nixpkgs/second»/pkgs/second'
+    writeFileSync(
+      fixture,
+      `#!/usr/bin/env bash
+set -euo pipefail
+attempt=$(($(cat "$ATTEMPTS" 2>/dev/null || echo 0) + 1))
+printf '%s' "$attempt" > "$ATTEMPTS"
+case "$attempt" in
+  1) missing_path='${firstPath}' ;;
+  *) missing_path='${secondPath}' ;;
+esac
+printf "error: path '%s' does not exist\\n" "$missing_path" >&2
+exit "$attempt"
+`,
+    )
+    chmodSync(fixture, 0o755)
+    try {
+      const result = spawnSync(
+        'bash',
+        ['-c', 'set -u; . "$RETRY_SCRIPT"; run_nix_gc_race_retry path-tracking "$FIXTURE"'],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            ATTEMPTS: attempts,
+            CI_PROGRESS_HEARTBEAT_SECONDS: '60',
+            FIXTURE: fixture,
+            HOME: join(root, 'home'),
+            NIX_GC_RACE_MAX_RETRIES: '10',
+            RETRY_SCRIPT: nixGcRaceRetryScriptPath,
+            XDG_CACHE_HOME: join(root, 'cache'),
+          },
+        },
+      )
+      const output = `${result.stdout}\n${result.stderr}`
+      expect(result.status, output).toBe(3)
+      expect(readFileSync(attempts, 'utf8')).toBe('3')
+      expect(output).toContain(
+        `Incomplete Nix flake input cache detected for path-tracking (attempt 1/10): ${firstPath}`,
+      )
+      expect(output).toContain(
+        `Incomplete Nix flake input cache detected for path-tracking (attempt 2/10): ${secondPath}`,
+      )
+      expect(output).toContain(
+        `Nix flake input subpath still missing for path-tracking after one cache repair: ${secondPath}`,
+      )
+      expect(output).not.toContain(
+        `Nix flake input subpath still missing for path-tracking after one cache repair: ${firstPath}`,
+      )
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
   })
 
   it('prepares retry helpers before generated jobs use the prepared retry script', () => {
