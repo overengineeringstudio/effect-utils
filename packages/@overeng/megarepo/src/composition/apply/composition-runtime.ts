@@ -1,6 +1,6 @@
 import { execFile as execFileCallback, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { lstat, mkdir, readFile, rm } from 'node:fs/promises'
+import { lstat, mkdir, readFile, realpath, rm } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 import { promisify } from 'node:util'
 
@@ -105,6 +105,7 @@ const watchmanProjectIsWatched = async ({
   readonly watchmanPath: string
   readonly workspaceRoot: string
 }): Promise<boolean> => {
+  const physicalWorkspaceRoot = await realpath(workspaceRoot)
   const response = await watchmanCommand({ watchmanPath, args: ['watch-list'] })
   if (
     typeof response !== 'object' ||
@@ -115,7 +116,7 @@ const watchmanProjectIsWatched = async ({
   ) {
     throw new TypeError('Watchman watch-list did not return a string root list')
   }
-  return response.roots.includes(workspaceRoot)
+  return response.roots.includes(physicalWorkspaceRoot)
 }
 
 const deleteWatchmanProjectIfWatched = async ({
@@ -125,8 +126,14 @@ const deleteWatchmanProjectIfWatched = async ({
   readonly watchmanPath: string
   readonly workspaceRoot: string
 }): Promise<void> => {
-  if ((await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })) === true) {
-    await watchmanCommand({ watchmanPath, args: ['watch-del', workspaceRoot] })
+  const physicalWorkspaceRoot = await realpath(workspaceRoot)
+  if (
+    (await watchmanProjectIsWatched({
+      watchmanPath,
+      workspaceRoot: physicalWorkspaceRoot,
+    })) === true
+  ) {
+    await watchmanCommand({ watchmanPath, args: ['watch-del', physicalWorkspaceRoot] })
   }
 }
 
@@ -139,29 +146,36 @@ const setWatchmanProjectWatched = async ({
   readonly workspaceRoot: string
   readonly watched: boolean
 }): Promise<void> => {
-  await deleteWatchmanProjectIfWatched({ watchmanPath, workspaceRoot })
+  const physicalWorkspaceRoot = await realpath(workspaceRoot)
+  await deleteWatchmanProjectIfWatched({
+    watchmanPath,
+    workspaceRoot: physicalWorkspaceRoot,
+  })
   if (watched === false) return
   try {
     const response = await watchmanCommand({
       watchmanPath,
-      args: ['watch-project', workspaceRoot],
+      args: ['watch-project', physicalWorkspaceRoot],
     })
     if (
       typeof response !== 'object' ||
       response === null ||
       !('watch' in response) ||
-      response.watch !== workspaceRoot ||
+      response.watch !== physicalWorkspaceRoot ||
       ('relative_path' in response && response.relative_path !== undefined)
     ) {
       throw new TypeError('Watchman did not establish the exact composition-root watch')
     }
   } catch (cause) {
     try {
-      await deleteWatchmanProjectIfWatched({ watchmanPath, workspaceRoot })
+      await deleteWatchmanProjectIfWatched({
+        watchmanPath,
+        workspaceRoot: physicalWorkspaceRoot,
+      })
     } catch (cleanupCause) {
       throw new AggregateError(
         [cause, cleanupCause],
-        `Watchman project reconciliation and cleanup failed for ${workspaceRoot}`,
+        `Watchman project reconciliation and cleanup failed for ${physicalWorkspaceRoot}`,
         { cause: cleanupCause },
       )
     }
@@ -177,6 +191,15 @@ export const reconcileWatchmanProject = async ({
   readonly watchmanPath: string
   readonly workspaceRoot: string
 }): Promise<void> => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true })
+
+/** Remove the exact composition-root registration without mutating the shared Watchman server. */
+export const teardownWatchmanProject = async ({
+  watchmanPath,
+  workspaceRoot,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+}): Promise<void> => deleteWatchmanProjectIfWatched({ watchmanPath, workspaceRoot })
 
 /** Durable compensation state plus the forward reconciliation to run after publication. */
 export interface WatchmanProjectReconciliation {

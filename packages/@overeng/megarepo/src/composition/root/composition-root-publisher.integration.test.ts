@@ -1772,6 +1772,7 @@ describe('composition root publisher', () => {
     Effect.scoped(
       Effect.gen(function* () {
         const fixture = yield* makeFixture({ members: ['alpha'] })
+        const externalCalls: string[] = []
         const ownedConfig = NodePath.join(fixture.root, 'repos/alpha/megarepo.kdl')
         yield* Effect.promise(async () => {
           await writeFile(ownedConfig, 'members { alpha "owner/alpha" }\n')
@@ -1783,8 +1784,15 @@ describe('composition root publisher', () => {
         const result = yield* teardownCompositionRoot({
           workspaceRoot: fixture.workspaceRoot,
           lock: { owner: 'publisher-test', token: 'teardown-token' },
+          removeExternalState: async () => {
+            externalCalls.push('external:remove')
+          },
+          beforeRemoveFile: async (path) => {
+            externalCalls.push(`file:remove:${path}`)
+          },
         })
         expect(result.removedPaths.toSorted()).toEqual([...generatedPaths].toSorted())
+        expect(externalCalls[0]).toBe('external:remove')
         for (const path of generatedPaths) {
           expect(yield* exists(NodePath.join(fixture.root, path))).toBe(false)
         }
@@ -1792,6 +1800,31 @@ describe('composition root publisher', () => {
         expect(yield* exists(NodePath.join(fixture.root, 'megarepo.kdl'))).toBe(true)
         expect(yield* exists(NodePath.join(fixture.root, 'buck-out/keep'))).toBe(true)
         expect(yield* exists(ownedConfig)).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect('teardown fails before file removal when external removal fails', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture({ members: ['alpha'] })
+        yield* publishCompositionRoot(optionsFor({ fixture, memberKeys: ['alpha'] }))
+        const error = yield* failureReason(
+          teardownCompositionRoot({
+            workspaceRoot: fixture.workspaceRoot,
+            lock: { owner: 'publisher-test', token: 'teardown-external-failure-token' },
+            removeExternalState: async () => {
+              throw new Error('external removal failed')
+            },
+          }),
+        )
+        expect(error.reason).toBe('IoFailure')
+        for (const path of generatedPaths) {
+          expect(yield* exists(NodePath.join(fixture.root, path))).toBe(true)
+        }
+        expect(
+          yield* exists(NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)),
+        ).toBe(true)
       }),
     ),
   )
@@ -1810,6 +1843,7 @@ describe('composition root publisher', () => {
           teardownCompositionRoot({
             workspaceRoot: fixture.workspaceRoot,
             lock: { owner: 'publisher-test', token: 'teardown-race-token' },
+            removeExternalState: async () => undefined,
             beforeRemoveFile: async (path) => {
               if (path !== '.buckconfig') return
               const replacementPath = `${configPath}.foreign`
@@ -1840,6 +1874,9 @@ describe('composition root publisher', () => {
           teardownCompositionRoot({
             workspaceRoot: fixture.workspaceRoot,
             lock: { owner: 'publisher-test', token: 'teardown-token' },
+            removeExternalState: async () => {
+              throw new Error('external teardown must not run before ownership validation')
+            },
           }),
         )
         expect(error.reason).toBe('ForeignPath')

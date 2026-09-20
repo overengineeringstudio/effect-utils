@@ -296,6 +296,8 @@ export interface CompositionRootPublicationResult {
 export interface TeardownCompositionRootOptions {
   readonly workspaceRoot: AbsoluteDirPath
   readonly lock: CompositionPublisherLockOptions
+  /** Remove the external registration derived from root authority before unlinking generated files. */
+  readonly removeExternalState: () => Promise<void>
   readonly beforeRemoveFile?: (path: string) => Promise<void>
 }
 
@@ -2456,6 +2458,7 @@ export const teardownCompositionRoot = Effect.fn('megarepo/composition-root/tear
         const removedDirectories: string[] = []
         try {
           const state = await validateTeardownState({ workspaceRoot })
+          await options.removeExternalState()
           const removalOrder = [
             ...state.manifest.files.filter((file) => file.path === '.buckconfig'),
             ...state.manifest.files.filter((file) => file.path !== '.buckconfig'),

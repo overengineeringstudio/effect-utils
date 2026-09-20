@@ -12,6 +12,7 @@ import {
   prepareWatchmanProjectReconciliation,
   reconcileWatchmanProject,
   restoreWatchmanProjectState,
+  teardownWatchmanProject,
 } from '../apply/composition-runtime.ts'
 import { generateCompositionRoot, type CompositionRootInput } from './composition-root.ts'
 
@@ -246,6 +247,7 @@ describe('generated Watchman root', () => {
       const parent = await mkdtemp(join(realpathSync(tmpdir()), 'megarepo-watchman-root-'))
       const root = join(parent, 'composition')
       const member = join(root, 'repos', 'alpha')
+      const rootAlias = join(parent, 'composition-alias')
       try {
         await Promise.all([
           mkdir(join(parent, 'unrelated-sibling', 'large', 'tree'), { recursive: true }),
@@ -274,8 +276,9 @@ describe('generated Watchman root', () => {
             distOverlayDestinations: ['packages/dist'],
           }),
         ])
+        await symlink(root, rootAlias)
 
-        await reconcileWatchmanProject({ watchmanPath, workspaceRoot: root })
+        await reconcileWatchmanProject({ watchmanPath, workspaceRoot: rootAlias })
         const watched = await watchman('watch-project', root)
         expect(watched).toMatchObject({ watch: root })
         expect(watched).not.toHaveProperty('relative_path')
@@ -325,6 +328,12 @@ describe('generated Watchman root', () => {
         expect(await watchman('watch-list')).toMatchObject({
           roots: expect.arrayContaining([root]),
         })
+
+        await teardownWatchmanProject({ watchmanPath, workspaceRoot: rootAlias })
+        expect(await watchman('watch-list')).toMatchObject({
+          roots: expect.not.arrayContaining([root]),
+        })
+        await reconcileWatchmanProject({ watchmanPath, workspaceRoot: root })
 
         await watchman('watch-del', root)
         const unwatchedRollback = await prepareWatchmanProjectReconciliation({
