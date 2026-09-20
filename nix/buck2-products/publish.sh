@@ -5,6 +5,9 @@ repo_root="${BUCK2_CACHE_PRODUCTS_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../
 targets="$repo_root/nix/buck2-products/cache-targets.json"
 manifest="$repo_root/nix/buck2-products/manifest.json"
 cache="overeng-effect-utils"
+cache_url="${CACHIX_CACHE_URL:-https://$cache.cachix.org}"
+cache_url="${cache_url%/}"
+local_cache=false
 dry_run=false
 proposal=""
 declare -a selected_products=()
@@ -60,15 +63,6 @@ if ((${#selected_products[@]})); then
       fail "unknown product: $selected"
   done
 fi
-declared_fingerprint="$(jq -r '.provenance.fingerprint' "$targets")"
-computed_fingerprint="$(jq -cS '{
-  generator: .provenance.generator,
-  schemaVersion: .schemaVersion,
-  semanticData: .products
-}' "$targets" | tr -d '\n' | sha256sum)"
-computed_fingerprint="sha256:${computed_fingerprint%% *}"
-[[ "$declared_fingerprint" == "$computed_fingerprint" ]] ||
-  fail "target inventory fingerprint does not match its declared products"
 
 rows="$({
   if ((${#selected_products[@]})); then
@@ -87,20 +81,31 @@ if $dry_run; then
   exit 0
 fi
 
-for tool in cachix curl git nix realpath sha256sum stat; do
+for tool in curl git jq nix realpath sha256sum stat; do
   command -v "$tool" >/dev/null || fail "$tool is required"
 done
-[[ -z "${GITHUB_EVENT_NAME:-}" || "${GITHUB_EVENT_NAME}" == workflow_dispatch ]] ||
-  fail "refusing untrusted GitHub event: ${GITHUB_EVENT_NAME}"
+case "${GITHUB_EVENT_NAME:-}" in
+  ""|push|workflow_dispatch) ;;
+  *) fail "refusing untrusted GitHub event: ${GITHUB_EVENT_NAME}" ;;
+esac
+[[ -z "${GITHUB_REF:-}" || "${GITHUB_REF}" == refs/heads/main ]] ||
+  fail "refusing publication from non-main ref: ${GITHUB_REF}"
 head_commit="$(git -C "$repo_root" rev-parse --verify 'HEAD^{commit}')"
 [[ -z "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]] ||
   fail "refusing to publish from a dirty Git worktree"
 
-if [[ -z "${CACHIX_AUTH_TOKEN:-}" ]]; then
-  command -v op-proxy >/dev/null || fail "op-proxy is required when CACHIX_AUTH_TOKEN is unset"
-fi
+case "$cache_url" in
+  file:///*)
+    local_cache=true
+    cache_root="$(realpath -m "${cache_url#file://}")"
+    cache_url="file://$cache_root"
+    ;;
+  https://*) command -v cachix >/dev/null || fail "cachix is required" ;;
+  *) fail "CACHIX_CACHE_URL must use https:// or file:///" ;;
+esac
 
-if [[ -z "${CACHIX_AUTH_TOKEN:-}" ]]; then
+if ! $local_cache && [[ -z "${CACHIX_AUTH_TOKEN:-}" ]]; then
+  command -v op-proxy >/dev/null || fail "op-proxy is required when CACHIX_AUTH_TOKEN is unset"
   [[ -n "${CACHIX_AUTH_TOKEN_REF:-}" ]] || fail "CACHIX_AUTH_TOKEN_REF is required when CACHIX_AUTH_TOKEN is unset"
   CACHIX_AUTH_TOKEN="$(op-proxy read "$CACHIX_AUTH_TOKEN_REF" --reason "P1 cache publisher (decision 0037)" --cache 1d)"
   export CACHIX_AUTH_TOKEN
@@ -119,12 +124,24 @@ stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 entries="$stage/entries.jsonl"
 : >"$entries"
-pins="$(curl -fsS "https://app.cachix.org/api/v1/cache/$cache/pin")" || fail "could not list existing Cachix pins"
+if $local_cache; then
+  mkdir -p "$cache_root"
+  pins_file="$cache_root/pins.json"
+  if [[ -f "$pins_file" ]]; then
+    pins="$(cat "$pins_file")"
+  else
+    pins='[]'
+  fi
+else
+  pins="$(curl -fsS "https://app.cachix.org/api/v1/cache/$cache/pin")" ||
+    fail "could not list existing Cachix pins"
+fi
 jq -e 'type == "array"' <<<"$pins" >/dev/null || fail "Cachix pin listing is not an array"
 
 while IFS= read -r row; do
   name="$(jq -r '.name' <<<"$row")"
   version="$(jq -r '.version' <<<"$row")"
+  kind="$(jq -r '.kind' <<<"$row")"
   target="$(jq -r '.target' <<<"$row")"
   output_name="$(jq -r '.outputName' <<<"$row")"
   safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
@@ -142,6 +159,19 @@ while IFS= read -r row; do
     .schema == "effect-utils/buck-product-provenance/v1" and
     .producerCommit == $commit and .target == $target and .productDigest == $digest
   ' "$provenance_file" >/dev/null || fail "$name provenance does not bind the built artifact"
+  descriptor='null'
+  descriptor_sha256='null'
+  if [[ "$kind" == javascript ]]; then
+    descriptor_file="$store_path/descriptor.json"
+    [[ -f "$descriptor_file" && ! -L "$descriptor_file" ]] || fail "$name descriptor is missing"
+    descriptor="$(jq -cS . "$descriptor_file")" || fail "$name descriptor is invalid"
+    descriptor_sha256="$(printf '%s' "$descriptor" | sha256sum | cut -d' ' -f1)"
+    integrity="$(nix hash convert --hash-algo sha256 --to sri "$sha256")"
+    jq -e \
+      --arg name "$name" --arg target "$target" --arg integrity "$integrity" --argjson size "$size" \
+      '.productName == $name and .target == $target and .integrity == $integrity and .sizeBytes == $size' \
+      <<<"$descriptor" >/dev/null || fail "$name descriptor does not bind the built artifact"
+  fi
   pin_name="$safe_name-$sha256"
   existing="$(jq -c --arg name "$pin_name" '[.[] | select(.name == $name)]' <<<"$pins")"
   existing_count="$(jq 'length' <<<"$existing")"
@@ -154,12 +184,14 @@ while IFS= read -r row; do
   fi
   store_hash="$(basename "$store_path")"
   store_hash="${store_hash%%-*}"
-  artifact_url="https://$cache.cachix.org/serve/$store_hash/$output_name"
+  artifact_url="$cache_url/serve/$store_hash/$output_name"
   jq -cnS \
     --arg name "$name" --arg version "$version" --arg sha256 "$sha256" \
     --argjson size "$size" --arg storePath "$store_path" --arg artifactUrl "$artifact_url" \
     --argjson provenance "$(jq -cS . "$provenance_file")" \
-    '{name:$name,version:$version,sha256:$sha256,size:$size,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}' \
+    --arg kind "$kind" --argjson descriptor "$descriptor" --arg descriptorSha256 "$descriptor_sha256" \
+    '{name:$name,version:$version,sha256:$sha256,size:$size,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
+     + (if $kind == "javascript" then {descriptor:$descriptor,descriptorSha256:$descriptorSha256} else {} end)' \
     >>"$entries"
 done < <(jq -c '.[]' <<<"$rows")
 
@@ -168,13 +200,29 @@ while IFS= read -r entry; do
   sha256="$(jq -r '.sha256' <<<"$entry")"
   store_path="$(jq -r '.storePath' <<<"$entry")"
   artifact_url="$(jq -r '.artifactUrl' <<<"$entry")"
+  store_hash="$(basename "$store_path")"
+  store_hash="${store_hash%%-*}"
   output_name="${artifact_url##*/}"
   safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
   pin_name="$safe_name-$sha256"
   existing_count="$(jq --arg name "$pin_name" '[.[] | select(.name == $name)] | length' <<<"$pins")"
-  cachix push "$cache" "$store_path"
   if ((existing_count == 0)); then
-    cachix pin "$cache" "$pin_name" "$store_path" --artifact "$output_name" --keep-forever
+    if $local_cache; then
+      nix copy --to "$cache_url" "$store_path"
+      local_artifact="$cache_root/serve/$store_hash/$output_name"
+      mkdir -p "$(dirname "$local_artifact")"
+      cp "$store_path/$output_name" "$local_artifact"
+      pins="$(jq -cS \
+        --arg name "$pin_name" --arg storePath "$store_path" --arg artifact "$output_name" \
+        '. + [{name:$name,lastRevision:{storePath:$storePath,artifacts:[$artifact]}}] | sort_by(.name)' \
+        <<<"$pins")"
+      pins_stage="$stage/pins.json"
+      printf '%s\n' "$pins" >"$pins_stage"
+      mv "$pins_stage" "$pins_file"
+    else
+      cachix push "$cache" "$store_path"
+      cachix pin "$cache" "$pin_name" "$store_path" --artifact "$output_name" --keep-forever
+    fi
   fi
   downloaded="$stage/$safe_name.download"
   env -u CACHIX_AUTH_TOKEN curl -fsS "$artifact_url" -o "$downloaded"

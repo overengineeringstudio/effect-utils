@@ -81,7 +81,10 @@
         # Buck is the sole producer for admitted repository products. The
         # unadmitted gh-ci-utils CLI keeps its source-built Nix package until a
         # later authority transfer explicitly admits it.
-        trackedBuck2Products = import ./nix/buck2-products { inherit pkgs; };
+        trackedBuck2Products = import ./nix/buck2-products {
+          inherit pkgs;
+          fromSourceProducts = buckProductsFromSource;
+        };
         oxlintNpm = import ./nix/oxlint-npm.nix {
           inherit pkgs;
           bun = pkgs.bun;
@@ -120,6 +123,7 @@
         };
       in
       {
+        buckProducts = trackedBuck2Products;
         packages =
           cliPackages
           // providerCliPackages
@@ -298,7 +302,7 @@
         args:
         import ./nix/workspace-tools/lib/buck2-product-candidates.nix (
           {
-            products = (import ./nix/buck2-products { pkgs = args.pkgs; }).products;
+            products = self.buckProducts.${args.pkgs.stdenv.hostPlatform.system}.products;
             typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
           }
           // args
@@ -329,7 +333,7 @@
         args:
         import ./nix/workspace-tools/lib/mk-cli-packages.nix (
           {
-            products = (import ./nix/buck2-products { pkgs = args.pkgs; }).products;
+            products = self.buckProducts.${args.pkgs.stdenv.hostPlatform.system}.products;
             typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
           }
           // args
@@ -342,7 +346,7 @@
         {
           pkgs,
           bun,
-          products ? (import ./nix/buck2-products { inherit pkgs; }).products,
+          products ? self.buckProducts.${pkgs.stdenv.hostPlatform.system}.products,
         }:
         import ./nix/oxlint-npm.nix { inherit pkgs bun products; };
 

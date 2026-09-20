@@ -256,6 +256,19 @@
     inherit preparedDeps;
     inherit producerCommit repositoryRoot;
   };
+  "oxc-config-stylex-upstream-plugin" = mkBuckProductFromSource {
+    product = {
+      kind = "javascript";
+      name = "oxc-config-stylex-upstream-plugin";
+      outputName = "oxc-config-stylex-upstream-plugin.js";
+      packagePath = "packages/@overeng/oxc-config";
+      packageTreePath = "packages/@overeng/oxc-config";
+      target = "effect_utils//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate";
+      version = "0.0.0";
+    };
+    inherit preparedDeps;
+    inherit producerCommit repositoryRoot;
+  };
   "tui-stories" = mkBuckProductFromSource {
     product = {
       kind = "javascript";

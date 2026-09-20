@@ -23,6 +23,12 @@ const javascriptProducts = [
   ['notion-md', 'notion-md.js', 'packages/@overeng/notion-md', 'notion-md-candidate'],
   ['npm-release', 'npm-release.js', 'packages/@overeng/npm-release', 'npm-release-candidate'],
   ['oxc-config', 'oxc-config.js', 'packages/@overeng/oxc-config', 'oxc-config-candidate'],
+  [
+    'oxc-config-stylex-upstream-plugin',
+    'oxc-config-stylex-upstream-plugin.js',
+    'packages/@overeng/oxc-config',
+    'oxc-config-stylex-upstream-plugin-candidate',
+  ],
   ['tui-stories', 'tui-stories.js', 'packages/@overeng/tui-stories', 'tui-stories-candidate'],
 ] as const
 

@@ -126,6 +126,23 @@ A fresh local Nix store then restored the paths from only that cache; the
 restored `oxc-config.js` had the same SHA-256 digest. This proves the
 substitution mechanism without mutating the public cache.
 
+### Post-#1283 reconciliation
+
+After `6aada53586`, the old `oxc-config` plugin-bundle fixed-output
+derivation no longer exists. The generalized recipe now uses the remaining
+prepared root from `gh-ci-utils`, projects package-local links only when that
+prepared root contains them, and keeps Buck package views compatible with the
+prepared root.
+
+| Product      | Wall clock | Output closure | Artifact bytes |
+| ------------ | ---------: | -------------: | -------------: |
+| `oxc-config` |       23 s |   66,440 bytes |   64,565 bytes |
+
+The reconciled build produced
+`/nix/store/d70rd6kwy4v1v7gmg71y9mfmhhm9grgb-oxc-config-buck2-from-source-0.0.0`.
+The output also contains the canonical JavaScript product descriptor that the
+cache publisher needs to preserve the existing Nix import contract.
+
 ## Conclusion
 
 Yes: Nix can drive the pinned Buck graph inside its normal sandbox from filtered

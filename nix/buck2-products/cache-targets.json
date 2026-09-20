@@ -173,6 +173,15 @@
     },
     {
       "kind": "javascript",
+      "name": "oxc-config-stylex-upstream-plugin",
+      "outputName": "oxc-config-stylex-upstream-plugin.js",
+      "packagePath": "packages/@overeng/oxc-config",
+      "packageTreePath": "packages/@overeng/oxc-config",
+      "target": "effect_utils//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate",
+      "version": "0.0.0"
+    },
+    {
+      "kind": "javascript",
       "name": "tui-stories",
       "outputName": "tui-stories.js",
       "packagePath": "packages/@overeng/tui-stories",

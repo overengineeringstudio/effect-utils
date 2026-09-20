@@ -1,177 +1,265 @@
-# Pure loader for Buck products distributed through Nix substitution.
+# Pure loader for immutable Buck-produced JavaScript release assets.
+#
+# The generated target inventory is desired product authority; the publisher is
+# the sole producer of the tracked manifest. Evaluation requires both sets to
+# match exactly, validates every canonical descriptor/release binding, and
+# realizes only the declared content-addressed module bytes.
 {
   pkgs,
-  fromSourceProducts,
+  fromSourceProducts ? { },
 }:
 
 let
   lib = pkgs.lib;
   manifest = builtins.fromJSON (builtins.readFile ./manifest.json);
-  targetInventory = builtins.fromJSON (builtins.readFile ./cache-targets.json);
-  declaredProductNames = builtins.sort builtins.lessThan (
-    map (product: product.name) targetInventory.products
-  );
-  targetByName = builtins.listToAttrs (
-    map (product: {
-      inherit (product) name;
-      value = product;
-    }) targetInventory.products
-  );
-  cacheBase = "https://overeng-effect-utils.cachix.org/serve";
-  validName =
-    value: builtins.isString value && builtins.match "[A-Za-z0-9@][A-Za-z0-9@._+/-]*" value != null;
+  targets = builtins.fromJSON (builtins.readFile ./targets.json);
+  targetGenerator = "effect-utils/genie/buck2-javascript-release-targets";
+  targetFingerprint = "sha256:${
+    builtins.hashString "sha256" (
+      builtins.toJSON {
+        generator = targetGenerator;
+        schemaVersion = targets.schemaVersion;
+        semanticData = targets.products;
+      }
+    )
+  }";
+  repositoryReleaseBase = "https://github.com/overengineeringstudio/effect-utils/releases/download";
+  expectedDescriptorKeys = [
+    "externalCapabilities"
+    "externalModules"
+    "integrity"
+    "modulePath"
+    "platform"
+    "productKind"
+    "productName"
+    "provenance"
+    "runtimeContract"
+    "runtimeContractVersion"
+    "runtimeKind"
+    "schema"
+    "sizeBytes"
+    "target"
+  ];
+  # The release asset name embeds the module path verbatim, and a GitHub
+  # release asset name cannot contain "/": the module path is therefore one
+  # path segment, not a relative path.
+  validModulePathSegment = path: builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" path != null;
+  descriptorModuleSha256 =
+    descriptor:
+    builtins.convertHash {
+      hash = descriptor.integrity;
+      toHashFormat = "base16";
+    };
   checkedProduct =
     entry:
     let
-      name = entry.name;
-      recipe = fromSourceProducts.${name} or (throw "buck2-products: no source recipe for ${name}");
-      declared =
-        targetByName.${name} or (throw "buck2-products: manifest contains undeclared product ${name}");
-      artifactName = recipe.artifactName;
-      publishedStore = builtins.fetchClosure {
-        fromStore = "https://overeng-effect-utils.cachix.org";
-        fromPath = entry.storePath;
-        inputAddressed = true;
-      };
-      storeBaseName = builtins.baseNameOf entry.storePath;
-      storeHash = builtins.head (lib.splitString "-" storeBaseName);
-      expectedUrl = "${cacheBase}/${storeHash}/${artifactName}";
-      provenance = entry.provenance;
-      checkedArtifact =
-        pkgs.runCommand "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-validated"
-          {
-            nativeBuildInputs = [
-              pkgs.coreutils
-              pkgs.jq
-            ];
-            passthru = {
-              inherit (entry)
-                artifactUrl
-                provenance
-                sha256
-                size
-                storePath
-                version
-                ;
-              sourceRecipe = recipe;
-            };
-          }
-          ''
-            set -euo pipefail
-            artifact=${lib.escapeShellArg "${publishedStore}/${artifactName}"}
-            test -f "$artifact"
-            test "$(sha256sum "$artifact" | cut -d' ' -f1)" = ${lib.escapeShellArg entry.sha256}
-            test "$(stat -c '%s' "$artifact")" = ${toString entry.size}
-            jq -e \
-              --arg producerCommit ${lib.escapeShellArg provenance.producerCommit} \
-              --arg target ${lib.escapeShellArg provenance.target} \
-              --arg productDigest ${lib.escapeShellArg provenance.productDigest} \
-              '(keys | sort) == ["producerCommit","productDigest","schema","target"] and
-               .schema == "effect-utils/buck-product-provenance/v1" and
-               .producerCommit == $producerCommit and .target == $target and
-               .productDigest == $productDigest' \
-              ${publishedStore}/provenance.json >/dev/null
-            mkdir -p "$out"
-            cp "$artifact" "$out/${artifactName}"
-            cp ${publishedStore}/provenance.json "$out/provenance.json"
-          '';
+      descriptor = entry.descriptor;
+      release = entry.release;
+      productName = descriptor.productName;
+      moduleSha256 = descriptorModuleSha256 descriptor;
+      canonicalDescriptor = builtins.toJSON descriptor;
+      derivedTag = "buck2-product-v3-${productName}-${moduleSha256}";
+      derivedName = "${moduleSha256}-${descriptor.modulePath}";
+      derivedUrl = "${repositoryReleaseBase}/${derivedTag}/${derivedName}";
+      descriptorFile = pkgs.writeText "${productName}-product.json" canonicalDescriptor;
     in
     assert lib.assertMsg (
       builtins.attrNames entry == [
-        "artifactUrl"
+        "descriptor"
+        "descriptorSha256"
+        "release"
+      ]
+    ) "buck2-products: ${productName} manifest product fields are not exact";
+    assert lib.assertMsg (
+      builtins.attrNames descriptor == expectedDescriptorKeys
+    ) "buck2-products: ${productName} descriptor fields are not exact";
+    assert lib.assertMsg (
+      descriptor.schema == "effect-utils/javascript-product/v2"
+    ) "buck2-products: ${productName} has an unsupported descriptor schema";
+    assert lib.assertMsg (
+      builtins.isString productName && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" productName != null
+    ) "buck2-products: descriptor has an unsafe product name";
+    assert lib.assertMsg (builtins.elem descriptor.productKind [
+      "cli"
+      "module"
+    ]) "buck2-products: ${productName} has an unsupported product kind";
+    assert lib.assertMsg (builtins.elem descriptor.runtimeKind [
+      "bun"
+      "node"
+    ]) "buck2-products: ${productName} has an unsupported JavaScript runtime";
+    assert lib.assertMsg (
+      descriptor.runtimeContract == "javascript-esm"
+    ) "buck2-products: ${productName} has an unsupported runtime contract";
+    assert lib.assertMsg (
+      descriptor.runtimeContractVersion == "v1"
+    ) "buck2-products: ${productName} has an unsupported runtime contract version";
+    assert lib.assertMsg (
+      descriptor.platform == {
+        abi = "any";
+        architecture = "any";
+        os = "any";
+      }
+    ) "buck2-products: ${productName} is not platform-invariant";
+    assert lib.assertMsg (validModulePathSegment descriptor.modulePath)
+      "buck2-products: ${productName} module path is not one release-asset-safe path segment";
+    assert lib.assertMsg (
+      builtins.isList descriptor.externalCapabilities
+      && builtins.all builtins.isString descriptor.externalCapabilities
+    ) "buck2-products: ${productName} has invalid external capabilities";
+    assert lib.assertMsg (
+      builtins.isList descriptor.externalModules
+      && builtins.all builtins.isString descriptor.externalModules
+    ) "buck2-products: ${productName} has invalid external modules";
+    assert lib.assertMsg (
+      builtins.attrNames descriptor.provenance == [
+        "configuredTarget"
+        "dependencyClosureIdentity"
+        "module"
+      ]
+      && builtins.all builtins.isString (builtins.attrValues descriptor.provenance)
+    ) "buck2-products: ${productName} has invalid provenance";
+    assert lib.assertMsg (builtins.isString descriptor.target)
+      "buck2-products: ${productName} has an invalid target";
+    assert lib.assertMsg (
+      builtins.isInt descriptor.sizeBytes && descriptor.sizeBytes > 0
+    ) "buck2-products: ${productName} descriptor declares no payload size";
+    assert lib.assertMsg (
+      builtins.match "sha256-[A-Za-z0-9+/]{43}=" descriptor.integrity != null
+    ) "buck2-products: ${productName} integrity must be an SRI SHA-256 digest";
+    assert lib.assertMsg (
+      builtins.match "[0-9a-f]{64}" entry.descriptorSha256 != null
+    ) "buck2-products: ${productName} descriptorSha256 must be lowercase SHA-256 hex";
+    assert lib.assertMsg (
+      builtins.hashString "sha256" canonicalDescriptor == entry.descriptorSha256
+    ) "buck2-products: ${productName} canonical descriptor digest mismatch";
+    assert lib.assertMsg (
+      builtins.attrNames release == [
+        "hash"
         "name"
-        "provenance"
-        "sha256"
-        "size"
-        "storePath"
-        "version"
+        "tag"
+        "url"
       ]
-    ) "buck2-products: ${name} manifest fields are not exact";
-    assert lib.assertMsg (validName name) "buck2-products: product has an unsafe name";
+    ) "buck2-products: ${productName} release fields are not exact";
     assert lib.assertMsg (
-      builtins.isString entry.version && entry.version != ""
-    ) "buck2-products: ${name} has an invalid version";
+      release.tag == derivedTag
+    ) "buck2-products: ${productName} release tag does not match its product and payload digest";
+    assert lib.assertMsg (release.name == derivedName)
+      "buck2-products: ${productName} release asset name does not match its payload digest and module path";
     assert lib.assertMsg (
-      entry.version == declared.version
-    ) "buck2-products: ${name} version does not match the generated inventory";
+      release.url == derivedUrl
+    ) "buck2-products: ${productName} release URL does not match its tag and asset name";
     assert lib.assertMsg (
-      builtins.match "[0-9a-f]{64}" entry.sha256 != null
-    ) "buck2-products: ${name} sha256 must be lowercase hexadecimal";
-    assert lib.assertMsg (
-      builtins.isInt entry.size && entry.size > 0
-    ) "buck2-products: ${name} size must be a positive integer";
-    assert lib.assertMsg (
-      builtins.match "/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+" entry.storePath != null
-    ) "buck2-products: ${name} has an invalid store path";
-    assert lib.assertMsg (
-      builtins.attrNames provenance == [
-        "producerCommit"
-        "productDigest"
-        "schema"
-        "target"
-      ]
-      && provenance.schema == "effect-utils/buck-product-provenance/v1"
-      && builtins.match "[0-9a-f]{40}" provenance.producerCommit != null
-      && builtins.isString provenance.target
-      && provenance.target == declared.target
-      && recipe.target == declared.target
-      && provenance.productDigest == entry.sha256
-    ) "buck2-products: ${name} has invalid provenance";
-    assert lib.assertMsg (
-      entry.artifactUrl == expectedUrl
-    ) "buck2-products: ${name} artifact URL does not match its store path and artifact";
+      release.hash == descriptor.integrity
+    ) "buck2-products: ${productName} release hash does not match descriptor integrity";
     {
-      inherit name;
+      name = productName;
       value = {
-        artifact = "${checkedArtifact}/${artifactName}";
-        descriptor = pkgs.writeText "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-provenance.json" (
-          builtins.toJSON provenance
-        );
-        expectedModuleSha256 = entry.sha256;
-        inherit (entry)
-          artifactUrl
-          provenance
-          storePath
-          version
-          ;
-        sourceRecipe = recipe;
-        validated = checkedArtifact;
+        artifact = pkgs.fetchurl {
+          name = release.name;
+          inherit (release) url hash;
+        };
+        descriptor = descriptorFile;
+        descriptorContent = canonicalDescriptor;
+        expectedDescriptorSha256 = entry.descriptorSha256;
+        expectedModuleSha256 = moduleSha256;
+        inherit release;
       };
     };
   checkedProducts = map checkedProduct manifest.products;
-  productNames = map (entry: entry.name) checkedProducts;
-  uniqueProductNames = lib.unique productNames;
+  publishedProductNames = map (entry: entry.name) checkedProducts;
+  releaseTags = map (entry: entry.value.release.tag) checkedProducts;
+  uniquePublishedProductNames = lib.unique publishedProductNames;
+  uniqueReleaseTags = lib.unique releaseTags;
+  declaredProductNames = map (product: product.name) targets.products;
+  declaredProductTargets = map (product: product.target) targets.products;
+  sortProducts = builtins.sort (left: right: left.name < right.name);
+  declaredProducts = sortProducts targets.products;
+  publishedProducts = sortProducts (
+    map (entry: {
+      name = entry.name;
+      target = (builtins.fromJSON entry.value.descriptorContent).target;
+    }) checkedProducts
+  );
 in
-assert lib.assertMsg (
-  builtins.attrNames targetInventory == [
-    "products"
-    "schema"
-    "schemaVersion"
-  ]
-  && targetInventory.schema == "effect-utils/buck-cache-targets/v1"
-  && targetInventory.schemaVersion == 1
-) "buck2-products: generated target inventory is invalid";
-assert lib.assertMsg (
-  builtins.length declaredProductNames == builtins.length (lib.unique declaredProductNames)
-) "buck2-products: generated target names must be unique";
-assert lib.assertMsg (
-  builtins.attrNames manifest == [
-    "products"
-    "schema"
-  ]
-) "buck2-products: manifest fields are not exact";
-assert lib.assertMsg (
-  manifest.schema == "effect-utils/buck-cache-products/v2"
-) "buck2-products: unsupported manifest schema";
-assert lib.assertMsg (
-  builtins.isList manifest.products && manifest.products != [ ]
-) "buck2-products: manifest products must be a non-empty list";
-assert lib.assertMsg (
-  builtins.length uniquePublishedProductNames == builtins.length publishedProductNames
-) "buck2-products: product names must be unique";
-{
-  inherit manifest declaredProductNames;
-  publishedProductNames = builtins.sort builtins.lessThan productNames;
-  products = builtins.listToAttrs checkedProducts;
-  fullyPublished = declaredProductNames == builtins.sort builtins.lessThan productNames;
-}
+if manifest.schema == "effect-utils/buck-cache-products/v2" then
+  import ./cache.nix { inherit pkgs fromSourceProducts; }
+else
+  assert lib.assertMsg (
+    builtins.attrNames targets == [
+      "products"
+      "provenance"
+      "schemaVersion"
+    ]
+  ) "buck2-products: target inventory fields are not exact";
+  assert lib.assertMsg (
+    targets.schemaVersion == 1
+  ) "buck2-products: unsupported target inventory schema";
+  assert lib.assertMsg (
+    builtins.attrNames targets.provenance == [
+      "fingerprint"
+      "generator"
+      "regenerationCommand"
+      "semanticInputs"
+      "source"
+    ]
+    && targets.provenance.generator == targetGenerator
+    && targets.provenance.regenerationCommand == "devenv tasks run genie:run"
+    &&
+      targets.provenance.semanticInputs == [
+        "genie/buck2/javascript-product-registry.ts"
+        "nix/buck2-products/targets.json.genie.ts"
+      ]
+    && targets.provenance.source == "nix/buck2-products/targets.json.genie.ts"
+  ) "buck2-products: target inventory provenance is invalid";
+  assert lib.assertMsg (
+    targets.provenance.fingerprint == targetFingerprint
+  ) "buck2-products: target inventory fingerprint mismatch";
+  assert lib.assertMsg (
+    builtins.isList targets.products
+    && targets.products != [ ]
+    && builtins.all (
+      product:
+      builtins.attrNames product == [
+        "name"
+        "target"
+      ]
+      && builtins.isString product.name
+      && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" product.name != null
+      && builtins.isString product.target
+      && builtins.match "([A-Za-z0-9_]+)?//[^][[:space:]]+:[^][[:space:]]+" product.target != null
+    ) targets.products
+  ) "buck2-products: target inventory products are malformed";
+  assert lib.assertMsg (
+    builtins.length (lib.unique declaredProductNames) == builtins.length declaredProductNames
+  ) "buck2-products: target inventory product names must be unique";
+  assert lib.assertMsg (
+    builtins.length (lib.unique declaredProductTargets) == builtins.length declaredProductTargets
+  ) "buck2-products: target inventory product targets must be unique";
+  assert lib.assertMsg (
+    builtins.attrNames manifest == [
+      "products"
+      "schema"
+    ]
+  ) "buck2-products: manifest fields are not exact";
+  assert lib.assertMsg (
+    manifest.schema == "effect-utils/buck2-release-products/v1"
+  ) "buck2-products: unsupported manifest schema";
+  assert lib.assertMsg (
+    builtins.isList manifest.products && manifest.products != [ ]
+  ) "buck2-products: manifest products must be a non-empty list";
+  assert lib.assertMsg (
+    builtins.length uniquePublishedProductNames == builtins.length publishedProductNames
+  ) "buck2-products: product names must be unique";
+  assert lib.assertMsg (
+    declaredProducts == publishedProducts
+  ) "buck2-products: declared target inventory does not match the published manifest";
+  assert lib.assertMsg (
+    builtins.length uniqueReleaseTags == builtins.length releaseTags
+  ) "buck2-products: each product payload must have one unique release";
+  {
+    inherit manifest targets;
+    declaredProductNames = builtins.sort builtins.lessThan declaredProductNames;
+    publishedProductNames = builtins.sort builtins.lessThan publishedProductNames;
+    products = builtins.listToAttrs checkedProducts;
+    fullyPublished = true;
+  }

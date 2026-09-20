@@ -17,6 +17,19 @@ let
     root = repositoryRoot;
     fileset = lib.fileset.unions [
       (repositoryRoot + "/BUCK")
+      (repositoryRoot + "/package.json")
+      (repositoryRoot + "/.oxfmtrc.json")
+      (repositoryRoot + "/.oxlintrc.json")
+      (repositoryRoot + "/context")
+      (repositoryRoot + "/devenv.lock")
+      (repositoryRoot + "/devenv.yaml")
+      (repositoryRoot + "/flake.lock")
+      (repositoryRoot + "/flake.nix")
+      (repositoryRoot + "/megarepo.kdl")
+      (repositoryRoot + "/megarepo.lock")
+      (repositoryRoot + "/patches")
+      (repositoryRoot + "/scripts")
+      (repositoryRoot + "/tsconfig.lint.json")
       (repositoryRoot + "/buck2")
       (repositoryRoot + "/packages/@overeng")
     ];
@@ -64,7 +77,6 @@ pkgs.stdenv.mkDerivation {
     cat > .buckconfig <<'BUCKCONFIG'
     [cells]
       effect_utils = .
-      capabilities = .buck2/capabilities
       prelude = prelude
 
     [cell_aliases]
@@ -118,7 +130,7 @@ pkgs.stdenv.mkDerivation {
 
     cat > buck2/toolchains/BUCK <<'TOOLCHAINS'
     load("//buck2/toolchains:defs.bzl", "bun_toolchain")
-    load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
+    load("//.buck2/capabilities:defs.bzl", "CAPABILITIES", "GENERATION")
     bun_toolchain(
         name = "bun",
         capabilities = CAPABILITIES,
@@ -176,7 +188,12 @@ pkgs.stdenv.mkDerivation {
             }
           }
         }
-        await project(source, destination)
+        try {
+          await access(source)
+          await project(source, destination)
+        } catch (error) {
+          if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error
+        }
         const workspaceRoot = join(preparedRoot, "packages", "@overeng")
         for (const entry of await readdir(workspaceRoot, { withFileTypes: true })) {
           if (!entry.isDirectory()) continue
@@ -252,7 +269,7 @@ pkgs.stdenv.mkDerivation {
       }
       replaceExactlyOnce(
         "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_view\")",
-        "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_tree\")",
+        "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_tree\", \"package_view\")",
       )
       const opening = "package_view(\n    name = \"package_tree\",\n"
       const blockStart = source.indexOf(opening)
@@ -266,19 +283,27 @@ pkgs.stdenv.mkDerivation {
         throw new Error("package_tree package_view has no dependency_view")
       }
       const dependencyEnd = source.indexOf("\n", dependencyStart)
-      source =
-        source.slice(0, blockStart) +
-        source.slice(blockStart, blockEnd).replace("package_view(", "package_tree(").replace(
+      const rewrittenBlock = source
+        .slice(blockStart, blockEnd)
+        .replace("package_view(", "package_tree(")
+        .replace(
           source.slice(dependencyStart, dependencyEnd),
           "    node_modules = \"//:nix_prepared_node_modules\",",
-        ) +
-        source.slice(blockEnd)
+        )
+        .replace("    workspace_dist = {\n    },\n", "")
+        .replace("    workspace_dependency_views = {\n    },\n", "")
+      source = source.slice(0, blockStart) + rewrittenBlock + source.slice(blockEnd)
       await Bun.write(path, source)
     '
 
     artifact="$(${buck2}/bin/buck2 --isolation-dir nix-product-${safeName} build ${lib.escapeShellArg target} --local-only --no-remote-cache --console simple --show-simple-output)"
     test -f "$artifact"
     cp "$artifact" ${lib.escapeShellArg outputName}
+    ${lib.optionalString (product.kind == "javascript") ''
+      descriptor="$(${buck2}/bin/buck2 --isolation-dir nix-product-${safeName}-descriptor build ${lib.escapeShellArg "${target}[descriptor]"} --local-only --no-remote-cache --console simple --show-simple-output)"
+      test -f "$descriptor"
+      jq -cS . "$descriptor" > descriptor.json
+    ''}
     actual_sha256="$(sha256sum ${lib.escapeShellArg outputName} | cut -d' ' -f1)"
     ${lib.optionalString (expectedSha256 != null) ''
       test "$actual_sha256" = ${lib.escapeShellArg expectedSha256}
@@ -298,6 +323,9 @@ pkgs.stdenv.mkDerivation {
     mkdir -p "$out"
     cp ${lib.escapeShellArg outputName} "$out/${outputName}"
     cp provenance.json "$out/provenance.json"
+    ${lib.optionalString (product.kind == "javascript") ''
+      cp descriptor.json "$out/descriptor.json"
+    ''}
     runHook postInstall
   '';
 

@@ -6,14 +6,15 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 publisher="$repo_root/nix/buck2-products/publish.sh"
 targets="$repo_root/nix/buck2-products/cache-targets.json"
+workflow="$repo_root/.github/workflows/ci.yml"
 
-expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/otel-contract","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","tui-stories"]'
+expected_names='["@overeng/content-address","@overeng/effect-distributed-lock","@overeng/notion-core","@overeng/notion-effect-client","@overeng/notion-effect-schema","@overeng/otel-contract","@overeng/tui-core","@overeng/tui-react","@overeng/utils","@overeng/utils-dev","ci-tools","genie","genie-bootstrap-closure-check","megarepo","notion-cli","notion-db-runtime","notion-md","npm-release","oxc-config","oxc-config-stylex-upstream-plugin","tui-stories"]'
 plan="$(bash "$publisher" --dry-run)"
 jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck-cache-publication-plan/v1" and
   .cache == "overeng-effect-utils" and
   [.products[].name] == $expected and
-  (.products | length == 20) and
+  (.products | length == 21) and
   all(.products[];
     (.kind == "javascript" or .kind == "package") and
     (.target | startswith("effect_utils//")) and
@@ -38,6 +39,10 @@ grep -F 'cachix pin "$cache" "$pin_name" "$store_path" --artifact "$output_name"
 grep -F 'already points at a different store path' "$publisher" >/dev/null
 grep -F 'env -u CACHIX_AUTH_TOKEN curl -fsS "$artifact_url"' "$publisher" >/dev/null
 grep -F 'P1 cache publisher (decision 0037)' "$publisher" >/dev/null
+grep -F 'publish-products:' "$workflow" >/dev/null
+grep -F 'CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}' "$workflow" >/dev/null
+grep -F 'pull-requests: write' "$workflow" >/dev/null
+grep -F 'nix/buck2-products/publish.sh --proposal "$proposal"' "$workflow" >/dev/null
 if grep -E '(^|[[:space:]])set[[:space:]]+-[^[:space:]]*x' "$publisher" >/dev/null; then
   echo "buck2-cache-products-test: publisher enables shell tracing around secrets" >&2
   exit 1
@@ -45,6 +50,10 @@ fi
 mkdir -p "$tmp/collision-output" "$tmp/collision-repo/nix/buck2-products" "$tmp/fake-bin"
 printf 'fixture\n' >"$tmp/collision-output/fixture.js"
 collision_sha="$(sha256sum "$tmp/collision-output/fixture.js" | cut -d' ' -f1)"
+collision_integrity="$(nix hash convert --hash-algo sha256 --to sri "$collision_sha")"
+cat >"$tmp/collision-output/descriptor.json" <<EOF
+{"integrity":"$collision_integrity","productName":"fixture","sizeBytes":8,"target":"effect_utils//packages/@overeng/fixture:fixture-candidate"}
+EOF
 cat >"$tmp/collision-output/provenance.json" <<EOF
 {"producerCommit":"1111111111111111111111111111111111111111","productDigest":"$collision_sha","schema":"effect-utils/buck-product-provenance/v1","target":"effect_utils//packages/@overeng/fixture:fixture-candidate"}
 EOF
@@ -74,7 +83,10 @@ esac
 EOF
 cat >"$tmp/fake-bin/nix" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$FIXTURE_STORE_PATH"
+case "$1" in
+  hash) printf '%s\n' "$FIXTURE_INTEGRITY" ;;
+  *) printf '%s\n' "$FIXTURE_STORE_PATH" ;;
+esac
 EOF
 cat >"$tmp/fake-bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -86,6 +98,7 @@ printf '%s\n' "$*" >>"$CACHIX_LOG"
 EOF
 chmod +x "$tmp/fake-bin/"*
 export FIXTURE_STORE_PATH="$collision_store"
+export FIXTURE_INTEGRITY="$collision_integrity"
 export PIN_LIST="[{\"name\":\"fixture-$collision_sha\",\"lastRevision\":{\"storePath\":\"/nix/store/11111111111111111111111111111111-other\",\"artifacts\":[\"fixture.js\"]}}]"
 export CACHIX_LOG="$tmp/cachix.log"
 if PATH="$tmp/fake-bin:$PATH" CACHIX_AUTH_TOKEN=fake BUCK2_CACHE_PRODUCTS_REPO="$tmp/collision-repo" \
@@ -99,13 +112,54 @@ grep -F 'already points at a different store path' "$tmp/collision.stderr" >/dev
   exit 1
 }
 
+mkdir -p "$tmp/local-bin" "$tmp/local-cache"
+cp "$tmp/fake-bin/git" "$tmp/local-bin/git"
+cat >"$tmp/local-bin/nix" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  build) printf '%s\n' "$FIXTURE_STORE_PATH" ;;
+  copy) printf '%s\n' "$*" >>"$NIX_COPY_LOG" ;;
+  hash) printf '%s\n' "$FIXTURE_INTEGRITY" ;;
+  *) exit 2 ;;
+esac
+EOF
+chmod +x "$tmp/local-bin/"*
+export NIX_COPY_LOG="$tmp/nix-copy.log"
+local_cache_url="file://$tmp/local-cache"
+for run in first second; do
+  GITHUB_EVENT_NAME=push \
+    GITHUB_REF=refs/heads/main \
+    CACHIX_CACHE_URL="$local_cache_url" \
+    BUCK2_CACHE_PRODUCTS_REPO="$tmp/collision-repo" \
+    PATH="$tmp/local-bin:$PATH" \
+    bash "$publisher" --product fixture --proposal "$tmp/$run-manifest.json"
+done
+cmp "$tmp/first-manifest.json" "$tmp/second-manifest.json"
+[[ "$(wc -l <"$NIX_COPY_LOG")" == 1 ]] || {
+  echo "buck2-cache-products-test: local cache publication was not idempotent" >&2
+  exit 1
+}
+jq -e --arg storePath "$collision_store" --arg artifact "fixture.js" '
+  length == 1 and
+  .[0].lastRevision.storePath == $storePath and
+  .[0].lastRevision.artifacts == [$artifact]
+' "$tmp/local-cache/pins.json" >/dev/null
+jq -e --arg prefix "$local_cache_url/serve/" '
+  .schema == "effect-utils/buck-cache-products/v2" and
+  (.products | length == 1) and
+  (.products[0].artifactUrl | startswith($prefix))
+' "$tmp/first-manifest.json" >/dev/null
+
 
 mkdir -p "$tmp/products"
 cp "$repo_root/nix/buck2-products/default.nix" "$tmp/products/default.nix"
+cp "$repo_root/nix/buck2-products/cache.nix" "$tmp/products/cache.nix"
 store_path="$collision_store"
 store_hash="$(basename "$store_path")"
 store_hash="${store_hash%%-*}"
 artifact_url="https://overeng-effect-utils.cachix.org/serve/$store_hash/fixture.js"
+fixture_descriptor='{"integrity":"sha256-qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=","productName":"fixture","sizeBytes":1,"target":"effect_utils//packages/@overeng/fixture:fixture-candidate"}'
+fixture_descriptor_sha="$(printf '%s' "$fixture_descriptor" | sha256sum | cut -d' ' -f1)"
 cat >"$tmp/products/cache-targets.json" <<'EOF'
 {
   "products": [
@@ -128,6 +182,8 @@ cat >"$tmp/products/manifest.json" <<EOF
   "products": [
     {
       "artifactUrl": "$artifact_url",
+      "descriptor": $fixture_descriptor,
+      "descriptorSha256": "$fixture_descriptor_sha",
       "name": "fixture",
       "provenance": {
         "producerCommit": "0000000000000000000000000000000000000000",
@@ -190,5 +246,5 @@ if nix eval --impure --json --expr "$loader_expr" >"$tmp/mismatch.log" 2>&1; the
 fi
 grep -F 'artifact URL does not match its store path and artifact' "$tmp/mismatch.log" >/dev/null
 
-jq -e '.schema == "effect-utils/buck-cache-targets/v1" and (.products | length == 20)' "$targets" >/dev/null
+jq -e '.schema == "effect-utils/buck-cache-targets/v1" and (.products | length == 21)' "$targets" >/dev/null
 echo "buck2-cache-products-test: OK"
