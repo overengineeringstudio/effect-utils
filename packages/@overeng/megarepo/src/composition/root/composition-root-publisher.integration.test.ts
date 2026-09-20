@@ -439,8 +439,11 @@ describe('composition root publisher', () => {
             'tmp',
           ],
         })
-        const upgradedManifest = yield* Effect.promise(() => readGenerationManifest(fixture))
-        expect(upgradedManifest.files.map((file) => file.path)).toContain('.watchmanconfig')
+        const upgradedManifest = (yield* readGenerated(
+          fixture,
+          COMPOSITION_GENERATION_MANIFEST_PATH,
+        )).toString()
+        expect(upgradedManifest).toContain('"path": ".watchmanconfig"')
       }),
     ),
   )
