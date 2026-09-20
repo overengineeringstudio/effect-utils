@@ -71,7 +71,7 @@ const mountMetadata = ({
 
 interface FixtureOptions {
   readonly members?: ReadonlyArray<{ readonly key: string; readonly overlays: number }>
-  readonly rootMode?: 'first' | 'update' | 'nochange' | 'overlay-failure'
+  readonly rootMode?: 'first' | 'update' | 'nochange' | 'overlay-failure' | 'recovery'
   readonly capabilityFailure?: string
   readonly mountFailure?: string
   readonly lockFailure?: boolean
@@ -82,6 +82,13 @@ interface FixtureOptions {
   readonly currentOverlayCount?: number
   readonly releaseFailures?: ReadonlyArray<string>
   readonly retainFailure?: string
+  readonly publishedMemberKeys?: ReadonlyArray<string>
+  readonly capabilityRootMemberKeys?: ReadonlyArray<string>
+  readonly teardownFailure?: string
+  readonly rootRemovalFailure?: string
+  readonly watchmanConfigChanged?: boolean
+  readonly watchmanFailure?: boolean
+  readonly rootFailureAfterReconcile?: boolean
 }
 
 const fixture = async (options: FixtureOptions = {}) => {
@@ -311,10 +318,41 @@ const fixture = async (options: FixtureOptions = {}) => {
     }),
     planRoot: async (input) => {
       rootCacheSections.push(input.cacheSections)
+      const configFiles =
+        options.rootMode === 'first' || options.watchmanConfigChanged === true
+          ? [
+              {
+                path: '.watchmanconfig',
+                old:
+                  options.rootMode === 'first'
+                    ? undefined
+                    : { mode: 0o644 as const, sha256: `sha256:${'1'.repeat(64)}` },
+                new: { mode: 0o644 as const, sha256: `sha256:${'2'.repeat(64)}` },
+              },
+              {
+                path: '.buckconfig',
+                old:
+                  options.rootMode === 'first'
+                    ? undefined
+                    : { mode: 0o644 as const, sha256: `sha256:${'3'.repeat(64)}` },
+                new: { mode: 0o644 as const, sha256: `sha256:${'4'.repeat(64)}` },
+              },
+            ]
+          : []
+      if (options.rootMode === 'recovery') {
+        return {
+          _tag: 'Refused',
+          reason: 'RecoveryRequired',
+          path: NodePath.join(workspaceRoot, '.megarepo/composition-publication.json'),
+          message: 'publisher recovery required',
+          files: [],
+          configLast: false,
+        }
+      }
       return options.rootMode === 'first'
-        ? { _tag: 'Create', files: [], configLast: true }
+        ? { _tag: 'Create', files: configFiles, configLast: true }
         : options.rootMode === 'update'
-          ? { _tag: 'Update', files: [], configLast: true }
+          ? { _tag: 'Update', files: configFiles, configLast: true }
           : { _tag: 'NoChange', files: [], configLast: true }
     },
     publishRoot: async (input) => {
@@ -336,13 +374,33 @@ const fixture = async (options: FixtureOptions = {}) => {
         calls.push('root:nochange')
         return { changedPaths: [], memberManifests: [] }
       }
+      if (options.rootMode === 'recovery') {
+        calls.push('root:recover')
+        await input.afterAuthorityRollback?.({
+          _tag: 'WatchmanProject',
+          phase: 'CompensationRequired',
+          priorWatched: true,
+        })
+      }
+      const prepared =
+        options.rootMode === 'first' ||
+        options.rootMode === 'recovery' ||
+        options.watchmanConfigChanged === true
+          ? await input.prepareExternalState?.()
+          : undefined
       try {
         calls.push('root:authority')
-        await input.afterAuthorityPublished?.()
+        await prepared?.afterAuthorityPublished()
+        if (options.rootFailureAfterReconcile === true) {
+          throw new Error('root commit failed after Watchman reconciliation')
+        }
         calls.push('root:commit')
-        return { changedPaths: ['.buckconfig'], memberManifests: [] }
+        return { changedPaths: ['.watchmanconfig', '.buckconfig'], memberManifests: [] }
       } catch (cause) {
         calls.push('root:rollback')
+        if (prepared !== undefined) {
+          await input.afterAuthorityRollback?.(prepared.externalState)
+        }
         throw cause
       }
     },
@@ -414,6 +472,27 @@ const fixture = async (options: FixtureOptions = {}) => {
       },
     },
     updateLockRuntime: {},
+    prepareWatchmanProjectReconciliation: async ({ workspaceRoot: reconciledRoot }) => {
+      expect(reconciledRoot).toBe(workspaceRoot)
+      calls.push('watchman:prepare')
+      return {
+        state: {
+          _tag: 'WatchmanProject',
+          phase: 'CompensationRequired',
+          priorWatched: true,
+        },
+        reconcile: async () => {
+          calls.push('watchman:reconcile')
+          if (options.watchmanFailure === true) {
+            throw new Error('watchman reconciliation failed')
+          }
+        },
+      }
+    },
+    restoreWatchmanProjectState: async (state) => {
+      expect(state).toMatchObject({ _tag: 'WatchmanProject', priorWatched: true })
+      calls.push('watchman:rollback')
+    },
     runBuck: async (argv) => {
       calls.push(`buck:${argv.join('|')}`)
       await mkdir(argv.at(-1)!, { recursive: true })
@@ -491,8 +570,13 @@ describe('composition apply integration', () => {
         )
         if (rootMode === 'first') {
           expect(rootIndex).toBeLessThan(overlayIndex)
+          expect(value.calls.indexOf('watchman:reconcile')).toBeGreaterThan(rootIndex)
+          expect(value.calls.indexOf('watchman:reconcile')).toBeLessThan(
+            value.calls.indexOf('root:commit'),
+          )
         } else {
           expect(rootIndex).toBeGreaterThan(overlayIndex)
+          expect(value.calls).not.toContain('watchman:reconcile')
         }
         expect(value.calls.indexOf('cap:owned:release')).toBeGreaterThan(overlayIndex)
         expect(value.calls.indexOf('retain:owned')).toBeGreaterThan(
@@ -520,6 +604,93 @@ describe('composition apply integration', () => {
       }
     },
   )
+
+  it('publishes and reconciles changed Watchman config before an update can invoke Buck', async () => {
+    const value = await fixture({ rootMode: 'update', watchmanConfigChanged: true })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      const authority = value.calls.indexOf('root:authority')
+      const reconcile = value.calls.indexOf('watchman:reconcile')
+      const commit = value.calls.indexOf('root:commit')
+      const overlay = value.calls.findIndex((call) => call.startsWith('overlay:dep:'))
+      expect(authority).toBeLessThan(reconcile)
+      expect(reconcile).toBeLessThan(commit)
+      expect(commit).toBeLessThan(overlay)
+    } finally {
+      await value.cleanup()
+    }
+  })
+  it('recovers then reconciles forward Watchman config before any overlay invokes Buck', async () => {
+    const value = await fixture({ rootMode: 'recovery' })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }),
+      )
+      expect(result._tag).toBe('Applied')
+      const recovery = value.calls.indexOf('root:recover')
+      const rollback = value.calls.indexOf('watchman:rollback')
+      const prepare = value.calls.indexOf('watchman:prepare')
+      const authority = value.calls.indexOf('root:authority')
+      const reconcile = value.calls.indexOf('watchman:reconcile')
+      const commit = value.calls.indexOf('root:commit')
+      const overlay = value.calls.findIndex((call) => call.startsWith('overlay:dep:'))
+      expect(recovery).toBeGreaterThanOrEqual(0)
+      expect(recovery).toBeLessThan(rollback)
+      expect(rollback).toBeLessThan(prepare)
+      expect(prepare).toBeLessThan(authority)
+      expect(authority).toBeLessThan(reconcile)
+      expect(reconcile).toBeLessThan(commit)
+      expect(commit).toBeLessThan(overlay)
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('rolls root publication back when changed Watchman config cannot be reconciled', async () => {
+    const value = await fixture({
+      rootMode: 'update',
+      watchmanConfigChanged: true,
+      watchmanFailure: true,
+    })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      expect(value.calls).toContain('watchman:reconcile')
+      expect(value.calls).toContain('root:rollback')
+      expect(value.calls).toContain('watchman:rollback')
+      expect(value.calls.some((call) => call.startsWith('overlay:dep:'))).toBe(false)
+    } finally {
+      await value.cleanup()
+    }
+  })
+
+  it('restores the prior Watchman state when root commit fails after reconciliation', async () => {
+    const value = await fixture({
+      rootMode: 'update',
+      watchmanConfigChanged: true,
+      rootFailureAfterReconcile: true,
+    })
+    try {
+      const result = await Effect.runPromise(
+        compositionApply({ request: value.request, runtime: value.runtime }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe('Failure')
+      expect(value.calls).toContain('watchman:reconcile')
+      expect(value.calls).toContain('root:rollback')
+      expect(value.calls).toContain('watchman:rollback')
+      expect(value.calls.indexOf('root:rollback')).toBeLessThan(
+        value.calls.indexOf('watchman:rollback'),
+      )
+      expect(value.calls.some((call) => call.startsWith('overlay:dep:'))).toBe(false)
+    } finally {
+      await value.cleanup()
+    }
+  })
 
   it('forwards an explicit cache override unchanged to root planning and publication', async () => {
     const cacheSections: NonNullable<CompositionApplyRequest['cacheSections']> = [

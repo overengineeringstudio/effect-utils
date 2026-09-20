@@ -1,7 +1,8 @@
-import { spawn } from 'node:child_process'
+import { execFile as execFileCallback, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { lstat, mkdir, readFile, rm } from 'node:fs/promises'
+import { lstat, mkdir, readFile, realpath, rm } from 'node:fs/promises'
 import * as NodePath from 'node:path'
+import { promisify } from 'node:util'
 
 import {
   checkCompositionCapabilityProjection,
@@ -27,7 +28,10 @@ export const compositionRuntimeEnvironmentNames = {
   buck2Protocol: 'MR_COMPOSITION_BUCK2_PROTOCOL',
   system: 'MR_COMPOSITION_SYSTEM',
   platform: 'MR_COMPOSITION_PLATFORM',
+  watchmanPath: 'MR_COMPOSITION_WATCHMAN_BIN',
 } as const
+
+const execFile = promisify(execFileCallback)
 
 const required = ({
   env,
@@ -71,6 +75,171 @@ const run = ({
       else reject(new Error(`${executable} exited ${code ?? `from signal ${signal ?? 'unknown'}`}`))
     })
   })
+
+const watchmanCommand = async ({
+  watchmanPath,
+  args,
+}: {
+  readonly watchmanPath: string
+  readonly args: ReadonlyArray<string>
+}): Promise<unknown> => {
+  const { stdout } = await execFile(watchmanPath, ['--no-pretty', ...args], {
+    encoding: 'utf8',
+  })
+  const response: unknown = JSON.parse(stdout)
+  if (
+    typeof response === 'object' &&
+    response !== null &&
+    'error' in response &&
+    typeof response.error === 'string'
+  ) {
+    throw new TypeError(`Watchman ${args[0] ?? 'command'} failed: ${response.error}`)
+  }
+  return response
+}
+
+const watchmanProjectIsWatched = async ({
+  watchmanPath,
+  workspaceRoot,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+}): Promise<boolean> => {
+  const physicalWorkspaceRoot = await realpath(workspaceRoot)
+  const response = await watchmanCommand({ watchmanPath, args: ['watch-list'] })
+  if (
+    typeof response !== 'object' ||
+    response === null ||
+    !('roots' in response) ||
+    Array.isArray(response.roots) === false ||
+    response.roots.some((root) => typeof root !== 'string') === true
+  ) {
+    throw new TypeError('Watchman watch-list did not return a string root list')
+  }
+  return response.roots.includes(physicalWorkspaceRoot)
+}
+
+const deleteWatchmanProjectIfWatched = async ({
+  watchmanPath,
+  workspaceRoot,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+}): Promise<void> => {
+  const physicalWorkspaceRoot = await realpath(workspaceRoot)
+  if (
+    (await watchmanProjectIsWatched({
+      watchmanPath,
+      workspaceRoot: physicalWorkspaceRoot,
+    })) === true
+  ) {
+    await watchmanCommand({ watchmanPath, args: ['watch-del', physicalWorkspaceRoot] })
+  }
+}
+
+const setWatchmanProjectWatched = async ({
+  watchmanPath,
+  workspaceRoot,
+  watched,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+  readonly watched: boolean
+}): Promise<void> => {
+  const physicalWorkspaceRoot = await realpath(workspaceRoot)
+  await deleteWatchmanProjectIfWatched({
+    watchmanPath,
+    workspaceRoot: physicalWorkspaceRoot,
+  })
+  if (watched === false) return
+  try {
+    const response = await watchmanCommand({
+      watchmanPath,
+      args: ['watch-project', physicalWorkspaceRoot],
+    })
+    if (
+      typeof response !== 'object' ||
+      response === null ||
+      !('watch' in response) ||
+      response.watch !== physicalWorkspaceRoot ||
+      ('relative_path' in response && response.relative_path !== undefined)
+    ) {
+      throw new TypeError('Watchman did not establish the exact composition-root watch')
+    }
+  } catch (cause) {
+    try {
+      await deleteWatchmanProjectIfWatched({
+        watchmanPath,
+        workspaceRoot: physicalWorkspaceRoot,
+      })
+    } catch (cleanupCause) {
+      throw new AggregateError(
+        [cause, cleanupCause],
+        `Watchman project reconciliation and cleanup failed for ${physicalWorkspaceRoot}`,
+        { cause: cleanupCause },
+      )
+    }
+    throw cause
+  }
+}
+
+/** Reload one generated root config without restarting or otherwise mutating the shared server. */
+export const reconcileWatchmanProject = async ({
+  watchmanPath,
+  workspaceRoot,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+}): Promise<void> => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true })
+
+/** Remove the exact composition-root registration without mutating the shared Watchman server. */
+export const teardownWatchmanProject = async ({
+  watchmanPath,
+  workspaceRoot,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+}): Promise<void> => deleteWatchmanProjectIfWatched({ watchmanPath, workspaceRoot })
+
+/** Durable compensation state plus the forward reconciliation to run after publication. */
+export interface WatchmanProjectReconciliation {
+  readonly state: {
+    readonly _tag: 'WatchmanProject'
+    readonly phase: 'CompensationRequired'
+    readonly priorWatched: boolean
+  }
+  readonly reconcile: () => Promise<void>
+}
+/** Capture the prior registration before a root publication can require compensation. */
+export const prepareWatchmanProjectReconciliation = async ({
+  watchmanPath,
+  workspaceRoot,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+}): Promise<WatchmanProjectReconciliation> => {
+  const wasWatched = await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })
+  return {
+    state: {
+      _tag: 'WatchmanProject',
+      phase: 'CompensationRequired',
+      priorWatched: wasWatched,
+    },
+    reconcile: () => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true }),
+  }
+}
+
+/** Restore the exact root registration captured before composition publication. */
+export const restoreWatchmanProjectState = async ({
+  watchmanPath,
+  workspaceRoot,
+  priorWatched,
+}: {
+  readonly watchmanPath: string
+  readonly workspaceRoot: string
+  readonly priorWatched: boolean
+}): Promise<void> =>
+  setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: priorWatched })
 
 const checkProjection = async ({ memberRoot }: { readonly memberRoot: string }) =>
   checkCompositionCapabilityProjection({ memberRoot })
@@ -163,6 +332,10 @@ export const compositionApplyRuntimeFromEnv = ({
     value: required({ env, name: compositionRuntimeEnvironmentNames.buck2Path }),
     name: compositionRuntimeEnvironmentNames.buck2Path,
   })
+  const watchmanPath = normalizedAbsolute({
+    value: required({ env, name: compositionRuntimeEnvironmentNames.watchmanPath }),
+    name: compositionRuntimeEnvironmentNames.watchmanPath,
+  })
   const buck2Protocol = required({ env, name: compositionRuntimeEnvironmentNames.buck2Protocol })
   const system = required({ env, name: compositionRuntimeEnvironmentNames.system })
   const platform = required({ env, name: compositionRuntimeEnvironmentNames.platform })
@@ -242,6 +415,18 @@ export const compositionApplyRuntimeFromEnv = ({
     },
     overlayScratch: overlayScratchRuntime(workspaceRoot),
     updateLockRuntime: { token: nonce },
+    prepareWatchmanProjectReconciliation: ({ workspaceRoot: requestedRoot }) => {
+      if (requestedRoot !== workspaceRoot) {
+        throw new TypeError('Watchman workspace does not match its runtime authority')
+      }
+      return prepareWatchmanProjectReconciliation({ watchmanPath, workspaceRoot })
+    },
+    restoreWatchmanProjectState: (state) =>
+      restoreWatchmanProjectState({
+        watchmanPath,
+        workspaceRoot,
+        priorWatched: state.priorWatched,
+      }),
     runBuck: (argv) => {
       if (argv[0] !== buck2Path) {
         throw new TypeError('Composition requested a Buck executable outside the pinned runtime')

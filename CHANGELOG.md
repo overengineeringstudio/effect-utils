@@ -229,6 +229,15 @@ All notable changes to this project will be documented in this file.
 - **@overeng/gh-ci-utils**: the final Nix package preserves the generated
   bash, fish, and zsh completions (`${unwrapped}/share` links through to
   `$out/share`), so Home Manager installs shell support with the binary.
+- **@overeng/megarepo**: Generate bounded, composition-owned Watchman root
+  configuration, canonicalize workspace aliases before reconciliation, reload
+  only the affected project watch when it changes, durably restore the prior
+  registration across rollback and interrupted publication recovery, remove the
+  registration before root teardown, and preserve member source and capability
+  invalidation.
+- **Genie**: Include the megarepo member-manifest decoder and its composition
+  schema dependencies in the repository semantic-input fingerprint, so local
+  generation cannot reuse warm state after those imported contracts change.
 - **Nix (pnpm)**: two pnpm-12 behaviors that silently produced the wrong
   install are now encoded once and asserted.
   **Workspace boundary**: pnpm discovers the workspace by walking up from the

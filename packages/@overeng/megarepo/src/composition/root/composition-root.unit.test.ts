@@ -481,7 +481,18 @@ describe('composition root goldens', () => {
   ignore = **/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,repos/.staging-*,repos/alpha/**/dist,repos/alpha/.git,target,tmp
 `)
     expect(output.get('.buckroot')?.bytes).toHaveLength(0)
-    expect(text(output.get('.watchmanconfig')!)).toBe('{}\n')
+    expect(JSON.parse(text(output.get('.watchmanconfig')!))).toEqual({
+      ignore_dirs: [
+        '.devenv',
+        '.megarepo',
+        'buck-out',
+        'node_modules',
+        'repos/alpha/node_modules',
+        'repos/alpha/target',
+        'target',
+        'tmp',
+      ],
+    })
     expect(output.get('BUCK')?.bytes).toHaveLength(0)
   })
 
@@ -737,6 +748,66 @@ describe('ignore projection', () => {
     expect(ignore).toContain('repos/.staging-*')
     expect(ignore).toContain('.buck2/capabilities.candidate.*')
     expect(ignore).toEqual([...ignore].sort(compareCodeUnits))
+  })
+
+  it('emits only concrete composition-derived directories without hiding source or capabilities', () => {
+    const config = JSON.parse(
+      text(
+        filesByPath(
+          input({
+            members: [
+              {
+                memberKey: 'alpha',
+                manifest: manifest({
+                  cell: 'alpha',
+                  projectIgnore: [
+                    '**/dist',
+                    '.buck2/capabilities.candidate.*',
+                    'generated',
+                    'packages/.editor-view',
+                    '.buck2',
+                  ],
+                  distOverlays: [{ target: '//packages:dist', destination: 'packages/dist' }],
+                }),
+              },
+            ],
+            additionalProjectIgnores: [
+              'repos/retired',
+              'repos/x/.buck2',
+              'repos/x/.buck2/capabilities',
+              'repos/x/.buck2/capabilities/generated',
+            ],
+          }),
+        ).get('.watchmanconfig')!,
+      ),
+    ) as { readonly ignore_dirs: ReadonlyArray<string> }
+
+    expect(config.ignore_dirs).toEqual([
+      '.devenv',
+      '.megarepo',
+      'buck-out',
+      'node_modules',
+      'repos/alpha/generated',
+      'repos/alpha/node_modules',
+      'repos/alpha/packages/.editor-view',
+      'repos/alpha/packages/dist',
+      'repos/alpha/target',
+      'repos/retired',
+      'target',
+      'tmp',
+    ])
+    expect(config.ignore_dirs).not.toContain('repos/alpha/**/dist')
+    expect(config.ignore_dirs.some((path) => path.includes('*'))).toBe(false)
+    expect(config.ignore_dirs.some((path) => path.includes('.buck2/capabilities'))).toBe(false)
+    for (const protectedPath of [
+      'repos/alpha/.buck2',
+      'repos/x/.buck2',
+      'repos/x/.buck2/capabilities',
+      'repos/x/.buck2/capabilities/generated',
+    ]) {
+      expect(config.ignore_dirs).not.toContain(protectedPath)
+    }
+    expect(config.ignore_dirs.some((path) => path.includes('/src'))).toBe(false)
   })
 })
 

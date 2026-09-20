@@ -65,6 +65,7 @@ import {
   type CompositionRootPublicationRuntime,
   type PlanCompositionRootPublicationOptions,
   type PublishCompositionRootOptions,
+  type CompositionPublicationExternalState,
 } from '../root/composition-root-publisher.ts'
 import {
   DEFAULT_BUCK_ISOLATION_DIR,
@@ -192,6 +193,12 @@ export interface CompositionApplyPrimitives {
   ) => Promise<CompositionRootPublicationResult>
 }
 
+/** One prepared root-local Watchman change and its durable prior-state compensation record. */
+export interface CompositionWatchmanProjectReconciliation {
+  readonly state: CompositionPublicationExternalState
+  readonly reconcile: () => Promise<void>
+}
+
 /** All process and lifecycle capabilities are explicit. PATH is never a fallback. */
 export interface CompositionApplyRuntime {
   /** Atomic owned-worktree projection port; the resolver itself remains scratch-only. */
@@ -233,6 +240,14 @@ export interface CompositionApplyRuntime {
   readonly overlayRuntime: DistOverlayRuntime
   readonly overlayScratch: CompositionOverlayScratchRuntime
   readonly updateLockRuntime: WorkspaceUpdateLockRuntime
+  /** Captures prior root registration before returning config reconciliation and compensation. */
+  readonly prepareWatchmanProjectReconciliation: (input: {
+    readonly workspaceRoot: string
+  }) => Promise<CompositionWatchmanProjectReconciliation>
+  /** Restores an exact root registration from durable publisher compensation state. */
+  readonly restoreWatchmanProjectState: (
+    state: CompositionPublicationExternalState,
+  ) => Promise<void>
   /** Executes exactly the supplied argv. Implementations may add environment, never arguments. */
   readonly runBuck: (argv: readonly [string, ...ReadonlyArray<string>]) => Promise<void>
   readonly primitives?: Partial<CompositionApplyPrimitives>
@@ -1502,17 +1517,35 @@ const applyComposition = async ({
           await runtime.publisherRuntime.assertCapabilityProjection(input)
         },
       },
+      prepareExternalState: async () => {
+        const prepared = await runtime.prepareWatchmanProjectReconciliation({
+          workspaceRoot: request.workspaceRoot,
+        })
+        return {
+          externalState: prepared.state,
+          afterAuthorityPublished: prepared.reconcile,
+        }
+      },
+      afterAuthorityRollback: runtime.restoreWatchmanProjectState,
     } satisfies PublishCompositionRootOptions
 
     let root: CompositionRootPublicationResult
     try {
       const rootPlan = await primitives.planRoot(rootInput)
-      if (rootPlan._tag === 'Create') {
-        root = await primitives.publishRoot(rootPublicationOptions)
+      const watchmanConfigChanged =
+        (rootPlan._tag === 'Create' || rootPlan._tag === 'Update') &&
+        rootPlan.files.some((file) => file.path === '.watchmanconfig')
+      const publicationOptions = rootPublicationOptions
+      if (
+        rootPlan._tag === 'Create' ||
+        watchmanConfigChanged === true ||
+        (rootPlan._tag === 'Refused' && rootPlan.reason === 'RecoveryRequired')
+      ) {
+        root = await primitives.publishRoot(publicationOptions)
         await publishOverlays()
       } else {
         await publishOverlays()
-        root = await primitives.publishRoot(rootPublicationOptions)
+        root = await primitives.publishRoot(publicationOptions)
       }
     } catch (cause) {
       if (cause instanceof CompositionApplyError && cause.reason === 'CleanupFailure') throw cause
