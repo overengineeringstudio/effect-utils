@@ -344,6 +344,7 @@ npm_package_archive(
     name = "dist-package",
     package_tree = ":package_tree",
     dist = ":dist",
+    typecheck = ":typecheck",
     output = "overeng-restate-effect.tgz",
     visibility = ["PUBLIC"],
 )

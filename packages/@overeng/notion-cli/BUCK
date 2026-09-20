@@ -315,6 +315,7 @@ npm_package_archive(
     name = "dist-package",
     package_tree = ":package_tree",
     dist = ":dist",
+    typecheck = ":typecheck",
     output = "overeng-notion-cli.tgz",
     visibility = ["PUBLIC"],
 )

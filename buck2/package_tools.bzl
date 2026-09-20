@@ -320,18 +320,22 @@ def package_bin_artifact(name, **kwargs):
 def _npm_package_archive_impl(ctx):
     package_tree = ctx.attrs.package_tree[PackageTreeInfo]
     dist = ctx.attrs.dist[DefaultInfo].default_outputs[0]
+    typecheck = ctx.attrs.typecheck[DefaultInfo].default_outputs[0]
     output = ctx.actions.declare_output(ctx.attrs.output)
     ctx.actions.run(
-        cmd_args([
-            ctx.attrs.product_tool[RunInfo],
-            "npm-package",
-            "--package-tree",
-            package_tree.tree,
-            "--dist",
-            dist,
-            "--artifact",
-            output.as_output(),
-        ]),
+        cmd_args(
+            [
+                ctx.attrs.product_tool[RunInfo],
+                "npm-package",
+                "--package-tree",
+                package_tree.tree,
+                "--dist",
+                dist,
+                "--artifact",
+                output.as_output(),
+            ],
+            hidden = [typecheck],
+        ),
         category = "npm_package_archive",
         local_only = True,
         allow_cache_upload = False,
@@ -344,18 +348,20 @@ _npm_package_archive = rule(
     attrs = {
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "dist": attrs.dep(providers = [DefaultInfo]),
+        "typecheck": attrs.dep(providers = [DefaultInfo]),
         "output": attrs.string(),
         "product_tool": attrs.exec_dep(providers = [BuckSupportToolInfo]),
     },
 )
 
 
-def npm_package_archive(name, package_tree, dist, output, **kwargs):
-    """Archives one declared package tree plus its emitted dist as a deterministic npm tgz."""
+def npm_package_archive(name, package_tree, dist, typecheck, output, **kwargs):
+    """Archives one typechecked package tree plus its emitted dist as a deterministic npm tgz."""
     _npm_package_archive(
         name = name,
         package_tree = package_tree,
         dist = dist,
+        typecheck = typecheck,
         output = output,
         product_tool = "//buck2/toolchains:product_tool",
         **kwargs
