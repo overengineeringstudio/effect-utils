@@ -127,10 +127,19 @@ pkgs.stdenvNoCC.mkDerivation {
 
     chmod +x "$wrapper/bin/pnpm.mjs" "$wrapper/bin/pnpx.mjs"
 
-    makeWrapper "$wrapper/pnpm" $out/bin/pnpm
-    makeWrapper "$wrapper/pnpm" $out/bin/pn
-    makeWrapper "$wrapper/pnpm" $out/bin/pnpx --add-flags dlx
-    makeWrapper "$wrapper/pnpm" $out/bin/pnx --add-flags dlx
+    # This derivation already provides the exact workspace-authoritative pnpm.
+    # Disable pnpm's package-manager bootstrap so sandboxed invocations do not
+    # try to download a second copy of the same version.
+    makeWrapper "$wrapper/pnpm" $out/bin/pnpm \
+      --set pnpm_config_pm_on_fail ignore
+    makeWrapper "$wrapper/pnpm" $out/bin/pn \
+      --set pnpm_config_pm_on_fail ignore
+    makeWrapper "$wrapper/pnpm" $out/bin/pnpx \
+      --set pnpm_config_pm_on_fail ignore \
+      --add-flags dlx
+    makeWrapper "$wrapper/pnpm" $out/bin/pnx \
+      --set pnpm_config_pm_on_fail ignore \
+      --add-flags dlx
 
     runHook postInstall
   '';

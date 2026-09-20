@@ -632,6 +632,14 @@ export const createEffectUtilsRefs = (basePath: string) =>
 // Patch Postinstall Helpers
 // =============================================================================
 
+// Remove both registry entries with the first verified upstream release that
+// puts the dev port on `server.port` while retaining caller-owned `hmr.server`.
+
+const storybookBuilderVitePatch = {
+  '@storybook/builder-vite@10.6.0':
+    'packages/@overeng/utils/patches/@storybook__builder-vite@10.6.0.patch',
+} satisfies PatchesRegistry
+
 /** Repo-local patches that should not be projected into downstream consumers. */
 export const effectUtilsWorkspacePatches = definePatchedDependencies({
   location: '.',
@@ -643,15 +651,15 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
        CJS-interop default that 0.13.x provided is gone. Rewrite the import to
        a namespace import so `xtermSerialize.SerializeAddon` resolves. */
     '@myobie/pty@0.10.0': 'patches/@myobie__pty@0.10.0.patch',
+    ...storybookBuilderVitePatch,
   },
 })
 
 /**
  * Repo-root-relative registry used by downstream projection helpers
  * (patchPostinstall / pnpmPatchedDependencies / createPnpmPatchedDependencies).
- * Empty since the Effect 4 cohort flip: projected patches would be listed here.
  */
-const patches: PatchesRegistry = {}
+const patches: PatchesRegistry = storybookBuilderVitePatch
 
 /**
  * Parse a patch specifier into package name and version.
