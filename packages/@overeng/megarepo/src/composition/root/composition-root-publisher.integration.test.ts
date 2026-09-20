@@ -20,7 +20,7 @@ import * as NodePath from 'node:path'
 import { promisify } from 'node:util'
 
 import { describe, it } from '@effect/vitest'
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { CompositionGeneratorConfig, EffectPath } from '../../core/config.ts'
@@ -36,12 +36,21 @@ import {
 import {
   BUCK_MEMBER_MANIFEST_FILENAME,
   COMPOSITION_GENERATION_MANIFEST_PATH,
+  CompositionGenerationManifestSchema,
   encodeBuckMemberManifestJson,
   generateCompositionRoot,
   type BuckMemberManifest,
+  type CompositionGenerationManifest,
 } from './composition-root.ts'
 
 const execFilePromise = promisify(execFile)
+const GenerationManifestJson = Schema.fromJsonString(CompositionGenerationManifestSchema, {
+  space: 2,
+})
+const decodeGenerationManifestJson = Schema.decodeUnknownSync(GenerationManifestJson, {
+  onExcessProperty: 'error',
+})
+const encodeGenerationManifestJson = Schema.encodeSync(GenerationManifestJson)
 const generatedPaths = [
   '.buckroot',
   '.megarepo/bin/buck2',
@@ -278,31 +287,26 @@ const failureReason = <A>(
 
 const addLegacyGeneratedStubs = async (fixture: Fixture): Promise<void> => {
   const legacyFiles = [
-    { path: 'none/BUCK', bytes: Buffer.from('') },
-    { path: 'toolchains/BUCK', bytes: Buffer.from('legacy toolchain projection\n') },
+    { path: 'none/BUCK', mode: 0o644, bytes: Buffer.from('') },
+    { path: 'toolchains/BUCK', mode: 0o644, bytes: Buffer.from('legacy toolchain projection\n') },
   ] as const
   for (const file of legacyFiles) {
     const path = NodePath.join(fixture.root, file.path)
     await mkdir(NodePath.dirname(path), { recursive: true })
     await writeFile(path, file.bytes)
-    await chmod(path, 0o644)
+    await chmod(path, file.mode)
   }
   const manifestPath = NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)
-  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
-    schemaVersion: 1
-    files: Array<{ path: string; mode: number; sha256: string }>
-  }
-  manifest.files.push(
+  const manifest = decodeGenerationManifestJson(await readFile(manifestPath, 'utf8'))
+  const files: CompositionGenerationManifest['files'] = [
+    ...manifest.files,
     ...legacyFiles.map((file) => ({
       path: file.path,
-      mode: 0o644,
+      mode: file.mode,
       sha256: `sha256:${createHash('sha256').update(file.bytes).digest('hex')}`,
     })),
-  )
-  manifest.files.sort((left, right) =>
-    left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
-  )
-  await writeFile(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
+  ].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+  await writeFile(manifestPath, `${encodeGenerationManifestJson({ ...manifest, files })}\n`)
 }
 
 const removeGenerationManifestRecord = async ({
@@ -313,12 +317,14 @@ const removeGenerationManifestRecord = async ({
   readonly path: string
 }): Promise<void> => {
   const manifestPath = NodePath.join(fixture.root, COMPOSITION_GENERATION_MANIFEST_PATH)
-  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
-    schemaVersion: 1
-    files: Array<{ path: string; mode: number; sha256: string }>
-  }
-  manifest.files = manifest.files.filter((file) => file.path !== path)
-  await writeFile(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`)
+  const manifest = decodeGenerationManifestJson(await readFile(manifestPath, 'utf8'))
+  await writeFile(
+    manifestPath,
+    `${encodeGenerationManifestJson({
+      ...manifest,
+      files: manifest.files.filter((file) => file.path !== path),
+    })}\n`,
+  )
 }
 
 describe('composition root publisher', () => {
