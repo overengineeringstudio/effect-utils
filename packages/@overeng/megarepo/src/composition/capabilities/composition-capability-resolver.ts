@@ -1103,27 +1103,29 @@ const retainCompositionCapabilityProjectionInternal = async ({
     await withOwnerWritableDirectory({
       path: generationRoot,
       action: () =>
-        Promise.all(
-          capabilities.map(async (resolved) => {
-            const rootPath = NodePath.join(generationRoot, resolved.capability.toolId)
-            const retainCommand = command({
-              executable: runtime.nixPath,
-              args: ['build', '--out-link', rootPath, resolved.nixOutputPath],
-            })
-            await run({ value: retainCommand, env })
-            const rootInfo = await lstat(rootPath)
-            if (
-              rootInfo.isSymbolicLink() === false ||
-              (await readlink(rootPath)) !== resolved.nixOutputPath
-            ) {
-              throw new CompositionCapabilityResolutionError({
-                reason: 'ProjectionFailure',
-                message: `Capability GC root '${resolved.capability.toolId}' has the wrong identity`,
-                path: rootPath,
+        capabilities.reduce<Promise<void>>(
+          (previous, resolved) =>
+            previous.then(async () => {
+              const rootPath = NodePath.join(generationRoot, resolved.capability.toolId)
+              const retainCommand = command({
+                executable: runtime.nixPath,
+                args: ['build', '--out-link', rootPath, resolved.nixOutputPath],
               })
-            }
-          }),
-        ).then(() => undefined),
+              await run({ value: retainCommand, env })
+              const rootInfo = await lstat(rootPath)
+              if (
+                rootInfo.isSymbolicLink() === false ||
+                (await readlink(rootPath)) !== resolved.nixOutputPath
+              ) {
+                throw new CompositionCapabilityResolutionError({
+                  reason: 'ProjectionFailure',
+                  message: `Capability GC root '${resolved.capability.toolId}' has the wrong identity`,
+                  path: rootPath,
+                })
+              }
+            }),
+          Promise.resolve(),
+        ),
     })
     await syncCapabilityRootDirectory({
       path: generationRoot,

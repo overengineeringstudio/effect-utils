@@ -308,6 +308,8 @@ export type Buck2TypeScriptPackageTestTarget = Buck2TypeScriptPackageTestTargetB
         readonly vitestRuntime?: 'bun' | 'node'
         /** Per-hook timeout in milliseconds. */
         readonly hookTimeoutMs?: number
+        /** Parse source syntax without loading the test modules during collection. */
+        readonly staticCollection?: boolean
       }
     | { readonly runner: 'bun' }
     | { readonly runner: 'shell' }
@@ -611,9 +613,15 @@ const projectTestTarget = ({
       ...(collectName === undefined
         ? []
         : renderTarget({
-            attributes: optionalAttributes.filter(
-              ([attribute]) => collectUnsupportedAttributes[attribute] !== true,
-            ),
+            attributes: [
+              ...optionalAttributes.filter(
+                ([attribute]) => collectUnsupportedAttributes[attribute] !== true,
+              ),
+              [
+                'static_parse',
+                target.staticCollection === true ? ['    static_parse = True,'] : undefined,
+              ],
+            ],
             name: collectName,
             rule: vitestCollectRuleName,
           })),
@@ -632,6 +640,9 @@ const projectTestTarget = ({
       rule,
       testFiles,
       timeoutMs,
+      ...(target.runner === 'vitest' && target.staticCollection === true
+        ? { staticCollection: true }
+        : {}),
       tools,
       vitest,
       writableDirectories,
@@ -742,7 +753,6 @@ export const buck2TypeScriptPackageProjection = ({
   if (primaryAuthority === undefined) {
     throw new Error(`${packagePath} has no primary TypeScript authority project`)
   }
-  const projectFile = primaryAuthority.projectFile
   // One walk, two trees: the compile tree takes the TypeScript sources that emit,
   // typecheck and materialization own, while the test tree also takes the modules the
   // runners collect (`.jsx` specs) and the snapshot baselines those modules read back.
@@ -821,7 +831,7 @@ export const buck2TypeScriptPackageProjection = ({
     ),
   ])
   for (const typecheckTargetName of targetNames) {
-    if (reservedTargetNames.has(typecheckTargetName)) {
+    if (reservedTargetNames.has(typecheckTargetName) === true) {
       throw new Error(
         `TypeScript target ${typecheckTargetName} collides with generated Buck target in ${packagePath}`,
       )
@@ -1090,7 +1100,7 @@ export const buck2TypeScriptPackageProjection = ({
       `load("//buck2:typescript.bzl", ${[
         ...(projectAuthorities.some(
           ({ declarationEntrypoint }) => declarationEntrypoint !== undefined,
-        )
+        ) === true
           ? ['tsgo_emit']
           : []),
         'tsgo_typecheck',

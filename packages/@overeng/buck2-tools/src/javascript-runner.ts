@@ -34,6 +34,7 @@ export type JavaScriptRunOptions = {
   readonly args: readonly string[]
   readonly vitestRuntime: VitestRuntime
   readonly collectOutput: string | undefined
+  readonly staticParse: boolean
 }
 
 const COLLECTION_REPORT_NAME = 'vitest-collection.json'
@@ -108,6 +109,8 @@ const requireCommand = (value: string): JavaScriptCommand => {
 }
 const requireVitestRuntime = (value: string): VitestRuntime =>
   value === 'bun' || value === 'node' ? value : fail(`unknown vitest runtime: ${value}`)
+const requireBoolean = (value: string): boolean =>
+  value === 'true' ? true : value === 'false' ? false : fail(`expected boolean: ${value}`)
 
 /**
  * Decodes the positional action argv into options, rejecting anything the sandbox cannot
@@ -167,6 +170,7 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
   const forwardedArgs: string[] = []
   let vitestRuntime: VitestRuntime = 'bun'
   let collectOutput: string | undefined
+  let staticParse: boolean | undefined
   while (index < args.length) {
     const flag = requireArgument({ args, index, name: 'flag' })
     if (flag === '--') {
@@ -214,6 +218,7 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
     } else if (flag === '--inherit-env') inheritedEnv.push(requireEnvironmentName(value))
     else if (flag === '--vitest-runtime') vitestRuntime = requireVitestRuntime(value)
     else if (flag === '--collect-output') collectOutput = resolve(value)
+    else if (flag === '--static-parse') staticParse = requireBoolean(value)
     else fail(`unexpected argument: ${flag}`)
     index += 2
   }
@@ -221,6 +226,8 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
     fail('vitest-collect requires the declared --collect-output build output')
   if (command !== 'vitest-collect' && collectOutput !== undefined)
     fail(`--collect-output is only admissible for vitest-collect, not ${command}`)
+  if (command !== 'vitest-collect' && staticParse !== undefined)
+    fail(`--static-parse is only admissible for vitest-collect, not ${command}`)
   return {
     command,
     bun,
@@ -234,6 +241,7 @@ export const parseJavaScriptRunOptions = (args: readonly string[]): JavaScriptRu
     args: forwardedArgs,
     vitestRuntime,
     collectOutput,
+    staticParse: staticParse ?? false,
     readRoots: [...new Set(readRoots)].toSorted(),
     environment,
     externalInputs,
@@ -286,6 +294,7 @@ export const vitestCollectArgv = (options: {
   readonly report: string
   readonly tests: readonly string[]
   readonly excludes: readonly string[]
+  readonly staticParse: boolean
 }): readonly string[] => [
   options.runtime,
   join(options.packageTree, 'node_modules/vitest/vitest.mjs'),
@@ -294,7 +303,7 @@ export const vitestCollectArgv = (options: {
   join(options.packageTree, options.config),
   '--configLoader=runner',
   '--no-cache',
-  '--staticParse',
+  ...(options.staticParse === true ? ['--staticParse'] : []),
   `--json=${options.report}`,
   ...options.tests,
   ...options.excludes.flatMap((path) => ['--exclude', path]),
@@ -599,6 +608,7 @@ const runCommand = async ({
             config: options.config ?? fail('missing config'),
             report: join(results, COLLECTION_REPORT_NAME),
             tests: options.tests,
+            staticParse: options.staticParse,
             excludes: options.excludes,
           })
         : options.command === 'bun-test'

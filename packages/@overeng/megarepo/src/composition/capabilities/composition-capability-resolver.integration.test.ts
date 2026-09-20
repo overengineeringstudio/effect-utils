@@ -147,8 +147,19 @@ const makeFixture = async ({
   }
 }
 
-const clean = async (fixture: Fixture): Promise<void> =>
-  rm(fixture.root, { recursive: true, force: true })
+const makeFixtureTreeWritable = async (path: string): Promise<void> => {
+  const info = await lstat(path)
+  if (info.isDirectory() === false || info.isSymbolicLink() === true) return
+  await chmod(path, 0o700)
+  await Promise.all(
+    (await readdir(path)).map((child) => makeFixtureTreeWritable(NodePath.join(path, child))),
+  )
+}
+
+const clean = async (fixture: Fixture): Promise<void> => {
+  await makeFixtureTreeWritable(fixture.root)
+  await rm(fixture.root, { recursive: true, force: true })
+}
 
 const failure = async (
   promise: Promise<unknown>,

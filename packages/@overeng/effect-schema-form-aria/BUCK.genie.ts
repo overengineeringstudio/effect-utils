@@ -25,6 +25,7 @@ export const buck2TypeScriptAdmission = {
     {
       name: 'test',
       runner: 'vitest',
+      staticCollection: true,
     },
   ],
 } as const satisfies Buck2TypeScriptAdmission
