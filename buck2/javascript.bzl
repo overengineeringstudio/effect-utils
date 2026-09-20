@@ -218,6 +218,8 @@ def _vitest_collect_impl(ctx):
     # collection or has no artifact at all.
     collection = ctx.actions.declare_output("{}.json".format(ctx.attrs.name))
     args, _, _ = _configured_args(ctx, "vitest-collect", [ctx.attrs.config])
+    if ctx.attrs.static_parse:
+        args.add("--static-parse", "true")
     args.add("--collect-output", collection.as_output())
 
     # Same policy as `_test_info`: uploading is only meaningful when the root
@@ -237,6 +239,7 @@ def _vitest_collect_impl(ctx):
 _VITEST_COLLECT_ATTRS = dict(_TEST_ATTRS)
 _VITEST_COLLECT_ATTRS.update({
     "config": attrs.string(default = "vitest.config.ts"),
+    "static_parse": attrs.bool(default = False),
     "vitest_runtime": attrs.enum(["bun", "node"], default = "bun"),
 })
 

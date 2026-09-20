@@ -21,6 +21,13 @@ export const buck2TypeScriptAdmission = {
     },
   ],
   authorities: [{ declarationEntrypoint: 'mod.d.ts', projectFile: 'tsconfig.json' }],
+  tests: [
+    {
+      name: 'test',
+      runner: 'vitest',
+      staticCollection: true,
+    },
+  ],
 } as const satisfies Buck2TypeScriptAdmission
 
 export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

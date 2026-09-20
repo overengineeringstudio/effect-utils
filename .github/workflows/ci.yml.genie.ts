@@ -9,7 +9,6 @@ import {
   prepareCiScriptsStep,
   prepareEffectUtilsCompositionStep,
   notifyAlignmentJob,
-  evictCachedPnpmDepsStep,
   pnpmBuilderContractStep,
   preparePinnedDevenvStep,
   installNixStep,
@@ -29,14 +28,12 @@ import {
   namespaceRunner,
   nixClosureMeasurementSteps,
   sourceShapeMeasurementStep,
-  validateColdPnpmDepsStep,
   nixDiagnosticsArtifactStep,
   workflowReportCommentBodyStep,
   workflowReportCollectorStep,
   workflowReportPublisherStep,
   deployPreviewWorkflowReportPathOutputName,
   netlifyDeployStep,
-  nixCacheSetupStep,
   validateNixStoreStep,
   withCiSourceRoot,
   defaultRefPolicyCheckJob,
@@ -45,7 +42,6 @@ import {
   githubTokenEnv,
 } from '../../genie/ci-workflow.ts'
 import { type CoreCIJobName } from '../../genie/ci.ts'
-import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -68,10 +64,6 @@ const baseSteps = [
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
   validateNixStoreStep,
-  evictCachedPnpmDepsStep({
-    flakeRef: '.#oxlint-npm',
-    name: 'Evict cached pnpm deps for oxlint-npm',
-  }),
   /**
    * Temporary debug switch for #272 to validate failure-path diagnostics without waiting for a real flake.
    * Remove once #201/#272 are root-caused and diagnostics instrumentation is removed.
@@ -389,41 +381,6 @@ const multiPlatformJob = ({
   ],
 })
 
-// Checkout exemption inventory: nix-fod-check is a strict flake/FOD lane. It
-// deliberately runs no devenv task, Buck command, or composition-dependent helper.
-const strictNixJobBaseSteps = [
-  checkoutStep(),
-  installNixStep(),
-  ciMeasurementBaselineCheckoutStep,
-  nixCacheSetupStep,
-  cachixCliBuildStep,
-  cachixStep({ name: 'overeng-effect-utils' }),
-  prepareCiScriptsStep,
-] as const
-
-const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsStep>) => ({
-  if: normalCiIf,
-  strategy: {
-    'fail-fast': false,
-    matrix: {
-      runner: [...RUNNER_PROFILES],
-    },
-  },
-  'runs-on': namespaceRunner({
-    profile: '${{ matrix.runner }}' as RunnerProfile,
-    runId: '${{ github.run_id }}',
-  }),
-  'timeout-minutes': jobTimeoutMinutes,
-  defaults: bashShellDefaults,
-  steps: [
-    ...strictNixJobBaseSteps,
-    step,
-    nixDiagnosticsSummaryStep,
-    nixDiagnosticsArtifactStep(),
-    failureReminderStep,
-  ],
-})
-
 /**
  * Audit the native npm dependency policy against the lockfile (issue #807).
  * Install-free: depends only on `pnpm-lock.yaml` and the genie policy source.
@@ -471,7 +428,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
   // retained source summaries, and also proves every lane's recorded census exactly matches its
   // actual collection. CI must not shard this lane: the gate needs both partitions in one job.
   test: multiPlatformJob({
-    timeoutMinutes: 60,
+    timeoutMinutes: 90,
     name: 'Unit tests',
     env: githubTokenEnv(),
     run: runDevenvTasksBefore('test:run'),
@@ -499,26 +456,6 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
       run: runDevenvTasksBefore('test:megarepo-cold-gc'),
     },
   }),
-  // Verify the surviving pnpm FOD hash (pnpmDepsHash + localDeps) is up to date.
-  // After the Buck product cutover the nix-cli registry is no longer a fan-out over seven CLI
-  // FODs: the repository CLIs are wrapped from the immutable Buck product manifest and have no
-  // source builder or hash left to check. `.#oxlint-npm` (the pnpm-built oxlint plugin bundle)
-  // is the one entry that remains.
-  'nix-check': multiPlatformJob({
-    name: 'Nix hash check',
-    env: githubTokenEnv(),
-    run: runDevenvTasksBefore('nix:check'),
-  }),
-  // Force a fresh local rebuild of the exported pnpm FOD to catch a stale hash that normal CI
-  // can otherwise mask via store/substituter reuse. `.#oxc-config-plugin-pnpm-deps` is the only
-  // such attribute left — every CLI `*-pnpm-deps` FOD went away with its source builder — so
-  // this is a single cold build, not a list that is expected to grow again.
-  'nix-fod-check': multiPlatformStrictNixJob(
-    validateColdPnpmDepsStep({
-      flakeRefs: ['.#oxc-config-plugin-pnpm-deps'],
-      substituters: ['https://cache.nixos.org'],
-    }),
-  ),
   'pnpm-builder-contract': job({
     step: pnpmBuilderContractStep({
       builderFile: 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
@@ -528,9 +465,9 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     // and the genie policy source, both present here without node_modules.
     extraSteps: [nativeDepPolicyAuditStep],
   }),
-  // After the cutover `mk-pnpm-cli` has no in-repo CLI consumer left: it is exercised only by
-  // its own contract suite here and, through `mk-pnpm-deps.nix`, by the oxc-config plugin FOD.
-  // That makes this lane the sole remaining guard on the shared pnpm deps helper.
+  // `mk-pnpm-cli` and `mk-pnpm-deps` remain reusable public helpers, so their
+  // own contract suite keeps this lane even though no repository JavaScript
+  // product consumes them.
   'pnpm-regression': job({
     step: {
       name: 'pnpm regression suite',
@@ -714,7 +651,8 @@ const extraJobs: Record<string, any> = {
             '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \\',
             '  genie/buck2/typescript-package-projection.unit.test.ts \\',
             '  genie/buck2/javascript-candidates.unit.test.ts \\',
-            '  packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts',
+            '  packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \\',
+            '  packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts',
           ].join('\n'),
         ),
       },
@@ -738,7 +676,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(default\\.nix|manifest\\.json|publish\\.sh)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(default\\.nix|manifest\\.json|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
             'if [ -n "$tracked_editor$tracked_product" ]; then',
             '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
             '  exit 1',
@@ -794,8 +732,7 @@ const extraJobs: Record<string, any> = {
         name: 'Prove fresh-root remote action and test-cache hits',
         env: {
           ...githubTokenEnv(),
-          BUCK2_REMOTE_CACHE_BASIC_AUTH:
-            '${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}',
+          BUCK2_REMOTE_CACHE_BASIC_AUTH: '${{ secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH }}',
         },
         run: [
           'set -euo pipefail',

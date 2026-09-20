@@ -108,8 +108,14 @@ describe('parseJavaScriptRunOptions', () => {
         'vitest.config.ts',
         '--collect-output',
         '/buck/out/collection.json',
+        '--static-parse',
+        'true',
       ]),
-    ).toMatchObject({ command: 'vitest-collect', collectOutput: '/buck/out/collection.json' })
+    ).toMatchObject({
+      command: 'vitest-collect',
+      collectOutput: '/buck/out/collection.json',
+      staticParse: true,
+    })
     expect(() =>
       parseJavaScriptRunOptions(['vitest-collect', bun, '/tree', 'vitest.config.ts']),
     ).toThrow('requires the declared --collect-output')
@@ -123,6 +129,18 @@ describe('parseJavaScriptRunOptions', () => {
         '30000',
         '--collect-output',
         '/buck/out/collection.json',
+      ]),
+    ).toThrow('only admissible for vitest-collect')
+    expect(() =>
+      parseJavaScriptRunOptions([
+        'vitest',
+        bun,
+        '/tree',
+        'vitest.config.ts',
+        '30000',
+        '30000',
+        '--static-parse',
+        'false',
       ]),
     ).toThrow('only admissible for vitest-collect')
   })
@@ -171,6 +189,7 @@ describe('Vitest argv', () => {
         report: '/results/vitest-collection.json',
         tests: ['src/a.unit.test.ts'],
         excludes: ['src/live.integration.test.ts'],
+        staticParse: true,
       }),
     ).toEqual([
       bun,
@@ -180,11 +199,26 @@ describe('Vitest argv', () => {
       '/tree/vitest.config.ts',
       '--configLoader=runner',
       '--no-cache',
+      '--staticParse',
       '--json=/results/vitest-collection.json',
       'src/a.unit.test.ts',
       '--exclude',
       'src/live.integration.test.ts',
     ])
+  })
+
+  it('loads test modules during collection unless static parsing is explicitly admitted', () => {
+    expect(
+      vitestCollectArgv({
+        runtime: bun,
+        packageTree: '/tree',
+        config: 'vitest.config.ts',
+        report: '/results/vitest-collection.json',
+        tests: [],
+        excludes: [],
+        staticParse: false,
+      }),
+    ).not.toContain('--staticParse')
   })
 })
 

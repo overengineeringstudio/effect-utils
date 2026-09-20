@@ -161,7 +161,6 @@ describe('declared-closure package projection', () => {
     }
   })
 
-
   it('admits the complete recursive workspace closure for tui-react', () => {
     const tuiReactView = dependencyBuck.data.store.views.find(
       (view) => view.importer === 'packages/@overeng/tui-react',
@@ -578,10 +577,15 @@ describe('declared test lanes', () => {
       ...buck2TypeScriptAdmissions.kdl,
       tests: [{ name: 'test', runner: 'vitest', timeoutMs: 60_000 }],
     }).stringify(genieContext)
+    const withStaticCollection = buck2TypeScriptPackageProjection({
+      ...buck2TypeScriptAdmissions.kdl,
+      tests: [{ name: 'test', runner: 'vitest', staticCollection: true }],
+    }).stringify(genieContext)
 
     expect(outputsByAdmission.kdl).toContain('# Projection schema version: 11')
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withoutTests))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withLongerTimeout))
+    expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withStaticCollection))
   })
 
   it('names the JavaScript action runtime as the runner every lane executes', () => {
@@ -613,6 +617,7 @@ describe('derived test collection targets', () => {
         ')',
       ].join('\n'),
     )
+    expect(outputsByAdmission.kdl).not.toContain('static_parse')
   })
 
   it('carries every collect-supported attribute and drops the two the rule rejects', () => {
@@ -628,6 +633,7 @@ describe('derived test collection targets', () => {
           labels: ['local-only'],
           timeoutMs: 120_000,
           vitestRuntime: 'node',
+          staticCollection: true,
           tools: { NODE_BIN: '//buck2/toolchains:tool_node' },
           writableDirectories: { KDL_WORKSPACE: 'kdl' },
         },
@@ -641,6 +647,7 @@ describe('derived test collection targets', () => {
     expect(collectBlock).toContain('        "local-only",')
     expect(collectBlock).toContain('        "NODE_BIN": "//buck2/toolchains:tool_node",')
     expect(collectBlock).toContain('    vitest_runtime = "node",')
+    expect(collectBlock).toContain('    static_parse = True,')
     expect(collectBlock).toContain('        "KDL_WORKSPACE": "kdl",')
     // Both bound a running test; the collect rule has no attribute for either.
     expect(collectBlock).not.toContain('timeout_ms')
@@ -703,6 +710,34 @@ describe('derived test collection targets', () => {
       expect(recordedSource).toEqual(source)
       expect([...bounded, ...recordedSource].toSorted()).toEqual(census)
     }
+  })
+
+  it('projects the effect-schema-form-aria census as one wholly bounded JSX lane', () => {
+    const admitted = admittedTestLanes.find(
+      ({ packagePath }) => packagePath === 'packages/@overeng/effect-schema-form-aria',
+    )
+    expect(admitted).toBeDefined()
+    const census = admitted === undefined ? [] : collectableTestModulesOf(admitted)
+    const lane = buck2TestLanes.find(
+      ({ packagePath }) => packagePath === 'packages/@overeng/effect-schema-form-aria',
+    )
+
+    expect(census).toEqual(['src/mod.unit.test.tsx'])
+    expect(lane?.selectedTestFiles).toEqual(census)
+    expect(lane?.excludes).toEqual([])
+    expect(lane?.sourceOwners).toEqual({})
+    expect(lane?.unboundedFiles).toEqual([])
+    expect(lane?.unboundedTaskName).toBeUndefined()
+    expect(admitted?.output).toContain(
+      ['vitest_test(', '    name = "test",', '    package_tree = ":test_package_tree",'].join('\n'),
+    )
+    expect(admitted?.output).toContain(
+      [
+        'vitest_collect(',
+        '    name = "test_collect",',
+        '    package_tree = ":test_package_tree",',
+      ].join('\n'),
+    )
   })
 
   it('keeps the JSX census inside the partition it stages', () => {
