@@ -294,6 +294,7 @@ export const vitestCollectArgv = (options: {
   join(options.packageTree, options.config),
   '--configLoader=runner',
   '--no-cache',
+  '--staticParse',
   `--json=${options.report}`,
   ...options.tests,
   ...options.excludes.flatMap((path) => ['--exclude', path]),

@@ -1789,8 +1789,8 @@ describe('effect-utils CI composition workspace', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/pnpm-store-pure-v1',
     )
-    expect(generatedCiWorkflowYamlSource).toContain(
-      '${{ runner.temp }}/composition-state/nix-cache',
+    expect(prepareEffectUtilsCompositionScriptSource).toContain(
+      'export XDG_CACHE_HOME="${RUNNER_TEMP:?RUNNER_TEMP not set}/composition-state/nix-cache"',
     )
     expect(generatedCiWorkflowYamlSource).not.toContain(
       '${{ runner.temp }}/composition-state/${{ github.run_id }}',

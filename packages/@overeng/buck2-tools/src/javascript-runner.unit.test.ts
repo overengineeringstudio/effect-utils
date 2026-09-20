@@ -180,6 +180,7 @@ describe('Vitest argv', () => {
       '/tree/vitest.config.ts',
       '--configLoader=runner',
       '--no-cache',
+      '--staticParse',
       '--json=/results/vitest-collection.json',
       'src/a.unit.test.ts',
       '--exclude',
