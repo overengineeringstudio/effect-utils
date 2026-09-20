@@ -426,7 +426,7 @@ describe('composition root publisher', () => {
 
         expect(result.changedPaths).toContain('.watchmanconfig')
         expect(
-          Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(
+          Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(
             (yield* readGenerated(fixture, '.watchmanconfig')).toString(),
           ),
         ).toEqual({
