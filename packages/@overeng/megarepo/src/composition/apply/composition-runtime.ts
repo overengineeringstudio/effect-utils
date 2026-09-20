@@ -111,7 +111,7 @@ const watchmanProjectIsWatched = async ({
     response === null ||
     !('roots' in response) ||
     Array.isArray(response.roots) === false ||
-    response.roots.some((root) => typeof root !== 'string')
+    response.roots.some((root) => typeof root !== 'string') === true
   ) {
     throw new TypeError('Watchman watch-list did not return a string root list')
   }
@@ -125,7 +125,7 @@ const deleteWatchmanProjectIfWatched = async ({
   readonly watchmanPath: string
   readonly workspaceRoot: string
 }): Promise<void> => {
-  if (await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })) {
+  if ((await watchmanProjectIsWatched({ watchmanPath, workspaceRoot })) === true) {
     await watchmanCommand({ watchmanPath, args: ['watch-del', workspaceRoot] })
   }
 }
@@ -162,6 +162,7 @@ const setWatchmanProjectWatched = async ({
       throw new AggregateError(
         [cause, cleanupCause],
         `Watchman project reconciliation and cleanup failed for ${workspaceRoot}`,
+        { cause: cleanupCause },
       )
     }
     throw cause
@@ -177,7 +178,7 @@ export const reconcileWatchmanProject = async ({
   readonly workspaceRoot: string
 }): Promise<void> => setWatchmanProjectWatched({ watchmanPath, workspaceRoot, watched: true })
 
-
+/** Durable compensation state plus the forward reconciliation to run after publication. */
 export interface WatchmanProjectReconciliation {
   readonly state: {
     readonly _tag: 'WatchmanProject'
@@ -186,6 +187,7 @@ export interface WatchmanProjectReconciliation {
   }
   readonly reconcile: () => Promise<void>
 }
+/** Capture the prior registration before a root publication can require compensation. */
 export const prepareWatchmanProjectReconciliation = async ({
   watchmanPath,
   workspaceRoot,

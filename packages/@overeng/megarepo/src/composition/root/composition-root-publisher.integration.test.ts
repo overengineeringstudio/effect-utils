@@ -743,70 +743,71 @@ describe('composition root publisher', () => {
     ),
   )
 
-
-  it.effect('keeps failed external compensation recoverable without masking authority failure', () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const fixture = yield* makeFixture()
-        yield* publishCompositionRoot(
-          optionsFor({
-            fixture,
-            cacheValue: 'old:1234',
-            lockToken: 'compensation-seed-token',
-          }),
-        )
-        let compensationAttempts = 0
-        const error = yield* failureReason(
-          publishCompositionRoot(
+  it.effect(
+    'keeps failed external compensation recoverable without masking authority failure',
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeFixture()
+          yield* publishCompositionRoot(
             optionsFor({
               fixture,
-              cacheValue: 'new:5678',
-              lockToken: 'compensation-failure-token',
-              afterAuthorityPublished: async () => {
-                throw new Error('original authority failure')
-              },
+              cacheValue: 'old:1234',
+              lockToken: 'compensation-seed-token',
+            }),
+          )
+          let compensationAttempts = 0
+          const error = yield* failureReason(
+            publishCompositionRoot(
+              optionsFor({
+                fixture,
+                cacheValue: 'new:5678',
+                lockToken: 'compensation-failure-token',
+                afterAuthorityPublished: async () => {
+                  throw new Error('original authority failure')
+                },
+                afterAuthorityRollback: async (state) => {
+                  expect(state).toEqual(watchmanExternalState)
+                  compensationAttempts += 1
+                  throw new Error('watchman compensation failed')
+                },
+              }),
+            ),
+          )
+
+          expect(error.reason).toBe('IoFailure')
+          expect(String(error.cause)).toContain('original authority failure')
+          expect(compensationAttempts).toBe(1)
+          expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain('old:1234')
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+          ).toBe(true)
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+          ).toBe(true)
+
+          const recovered = yield* publishCompositionRoot(
+            optionsFor({
+              fixture,
+              cacheValue: 'old:1234',
+              lockToken: 'compensation-recovered-token',
+              recoverToken: 'compensation-failure-token',
               afterAuthorityRollback: async (state) => {
                 expect(state).toEqual(watchmanExternalState)
                 compensationAttempts += 1
-                throw new Error('watchman compensation failed')
               },
             }),
-          ),
-        )
-
-        expect(error.reason).toBe('IoFailure')
-        expect(String(error.cause)).toContain('original authority failure')
-        expect(compensationAttempts).toBe(1)
-        expect((yield* readGenerated(fixture, '.buckconfig')).toString()).toContain('old:1234')
-        expect(
-          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
-        ).toBe(true)
-        expect(
-          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
-        ).toBe(true)
-
-        const recovered = yield* publishCompositionRoot(
-          optionsFor({
-            fixture,
-            cacheValue: 'old:1234',
-            lockToken: 'compensation-recovered-token',
-            recoverToken: 'compensation-failure-token',
-            afterAuthorityRollback: async (state) => {
-              expect(state).toEqual(watchmanExternalState)
-              compensationAttempts += 1
-            },
-          }),
-        )
-        expect(recovered.changedPaths).toEqual([])
-        expect(compensationAttempts).toBe(2)
-        expect(
-          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
-        ).toBe(false)
-        expect(
-          yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
-        ).toBe(false)
-      }),
-    ),
+          )
+          expect(recovered.changedPaths).toEqual([])
+          expect(compensationAttempts).toBe(2)
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publication.json')),
+          ).toBe(false)
+          expect(
+            yield* exists(NodePath.join(fixture.root, '.megarepo/composition-publisher.lock.json')),
+          ).toBe(false)
+        }),
+      ),
   )
 
   it.effect(
