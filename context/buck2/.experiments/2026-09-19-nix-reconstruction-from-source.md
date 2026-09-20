@@ -16,7 +16,7 @@ no infrastructure or publication decision.
   manifest: 64,568 published bytes, target
   `effect_utils//packages/@overeng/oxc-config:oxc-config-candidate`
   ([manifest](../../../nix/buck2-products/manifest.json)).
-- [`from-source.nix`](../../../nix/buck2-products/from-source.nix) filters the
+- [`from-source.nix`](https://github.com/overengineeringstudio/effect-utils/pull/1321) filters the
   repository to the root/Buck rules, package tools, and package source. It takes
   the existing `oxc-config` prepared pnpm fixed-output derivation as an input.
 - At build time it extracts the pinned Prelude, renders the Bun capability with
