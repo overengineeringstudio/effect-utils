@@ -23,7 +23,10 @@ BUCK-R05 and BUCK-R14. Architecture:
 
 ## Requirements
 
-- **COMP-R01 Synthesized root everywhere:** Every build — composed, single-repo
+- **COMP-R01 Synthesized root for the composed shape:** While a repository
+  uses the paused composed shape
+  ([decision 0034](../.decisions/0034-artifact-default-composition-no-registry.md)),
+  every build — composed, single-repo
   CI, and standalone — runs from a synthesized composition root. A bare
   checkout as its own project root is a cache island and is not a supported
   build shape. The workspace root is located at the store worktree path and is
@@ -31,7 +34,8 @@ BUCK-R05 and BUCK-R14. Architecture:
   ([decision 0027](../.decisions/0027-composed-default-worktrees.md)).
   Git external cells are not a composition mechanism
   ([decision 0030](../.decisions/0030-external-cells-are-not-a-composition-mechanism.md)).
-- **COMP-R02 Canonical mounts including the hub:** Every repository — including
+- **COMP-R02 Canonical mounts within the composed shape:** Within the paused
+  composed shape, every repository — including
   the one under development — has one canonical mount path (`repos/<name>`),
   identical in every composition and at every nesting level. No repo builds
   from its own root as a cell: one cell identity per repo, one cache namespace
