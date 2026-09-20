@@ -23,7 +23,6 @@
  * ```
  */
 
-
 import type { GitHubWorkflowArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   defaultRefPolicyCheckStep,
@@ -182,6 +181,8 @@ export {
   appendGitHubAccessTokenToNixConfigStep,
   cachixCliBuildStep,
   cachixStep,
+  ciOtelSpansArtifactStep,
+  ciOtelSpansSummaryStep,
   checkoutStep,
   ciDiagnosticsArtifactStep,
   ciDiagnosticsSetupStep,
@@ -197,6 +198,7 @@ export {
   pnpmBuilderContractStep,
   defaultPnpmStateKeyPrefix,
   pnpmInstallWithDiagnosticsStep,
+  prepareCiOtelSpoolStep,
   pnpmStateCacheVersion,
   pnpmStatePublisherPostSteps,
   pnpmStateSetupStep,

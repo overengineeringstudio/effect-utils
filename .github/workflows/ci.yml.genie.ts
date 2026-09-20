@@ -5,10 +5,14 @@ import {
   cachixCliBuildStep,
   cachixStep,
   checkoutStep,
+  cleanupEffectUtilsCompositionStep,
+  ciOtelSpansArtifactStep,
+  ciOtelSpansSummaryStep,
   prepareCiScriptsStep,
   notifyAlignmentJob,
   pnpmBuilderContractStep,
   preparePinnedDevenvStep,
+  prepareCiOtelSpoolStep,
   installNixStep,
   runDevenvTasksBefore,
   ciWorkflow,
@@ -50,6 +54,13 @@ const trustedCachixStep = {
     authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
   }),
   if: "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+} as const
+
+const trustedBuckRemoteCacheEnv = {
+  BUCK2_NO_REMOTE_CACHE:
+    "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '0' || '1' }}",
+  BUCK2_REMOTE_CACHE_BASIC_AUTH:
+    "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH || '' }}",
 } as const
 
 const baseSteps = [
@@ -336,6 +347,7 @@ const job = ({
     runId: '${{ github.run_id }}',
   }),
   'timeout-minutes': timeoutMinutes,
+  env: trustedBuckRemoteCacheEnv,
   defaults: bashShellDefaults,
   steps: [
     ...baseSteps,
@@ -369,6 +381,7 @@ const multiPlatformJob = ({
   }),
   'timeout-minutes': timeoutMinutes,
   defaults: bashShellDefaults,
+  env: trustedBuckRemoteCacheEnv,
   steps: [
     ...baseSteps,
     step,
@@ -1362,6 +1375,27 @@ const deployJobs: Record<string, any> = {
   },
 } as const
 
+const withEffectUtilsCompositionCleanup = (jobMap: Record<string, any>) =>
+  Object.fromEntries(
+    Object.entries(jobMap).map(([name, ciJob]) => {
+      const steps = ciJob.steps as readonly any[] | undefined
+      return [
+        name,
+        steps?.some((step) => step.name === prepareEffectUtilsCompositionStep.name) === true
+          ? {
+              ...ciJob,
+              steps: [
+                prepareCiOtelSpoolStep,
+                ...steps,
+                ciOtelSpansSummaryStep,
+                ciOtelSpansArtifactStep,
+                cleanupEffectUtilsCompositionStep,
+              ],
+            }
+          : ciJob,
+      ]
+    }),
+  )
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
@@ -1395,7 +1429,7 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read' },
-  jobs: {
+  jobs: withEffectUtilsCompositionCleanup({
     // Keep default-ref/source-policy separate from product checks: downstream
     // validation branches should fail one authority job, not obscure
     // lint/typecheck/test signal.
@@ -1427,5 +1461,5 @@ export default ciWorkflow({
         ],
       }),
     },
-  },
+  }),
 } satisfies CiWorkflowArgs)

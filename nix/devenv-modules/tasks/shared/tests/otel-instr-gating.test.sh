@@ -88,12 +88,29 @@ env -i \
   OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
   OTELITE_HTTP_ENDPOINT=http://127.0.0.1:9876 \
   OTEL_SPAN_BIN="$custom_otel_span" \
+  GITHUB_ACTIONS=true \
+  GITHUB_WORKFLOW=CI \
+  GITHUB_JOB=test \
+  GITHUB_RUN_ID=123 \
+  GITHUB_RUN_ATTEMPT=2 \
+  GITHUB_REPOSITORY=overengineeringstudio/effect-utils \
+  GITHUB_SHA=0123456789abcdef \
+  RUNNER_OS=Linux \
+  RUNNER_ARCH=X64 \
   OTEL_TEST_MARKER="$marker" \
   "$BASH" "$task_exec"
 grep -q '^endpoint=http://127.0.0.1:9876$' "$marker" \
   || fail "task/capture-endpoint: trace.exec should prefer the invocation-scoped otelite endpoint"
 grep -q '^args=run effect-utils-devenv devenv.task.exec ' "$marker" \
   || fail "task/pinned-bridge: trace.exec should invoke OTEL_SPAN_BIN outside PATH"
+grep -q -- '--attr ci.workflow=CI' "$marker" \
+  || fail "task/ci-attributes: trace.exec should carry the workflow identity"
+grep -q -- '--attr ci.run.id=123' "$marker" \
+  || fail "task/ci-attributes: trace.exec should carry the run identity"
+grep -q -- '--attr ci.repository=overengineeringstudio/effect-utils' "$marker" \
+  || fail "task/ci-attributes: trace.exec should carry the repository identity"
+grep -q -- '--attr runner.os=Linux' "$marker" \
+  || fail "task/ci-attributes: trace.exec should carry the runner platform"
 
 # Common env for the "binaries present + delivery available" baseline. Each case
 # below overrides exactly one trigger.
