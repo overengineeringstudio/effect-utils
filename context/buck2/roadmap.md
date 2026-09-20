@@ -131,12 +131,6 @@ resolution paths.
   content-addressed artifacts without rebuilding package sources. The
   repository CLI products remain on the same manifest-pinned import boundary.
 
-## Phase 6 — composed consumers
-
-**Dissolution target:** Delete Cargo or Nix source producers, vendoring tasks
-and configuration, hand-maintained repository adapters that projection
-supersedes, and each product's pnpm-deps fixed-output derivation.
-
 ## Phase 5b — distribution layer (decision 0037)
 
 **Entry conditions:** Reconstruction is proven for one product (the
