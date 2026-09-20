@@ -876,10 +876,12 @@ Vitest.describe('FileSystemBacking', () => {
         const observed: Array<FileSystem.WatchEvent> = []
         const waiters: Array<WatchWaiter> = []
 
-        const awaitObservedPath = (
-          fileName: string,
-        ): Effect.Effect<FileSystem.WatchEvent, WatchEventTimeout> =>
-          Effect.callback<FileSystem.WatchEvent, WatchEventTimeout>((resume) => {
+        const observePath = (fileName: string) => {
+          let markRegistered: () => void = () => undefined
+          const registered = new Promise<void>((resolve) => {
+            markRegistered = () => resolve()
+          })
+          const event = Effect.callback<FileSystem.WatchEvent, WatchEventTimeout>((resume) => {
             const waiter: WatchWaiter = {
               fileName,
               resume,
@@ -896,6 +898,7 @@ Vitest.describe('FileSystemBacking', () => {
             }
 
             waiters.push(waiter)
+            markRegistered()
 
             return Effect.sync(() => {
               clearTimeout(waiter.timeout)
@@ -905,6 +908,12 @@ Vitest.describe('FileSystemBacking', () => {
               }
             })
           })
+
+          return {
+            event,
+            registered: Effect.promise(() => registered),
+          }
+        }
 
         const recordEvent = (event: FileSystem.WatchEvent): Effect.Effect<void> =>
           Effect.sync(() => {
@@ -929,7 +938,9 @@ Vitest.describe('FileSystemBacking', () => {
 
         const writeDirectFileUntilObserved = (fileName: string, content: string) =>
           Effect.gen(function* () {
-            const eventFiber = yield* awaitObservedPath(fileName).pipe(Effect.forkChild)
+            const observation = observePath(fileName)
+            const eventFiber = yield* observation.event.pipe(Effect.forkChild)
+            yield* observation.registered
 
             for (const attempt of [1, 2, 3, 4, 5]) {
               yield* fsService.writeFileString(
