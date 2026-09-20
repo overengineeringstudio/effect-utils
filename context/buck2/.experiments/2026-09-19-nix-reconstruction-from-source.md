@@ -143,6 +143,14 @@ The reconciled build produced
 The output also contains the canonical JavaScript product descriptor that the
 cache publisher needs to preserve the existing Nix import contract.
 
+At producer commit `e5b012aa0cf2e47532d89227352f2a7c267e0dc7`, the
+production publisher ran twice for `oxc-config` against an isolated `file://`
+cache. Both runs produced the same manifest bytes. The cache retained one
+digest-named pin, and the second run performed no cache mutation. Anonymous
+artifact retrieval reproduced SHA-256
+`fd5b505b4056d373cd99b4d1264a3f79774381faa9cd06d1b4cb4bcef1ccf03a`;
+the v2 row also retained the canonical descriptor and its digest.
+
 ## Conclusion
 
 Yes: Nix can drive the pinned Buck graph inside its normal sandbox from filtered
