@@ -231,6 +231,9 @@ run_nix_gc_race_retry() {
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*Failed to convert config\.cachix to JSON' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*while evaluating the option.*cachix\.package' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*cannot read file from tarball:[[:space:]]*Truncated tar archive detected while reading data' && saw_fetch_signature=true || true
+    # fetchurl gives up after its own curl retries with this exact wording; an origin 5xx
+    # (GitHub release assets) is a transient network failure, not a build defect.
+    printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*cannot download [^[:space:]]+ from any mirror' && saw_fetch_signature=true || true
     printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*cannot connect to socket at '/nix/var/nix/daemon-socket/socket'" && saw_daemon_socket_failure=true || true
     rm -f "$log"
 
