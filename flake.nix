@@ -62,7 +62,7 @@
         mkBuckProductFromSource = import ./nix/buck2-products/from-source.nix {
           inherit pkgs buck2;
         };
-        buckProductsFromSource = import ./nix/buck2-products/from-source-products.nix {
+        buckProductsFromSource = import ./nix/buck2-products/source-recipes.nix {
           inherit mkBuckProductFromSource;
           preparedDeps = ghCiUtils.passthru.depsBuildsByInstallRoot.root;
           # Dirty flake inputs have no commit identity. The publisher rejects dirty trees and
