@@ -153,6 +153,7 @@ const mainOnlyCheckContexts: Record<string, true> = {
   'test-integration-notion': true,
   'test-live-deploy-ci-tools': true,
   'deploy-storybooks': true,
+  'publish-products': true,
 }
 const matrixCheckJobs: Record<string, true> = { test: true }
 const matrixRunners = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const

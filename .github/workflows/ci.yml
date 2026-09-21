@@ -2451,6 +2451,7 @@ jobs:
       - name: Publish products and propose manifest
         if: steps.publication-scope.outputs.publish == 'true'
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
         run: |
           cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}" && set -euo pipefail

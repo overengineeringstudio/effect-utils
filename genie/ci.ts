@@ -58,6 +58,7 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
   'test-integration-notion',
   'test-live-deploy-ci-tools',
   'deploy-storybooks',
+  'publish-products',
 ] as const
 
 /**

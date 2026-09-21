@@ -101,12 +101,19 @@ export FIXTURE_STORE_PATH="$collision_store"
 export FIXTURE_INTEGRITY="$collision_integrity"
 export PIN_LIST="[{\"name\":\"fixture-$collision_sha\",\"lastRevision\":{\"storePath\":\"/nix/store/11111111111111111111111111111111-other\",\"artifacts\":[\"fixture.js\"]}}]"
 export CACHIX_LOG="$tmp/cachix.log"
-if PATH="$tmp/fake-bin:$PATH" CACHIX_AUTH_TOKEN=fake BUCK2_CACHE_PRODUCTS_REPO="$tmp/collision-repo" \
+# Pin the trusted-event environment: under a pull_request run GITHUB_REF is
+# refs/pull/<n>/merge and the publisher would refuse before reaching the pin check.
+if GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main \
+  PATH="$tmp/fake-bin:$PATH" CACHIX_AUTH_TOKEN=fake BUCK2_CACHE_PRODUCTS_REPO="$tmp/collision-repo" \
   bash "$publisher" --product fixture >"$tmp/collision.stdout" 2>"$tmp/collision.stderr"; then
   echo "buck2-cache-products-test: publisher accepted a pin collision" >&2
   exit 1
 fi
-grep -F 'already points at a different store path' "$tmp/collision.stderr" >/dev/null
+grep -F 'already points at a different store path' "$tmp/collision.stderr" >/dev/null || {
+  echo "buck2-cache-products-test: publisher failed for an unexpected reason:" >&2
+  cat "$tmp/collision.stderr" >&2
+  exit 1
+}
 [[ ! -s "$CACHIX_LOG" ]] || {
   echo "buck2-cache-products-test: publisher mutated Cachix after detecting a collision" >&2
   exit 1

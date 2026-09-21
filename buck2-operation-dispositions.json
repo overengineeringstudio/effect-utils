@@ -85,6 +85,10 @@
       "operation": "deploy-storybooks"
     },
     {
+      "disposition": "outside-by-policy:live-publication",
+      "operation": "publish-products"
+    },
+    {
       "disposition": "outside-by-policy:ci-control-plane",
       "operation": "ci-measurements-report"
     },

@@ -758,6 +758,7 @@ const extraJobs: Record<string, any> = {
         name: 'Publish products and propose manifest',
         if: "steps.publication-scope.outputs.publish == 'true'",
         env: {
+          ...githubTokenEnv(),
           CACHIX_AUTH_TOKEN: '${{ secrets.CACHIX_AUTH_TOKEN }}',
         },
         run: withCiSourceRoot(
