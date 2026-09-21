@@ -146,9 +146,21 @@ invariants named in its own document:
   admissions pause until it is (decision 0031, Amendment 1).
   When BUCK-R15 conflicts with coverage (BUCK-R01) or the wall-clock budgets
   (BUCK-R07), BUCK-R15 wins: the others are constraints with tolerances.
+  The platform hub (effect-utils) closes jointly with its first consumer
+  (dotfiles): the per-repository negative-sum test applies to consumers, the
+  cumulative test fires at each consumer close (the first of which includes the
+  hub), and the hub's residual list reaching zero records a hub-ready milestone,
+  not a close (decision q56, confirmed 2026-09-20).
 - **BUCK-R16 Benchmark evidence:** Efficiency claims are measured, never
   asserted. Each admission's ledger row records warm no-op time, fresh-context
   time with a warm shared cache, cache hit rate for unchanged targets, and CI
   wall-clock delta against the pre-admission baseline. A regression against the
   BUCK-R07 budgets or the recorded baseline blocks further widening until it is
   fixed or explicitly accepted in a decision record.
+- **BUCK-R17 Remote execution:** An admitted action can execute on a fleet
+  worker other than the invoking host through the Remote Execution API. The
+  execution platform declares the worker image as the exact Nix closure its
+  tools come from ([02-execution](./02-execution/requirements.md), decision
+  0006); a locally and a remotely executed action produce identical results
+  and identities (BUCK-R05); remote execution never widens the trust boundary
+  of a cache tier (decision 0033).

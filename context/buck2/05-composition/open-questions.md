@@ -1,6 +1,6 @@
 # Composition Open Questions
 
-## Open 2026-09-13: accept artifact-default composition?
+## Resolved 2026-09-15: accept artifact-default composition? — decision 0034; composition machinery is on the deletion path (q47, 2026-09-19)
 
 Composed cells exist for vision criterion 6 as originally ratified (a consumer
 builds producer targets from the shared cache with source-granular
@@ -27,7 +27,7 @@ carried as requirements in 0034: a strict second-install no-op per consumer
 (pnpm injected-workspace pruning), peer-contract alignment per consumer, and
 the L3 retirement ledger rows.
 
-## Open 2026-09-12: root-owned capability cell
+## Open 2026-09-12: root-owned capability cell (superseded for consumers by 0037 - a standalone root takes capabilities as a Nix output; remains only for the composed development root until L3 cut 2)
 
 The hub loads the per-host capability projection from inside its own cell
 (`buck2/toolchains/BUCK:1`, `configured.bzl:5,59`:

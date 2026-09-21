@@ -140,7 +140,9 @@ Semantics the check enforces:
   requires `exclusion`.
 - `net` is recomputed from the merged revision using the repo's path patterns;
   a stored value that disagrees fails the check.
-- A repository closes when it has no `residual`, `legacy`, or `claimed` rows.
+- A repository closes when it has no `residual`, `legacy`, or `claimed` rows;
+  the platform hub records `hubReady` (revision) at that point and closes
+  jointly with its first consumer (BUCK-R15 as amended).
   At every close, that repository's row sum and the cumulative sum must be
   negative (BUCK-R15). The check fails on any later change to a closed
   repository that flips the sign.

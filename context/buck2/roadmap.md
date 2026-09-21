@@ -131,11 +131,23 @@ resolution paths.
   content-addressed artifacts without rebuilding package sources. The
   repository CLI products remain on the same manifest-pinned import boundary.
 
-## Phase 6 — composed consumers
+## Phase 5b — distribution layer (decision 0037)
 
-**Dissolution target:** Delete Cargo or Nix source producers, vendoring tasks
-and configuration, hand-maintained repository adapters that projection
-supersedes, and each product's pnpm-deps fixed-output derivation.
+**Entry conditions:** Reconstruction is proven for one product (the
+`from-source` derivation) and the public and private binary caches are
+provisioned on every builder.
+
+**Sequence:** Generate a sandboxed Buck-invoking derivation per product and
+package (genie owns it; no hand-written recipes); replace the GitHub publisher
+with a cache publisher (push, digest-named pin, provenance, anonymous
+post-publish verification for public products); move private-shared products
+onto the private cache and prove the Nix-realized tarball path for one pnpm
+consumer; repin existing consumer edges from release URLs to cache URLs through
+the manifest; retire `publish.sh` and the release namespaces.
+
+**Dissolution target:** Delete the GitHub publisher, the release-asset
+verification path in the Nix bridge, and every consumer FOD that existed only
+to stage producer sources. Remote execution is not on this path (02-execution).
 
 ## Phase 6 — consumer adoption
 
@@ -152,6 +164,22 @@ repository identities, order, and status live only in the private ledger.
 cross-member dependency writers, live branch sharing, duplicate build
 producers, and composition exceptions. At repository close, its residual list
 is empty and both repository and cumulative net-complexity sums are negative.
+
+## Phase 7 — action-level remote execution (BUCK-R17)
+
+**Entry conditions:** DELTA-001 (second-context key instability) is closed;
+the 0037 distribution layer is in use; an x86_64-linux worker host with
+headroom exists.
+
+**Sequence:** Define the worker image contract (02-execution open question);
+stand up NativeLink cache + scheduler + one worker beside bazel-remote; prove
+miss -> remote execution -> AC hit on real typecheck, emit, and test actions
+with local execution disabled; then decide the bazel-remote replacement in a
+decision record and retire it. Public/private trust tiers (0033) are preserved
+by separate processes.
+
+**Dissolution target:** bazel-remote and its service module once NativeLink
+carries both tiers; no second cache backend is kept indefinitely.
 
 ## Cross-phase gates
 

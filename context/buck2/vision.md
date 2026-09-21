@@ -21,15 +21,19 @@
   produced by Buck with identities that follow their result-affecting inputs.
 - One shared cache serves every worktree, machine, and composed repository:
   identical work executes once anywhere and is reused everywhere.
+- Build work runs where capacity is: an action that misses the cache can
+  execute on any fleet worker that holds its declared toolchain closure, and
+  the invoking machine only observes the result.
 - Dependency state is a Buck-produced, verified artifact — including the
   editor surface — with no hand-maintained install step and no silent drift.
 - Cross-repository reuse is artifact-granular: a producer publishes immutable,
   content-addressed products of its Buck graph, and a consumer pins them by
   digest in its own lockfile. No consumer carries a producer's action graph;
   source-granular reuse stays inside one repository.
-- Nix supplies immutable inputs and independently verifies and imports portable
-  Buck products into the Nix store; repo-local tools cross into system closures
-  without source rebuilds or fixed-output churn.
+- Nix holds the source recipe for every portable Buck product and substitutes
+  its output from a binary cache; repo-local tools cross into system closures
+  with no hand-maintained fetch step and no fixed-output churn, and a cache
+  miss rebuilds the product through the same Buck graph instead of failing.
 - Every authority transfer deletes the producer it replaces; the system gets
   smaller as Buck's surface grows.
 
@@ -58,9 +62,9 @@
 5. Admitted repository-local tools reach Nix consumers through product import
    with zero fixed-output hash repairs attributable to their dependencies.
 6. A consuming repository (dotfiles first) installs a producer's Buck-built
-   package by immutable digest from the shared product origin, with no source
-   mount, path shim, or producer checkout, and a second install of the same
-   pins is a strict no-op.
+   package by immutable digest through Nix substitution or a pinned artifact
+   URL, with no source mount, path shim, or producer checkout, and a second
+   install of the same pins is a strict no-op.
 7. An independent Nix evaluation rejects a malformed or mismatched product and
    imports a valid product without rebuilding repository sources.
 8. Dependency drift is impossible silently: a stale dependency surface fails
