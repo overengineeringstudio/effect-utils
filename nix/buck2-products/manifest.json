@@ -38,11 +38,21 @@
         "externalCapabilities": [
           "actionlint",
           "effect-tsgo",
+          "opentui-core-native",
           "oxfmt",
           "typescript-api-server"
         ],
-        "externalModules": [],
-        "integrity": "sha256-K9rMgTTyfWZk01lt5v9azoN6cLPLWWiP7dlU3B2ymgk=",
+        "externalModules": [
+          "@opentui/core-darwin-arm64",
+          "@opentui/core-darwin-x64",
+          "@opentui/core-linux-arm64",
+          "@opentui/core-linux-arm64-musl",
+          "@opentui/core-linux-x64",
+          "@opentui/core-linux-x64-musl",
+          "@opentui/core-win32-arm64",
+          "@opentui/core-win32-x64"
+        ],
+        "integrity": "sha256-TteD7f7m0S/GjjhzTnZoX+VSdT288DIDO1xEqeqfMTY=",
         "modulePath": "genie.js",
         "platform": {
           "abi": "any",
@@ -60,15 +70,15 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3232372,
+        "sizeBytes": 6320554,
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "descriptorSha256": "b522387bfd670d2452b5bc9b68cdcbefb439c2bb9009d287a531b28155d213e8",
+      "descriptorSha256": "aae3ec1a2fb7ee33e5caf1f11cc3aa984a234f576506b6e6537cdd6245d4fcc6",
       "release": {
-        "hash": "sha256-K9rMgTTyfWZk01lt5v9azoN6cLPLWWiP7dlU3B2ymgk=",
-        "name": "2bdacc8134f27d6664d3596de6ff5ace837a70b3cb59688fedd954dc1db29a09-genie.js",
-        "tag": "buck2-product-v3-genie-2bdacc8134f27d6664d3596de6ff5ace837a70b3cb59688fedd954dc1db29a09",
-        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-2bdacc8134f27d6664d3596de6ff5ace837a70b3cb59688fedd954dc1db29a09/2bdacc8134f27d6664d3596de6ff5ace837a70b3cb59688fedd954dc1db29a09-genie.js"
+        "hash": "sha256-TteD7f7m0S/GjjhzTnZoX+VSdT288DIDO1xEqeqfMTY=",
+        "name": "4ed783edfee6d12fc68e38734e76685fe552753dbcf032033b5c44a9ea9f3136-genie.js",
+        "tag": "buck2-product-v3-genie-4ed783edfee6d12fc68e38734e76685fe552753dbcf032033b5c44a9ea9f3136",
+        "url": "https://github.com/overengineeringstudio/effect-utils/releases/download/buck2-product-v3-genie-4ed783edfee6d12fc68e38734e76685fe552753dbcf032033b5c44a9ea9f3136/4ed783edfee6d12fc68e38734e76685fe552753dbcf032033b5c44a9ea9f3136-genie.js"
       }
     },
     {

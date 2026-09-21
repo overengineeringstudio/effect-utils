@@ -194,6 +194,29 @@ chmod +x "$fetch_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "fetch-fixture" "$fetch_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/fetch-attempt")" "truncated tarball retry count"
 
+echo "Test 4b: retries fixed-output downloads that fail at the origin"
+download_fixture="$test_dir/download-fixture.sh"
+cat > "$download_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/download-attempt"
+attempt=1
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+if [ "\$attempt" -eq 1 ]; then
+  echo 2 > "\$attempt_file"
+  echo "       > curl: (22) The requested URL returned error: 504" >&2
+  echo "       > error: cannot download 7f44f2d5-genie-bootstrap-closure-check.js from any mirror" >&2
+  echo "error: Cannot build '/nix/store/8scavb8z-genie-bootstrap-closure-check-buck2-candidate.drv'." >&2
+  exit 1
+fi
+echo "download recovered"
+EOF
+chmod +x "$download_fixture"
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "download-fixture" "$download_fixture" >/dev/null
+assert_eq "2" "$(cat "$test_dir/download-attempt")" "origin download failure retry count"
+
 echo "Test 5: retries missing Nix daemon socket failures without host mutation"
 daemon_fixture="$test_dir/daemon-fixture.sh"
 cat > "$daemon_fixture" <<EOF
