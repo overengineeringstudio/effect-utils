@@ -310,8 +310,11 @@ pkgs.stdenv.mkDerivation {
                 source.slice(dependencyStart, dependencyEnd),
                 "    node_modules = \"//:nix_prepared_node_modules\",",
               )
-              .replace("    workspace_dist = {\n    },\n", "")
-              .replace("    workspace_dependency_views = {\n    },\n", "")
+              // Workspace siblings are already present in the prepared tree as source copies with
+              // their own projected node_modules, and package exports resolve to source at runtime,
+              // so the composed-workspace sibling wiring is dropped whether or not it is empty.
+              .replace(/^    workspace_dist = \{\n(?: {8}.*\n)*    \},\n/m, "")
+              .replace(/^    workspace_dependency_views = \{\n(?: {8}.*\n)*    \},\n/m, "")
             source = source.slice(0, blockStart) + rewrittenBlock + source.slice(blockEnd)
             await Bun.write(path, source)
           '
