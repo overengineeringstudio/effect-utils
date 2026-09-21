@@ -132,45 +132,6 @@
           bun = pkgs.bun;
           products = trackedBuck2Products.products;
         };
-        capabilityPackages = {
-          inherit buck2;
-          bun = pkgs.bun;
-          buck2-node = pkgs.writeShellScriptBin "node" ''
-            exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"
-          '';
-          inherit buck2-go;
-          buck2-python-bootstrap = pkgs.writeShellScriptBin "python3" ''
-            exec ${pkgs.python3}/bin/python3 "$@"
-          '';
-          buck2-archive-tool = buck2-stage0-tools.archive-tool;
-          buck2-product = buck2-stage0-tools.product;
-          buck2-coreutils = pkgs.writeShellScriptBin "readlink" ''
-            exec ${pkgs.coreutils}/bin/readlink "$@"
-          '';
-          buck2-rust-compiler = buck2-rust-toolchain-capability.packages.rust-compiler;
-          buck2-rust-rustdoc = buck2-rust-toolchain-capability.packages.rust-rustdoc;
-          buck2-rust-clippy-driver = buck2-rust-toolchain-capability.packages.rust-clippy-driver;
-          buck2-rust-c-compiler = buck2-rust-toolchain-capability.packages.rust-c-compiler;
-          buck2-rust-cxx-compiler = buck2-rust-toolchain-capability.packages.rust-cxx-compiler;
-          buck2-rust-linker = buck2-rust-toolchain-capability.packages.rust-linker;
-          buck2-rust-archiver = buck2-rust-toolchain-capability.packages.rust-archiver;
-          buck2-rust-dwp = buck2-rust-toolchain-capability.packages.rust-dwp;
-          buck2-rust-nm = buck2-rust-toolchain-capability.packages.rust-nm;
-          buck2-rust-objcopy = buck2-rust-toolchain-capability.packages.rust-objcopy;
-          buck2-rust-objdump = buck2-rust-toolchain-capability.packages.rust-objdump;
-          buck2-rust-ranlib = buck2-rust-toolchain-capability.packages.rust-ranlib;
-          buck2-rust-strip = buck2-rust-toolchain-capability.packages.rust-strip;
-          buck2-rust-shell = buck2-rust-toolchain-capability.packages.rust-shell;
-          effect-tsgo = tsgo.packages.${system}.effect-tsgo;
-          oxfmt = pkgs.oxfmt;
-          oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
-            inherit pkgs oxlintNpm;
-          };
-        };
-        buck2Capabilities = import ./nix/buck2-capabilities.nix {
-          inherit pkgs capabilityPackages;
-          src = rootPath;
-        };
         buck2ProductCandidates = import ./nix/workspace-tools/lib/buck2-product-candidates.nix {
           inherit
             pkgs
