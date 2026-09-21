@@ -676,7 +676,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|default\\.nix|manifest\\.json|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|default\\.nix|from-source\\.nix|manifest\\.json|publish\\.sh|source-recipes\\.nix|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
             'if [ -n "$tracked_editor$tracked_product" ]; then',
             '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
             '  exit 1',
