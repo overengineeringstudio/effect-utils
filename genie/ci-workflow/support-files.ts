@@ -152,7 +152,12 @@ run_nix_gc_race_retry() {
   while [ "$attempt" -le "$max" ]; do
     echo "::notice::[ci] starting $task (attempt $attempt/$max)"
     (
-      while sleep "$heartbeat"; do
+      heartbeat_sleep_pid=''
+      trap '[ -z "$heartbeat_sleep_pid" ] || kill "$heartbeat_sleep_pid" 2>/dev/null || true; exit 0' TERM INT
+      while true; do
+        sleep "$heartbeat" &
+        heartbeat_sleep_pid=$!
+        wait "$heartbeat_sleep_pid" || exit 0
         now=$(date +%s)
         elapsed=$((now - start))
         echo "::notice::[ci] $task still running after $elapsed s (attempt $attempt/$max)"
