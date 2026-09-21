@@ -28,14 +28,14 @@ no infrastructure or publication decision.
 
 ## Declared input inventory
 
-| Input | Identity / measured closure |
-| --- | --- |
-| Filtered repository source | 3,741,424 NAR bytes |
-| Prepared pnpm tree | `oxc-config-pnpm-deps-lwdqgrsq-v19-0.0.0`; 48,128,792 NAR bytes; 142 packages |
-| Buck2 | `unstable-2026-09-01`; 185,624,784-byte closure |
-| Prelude | commit `1f8c24e0b1f85e645011f93a4073b0c6c762d7b1`; 4,972,744 bytes |
-| Bun capability | Bun 1.4.2 plus sorted closure paths; 117,298,760-byte closure |
-| Build support | stdenv, bash, GNU tar/gzip, CA bundle, generated closure-info |
+| Input                      | Identity / measured closure                                                   |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| Filtered repository source | 3,741,424 NAR bytes                                                           |
+| Prepared pnpm tree         | `oxc-config-pnpm-deps-lwdqgrsq-v19-0.0.0`; 48,128,792 NAR bytes; 142 packages |
+| Buck2                      | `unstable-2026-09-01`; 185,624,784-byte closure                               |
+| Prelude                    | commit `1f8c24e0b1f85e645011f93a4073b0c6c762d7b1`; 4,972,744 bytes            |
+| Bun capability             | Bun 1.4.2 plus sorted closure paths; 117,298,760-byte closure                 |
+| Build support              | stdenv, bash, GNU tar/gzip, CA bundle, generated closure-info                 |
 
 The union actually available to the final Nix builder was 69 store paths and
 701,382,992 NAR bytes. The installed product closure is 64,856 bytes. The
@@ -103,6 +103,53 @@ but no producer commit. This is a provenance gap, not a reconstruction failure.
   tools and complete closures before Buck starts, so a Buck action does not
   recursively invoke Nix. Neither mechanism alone supplies the product
   reconstruction recipe proven here.
+
+## Generated product run
+
+The generalized recipe built three generated inventory entries at producer
+commit `1192802567ca3400ffae2c9e037c766e7160e624`:
+
+| Product      | Wall clock |  Output closure |
+| ------------ | ---------: | --------------: |
+| `oxc-config` |       11 s |    65,336 bytes |
+| `ci-tools`   |       12 s |   808,728 bytes |
+| `notion-md`  |       23 s | 1,529,816 bytes |
+
+`nix build --rebuild` reproduced `oxc-config.js` at SHA-256
+`fd5b505b4056d373cd99b4d1264a3f79774381faa9cd06d1b4cb4bcef1ccf03a`.
+The historical GitHub asset still cannot be tied to a producer commit because
+the v1 manifest and descriptor did not record one. The same-commit historical
+comparison therefore remains unavailable.
+
+A local `file://` binary cache received all three store paths with `nix copy`.
+A fresh local Nix store then restored the paths from only that cache; the
+restored `oxc-config.js` had the same SHA-256 digest. This proves the
+substitution mechanism without mutating the public cache.
+
+### Post-#1283 reconciliation
+
+After `6aada53586`, the old `oxc-config` plugin-bundle fixed-output
+derivation no longer exists. The generalized recipe now uses the remaining
+prepared root from `gh-ci-utils`, projects package-local links only when that
+prepared root contains them, and keeps Buck package views compatible with the
+prepared root.
+
+| Product      | Wall clock | Output closure | Artifact bytes |
+| ------------ | ---------: | -------------: | -------------: |
+| `oxc-config` |       23 s |   66,440 bytes |   64,565 bytes |
+
+The reconciled build produced
+`/nix/store/d70rd6kwy4v1v7gmg71y9mfmhhm9grgb-oxc-config-buck2-from-source-0.0.0`.
+The output also contains the canonical JavaScript product descriptor that the
+cache publisher needs to preserve the existing Nix import contract.
+
+At producer commit `e5b012aa0cf2e47532d89227352f2a7c267e0dc7`, the
+production publisher ran twice for `oxc-config` against an isolated `file://`
+cache. Both runs produced the same manifest bytes. The cache retained one
+digest-named pin, and the second run performed no cache mutation. Anonymous
+artifact retrieval reproduced SHA-256
+`fd5b505b4056d373cd99b4d1264a3f79774381faa9cd06d1b4cb4bcef1ccf03a`;
+the v2 row also retained the canonical descriptor and its digest.
 
 ## Conclusion
 

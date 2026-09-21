@@ -1,121 +1,115 @@
 #!/usr/bin/env bash
-# Publishes the complete Buck JavaScript product inventory as immutable releases.
 set -euo pipefail
 
-repo_root="${BUCK2_RELEASE_PRODUCTS_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
-targets="$repo_root/nix/buck2-products/targets.json"
-repository="overengineeringstudio/effect-utils"
+repo_root="${BUCK2_CACHE_PRODUCTS_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
+targets="$repo_root/nix/buck2-products/cache-targets.json"
+manifest="$repo_root/nix/buck2-products/manifest.json"
+cache="overeng-effect-utils"
+cache_url="${CACHIX_CACHE_URL:-https://$cache.cachix.org}"
+cache_url="${cache_url%/}"
+local_cache=false
 dry_run=false
 proposal=""
+declare -a selected_products=()
 
 fail() {
-  printf 'buck2-products-publish: %s\n' "$*" >&2
+  printf 'buck2-cache-products-publish: %s\n' "$*" >&2
   exit 1
 }
 
 usage() {
   cat <<'EOF'
-Usage: nix/buck2-products/publish.sh [--dry-run] [--targets PATH] [--proposal PATH]
+Usage: nix/buck2-products/publish.sh [--dry-run] [--product NAME] [--proposal PATH]
 
---dry-run       Validate the target inventory and print the complete build/publication plan.
---targets PATH  Read the generated desired target inventory from PATH.
---proposal PATH Write the proposed manifest outside the Git worktree (live mode only).
-                   Without this option the proposed manifest is emitted on stdout.
+--dry-run       Validate and print the complete publication plan without building or mutating.
+--product NAME  Publish only NAME. May be repeated. The default is the complete generated inventory.
+--proposal PATH Write the v2 manifest outside the Git worktree. The default writes it to stdout.
 EOF
 }
 
 while (($#)); do
   case "$1" in
-    --dry-run)
-      dry_run=true
-      shift
-      ;;
-    --targets)
-      (($# >= 2)) || fail "--targets requires a path"
-      targets="$2"
-      shift 2
-      ;;
-    --proposal)
-      (($# >= 2)) || fail "--proposal requires a path"
-      proposal="$2"
-      shift 2
-      ;;
-    --help|-h)
-      usage
-      exit 0
-      ;;
+    --dry-run) dry_run=true; shift ;;
+    --product) (($# >= 2)) || fail "--product requires a name"; selected_products+=("$2"); shift 2 ;;
+    --proposal) (($# >= 2)) || fail "--proposal requires a path"; proposal="$2"; shift 2 ;;
+    --help|-h) usage; exit 0 ;;
     *) fail "unknown argument: $1" ;;
   esac
 done
 
-[[ -f "$targets" && ! -L "$targets" ]] || fail "target inventory must be a regular, non-symlink file: $targets"
-for tool in jq sha256sum tr; do
-  command -v "$tool" >/dev/null || fail "$tool is required"
-done
-
-# This mutation surface is deliberately unavailable to pull-request jobs, even
-# in planning mode. A PR may run the separate contract test, never this tool.
-if [[ -n "${GITHUB_EVENT_NAME:-}" && "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
-  fail "refusing untrusted GitHub event: ${GITHUB_EVENT_NAME}"
-fi
-
-target_check='
-  (type == "object") and
-  ((keys | sort) == ["products", "provenance", "schemaVersion"]) and
-  (.schemaVersion == 1) and
+[[ -f "$targets" && ! -L "$targets" ]] || fail "generated target inventory is missing: $targets"
+command -v jq >/dev/null || fail "jq is required"
+jq -e '
+  (keys | sort) == ["products", "schema", "schemaVersion"] and
+  .schema == "effect-utils/buck-cache-targets/v1" and .schemaVersion == 1 and
   (.products | type == "array" and length > 0) and
   (all(.products[];
-    type == "object" and
-    ((keys | sort) == ["name", "target"]) and
-    (.name | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._+-]*$")) and
-    (.target | type == "string" and test("^([A-Za-z0-9_]+)?//[^[:space:]\\[\\]]+:[^[:space:]\\[\\]]+$"))
+    (keys | sort) == ["kind","name","outputName","packagePath","packageTreePath","target","version"] and
+    (.kind == "javascript" or .kind == "package") and
+    (.name | type == "string" and length > 0) and
+    (.outputName | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._+-]*$")) and
+    (.target | type == "string" and test("^effect_utils//[^[:space:]]+:[^[:space:]]+$")) and
+    (.version | type == "string" and length > 0)
   )) and
   ([.products[].name] | length == (unique | length)) and
-  ([.products[].target] | length == (unique | length)) and
-  (.provenance | type == "object") and
-  ((.provenance | keys | sort) == ["fingerprint", "generator", "regenerationCommand", "semanticInputs", "source"]) and
-  (.provenance.fingerprint | type == "string" and test("^sha256:[0-9a-f]{64}$")) and
-  (.provenance.generator == "effect-utils/genie/buck2-javascript-release-targets") and
-  (.provenance.regenerationCommand == "devenv tasks run genie:run") and
-  (.provenance.semanticInputs == [
-    "genie/buck2/javascript-product-registry.ts",
-    "nix/buck2-products/targets.json.genie.ts"
-  ]) and
-  (.provenance.source == "nix/buck2-products/targets.json.genie.ts")'
-if ! jq -e "$target_check" "$targets" >/dev/null; then
-  fail "target inventory violates effect-utils/buck2-release-targets/v1"
+  ([.products[].target] | length == (unique | length))
+' "$targets" >/dev/null || fail "target inventory violates effect-utils/buck-cache-targets/v1"
+
+selection='.'
+if ((${#selected_products[@]})); then
+  selection='select(.name == $selected)'
+  for selected in "${selected_products[@]}"; do
+    jq -e --arg selected "$selected" '.products[] | select(.name == $selected)' "$targets" >/dev/null ||
+      fail "unknown product: $selected"
+  done
 fi
-declared_fingerprint="$(jq -r '.provenance.fingerprint' "$targets")"
-computed_fingerprint="$(jq -cS '{
-  generator: .provenance.generator,
-  schemaVersion: .schemaVersion,
-  semanticData: .products
-}' "$targets" | tr -d '\n' | sha256sum)"
-computed_fingerprint="sha256:${computed_fingerprint%% *}"
-[[ "$declared_fingerprint" == "$computed_fingerprint" ]] ||
-  fail "target inventory fingerprint does not match its declared products"
 
-plan="$({
-  jq -cS '{
-    schema: "effect-utils/buck2-product-publication-plan/v1",
-    repository: "overengineeringstudio/effect-utils",
-    products: [.products[] | {
-      productName: .name,
-      candidateTarget: .target,
-      descriptorTarget: (.target + "[descriptor]")
-    }] | sort_by(.productName)
-  }' "$targets"
-})"
+rows="$({
+  if ((${#selected_products[@]})); then
+    for selected in "${selected_products[@]}"; do
+      jq -cS --arg selected "$selected" ".products[] | $selection" "$targets"
+    done
+  else
+    jq -cS '.products[]' "$targets"
+  fi
+} | jq -csS 'sort_by(.name)')"
 
+plan="$(jq -cnS --arg cache "$cache" --argjson products "$rows" '{schema:"effect-utils/buck-cache-publication-plan/v1",cache:$cache,products:$products}')"
 if $dry_run; then
   [[ -z "$proposal" ]] || fail "--proposal is unavailable in dry-run mode"
   printf '%s\n' "$plan"
   exit 0
 fi
 
-for tool in buck2 gh nix sha256sum stat cmp cp mktemp realpath git; do
+for tool in curl git jq nix realpath sha256sum stat; do
   command -v "$tool" >/dev/null || fail "$tool is required"
 done
+case "${GITHUB_EVENT_NAME:-}" in
+  ""|push|workflow_dispatch) ;;
+  *) fail "refusing untrusted GitHub event: ${GITHUB_EVENT_NAME}" ;;
+esac
+[[ -z "${GITHUB_REF:-}" || "${GITHUB_REF}" == refs/heads/main ]] ||
+  fail "refusing publication from non-main ref: ${GITHUB_REF}"
+head_commit="$(git -C "$repo_root" rev-parse --verify 'HEAD^{commit}')"
+[[ -z "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]] ||
+  fail "refusing to publish from a dirty Git worktree"
+
+case "$cache_url" in
+  file:///*)
+    local_cache=true
+    cache_root="$(realpath -m "${cache_url#file://}")"
+    cache_url="file://$cache_root"
+    ;;
+  https://*) command -v cachix >/dev/null || fail "cachix is required" ;;
+  *) fail "CACHIX_CACHE_URL must use https:// or file:///" ;;
+esac
+
+if ! $local_cache && [[ -z "${CACHIX_AUTH_TOKEN:-}" ]]; then
+  command -v op-proxy >/dev/null || fail "op-proxy is required when CACHIX_AUTH_TOKEN is unset"
+  [[ -n "${CACHIX_AUTH_TOKEN_REF:-}" ]] || fail "CACHIX_AUTH_TOKEN_REF is required when CACHIX_AUTH_TOKEN is unset"
+  CACHIX_AUTH_TOKEN="$(op-proxy read "$CACHIX_AUTH_TOKEN_REF" --reason "P1 cache publisher (decision 0037)" --cache 1d)"
+  export CACHIX_AUTH_TOKEN
+fi
 
 if [[ -n "$proposal" ]]; then
   proposal="$(realpath -m "$proposal")"
@@ -125,261 +119,122 @@ if [[ -n "$proposal" ]]; then
   esac
   [[ ! -e "$proposal" ]] || fail "refusing to overwrite proposal output: $proposal"
 fi
-head_commit="$(git -C "$repo_root" rev-parse --verify 'HEAD^{commit}')"
-publication_commit="${GITHUB_SHA:-$head_commit}"
-[[ "$publication_commit" =~ ^[0-9a-f]{40}$ ]] || fail "publication commit is not a full Git SHA"
-[[ "$publication_commit" == "$head_commit" ]] ||
-  fail "GITHUB_SHA does not identify the checked-out commit"
-[[ -z "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]] ||
-  fail "refusing to publish from a dirty Git worktree"
 
-# The successful paginated listing is the authority on which desired tags
-# already exist, and on what they are. A transient GET failure aborts here
-# rather than being read as absence, so a resumed run can never mistake an
-# existing release for a gap. Every row keeps its release id and draft state:
-# "the tag exists, published" and "the tag exists as a leaked draft" demand
-# opposite handling, and the id is what a human needs to resolve the latter.
-release_listing="$(gh api --paginate "repos/$repository/releases" \
-  --jq '.[] | [.tag_name, (.id | tostring), (.draft | tostring)] | @tsv')" ||
-  fail "could not list existing releases; refusing to publish"
-declare -A listed_release_ids=() listed_release_draft=()
-while IFS=$'\t' read -r listed_tag listed_id listed_draft; do
-  # A release without a tag name cannot collide with a desired tag.
-  [[ -n "$listed_tag" ]] || continue
-  [[ "$listed_id" =~ ^[0-9]+$ ]] || fail "GitHub listed release $listed_tag without a numeric id"
-  [[ "$listed_draft" == true || "$listed_draft" == false ]] ||
-    fail "GitHub listed release $listed_tag without a draft state"
-  if [[ -n "${listed_release_ids[$listed_tag]+present}" ]]; then
-    # Drafts may share a tag name with each other and with a published
-    # release; keep every id so the preflight can name them all.
-    listed_release_ids["$listed_tag"]+=" $listed_id"
-    [[ "$listed_draft" == false ]] || listed_release_draft["$listed_tag"]=true
-  else
-    listed_release_ids["$listed_tag"]="$listed_id"
-    listed_release_draft["$listed_tag"]="$listed_draft"
-  fi
-done <<<"$release_listing"
 stage="$(mktemp -d)"
-# Cleanup authority is scoped to a release GitHub still reports as a draft.
-# Deleting a published immutable release permanently burns its tag name, so an
-# unverifiable or already-published release is left alone: leaking a draft is
-# recoverable, destroying a tag is not.
-cleanup_draft_release_id=""
-cleanup() {
-  status=$?
-  if [[ -n "$cleanup_draft_release_id" ]]; then
-    if release_state="$(gh api "repos/$repository/releases/$cleanup_draft_release_id" 2>/dev/null)" &&
-      jq -e '.draft == true' <<<"$release_state" >/dev/null 2>&1; then
-      gh api --method DELETE "repos/$repository/releases/$cleanup_draft_release_id" --silent >/dev/null 2>&1 || true
-    fi
-  fi
-  rm -rf "$stage"
-  exit "$status"
-}
-trap cleanup EXIT
-
-mapfile -t product_rows < <(jq -r '.products | sort_by(.name)[] | [.name, .target] | @tsv' "$targets")
-((${#product_rows[@]} > 0)) || fail "target inventory contains no products"
-
-declare -a build_targets=()
-for row in "${product_rows[@]}"; do
-  IFS=$'\t' read -r product_name target <<<"$row"
-  [[ -n "$product_name" && -n "$target" ]] || fail "target inventory contains an incomplete product declaration"
-  build_targets+=("$target" "$target[descriptor]")
-done
-
-build_outputs="$stage/build-outputs"
-buck2 build --show-full-output "${build_targets[@]}" >"$build_outputs"
-declare -A outputs=()
-while IFS=' ' read -r label path extra; do
-  [[ -n "$label" && -n "$path" && -z "${extra:-}" ]] || fail "Buck returned a malformed output record"
-  [[ -z "${outputs[$label]+present}" ]] || fail "Buck returned duplicate output for $label"
-  outputs["$label"]="$path"
-done <"$build_outputs"
-((${#outputs[@]} == ${#build_targets[@]})) || fail "Buck output set does not exactly match the target inventory build plan"
-for target in "${build_targets[@]}"; do
-  [[ -n "${outputs[$target]+present}" ]] || fail "Buck returned no output for $target"
-done
-
+trap 'rm -rf "$stage"' EXIT
 entries="$stage/entries.jsonl"
 : >"$entries"
-declare -a release_assets=()
-declare -a release_tags=()
-declare -a asset_names=()
-for row in "${product_rows[@]}"; do
-  IFS=$'\t' read -r product_name target <<<"$row"
-  source_module="${outputs[$target]}"
-  source_descriptor="${outputs[$target[descriptor]]}"
-  [[ -f "$source_module" && ! -L "$source_module" ]] || fail "$product_name module output is not a regular file"
-  [[ -f "$source_descriptor" && ! -L "$source_descriptor" ]] || fail "$product_name descriptor output is not a regular file"
-
-  descriptor="$(jq -cS . "$source_descriptor")" || fail "$product_name descriptor is not JSON"
-  if ! jq -e --arg name "$product_name" --arg target "$target" '
-    (keys | sort) == ["externalCapabilities","externalModules","integrity","modulePath","platform","productKind","productName","provenance","runtimeContract","runtimeContractVersion","runtimeKind","schema","sizeBytes","target"] and
-    .schema == "effect-utils/javascript-product/v2" and
-    .productName == $name and .target == $target and
-    (.productKind == "cli" or .productKind == "module") and
-    (.runtimeKind == "bun" or .runtimeKind == "node") and
-    .runtimeContract == "javascript-esm" and .runtimeContractVersion == "v1" and
-    .platform == {"abi":"any","architecture":"any","os":"any"} and
-    (.modulePath | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._+-]*(/[A-Za-z0-9][A-Za-z0-9._+-]*)*$")) and
-    (.integrity | type == "string" and test("^sha256-[A-Za-z0-9+/]{43}=$")) and
-    (.sizeBytes | type == "number" and . > 0 and floor == .) and
-    (.externalCapabilities | type == "array" and all(.[]; type == "string")) and
-    (.externalModules | type == "array" and all(.[]; type == "string")) and
-    (.provenance | type == "object" and
-      (keys | sort) == ["configuredTarget","dependencyClosureIdentity","module"] and
-      all(.[]; type == "string" and contains("/nix/store/") == false)
-    )' <<<"$descriptor" >/dev/null; then
-    fail "$product_name descriptor violates effect-utils/javascript-product/v2"
+if $local_cache; then
+  mkdir -p "$cache_root"
+  pins_file="$cache_root/pins.json"
+  if [[ -f "$pins_file" ]]; then
+    pins="$(cat "$pins_file")"
+  else
+    pins='[]'
   fi
+else
+  pins="$(curl -fsS "https://app.cachix.org/api/v1/cache/$cache/pin")" ||
+    fail "could not list existing Cachix pins"
+fi
+jq -e 'type == "array"' <<<"$pins" >/dev/null || fail "Cachix pin listing is not an array"
 
-  module_path="$(jq -r '.modulePath' <<<"$descriptor")"
-  # The release asset name embeds the module path verbatim and a GitHub asset
-  # name cannot contain "/", so a module path with directories could never be
-  # published under its contracted name. Refuse it here instead of uploading
-  # something the loader would reject.
-  [[ "$module_path" != */* ]] ||
-    fail "$product_name module path is not one release-asset-safe path segment: $module_path"
-  product_stage="$stage/products/$product_name"
-  mkdir -p "$product_stage"
-  staged_module="$product_stage/$module_path"
-  cp -- "$source_module" "$staged_module"
-  cmp -- "$source_module" "$staged_module" || fail "$product_name staged module bytes changed"
-  actual_size="$(stat -c '%s' "$staged_module")"
-  expected_size="$(jq -r '.sizeBytes' <<<"$descriptor")"
-  [[ "$actual_size" == "$expected_size" ]] || fail "$product_name module size does not match its descriptor"
-  module_sha256="$(sha256sum "$staged_module")"
-  module_sha256="${module_sha256%% *}"
-  descriptor_sha256="$(printf '%s' "$descriptor" | sha256sum)"
-  descriptor_sha256="${descriptor_sha256%% *}"
-  integrity="$(jq -r '.integrity' <<<"$descriptor")"
-  integrity_hex="$(nix hash convert --hash-algo sha256 --to base16 "$integrity")"
-  [[ "$module_sha256" == "$integrity_hex" ]] || fail "$product_name module digest does not match its descriptor"
-
-  tag="buck2-product-v3-$product_name-$module_sha256"
-  asset_name="$module_sha256-$module_path"
-  release_url="https://github.com/$repository/releases/download/$tag/$asset_name"
-  # GitHub derives the asset name from the uploaded file's basename; a "#name"
-  # suffix only sets the asset's display label. The contracted asset name is
-  # therefore produced as a real filename here, in its own per-product
-  # directory so identical basenames across products cannot collide.
-  asset_stage="$stage/release-assets/$product_name"
-  mkdir -p "$asset_stage"
-  release_asset="$asset_stage/$asset_name"
-  cp -- "$staged_module" "$release_asset"
-  cmp -- "$source_module" "$release_asset" || fail "$product_name release asset bytes differ from the module output"
-  [[ "${release_asset##*/}" == "$asset_name" ]] ||
-    fail "$product_name release asset filename is not the contracted asset name"
+while IFS= read -r row; do
+  name="$(jq -r '.name' <<<"$row")"
+  version="$(jq -r '.version' <<<"$row")"
+  kind="$(jq -r '.kind' <<<"$row")"
+  target="$(jq -r '.target' <<<"$row")"
+  output_name="$(jq -r '.outputName' <<<"$row")"
+  safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
+  attr="buck-product-$safe_name-from-source"
+  store_path="$(nix build --no-link --print-out-paths "$repo_root#$attr")"
+  [[ "$store_path" == /nix/store/* && -d "$store_path" ]] || fail "$name did not build one store directory"
+  artifact="$store_path/$output_name"
+  provenance_file="$store_path/provenance.json"
+  [[ -f "$artifact" && ! -L "$artifact" ]] || fail "$name artifact is missing: $artifact"
+  [[ -f "$provenance_file" && ! -L "$provenance_file" ]] || fail "$name provenance is missing"
+  sha256="$(sha256sum "$artifact" | cut -d' ' -f1)"
+  size="$(stat -c '%s' "$artifact")"
+  jq -e --arg commit "$head_commit" --arg target "$target" --arg digest "$sha256" '
+    (keys | sort) == ["producerCommit","productDigest","schema","target"] and
+    .schema == "effect-utils/buck-product-provenance/v1" and
+    .producerCommit == $commit and .target == $target and .productDigest == $digest
+  ' "$provenance_file" >/dev/null || fail "$name provenance does not bind the built artifact"
+  descriptor='null'
+  descriptor_sha256='null'
+  if [[ "$kind" == javascript ]]; then
+    descriptor_file="$store_path/descriptor.json"
+    [[ -f "$descriptor_file" && ! -L "$descriptor_file" ]] || fail "$name descriptor is missing"
+    descriptor="$(jq -cS . "$descriptor_file")" || fail "$name descriptor is invalid"
+    descriptor_sha256="$(printf '%s' "$descriptor" | sha256sum | cut -d' ' -f1)"
+    integrity="$(nix hash convert --hash-algo sha256 --to sri "$sha256")"
+    jq -e \
+      --arg name "$name" --arg target "$target" --arg integrity "$integrity" --argjson size "$size" \
+      '.productName == $name and .target == $target and .integrity == $integrity and .sizeBytes == $size' \
+      <<<"$descriptor" >/dev/null || fail "$name descriptor does not bind the built artifact"
+  fi
+  pin_name="$safe_name-$sha256"
+  existing="$(jq -c --arg name "$pin_name" '[.[] | select(.name == $name)]' <<<"$pins")"
+  existing_count="$(jq 'length' <<<"$existing")"
+  ((existing_count <= 1)) || fail "$pin_name is held by multiple Cachix pins"
+  if ((existing_count == 1)); then
+    existing_path="$(jq -r '.[0].lastRevision.storePath' <<<"$existing")"
+    [[ "$existing_path" == "$store_path" ]] || fail "$pin_name already points at a different store path"
+    jq -e --arg artifact "$output_name" '.[0].lastRevision.artifacts | index($artifact) != null' <<<"$existing" >/dev/null ||
+      fail "$pin_name exists without the required artifact"
+  fi
+  store_hash="$(basename "$store_path")"
+  store_hash="${store_hash%%-*}"
+  artifact_url="$cache_url/serve/$store_hash/$output_name"
   jq -cnS \
-    --argjson descriptor "$descriptor" \
-    --arg descriptorSha256 "$descriptor_sha256" \
-    --arg tag "$tag" --arg name "$asset_name" --arg url "$release_url" --arg hash "$integrity" \
-    '{descriptor:$descriptor, descriptorSha256:$descriptorSha256, release:{tag:$tag,name:$name,url:$url,hash:$hash}}' >>"$entries"
-  release_assets+=("$release_asset")
-  release_tags+=("$tag")
-  asset_names+=("$asset_name")
-done
+    --arg name "$name" --arg version "$version" --arg sha256 "$sha256" \
+    --argjson size "$size" --arg storePath "$store_path" --arg artifactUrl "$artifact_url" \
+    --argjson provenance "$(jq -cS . "$provenance_file")" \
+    --arg kind "$kind" --argjson descriptor "$descriptor" --arg descriptorSha256 "$descriptor_sha256" \
+    '{name:$name,version:$version,sha256:$sha256,size:$size,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
+     + (if $kind == "javascript" then {descriptor:$descriptor,descriptorSha256:$descriptorSha256} else {} end)' \
+    >>"$entries"
+done < <(jq -c '.[]' <<<"$rows")
+
+while IFS= read -r entry; do
+  name="$(jq -r '.name' <<<"$entry")"
+  sha256="$(jq -r '.sha256' <<<"$entry")"
+  store_path="$(jq -r '.storePath' <<<"$entry")"
+  artifact_url="$(jq -r '.artifactUrl' <<<"$entry")"
+  store_hash="$(basename "$store_path")"
+  store_hash="${store_hash%%-*}"
+  output_name="${artifact_url##*/}"
+  safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
+  pin_name="$safe_name-$sha256"
+  existing_count="$(jq --arg name "$pin_name" '[.[] | select(.name == $name)] | length' <<<"$pins")"
+  if ((existing_count == 0)); then
+    if $local_cache; then
+      nix copy --to "$cache_url" "$store_path"
+      local_artifact="$cache_root/serve/$store_hash/$output_name"
+      mkdir -p "$(dirname "$local_artifact")"
+      cp "$store_path/$output_name" "$local_artifact"
+      pins="$(jq -cS \
+        --arg name "$pin_name" --arg storePath "$store_path" --arg artifact "$output_name" \
+        '. + [{name:$name,lastRevision:{storePath:$storePath,artifacts:[$artifact]}}] | sort_by(.name)' \
+        <<<"$pins")"
+      pins_stage="$stage/pins.json"
+      printf '%s\n' "$pins" >"$pins_stage"
+      mv "$pins_stage" "$pins_file"
+    else
+      cachix push "$cache" "$store_path"
+      cachix pin "$cache" "$pin_name" "$store_path" --artifact "$output_name" --keep-forever
+    fi
+  fi
+  downloaded="$stage/$safe_name.download"
+  env -u CACHIX_AUTH_TOKEN curl -fsS "$artifact_url" -o "$downloaded"
+  [[ "$(sha256sum "$downloaded" | cut -d' ' -f1)" == "$sha256" ]] || fail "$name anonymous artifact digest mismatch"
+  [[ "$(stat -c '%s' "$downloaded")" == "$(jq -r '.size' <<<"$entry")" ]] || fail "$name anonymous artifact size mismatch"
+done <"$entries"
 
 proposal_stage="$stage/manifest.json"
-jq -sS '{schema:"effect-utils/buck2-release-products/v1",products:.}' "$entries" >"$proposal_stage"
-[[ "$(git -C "$repo_root" rev-parse --verify 'HEAD^{commit}')" == "$publication_commit" ]] ||
-  fail "checked-out commit changed while staging products"
-[[ -z "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]] ||
-  fail "Git worktree changed while staging products"
-
-
-# Single authority for "this tag already holds exactly the uploaded release
-# asset, as an immutable published release". Idempotent reuse and
-# post-publication verification share it so the two can never drift apart.
-release_holds_staged_module() {
-  local release_json="$1" expected_name="$2" asset_file="$3" expected_digest
-  expected_digest="$(sha256sum "$asset_file")"
-  expected_digest="sha256:${expected_digest%% *}"
-  jq -e --arg name "$expected_name" --arg digest "$expected_digest" \
-    '.draft == false and .immutable == true and (.assets | length == 1) and .assets[0].name == $name and .assets[0].digest == $digest' \
-    <<<"$release_json" >/dev/null
-}
-
-# Complete reuse preflight: every desired tag the listing already reported is
-# verified here, before this run performs a single mutation. Verification must
-# not be interleaved with publication, or a mismatch on a later product would
-# only be discovered after earlier products were already published immutably.
-declare -a verified_reuse=()
-for index in "${!release_tags[@]}"; do
-  tag="${release_tags[$index]}"
-  if [[ -z "${listed_release_ids[$tag]+present}" ]]; then
-    verified_reuse+=(false)
-    continue
-  fi
-  listed_ids="${listed_release_ids[$tag]}"
-  [[ "$listed_ids" == "${listed_ids% *}" ]] ||
-    fail "$tag is held by more than one release (ids: $listed_ids); refusing to publish over it"
-  # A desired tag already held by a draft is a leaked release from an earlier
-  # run: neither a gap nor a reusable publication. Publishing beside it would
-  # attach two releases to one immutable tag, and deleting a release this run
-  # did not create is not this tool's call, so a human resolves it by id.
-  [[ "${listed_release_draft[$tag]}" == false ]] ||
-    fail "$tag already exists as an unpublished draft release (id $listed_ids); publish or delete it manually, then rerun"
-  published="$(gh api "repos/$repository/releases/tags/$tag")" ||
-    fail "$tag already exists but could not be read; refusing to publish over it"
-  release_holds_staged_module "$published" "${asset_names[$index]}" "${release_assets[$index]}" ||
-    fail "$tag already exists and does not hold exactly the staged module; refusing to touch it"
-  # GitHub attests every immutable release automatically; `gh release
-  # verify-asset` is the documented check for that release attestation, and it
-  # is bound to this exact tag and local asset file.
-  gh release verify-asset "$tag" "${release_assets[$index]}" --repo "$repository" >/dev/null
-  verified_reuse+=(true)
-done
-
-for index in "${!release_tags[@]}"; do
-  tag="${release_tags[$index]}"
-  asset_name="${asset_names[$index]}"
-  release_asset="${release_assets[$index]}"
-
-  # Already verified in the preflight: never created, uploaded to or patched.
-  if [[ "${verified_reuse[$index]}" == true ]]; then
-    printf 'buck2-products-publish: reusing verified release: %s\n' "$tag" >&2
-    continue
-  fi
-
-  created="$(gh api --method POST "repos/$repository/releases" \
-    -f tag_name="$tag" -f name="$tag" -f target_commitish="$publication_commit" \
-    -F draft=true -F prerelease=false -F generate_release_notes=false)"
-  release_id="$(jq -er '.id | select(type == "number")' <<<"$created")" || fail "GitHub did not return a draft release id"
-  cleanup_draft_release_id="$release_id"
-  jq -e --arg tag "$tag" '.draft == true and .tag_name == $tag and (.assets | length == 0)' <<<"$created" >/dev/null ||
-    fail "new release is not the requested empty draft"
-
-  # The uploaded path's basename is the asset name GitHub records; a "#label"
-  # suffix would only set a display label, so none is passed.
-  gh release upload "$tag" "$release_asset" --repo "$repository"
-  gh api --method PATCH "repos/$repository/releases/$release_id" -F draft=false --silent
-  # The release is published from here on. Drop cleanup authority before any
-  # post-publication check so a failing verification can never delete it.
-  cleanup_draft_release_id=""
-
-  published="$(gh api "repos/$repository/releases/tags/$tag")"
-  release_holds_staged_module "$published" "$asset_name" "$release_asset" ||
-    fail "$tag asset set or digest does not match the staged module"
-  gh release verify-asset "$tag" "$release_asset" --repo "$repository" >/dev/null
-done
-
-import_root="$stage/import"
-mkdir -p "$import_root"
-cp -- "$repo_root/nix/buck2-products/default.nix" "$import_root/default.nix"
-cp -- "$targets" "$import_root/targets.json"
-cp -- "$proposal_stage" "$import_root/manifest.json"
-mapfile -t realized_paths < <(nix build --no-link --print-out-paths --impure --expr "let
-  pkgs = import <nixpkgs> { };
-  tracked = import ${import_root} { inherit pkgs; };
-  paths = builtins.concatLists (map (product: [ product.artifact product.descriptor ]) (builtins.attrValues tracked.products));
-in paths")
-((${#realized_paths[@]} == ${#product_rows[@]} * 2)) || fail "Nix did not realize every product artifact and descriptor"
-
+jq -sS '{schema:"effect-utils/buck-cache-products/v2",products:sort_by(.name)}' "$entries" >"$proposal_stage"
 if [[ -n "$proposal" ]]; then
-  cp -- "$proposal_stage" "$proposal"
-  printf 'buck2-products-publish: proposed manifest: %s\n' "$proposal" >&2
+  cp "$proposal_stage" "$proposal"
+  printf 'buck2-cache-products-publish: proposed manifest: %s\n' "$proposal" >&2
 else
   cat "$proposal_stage"
 fi

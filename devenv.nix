@@ -1171,11 +1171,12 @@ in
   };
 
   tasks."buck2:nix-bridge:check" = {
-    description = "Check the strict build-product contract and fail-closed artifact importer";
+    description = "Check build-product, cache-publication, and fail-closed artifact-import contracts";
     after = [ "mr:apply" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
+      ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
     '';
   };

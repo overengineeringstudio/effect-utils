@@ -4,7 +4,10 @@
 # the sole producer of the tracked manifest. Evaluation requires both sets to
 # match exactly, validates every canonical descriptor/release binding, and
 # realizes only the declared content-addressed module bytes.
-{ pkgs }:
+{
+  pkgs,
+  fromSourceProducts ? { },
+}:
 
 let
   lib = pkgs.lib;
@@ -178,82 +181,85 @@ let
     }) checkedProducts
   );
 in
-assert lib.assertMsg (
-  builtins.attrNames targets == [
-    "products"
-    "provenance"
-    "schemaVersion"
-  ]
-) "buck2-products: target inventory fields are not exact";
-assert lib.assertMsg (
-  targets.schemaVersion == 1
-) "buck2-products: unsupported target inventory schema";
-assert lib.assertMsg (
-  builtins.attrNames targets.provenance == [
-    "fingerprint"
-    "generator"
-    "regenerationCommand"
-    "semanticInputs"
-    "source"
-  ]
-  && targets.provenance.generator == targetGenerator
-  && targets.provenance.regenerationCommand == "devenv tasks run genie:run"
-  &&
-    targets.provenance.semanticInputs == [
-      "genie/buck2/javascript-product-registry.ts"
-      "nix/buck2-products/targets.json.genie.ts"
+if manifest.schema == "effect-utils/buck-cache-products/v2" then
+  import ./cache.nix { inherit pkgs fromSourceProducts; }
+else
+  assert lib.assertMsg (
+    builtins.attrNames targets == [
+      "products"
+      "provenance"
+      "schemaVersion"
     ]
-  && targets.provenance.source == "nix/buck2-products/targets.json.genie.ts"
-) "buck2-products: target inventory provenance is invalid";
-assert lib.assertMsg (
-  targets.provenance.fingerprint == targetFingerprint
-) "buck2-products: target inventory fingerprint mismatch";
-assert lib.assertMsg (
-  builtins.isList targets.products
-  && targets.products != [ ]
-  && builtins.all (
-    product:
-    builtins.attrNames product == [
-      "name"
-      "target"
+  ) "buck2-products: target inventory fields are not exact";
+  assert lib.assertMsg (
+    targets.schemaVersion == 1
+  ) "buck2-products: unsupported target inventory schema";
+  assert lib.assertMsg (
+    builtins.attrNames targets.provenance == [
+      "fingerprint"
+      "generator"
+      "regenerationCommand"
+      "semanticInputs"
+      "source"
     ]
-    && builtins.isString product.name
-    && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" product.name != null
-    && builtins.isString product.target
-    && builtins.match "([A-Za-z0-9_]+)?//[^][[:space:]]+:[^][[:space:]]+" product.target != null
-  ) targets.products
-) "buck2-products: target inventory products are malformed";
-assert lib.assertMsg (
-  builtins.length (lib.unique declaredProductNames) == builtins.length declaredProductNames
-) "buck2-products: target inventory product names must be unique";
-assert lib.assertMsg (
-  builtins.length (lib.unique declaredProductTargets) == builtins.length declaredProductTargets
-) "buck2-products: target inventory product targets must be unique";
-assert lib.assertMsg (
-  builtins.attrNames manifest == [
-    "products"
-    "schema"
-  ]
-) "buck2-products: manifest fields are not exact";
-assert lib.assertMsg (
-  manifest.schema == "effect-utils/buck2-release-products/v1"
-) "buck2-products: unsupported manifest schema";
-assert lib.assertMsg (
-  builtins.isList manifest.products && manifest.products != [ ]
-) "buck2-products: manifest products must be a non-empty list";
-assert lib.assertMsg (
-  builtins.length uniquePublishedProductNames == builtins.length publishedProductNames
-) "buck2-products: product names must be unique";
-assert lib.assertMsg (
-  declaredProducts == publishedProducts
-) "buck2-products: declared target inventory does not match the published manifest";
-assert lib.assertMsg (
-  builtins.length uniqueReleaseTags == builtins.length releaseTags
-) "buck2-products: each product payload must have one unique release";
-{
-  inherit manifest targets;
-  declaredProductNames = builtins.sort builtins.lessThan declaredProductNames;
-  publishedProductNames = builtins.sort builtins.lessThan publishedProductNames;
-  products = builtins.listToAttrs checkedProducts;
-  fullyPublished = true;
-}
+    && targets.provenance.generator == targetGenerator
+    && targets.provenance.regenerationCommand == "devenv tasks run genie:run"
+    &&
+      targets.provenance.semanticInputs == [
+        "genie/buck2/javascript-product-registry.ts"
+        "nix/buck2-products/targets.json.genie.ts"
+      ]
+    && targets.provenance.source == "nix/buck2-products/targets.json.genie.ts"
+  ) "buck2-products: target inventory provenance is invalid";
+  assert lib.assertMsg (
+    targets.provenance.fingerprint == targetFingerprint
+  ) "buck2-products: target inventory fingerprint mismatch";
+  assert lib.assertMsg (
+    builtins.isList targets.products
+    && targets.products != [ ]
+    && builtins.all (
+      product:
+      builtins.attrNames product == [
+        "name"
+        "target"
+      ]
+      && builtins.isString product.name
+      && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" product.name != null
+      && builtins.isString product.target
+      && builtins.match "([A-Za-z0-9_]+)?//[^][[:space:]]+:[^][[:space:]]+" product.target != null
+    ) targets.products
+  ) "buck2-products: target inventory products are malformed";
+  assert lib.assertMsg (
+    builtins.length (lib.unique declaredProductNames) == builtins.length declaredProductNames
+  ) "buck2-products: target inventory product names must be unique";
+  assert lib.assertMsg (
+    builtins.length (lib.unique declaredProductTargets) == builtins.length declaredProductTargets
+  ) "buck2-products: target inventory product targets must be unique";
+  assert lib.assertMsg (
+    builtins.attrNames manifest == [
+      "products"
+      "schema"
+    ]
+  ) "buck2-products: manifest fields are not exact";
+  assert lib.assertMsg (
+    manifest.schema == "effect-utils/buck2-release-products/v1"
+  ) "buck2-products: unsupported manifest schema";
+  assert lib.assertMsg (
+    builtins.isList manifest.products && manifest.products != [ ]
+  ) "buck2-products: manifest products must be a non-empty list";
+  assert lib.assertMsg (
+    builtins.length uniquePublishedProductNames == builtins.length publishedProductNames
+  ) "buck2-products: product names must be unique";
+  assert lib.assertMsg (
+    declaredProducts == publishedProducts
+  ) "buck2-products: declared target inventory does not match the published manifest";
+  assert lib.assertMsg (
+    builtins.length uniqueReleaseTags == builtins.length releaseTags
+  ) "buck2-products: each product payload must have one unique release";
+  {
+    inherit manifest targets;
+    declaredProductNames = builtins.sort builtins.lessThan declaredProductNames;
+    publishedProductNames = builtins.sort builtins.lessThan publishedProductNames;
+    products = builtins.listToAttrs checkedProducts;
+    fullyPublished = true;
+  }

@@ -57,11 +57,11 @@ root-disk use, about 1.0 GiB MemAvailable, 7.8/8.0 GiB swap, and memory PSI
 
 ## Result
 
-| Action | Fresh CAS: miss -> remote | Source changed -> remote | Unchanged + fresh Buck state -> AC hit |
-| --- | --- | --- | --- |
-| `tsgo_typecheck` (`content-address:typecheck`) | NOT RUN: NativeLink unrealized | NOT RUN | NOT RUN |
-| `tsgo_emit` (`content-address:dist`) | NOT RUN: NativeLink unrealized | NOT RUN | NOT RUN |
-| unit test (`content-address:test`) | NOT RUN: NativeLink unrealized | NOT RUN | NOT RUN |
+| Action                                         | Fresh CAS: miss -> remote      | Source changed -> remote | Unchanged + fresh Buck state -> AC hit |
+| ---------------------------------------------- | ------------------------------ | ------------------------ | -------------------------------------- |
+| `tsgo_typecheck` (`content-address:typecheck`) | NOT RUN: NativeLink unrealized | NOT RUN                  | NOT RUN                                |
+| `tsgo_emit` (`content-address:dist`)           | NOT RUN: NativeLink unrealized | NOT RUN                  | NOT RUN                                |
+| unit test (`content-address:test`)             | NOT RUN: NativeLink unrealized | NOT RUN                  | NOT RUN                                |
 
 `//:quick` was also not invoked. There are no NativeLink worker logs, execution
 metrics, or `buck2 log what-ran` claims to interpret as execution evidence.
@@ -70,12 +70,12 @@ host-capacity prerequisites are falsified for this dev4 run.
 
 ## Timing
 
-| Step | Wall time | Result |
-| --- | ---: | --- |
-| Wait for dev4 recovery | 23m 59s | five-minute probe 5 succeeded |
-| NativeLink 1.7.1 flake realization | about 10m | deterministic compiler-rt failure |
-| NativeLink 1.6.6 flake retry | 11m 13s | stopped at shared-host safety boundary |
-| Buck action matrix | 0s | not reached |
+| Step                               | Wall time | Result                                 |
+| ---------------------------------- | --------: | -------------------------------------- |
+| Wait for dev4 recovery             |   23m 59s | five-minute probe 5 succeeded          |
+| NativeLink 1.7.1 flake realization | about 10m | deterministic compiler-rt failure      |
+| NativeLink 1.6.6 flake retry       |   11m 13s | stopped at shared-host safety boundary |
+| Buck action matrix                 |        0s | not reached                            |
 
 ## What broke
 

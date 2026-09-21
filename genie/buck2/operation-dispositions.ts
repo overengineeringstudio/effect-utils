@@ -42,6 +42,7 @@ export const ciOperationDispositions = {
   'pnpm-builder-contract': 'outside-by-policy:nix-builder-contract',
   'pnpm-regression': 'outside-by-policy:nix-builder-contract',
   'pr-reviews-resolved': 'outside-by-policy:github-review-thread-gate',
+  'publish-products': 'outside-by-policy:live-publication',
   'source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
   test: 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test-integration-notion': 'outside-by-policy:secret-service-integration',

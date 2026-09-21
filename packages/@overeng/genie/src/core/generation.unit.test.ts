@@ -20,6 +20,15 @@ describe('getHeaderComment', () => {
     },
   )
 
+  it('uses Nix comments for Nix expressions', () => {
+    expect(
+      getHeaderComment({
+        targetFilePath: 'nix/buck2-products/from-source-products.nix',
+        sourceFile: 'from-source-products.nix.genie.ts',
+      }),
+    ).toBe('# Generated file - DO NOT EDIT\n# Source: from-source-products.nix.genie.ts\n\n')
+  })
+
   it('uses shell comments for shell scripts', () => {
     expect(
       getHeaderComment({

@@ -49,14 +49,14 @@ Cachix's 1.11.0 API exposes the `serve/<storehash>/<filepath>` route
 3. Probe authenticated/anonymous HTTP, Nix native prefetch and `fetchurl`, pnpm, and Buck2 `http_file`.
 4. Re-pin both test names with `--keep-days 1`; no delete verb exists, so this bounds cleanup without touching existing pins.
 
-| Field | Value |
-| --- | --- |
-| Artifact | `5ec4fb7b…953f2b-overeng-utils.tgz` |
-| Size | 289,672 bytes |
-| SHA-256 | `5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b` |
+| Field       | Value                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| Artifact    | `5ec4fb7b…953f2b-overeng-utils.tgz`                                                               |
+| Size        | 289,672 bytes                                                                                     |
+| SHA-256     | `5ec4fb7b529fb020ab4159491fe46ad8a36c9a8859370236f426eba925953f2b`                                |
 | SHA-512 SRI | `sha512-zD2EdAQEmFXRcdtNf86nLp1L4of0S4cLZH2v6+Swid0XDuuxg23M+ThlMYpHrQj4iCSME8m7XvC3BN1oCIVVbA==` |
-| Store path | `/nix/store/m62549nx…-cachix-artifact-origin-q44-utils-5ec4fb7b` |
-| Test pin | `q44-cachix-artifact-origin-utils-5ec4fb7b…953f2b` |
+| Store path  | `/nix/store/m62549nx…-cachix-artifact-origin-q44-utils-5ec4fb7b`                                  |
+| Test pin    | `q44-cachix-artifact-origin-utils-5ec4fb7b…953f2b`                                                |
 
 Anonymous `nix-cache-info` returned 401 for `schickling-dotfiles` and
 `schickling-stiftung`, and 200 for `overeng-effect-utils`; the latter is the
@@ -64,13 +64,13 @@ available public product-cache fixture.
 
 ## Result
 
-| Consumer | Private cache | Public cache |
-| --- | --- | --- |
-| HTTP GET | **PASS with token.** Anonymous 401; daemon netrc Basic and Bearer header each returned 200 and 289,672 matching bytes. | **PASS anonymous.** 200, 289,672 matching bytes. |
-| Nix `store prefetch-file` | **PASS.** The daemon netrc was honored; 0.67 s and expected SRI. | **PASS.** Anonymous; 0.17 s and expected SRI. |
-| Nix `pkgs.fetchurl` | **FAIL.** Four 401 responses: the sandboxed curl did not receive the daemon netrc. | **PASS.** Output digest matched. |
-| pnpm URL dependency | **PASS.** A trusted user-level `.npmrc` selected with `NPM_CONFIG_USERCONFIG` supplied a path-scoped `_authToken`; clean 129-package store, 46.0 s. | **PASS.** 129 packages, 46.1 s; lock recorded exact SHA-512. |
-| Buck2 `http_file` | **FAIL.** A fresh isolation with a valid `$HOME/.netrc` received 401. | **PASS.** Fresh isolation materialized matching bytes. |
+| Consumer                  | Private cache                                                                                                                                       | Public cache                                                 |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| HTTP GET                  | **PASS with token.** Anonymous 401; daemon netrc Basic and Bearer header each returned 200 and 289,672 matching bytes.                              | **PASS anonymous.** 200, 289,672 matching bytes.             |
+| Nix `store prefetch-file` | **PASS.** The daemon netrc was honored; 0.67 s and expected SRI.                                                                                    | **PASS.** Anonymous; 0.17 s and expected SRI.                |
+| Nix `pkgs.fetchurl`       | **FAIL.** Four 401 responses: the sandboxed curl did not receive the daemon netrc.                                                                  | **PASS.** Output digest matched.                             |
+| pnpm URL dependency       | **PASS.** A trusted user-level `.npmrc` selected with `NPM_CONFIG_USERCONFIG` supplied a path-scoped `_authToken`; clean 129-package store, 46.0 s. | **PASS.** 129 packages, 46.1 s; lock recorded exact SHA-512. |
+| Buck2 `http_file`         | **FAIL.** A fresh isolation with a valid `$HOME/.netrc` received 401.                                                                               | **PASS.** Fresh isolation materialized matching bytes.       |
 
 The private pnpm auth entry was scoped to the artifact route and used an
 environment placeholder in a user-level `.npmrc`; pnpm deliberately refuses to

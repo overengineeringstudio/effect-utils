@@ -618,7 +618,7 @@ export const getHeaderComment = ({
     return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
   }
 
-  if (basename === 'BUCK' || ext === '.bzl' || ext === '.bxl') {
+  if (basename === 'BUCK' || ext === '.bzl' || ext === '.bxl' || ext === '.nix') {
     return `# Generated file - DO NOT EDIT\n# Source: ${sourceFile}\n\n`
   }
 
