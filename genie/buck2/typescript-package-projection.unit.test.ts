@@ -140,6 +140,7 @@ describe('declared-closure package projection', () => {
       expect(admitted.output).toContain('    runtime_entry = "package-tree.ts",')
       expect(admitted.output).toContain('load("//buck2:editor_view.bzl", "editor_view_inputs")')
       expect(admitted.output).toContain(editorViewTarget)
+      expect(admitted.output).toContain('    name = "dist-package",')
       expect(admitted.output.split('    name = "editor_view_inputs",')).toHaveLength(2)
       for (const retiredTerm of retiredProviderTerms) {
         expect(admitted.output).not.toContain(retiredTerm)
@@ -271,6 +272,22 @@ describe('declared-closure package projection', () => {
     expect(outputsByAdmission.utils).toContain(
       '        "src/node/stylex/mod.js": "src/node/stylex/mod.js",',
     )
+  })
+
+  it('projects standalone consumers against external rules and declared node_modules', () => {
+    const { dependencyImporter: _, ...admission } = buck2TypeScriptAdmissions.stylexTokens
+    const output = buck2TypeScriptPackageProjection({
+      ...admission,
+      dependencyTarget: '//:node_modules',
+      rulesCell: '@rules',
+    }).stringify(genieContext)
+    expect(output).toContain('load("@rules//buck2:materialization.bzl"')
+    expect(output).toContain('load("@rules//buck2:typescript.bzl"')
+    expect(output).toContain('    node_modules = "//:node_modules",')
+    expect(output).toContain('    runtime = "@rules//:package_tree_runtime",')
+    expect(output).toContain('load("@rules//buck2:package_tools.bzl", "npm_package_archive")')
+    expect(output).toContain('    output = "overeng-stylex-tokens.tgz",')
+    expect(output).not.toContain('//buck2/dependencies:view_')
   })
 })
 
@@ -582,7 +599,7 @@ describe('declared test lanes', () => {
       tests: [{ name: 'test', runner: 'vitest', staticCollection: true }],
     }).stringify(genieContext)
 
-    expect(outputsByAdmission.kdl).toContain('# Projection schema version: 11')
+    expect(outputsByAdmission.kdl).toContain('# Projection schema version: 12')
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withoutTests))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withLongerTimeout))
     expect(fingerprintOf(outputsByAdmission.kdl)).not.toBe(fingerprintOf(withStaticCollection))

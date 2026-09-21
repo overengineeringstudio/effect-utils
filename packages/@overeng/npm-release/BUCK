@@ -5,10 +5,10 @@ load("//buck2:package_tools.bzl", "package_bin_artifact")
 load("//buck2/products:defs.bzl", "javascript_product")
 
 # Projection source: packages/@overeng/npm-release/BUCK.genie.ts
-# Projection schema version: 11
+# Projection schema version: 12
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:9153418b8801b74e90b1e8f013138ac7b219bc3d05a39cf4f4ef206eae748979
-# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/npm-release/src/**/*.cts, packages/@overeng/npm-release/src/**/*.js, packages/@overeng/npm-release/src/**/*.mts, packages/@overeng/npm-release/src/**/*.spec.cjs, packages/@overeng/npm-release/src/**/*.spec.jsx, packages/@overeng/npm-release/src/**/*.spec.mjs, packages/@overeng/npm-release/src/**/*.test.cjs, packages/@overeng/npm-release/src/**/*.test.jsx, packages/@overeng/npm-release/src/**/*.test.mjs, packages/@overeng/npm-release/src/**/*.ts, packages/@overeng/npm-release/src/**/*.tsx, packages/@overeng/npm-release/src/**/__snapshots__/*.snap, packages/@overeng/npm-release/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
+# Semantic fingerprint: sha256:12cf02ad908bf1ebf6bf97b2b7ef7550b233522e3abfb89747ae78cb61988f60
+# Semantic inputs: buck2/dependencies/BUCK.genie.ts, buck2/dependencies/pnpm-lock.sha256.json.genie.ts, buck2/static_checks.bzl, genie/buck2/mod.ts, genie/buck2/typescript-package-projection.ts, genie/packages.ts, package.json.genie.ts, packages/@overeng/buck2-tools/src/javascript-runner.ts, packages/@overeng/buck2-tools/src/package-tree.ts, packages/@overeng/buck2-tools/src/real-path.ts, packages/@overeng/buck2-tools/src/typescript-runner.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/npm-release/package.json.genie.ts, packages/@overeng/npm-release/src/**/*.css, packages/@overeng/npm-release/src/**/*.cts, packages/@overeng/npm-release/src/**/*.js, packages/@overeng/npm-release/src/**/*.mts, packages/@overeng/npm-release/src/**/*.spec.cjs, packages/@overeng/npm-release/src/**/*.spec.jsx, packages/@overeng/npm-release/src/**/*.spec.mjs, packages/@overeng/npm-release/src/**/*.test.cjs, packages/@overeng/npm-release/src/**/*.test.jsx, packages/@overeng/npm-release/src/**/*.test.mjs, packages/@overeng/npm-release/src/**/*.ts, packages/@overeng/npm-release/src/**/*.tsx, packages/@overeng/npm-release/src/**/__snapshots__/*.snap, packages/@overeng/npm-release/tsconfig.json.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-dev/package.json.genie.ts
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -16,6 +16,7 @@ load("//buck2:editor_view.bzl", "editor_view_inputs")
 load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
 load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
 load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
 
 export_file(
     name = "package.json",
@@ -121,6 +122,15 @@ tsgo_emit(
     declaration_sources = {
     },
     declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    typecheck = ":typecheck",
+    output = "overeng-npm-release.tgz",
     visibility = ["PUBLIC"],
 )
 

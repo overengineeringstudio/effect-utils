@@ -201,6 +201,10 @@ def host_execution_platform_label():
         return "//buck2/platforms:exec_macos_aarch64"
     fail("host execution platform supports only x86_64-linux, aarch64-linux, and aarch64-darwin")
 
+def _cell_relative_label(label):
+    separator = label.find("//")
+    return label if separator <= 0 else label[separator:]
+
 def native_execution_constraints(target_platform):
     """Returns the execution constraints for an admitted native target pair."""
     constraints = {
@@ -224,7 +228,7 @@ def native_execution_constraints(target_platform):
             "prelude//cpu/constraints:arm64",
             "prelude//os/constraints:macos",
         ],
-    }.get(target_platform)
+    }.get(_cell_relative_label(target_platform))
     if constraints == None:
         fail("no native execution pair is admitted for target platform {}".format(target_platform))
     return constraints
@@ -256,7 +260,7 @@ def product_platform_constraints(target_platform):
             "prelude//cpu/constraints:arm64",
             "prelude//os/constraints:macos",
         ],
-    }.get(target_platform)
+    }.get(_cell_relative_label(target_platform))
     if constraints == None:
         fail("no product constraints are admitted for target platform {}".format(target_platform))
     return constraints

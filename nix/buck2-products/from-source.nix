@@ -8,32 +8,38 @@
   preparedDeps,
   producerCommit,
   repositoryRoot ? ../..,
+  repositorySource ? null,
+  rootProjection ? null,
   expectedSha256 ? null,
 }:
 
 let
   lib = pkgs.lib;
-  source = lib.fileset.toSource {
-    root = repositoryRoot;
-    fileset = lib.fileset.unions [
-      (repositoryRoot + "/BUCK")
-      (repositoryRoot + "/package.json")
-      (repositoryRoot + "/.oxfmtrc.json")
-      (repositoryRoot + "/.oxlintrc.json")
-      (repositoryRoot + "/context")
-      (repositoryRoot + "/devenv.lock")
-      (repositoryRoot + "/devenv.yaml")
-      (repositoryRoot + "/flake.lock")
-      (repositoryRoot + "/flake.nix")
-      (repositoryRoot + "/megarepo.kdl")
-      (repositoryRoot + "/megarepo.lock")
-      (repositoryRoot + "/patches")
-      (repositoryRoot + "/scripts")
-      (repositoryRoot + "/tsconfig.lint.json")
-      (repositoryRoot + "/buck2")
-      (repositoryRoot + "/packages/@overeng")
-    ];
-  };
+  source =
+    if repositorySource == null then
+      lib.fileset.toSource {
+        root = repositoryRoot;
+        fileset = lib.fileset.unions [
+          (repositoryRoot + "/BUCK")
+          (repositoryRoot + "/package.json")
+          (repositoryRoot + "/.oxfmtrc.json")
+          (repositoryRoot + "/.oxlintrc.json")
+          (repositoryRoot + "/context")
+          (repositoryRoot + "/devenv.lock")
+          (repositoryRoot + "/devenv.yaml")
+          (repositoryRoot + "/flake.lock")
+          (repositoryRoot + "/flake.nix")
+          (repositoryRoot + "/megarepo.kdl")
+          (repositoryRoot + "/megarepo.lock")
+          (repositoryRoot + "/patches")
+          (repositoryRoot + "/scripts")
+          (repositoryRoot + "/tsconfig.lint.json")
+          (repositoryRoot + "/buck2")
+          (repositoryRoot + "/packages/@overeng")
+        ];
+      }
+    else
+      repositorySource;
   prelude = buck2.passthru.prelude;
   generation = builtins.hashString "sha256" "nix-buck-product:${pkgs.bun}";
   bunClosure = pkgs.closureInfo { rootPaths = [ pkgs.bun ]; };
@@ -73,81 +79,92 @@ pkgs.stdenv.mkDerivation {
     export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
     mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR"
 
-    touch .buckroot
-    cat > .buckconfig <<'BUCKCONFIG'
-    [cells]
-      effect_utils = .
-      prelude = prelude
+    ${
+      if rootProjection == null then
+        ''
+          touch .buckroot
+          cat > .buckconfig <<'BUCKCONFIG'
+          [cells]
+            effect_utils = .
+            prelude = prelude
 
-    [cell_aliases]
-      config = prelude
-      ovr_config = prelude
-      fbsource = prelude
-      toolchains = effect_utils
+          [cell_aliases]
+            config = prelude
+            ovr_config = prelude
+            fbsource = prelude
+            toolchains = effect_utils
 
-    [parser]
-      target_platform_detector_spec = target:effect_utils//...->effect_utils//buck2/platforms:host_platform
+          [parser]
+            target_platform_detector_spec = target:effect_utils//...->effect_utils//buck2/platforms:host_platform
 
-    [build]
-      execution_platforms = effect_utils//buck2/platforms:host_execution_platform
+          [build]
+            execution_platforms = effect_utils//buck2/platforms:host_execution_platform
 
-    [buck2]
-      file_watcher = notify
-      digest_algorithms = SHA256
-      remote_cache_enabled = false
-      allow_cache_uploads = false
+          [buck2]
+            file_watcher = notify
+            digest_algorithms = SHA256
+            remote_cache_enabled = false
+            allow_cache_uploads = false
 
-    [project]
-      ignore = **/__pycache__,**/dist,**/target,**/target/**,.devenv,.git,buck-out,node_modules,packages/.editor-view,target,tmp
-    BUCKCONFIG
+          [project]
+            ignore = **/__pycache__,**/dist,**/target,**/target/**,.devenv,.git,buck-out,node_modules,packages/.editor-view,target,tmp
+          BUCKCONFIG
 
-    mkdir -p prelude
-    tar -xzf ${prelude} --strip-components=1 -C prelude
+          mkdir -p prelude
+          tar -xzf ${prelude} --strip-components=1 -C prelude
 
-    mkdir -p .buck2/capabilities
-    cat > .buck2/capabilities/defs.bzl <<'CAPABILITIES_HEAD'
-    GENERATION = "${generation}"
-    CAPABILITIES = {
-      "${
-        if pkgs.stdenv.hostPlatform.isDarwin then "aarch64-macos" else pkgs.stdenv.hostPlatform.system
-      }": {
-        "bun": {
-          "generation": "${generation}",
-          "contentDigest": "@bunDigest@",
-          "closureIdentity": "${pkgs.bun}",
-          "executableStorePath": "${pkgs.bun}/bin/bun",
-          "closureStorePaths": [
-    CAPABILITIES_HEAD
-    sort -u ${bunClosure}/store-paths | sed 's|^|          "|; s|$|",|' >> .buck2/capabilities/defs.bzl
-    cat >> .buck2/capabilities/defs.bzl <<'CAPABILITIES_TAIL'
-          ],
-        },
-      },
+          mkdir -p .buck2/capabilities
+          cat > .buck2/capabilities/defs.bzl <<'CAPABILITIES_HEAD'
+          GENERATION = "${generation}"
+          CAPABILITIES = {
+            "${
+              if pkgs.stdenv.hostPlatform.isDarwin then "aarch64-macos" else pkgs.stdenv.hostPlatform.system
+            }": {
+              "bun": {
+                "generation": "${generation}",
+                "contentDigest": "@bunDigest@",
+                "closureIdentity": "${pkgs.bun}",
+                "executableStorePath": "${pkgs.bun}/bin/bun",
+                "closureStorePaths": [
+          CAPABILITIES_HEAD
+          sort -u ${bunClosure}/store-paths | sed 's|^|          "|; s|$|",|' >> .buck2/capabilities/defs.bzl
+          cat >> .buck2/capabilities/defs.bzl <<'CAPABILITIES_TAIL'
+                ],
+              },
+            },
+          }
+          CAPABILITIES_TAIL
+          substituteInPlace .buck2/capabilities/defs.bzl \
+            --replace-fail '@bunDigest@' "$(sha256sum ${pkgs.bun}/bin/bun | cut -d' ' -f1)"
+
+          cat > buck2/toolchains/BUCK <<'TOOLCHAINS'
+          load("//buck2/toolchains:defs.bzl", "bun_toolchain")
+          load("//.buck2/capabilities:defs.bzl", "CAPABILITIES", "GENERATION")
+          bun_toolchain(
+              name = "bun",
+              capabilities = CAPABILITIES,
+              generation = GENERATION,
+              visibility = ["PUBLIC"],
+          )
+          TOOLCHAINS
+
+          cat > buck2/dependencies/BUCK <<'DEPENDENCIES'
+          load("//buck2/dependencies:defs.bzl", "pnpm_platform_gated_packages")
+          pnpm_platform_gated_packages(
+              name = "platform_gated_packages",
+              capabilities = {},
+              families = {},
+              visibility = ["PUBLIC"],
+          )
+          DEPENDENCIES
+        ''
+      else
+        ''
+          cp -R ${rootProjection}/. .
+          chmod -R u+w .buck2 buck2 BUCK .buckconfig .buckroot
+        ''
     }
-    CAPABILITIES_TAIL
-    substituteInPlace .buck2/capabilities/defs.bzl \
-      --replace-fail '@bunDigest@' "$(sha256sum ${pkgs.bun}/bin/bun | cut -d' ' -f1)"
 
-    cat > buck2/toolchains/BUCK <<'TOOLCHAINS'
-    load("//buck2/toolchains:defs.bzl", "bun_toolchain")
-    load("//.buck2/capabilities:defs.bzl", "CAPABILITIES", "GENERATION")
-    bun_toolchain(
-        name = "bun",
-        capabilities = CAPABILITIES,
-        generation = GENERATION,
-        visibility = ["PUBLIC"],
-    )
-    TOOLCHAINS
-
-    cat > buck2/dependencies/BUCK <<'DEPENDENCIES'
-    load("//buck2/dependencies:defs.bzl", "pnpm_platform_gated_packages")
-    pnpm_platform_gated_packages(
-        name = "platform_gated_packages",
-        capabilities = {},
-        families = {},
-        visibility = ["PUBLIC"],
-    )
-    DEPENDENCIES
 
     mkdir -p nix-deps
     cp -a ${preparedDeps}/node_modules nix-deps/tree
@@ -180,8 +197,8 @@ pkgs.stdenv.mkDerivation {
                 const projectedTarget = join(destination, relative(rootModules, resolved))
                 await mkdir(dirname(destinationPath), { recursive: true })
                 await symlink(relative(dirname(destinationPath), projectedTarget), destinationPath)
-              } else if (!(resolved === preparedRoot || resolved.startsWith(join(preparedRoot, "packages") + "/"))) {
-                throw new Error(`prepared dependency link escapes its declared roots: ''${sourcePath}`)
+              } else if (!(resolved === preparedRoot || resolved.startsWith(preparedRoot + "/"))) {
+                throw new Error(`prepared dependency link escapes its prepared root: ''${sourcePath}`)
               }
             } else {
               throw new Error(`prepared dependency projection expected only directories and links: ''${sourcePath}`)
@@ -259,42 +276,65 @@ pkgs.stdenv.mkDerivation {
     ROOT_TARGET
 
     package_buck=${lib.escapeShellArg packagePath}/BUCK
-    PACKAGE_BUCK="$package_buck" ${pkgs.bun}/bin/bun -e '
-      const path = process.env.PACKAGE_BUCK
-      if (path === undefined) throw new Error("PACKAGE_BUCK is unset")
-      let source = await Bun.file(path).text()
-      const replaceExactlyOnce = (from, to) => {
-        if (source.split(from).length !== 2) throw new Error(`Expected exactly one occurrence of: ''${from}`)
-        source = source.replace(from, to)
-      }
-      replaceExactlyOnce(
-        "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_view\")",
-        "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_tree\", \"package_view\")",
-      )
-      const opening = "package_view(\n    name = \"package_tree\",\n"
-      const blockStart = source.indexOf(opening)
-      if (blockStart === -1 || source.indexOf(opening, blockStart + 1) !== -1) {
-        throw new Error("Expected exactly one package_tree package_view")
-      }
-      const blockEnd = source.indexOf("\n)\n", blockStart)
-      if (blockEnd === -1) throw new Error("Unterminated package_tree package_view")
-      const dependencyStart = source.indexOf("    dependency_view = \"//buck2/dependencies:view_", blockStart)
-      if (dependencyStart === -1 || dependencyStart >= blockEnd) {
-        throw new Error("package_tree package_view has no dependency_view")
-      }
-      const dependencyEnd = source.indexOf("\n", dependencyStart)
-      const rewrittenBlock = source
-        .slice(blockStart, blockEnd)
-        .replace("package_view(", "package_tree(")
-        .replace(
-          source.slice(dependencyStart, dependencyEnd),
-          "    node_modules = \"//:nix_prepared_node_modules\",",
-        )
-        .replace("    workspace_dist = {\n    },\n", "")
-        .replace("    workspace_dependency_views = {\n    },\n", "")
-      source = source.slice(0, blockStart) + rewrittenBlock + source.slice(blockEnd)
-      await Bun.write(path, source)
-    '
+    ${
+      if rootProjection == null then
+        ''
+          PACKAGE_BUCK="$package_buck" ${pkgs.bun}/bin/bun -e '
+            const path = process.env.PACKAGE_BUCK
+            if (path === undefined) throw new Error("PACKAGE_BUCK is unset")
+            let source = await Bun.file(path).text()
+            const replaceExactlyOnce = (from, to) => {
+              if (source.split(from).length !== 2) throw new Error(`Expected exactly one occurrence of: ''${from}`)
+              source = source.replace(from, to)
+            }
+            replaceExactlyOnce(
+              "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_view\")",
+              "load(\"//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_tree\", \"package_view\")",
+            )
+            const opening = "package_view(\n    name = \"package_tree\",\n"
+            const blockStart = source.indexOf(opening)
+            if (blockStart === -1 || source.indexOf(opening, blockStart + 1) !== -1) {
+              throw new Error("Expected exactly one package_tree package_view")
+            }
+            const blockEnd = source.indexOf("\n)\n", blockStart)
+            if (blockEnd === -1) throw new Error("Unterminated package_tree package_view")
+            const dependencyStart = source.indexOf("    dependency_view = \"//buck2/dependencies:view_", blockStart)
+            if (dependencyStart === -1 || dependencyStart >= blockEnd) {
+              throw new Error("package_tree package_view has no dependency_view")
+            }
+            const dependencyEnd = source.indexOf("\n", dependencyStart)
+            const rewrittenBlock = source
+              .slice(blockStart, blockEnd)
+              .replace("package_view(", "package_tree(")
+              .replace(
+                source.slice(dependencyStart, dependencyEnd),
+                "    node_modules = \"//:nix_prepared_node_modules\",",
+              )
+              .replace("    workspace_dist = {\n    },\n", "")
+              .replace("    workspace_dependency_views = {\n    },\n", "")
+            source = source.slice(0, blockStart) + rewrittenBlock + source.slice(blockEnd)
+            await Bun.write(path, source)
+          '
+        ''
+      else
+        ''
+          PACKAGE_BUCK="$package_buck" ${pkgs.bun}/bin/bun -e '
+            const path = process.env.PACKAGE_BUCK
+            if (path === undefined) throw new Error("PACKAGE_BUCK is unset")
+            let source = await Bun.file(path).text()
+            const rulesLoad = "load(\"@rules//buck2:materialization.bzl\", \"export_materialization_inputs\", \"package_tree\")"
+            if (source.split(rulesLoad).length !== 2) {
+              throw new Error("Expected exactly one @rules package_tree load")
+            }
+            const from = "    node_modules = \"//:node_modules\","
+            if (source.split(from).length !== 2) {
+              throw new Error("Expected exactly one consumer node_modules target")
+            }
+            source = source.replace(from, "    node_modules = \"//:nix_prepared_node_modules\",")
+            await Bun.write(path, source)
+          '
+        ''
+    }
 
     artifact="$(${buck2}/bin/buck2 --isolation-dir nix-product-${safeName} build ${lib.escapeShellArg target} --local-only --no-remote-cache --console simple --show-simple-output)"
     test -f "$artifact"
@@ -335,6 +375,8 @@ pkgs.stdenv.mkDerivation {
       producerCommit
       source
       target
+      repositorySource
+      rootProjection
       ;
     artifactName = outputName;
     productKind = product.kind;
