@@ -271,6 +271,11 @@ const createProject = ({
     test: {
       name: projectName,
       setupFiles: ['@overeng/utils/node/storybook/gate/setup'],
+      // Vitest copies visual-diff artifacts into `attachmentsDir` for
+      // reporters. Its default `.vitest-attachments` is below the consumer
+      // package, so keep that second diagnostic channel in the same owned
+      // sidecar as matcher diffs and automatic browser failure screenshots.
+      attachmentsDir: join(artifactsDir, 'attachments'),
       // Capturing several stories concurrently in one browser context
       // corrupted frames nondeterministically — a few stories per run showed
       // a stale duplicate band from racing full-page captures. Sequential
