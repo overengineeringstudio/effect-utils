@@ -1,6 +1,5 @@
 {
   "files": [
-    "BUCK",
     "buck2-member.json",
     "buck2/dependencies/defs.bzl",
     "buck2/editor_view.bzl",

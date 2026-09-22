@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Buck2 rules distribution**: Give the standalone rules artifact its own
+  minimal root package for package runtimes and the TypeScript action runner,
+  so consumer roots can resolve the configured TypeScript toolchain without
+  importing the provider workspace root.
+
 ### Added
 
 - **@overeng/gh-ci-utils**: `run` accepts workflow-dispatch inputs via

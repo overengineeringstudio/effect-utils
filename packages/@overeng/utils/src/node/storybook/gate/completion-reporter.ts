@@ -34,6 +34,7 @@ export interface StoryGateReporterOutput {
   readonly testResults: readonly StoryGateReporterResult[]
 }
 
+/** Convert Vitest's module results into the stable story-gate report shape. */
 export const storyGateReporterOutput = (testModules: TestModules): StoryGateReporterOutput => ({
   testResults: testModules.map((module) => ({
     name: module.moduleId,
@@ -44,9 +45,8 @@ export const storyGateReporterOutput = (testModules: TestModules): StoryGateRepo
         title: test.name,
         status: result.state,
         failureMessages:
-          result.errors?.map(
-            (error) => error.stack ?? error.message ?? JSON.stringify(error),
-          ) ?? [],
+          result.errors?.map((error) => error.stack ?? error.message ?? JSON.stringify(error)) ??
+          [],
       }
     }),
   })),
