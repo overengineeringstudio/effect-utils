@@ -368,20 +368,28 @@ describe('canonicalResolvedPath', () => {
 })
 
 describe('findEditorViewClosureViolations', () => {
-  it('names a workspace package imported outside the declared editor publication set', () => {
+  it('names the importing workspace package whose editor view is undeclared', () => {
     const violation = {
       source: '/repo/source.genie.ts',
-      specifier: '@overeng/otel-contract/registry',
-      chain: ['/repo/source.genie.ts', '/repo/runtime.ts'],
+      specifier: '@overeng/content-address/schema',
+      chain: [
+        '/repo/source.genie.ts',
+        '/repo/packages/@overeng/otel-contract/src/profile-link.ts',
+      ],
     }
+    const workspacePackages = [
+      { name: '@overeng/genie', path: 'packages/@overeng/genie' },
+      { name: '@overeng/otel-contract', path: 'packages/@overeng/otel-contract' },
+      { name: '@overeng/content-address', path: 'packages/@overeng/content-address' },
+    ]
 
     expect(
       findEditorViewClosureViolations({
         violations: [violation],
-        workspacePackages: [
-          { name: '@overeng/otel-contract', path: 'packages/@overeng/otel-contract' },
-        ],
+        workspacePackages,
         publishedPackagePaths: ['.'],
+        repoRoot: '/repo',
+        rootPackagePath: 'packages/@overeng/genie',
       }),
     ).toEqual([
       {
@@ -393,10 +401,10 @@ describe('findEditorViewClosureViolations', () => {
     expect(
       findEditorViewClosureViolations({
         violations: [violation],
-        workspacePackages: [
-          { name: '@overeng/otel-contract', path: 'packages/@overeng/otel-contract' },
-        ],
+        workspacePackages,
         publishedPackagePaths: ['.', 'packages/@overeng/otel-contract'],
+        repoRoot: '/repo',
+        rootPackagePath: 'packages/@overeng/genie',
       }),
     ).toEqual([])
   })

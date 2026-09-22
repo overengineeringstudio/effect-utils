@@ -7,10 +7,12 @@ import { checkBootstrapClosure, formatViolationChain } from './bootstrap-closure
 
 const usage = `Usage:
   genie-bootstrap-closure-check [--root <repo-root>]
-  genie-bootstrap-closure-check [--root <repo-root>] --editor-view-package-paths <json-array>
+  genie-bootstrap-closure-check [--root <repo-root>] \\
+    --editor-view-root-package-path <workspace-path> \\
+    --editor-view-package-paths <json-array>
 
 Checks source-tree // @genie-bootstrap .genie.ts files for runtime-only package imports.
-With --editor-view-package-paths, checks every generator's runtime import closure against the
+With the editor-view arguments, checks every generator's runtime import closure against the
 workspace package views published before genie:check.`
 
 const ignoredDiscoveryDirs = new Set([
@@ -83,10 +85,14 @@ export const findEditorViewClosureViolations = ({
   violations,
   workspacePackages,
   publishedPackagePaths,
+  repoRoot,
+  rootPackagePath,
 }: {
   readonly violations: readonly BootstrapClosureViolation[]
   readonly workspacePackages: readonly WorkspacePackage[]
   readonly publishedPackagePaths: readonly string[]
+  readonly repoRoot: string
+  readonly rootPackagePath: string
 }): readonly EditorViewClosureViolation[] => {
   const packageByName = new Map(
     workspacePackages.map((workspacePackage) => [workspacePackage.name, workspacePackage]),
@@ -94,26 +100,35 @@ export const findEditorViewClosureViolations = ({
   const packageByPath = new Map(
     workspacePackages.map((workspacePackage) => [workspacePackage.path, workspacePackage]),
   )
-  const publishedPackageNames = new Set<string>()
+  const publishedWorkspacePaths = new Set<string>()
   for (const packagePath of publishedPackagePaths) {
-    if (packagePath === '.') continue
-    const workspacePackage = packageByPath.get(packagePath)
-    if (workspacePackage === undefined) {
+    const workspacePath = packagePath === '.' ? rootPackagePath : packagePath
+    if (packageByPath.has(workspacePath) === false) {
       throw new Error(
-        `--editor-view-package-paths names an unknown workspace package: ${packagePath}`,
+        `--editor-view-package-paths names an unknown workspace package: ${workspacePath}`,
       )
     }
-    publishedPackageNames.add(workspacePackage.name)
+    publishedWorkspacePaths.add(workspacePath)
   }
 
   return violations.flatMap((violation) => {
-    const workspacePackage = packageByName.get(packageNameFromSpecifier(violation.specifier))
-    return workspacePackage === undefined || publishedPackageNames.has(workspacePackage.name) === true
+    const importer = violation.chain[violation.chain.length - 1]!
+    const importerPackage = workspacePackages.find((workspacePackage) => {
+      const relative = path.relative(path.join(repoRoot, workspacePackage.path), importer)
+      return (
+        relative === '' ||
+        (relative.startsWith('..') === false && path.isAbsolute(relative) === false)
+      )
+    })
+    const requiredPackage =
+      importerPackage ?? packageByName.get(packageNameFromSpecifier(violation.specifier))
+    return requiredPackage === undefined ||
+      publishedWorkspacePaths.has(requiredPackage.path) === true
       ? []
       : [
           {
-            packageName: workspacePackage.name,
-            packagePath: workspacePackage.path,
+            packageName: requiredPackage.name,
+            packagePath: requiredPackage.path,
             violation,
           },
         ]
@@ -130,10 +145,12 @@ const parseArgs = ({
   readonly repoRoot: string
   readonly help: boolean
   readonly editorViewPackagePaths: readonly string[] | undefined
+  readonly editorViewRootPackagePath: string | undefined
 } => {
   let repoRoot = defaultRepoRoot
   let help = false
   let editorViewPackagePaths: readonly string[] | undefined
+  let editorViewRootPackagePath: string | undefined
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!
@@ -159,15 +176,30 @@ const parseArgs = ({
       index += 1
       continue
     }
+    if (arg === '--editor-view-root-package-path') {
+      const value = argv[index + 1]
+      if (value === undefined || value.length === 0) {
+        throw new Error('--editor-view-root-package-path requires a non-empty workspace path')
+      }
+      editorViewRootPackagePath = value
+      index += 1
+      continue
+    }
     throw new Error(`unknown argument: ${arg}`)
   }
 
+  if ((editorViewPackagePaths === undefined) !== (editorViewRootPackagePath === undefined)) {
+    throw new Error(
+      '--editor-view-package-paths and --editor-view-root-package-path must be provided together',
+    )
+  }
   // The walk reports every path as its on-disk identity, so the root the diagnostics are made relative
   // to has to be that same identity — otherwise a symlinked checkout renders every chain as `../..`.
   return {
     repoRoot: existsSync(repoRoot) === true ? realpathSync.native(repoRoot) : repoRoot,
     help,
     editorViewPackagePaths,
+    editorViewRootPackagePath,
   }
 }
 
@@ -206,14 +238,17 @@ export const bootstrapClosureCheckMain = async ({
   defaultRepoRoot: string
 }): Promise<void> => {
   try {
-    const { repoRoot, help, editorViewPackagePaths } = parseArgs({ argv, defaultRepoRoot })
+    const { repoRoot, help, editorViewPackagePaths, editorViewRootPackagePath } = parseArgs({
+      argv,
+      defaultRepoRoot,
+    })
     if (help === true) {
       console.log(usage)
       return
     }
 
     const allGenieFiles = discoverGenieFiles(repoRoot)
-    if (editorViewPackagePaths !== undefined) {
+    if (editorViewPackagePaths !== undefined && editorViewRootPackagePath !== undefined) {
       const result = await checkBootstrapClosure({
         genieFiles: allGenieFiles,
         reportAllViolations: true,
@@ -222,6 +257,8 @@ export const bootstrapClosureCheckMain = async ({
         violations: result.violations,
         workspacePackages: readWorkspacePackages(repoRoot),
         publishedPackagePaths: editorViewPackagePaths,
+        repoRoot,
+        rootPackagePath: editorViewRootPackagePath,
       })
       if (closureViolations.length > 0) {
         console.error(

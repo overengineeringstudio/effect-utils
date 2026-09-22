@@ -593,6 +593,7 @@ let
   # Single declaration for the source-generator import closure published before Genie can load.
   # genie:editor-view-closure:check walks every generator with the shared bootstrap closure checker
   # and fails when this list omits a first-party runtime package boundary.
+  editorBootstrapRootPackagePath = "packages/@overeng/genie";
   editorBootstrapPackagePaths = [
     "."
     "packages/@overeng/otel-contract"
@@ -1222,6 +1223,7 @@ in
       root="''${DEVENV_ROOT:-$PWD}"
       exec ${pkgs.bun}/bin/bun "$root/genie/ci-scripts/bootstrap-closure-check.ts" \
         --root "$root" \
+        --editor-view-root-package-path ${lib.escapeShellArg editorBootstrapRootPackagePath} \
         --editor-view-package-paths ${lib.escapeShellArg (builtins.toJSON editorBootstrapPackagePaths)}
     '';
   };
