@@ -1,8 +1,9 @@
 # Composition Spec
 
-This document specifies the composition root and its generation. It builds on
-[requirements.md](./requirements.md). The shape below is validated against the
-real repositories
+This document specifies the normative standalone repository root and the
+explicitly requested composed root retained during its paused retirement
+window. It builds on [requirements.md](./requirements.md). The composed shape
+is validated against the real repositories
 ([.experiments/2026-08-26-composition-root-real-repos.md](./.experiments/2026-08-26-composition-root-real-repos.md)).
 
 ## Status
@@ -17,9 +18,10 @@ variant.
 **Does not define:** member semantics (01), platforms (02), or cache wiring
 (04).
 
-## Composition Root Shape
+## Paused Composition Root Shape
 
-The mr-generated root `.buckconfig` (validated on real content):
+An explicitly requested cross-repository composition uses the mr-generated
+root `.buckconfig` below:
 
 ```ini
 [cells]
@@ -103,15 +105,16 @@ member-owned executable capability that attempts to override the required
 toolchain _or any tool id an authority provides_. This is an explicit
 shared-pin contract, not silent inheritance.
 
-`--isolation-dir` is CLI-only and cannot be pinned by buckconfig, so mr also
-owns the invocation wrapper that fixes it (COMP-R07); an unwrapped `buck2` call
-relies on the default and is consistent by accident only.
+`--isolation-dir` is CLI-only and cannot be pinned by buckconfig, so mr owns
+the invocation wrapper that fixes the paused composed shape to its isolation
+dir (COMP-R07). Standalone invocations use their own fixed isolation identity;
+action-key parity between the two shapes is not promised.
 
-Member repositories can also be standalone Buck project roots. Their tracked
-`.buckconfig` declares the member cell at `.`, the bundled Prelude, and the
-root-owned `capabilities//` cell. The devenv shell links the pure
-`packages.<system>.buck2-capabilities` output at `.buck2/capabilities`; no
-projector runs during shell entry.
+Ordinary development and single-repository CI use standalone Buck project
+roots. Their tracked `.buckconfig` declares the member cell at `.`, the bundled
+Prelude, and the root-owned `capabilities//` cell. The devenv shell links the
+pure `packages.<system>.buck2-capabilities` output at
+`.buck2/capabilities`; no projector runs during shell entry.
 
 The same Nix output is the only capability projection used by composition.
 `mr apply` treats the member manifest as data, verifies the projection's exact
@@ -121,12 +124,13 @@ root's `.buck2/capabilities`. A member-shipped projector remains inert data.
 Hub toolchains address the projection through `capabilities//`, so read-only
 member mounts do not carry or mutate a projection.
 
-## Workspace Anatomy
+## Paused Composed Workspace Anatomy
 
-Per [decision 0020](../.decisions/0020-one-writable-mount-workspaces.md), the
-workspace root sits at the store worktree path (policy-compatible with the
-fleet worktree-placement and search-depth guards, and the layout under which
-store GC and hygiene rules keep working):
+For an explicitly requested cross-repository composition, the workspace root
+sits at the store worktree path per
+[decision 0020](../.decisions/0020-one-writable-mount-workspaces.md)
+(policy-compatible with the fleet worktree-placement and search-depth guards,
+and the layout under which store GC and hygiene rules keep working):
 
 ```text
 ~/.megarepo/github.com/<owner>/<repo>/refs/heads/<branch>/   # workspace root
@@ -152,7 +156,10 @@ defaults to `--kind cell` (the member) — scripts wanting the workspace pass
 `--kind project`. Teardown is an mr operation (protected mounts need a
 dirs-only unprotect before removal), never a bare `rm -rf`.
 
-## Agent Workflow Contract — Revision 3
+## Composed-Exception Agent Workflow Contract — Revision 3
+
+This contract applies only when a cross-repository composition is explicitly
+requested during the paused retirement window:
 
 ```text
 branchy/mr owns <workspace>/
@@ -162,11 +169,11 @@ branchy/mr owns <workspace>/
                     +-- repos/<ignored>/ reference only; outside Buck
 ```
 
-The workspace root is orchestration state, not an authoring checkout. Agents
-follow these rules:
+The workspace root is orchestration state, not an authoring checkout. In this
+exceptional shape, agents follow these rules:
 
-1. Start and resume work through the store-backed workspace; do not create an
-   independent checkout outside the store.
+1. Start and resume the composition through its store-backed workspace; do not
+   create an independent composed checkout outside the store.
 2. Use `repos/<owned>` as the default cwd and the only source tree mutated by
    the session.
 3. Run git, devenv, Genie, pnpm, and package-local commands from the owned
@@ -197,12 +204,13 @@ follow these rules:
 
 ## Standalone Variant
 
-A standalone repository is its own Buck project root. Its tracked
-`.buckconfig` maps the canonical member cell name to `.`, declares the same
-platform labels and Nix-produced capability cell, and its tracked `.buckroot`
-prevents accidental discovery of an outer project. Effect-utils CI and devenv
-Buck tasks use this shape directly; a second checkout at the same revision is
-the BUCK-R06 cache-reuse comparison context.
+A standalone repository is the normative Buck project root for ordinary
+development and single-repository CI. Its tracked `.buckconfig` maps the
+canonical member cell name to `.`, declares the same platform labels and
+Nix-produced capability cell, and its tracked `.buckroot` prevents accidental
+discovery of an outer project. Effect-utils CI and devenv Buck tasks use this
+shape directly; a second standalone checkout at the same revision is the
+BUCK-R06 cache-reuse comparison context.
 
 The paused composed shape remains distinct until L3 cut 2: the member is
 mounted at `repos/<name>` under the same canonical cell name. Action-digest
