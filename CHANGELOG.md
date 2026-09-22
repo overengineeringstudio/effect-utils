@@ -224,6 +224,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils**: validate Storybook baseline coverage with the screenshot
+  matcher's resolved paths instead of reconstructing paths from lifecycle IDs.
+  Nested story files, themed projects, and Vitest's filename sanitization now
+  share one canonical identity for fresh and cached baselines.
+
 - **@overeng/utils**: route Vitest's automatic browser failure screenshots to
   the Storybook gate's external diagnostics sidecar. Interaction failures stay
   visible without writing `__screenshots__` into consumer source trees, and the

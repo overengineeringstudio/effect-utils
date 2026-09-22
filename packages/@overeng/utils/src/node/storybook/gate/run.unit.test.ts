@@ -24,6 +24,7 @@ import {
   createVitestOutputCapture,
   hasCompleteReferenceCoverage,
   parseSettleRecords,
+  referenceStoryKeys,
   isStoryGateOk,
   runVitest,
   registerProcessTreeSignalForwarding,
@@ -445,34 +446,75 @@ describe('project-scoped reference coverage', () => {
     expect(parsed.malformed).toEqual([])
   })
 
-  it('requires lifecycle and PNG keys to match by themed project', () => {
-    const light = 'story-gate-light/components-menu--default'
-    const dark = 'story-gate-dark/components-menu--default'
+  it('uses resolved nested paths after matcher filename sanitization', () => {
+    const root = '/cache/baseline'
+    const lightPath = join(
+      root,
+      'story-gate-light',
+      'stories',
+      'nested',
+      'Menu.stories.tsx',
+      'components-menu-default.png',
+    )
+    const darkPath = join(
+      root,
+      'story-gate-dark',
+      'stories',
+      'nested',
+      'Menu.stories.tsx',
+      'components-menu-default.png',
+    )
+    // The lifecycle ID contains Storybook's double hyphen, while the matcher
+    // resolves a nested path whose filename is sanitized to one hyphen.
+    const lifecycle = ['story-gate-light', 'story-gate-dark'].map(
+      (projectName) =>
+        `${settledStoryMarker}${JSON.stringify({
+          projectName,
+          id: 'components-menu--default',
+          name: 'Menu > Default',
+          elapsedMs: 601,
+          shapes: ['2:493'],
+        })}`,
+    )
+    const settledStories = parseSettleRecords({
+      marker: settledStoryMarker,
+      output: lifecycle.join('\n'),
+    }).records.length
+    const requested = referenceStoryKeys({
+      root,
+      paths: [lightPath, darkPath, lightPath],
+    })
+    const actual = referenceStoryKeys({ root, paths: [darkPath, lightPath] })
+
+    expect(requested.toSorted()).toEqual([
+      'story-gate-dark/stories/nested/Menu.stories.tsx/components-menu-default',
+      'story-gate-light/stories/nested/Menu.stories.tsx/components-menu-default',
+    ])
     expect({
       exact: hasCompleteReferenceCoverage({
-        settledStoryIds: [light, dark],
-        referenceStoryIds: [light, dark],
+        settledStories,
+        requestedStoryKeys: requested,
+        referenceStoryKeys: actual,
       }),
       missingTheme: hasCompleteReferenceCoverage({
-        settledStoryIds: [light, dark],
-        referenceStoryIds: [light],
+        settledStories,
+        requestedStoryKeys: requested,
+        referenceStoryKeys: actual.slice(0, 1),
       }),
       wrongTheme: hasCompleteReferenceCoverage({
-        settledStoryIds: [light, dark],
-        referenceStoryIds: [light, 'story-gate-sepia/components-menu--default'],
+        settledStories,
+        requestedStoryKeys: requested,
+        referenceStoryKeys: [
+          actual[0] ?? '',
+          'story-gate-sepia/stories/nested/Menu.stories.tsx/components-menu-default',
+        ],
       }),
-      staleStory: hasCompleteReferenceCoverage({
-        settledStoryIds: [light],
-        referenceStoryIds: ['story-gate-light/components-button--default'],
+      empty: hasCompleteReferenceCoverage({
+        settledStories: 0,
+        requestedStoryKeys: [],
+        referenceStoryKeys: [],
       }),
-      empty: hasCompleteReferenceCoverage({ settledStoryIds: [], referenceStoryIds: [] }),
-    }).toEqual({
-      exact: true,
-      missingTheme: false,
-      wrongTheme: false,
-      staleStory: false,
-      empty: false,
-    })
+    }).toEqual({ exact: true, missingTheme: false, wrongTheme: false, empty: false })
   })
 })
 
