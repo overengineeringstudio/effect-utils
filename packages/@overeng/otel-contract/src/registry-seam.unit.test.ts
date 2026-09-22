@@ -13,8 +13,10 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 
 const SKIP_DIRS = new Set([
   'node_modules',
+  'buck-out',
   'dist',
   'tmp',
+  'target',
   '.git',
   '.devenv',
   '.editor-view',
