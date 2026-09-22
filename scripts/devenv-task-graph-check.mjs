@@ -294,8 +294,8 @@ const scopedPublisherContracts = {
 for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
   const publisherDependencies = [...(dependencies.get(publisher) ?? [])]
   ok({
-    condition: publisherDependencies.length === 1 && publisherDependencies[0] === 'mr:apply',
-    name: `${publisher} waits directly and only for workspace reconciliation`,
+    condition: publisherDependencies.length === 1 && publisherDependencies[0] === 'genie:check',
+    name: `${publisher} waits directly and only for standalone generator freshness`,
   })
   const command = requireTask(publisher).command
   ok({
@@ -309,9 +309,11 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
   const actualConsumers = [...dependencies]
     .filter(([, taskDependencies]) => taskDependencies.has(publisher))
     .map(([name]) => name)
-    .toSorted()
+    .toSorted((a, b) => a.localeCompare(b))
   ok({
-    condition: JSON.stringify(actualConsumers) === JSON.stringify(consumers.toSorted()),
+    condition:
+      JSON.stringify(actualConsumers) ===
+      JSON.stringify(consumers.toSorted((a, b) => a.localeCompare(b))),
     name: `${publisher} is coalesced across exactly its intended consumers`,
     detail: `expected ${consumers.join(', ')}, received ${actualConsumers.join(', ')}`,
   })
