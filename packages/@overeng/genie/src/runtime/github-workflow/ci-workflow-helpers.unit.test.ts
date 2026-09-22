@@ -322,15 +322,6 @@ describe('ci workflow retry helpers', () => {
     expect(uploadCount).toBe(captureCount)
   })
 
-  it('enables Buck remote cache only for trusted main executions', () => {
-    expect(generatedCiWorkflowYamlSource).toContain(
-      "BUCK2_NO_REMOTE_CACHE: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '0' || '1' }}",
-    )
-    expect(generatedCiWorkflowYamlSource).toContain(
-      "BUCK2_REMOTE_CACHE_BASIC_AUTH: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.BUCK2_REMOTE_CACHE_BASIC_AUTH || '' }}",
-    )
-  })
-
   it('routes the devenv resolution step through the shared retry wrapper', () => {
     expect(validateNixStoreStepSource).toContain('withGcRaceRetry({')
     expect(validateNixStoreStepSource).toContain('label: `resolve devenv (${lockFile})`')

@@ -601,14 +601,24 @@ let
     }
   '';
   editorViewExec =
-    mode:
-    trace.exec "buck2:editor:${mode}" ''
+    {
+      mode,
+      packagePaths ? null,
+      traceScope ? null,
+    }:
+    let
+      traceName =
+        "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
+      packageArgument = lib.optionalString (packagePaths != null)
+        " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
+    in
+    trace.exec traceName ''
       set -euo pipefail
       ${composedWorkspaceRootPredicate}
       root="''${DEVENV_ROOT:-$PWD}"
       workspace_root="$(composed_workspace_root "$root")" || {
         identity_status=$?
-        echo "buck2:editor:${mode} requires a composed megarepo workspace" >&2
+        echo "${traceName} requires a composed megarepo workspace" >&2
         exit "$identity_status"
       }
       exec ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
@@ -621,8 +631,23 @@ let
         --publisher "$root/packages/@overeng/buck2-tools/src/editor-view.ts" \
         --cp ${pkgs.coreutils}/bin/cp \
         --mv ${pkgs.coreutils}/bin/mv \
-        --snapshot-retention 3
+        --snapshot-retention 3${packageArgument}
     '';
+  scopedEditorViewPublisher =
+    {
+      description,
+      packagePaths,
+      traceScope,
+    }:
+    {
+      inherit description;
+      after = [ "mr:apply" ];
+      # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
+      exec = editorViewExec {
+        mode = "publish";
+        inherit packagePaths traceScope;
+      };
+    };
 in
 {
   imports = [
@@ -714,7 +739,7 @@ in
     # unlike the deterministic check/diff runs, this is a subprocess e2e (spawns otelite, binds an
     # ephemeral port, depends on export-flush timing), so it lives in CI rather than gating every
     # local `check:all` on capture reliability.
-    (taskModules.weaver-live-check { installTask = "buck2:editor:publish"; })
+    (taskModules.weaver-live-check { installTask = "buck2:editor:publish:otel-contract"; })
     # Version-pin consistency smoke (SC-DQ4): catches weaver/semconv pin drift the content
     # gate (weaver:check) silently degrades past (a bumped version with a stale FOD hash).
     (taskModules.weaver-version-smoke { })
@@ -732,7 +757,7 @@ in
     # exists exactly where the baseline gate still needs a source report.
     (taskModules.test-playwright {
       playwrightPkg = inputs.playwright.packages.${currentSystem}.playwright;
-      installTask = "buck2:editor:publish";
+      installTask = "buck2:editor:publish:playwright";
       # Launch the CLI through @playwright/test so the runner and test imports
       # share one module instance inside the Buck editor dependency view.
       playwrightBin = "node_modules/@playwright/test/cli.js";
@@ -854,7 +879,7 @@ in
   );
   tasks."lint:fix:oxlint".after = [ "buck2:editor:publish" ];
   tasks."devenv-modules:test".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
   tasks."test:notion-integration:notion-effect-client".after = lib.mkForce [ "buck2:editor:publish" ];
   tasks."test:notion-integration:notion-cli".after = lib.mkForce [ "buck2:editor:publish" ];
   tasks."test:notion-integration:notion-datasource-sync".after = lib.mkForce [
@@ -862,7 +887,7 @@ in
   ];
   tasks."test:notion-integration:notion-md".after = lib.mkForce [ "buck2:editor:publish" ];
   tasks."test:notion-integration:notion-react".after = lib.mkForce [ "buck2:editor:publish" ];
-  tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish" ];
+  tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
   tasks."test:pty-effect:unbounded".env = {
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
     NODE_OPTIONS = "--import=${./. + "/packages/@overeng/pty-effect/test/node-pty-native-hook.ts"}";
@@ -1181,7 +1206,7 @@ in
     description = "Bootstrap source-generator dependencies from the committed Buck graph";
     after = [ "mr:setup" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec "bootstrap";
+    exec = editorViewExec { mode = "bootstrap"; };
   };
 
   # Authoring and declaration publication need generated projections to be
@@ -1206,21 +1231,42 @@ in
     description = "Prove complete Buck ownership of every workspace editor dependency view";
     after = [ "mr:apply" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec "authority";
+    exec = editorViewExec { mode = "authority"; };
   };
 
   tasks."buck2:editor:publish" = {
     description = "Atomically publish every Buck-owned workspace editor dependency view";
     after = [ "mr:apply" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec "publish";
+    exec = editorViewExec { mode = "publish"; };
+  };
+
+  tasks."buck2:editor:publish:restate-effect" = scopedEditorViewPublisher {
+    description = "Atomically publish the Restate integration editor dependency view";
+    packagePaths = [ "packages/@overeng/restate-effect" ];
+    traceScope = "restate-effect";
+  };
+
+  tasks."buck2:editor:publish:otel-contract" = scopedEditorViewPublisher {
+    description = "Atomically publish the Weaver live-check editor dependency view";
+    packagePaths = [ "packages/@overeng/otel-contract" ];
+    traceScope = "otel-contract";
+  };
+
+  tasks."buck2:editor:publish:playwright" = scopedEditorViewPublisher {
+    description = "Atomically publish the shared Playwright editor dependency views";
+    packagePaths = [
+      "packages/@overeng/tui-react"
+      "packages/@overeng/utils"
+    ];
+    traceScope = "playwright";
   };
 
   tasks."buck2:editor:check" = {
     description = "Fail when any published workspace editor dependency view is stale";
     after = [ "mr:apply" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec "check";
+    exec = editorViewExec { mode = "check"; };
   };
 
   tasks."buck2:editor:recover-lock" = {

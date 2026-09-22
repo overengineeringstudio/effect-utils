@@ -9,9 +9,6 @@ All notable changes to this project will be documented in this file.
 - **Genie CI**: Capture every devenv task graph as OpenTelemetry spans with
   workflow, job, run, revision, runner, and task attributes; render the slowest
   tasks in each job summary; and retain the OTLP payload as a CI artifact.
-- **Genie CI**: Enable the Buck2 remote action and test cache for trusted
-  `main` push and dispatch jobs while keeping pull requests and forked code on
-  the existing credential-free cold-cache path.
 - **@overeng/gh-ci-utils**: `run` accepts workflow-dispatch inputs via
   repeated `--field key=value` (matching `gh workflow run -f` ergonomics)
   and a `--inputs` JSON object for scripts. `--field` wins on key collision;
@@ -22,6 +19,10 @@ All notable changes to this project will be documented in this file.
   dependencies mid-session and full-page-reload a running story or browser
   test; Vite consumers can drop their app-local `@stylexjs/stylex`
   `optimizeDeps.include` entries.
+- **Buck2 editor views**: Add explicit coalesced publishers for Restate,
+  OpenTelemetry contract, and the shared Playwright package union so those CI
+  lanes publish only their required views while retaining whole-workspace
+  dependency authority.
 
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full
