@@ -1,13 +1,36 @@
+import { EventEmitter } from 'node:events'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
+import { storyGateReportEnvVar, storyGateRunCompleteMarker } from './completion-reporter.ts'
+import { settledStoryMarker } from './constants.ts'
 import {
+  assertCaptureLiveness,
   assertionStoryKey,
   baselineCacheKey,
   classifyStability,
+  clearStoryGateArtifacts,
+  createVitestOutputCapture,
+  hasCompleteReferenceCoverage,
+  parseSettleRecords,
   isStoryGateOk,
+  runVitest,
+  registerProcessTreeSignalForwarding,
   selfInconsistentStoryKeys,
   slugStoryName,
   storyKey,
+  terminateProcessTree,
 } from './run.ts'
 
 const clean = {
@@ -80,6 +103,7 @@ describe('isStoryGateOk', () => {
         ...clean,
         unsettled: [
           {
+            projectName: 'story-gate-light',
             id: 'components-select--with-error',
             name: 'Select > With Error',
             elapsedMs: 20_031,
@@ -149,6 +173,329 @@ describe('isStoryGateOk', () => {
         themeAxis: { ...clean.themeAxis, comparable: 0, differing: 0 },
       }),
     ).toBe(true)
+  })
+})
+
+describe('assertCaptureLiveness', () => {
+  it('fails immediately when Vitest indexed files but executed zero stories', () => {
+    expect(() =>
+      assertCaptureLiveness({
+        label: 'baseline probe 1/3',
+        executedStories: 0,
+        output: 'Test Files 0 passed (118)\\nTests no tests',
+      }),
+    ).toThrow(/baseline probe 1\/3 executed zero stories/)
+  })
+
+  it('fails when assertions ran without the Storybook lifecycle', () => {
+    expect(() =>
+      assertCaptureLiveness({
+        label: 'working-tree comparison',
+        executedStories: 118,
+        output: 'Tests 118 passed (118)',
+      }),
+    ).toThrow(/118 assertions but emitted no story lifecycle records/)
+  })
+
+  it('accepts a capture only after the browser emits a lifecycle record', () => {
+    expect(() =>
+      assertCaptureLiveness({
+        label: 'baseline probe 1/3',
+        executedStories: 1,
+        output:
+          '[story-gate] settled {"id":"components-table--default","name":"Table > Default","elapsedMs":601,"shapes":["35:7377"]}',
+      }),
+    ).not.toThrow()
+  })
+})
+
+describe('owned Vitest process lifecycle', () => {
+  it.each(['SIGINT', 'SIGTERM'] as const)(
+    'kills the tree and re-raises %s on the parent',
+    (signal) => {
+      const events = new EventEmitter()
+      const killed: string[] = []
+      const reraised: Array<{ readonly pid: number; readonly signal: string }> = []
+      registerProcessTreeSignalForwarding({
+        killTree: () => killed.push('tree'),
+        processControl: {
+          pid: 41,
+          once: (event, listener) => events.once(event, listener),
+          removeListener: (event, listener) => events.removeListener(event, listener),
+          kill: (pid, reraisedSignal) => {
+            reraised.push({ pid, signal: reraisedSignal })
+            return true
+          },
+        },
+      })
+
+      events.emit(signal)
+
+      expect({ killed, reraised, listeners: events.listenerCount(signal) }).toEqual({
+        killed: ['tree'],
+        reraised: [{ pid: 41, signal }],
+        listeners: 0,
+      })
+    },
+  )
+
+  it('kills the owned tree during an ordinary parent exit without changing its status', () => {
+    const events = new EventEmitter()
+    const killed: string[] = []
+    const reraised: string[] = []
+    registerProcessTreeSignalForwarding({
+      killTree: () => killed.push('tree'),
+      processControl: {
+        pid: 41,
+        once: (event, listener) => events.once(event, listener),
+        removeListener: (event, listener) => events.removeListener(event, listener),
+        kill: (_pid, signal) => {
+          reraised.push(signal)
+          return true
+        },
+      },
+    })
+
+    events.emit('exit')
+
+    expect({ killed, reraised }).toEqual({ killed: ['tree'], reraised: [] })
+  })
+
+  it('uses taskkill tree and force flags on Windows', () => {
+    const invocations: Array<{
+      readonly command: string
+      readonly args: readonly string[]
+    }> = []
+    terminateProcessTree({
+      pid: 73,
+      platform: 'win32',
+      isRunning: () => true,
+      runWindowsTreeKill: (command, args) => {
+        invocations.push({ command, args })
+        return { status: 0 }
+      },
+    })
+
+    expect(invocations).toEqual([{ command: 'taskkill', args: ['/pid', '73', '/t', '/f'] }])
+  })
+
+  it('treats taskkill process-not-found as an already-complete teardown', () => {
+    expect(() =>
+      terminateProcessTree({
+        pid: 73,
+        platform: 'win32',
+        // The exit event has not updated the ChildProcess yet.
+        isRunning: () => true,
+        runWindowsTreeKill: () => ({ status: 128 }),
+      }),
+    ).not.toThrow()
+  })
+})
+
+describe('createVitestOutputCapture', () => {
+  it('keeps lifecycle evidence while bounding diagnostics to the newest bytes', () => {
+    const capture = createVitestOutputCapture({
+      maxTailBytes: 8,
+      maxLifecycleBytes: 1_024,
+    })
+    const lifecycle =
+      '[story-gate] settled {"id":"components-menu--default","name":"Menu > Default","elapsedMs":601,"shapes":["2:493"]}'
+    const split = 19
+    capture.pushStdout(Buffer.from(lifecycle.slice(0, split)))
+    capture.pushStdout(Buffer.from(`${lifecycle.slice(split)}\n01234567`))
+    capture.pushStderr(Buffer.from('89abcdef'))
+
+    expect(capture.finish()).toBe(`${lifecycle}\n89abcdef`)
+  })
+
+  it('rejects lifecycle output beyond its independent bound', () => {
+    const capture = createVitestOutputCapture({
+      maxTailBytes: 8,
+      maxLifecycleBytes: 16,
+    })
+    capture.pushStdout(
+      Buffer.from(
+        '[story-gate] settled {"id":"components-menu--default","name":"Menu > Default"}\n',
+      ),
+    )
+
+    expect(() => capture.finish()).toThrow(/lifecycle output exceeded 16 retained bytes/)
+  })
+})
+
+const fakeVitest = ({
+  report,
+  lifecycle,
+}: {
+  readonly report: unknown
+  readonly lifecycle: string | undefined
+}): { readonly cwd: string; readonly argsFile: string; readonly reportFile: string } => {
+  const cwd = mkdtempSync(join(tmpdir(), 'story-gate-vitest-'))
+  const binDir = join(cwd, 'node_modules', '.bin')
+  const argsFile = join(cwd, 'args.json')
+  const reportFile = join(cwd, 'report.json')
+  mkdirSync(binDir, { recursive: true })
+  const executable = join(binDir, 'vitest')
+  writeFileSync(
+    executable,
+    `#!/usr/bin/env node
+const { writeFileSync } = require('node:fs')
+writeFileSync(process.env[${JSON.stringify(storyGateReportEnvVar)}], ${JSON.stringify(
+      JSON.stringify(report),
+    )})
+writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)))
+${lifecycle === undefined ? '' : `process.stdout.write(${JSON.stringify(`${lifecycle}\n`)})`}
+require('node:child_process').spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); require('node:net').createServer().listen(0, '127.0.0.1')"], { stdio: ['ignore', 'inherit', 'inherit'] })
+process.on('SIGTERM', () => {})
+require('node:net').createServer().listen(0, '127.0.0.1')
+process.stdout.write(${JSON.stringify(`${storyGateRunCompleteMarker}\n`)})
+`,
+  )
+  chmodSync(executable, 0o755)
+  return { cwd, argsFile, reportFile }
+}
+describe('runVitest completion protocol', () => {
+  it('returns after the reporter completes even when Vitest keeps resources open', async () => {
+    const fixture = fakeVitest({
+      report: {
+        testResults: [
+          {
+            name: '/repo/Button.stories.tsx',
+            assertionResults: [
+              {
+                fullName: 'Default',
+                title: 'Default',
+                status: 'passed',
+                failureMessages: [],
+              },
+            ],
+          },
+        ],
+      },
+      lifecycle:
+        '[story-gate] settled {"id":"components-button--default","name":"Button > Default","elapsedMs":601,"shapes":["35:7377"]}',
+    })
+    try {
+      const result = await runVitest({
+        cwd: fixture.cwd,
+        configFile: 'vitest.gate.config.ts',
+        baselineDir: join(fixture.cwd, 'baseline'),
+        manifest: undefined,
+        reportFile: fixture.reportFile,
+        updateMode: 'none',
+        label: 'fake comparison',
+      })
+      expect({
+        assertions: result.assertions.length,
+        updateArgs: JSON.parse(readFileSync(fixture.argsFile, 'utf8')),
+      }).toEqual({
+        assertions: 1,
+        updateArgs: expect.arrayContaining(['--update=none']),
+      })
+    } finally {
+      rmSync(fixture.cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects zero executed stories without waiting for the leaked child', async () => {
+    const fixture = fakeVitest({ report: { testResults: [] }, lifecycle: undefined })
+    try {
+      await expect(
+        runVitest({
+          cwd: fixture.cwd,
+          configFile: 'vitest.gate.config.ts',
+          baselineDir: join(fixture.cwd, 'baseline'),
+          manifest: undefined,
+          reportFile: fixture.reportFile,
+          updateMode: 'all',
+          label: '118 indexed CSF files',
+        }),
+      ).rejects.toThrow(/118 indexed CSF files executed zero stories/)
+    } finally {
+      rmSync(fixture.cwd, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('project-scoped reference coverage', () => {
+  it('keeps the same story in different themed projects while deduplicating a retry', () => {
+    const record = (projectName: string, elapsedMs: number): string =>
+      `${settledStoryMarker}${JSON.stringify({
+        projectName,
+        id: 'components-menu--default',
+        name: 'Menu > Default',
+        elapsedMs,
+        shapes: ['2:493'],
+      })}`
+    const parsed = parseSettleRecords({
+      marker: settledStoryMarker,
+      output: [
+        record('story-gate-light', 601),
+        record('story-gate-dark', 602),
+        record('story-gate-light', 603),
+      ].join('\n'),
+    })
+
+    expect(
+      parsed.records.map(({ projectName, elapsedMs }) => ({ projectName, elapsedMs })),
+    ).toEqual([
+      { projectName: 'story-gate-light', elapsedMs: 603 },
+      { projectName: 'story-gate-dark', elapsedMs: 602 },
+    ])
+    expect(parsed.malformed).toEqual([])
+  })
+
+  it('requires lifecycle and PNG keys to match by themed project', () => {
+    const light = 'story-gate-light/components-menu--default'
+    const dark = 'story-gate-dark/components-menu--default'
+    expect({
+      exact: hasCompleteReferenceCoverage({
+        settledStoryIds: [light, dark],
+        referenceStoryIds: [light, dark],
+      }),
+      missingTheme: hasCompleteReferenceCoverage({
+        settledStoryIds: [light, dark],
+        referenceStoryIds: [light],
+      }),
+      wrongTheme: hasCompleteReferenceCoverage({
+        settledStoryIds: [light, dark],
+        referenceStoryIds: [light, 'story-gate-sepia/components-menu--default'],
+      }),
+      staleStory: hasCompleteReferenceCoverage({
+        settledStoryIds: [light],
+        referenceStoryIds: ['story-gate-light/components-button--default'],
+      }),
+      empty: hasCompleteReferenceCoverage({ settledStoryIds: [], referenceStoryIds: [] }),
+    }).toEqual({
+      exact: true,
+      missingTheme: false,
+      wrongTheme: false,
+      staleStory: false,
+      empty: false,
+    })
+  })
+})
+
+describe('clearStoryGateArtifacts', () => {
+  it('removes stale diagnostics without touching the derived baseline', () => {
+    const root = mkdtempSync(join(tmpdir(), 'story-gate-artifacts-'))
+    const baselineDir = join(root, 'baseline')
+    const artifactsDir = `${baselineDir}-artifacts/story-gate-dark`
+    try {
+      mkdirSync(baselineDir, { recursive: true })
+      mkdirSync(artifactsDir, { recursive: true })
+      writeFileSync(join(baselineDir, 'reference.png'), 'reference')
+      writeFileSync(join(artifactsDir, 'diff.png'), 'stale diff')
+
+      clearStoryGateArtifacts(baselineDir)
+
+      expect({
+        baseline: readFileSync(join(baselineDir, 'reference.png'), 'utf8'),
+        artifactsRemain: existsSync(`${baselineDir}-artifacts`),
+      }).toEqual({ baseline: 'reference', artifactsRemain: false })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 

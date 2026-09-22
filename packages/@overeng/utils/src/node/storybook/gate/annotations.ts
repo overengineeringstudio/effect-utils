@@ -126,7 +126,7 @@ const browserEnvironment = (root: HTMLElement): SettleEnvironment => ({
  * faithful projection of the story index — which is what makes an added or
  * removed story detectable without a second source of truth.
  */
-export const storyGateAnnotations = {
+export const createStoryGateAnnotations = ({ projectName }: { readonly projectName: string }) => ({
   parameters: { a11y: { test: 'error' } },
   afterEach: async (context: GateStoryContext): Promise<void> => {
     const name =
@@ -154,6 +154,7 @@ export const storyGateAnnotations = {
 
     if ((await fontsReady()) === false) {
       const record: StorySettleRecord = {
+        projectName,
         id: context.id,
         name,
         elapsedMs: Date.now() - started,
@@ -175,6 +176,7 @@ export const storyGateAnnotations = {
     // subtract a real failure later.
     if (outcome.settled === false) {
       const record: StorySettleRecord = {
+        projectName,
         id: context.id,
         name,
         elapsedMs,
@@ -186,6 +188,7 @@ export const storyGateAnnotations = {
     }
 
     const record: StorySettleRecord = {
+      projectName,
       id: context.id,
       name,
       elapsedMs,
@@ -195,4 +198,4 @@ export const storyGateAnnotations = {
 
     await expect(page.elementLocator(context.canvasElement)).toMatchScreenshot(context.id)
   },
-}
+})
