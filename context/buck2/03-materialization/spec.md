@@ -139,10 +139,13 @@ leaves the prior current view intact. Snapshot payloads never retain links into
 ## Staleness Gate
 
 `buck2:editor:bootstrap` regenerates whole-workspace ownership authority but
-builds and publishes only the repository-root source-generator dependency view
-from the committed graph. That root target aliases the Genie package's
-Buck-owned declared closure, so every bootstrap action remains bounded by the
-source-generator dependency authority instead of every workspace package. It
+builds and publishes only the declared source-generator import closure: the
+repository-root dependency view backed by Genie's package tree and the
+OpenTelemetry contract view needed by Genie's Weaver runtime. The shared Genie
+runtime-closure walker checks every generator before `genie:check` and names any
+first-party package imported outside that declaration, so a new edge cannot
+silently rely on a stale whole-workspace publication. Bootstrap therefore stays
+bounded by source-generator dependencies instead of every workspace package. It
 exists only to make `genie:check` runnable and reports no governed evidence.
 After freshness and workspace reconciliation, `buck2:editor:publish` and
 `buck2:editor:check` derive the complete root-plus-package set from the canonical

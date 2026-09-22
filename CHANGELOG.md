@@ -38,10 +38,12 @@ All notable changes to this project will be documented in this file.
   OpenTelemetry contract, and the shared Playwright package union so those CI
   lanes publish only their required views while retaining whole-workspace
   dependency authority.
-- **Buck2 editor bootstrap**: Bound the pre-freshness bootstrap to the
-  repository-root Genie dependency view, retain whole-workspace ownership
-  authority, emit per-phase timings, and avoid duplicate admitted-tree and
-  post-publication snapshot traversals.
+- **Buck2 editor bootstrap**: Bound the pre-freshness bootstrap to the declared
+  Genie generator import closure (the repository root and OpenTelemetry
+  contract views), retain whole-workspace ownership authority, fail authoring
+  checks when that declaration misses a first-party runtime import, emit
+  per-phase timings, and avoid duplicate admitted-tree and post-publication
+  snapshot traversals.
 
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full
