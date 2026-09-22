@@ -25,6 +25,7 @@ root="$(nix build --impure --no-link --print-out-paths --expr '
 [ -f "$root/.buck2/rules/inventory.json" ]
 [ -f "$root/.buck2/rules/prelude/prelude.bzl" ]
 [ -f "$root/.buck2/capabilities/defs.bzl" ]
+[ -f "$root/.buck2/rules/packages/@overeng/buck2-tools/src/typescript-runner.ts" ]
 
 config="$(cat "$root/.buckconfig")"
 printf '%s\n' "$config" | grep -F 'fixture = .' >/dev/null
@@ -46,5 +47,12 @@ grep -F 'load("@capabilities//:defs.bzl"' "$root/buck2/toolchains/BUCK" >/dev/nu
 grep -F 'effect_tsgo_toolchain(' "$root/buck2/toolchains/BUCK" >/dev/null
 grep -F 'name = "product_tool"' "$root/buck2/toolchains/BUCK" >/dev/null
 grep -F 'actual = "//buck2/toolchains:rust"' "$root/BUCK" >/dev/null
+grep -F 'name = "packages/@overeng/buck2-tools/src/typescript-runner.ts"' "$root/.buck2/rules/BUCK" >/dev/null
+
+(
+  cd "$root"
+  buck2 --isolation-dir consumer-root-contract query \
+    '@rules//:packages/@overeng/buck2-tools/src/typescript-runner.ts' >/dev/null
+)
 
 echo 'buck2 consumer root contract passed'

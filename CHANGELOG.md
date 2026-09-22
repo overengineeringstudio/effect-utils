@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Buck2 rules distribution**: Export the TypeScript action runner from the
+  rules root package so standalone consumer roots can resolve the configured
+  TypeScript toolchain.
+
 ### Added
 
 - **@overeng/gh-ci-utils**: `run` accepts workflow-dispatch inputs via
