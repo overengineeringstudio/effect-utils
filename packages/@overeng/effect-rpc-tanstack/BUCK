@@ -35,7 +35,7 @@ static_source_set(
     name = "static_sources",
     node_modules = ":node_modules",
     prefix = "packages/@overeng/effect-rpc-tanstack",
-    srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES + ["examples/basic/**"]),
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES + ["examples/basic/**"]),
     visibility = ["PUBLIC"],
 )
 

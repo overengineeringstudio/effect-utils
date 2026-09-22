@@ -42,7 +42,7 @@ static_source_set(
     name = "static_sources",
     node_modules = ":node_modules",
     prefix = "packages/@overeng/otel-contract",
-    srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
     visibility = ["PUBLIC"],
 )
 

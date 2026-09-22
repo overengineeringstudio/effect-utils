@@ -88,6 +88,7 @@ package_tree_product_executable(
     recipe = "pnpm-lock:@typescript/typescript-platform/lib",
     target_platform = host_standalone_platform_label(),
     toolchain = "pnpm-lockfile:pnpm-lock.yaml",
+    visibility = ["PUBLIC"],
 )
 
 build_product(

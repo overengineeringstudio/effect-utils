@@ -137,7 +137,7 @@ static_source_set(
     name = "static_sources",
     node_modules = ":node_modules",
     prefix = "packages/@overeng/genie",
-    srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
     visibility = ["PUBLIC"],
 )
 
@@ -554,6 +554,7 @@ package_tree_product_executable(
     recipe = "pnpm-lock:@typescript/typescript-platform/lib",
     target_platform = host_standalone_platform_label(),
     toolchain = "pnpm-lockfile:pnpm-lock.yaml",
+    visibility = ["PUBLIC"],
 )
 
 build_product(

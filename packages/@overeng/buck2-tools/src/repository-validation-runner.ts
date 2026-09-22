@@ -148,8 +148,7 @@ const parseToolArguments = (values: readonly string[]): ReadonlyMap<string, stri
       throw new Error(`--tool must be NAME=PATH: ${value}`)
     }
     const name = value.slice(0, separator)
-    if (tools.has(name)) throw new Error(`duplicate --tool name: ${name}`)
-    tools.set(name, value.slice(separator + 1))
+    tools.set(name, path.resolve(value.slice(separator + 1)))
   }
   return tools
 }
@@ -609,8 +608,7 @@ const main = async (): Promise<void> => {
     throw new Error(`unsupported repository validation mode: ${String(mode)}`)
   }
   const output = requireString(values.output, '--output')
-  const sourceRoot = requireString(values.source, '--source')
-  const sourcePaths = values.path ?? []
+  const sourceRoot = path.resolve(requireString(values.source, '--source'))
   const tools = parseToolArguments(values.tool ?? [])
   let summary: Readonly<Record<string, unknown>>
 
@@ -625,9 +623,11 @@ const main = async (): Promise<void> => {
   } else if (mode === 'genie-import-closure') {
     run({
       command: process.execPath,
-      args: [requireString(values.checker, '--checker'), '--root', sourceRoot],
+      args: [path.resolve(requireString(values.checker, '--checker')), '--root', sourceRoot],
       cwd: sourceRoot,
-      env: { GENIE_TYPESCRIPT_API_SERVER: requireString(values.server, '--server') },
+      env: {
+        GENIE_TYPESCRIPT_API_SERVER: path.resolve(requireString(values.server, '--server')),
+      },
     })
     summary = { checked: true }
   } else {
