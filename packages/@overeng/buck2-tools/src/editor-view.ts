@@ -898,11 +898,15 @@ const fingerprintSnapshotPayload = async (snapshotDir: string): Promise<string> 
   const backing = join(snapshotDir, '.backing')
   const nodeModules = join(snapshotDir, 'node_modules')
   if (pathExists(backing) === false) return canonicalTreeFingerprint({ tree: nodeModules })
-  // Both payload roots are fixed and ordered, so the two digests are awaited in place:
-  // `.backing` is still fingerprinted strictly before `node_modules`.
+  // These disjoint immutable roots can be fingerprinted concurrently. Preserve their fixed order
+  // when framing the resulting payload digest so scheduling cannot affect the record identity.
+  const [backingDigest, nodeModulesDigest] = await Promise.all([
+    canonicalTreeFingerprint({ tree: backing }),
+    canonicalTreeFingerprint({ tree: nodeModules }),
+  ])
   const entries = [
-    ['.backing', await canonicalTreeFingerprint({ tree: backing })],
-    ['node_modules', await canonicalTreeFingerprint({ tree: nodeModules })],
+    ['.backing', backingDigest],
+    ['node_modules', nodeModulesDigest],
   ] as const
   const hash = createHash('sha256')
   hash.update('effect-utils/editor-view-snapshot-payload/v1')
