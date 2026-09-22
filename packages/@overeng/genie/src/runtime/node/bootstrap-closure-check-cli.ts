@@ -29,6 +29,7 @@ const ignoredDiscoveryDirs = new Set([
 ])
 
 type WorkspacePackage = {
+  readonly dependencyNames: readonly string[]
   readonly name: string
   readonly path: string
 }
@@ -41,6 +42,12 @@ type EditorViewClosureViolation = {
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && Array.isArray(value) === false
+
+const dependencyNamesOf = (manifest: Record<string, unknown>): readonly string[] =>
+  ['dependencies', 'devDependencies', 'peerDependencies'].flatMap((field) => {
+    const dependencies = manifest[field]
+    return isObject(dependencies) === true ? Object.keys(dependencies) : []
+  })
 
 const decodePackagePaths = (serialized: string): readonly string[] => {
   const decoded: unknown = JSON.parse(serialized)
@@ -75,7 +82,11 @@ const readWorkspacePackages = (repoRoot: string): readonly WorkspacePackage[] =>
     if (isObject(manifest) === false || typeof manifest.name !== 'string') {
       throw new Error(`${packagePath}/package.json must declare a package name`)
     }
-    return { name: manifest.name, path: packagePath }
+    return {
+      dependencyNames: dependencyNamesOf(manifest),
+      name: manifest.name,
+      path: packagePath,
+    }
   })
 }
 
@@ -108,8 +119,17 @@ export const findEditorViewClosureViolations = ({
     }
     publishedWorkspacePaths.add(workspacePath)
   }
+  const rootPackage = packageByPath.get(rootPackagePath)
+  if (rootPackage === undefined) {
+    throw new Error(
+      `--editor-view-root-package-path names an unknown workspace package: ${rootPackagePath}`,
+    )
+  }
+  const rootDependencyNames = new Set(rootPackage.dependencyNames)
 
   return violations.flatMap((violation) => {
+    const specifierPackageName = packageNameFromSpecifier(violation.specifier)
+    if (rootDependencyNames.has(specifierPackageName) === true) return []
     const importer = violation.chain[violation.chain.length - 1]!
     const importerPackage = workspacePackages.find((workspacePackage) => {
       const relative = path.relative(path.join(repoRoot, workspacePackage.path), importer)

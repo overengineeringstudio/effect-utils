@@ -377,15 +377,37 @@ describe('findEditorViewClosureViolations', () => {
         '/repo/packages/@overeng/otel-contract/src/profile-link.ts',
       ],
     }
+    const rootCoveredViolation = {
+      source: '/repo/source.genie.ts',
+      specifier: '@overeng/otel-contract/registry',
+      chain: ['/repo/source.genie.ts', '/repo/packages/@overeng/ci-tools/src/contract.ts'],
+    }
     const workspacePackages = [
-      { name: '@overeng/genie', path: 'packages/@overeng/genie' },
-      { name: '@overeng/otel-contract', path: 'packages/@overeng/otel-contract' },
-      { name: '@overeng/content-address', path: 'packages/@overeng/content-address' },
+      {
+        dependencyNames: ['@overeng/otel-contract'],
+        name: '@overeng/genie',
+        path: 'packages/@overeng/genie',
+      },
+      {
+        dependencyNames: ['@overeng/content-address'],
+        name: '@overeng/otel-contract',
+        path: 'packages/@overeng/otel-contract',
+      },
+      {
+        dependencyNames: [],
+        name: '@overeng/content-address',
+        path: 'packages/@overeng/content-address',
+      },
+      {
+        dependencyNames: ['@overeng/otel-contract'],
+        name: '@overeng/ci-tools',
+        path: 'packages/@overeng/ci-tools',
+      },
     ]
 
     expect(
       findEditorViewClosureViolations({
-        violations: [violation],
+        violations: [violation, rootCoveredViolation],
         workspacePackages,
         publishedPackagePaths: ['.'],
         repoRoot: '/repo',
@@ -400,7 +422,7 @@ describe('findEditorViewClosureViolations', () => {
     ])
     expect(
       findEditorViewClosureViolations({
-        violations: [violation],
+        violations: [violation, rootCoveredViolation],
         workspacePackages,
         publishedPackagePaths: ['.', 'packages/@overeng/otel-contract'],
         repoRoot: '/repo',
