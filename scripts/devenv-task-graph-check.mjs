@@ -129,6 +129,9 @@ for (const name of [
   'buck2:editor:authority',
   'buck2:editor:publish',
   'buck2:editor:check',
+  'buck2:editor:publish:restate-effect',
+  'buck2:editor:publish:otel-contract',
+  'buck2:editor:publish:playwright',
   'test:run',
   'test:buck2:unit',
 ])
@@ -240,6 +243,10 @@ for (const name of [
   'buck2:editor:authority',
   'buck2:editor:publish',
   'buck2:editor:check',
+  'buck2:editor:publish:restate-effect',
+  'buck2:editor:publish:otel-contract',
+  'buck2:editor:publish:playwright',
+  'buck2:nix-bridge:check',
   'lint:check:asset-import-needs-type-reference',
   'lint:check:format',
   'lint:check:genie:coverage',
@@ -268,6 +275,60 @@ ok({
     reaches({ start: 'buck2:editor:bootstrap', target: 'mr:setup' }) === false &&
     reaches({ start: 'buck2:editor:bootstrap', target: 'genie:check' }) === false,
   name: 'editor bootstrap reads committed standalone dependencies without mutating projections',
+})
+
+const scopedPublisherContracts = {
+  'buck2:editor:publish:restate-effect': {
+    consumers: ['test:restate-integration'],
+    packagePaths: ['packages/@overeng/restate-effect'],
+  },
+  'buck2:editor:publish:otel-contract': {
+    consumers: ['weaver:live-check'],
+    packagePaths: ['packages/@overeng/otel-contract'],
+  },
+  'buck2:editor:publish:playwright': {
+    consumers: ['test:pw:tui-react', 'test:pw:utils'],
+    packagePaths: ['packages/@overeng/tui-react', 'packages/@overeng/utils'],
+  },
+}
+for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
+  const publisherDependencies = [...(dependencies.get(publisher) ?? [])]
+  ok({
+    condition: publisherDependencies.length === 1 && publisherDependencies[0] === 'mr:apply',
+    name: `${publisher} waits directly and only for workspace reconciliation`,
+  })
+  const command = requireTask(publisher).command
+  ok({
+    condition:
+      typeof command === 'string' &&
+      command.includes(publisher) &&
+      command.includes('--packages') &&
+      packagePaths.every((packagePath) => command.includes(`"${packagePath}"`)),
+    name: `${publisher} has its distinct trace identity and explicit canonical package scope`,
+  })
+  const actualConsumers = [...dependencies]
+    .filter(([, taskDependencies]) => taskDependencies.has(publisher))
+    .map(([name]) => name)
+    .toSorted()
+  ok({
+    condition: JSON.stringify(actualConsumers) === JSON.stringify(consumers.toSorted()),
+    name: `${publisher} is coalesced across exactly its intended consumers`,
+    detail: `expected ${consumers.join(', ')}, received ${actualConsumers.join(', ')}`,
+  })
+}
+const fullPublisherCommand = requireTask('buck2:editor:publish').command
+ok({
+  condition:
+    typeof fullPublisherCommand === 'string' &&
+    fullPublisherCommand.includes('buck2:editor:publish') &&
+    fullPublisherCommand.includes('--packages') === false,
+  name: 'whole-workspace editor publication retains its unscoped fallback',
+})
+ok({
+  condition:
+    [...(dependencies.get('test:pw:tui-react') ?? [])].join('\n') ===
+    [...(dependencies.get('test:pw:utils') ?? [])].join('\n'),
+  name: 'both Playwright lanes depend on one canonical union publisher',
 })
 
 ok({

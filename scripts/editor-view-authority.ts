@@ -57,6 +57,52 @@ const fail = (message: string): never => {
   throw new Error(`editor view authority: ${message}`)
 }
 
+export const decodePublicationPackagePaths = (serialized: string): readonly string[] => {
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(serialized)
+  } catch (error) {
+    return fail(
+      `--packages must be a JSON array: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  if (Array.isArray(decoded) === false || decoded.length === 0)
+    fail('--packages must be a non-empty JSON array of package paths')
+  const packagePaths = decoded
+    .map((entry) =>
+      typeof entry === 'string'
+        ? entry
+        : fail('--packages must be a non-empty JSON array of package paths'),
+    )
+    .toSorted((left, right) => (left === right ? 0 : left < right ? -1 : 1))
+  if (new Set(packagePaths).size !== packagePaths.length) fail('--packages repeats a package path')
+  for (const packagePath of packagePaths)
+    if (editorViewPackagePaths.includes(packagePath) === false)
+      fail(`--packages contains an unregistered editor consumer: ${packagePath}`)
+  return packagePaths
+}
+
+export const resolveEditorViewPackageScope = ({
+  command,
+  authorityPackagePaths,
+  serializedPublicationPackages,
+}: {
+  readonly command: Command
+  readonly authorityPackagePaths: readonly string[]
+  readonly serializedPublicationPackages: string | undefined
+}): {
+  readonly authorityPackagePaths: readonly string[]
+  readonly publicationPackagePaths: readonly string[]
+} => {
+  if (serializedPublicationPackages === undefined)
+    return { authorityPackagePaths, publicationPackagePaths: authorityPackagePaths }
+  if (command !== 'publish') fail('--packages is only valid with publish')
+  return {
+    authorityPackagePaths,
+    publicationPackagePaths: decodePublicationPackagePaths(serializedPublicationPackages),
+  }
+}
+
 const commands = new Set<Command>(['authority', 'bootstrap', 'check', 'publish'])
 
 const bootstrapPackagePaths = (repoRoot: string): readonly string[] => {
@@ -97,6 +143,7 @@ const parseCli = (args: readonly string[]) => {
     '--cp',
     '--mv',
     '--snapshot-retention',
+    '--packages',
   ])
   for (const flag of values.keys())
     if (allowed.has(flag) === false) fail(`unexpected option: ${flag}`)
@@ -114,24 +161,34 @@ const parseCli = (args: readonly string[]) => {
     cp: admitting === true ? get('--cp') : '',
     mv: admitting === true ? get('--mv') : '',
     snapshotRetention: admitting === true ? Number(get('--snapshot-retention')) : 3,
+    publicationPackages: values.get('--packages'),
   }
 }
 
 const main = async (): Promise<void> => {
   const options = parseCli(process.argv.slice(2))
+  if (options.publicationPackages !== undefined && options.command !== 'publish')
+    fail('--packages is only valid with publish')
   if (
     Number.isInteger(options.snapshotRetention) === false ||
     options.snapshotRetention < 2 ||
     options.snapshotRetention > 32
   )
     fail('--snapshot-retention must be an integer from 2 through 32')
-  const packagePaths =
+  const authorityPackagePaths =
     options.command === 'bootstrap'
       ? bootstrapPackagePaths(options.repoRoot)
       : editorViewPackagePaths
+  const packageScope = resolveEditorViewPackageScope({
+    command: options.command,
+    authorityPackagePaths,
+    serializedPublicationPackages: options.publicationPackages,
+  })
+  // Scope only target construction and publication. Every publisher still refreshes and passes
+  // freshly proven whole-workspace authority to each selected package view.
   const authority = await writeEditorViewAuthority({
     ...options,
-    requiredPackages: packagePaths,
+    requiredPackages: packageScope.authorityPackagePaths,
   })
   if (options.command === 'authority') {
     process.stdout.write(
@@ -139,7 +196,10 @@ const main = async (): Promise<void> => {
     )
     return
   }
-  const plan = editorViewPlan({ cell: options.cell, packagePaths })
+  const plan = editorViewPlan({
+    cell: options.cell,
+    packagePaths: packageScope.publicationPackagePaths,
+  })
   await reconcileBuckViews({
     request: {
       packagePaths: plan.packages.map(({ packagePath }) => packagePath),
