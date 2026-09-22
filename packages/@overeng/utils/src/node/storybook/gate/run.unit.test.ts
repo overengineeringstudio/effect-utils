@@ -481,11 +481,14 @@ describe('clearStoryGateArtifacts', () => {
     const root = mkdtempSync(join(tmpdir(), 'story-gate-artifacts-'))
     const baselineDir = join(root, 'baseline')
     const artifactsDir = `${baselineDir}-artifacts/story-gate-dark`
+    const browserFailuresDir = join(artifactsDir, 'browser-failures', 'stories')
     try {
       mkdirSync(baselineDir, { recursive: true })
       mkdirSync(artifactsDir, { recursive: true })
+      mkdirSync(browserFailuresDir, { recursive: true })
       writeFileSync(join(baselineDir, 'reference.png'), 'reference')
       writeFileSync(join(artifactsDir, 'diff.png'), 'stale diff')
+      writeFileSync(join(browserFailuresDir, 'interaction-1.png'), 'stale browser failure')
 
       clearStoryGateArtifacts(baselineDir)
 
