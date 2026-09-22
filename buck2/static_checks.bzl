@@ -199,13 +199,13 @@ def _repository_validation_check_impl(ctx):
         })
         hidden.append(manifest)
 
-    if ctx.attrs.script != None:
+    if ctx.attrs.script_path:
         if manifest == None:
             fail("script-backed repository validation requires declared_packages")
         shell = ctx.attrs.tools["shell"][BuckSupportToolInfo]
         args = cmd_args([
             shell.executable,
-            ctx.attrs.script,
+            cmd_args(source_tree, format = "{}/" + ctx.attrs.script_path),
             source_tree,
             toolchain.bun,
             cmd_args(
@@ -215,7 +215,7 @@ def _repository_validation_check_impl(ctx):
             result.as_output(),
             manifest,
         ])
-        hidden.extend([shell.manifest, ctx.attrs.script])
+        hidden.append(shell.manifest)
         for name in sorted(ctx.attrs.tools.keys()):
             if name == "shell":
                 continue
@@ -272,7 +272,7 @@ _repository_validation_check = rule(
             "workspace-contract",
         ]),
         "server": attrs.option(attrs.dep(), default = None),
-        "script": attrs.option(attrs.source(), default = None),
+        "script_path": attrs.string(default = ""),
         "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo])),
         "tools": attrs.dict(
             key = attrs.string(),
@@ -347,7 +347,7 @@ def repository_static_checks(
         declared_packages = declared_packages,
         mode = "workspace-contract",
         source_sets = repository_source_sets,
-        script = "//:rust/workspace-contract.test.sh",
+        script_path = "rust/workspace-contract.test.sh",
         tools = {
             "cargo": "//buck2/toolchains:tool_cargo",
             "nix": "//buck2/toolchains:tool_nix",
