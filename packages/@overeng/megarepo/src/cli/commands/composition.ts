@@ -5,6 +5,7 @@ import { promisify } from 'node:util'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/unstable/process/ChildProcessSpawner'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -192,7 +193,7 @@ const isTrackedStandaloneRoot = ({
 }: {
   readonly fs: FileSystem.FileSystem
   readonly root: string
-}): Effect.Effect<boolean, never, ChildProcessSpawner> =>
+}): Effect.Effect<boolean, PlatformError, ChildProcessSpawner> =>
   Effect.gen(function* () {
     const [hasBuckroot, hasBuckconfig, hasRepos] = yield* Effect.all(
       [
