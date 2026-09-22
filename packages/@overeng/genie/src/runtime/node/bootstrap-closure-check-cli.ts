@@ -2,12 +2,16 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import { parseGeneratorPhase } from '../../core/phase.ts'
+import type { BootstrapClosureViolation } from './bootstrap-closure.ts'
 import { checkBootstrapClosure, formatViolationChain } from './bootstrap-closure.ts'
 
 const usage = `Usage:
   genie-bootstrap-closure-check [--root <repo-root>]
+  genie-bootstrap-closure-check [--root <repo-root>] --editor-view-package-paths <json-array>
 
-Checks source-tree // @genie-bootstrap .genie.ts files for runtime-only package imports.`
+Checks source-tree // @genie-bootstrap .genie.ts files for runtime-only package imports.
+With --editor-view-package-paths, checks every generator's runtime import closure against the
+workspace package views published before genie:check.`
 
 const ignoredDiscoveryDirs = new Set([
   '.devenv',
@@ -22,15 +26,114 @@ const ignoredDiscoveryDirs = new Set([
   'target',
 ])
 
+type WorkspacePackage = {
+  readonly name: string
+  readonly path: string
+}
+
+type EditorViewClosureViolation = {
+  readonly packageName: string
+  readonly packagePath: string
+  readonly violation: BootstrapClosureViolation
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && Array.isArray(value) === false
+
+const decodePackagePaths = (serialized: string): readonly string[] => {
+  const decoded: unknown = JSON.parse(serialized)
+  if (
+    Array.isArray(decoded) === false ||
+    decoded.length === 0 ||
+    decoded.some((entry) => typeof entry !== 'string') === true
+  ) {
+    throw new Error('--editor-view-package-paths must be a non-empty JSON array of strings')
+  }
+  return decoded
+}
+
+const packageNameFromSpecifier = (specifier: string): string => {
+  const segments = specifier.split('/')
+  return specifier.startsWith('@') === true ? segments.slice(0, 2).join('/') : segments[0]!
+}
+
+const readWorkspacePackages = (repoRoot: string): readonly WorkspacePackage[] => {
+  const rootManifest: unknown = JSON.parse(
+    readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
+  )
+  if (isObject(rootManifest) === false || Array.isArray(rootManifest.workspaces) === false) {
+    throw new Error('root package.json must declare a workspaces array')
+  }
+
+  return rootManifest.workspaces.map((packagePath) => {
+    if (typeof packagePath !== 'string') {
+      throw new Error('root package.json workspaces must contain only package paths')
+    }
+    const manifest: unknown = JSON.parse(
+      readFileSync(path.join(repoRoot, packagePath, 'package.json'), 'utf8'),
+    )
+    if (isObject(manifest) === false || typeof manifest.name !== 'string') {
+      throw new Error(`${packagePath}/package.json must declare a package name`)
+    }
+    return { name: manifest.name, path: packagePath }
+  })
+}
+
+export const findEditorViewClosureViolations = ({
+  violations,
+  workspacePackages,
+  publishedPackagePaths,
+}: {
+  readonly violations: readonly BootstrapClosureViolation[]
+  readonly workspacePackages: readonly WorkspacePackage[]
+  readonly publishedPackagePaths: readonly string[]
+}): readonly EditorViewClosureViolation[] => {
+  const packageByName = new Map(
+    workspacePackages.map((workspacePackage) => [workspacePackage.name, workspacePackage]),
+  )
+  const packageByPath = new Map(
+    workspacePackages.map((workspacePackage) => [workspacePackage.path, workspacePackage]),
+  )
+  const publishedPackageNames = new Set<string>()
+  for (const packagePath of publishedPackagePaths) {
+    if (packagePath === '.') continue
+    const workspacePackage = packageByPath.get(packagePath)
+    if (workspacePackage === undefined) {
+      throw new Error(
+        `--editor-view-package-paths names an unknown workspace package: ${packagePath}`,
+      )
+    }
+    publishedPackageNames.add(workspacePackage.name)
+  }
+
+  return violations.flatMap((violation) => {
+    const workspacePackage = packageByName.get(packageNameFromSpecifier(violation.specifier))
+    return workspacePackage === undefined || publishedPackageNames.has(workspacePackage.name) === true
+      ? []
+      : [
+          {
+            packageName: workspacePackage.name,
+            packagePath: workspacePackage.path,
+            violation,
+          },
+        ]
+  })
+}
+
 const parseArgs = ({
   argv,
   defaultRepoRoot,
 }: {
   argv: readonly string[]
   defaultRepoRoot: string
-}): { readonly repoRoot: string; readonly help: boolean } => {
+}): {
+  readonly repoRoot: string
+  readonly help: boolean
+  readonly editorViewPackagePaths: readonly string[] | undefined
+} => {
   let repoRoot = defaultRepoRoot
   let help = false
+  let editorViewPackagePaths: readonly string[] | undefined
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!
@@ -47,6 +150,15 @@ const parseArgs = ({
       index += 1
       continue
     }
+    if (arg === '--editor-view-package-paths') {
+      const value = argv[index + 1]
+      if (value === undefined || value.length === 0) {
+        throw new Error('--editor-view-package-paths requires a non-empty JSON array')
+      }
+      editorViewPackagePaths = decodePackagePaths(value)
+      index += 1
+      continue
+    }
     throw new Error(`unknown argument: ${arg}`)
   }
 
@@ -55,6 +167,7 @@ const parseArgs = ({
   return {
     repoRoot: existsSync(repoRoot) === true ? realpathSync.native(repoRoot) : repoRoot,
     help,
+    editorViewPackagePaths,
   }
 }
 
@@ -93,13 +206,46 @@ export const bootstrapClosureCheckMain = async ({
   defaultRepoRoot: string
 }): Promise<void> => {
   try {
-    const { repoRoot, help } = parseArgs({ argv, defaultRepoRoot })
+    const { repoRoot, help, editorViewPackagePaths } = parseArgs({ argv, defaultRepoRoot })
     if (help === true) {
       console.log(usage)
       return
     }
 
     const allGenieFiles = discoverGenieFiles(repoRoot)
+    if (editorViewPackagePaths !== undefined) {
+      const result = await checkBootstrapClosure({
+        genieFiles: allGenieFiles,
+        reportAllViolations: true,
+      })
+      const closureViolations = findEditorViewClosureViolations({
+        violations: result.violations,
+        workspacePackages: readWorkspacePackages(repoRoot),
+        publishedPackagePaths: editorViewPackagePaths,
+      })
+      if (closureViolations.length > 0) {
+        console.error(
+          `✗ editor-view-closure: ${closureViolations.length} generator import(s) require an unpublished workspace package view:\n`,
+        )
+        for (const closureViolation of closureViolations) {
+          console.error(
+            `  ${formatViolationChain({ violation: closureViolation.violation, repoRoot })}\n` +
+              `    missing editor view: ${closureViolation.packagePath} (${closureViolation.packageName})\n`,
+          )
+        }
+        console.error(
+          'Add every listed package path to the editorBootstrapPackagePaths declaration so ' +
+            'buck2:editor:bootstrap publishes the complete generator import closure before genie:check.',
+        )
+        process.exit(1)
+      }
+      console.log(
+        `editor-view-closure: OK — ${result.checkedSources.length} .genie.ts runtime import closures ` +
+          `are covered by ${editorViewPackagePaths.length} bootstrap editor view(s)`,
+      )
+      return
+    }
+
     const bootstrapFiles = allGenieFiles.filter(
       (file) => parseGeneratorPhase(readFileSync(file, 'utf8')) === 'bootstrap',
     )

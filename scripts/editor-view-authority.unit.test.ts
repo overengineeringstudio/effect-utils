@@ -81,21 +81,22 @@ describe('editor view authority orchestration', () => {
     ).toEqual(['packages/@overeng/utils'])
   })
 
-  it('bootstraps only the root generator dependency view under whole-workspace authority', () => {
+  it('bootstraps the declared generator import closure under whole-workspace authority', () => {
+    const bootstrapPackagePaths = ['.', 'packages/@overeng/otel-contract']
     const scope = resolveEditorViewPackageScope({
       command: 'bootstrap',
       authorityPackagePaths: editorViewPackagePaths,
-      serializedPublicationPackages: undefined,
+      serializedPublicationPackages: JSON.stringify(bootstrapPackagePaths),
     })
 
     expect(scope.authorityPackagePaths).toBe(editorViewPackagePaths)
-    expect(scope.publicationPackagePaths).toEqual(['.'])
+    expect(scope.publicationPackagePaths).toEqual(bootstrapPackagePaths)
     expect(
       editorViewPlan({
         cell: 'workspace_cell',
         packagePaths: scope.publicationPackagePaths,
       }).packages.map(({ packagePath }) => packagePath),
-    ).toEqual(['.'])
+    ).toEqual(bootstrapPackagePaths)
   })
 
   it('retains whole-workspace publication when no explicit scope is provided', () => {
@@ -109,15 +110,22 @@ describe('editor view authority orchestration', () => {
     expect(scope.publicationPackagePaths).toBe(editorViewPackagePaths)
   })
 
-  it('rejects an explicit scope on every non-publish command', () => {
-    for (const command of ['authority', 'bootstrap', 'check'] as const)
+  it('requires an explicit bootstrap scope and rejects explicit scopes on read-only commands', () => {
+    expect(() =>
+      resolveEditorViewPackageScope({
+        command: 'bootstrap',
+        authorityPackagePaths: editorViewPackagePaths,
+        serializedPublicationPackages: undefined,
+      }),
+    ).toThrow('--packages is required with bootstrap')
+    for (const command of ['authority', 'check'] as const)
       expect(() =>
         resolveEditorViewPackageScope({
           command,
           authorityPackagePaths: editorViewPackagePaths,
           serializedPublicationPackages: '["packages/@overeng/utils"]',
         }),
-      ).toThrow('--packages is only valid with publish')
+      ).toThrow('--packages is only valid with publish or bootstrap')
   })
 
   it('rejects an invalid explicit scope before attempting authority or Buck work', () => {
@@ -160,7 +168,7 @@ describe('editor view authority orchestration', () => {
     )
   })
 
-  it('rejects a bootstrap scope before attempting authority or Buck work', () => {
+  it('rejects a missing bootstrap scope before attempting authority or Buck work', () => {
     const script = join(dirname(fileURLToPath(import.meta.url)), 'editor-view-authority.ts')
     const result = Bun.spawnSync({
       cmd: [
@@ -187,8 +195,6 @@ describe('editor view authority orchestration', () => {
         '/does-not-exist/mv',
         '--snapshot-retention',
         '3',
-        '--packages',
-        '["packages/@overeng/utils"]',
       ],
       stderr: 'pipe',
       stdout: 'pipe',
@@ -196,7 +202,7 @@ describe('editor view authority orchestration', () => {
 
     expect(result.exitCode).toBe(1)
     expect(result.stderr.toString()).toBe(
-      'editor view authority: --packages is only valid with publish\n',
+      'editor view authority: --packages is required with bootstrap\n',
     )
   })
 })

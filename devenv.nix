@@ -590,6 +590,13 @@ let
     "pnpm-lock.yaml"
     "pnpm-workspace.yaml"
   ];
+  # Single declaration for the source-generator import closure published before Genie can load.
+  # genie:editor-view-closure:check walks every generator with the shared bootstrap closure checker
+  # and fails when this list omits a first-party runtime package boundary.
+  editorBootstrapPackagePaths = [
+    "."
+    "packages/@overeng/otel-contract"
+  ];
   buck2AggregateExec =
     taskName: target:
     trace.exec taskName ''
@@ -859,13 +866,14 @@ in
 
   # The packaged Genie CLI is self-contained; generator sources resolve their
   # external imports through the committed-graph bootstrap editor views. This
-  # stage-zero publication cannot report governed Buck evidence: genie:check
-  # must first prove the tracked standalone graph fresh, then the authoritative
-  # publisher replays it.
-  tasks."genie:run".after = [ "buck2:editor:bootstrap" ];
-  tasks."genie:check".after = lib.mkForce [ "genie:prepare" "buck2:editor:bootstrap" ];
-  tasks."lint:check:genie".after = [ "buck2:editor:bootstrap" ];
-  tasks."genie:watch".after = [ "buck2:editor:bootstrap" ];
+  # stage-zero publication cannot report governed Buck evidence: the closure
+  # checker first proves that the declared publication set covers every
+  # first-party runtime boundary, then genie:check proves the tracked standalone
+  # graph fresh and the authoritative publisher replays it.
+  tasks."genie:run".after = [ "genie:editor-view-closure:check" ];
+  tasks."genie:check".after = lib.mkForce [ "genie:prepare" "genie:editor-view-closure:check" ];
+  tasks."lint:check:genie".after = [ "genie:editor-view-closure:check" ];
+  tasks."genie:watch".after = [ "genie:editor-view-closure:check" ];
   tasks."lint:check:lockfile".description =
     lib.mkForce "Verify lockfile and package specifiers through source-side Genie freshness";
   tasks."lint:check:lockfile".after = lib.mkForce [ "genie:check" ];
@@ -1200,7 +1208,22 @@ in
   tasks."buck2:editor:bootstrap" = {
     description = "Bootstrap source-generator dependencies from the committed standalone Buck graph";
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
-    exec = editorViewExec { mode = "bootstrap"; };
+    exec = editorViewExec {
+      mode = "bootstrap";
+      packagePaths = editorBootstrapPackagePaths;
+    };
+  };
+
+  tasks."genie:editor-view-closure:check" = {
+    description = "Prove the bootstrap editor views cover every generator runtime package boundary";
+    after = [ "buck2:editor:bootstrap" ];
+    exec = trace.exec "genie:editor-view-closure:check" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun "$root/genie/ci-scripts/bootstrap-closure-check.ts" \
+        --root "$root" \
+        --editor-view-package-paths ${lib.escapeShellArg (builtins.toJSON editorBootstrapPackagePaths)}
+    '';
   };
 
   # Authoring and declaration publication need generated projections to be

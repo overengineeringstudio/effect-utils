@@ -90,12 +90,15 @@ export const resolveEditorViewPackageScope = ({
   readonly authorityPackagePaths: readonly string[]
   readonly publicationPackagePaths: readonly string[]
 } => {
-  if (serializedPublicationPackages === undefined)
+  if (serializedPublicationPackages === undefined) {
+    if (command === 'bootstrap') fail('--packages is required with bootstrap')
     return {
       authorityPackagePaths,
-      publicationPackagePaths: command === 'bootstrap' ? ['.'] : authorityPackagePaths,
+      publicationPackagePaths: authorityPackagePaths,
     }
-  if (command !== 'publish') fail('--packages is only valid with publish')
+  }
+  if (command !== 'publish' && command !== 'bootstrap')
+    fail('--packages is only valid with publish or bootstrap')
   return {
     authorityPackagePaths,
     publicationPackagePaths: decodePublicationPackagePaths(serializedPublicationPackages),
@@ -168,8 +171,6 @@ const parseCli = (args: readonly string[]) => {
 
 const main = async (): Promise<void> => {
   const options = parseCli(process.argv.slice(2))
-  if (options.publicationPackages !== undefined && options.command !== 'publish')
-    fail('--packages is only valid with publish')
   if (
     Number.isInteger(options.snapshotRetention) === false ||
     options.snapshotRetention < 2 ||
