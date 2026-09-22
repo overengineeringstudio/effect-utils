@@ -264,8 +264,3 @@ check_aggregate(
     visibility = ["PUBLIC"],
 )
 
-export_file(
-    name = "packages/@overeng/utils/patches/@storybook__builder-vite@10.6.0.patch",
-    src = "packages/@overeng/utils/patches/@storybook__builder-vite@10.6.0.patch",
-    visibility = ["PUBLIC"],
-)

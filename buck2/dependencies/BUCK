@@ -1937,7 +1937,7 @@ pnpm_package(
     sha256 = "86cb8356fd9430c213230aee7dc119dc2ab843d9420d52d415c2afbece486783",
     bins = {
     },
-    patches = ["//:packages/@overeng/utils/patches/@storybook__builder-vite@10.6.0.patch"],
+    patches = ["//packages/@overeng/utils:patches/@storybook__builder-vite@10.6.0.patch"],
 )
 
 pnpm_package(
