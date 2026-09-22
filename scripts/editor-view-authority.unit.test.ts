@@ -160,7 +160,7 @@ describe('editor view authority orchestration', () => {
     )
   })
 
-  it('rejects a bootstrap scope before reading bootstrap state', () => {
+  it('rejects a bootstrap scope before attempting authority or Buck work', () => {
     const script = join(dirname(fileURLToPath(import.meta.url)), 'editor-view-authority.ts')
     const result = Bun.spawnSync({
       cmd: [
