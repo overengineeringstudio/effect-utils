@@ -224,6 +224,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils**: route Vitest's automatic browser failure screenshots to
+  the Storybook gate's external diagnostics sidecar. Interaction failures stay
+  visible without writing `__screenshots__` into consumer source trees, and the
+  existing refresh/compare cleanup removes them with matcher diff artifacts.
+
 - **@overeng/utils**: make the derived-baseline Storybook gate stream Vitest
   progress and use an atomic reporter-completion signal as its process boundary,
   so a completed browser run cannot hang forever on leaked Vite resources.

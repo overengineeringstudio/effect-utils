@@ -285,6 +285,12 @@ const createProject = ({
         headless,
         provider: playwright(),
         instances: [{ browser: 'chromium' }],
+        // Vitest otherwise writes automatic failure screenshots beside the
+        // story file under `__screenshots__`. Those diagnostics are useful,
+        // but they are not source: writing them into the package makes the
+        // unchanged-tree guard reject the gate's own failure artifacts.
+        screenshotFailures: true,
+        screenshotDirectory: join(artifactsDir, 'browser-failures'),
         expect: {
           toMatchScreenshot: {
             comparatorName: 'pixelmatch',
