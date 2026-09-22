@@ -18,7 +18,7 @@ done < <(
 
 inputs="$(nix eval --impure --json --expr "
   let
-    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+    flake = builtins.getFlake \"$NIX_FLAKE_REF?shallow=1\";
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     tools = import $ROOT/nix/buck2-stage0-tools.nix { inherit pkgs; };
   in builtins.mapAttrs (_: paths: map (path: pkgs.lib.removePrefix \"$ROOT/\" (toString path)) paths) tools.source-inputs

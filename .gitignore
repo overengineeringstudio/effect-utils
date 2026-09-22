@@ -31,6 +31,8 @@ __pycache__/
 
 # Buck2 daemon and materialized build state
 buck-out/
+# Standalone trust-tier cache posture, reconciled before every Buck invocation.
+/.buckconfig.local
 # Generated editor snapshots. Unanchored so every admitted package root — present
 # and future — is covered: these stores are machine-local, digest-addressed, and
 # hardened read-only at publication, which git cannot represent (it records only

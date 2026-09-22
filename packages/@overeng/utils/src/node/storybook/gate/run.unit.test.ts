@@ -342,7 +342,7 @@ const fakeVitest = ({
   const executable = join(binDir, 'vitest')
   writeFileSync(
     executable,
-    `#!/usr/bin/env node
+    `#!${process.execPath}
 const { writeFileSync } = require('node:fs')
 writeFileSync(process.env[${JSON.stringify(storyGateReportEnvVar)}], ${JSON.stringify(
       JSON.stringify(report),
