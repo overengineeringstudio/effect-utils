@@ -5,7 +5,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,6 +25,7 @@ import {
   clearStoryGateArtifacts,
   createVitestOutputCapture,
   hasCompleteReferenceCoverage,
+  linkNodeModules,
   parseSettleRecords,
   referenceStoryKeys,
   isStoryGateOk,
@@ -731,6 +734,51 @@ describe('assertionStoryKey', () => {
     expect(
       captures.has(assertionStoryKey({ file: 'NumberField.stories.tsx', fullName: 'With Hint' })),
     ).toBe(true)
+  })
+})
+
+describe('linkNodeModules', () => {
+  it('reuses a persisted derived tree without following borrowed dependency links', () => {
+    const root = mkdtempSync(join(tmpdir(), 'story-gate-node-modules-'))
+    const repoRoot = join(root, 'repo')
+    const rootNodeModules = join(repoRoot, 'node_modules')
+    const worktreeDir = join(rootNodeModules, '.cache', 'overeng-story-gate', 'tree-baseline')
+    const packages = ['persisted', 'fresh', 'real'] as const
+    try {
+      for (const packageName of packages) {
+        const source = join(repoRoot, 'packages', packageName, 'node_modules')
+        const derivedPackage = join(worktreeDir, 'packages', packageName)
+        mkdirSync(source, { recursive: true })
+        mkdirSync(derivedPackage, { recursive: true })
+        writeFileSync(join(derivedPackage, 'package.json'), '{}')
+      }
+      symlinkSync(rootNodeModules, join(worktreeDir, 'node_modules'), 'dir')
+      symlinkSync(
+        join(repoRoot, 'packages', 'persisted', 'node_modules'),
+        join(worktreeDir, 'packages', 'persisted', 'node_modules'),
+        'dir',
+      )
+      const realDependencies = join(worktreeDir, 'packages', 'real', 'node_modules')
+      mkdirSync(realDependencies)
+      writeFileSync(join(realDependencies, 'sentinel.txt'), 'real dependencies')
+
+      linkNodeModules({ repoRoot, worktreeDir })
+      linkNodeModules({ repoRoot, worktreeDir })
+
+      expect({
+        root: readlinkSync(join(worktreeDir, 'node_modules')),
+        persisted: readlinkSync(join(worktreeDir, 'packages', 'persisted', 'node_modules')),
+        fresh: readlinkSync(join(worktreeDir, 'packages', 'fresh', 'node_modules')),
+        real: readFileSync(join(realDependencies, 'sentinel.txt'), 'utf8'),
+      }).toEqual({
+        root: rootNodeModules,
+        persisted: join(repoRoot, 'packages', 'persisted', 'node_modules'),
+        fresh: join(repoRoot, 'packages', 'fresh', 'node_modules'),
+        real: 'real dependencies',
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 
