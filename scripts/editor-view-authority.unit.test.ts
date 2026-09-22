@@ -81,6 +81,23 @@ describe('editor view authority orchestration', () => {
     ).toEqual(['packages/@overeng/utils'])
   })
 
+  it('bootstraps only the root generator dependency view under whole-workspace authority', () => {
+    const scope = resolveEditorViewPackageScope({
+      command: 'bootstrap',
+      authorityPackagePaths: editorViewPackagePaths,
+      serializedPublicationPackages: undefined,
+    })
+
+    expect(scope.authorityPackagePaths).toBe(editorViewPackagePaths)
+    expect(scope.publicationPackagePaths).toEqual(['.'])
+    expect(
+      editorViewPlan({
+        cell: 'workspace_cell',
+        packagePaths: scope.publicationPackagePaths,
+      }).packages.map(({ packagePath }) => packagePath),
+    ).toEqual(['.'])
+  })
+
   it('retains whole-workspace publication when no explicit scope is provided', () => {
     const scope = resolveEditorViewPackageScope({
       command: 'publish',

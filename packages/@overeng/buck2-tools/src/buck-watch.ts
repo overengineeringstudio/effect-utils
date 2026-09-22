@@ -483,6 +483,13 @@ const readEditorInputs = async ({
   }
 }
 
+/** Wall-clock phase emitted by one reconciliation for CI/bootstrap diagnosis. */
+export type BuckReconcileTiming = {
+  readonly phase: 'buck-build' | 'editor-view'
+  readonly durationMs: number
+  readonly packagePath?: string
+}
+
 /** Static configuration shared by every reconciliation pass of one watch plan. */
 export type BuckReconcilerOptions = {
   readonly plan: BuckWatchPlan
@@ -497,6 +504,7 @@ export type BuckReconcilerOptions = {
   readonly snapshotRetention: number
   readonly run?: RunCommand
   readonly signal?: AbortSignal
+  readonly onTiming?: (timing: BuckReconcileTiming) => void
 }
 
 /** Build the affected product set, then publish each affected editor view from provider roots. */
@@ -508,11 +516,16 @@ export const reconcileBuckViews = async ({
   readonly options: BuckReconcilerOptions
 }): Promise<void> => {
   const execute = options.run ?? runCommand
+  const buildStartedAt = performance.now()
   const built = await execute({
     command: options.buck2,
     args: ['build', ...request.buildTargets, '--show-full-output'],
     cwd: options.workspaceRoot,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
+  })
+  options.onTiming?.({
+    phase: 'buck-build',
+    durationMs: performance.now() - buildStartedAt,
   })
   const outputs = parseBuildOutputs(built.stdout)
   const selected = new Set(request.packagePaths)
@@ -525,6 +538,7 @@ export const reconcileBuckViews = async ({
   await options.plan.packages.reduce(async (previous, entry) => {
     await previous
     if (selected.has(entry.packagePath) === false || entry.editor === undefined) return
+    const publicationStartedAt = performance.now()
     const manifestOutput = outputForTarget({
       outputs,
       target: entry.editor.inputsManifestTarget,
@@ -566,6 +580,11 @@ export const reconcileBuckViews = async ({
       ],
       detached: true,
       cwd: options.repoRoot,
+    })
+    options.onTiming?.({
+      phase: 'editor-view',
+      packagePath: entry.packagePath,
+      durationMs: performance.now() - publicationStartedAt,
     })
   }, Promise.resolve())
 }
