@@ -119,6 +119,34 @@ export_file(
     src = "patches/@myobie__pty@0.10.0.patch",
     visibility = ["PUBLIC"],
 )
+static_source_set(
+    name = "nix_sources",
+    prefix = "",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "",
+    srcs = glob([
+        "*.genie.ts",
+        ".github/**/*.ts",
+        "genie/**/*.ts",
+        "nix/**/*.json",
+        "nix/**/*.nix",
+        "nix/**/*.ts",
+        "rust/*.lock",
+        "rust/*.sh",
+        "rust/*.toml",
+    ]) + [
+        "BUCK",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "rust-toolchain.toml",
+    ],
+    visibility = ["PUBLIC"],
+)
 
 weaver_checks(
     name = "weaver",

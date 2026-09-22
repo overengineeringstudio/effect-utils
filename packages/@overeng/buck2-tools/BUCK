@@ -44,6 +44,7 @@ export_materialization_inputs([
     "src/real-path.ts",
     "src/repository-policy-runner.ts",
     "src/repository-policy-runner.unit.test.ts",
+    "src/repository-validation-runner.ts",
     "src/static-check-runner.ts",
     "src/typescript-runner.ts",
     "src/typescript-runner.unit.test.ts",
@@ -56,6 +57,13 @@ static_source_set(
     node_modules = ":node_modules",
     prefix = "packages/@overeng/buck2-tools",
     srcs = glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/buck2-tools",
+    srcs = glob(["**/*.nix"]),
     visibility = ["PUBLIC"],
 )
 
@@ -99,6 +107,7 @@ package_view(
         "src/real-path.ts": "src/real-path.ts",
         "src/repository-policy-runner.ts": "src/repository-policy-runner.ts",
         "src/repository-policy-runner.unit.test.ts": "src/repository-policy-runner.unit.test.ts",
+        "src/repository-validation-runner.ts": "src/repository-validation-runner.ts",
         "src/static-check-runner.ts": "src/static-check-runner.ts",
         "src/typescript-runner.ts": "src/typescript-runner.ts",
         "src/typescript-runner.unit.test.ts": "src/typescript-runner.unit.test.ts",

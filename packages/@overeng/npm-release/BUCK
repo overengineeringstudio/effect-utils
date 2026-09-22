@@ -40,6 +40,13 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/npm-release",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
 alias(
     name = "node_modules",
     actual = "//buck2/dependencies:view_packages_overeng_npm_release_4d3d9fe00538",

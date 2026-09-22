@@ -39,6 +39,13 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/effect-rpc-tanstack",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
 alias(
     name = "node_modules",
     actual = "//buck2/dependencies:view_packages_overeng_effect_rpc_tanstack_269934211838",

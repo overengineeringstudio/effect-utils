@@ -20,8 +20,8 @@ if [ -e "$rust_workspace" ]; then
   echo "FAIL: retired shared Rust workspace source producer still exists" >&2
   exit 1
 fi
-if grep -q 'builtins\.path' "$bootstrap"; then
-  echo "FAIL: bootstrap-closure task still coerces the effect-utils repository root" >&2
+if [ -e "$bootstrap" ]; then
+  echo "FAIL: retired bootstrap-closure devenv producer still exists" >&2
   exit 1
 fi
 workflow_report="$(sed -n '/taskModules\.workflow-report {/,/})/p' "$devenv")"

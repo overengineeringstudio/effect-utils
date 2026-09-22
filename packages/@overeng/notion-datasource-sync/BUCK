@@ -123,6 +123,13 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/notion-datasource-sync",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
 alias(
     name = "node_modules",
     actual = "//buck2/dependencies:view_packages_overeng_notion_datasource_sync_60c433be3a75",

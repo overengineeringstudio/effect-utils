@@ -12,7 +12,12 @@ describe('root Buck aggregate projection', () => {
         testTargets: ['//packages/@example/alpha:test'],
       }),
     ).toEqual({
-      quick: ['//packages/@example/alpha:typecheck', ':weaver_check', ':weaver_version_smoke'],
+      quick: [
+        '//packages/@example/alpha:typecheck',
+        ':weaver_check',
+        ':weaver_version_smoke',
+        '//buck2/static:check',
+      ],
       all: [
         ':quick',
         '//packages/@example/alpha:dist',
@@ -34,11 +39,12 @@ describe('root Buck aggregate projection', () => {
     expect(output).toContain('weaver_checks(')
   })
 
-  it('adds measured sub-five-second Weaver gates to the production quick target set', () => {
+  it('adds static validation and measured Weaver gates to the production quick target set', () => {
     expect(planRootBuckAggregates().quick).toEqual([
       ...authoritativeBuck2TypeScriptProjects.map((project) => project.typecheckTarget),
       ':weaver_check',
       ':weaver_version_smoke',
+      '//buck2/static:check',
     ])
   })
 })

@@ -58,6 +58,10 @@ All notable changes to this project will be documented in this file.
   validation into hermetic Buck targets backed by Nix capability projections;
   keep merge-base compatibility diff and live OTLP validation in their
   effectful devenv lane.
+- **Buck2 static checks**: Move Nix source linting, Genie import-closure
+  validation, devenv trace auditing, and workspace contract validation into
+  declared Buck targets; route quick and devenv lint entrypoints through the
+  aggregate and retire the duplicate repository-local devenv producers.
 
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full

@@ -194,6 +194,7 @@ export const cargoBuck2PackageProjection = ({
       source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
   )
   const normalLabels = normalDependencies.map((dependency) => dependency.label)
+  const workspaceContractSources = sorted(['BUCK', 'BUCK.genie.ts', 'Cargo.toml', ...sources])
   const compileEnv = {
     CARGO_PKG_NAME: packageName,
     CARGO_PKG_VERSION: version,
@@ -354,6 +355,7 @@ export const cargoBuck2PackageProjection = ({
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("@prelude//:prelude.bzl", "native")',
+    'load("//buck2:static_checks.bzl", "static_source_set")',
     ...(buildProduct === true
       ? [
           'load("//buck2/products:defs.bzl", "build_product")',
@@ -361,6 +363,13 @@ export const cargoBuck2PackageProjection = ({
           'load("//buck2/rust:defs.bzl", "rust_product_executable")',
         ]
       : []),
+    'static_source_set(',
+    '    name = "static_sources",',
+    `    prefix = ${starlarkString(packagePath)},`,
+    ...renderStringList({ name: 'srcs', values: workspaceContractSources }),
+    '    visibility = ["PUBLIC"],',
+    ')',
+    '',
     ...rules,
   ].join('\n')
 
@@ -518,6 +527,8 @@ const workspaceMembers = [
     manifest: productManifest as CargoManifest,
   },
 ] as const satisfies readonly WorkspaceMember[]
+
+export const cargoBuck2WorkspaceMemberPaths = workspaceMembers.map((member) => member.packagePath)
 
 const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
 if (workspace.resolver !== '2')

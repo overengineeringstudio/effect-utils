@@ -42,6 +42,13 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/effect-react",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
 alias(
     name = "node_modules",
     actual = "//buck2/dependencies:view_packages_overeng_effect_react_111d6e63d407",

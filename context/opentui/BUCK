@@ -34,6 +34,13 @@ static_source_set(
     visibility = ["PUBLIC"],
 )
 
+static_source_set(
+    name = "nix_sources",
+    prefix = "context/opentui",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
 alias(
     name = "node_modules",
     actual = "//buck2/dependencies:view_context_opentui_be69c4c22aa3",

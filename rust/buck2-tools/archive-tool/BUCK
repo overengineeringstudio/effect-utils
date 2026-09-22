@@ -9,6 +9,19 @@
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/buck2-tools/archive-tool",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/main.rs",
+    ],
+    visibility = ["PUBLIC"],
+)
+
 native.rust_binary(
     name = "buck2-archive-tool",
     crate = "buck2_archive_tool",

@@ -46,6 +46,42 @@ support_tool(
     visibility = ["PUBLIC"],
 )
 
+support_tool(
+    name = "tool_cargo",
+    protocol = "rust-lang/cargo/v1",
+    tool_id = "cargo",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_deadnix",
+    protocol = "astro/deadnix/v1",
+    tool_id = "deadnix",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_nixfmt",
+    protocol = "nix-community/nixfmt/v1",
+    tool_id = "nixfmt",
+    visibility = ["PUBLIC"],
+)
+support_tool(
+    name = "tool_nix",
+    protocol = "nixos/nix/v1",
+    tool_id = "nix",
+    visibility = ["PUBLIC"],
+)
+
+
+support_tool(
+    name = "tool_rust_shell",
+    protocol = "effect-utils/buck2-rust-tool/v1",
+    tool_id = "rust-shell",
+    visibility = ["PUBLIC"],
+)
+
+
 # Source-static tools remain Nix-realized capabilities; Buck owns their declared
 # repository inputs, invocation, invalidation, and result identity.
 support_tool(

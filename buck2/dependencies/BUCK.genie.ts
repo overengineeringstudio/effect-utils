@@ -19,6 +19,15 @@ export default createGenieOutput({
 # Store fingerprint: ${store.fingerprint}
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
+load("//buck2:static_checks.bzl", "static_source_set")
+
+static_source_set(
+    name = "static_sources",
+    prefix = "buck2/dependencies",
+    srcs = glob(["*.json", "*.ts"]),
+    visibility = ["PUBLIC"],
+)
+
 
 # The root Buck suite asserts over this package's own generated declaration and
 # over the store fingerprint sidecar, so both are declared inputs, not just
