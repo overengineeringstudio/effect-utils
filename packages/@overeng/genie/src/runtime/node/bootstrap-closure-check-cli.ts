@@ -92,6 +92,7 @@ const readWorkspacePackages = (repoRoot: string): readonly WorkspacePackage[] =>
   })
 }
 
+/** Find unresolved first-party runtime imports in the editor views published for Genie. */
 export const findEditorViewClosureViolations = ({
   violations,
   workspacePackages,
