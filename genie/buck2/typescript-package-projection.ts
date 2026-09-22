@@ -1127,7 +1127,7 @@ export const buck2TypeScriptPackageProjection = ({
       renderBuck2Visibility({ visibility }),
       ')',
       '',
-      ...testDataFiles.flatMap((file) => [
+      ...testDataFiles.filter((file) => file.endsWith('.patch')).flatMap((file) => [
         'export_file(',
         `    name = ${starlarkString(file)},`,
         `    src = ${starlarkString(file)},`,
