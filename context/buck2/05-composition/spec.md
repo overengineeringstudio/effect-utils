@@ -185,9 +185,9 @@ follow these rules:
    the current cell root.
 8. Use mr for apply, advance, recovery, status, and teardown. Never replace
    protected-mount teardown with `rm -rf` or an in-place copy.
-9. CI creates a job-owned store branch with an explicit worktree mode,
-   synthesizes composition before credentials, runs source-dependent commands
-   from the owned member, and always invokes guarded teardown.
+9. Effect-utils CI runs from the actions checkout as its tracked standalone
+   Buck root. The paused composed shape is a development-only exception until
+   L3 cut 2 and is never synthesized as CI setup.
 10. A dirty non-owned mount, a foreign real path, a missing ownership manifest,
     or an R6 mismatch is a hard stop. Do not repair around the guard.
 11. Handoffs name both the workspace root and owned-member cwd, plus any
@@ -197,14 +197,18 @@ follow these rules:
 
 ## Standalone Variant
 
-A single-member build is simply a workspace with no other members mounted:
-the owned repo still lives at `repos/<name>` under its canonical cell name,
-and the platform labels are byte-identical. Proven at the action-digest
-level: digests are identical across single-member, two-member, renamed-root,
-and real-dotfiles-root shapes, and between a writable branch worktree and a
-read-only mount at the same commit — the root cell's name, the root's
-absolute path, and the mount's write bit are all irrelevant to member
-identity.
+A standalone repository is its own Buck project root. Its tracked
+`.buckconfig` maps the canonical member cell name to `.`, declares the same
+platform labels and Nix-produced capability cell, and its tracked `.buckroot`
+prevents accidental discovery of an outer project. Effect-utils CI and devenv
+Buck tasks use this shape directly; a second checkout at the same revision is
+the BUCK-R06 cache-reuse comparison context.
+
+The paused composed shape remains distinct until L3 cut 2: the member is
+mounted at `repos/<name>` under the same canonical cell name. Action-digest
+parity between these two shapes must be measured rather than assumed; the
+standalone CI cutover does not weaken the same-shape, cross-checkout BUCK-R06
+zero-reexecution requirement.
 
 ## Invariants Worth Restating
 

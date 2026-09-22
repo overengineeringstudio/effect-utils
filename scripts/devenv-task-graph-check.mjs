@@ -249,8 +249,8 @@ for (const name of [
   ...buck2TestLaneTaskNames,
 ]) {
   ok({
-    condition: reaches({ start: name, target: 'mr:apply' }),
-    name: `${name} waits for workspace reconciliation`,
+    condition: reaches({ start: name, target: 'mr:apply' }) === false,
+    name: `${name} remains standalone`,
   })
   ok({
     condition: reaches({ start: name, target: 'genie:check' }),
@@ -265,9 +265,9 @@ for (const name of ['buck2:check', 'buck2:quick', 'buck2:all', 'buck2:nix-bridge
 }
 ok({
   condition:
-    reaches({ start: 'buck2:editor:bootstrap', target: 'mr:setup' }) === true &&
+    reaches({ start: 'buck2:editor:bootstrap', target: 'mr:setup' }) === false &&
     reaches({ start: 'buck2:editor:bootstrap', target: 'genie:check' }) === false,
-  name: 'editor bootstrap materializes committed dependencies before freshness without claiming it',
+  name: 'editor bootstrap reads committed standalone dependencies without mutating projections',
 })
 
 ok({
@@ -293,11 +293,9 @@ const taskSource = (name) => {
 
 const editorMaterializeSource = taskSource('buck2:editor:materialize')
 const orderedMaterializationSteps = [
-  'devenv tasks run mr:setup',
   'devenv tasks run buck2:editor:bootstrap --mode single',
   'devenv tasks run genie:run --mode single',
   'devenv tasks run genie:check --mode single',
-  'devenv tasks run mr:apply --mode single',
   'devenv tasks run buck2:editor:publish --mode single',
 ]
 const orderedMaterializationOffsets = orderedMaterializationSteps.map((step) =>
@@ -308,7 +306,7 @@ ok({
     (offset, index) =>
       offset !== -1 && (index === 0 || offset > orderedMaterializationOffsets[index - 1]),
   ),
-  name: 'editor materialization runs bootstrap, generation, freshness, composition, and publication in order',
+  name: 'editor materialization runs bootstrap, generation, freshness, and publication in order',
 })
 
 const materializerSource = taskSource(materializer)
@@ -321,7 +319,7 @@ ok({
   condition:
     materializerSource.includes(typescriptAuthorityRuntimePath) === true &&
     materializerSource.includes('materialize-dist "$root"') === true &&
-    materializerSource.includes('BUCK2_BIN=') === true,
+    materializerSource.includes('WORKSPACE_ROOT="$root"') === true,
   name: 'materializer dispatches the registry-backed TypeScript authority runtime',
 })
 ok({
@@ -337,14 +335,15 @@ ok({
 })
 ok({
   condition:
-    source.includes('composed_workspace_root()') === true &&
-    source.includes('worktree list --porcelain -z') === true &&
-    source.includes('backlink=') === true &&
-    materializerSource.includes('requires a composed megarepo workspace') === true &&
-    materializerSource.includes('WORKSPACE_ROOT=') === true &&
+    source.includes('typescriptPublicationRootPredicate =') === true &&
+    source.includes('--workspace-root "$root"') === true &&
+    source.includes('--buck2 "$BUCK2_BIN"') === true &&
+    materializerSource.includes('requires a composed megarepo workspace') === false &&
+    materializerSource.includes('WORKSPACE_ROOT="$root"') === true &&
+    materializerSource.includes('BUCK2_BIN="$workspace_root/.megarepo/bin/"buck2') === true &&
     materializerSource.includes('TYPESCRIPT_DIST_MODE=') === false &&
     materializerSource.includes('TSGO_BIN=') === false,
-  name: 'materializer publishes only from a reciprocal composition root',
+  name: 'materializer defaults to the standalone root and preserves explicit composed publication',
 })
 
 const editorViewHelper = source.slice(

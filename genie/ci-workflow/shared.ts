@@ -381,11 +381,8 @@ export const ciNixCacheRoot = `${ciCompositionStateRoot}/nix-cache`
 /** Default Nix cache path restored/saved by the shared CI cache helpers. */
 export const ciNixCachePath = `${ciNixCacheRoot}/nix`
 
-/**
- * Enter the source checkout selected for this shell step. Effect-utils CI exports
- * the synthesized owned member; downstream workflows fall back to checkout.
- */
-export const ciSourceRoot = 'cd "${EFFECT_UTILS_MEMBER_ROOT:-${GITHUB_WORKSPACE:-$PWD}}"'
+/** Enter the actions checkout selected for this shell step. */
+export const ciSourceRoot = 'cd "${GITHUB_WORKSPACE:-$PWD}"'
 
 /** Run one source-dependent shell command from the canonical CI source root. */
 export const withCiSourceRoot = (command: string) => `${ciSourceRoot} && ${command}`

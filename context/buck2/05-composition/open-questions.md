@@ -1,5 +1,20 @@
 # Composition Open Questions
 
+## Prototype 2026-09-22: effect-utils CI uses the standalone checkout root
+
+The Option-B prototype removes CI's prepare/cleanup composition lifecycle,
+runs every effect-utils lane from the actions checkout, and makes a second
+plain checkout the trusted remote-cache proof context. The composed root
+remains available only as a development exception until L3 cut 2.
+
+Landing requires COMP-T01 and COMP-R01/R02/R06/R07 amendments plus a decision
+0020 Amendment 4; decision 0027 Amendment 1 should also name CI explicitly.
+Standalone repository roots become the default CI/development identity, while
+canonical `repos/<name>` mounts, the one-writable-mount contract, and the
+`megarepo` isolation directory apply only inside the explicitly requested
+paused composed shape. Requirements text stays protected until that decision
+is accepted.
+
 ## Resolved 2026-09-15: accept artifact-default composition? — decision 0034; composition machinery is on the deletion path (q47, 2026-09-19)
 
 Composed cells exist for vision criterion 6 as originally ratified (a consumer

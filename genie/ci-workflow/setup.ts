@@ -68,25 +68,6 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
   with: { 'persist-credentials': false, ...opts },
 })
 
-/**
- * Synthesize the disposable decision-0020 workspace used by effect-utils CI.
- *
- * The actions checkout remains untouched for action cleanup and artifact paths.
- * Every source-dependent command after this step runs from the branch-attached
- * owned member at `repos/effect-utils`.
- */
-export const prepareEffectUtilsCompositionStep = {
-  name: 'Prepare effect-utils composition',
-  env: githubTokenEnv(),
-  run: '"$GITHUB_WORKSPACE/genie/ci-scripts/prepare-effect-utils-composition.sh"',
-} as const
-
-/** Always remove the per-job synthesized workspace, worktree registration, and store. */
-export const cleanupEffectUtilsCompositionStep = {
-  name: 'Cleanup effect-utils composition',
-  if: 'always()',
-  run: '"$GITHUB_WORKSPACE/genie/ci-scripts/cleanup-effect-utils-composition.sh"',
-} as const
 
 export const prepareCiScriptsStep = {
   name: 'Prepare CI helper scripts',

@@ -18,7 +18,7 @@ Use the `--no-tui` flag to see all output. If tools aren't directly in `$PATH`, 
 
 We're using megarepo for repo management. We're using `pnpm` temporarily for installs (bun is still used to run scripts) and `devenv` to manage the development environment.
 
-Buck owns checking for all 39 TypeScript projects and declaration production for every emitting project. `buck2:typescript:materialize-dist` publishes those declarations atomically for source-side consumers such as type-aware lint. Publication requires the repository's reciprocal composed megarepo worktree and fails in a detached or lookalike checkout; work on this repo through its megarepo composition.
+Buck owns checking for all 39 TypeScript projects and declaration production for every emitting project. The checkout itself is the standalone Buck root; CI and devenv Buck tasks invoke the pinned `BUCK2_BIN` from that root. `buck2:typescript:materialize-dist` publishes those declarations atomically for source-side consumers such as type-aware lint.
 
 # Genie (Config File Generation)
 
