@@ -16,7 +16,7 @@ import { getStoryTitle, normalizeStories } from 'storybook/internal/common'
 import { StoryIndexGenerator, experimental_loadStorybook } from 'storybook/internal/core-server'
 import type { Plugin, ViteUserConfig } from 'vitest/config'
 
-import { initialGlobalsProvideKey } from './constants.ts'
+import { initialGlobalsProvideKey, projectNameProvideKey } from './constants.ts'
 import type { StoryGateTheme } from './project.ts'
 
 const sourceQuery = 'overeng-story-gate-source'
@@ -104,9 +104,11 @@ export const indexedStoryTitles = ({
 export const portableStoryTests = async ({
   configDir,
   theme,
+  projectName,
 }: {
   readonly configDir: string
   readonly theme: StoryGateTheme | undefined
+  readonly projectName: string
 }): Promise<Plugin[]> => {
   const root = process.cwd()
   const absoluteConfigDir = resolve(root, configDir)
@@ -158,6 +160,7 @@ export const portableStoryTests = async ({
         provide: {
           ...storybookConfig.test?.provide,
           [initialGlobalsProvideKey]: theme === undefined ? {} : { [theme.name]: theme.value },
+          [projectNameProvideKey]: projectName,
         },
       },
     }),

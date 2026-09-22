@@ -32,6 +32,27 @@ export const baselineDirEnvVar = 'OVERENG_STORY_GATE_BASELINE_DIR'
  */
 export const manifestEnvVar = 'OVERENG_STORY_GATE_MANIFEST'
 
+/**
+ * Sidecar root for actual/reference/diff diagnostics.
+ *
+ * Vitest's default lives below the test project. A failed comparison therefore
+ * creates untracked files under `stories/`, changing the very tree the gate is
+ * measuring; the unchanged-tree guard then rejects the run for damage caused
+ * by its own reporter. Keep diagnostics beside the derived baseline root
+ * instead. The `-artifacts` suffix is outside `baselineRoot`, so recursive PNG
+ * scans cannot mistake diagnostics for reference captures.
+ */
+export const storyGateArtifactsRoot = (baselineRoot: string): string => `${baselineRoot}-artifacts`
+
+/** Project-specific directory below {@link storyGateArtifactsRoot}. */
+export const storyGateArtifactsDir = ({
+  baselineRoot,
+  projectName,
+}: {
+  readonly baselineRoot: string
+  readonly projectName: string
+}): string => join(storyGateArtifactsRoot(baselineRoot), projectName)
+
 /** A theme the gate covers, expressed as a Storybook toolbar global. */
 export interface StoryGateTheme {
   /** Toolbar global name, e.g. `'theme'`. */
@@ -208,6 +229,7 @@ const pinReactToConsumer = (): Plugin => ({
 export type StorybookPluginFor = (args: {
   configDir: string
   theme: StoryGateTheme | undefined
+  projectName: string
 }) => NonNullable<ViteUserConfig['plugins']>[number]
 
 const defaultStorybookPluginFor: StorybookPluginFor = portableStoryTests
@@ -229,12 +251,17 @@ const createProject = ({
 }): ViteUserConfig => {
   const projectName = theme === undefined ? 'story-gate' : `story-gate-${theme.value}`
   const baselineDir = join(baselineRoot, projectName)
+  const artifactsDir = storyGateArtifactsDir({ baselineRoot, projectName })
 
   return {
     // Caller plugins come after the React pin and before the Portable Stories
     // integration: a compiler transform must run before the integration turns
     // each CSF module into a test, and the React pin must apply to its output.
-    plugins: [pinReactToConsumer(), ...(plugins ?? []), storybookPluginFor({ configDir, theme })],
+    plugins: [
+      pinReactToConsumer(),
+      ...(plugins ?? []),
+      storybookPluginFor({ configDir, theme, projectName }),
+    ],
     // The baseline half of a run happens inside a git worktree that borrows the
     // main tree's `node_modules` by symlink, so workspace sources — this gate's
     // own setup file among them — resolve to paths outside the served root and
@@ -307,6 +334,20 @@ const createProject = ({
               recordResolvedBaseline(path)
               return path
             },
+            resolveDiffPath: ({
+              arg,
+              ext,
+              testFileDirectory,
+              testFileName,
+              browserName,
+              platform,
+            }) =>
+              join(
+                artifactsDir,
+                testFileDirectory,
+                testFileName,
+                `${arg}-${browserName}-${platform}${ext}`,
+              ),
           },
         },
       },

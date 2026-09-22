@@ -11,6 +11,9 @@
 /** Vitest `provide` key carrying globals for one themed gate project. */
 export const initialGlobalsProvideKey = 'overeng/story-gate-initial-globals'
 
+/** Vitest `provide` key carrying the current gate project name. */
+export const projectNameProvideKey = 'overeng/story-gate-project-name'
+
 /**
  * Marker the runner greps out of a run's output to report stories that opted
  * out of visual comparison by DECLARATION, via `parameters.storyGate.unstable`.
@@ -93,6 +96,8 @@ export type StorySettleFailure =
 
 /** One story's settle outcome, as carried across the console channel. */
 export interface StorySettleRecord {
+  /** Vitest project that produced the record, matching its screenshot directory. */
+  readonly projectName: string
   /** Storybook story id — the screenshot name, so it keys the baseline files. */
   readonly id: string
   /** `<title> > <name>`, which is how a human refers to the story. */

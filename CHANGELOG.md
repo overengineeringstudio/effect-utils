@@ -224,6 +224,18 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils**: make the derived-baseline Storybook gate stream Vitest
+  progress and use an atomic reporter-completion signal as its process boundary,
+  so a completed browser run cannot hang forever on leaked Vite resources.
+  Interrupts tear down the owned process tree before preserving the caller's
+  signal exit, including recursive Windows teardown and already-exited races,
+  and streamed diagnostics retain a bounded tail rather than growing with story
+  console output. Zero-story and missing-lifecycle captures fail at the
+  completion boundary; compare runs use `--update=none`; cached baselines
+  require project-scoped settled records to match their themed reference PNGs;
+  and failed-comparison sidecars are cleared on refresh and before every
+  comparison.
+
 - **@overeng/gh-ci-utils**: `auth status` (and `auth login` result lines) now
   render in every output mode. Human modes previously emitted only `Effect.log`,
   which `outputModeLayer` captures into an in-memory buffer for progressive

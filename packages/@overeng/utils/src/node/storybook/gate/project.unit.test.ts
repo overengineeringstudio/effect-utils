@@ -1,6 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { baselineDirEnvVar, createStoryGateConfig } from './project.ts'
+import {
+  baselineDirEnvVar,
+  createStoryGateConfig,
+  storyGateArtifactsDir,
+  storyGateArtifactsRoot,
+} from './project.ts'
 
 /**
  * These tests exist because of a defect that was invisible to every local
@@ -131,5 +136,35 @@ describe('createStoryGateConfig plugin threading', () => {
       expect(names.some((name) => name.includes('storybook'))).toBe(true)
       expect(names).not.toContain(marker.name)
     }
+  })
+})
+
+describe('screenshot diagnostics', () => {
+  it('keeps failed-comparison artifacts outside the captured baseline tree', () => {
+    const baselineRoot = '/tmp/story-gate-unit-test'
+    const projectName = 'story-gate-dark'
+    const artifactsDir = storyGateArtifactsDir({ baselineRoot, projectName })
+    const artifactsRoot = storyGateArtifactsRoot(baselineRoot)
+    const config = createStoryGateConfig({ storybookPluginFor: fakeStorybookPluginFor })
+
+    // Vitest defaults diff output below the test file. That made a failed
+    // comparison write untracked PNGs into `stories/`, after which the gate's
+    // unchanged-tree guard rejected its own artifacts as a source edit.
+    expect(config.test).toMatchObject({
+      browser: {
+        expect: {
+          toMatchScreenshot: { resolveDiffPath: expect.any(Function) },
+        },
+      },
+    })
+    expect({
+      artifactsDir,
+      artifactsRoot,
+      insideBaseline: artifactsDir.startsWith(`${baselineRoot}/`),
+    }).toEqual({
+      artifactsDir: '/tmp/story-gate-unit-test-artifacts/story-gate-dark',
+      artifactsRoot: '/tmp/story-gate-unit-test-artifacts',
+      insideBaseline: false,
+    })
   })
 })

@@ -12,13 +12,14 @@ import { setProjectAnnotations } from '@storybook/react-vite'
 import { getProjectAnnotations } from 'virtual:/@storybook/builder-vite/project-annotations.js'
 import { beforeAll, inject } from 'vitest'
 
-import { storyGateAnnotations } from './annotations.ts'
-import { initialGlobalsProvideKey } from './constants.ts'
+import { createStoryGateAnnotations } from './annotations.ts'
+import { initialGlobalsProvideKey, projectNameProvideKey } from './constants.ts'
 import { composeGateProjectAnnotations } from './project-annotations.ts'
 
 declare module 'vitest' {
   interface ProvidedContext {
     'overeng/story-gate-initial-globals': Record<string, unknown>
+    'overeng/story-gate-project-name': string
   }
 }
 
@@ -80,7 +81,7 @@ const annotations = setProjectAnnotations([
   ...composeGateProjectAnnotations({
     base: getProjectAnnotations(),
     initialGlobals: inject(initialGlobalsProvideKey),
-    gate: storyGateAnnotations,
+    gate: createStoryGateAnnotations({ projectName: inject(projectNameProvideKey) }),
   }),
 ])
 

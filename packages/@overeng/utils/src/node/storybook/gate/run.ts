@@ -21,7 +21,7 @@
  * @module
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
@@ -34,8 +34,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
+import { fileURLToPath } from 'node:url'
 
+import { storyGateReportEnvVar, storyGateRunCompleteMarker } from './completion-reporter.ts'
 import {
   excludedStoryMarker,
   settledStoryMarker,
@@ -43,7 +46,7 @@ import {
   storySettleConfig,
   unsettledStoryMarker,
 } from './constants.ts'
-import { baselineDirEnvVar, manifestEnvVar } from './project.ts'
+import { baselineDirEnvVar, manifestEnvVar, storyGateArtifactsRoot } from './project.ts'
 
 /** How a story's render differs from the baseline ref. */
 export type StoryGateChangeKind = 'pixels' | 'dimensions' | 'accessibility' | 'other'
@@ -462,6 +465,62 @@ const listPngs = (root: string): string[] => {
     .map((entry) => join(entry.parentPath, entry.name))
 }
 
+/** Evidence that a cached baseline was produced by a live story lifecycle. */
+interface BaselineCaptureEvidence {
+  readonly assertions: number
+  readonly settledStoryIds: readonly string[]
+}
+
+/**
+ * Require one project-scoped reference image for every lifecycle record that
+ * reached settle.
+ *
+ * Counts and bare story IDs are insufficient: themed projects intentionally
+ * repeat the same story IDs, so a stale image from one project could otherwise
+ * hide a missing image from another.
+ */
+export const hasCompleteReferenceCoverage = ({
+  settledStoryIds,
+  referenceStoryIds,
+}: {
+  readonly settledStoryIds: readonly string[]
+  readonly referenceStoryIds: readonly string[]
+}): boolean => {
+  if (settledStoryIds.length === 0 || referenceStoryIds.length === 0) return false
+  const settled = settledStoryIds.toSorted()
+  const references = referenceStoryIds.toSorted()
+  return (
+    settled.length === references.length &&
+    settled.every((storyId, index) => storyId === references[index])
+  )
+}
+
+const referenceStoryIds = (root: string): readonly string[] =>
+  listPngs(root).map((file) =>
+    relative(root, file).slice(0, -extname(file).length).replaceAll(sep, '/'),
+  )
+
+const assertCompleteReferenceCoverage = ({
+  label,
+  settledStoryIds,
+  referenceStoryIds: references,
+}: {
+  readonly label: string
+  readonly settledStoryIds: readonly string[]
+  readonly referenceStoryIds: readonly string[]
+}): void => {
+  if (hasCompleteReferenceCoverage({ settledStoryIds, referenceStoryIds: references }) === true)
+    return
+  throw new Error(
+    `[story-gate] ${label} produced ${settledStoryIds.length} settled lifecycle records but ${references.length} corresponding reference PNGs.`,
+  )
+}
+
+/** Remove comparison diagnostics without touching the derived baseline. */
+export const clearStoryGateArtifacts = (baselineDir: string): void => {
+  rmSync(storyGateArtifactsRoot(baselineDir), { recursive: true, force: true })
+}
+
 /**
  * Every capture in `root`, keyed by `<project>/<story path>` and valued by
  * content hash.
@@ -618,57 +677,401 @@ const linkNodeModules = ({
   }
 }
 
-const runVitest = ({
+interface ProcessSignalControl {
+  readonly pid: number
+  once(event: 'SIGINT' | 'SIGTERM' | 'exit', listener: () => void): unknown
+  removeListener(event: 'SIGINT' | 'SIGTERM' | 'exit', listener: () => void): unknown
+  kill(pid: number, signal: 'SIGINT' | 'SIGTERM'): boolean
+}
+
+/**
+ * Own a detached child across parent interruption, then restore Node's default
+ * signal behavior by re-sending the same signal after cleanup.
+ */
+export const registerProcessTreeSignalForwarding = ({
+  killTree,
+  processControl = process,
+}: {
+  readonly killTree: () => void
+  readonly processControl?: ProcessSignalControl
+}): (() => void) => {
+  let active = true
+  const unregister = (): void => {
+    if (active === false) return
+    active = false
+    processControl.removeListener('SIGINT', onInterrupt)
+    processControl.removeListener('SIGTERM', onTerminate)
+    processControl.removeListener('exit', onExit)
+  }
+  const forward = (signal: 'SIGINT' | 'SIGTERM'): void => {
+    if (active === false) return
+    unregister()
+    try {
+      killTree()
+    } finally {
+      processControl.kill(processControl.pid, signal)
+    }
+  }
+  const onInterrupt = (): void => forward('SIGINT')
+  const onTerminate = (): void => forward('SIGTERM')
+  const onExit = (): void => {
+    if (active === false) return
+    unregister()
+    killTree()
+  }
+  processControl.once('SIGINT', onInterrupt)
+  processControl.once('SIGTERM', onTerminate)
+  processControl.once('exit', onExit)
+  return unregister
+}
+
+interface TreeKillResult {
+  readonly error?: Error
+  readonly status: number | null
+}
+
+const windowsProcessNotFoundExitStatus = 128
+
+/**
+ * Terminate a process tree using the host's native recursive primitive.
+ *
+ * POSIX children are spawned into an owned process group. Windows has no
+ * negative-PID equivalent, so `taskkill /T /F` is the required tree boundary.
+ */
+export const terminateProcessTree = ({
+  pid,
+  platform = process.platform,
+  isRunning,
+  killProcessGroup,
+  runWindowsTreeKill,
+}: {
+  readonly pid: number
+  readonly platform?: NodeJS.Platform
+  readonly isRunning?: () => boolean
+  readonly killProcessGroup?: (processGroup: number) => void
+  readonly runWindowsTreeKill?: (command: string, args: readonly string[]) => TreeKillResult
+}): void => {
+  if (platform === 'win32') {
+    const command = 'taskkill'
+    const args = ['/pid', String(pid), '/t', '/f'] as const
+    const result =
+      runWindowsTreeKill?.(command, args) ??
+      spawnSync(command, args, { stdio: 'ignore', windowsHide: true })
+    if (result.error !== undefined) throw result.error
+    // `taskkill` reports an already-exited PID as status 128. The child exit
+    // event can race this synchronous command, leaving `exitCode` temporarily
+    // null, so that status is Windows' equivalent of POSIX ESRCH.
+    if (
+      result.status !== 0 &&
+      result.status !== windowsProcessNotFoundExitStatus &&
+      (isRunning?.() ?? true) === true
+    ) {
+      throw new Error(`[story-gate] taskkill failed to terminate process tree ${pid}`)
+    }
+    return
+  }
+
+  try {
+    if (killProcessGroup === undefined) {
+      process.kill(-pid, 'SIGKILL')
+    } else {
+      killProcessGroup(-pid)
+    }
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') return
+    throw error
+  }
+}
+
+const retainedOutputLimitBytes = 64 * 1024 * 1024
+const lifecycleOutputLimitBytes = 8 * 1024 * 1024
+const partialLineLimitCharacters = 64 * 1024
+const lifecycleMarkers = [settledStoryMarker, unsettledStoryMarker, excludedStoryMarker] as const
+
+interface VitestOutputCapture {
+  readonly pushStdout: (chunk: Buffer) => void
+  readonly pushStderr: (chunk: Buffer) => void
+  readonly finish: () => string
+}
+
+/**
+ * Retain a bounded diagnostic tail while preserving the sparse lifecycle
+ * records needed for the gate verdict, even when later console noise evicts
+ * their original stream bytes.
+ */
+export const createVitestOutputCapture = ({
+  maxTailBytes = retainedOutputLimitBytes,
+  maxLifecycleBytes = lifecycleOutputLimitBytes,
+}: {
+  readonly maxTailBytes?: number
+  readonly maxLifecycleBytes?: number
+} = {}): VitestOutputCapture => {
+  const tailChunks: Buffer[] = []
+  let tailHead = 0
+  let tailBytes = 0
+  let discardedTailBytes = 0
+  const lifecycleLines: string[] = []
+  let lifecycleBytes = 0
+  let captureError: Error | undefined
+
+  const lineStates = {
+    stdout: { decoder: new StringDecoder('utf8'), remainder: '' },
+    stderr: { decoder: new StringDecoder('utf8'), remainder: '' },
+  }
+
+  const captureLine = (line: string): void => {
+    if (lifecycleMarkers.some((marker) => line.includes(marker)) === false) return
+    const bytes = Buffer.byteLength(line) + 1
+    if (lifecycleBytes + bytes > maxLifecycleBytes) {
+      captureError ??= new Error(
+        `[story-gate] lifecycle output exceeded ${maxLifecycleBytes} retained bytes`,
+      )
+      return
+    }
+    lifecycleLines.push(line)
+    lifecycleBytes += bytes
+  }
+
+  const captureDecoded = ({
+    stream,
+    decoded,
+    flush,
+  }: {
+    readonly stream: keyof typeof lineStates
+    readonly decoded: string
+    readonly flush: boolean
+  }): void => {
+    const state = lineStates[stream]
+    const lines = `${state.remainder}${decoded}`.split('\n')
+    state.remainder = lines.pop() ?? ''
+    for (const line of lines) captureLine(line)
+    if (flush === true && state.remainder !== '') {
+      captureLine(state.remainder)
+      state.remainder = ''
+    }
+    if (state.remainder.length <= partialLineLimitCharacters) return
+    if (lifecycleMarkers.some((marker) => state.remainder.includes(marker)) === true) {
+      captureError ??= new Error(
+        `[story-gate] lifecycle record exceeded ${partialLineLimitCharacters} characters`,
+      )
+    }
+    state.remainder = state.remainder.slice(-partialLineLimitCharacters)
+  }
+
+  const appendTail = (chunk: Buffer): void => {
+    if (maxTailBytes === 0) return
+    if (chunk.length >= maxTailBytes) {
+      tailChunks.length = 0
+      tailHead = 0
+      discardedTailBytes = 0
+      tailChunks.push(Buffer.from(chunk.subarray(chunk.length - maxTailBytes)))
+      tailBytes = maxTailBytes
+      return
+    }
+    tailChunks.push(chunk)
+    tailBytes += chunk.length
+    while (tailBytes > maxTailBytes) {
+      const first = tailChunks[tailHead]
+      if (first === undefined) break
+      const overflow = tailBytes - maxTailBytes
+      if (first.length <= overflow) {
+        tailHead += 1
+        tailBytes -= first.length
+        discardedTailBytes += first.length
+      } else {
+        tailChunks[tailHead] = Buffer.from(first.subarray(overflow))
+        tailBytes -= overflow
+      }
+    }
+    const compactAfterBytes = Math.max(1, Math.floor(maxTailBytes / 4))
+    if (tailHead < 1_024 && discardedTailBytes < compactAfterBytes) return
+    tailChunks.splice(0, tailHead)
+    tailHead = 0
+    discardedTailBytes = 0
+  }
+
+  const push = ({
+    stream,
+    chunk,
+  }: {
+    readonly stream: keyof typeof lineStates
+    readonly chunk: Buffer
+  }): void => {
+    appendTail(chunk)
+    captureDecoded({
+      stream,
+      decoded: lineStates[stream].decoder.write(chunk),
+      flush: false,
+    })
+  }
+
+  return {
+    pushStdout: (chunk) => push({ stream: 'stdout', chunk }),
+    pushStderr: (chunk) => push({ stream: 'stderr', chunk }),
+    finish: () => {
+      for (const stream of ['stdout', 'stderr'] as const) {
+        captureDecoded({
+          stream,
+          decoded: lineStates[stream].decoder.end(),
+          flush: true,
+        })
+      }
+      if (captureError !== undefined) throw captureError
+      const diagnosticTail = Buffer.concat(tailChunks.slice(tailHead), tailBytes)
+        .toString('utf8')
+        .split('\n')
+        .filter((line) => lifecycleMarkers.some((marker) => line.includes(marker)) === false)
+        .join('\n')
+      return [...lifecycleLines, diagnosticTail].filter((line) => line !== '').join('\n')
+    },
+  }
+}
+
+/**
+ * Run one browser capture through the reporter-completion boundary.
+ *
+ * Vitest's browser process may retain Vite/browser resources after its
+ * reporters have received the final run result. Process close is therefore not
+ * the protocol boundary: the gate waits for its reporter's durable completion
+ * marker, validates the result, and then terminates the otherwise-idle child.
+ */
+export const runVitest = async ({
   cwd,
   configFile,
   baselineDir,
   manifest,
   reportFile,
-  update,
+  updateMode,
+  label,
 }: {
   cwd: string
   configFile: string
   baselineDir: string
   manifest: string | undefined
   reportFile: string
-  update: boolean
-}): { readonly status: number; readonly output: string } => {
-  // The package's own binary, not `pnpm exec`: the runner is invoked from
-  // scripts and CI steps that do not necessarily have a package manager on
-  // PATH, and the derived worktree borrows this same `node_modules` anyway.
+  updateMode: 'all' | 'none'
+  label: string
+}): Promise<{
+  readonly output: string
+  readonly assertions: readonly VitestJsonAssertion[]
+}> => {
   const vitestBin = join(cwd, 'node_modules', '.bin', 'vitest')
-  const result = spawnSync(
+  const ownExtension = extname(fileURLToPath(import.meta.url))
+  const reporterFile = fileURLToPath(
+    new URL(`./completion-reporter${ownExtension}`, import.meta.url),
+  )
+  const child = spawn(
     vitestBin,
     [
       'run',
       '--config',
       configFile,
-      // BOTH reporters, and the json one is named in `--outputFile.json` so it
-      // still lands in a file. `--reporter json` ALONE replaces the console
-      // reporter, and the json report has no field for a browser-side
-      // `console.info` — so the story-gate markers, which are the only channel
-      // carrying "why this story was not compared", were being discarded before
-      // the runner ever saw them. Every exclusion the browser reports travels on
-      // the default reporter's stream; the JSON file carries only assertions.
       '--reporter',
       'default',
       '--reporter',
-      'json',
-      `--outputFile.json=${reportFile}`,
-      ...(update === true ? ['--update'] : []),
+      reporterFile,
+      `--update=${updateMode}`,
     ],
     {
+      // Own the whole browser/Vite process tree so the completion boundary can
+      // close descendants that inherited the child's stdout/stderr pipes.
+      detached: true,
       cwd,
-      encoding: 'utf8',
       env: {
         ...process.env,
         [baselineDirEnvVar]: baselineDir,
+        [storyGateReportEnvVar]: reportFile,
         ...(manifest === undefined ? {} : { [manifestEnvVar]: manifest }),
       },
-      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
-  return { status: result.status ?? 1, output: `${result.stdout}\n${result.stderr}` }
+  let treeTerminated = false
+  const killRunTree = (): void => {
+    if (treeTerminated === true || child.pid === undefined) return
+    terminateProcessTree({
+      pid: child.pid,
+      isRunning: () => child.exitCode === null,
+    })
+    treeTerminated = true
+  }
+  const unregisterSignalForwarding = registerProcessTreeSignalForwarding({
+    killTree: killRunTree,
+  })
+
+  const outputCapture = createVitestOutputCapture()
+  let markerTail = ''
+  let markComplete: (() => void) | undefined
+  const reporterCompleted = new Promise<void>((fulfill) => {
+    markComplete = fulfill
+  })
+  child.stdout.on('data', (chunk: Buffer) => {
+    outputCapture.pushStdout(chunk)
+    process.stdout.write(chunk)
+    const combined = markerTail + chunk.toString('utf8')
+    if (combined.includes(storyGateRunCompleteMarker) === true) markComplete?.()
+    markerTail = combined.slice(-storyGateRunCompleteMarker.length)
+  })
+  child.stderr.on('data', (chunk: Buffer) => {
+    outputCapture.pushStderr(chunk)
+    process.stderr.write(chunk)
+  })
+
+  const childExited = new Promise<number>((fulfill, reject) => {
+    child.once('error', reject)
+    child.once('exit', (code) => fulfill(code ?? 1))
+  })
+  const exitedBeforeReport = childExited.then((status) => {
+    throw new Error(
+      `[story-gate] ${label} exited with status ${status} before the completion reporter published a result.`,
+    )
+  })
+
+  let result:
+    | {
+        readonly output: string
+        readonly assertions: readonly VitestJsonAssertion[]
+      }
+    | undefined
+  let runError: unknown
+  try {
+    await Promise.race([reporterCompleted, exitedBeforeReport])
+    // Let any stream chunks queued behind the marker reach the retained output.
+    await new Promise<void>((fulfill) => setImmediate(fulfill))
+    const output = outputCapture.finish()
+    const assertions = parseAssertions({ reportFile, output })
+    assertCaptureLiveness({ label, executedStories: assertions.length, output })
+    result = { output, assertions }
+  } catch (error) {
+    runError = error
+  }
+
+  // Vitest handles SIGTERM by entering the same leaky browser/Vite cleanup
+  // this boundary exists to avoid. The report is already durable and
+  // validated, so force the completed child down rather than asking it to
+  // perform another shutdown protocol.
+  let terminationError: unknown
+  try {
+    killRunTree()
+  } catch (error) {
+    terminationError = error
+    child.kill('SIGKILL')
+  }
+  unregisterSignalForwarding()
+  // Detached browser descendants can retain inherited pipe descriptors even
+  // after Vitest exits. The protocol ended at the reporter marker, so close
+  // those local readers and wait for the child process itself, not for every
+  // inherited descriptor to disappear.
+  child.stdout.destroy()
+  child.stderr.destroy()
+  await childExited
+
+  if (runError !== undefined) throw runError
+  if (terminationError !== undefined) throw terminationError
+  if (result === undefined) {
+    throw new Error(`[story-gate] ${label} did not produce a Vitest result`)
+  }
+  return result
 }
 
 interface VitestJsonAssertion {
@@ -713,6 +1116,41 @@ const parseAssertions = ({
       Object.assign({}, assertion, { file: fileName }),
     )
   })
+}
+
+/**
+ * Refuse a Vitest capture that collected files without executing the Storybook
+ * lifecycle.
+ *
+ * The JSON report proves a test was registered and the browser marker proves
+ * the gate's `afterEach` ran. Both are required: indexed CSF modules can contain
+ * zero tests, while an ordinary Vitest assertion can run without ever reaching
+ * the screenshot/settle protocol. Checking after the FIRST baseline probe keeps
+ * that state from paying for every remaining capture before it is rejected.
+ */
+export const assertCaptureLiveness = ({
+  label,
+  executedStories,
+  output,
+}: {
+  readonly label: string
+  readonly executedStories: number
+  readonly output: string
+}): void => {
+  if (executedStories === 0) {
+    throw new Error(
+      `[story-gate] ${label} executed zero stories. Vitest may have indexed CSF files, but the capture is unusable.`,
+    )
+  }
+  if (
+    output.includes(settledStoryMarker) === false &&
+    output.includes(unsettledStoryMarker) === false &&
+    output.includes(excludedStoryMarker) === false
+  ) {
+    throw new Error(
+      `[story-gate] ${label} registered ${executedStories} assertions but emitted no story lifecycle records. The Portable Stories settle protocol did not execute.`,
+    )
+  }
 }
 
 /**
@@ -841,6 +1279,8 @@ const classify = (message: string): StoryGateChangeKind => {
   return 'other'
 }
 
+const settleRecordKey = (record: StorySettleRecord): string => `${record.projectName}/${record.id}`
+
 /**
  * Pull the settle records a run's browser side emitted for one marker.
  *
@@ -853,7 +1293,7 @@ const classify = (message: string): StoryGateChangeKind => {
  * skipping it would reintroduce, in the reporting layer, exactly the
  * disappearance the settle signal exists to prevent.
  */
-const parseSettleRecords = ({
+export const parseSettleRecords = ({
   output,
   marker,
 }: {
@@ -862,21 +1302,31 @@ const parseSettleRecords = ({
 }): { readonly records: readonly StorySettleRecord[]; readonly malformed: readonly string[] } => {
   const records: StorySettleRecord[] = []
   const malformed: string[] = []
-  const seen = new Set<string>()
+  const seen = new Map<string, number>()
   for (const line of output.split('\n')) {
     const at = line.indexOf(marker)
     if (at === -1) continue
     const payload = line.slice(at + marker.length).trim()
     try {
       const record = JSON.parse(payload) as StorySettleRecord
-      // One story can emit twice when a run retries it; the last record wins
-      // and the story is counted once, because a count that double-counts a
-      // retry is not a count of stories.
-      if (seen.has(record.id) === true) {
-        records[records.findIndex((existing) => existing.id === record.id)] = record
+      if (
+        typeof record.projectName !== 'string' ||
+        record.projectName === '' ||
+        typeof record.id !== 'string' ||
+        record.id === ''
+      ) {
+        throw new Error('settle record lacks a project-scoped story key')
+      }
+      // A story can emit twice when one project retries it; the last record for
+      // that project wins. The same story in another themed project is a
+      // distinct capture and must remain in the coverage multiset.
+      const key = settleRecordKey(record)
+      const previousIndex = seen.get(key)
+      if (previousIndex !== undefined) {
+        records[previousIndex] = record
         continue
       }
-      seen.add(record.id)
+      seen.set(key, records.length)
       records.push(record)
     } catch {
       malformed.push(payload.slice(0, 200))
@@ -1104,6 +1554,7 @@ export const runStoryGate = async ({
   const identityPath = join(baselineDir, 'tree-identity.json')
   const settlePath = join(baselineDir, 'unsettled.json')
   const stabilityPath = join(baselineDir, 'stability.json')
+  const captureEvidencePath = join(baselineDir, 'capture-evidence.json')
   const scratchDir = mkdtempSync(join(tmpdir(), 'story-gate-'))
 
   /**
@@ -1131,7 +1582,10 @@ export const runStoryGate = async ({
     }
   }
 
-  if (refresh === true) rmSync(baselineDir, { recursive: true, force: true })
+  if (refresh === true) {
+    rmSync(baselineDir, { recursive: true, force: true })
+    clearStoryGateArtifacts(baselineDir)
+  }
 
   // A cached baseline is reusable only if it carries a stability record taken
   // with at least as many captures as this run asked for. Without that check a
@@ -1143,11 +1597,27 @@ export const runStoryGate = async ({
     existsSync(stabilityPath) === true
       ? (JSON.parse(readFileSync(stabilityPath, 'utf8')) as StoryGateReport['stability'])
       : undefined
+  const cachedCaptureEvidence =
+    existsSync(captureEvidencePath) === true
+      ? (JSON.parse(readFileSync(captureEvidencePath, 'utf8')) as BaselineCaptureEvidence)
+      : undefined
+  const cachedCaptureComplete =
+    cachedCaptureEvidence !== undefined &&
+    cachedCaptureEvidence.assertions > 0 &&
+    hasCompleteReferenceCoverage({
+      settledStoryIds: cachedCaptureEvidence.settledStoryIds,
+      referenceStoryIds: referenceStoryIds(baselineDir),
+    })
   if (
     existsSync(completeMarker) === false ||
     cachedStability === undefined ||
-    cachedStability.captures < baselineCaptures
+    cachedStability.captures < baselineCaptures ||
+    cachedCaptureComplete === false
   ) {
+    // An incomplete cache may contain stale PNGs for stories that no longer
+    // settle. Capture into an empty destination so old files cannot satisfy the
+    // reference-coverage proof.
+    rmSync(baselineDir, { recursive: true, force: true })
     if (existsSync(worktreeDir) === false) {
       mkdirSync(dirname(worktreeDir), { recursive: true })
       runGit({
@@ -1206,36 +1676,40 @@ export const runStoryGate = async ({
     for (const [index, probeDir] of probeDirs.entries()) {
       rmSync(probeDir, { recursive: true, force: true })
       mkdirSync(probeDir, { recursive: true })
+      const probeReportFile = join(probeDir, `probe-${index}-report.json`)
       const startedAt = Date.now()
-      runVitest({
+      const label = `baseline probe ${index + 1}/${baselineCaptures} at ${baselineRef}`
+      // eslint-disable-next-line no-await-in-loop -- captures must not contend for one browser/CPU baseline measurement
+      await runVitest({
         cwd: captureCwd,
         configFile,
         baselineDir: probeDir,
         manifest: undefined,
-        reportFile: join(probeDir, `probe-${index}-report.json`),
-        update: true,
+        reportFile: probeReportFile,
+        updateMode: 'all',
+        label,
       })
       captureMs.push(Date.now() - startedAt)
     }
 
     const keptStartedAt = Date.now()
-    const capture = runVitest({
+    const capture = await runVitest({
       cwd: captureCwd,
       configFile,
       baselineDir,
       manifest: undefined,
       reportFile: baselineReportFile,
-      update: true,
+      updateMode: 'all',
+      label: `kept baseline capture at ${baselineRef}`,
     })
     captureMs.push(Date.now() - keptStartedAt)
-    // A non-zero exit is expected and not fatal here. Under `--update` the
+    // A non-zero exit is expected and not fatal here. Under `--update=all` the
     // screenshots are written regardless, and the ref may legitimately carry
     // failing stories — an accessibility violation that already existed is not
-    // something this change caused. What matters is that the capture produced
-    // a report; the compare phase subtracts whatever failed on both sides.
-    if (existsSync(baselineReportFile) === false) {
-      throw new Error(`[story-gate] baseline capture at ${baselineRef} failed:\n${capture.output}`)
-    }
+    // something this change caused. The reporter result and lifecycle marker
+    // prove the browser actually executed stories; zero assertions are rejected
+    // before the comparison pays for another full capture.
+    const capturedAssertions = capture.assertions
     // Asserted AFTER every capture, not before: the point is that no capture in
     // the set spanned an edit, and only a reading taken once all of them are on
     // disk can say that. This is the guard self-consistency cannot be, because
@@ -1256,6 +1730,23 @@ export const runStoryGate = async ({
     })
     writeFileSync(settlePath, JSON.stringify(baselineSettle.records))
 
+    const settledStoryIds = parseSettleRecords({
+      output: capture.output,
+      marker: settledStoryMarker,
+    }).records.map(settleRecordKey)
+    assertCompleteReferenceCoverage({
+      label: `kept baseline capture at ${baselineRef}`,
+      settledStoryIds,
+      referenceStoryIds: referenceStoryIds(baselineDir),
+    })
+    writeFileSync(
+      captureEvidencePath,
+      JSON.stringify({
+        assertions: capturedAssertions.length,
+        settledStoryIds,
+      } satisfies BaselineCaptureEvidence),
+    )
+
     const measured = classifyStability({
       captures: [...probeDirs.map(hashCaptures), hashCaptures(baselineDir)],
       captureMs,
@@ -1268,6 +1759,19 @@ export const runStoryGate = async ({
   const baselineAssertions = parseAssertions({
     reportFile: join(baselineDir, 'baseline-report.json'),
     output: '',
+  })
+  if (baselineAssertions.length === 0) {
+    throw new Error(
+      `[story-gate] cached baseline at ${baselineRef} contains zero executed stories and cannot be compared.`,
+    )
+  }
+  const baselineCaptureEvidence = JSON.parse(
+    readFileSync(captureEvidencePath, 'utf8'),
+  ) as BaselineCaptureEvidence
+  assertCompleteReferenceCoverage({
+    label: `cached baseline at ${baselineRef}`,
+    settledStoryIds: baselineCaptureEvidence.settledStoryIds,
+    referenceStoryIds: referenceStoryIds(baselineDir),
   })
   const baselineFailures = baselineAssertions.filter((assertion) => assertion.status === 'failed')
   const baseline = {
@@ -1311,14 +1815,16 @@ export const runStoryGate = async ({
   const manifest = join(scratchDir, 'requested.txt')
   const reportFile = join(scratchDir, 'compare-report.json')
   writeFileSync(manifest, '')
+  clearStoryGateArtifacts(baselineDir)
   const compareIdentityBefore = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
-  const compare = runVitest({
+  const compare = await runVitest({
     cwd: packageRoot,
     configFile,
     baselineDir,
     manifest,
     reportFile,
-    update: false,
+    updateMode: 'none',
+    label: 'working-tree comparison',
   })
   const compareIdentity = readTreeIdentity({ repoRoot, packageRoot, sourceRoots })
   assertTreeUnchanged({
@@ -1361,6 +1867,7 @@ export const runStoryGate = async ({
   // than dropped, so the count stays honest even when the parse fails.
   const malformed = [...settledRecords.malformed, ...unsettledRecords.malformed].map(
     (payload): StorySettleRecord => ({
+      projectName: '<unparseable>',
       id: `<unparseable> ${payload}`,
       name: '<unparseable settle record>',
       elapsedMs: 0,
@@ -1397,7 +1904,7 @@ export const runStoryGate = async ({
   const selfInconsistentKeys = selfInconsistentStoryKeys(selfInconsistent)
   const nondeterministic: string[] = []
 
-  const assertions = parseAssertions({ reportFile, output: compare.output })
+  const assertions = compare.assertions
   const failures = assertions.filter((assertion) => assertion.status === 'failed')
   const added: string[] = []
   const changed: StoryGateChange[] = []
