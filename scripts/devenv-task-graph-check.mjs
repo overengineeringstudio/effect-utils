@@ -297,7 +297,6 @@ const orderedMaterializationSteps = [
   'devenv tasks run buck2:editor:bootstrap --mode single',
   'devenv tasks run genie:run --mode single',
   'devenv tasks run genie:check --mode single',
-  'devenv tasks run mr:apply --mode single',
   'devenv tasks run buck2:editor:publish --mode single',
 ]
 const orderedMaterializationOffsets = orderedMaterializationSteps.map((step) =>
@@ -308,7 +307,7 @@ ok({
     (offset, index) =>
       offset !== -1 && (index === 0 || offset > orderedMaterializationOffsets[index - 1]),
   ),
-  name: 'editor materialization runs bootstrap, generation, freshness, composition, and publication in order',
+  name: 'editor materialization runs bootstrap, generation, freshness, and publication in order',
 })
 
 const materializerSource = taskSource(materializer)
@@ -321,7 +320,7 @@ ok({
   condition:
     materializerSource.includes(typescriptAuthorityRuntimePath) === true &&
     materializerSource.includes('materialize-dist "$root"') === true &&
-    materializerSource.includes('BUCK2_BIN=') === true,
+    materializerSource.includes('WORKSPACE_ROOT="$root"') === true,
   name: 'materializer dispatches the registry-backed TypeScript authority runtime',
 })
 ok({
@@ -337,14 +336,15 @@ ok({
 })
 ok({
   condition:
-    source.includes('composed_workspace_root()') === true &&
-    source.includes('worktree list --porcelain -z') === true &&
-    source.includes('backlink=') === true &&
-    materializerSource.includes('requires a composed megarepo workspace') === true &&
-    materializerSource.includes('WORKSPACE_ROOT=') === true &&
+    source.includes('composed_workspace_root()') === false &&
+    source.includes('.megarepo/bin/buck2') === false &&
+    source.includes('--workspace-root "$root"') === true &&
+    source.includes('--buck2 "$BUCK2_BIN"') === true &&
+    materializerSource.includes('requires a composed megarepo workspace') === false &&
+    materializerSource.includes('WORKSPACE_ROOT="$root"') === true &&
     materializerSource.includes('TYPESCRIPT_DIST_MODE=') === false &&
     materializerSource.includes('TSGO_BIN=') === false,
-  name: 'materializer publishes only from a reciprocal composition root',
+  name: 'materializer and editor publisher use the standalone checkout root',
 })
 
 const editorViewHelper = source.slice(

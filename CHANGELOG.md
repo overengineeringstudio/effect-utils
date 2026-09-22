@@ -29,6 +29,8 @@ All notable changes to this project will be documented in this file.
   projections shared with composed roots, registry-derived `//:quick` and
   `//:all` aggregates, check-verb wiring, and a guard against untracked
   Buck-versus-legacy producer overlap.
+- **CI**: Run every effect-utils lane from the checked-out standalone Buck root,
+  removing the synthesized composition lifecycle and its member-root plumbing.
 
 - **Devenv tasks**: Add a reusable 50,000-file recursive eval-cache input
   budget that names the offending cached attribute and gates quick and full
