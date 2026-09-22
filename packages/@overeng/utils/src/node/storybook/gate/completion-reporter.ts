@@ -34,6 +34,7 @@ export interface StoryGateReporterOutput {
   readonly testResults: readonly StoryGateReporterResult[]
 }
 
+/** Projects Vitest test modules into the minimal report shape the derived-baseline runner reads. */
 export const storyGateReporterOutput = (testModules: TestModules): StoryGateReporterOutput => ({
   testResults: testModules.map((module) => ({
     name: module.moduleId,
