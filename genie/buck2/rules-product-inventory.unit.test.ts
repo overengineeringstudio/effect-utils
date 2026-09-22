@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { buck2RulesInventory } from '../../nix/buck2-rules/inventory.json.genie.ts'
 
 const expectedFiles = [
-  'BUCK',
   'buck2-member.json',
   'buck2/dependencies/defs.bzl',
   'buck2/editor_view.bzl',
