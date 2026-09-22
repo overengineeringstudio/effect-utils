@@ -1098,6 +1098,15 @@ in
     '';
   };
 
+  tasks."buck2:archives:seed" = {
+    description = "Verify and idempotently seed lockfile archives into the configured CAS tier";
+    after = [ "genie:check" ];
+    exec = trace.exec "buck2:archives:seed" ''
+      set -euo pipefail
+      exec ${pkgs.bun}/bin/bun buck2/dependencies/seed-archives.ts
+    '';
+  };
+
   tasks."buck2:nix-bridge:check" = {
     description = "Check build-product, cache-publication, and fail-closed artifact-import contracts";
     after = lib.mkForce [ "genie:check" ];

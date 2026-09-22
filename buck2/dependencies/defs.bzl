@@ -141,6 +141,16 @@ def _require_url(value):
         fail("pnpm package URL must use https: {}".format(value))
 
 
+def _require_size(value):
+    if value <= 0:
+        fail("pnpm package size_bytes must be positive")
+
+
+def _require_nix_store_path(value, field):
+    _require_absolute_path(value, field)
+    if not value.startswith("/nix/store/"):
+        fail("{} must be an immutable Nix store path: {}".format(field, value))
+
 def _require_portable_path(value, field):
     if not value or value.startswith("/") or "\\" in value or "\x00" in value:
         fail("{} must be a non-empty portable relative path: {}".format(field, value))
@@ -174,12 +184,43 @@ def _record(value, field):
 
 def _fetch_impl(ctx):
     _require_sha256(ctx.attrs.sha256)
+    _require_size(ctx.attrs.size_bytes)
     _require_url(ctx.attrs.url)
-    out = ctx.actions.download_file(
-        "package.tgz",
-        ctx.attrs.url,
-        sha256 = ctx.attrs.sha256,
-    )
+    archive_root = read_config("nix_store", "root", "")
+    if archive_root == "":
+        url_prefix = read_config("archive_origin", "url_prefix", "")
+        if url_prefix != "" and (not url_prefix.startswith("https://") and not url_prefix.startswith("http://")):
+            fail("archive_origin.url_prefix must use http or https: {}".format(url_prefix))
+        if url_prefix != "" and not url_prefix.endswith("/cas/"):
+            fail("archive_origin.url_prefix must end with /cas/: {}".format(url_prefix))
+        url = "{}{}".format(url_prefix, ctx.attrs.sha256) if url_prefix != "" else ctx.attrs.url
+        out = ctx.actions.download_file(
+            "package.tgz",
+            url,
+            sha256 = ctx.attrs.sha256,
+            size_bytes = ctx.attrs.size_bytes,
+        )
+    else:
+        _require_nix_store_path(archive_root, "nix_store.root")
+        out = ctx.actions.declare_output("package.tgz")
+        ctx.actions.run(
+            cmd_args([
+                ctx.attrs._bun[BunToolchainInfo].executable,
+                ctx.attrs._nix_archive,
+                "--root",
+                archive_root,
+                "--sha256",
+                ctx.attrs.sha256,
+                "--size",
+                str(ctx.attrs.size_bytes),
+                "--output",
+                out.as_output(),
+            ]),
+            category = "pnpm_nix_archive",
+            identifier = ctx.attrs.name,
+            local_only = True,
+            allow_cache_upload = True,
+        )
     return [DefaultInfo(default_output = out)]
 
 
@@ -187,7 +228,15 @@ _fetch = rule(
     impl = _fetch_impl,
     attrs = {
         "sha256": attrs.string(),
+        "size_bytes": attrs.int(),
         "url": attrs.string(),
+        "_bun": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:bun",
+            providers = [BunToolchainInfo],
+        )),
+        "_nix_archive": attrs.default_only(attrs.source(
+            default = "//buck2/dependencies:nix-archive.ts",
+        )),
     },
 )
 
@@ -239,15 +288,17 @@ _extract = rule(
 )
 
 
-def pnpm_package(name, package_name, url, sha256, bins = {}, patches = [], **kwargs):
-    """Declares one hash-pinned fetch and one offline npm extraction target."""
+def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches = [], **kwargs):
+    """Declares one digest-and-size-pinned acquisition and offline extraction target."""
     _require_url(url)
     _require_portable_path(package_name, "package_name")
     _require_sha256(sha256)
+    _require_size(size_bytes)
     fetch_name = "{}__fetch".format(name)
     _fetch(
         name = fetch_name,
         sha256 = sha256,
+        size_bytes = size_bytes,
         url = url,
         visibility = [],
     )

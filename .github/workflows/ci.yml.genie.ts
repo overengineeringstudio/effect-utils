@@ -670,7 +670,7 @@ const extraJobs: Record<string, any> = {
           [
             'set -euo pipefail',
             "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|publish\\.sh|rewrite-package-tree\\.contract\\.mjs|rewrite-package-tree\\.mjs|source-recipes\\.nix|standalone-root\\.nix|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' | grep -Ev '^nix/buck2-products/(cache\\.nix|cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|consumer-root\\.nix|default\\.nix|from-source-contract\\.test\\.sh|from-source\\.nix|manifest\\.json|pnpm-archives\\.nix|publish\\.sh|rewrite-package-tree\\.contract\\.mjs|rewrite-package-tree\\.mjs|source-recipes\\.nix|standalone-root\\.nix|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
             'if [ -n "$tracked_editor$tracked_product" ]; then',
             '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" >&2',
             '  exit 1',
@@ -695,6 +695,31 @@ const extraJobs: Record<string, any> = {
             "'",
           ].join('\n'),
         ),
+      },
+    ],
+  },
+  /**
+   * Archive publication is a protected-main effect. Pull requests can read the
+   * configured tier but never receive its write credential or execute this job.
+   */
+  'seed-pnpm-archives': {
+    if: trustedSecretCiIf,
+    'runs-on': ['self-hosted', 'Linux', 'X64'],
+    'timeout-minutes': 30,
+    permissions: { contents: 'read' },
+    defaults: bashShellDefaults,
+    steps: [
+      checkoutStep(),
+      installNixStep(),
+      preparePinnedDevenvStep,
+      prepareCiScriptsStep,
+      {
+        name: 'Verify and seed pnpm archives',
+        env: {
+          ...githubTokenEnv(),
+          BUCK2_ARCHIVE_CAS_AUTHORIZATION: '${{ secrets.BUCK2_ARCHIVE_CAS_AUTHORIZATION }}',
+        },
+        run: runDevenvTasksBefore('buck2:archives:seed'),
       },
     ],
   },

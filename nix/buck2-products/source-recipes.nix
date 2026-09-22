@@ -4,9 +4,9 @@
 # reads it as the target set and this file derives one recipe per entry, so a
 # product can never be published without a recipe or vice versa.
 {
+  capabilities,
   mkBuckProductFromSource,
-  preparedDeps,
-  preparedDepsByProduct ? { },
+  pnpmArchives,
   producerCommit,
   repositoryRoot ? ../..,
 }:
@@ -19,6 +19,8 @@ builtins.listToAttrs (
     name = product.name;
     value = mkBuckProductFromSource {
       inherit
+        capabilities
+        pnpmArchives
         product
         producerCommit
         repositoryRoot

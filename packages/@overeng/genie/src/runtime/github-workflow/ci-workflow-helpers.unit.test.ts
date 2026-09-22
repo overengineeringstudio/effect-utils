@@ -138,6 +138,7 @@ const mainOnlyCheckContexts: Record<string, true> = {
   'test-integration-notion': true,
   'test-live-deploy-ci-tools': true,
   'deploy-storybooks': true,
+  'seed-pnpm-archives': true,
   'publish-products': true,
 }
 const matrixCheckJobs: Record<string, true> = { test: true }

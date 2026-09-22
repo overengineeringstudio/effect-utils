@@ -50,6 +50,10 @@ All notable changes to this project will be documented in this file.
   dependencies mid-session and full-page-reload a running story or browser
   test; Vite consumers can drop their app-local `@stylexjs/stylex`
   `optimizeDeps.include` entries.
+- **Buck2 dependency acquisition**: Bind registry archives to package identity,
+  SHA-512, SHA-256, and byte size; acquire them from a configured digest CAS or
+  the registry; and feed Nix sandbox source rebuilds with verified per-digest
+  fixed-output archives through the unchanged Buck graph.
 - **Buck2 (experiment)**: Reconstruct the smallest JavaScript product from
   filtered source and a prepared dependency closure inside the normal Nix
   sandbox, and record the publication-provenance gap exposed by byte comparison.
