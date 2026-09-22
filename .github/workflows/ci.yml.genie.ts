@@ -450,6 +450,7 @@ const jobs: Record<CoreCIJobName, ReturnType<typeof job> | ReturnType<typeof mul
     },
   }),
   'test-megarepo-cold-gc': job({
+    timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Megarepo cold-GC tests',
       env: githubTokenEnv(),
