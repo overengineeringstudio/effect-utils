@@ -140,18 +140,23 @@ describe('createStoryGateConfig plugin threading', () => {
 })
 
 describe('screenshot diagnostics', () => {
-  it('keeps failed-comparison artifacts outside the captured baseline tree', () => {
+  it('keeps all failure screenshots outside source and derived baselines', () => {
     const baselineRoot = '/tmp/story-gate-unit-test'
     const projectName = 'story-gate-dark'
     const artifactsDir = storyGateArtifactsDir({ baselineRoot, projectName })
     const artifactsRoot = storyGateArtifactsRoot(baselineRoot)
-    const config = createStoryGateConfig({ storybookPluginFor: fakeStorybookPluginFor })
+    const config = createStoryGateConfig({
+      themes: [{ name: 'theme', value: 'dark' }],
+      storybookPluginFor: fakeStorybookPluginFor,
+    })
 
-    // Vitest defaults diff output below the test file. That made a failed
-    // comparison write untracked PNGs into `stories/`, after which the gate's
-    // unchanged-tree guard rejected its own artifacts as a source edit.
+    // Vitest has two independent screenshot paths: matcher diffs and automatic
+    // browser failure screenshots. Both defaults write below the test file and
+    // make the unchanged-tree guard reject artifacts created by its own run.
     expect(config.test).toMatchObject({
       browser: {
+        screenshotFailures: true,
+        screenshotDirectory: `${artifactsDir}/browser-failures`,
         expect: {
           toMatchScreenshot: { resolveDiffPath: expect.any(Function) },
         },
