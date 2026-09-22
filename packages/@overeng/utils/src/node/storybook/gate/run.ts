@@ -468,51 +468,79 @@ const listPngs = (root: string): string[] => {
 /** Evidence that a cached baseline was produced by a live story lifecycle. */
 interface BaselineCaptureEvidence {
   readonly assertions: number
-  readonly settledStoryIds: readonly string[]
+  readonly settledStories: number
+  readonly referenceStoryKeys: readonly string[]
 }
 
 /**
- * Require one project-scoped reference image for every lifecycle record that
- * reached settle.
+ * Canonical identity of resolved screenshot paths below one derived baseline.
  *
- * Counts and bare story IDs are insufficient: themed projects intentionally
- * repeat the same story IDs, so a stale image from one project could otherwise
- * hide a missing image from another.
+ * The matcher owns filename sanitization and story-file nesting. Taking the
+ * identity from its resolved paths, rather than reconstructing it from a
+ * Storybook ID, keeps requested captures and PNGs in the same namespace.
+ */
+export const referenceStoryKeys = ({
+  root,
+  paths,
+}: {
+  readonly root: string
+  readonly paths: readonly string[]
+}): readonly string[] => [
+  ...new Set(
+    paths.map((file) => relative(root, file).slice(0, -extname(file).length).replaceAll(sep, '/')),
+  ),
+]
+
+/**
+ * Require one resolved reference image for every lifecycle record that reached
+ * settle.
  */
 export const hasCompleteReferenceCoverage = ({
-  settledStoryIds,
-  referenceStoryIds,
+  settledStories,
+  requestedStoryKeys,
+  referenceStoryKeys: references,
 }: {
-  readonly settledStoryIds: readonly string[]
-  readonly referenceStoryIds: readonly string[]
+  readonly settledStories: number
+  readonly requestedStoryKeys: readonly string[]
+  readonly referenceStoryKeys: readonly string[]
 }): boolean => {
-  if (settledStoryIds.length === 0 || referenceStoryIds.length === 0) return false
-  const settled = settledStoryIds.toSorted()
-  const references = referenceStoryIds.toSorted()
+  if (settledStories === 0 || requestedStoryKeys.length === 0 || references.length === 0) {
+    return false
+  }
+  const requested = requestedStoryKeys.toSorted()
+  const actual = references.toSorted()
   return (
-    settled.length === references.length &&
-    settled.every((storyId, index) => storyId === references[index])
+    settledStories === requested.length &&
+    requested.length === actual.length &&
+    requested.every((storyKey, index) => storyKey === actual[index])
   )
 }
 
-const referenceStoryIds = (root: string): readonly string[] =>
-  listPngs(root).map((file) =>
-    relative(root, file).slice(0, -extname(file).length).replaceAll(sep, '/'),
-  )
+const capturedReferenceStoryKeys = (root: string): readonly string[] =>
+  referenceStoryKeys({ root, paths: listPngs(root) })
 
 const assertCompleteReferenceCoverage = ({
   label,
-  settledStoryIds,
-  referenceStoryIds: references,
+  settledStories,
+  requestedStoryKeys,
+  referenceStoryKeys: references,
 }: {
   readonly label: string
-  readonly settledStoryIds: readonly string[]
-  readonly referenceStoryIds: readonly string[]
+  readonly settledStories: number
+  readonly requestedStoryKeys: readonly string[]
+  readonly referenceStoryKeys: readonly string[]
 }): void => {
-  if (hasCompleteReferenceCoverage({ settledStoryIds, referenceStoryIds: references }) === true)
+  if (
+    hasCompleteReferenceCoverage({
+      settledStories,
+      requestedStoryKeys,
+      referenceStoryKeys: references,
+    }) === true
+  ) {
     return
+  }
   throw new Error(
-    `[story-gate] ${label} produced ${settledStoryIds.length} settled lifecycle records but ${references.length} corresponding reference PNGs.`,
+    `[story-gate] ${label} produced ${settledStories} settled lifecycle records, ${requestedStoryKeys.length} resolved screenshot requests, and ${references.length} reference PNGs.`,
   )
 }
 
@@ -1604,9 +1632,12 @@ export const runStoryGate = async ({
   const cachedCaptureComplete =
     cachedCaptureEvidence !== undefined &&
     cachedCaptureEvidence.assertions > 0 &&
+    Number.isInteger(cachedCaptureEvidence.settledStories) &&
+    Array.isArray(cachedCaptureEvidence.referenceStoryKeys) &&
     hasCompleteReferenceCoverage({
-      settledStoryIds: cachedCaptureEvidence.settledStoryIds,
-      referenceStoryIds: referenceStoryIds(baselineDir),
+      settledStories: cachedCaptureEvidence.settledStories,
+      requestedStoryKeys: cachedCaptureEvidence.referenceStoryKeys,
+      referenceStoryKeys: capturedReferenceStoryKeys(baselineDir),
     })
   if (
     existsSync(completeMarker) === false ||
@@ -1693,11 +1724,13 @@ export const runStoryGate = async ({
     }
 
     const keptStartedAt = Date.now()
+    const captureManifest = join(scratchDir, 'baseline-requested.txt')
+    writeFileSync(captureManifest, '')
     const capture = await runVitest({
       cwd: captureCwd,
       configFile,
       baselineDir,
-      manifest: undefined,
+      manifest: captureManifest,
       reportFile: baselineReportFile,
       updateMode: 'all',
       label: `kept baseline capture at ${baselineRef}`,
@@ -1730,20 +1763,28 @@ export const runStoryGate = async ({
     })
     writeFileSync(settlePath, JSON.stringify(baselineSettle.records))
 
-    const settledStoryIds = parseSettleRecords({
+    const settledStories = parseSettleRecords({
       output: capture.output,
       marker: settledStoryMarker,
-    }).records.map(settleRecordKey)
+    }).records.length
+    const requestedStoryKeys = referenceStoryKeys({
+      root: baselineDir,
+      paths: readFileSync(captureManifest, 'utf8')
+        .split('\n')
+        .filter((path) => path !== ''),
+    })
     assertCompleteReferenceCoverage({
       label: `kept baseline capture at ${baselineRef}`,
-      settledStoryIds,
-      referenceStoryIds: referenceStoryIds(baselineDir),
+      settledStories,
+      requestedStoryKeys,
+      referenceStoryKeys: capturedReferenceStoryKeys(baselineDir),
     })
     writeFileSync(
       captureEvidencePath,
       JSON.stringify({
         assertions: capturedAssertions.length,
-        settledStoryIds,
+        settledStories,
+        referenceStoryKeys: requestedStoryKeys,
       } satisfies BaselineCaptureEvidence),
     )
 
@@ -1770,8 +1811,9 @@ export const runStoryGate = async ({
   ) as BaselineCaptureEvidence
   assertCompleteReferenceCoverage({
     label: `cached baseline at ${baselineRef}`,
-    settledStoryIds: baselineCaptureEvidence.settledStoryIds,
-    referenceStoryIds: referenceStoryIds(baselineDir),
+    settledStories: baselineCaptureEvidence.settledStories,
+    requestedStoryKeys: baselineCaptureEvidence.referenceStoryKeys,
+    referenceStoryKeys: capturedReferenceStoryKeys(baselineDir),
   })
   const baselineFailures = baselineAssertions.filter((assertion) => assertion.status === 'failed')
   const baseline = {
