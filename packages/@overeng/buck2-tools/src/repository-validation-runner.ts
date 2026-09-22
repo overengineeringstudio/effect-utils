@@ -17,7 +17,7 @@ const requireRecord = (value: unknown, field: string): Record<string, unknown> =
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error(`${field} must be an object`)
   }
-  return value
+  return value as Record<string, unknown>
 }
 
 const requireString = (value: unknown, field: string): string => {
@@ -469,6 +469,7 @@ const checkWorkspaceContract = ({
     args: [
       'eval',
       '--raw',
+      '--impure',
       '--expr',
       `let
   contract = import (builtins.toPath ${contractPath});
@@ -609,6 +610,7 @@ const main = async (): Promise<void> => {
   }
   const output = requireString(values.output, '--output')
   const sourceRoot = path.resolve(requireString(values.source, '--source'))
+  const sourcePaths = values.path ?? []
   const tools = parseToolArguments(values.tool ?? [])
   let summary: Readonly<Record<string, unknown>>
 
