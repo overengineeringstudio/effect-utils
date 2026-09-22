@@ -1,7 +1,6 @@
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const files = [
-  'BUCK',
   'buck2-member.json',
   'buck2/dependencies/defs.bzl',
   'buck2/editor_view.bzl',

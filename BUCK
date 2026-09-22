@@ -49,11 +49,6 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
-export_file(
-    name = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
-    src = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
-    visibility = ["PUBLIC"],
-)
 
 alias(
     name = "node_modules",

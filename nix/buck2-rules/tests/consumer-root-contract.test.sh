@@ -48,11 +48,15 @@ grep -F 'effect_tsgo_toolchain(' "$root/buck2/toolchains/BUCK" >/dev/null
 grep -F 'name = "product_tool"' "$root/buck2/toolchains/BUCK" >/dev/null
 grep -F 'actual = "//buck2/toolchains:rust"' "$root/BUCK" >/dev/null
 grep -F 'name = "packages/@overeng/buck2-tools/src/typescript-runner.ts"' "$root/.buck2/rules/BUCK" >/dev/null
+grep -F 'name = "package_tree_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
+grep -F 'name = "package_command_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 
 (
   cd "$root"
-  buck2 --isolation-dir consumer-root-contract query \
-    '@rules//:packages/@overeng/buck2-tools/src/typescript-runner.ts' >/dev/null
+  buck2 --isolation-dir consumer-root-contract uquery \
+    'set(rules//:package_tree_runtime rules//:package_command_runtime rules//:packages/@overeng/buck2-tools/src/typescript-runner.ts)' >/dev/null
+  buck2 --isolation-dir consumer-root-contract cquery \
+    'fixture//buck2/toolchains:effect_tsgo' >/dev/null
 )
 
 echo 'buck2 consumer root contract passed'

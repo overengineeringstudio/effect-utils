@@ -41,6 +41,32 @@ pkgs.runCommand "buck2-rules"
       cp ${lib.escapeShellArg "${src}/${path}"} "$out/${lib.escapeShellArg path}"
     '') files}
     cp ${./inventory.json} "$out/inventory.json"
+    cat > "$out/BUCK" <<'BUCK'
+    filegroup(
+        name = "package_tree_runtime",
+        srcs = {
+            "package-tree.ts": "packages/@overeng/buck2-tools/src/package-tree.ts",
+            "real-path.ts": "packages/@overeng/buck2-tools/src/real-path.ts",
+        },
+        visibility = ["PUBLIC"],
+    )
+
+    filegroup(
+        name = "package_command_runtime",
+        srcs = {
+            "package-command-runner.ts": "packages/@overeng/buck2-tools/src/package-command-runner.ts",
+            "real-path.ts": "packages/@overeng/buck2-tools/src/real-path.ts",
+            "typescript-runner.ts": "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+        },
+        visibility = ["PUBLIC"],
+    )
+
+    export_file(
+        name = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+        src = "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+        visibility = ["PUBLIC"],
+    )
+    BUCK
     chmod -R u+w "$out"
     mkdir -p "$out/prelude"
     tar -xzf ${buck2.passthru.prelude} --strip-components=1 -C "$out/prelude"

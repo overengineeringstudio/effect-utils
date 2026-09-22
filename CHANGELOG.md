@@ -6,9 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **Buck2 rules distribution**: Export the TypeScript action runner from the
-  rules root package so standalone consumer roots can resolve the configured
-  TypeScript toolchain.
+- **Buck2 rules distribution**: Give the standalone rules artifact its own
+  minimal root package for package runtimes and the TypeScript action runner,
+  so consumer roots can resolve the configured TypeScript toolchain without
+  importing the provider workspace root.
 
 ### Added
 
