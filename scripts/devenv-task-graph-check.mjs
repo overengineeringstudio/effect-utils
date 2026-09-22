@@ -298,13 +298,16 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
     name: `${publisher} waits directly and only for standalone generator freshness`,
   })
   const command = requireTask(publisher).command
+  const commandBody =
+    typeof command === 'string' && existsSync(command) === true ? readFileSync(command, 'utf8') : ''
   ok({
     condition:
       typeof command === 'string' &&
-      command.includes(publisher) &&
-      command.includes('--packages') &&
-      packagePaths.every((packagePath) => command.includes(`"${packagePath}"`)),
+      command.includes(publisher.replaceAll(':', '-')) &&
+      commandBody.includes('--packages') &&
+      packagePaths.every((packagePath) => commandBody.includes(`"${packagePath}"`)),
     name: `${publisher} has its distinct trace identity and explicit canonical package scope`,
+    detail: typeof command === 'string' ? command : 'publisher command is missing',
   })
   const actualConsumers = [...dependencies]
     .filter(([, taskDependencies]) => taskDependencies.has(publisher))
@@ -319,12 +322,20 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
   })
 }
 const fullPublisherCommand = requireTask('buck2:editor:publish').command
+const fullPublisherCommandBody =
+  typeof fullPublisherCommand === 'string' && existsSync(fullPublisherCommand) === true
+    ? readFileSync(fullPublisherCommand, 'utf8')
+    : ''
 ok({
   condition:
     typeof fullPublisherCommand === 'string' &&
-    fullPublisherCommand.includes('buck2:editor:publish') &&
-    fullPublisherCommand.includes('--packages') === false,
+    fullPublisherCommand.includes('buck2-editor-publish') &&
+    fullPublisherCommandBody.includes('--packages') === false,
   name: 'whole-workspace editor publication retains its unscoped fallback',
+  detail:
+    typeof fullPublisherCommand === 'string'
+      ? fullPublisherCommand
+      : 'publisher command is missing',
 })
 ok({
   condition:
