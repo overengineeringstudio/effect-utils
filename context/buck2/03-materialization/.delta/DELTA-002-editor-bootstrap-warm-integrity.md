@@ -15,8 +15,8 @@ view required by the Weaver import closure, but local-disk warm samples measured
   budgets.
 - [REUSE-R03](../../04-reuse/requirements.md) applies those budgets to the
   admitted reuse surface.
-- The implementation and timing evidence are recorded in
-  `/srv/bulk/coding-agents/_reports/effect-utils.editor-bootstrap-r07.md`.
+- The implementation and timing evidence are recorded in the private T4 worker
+  report `effect-utils.editor-bootstrap-r07`.
 
 ## Implementation
 
