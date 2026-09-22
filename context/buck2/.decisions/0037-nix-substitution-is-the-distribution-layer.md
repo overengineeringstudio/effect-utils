@@ -95,3 +95,12 @@ S3-compatible storage as the agnostic foundation
   publisher.
 - Open: private pnpm `file:` variant (unproven), Cachix retention at our volume,
   R2 exit criteria, remote execution (04-reuse / 02-execution open questions).
+
+## Amendment 1 (2026-09-22)
+
+Decision [0038](./0038-digest-origins-for-acquisition.md) replaces the prepared
+dependency tree used by the source recipe with the pinned checked-in graph fed
+by independently verified per-digest archive FODs. Clauses 1 and 3 continue to
+require a sandbox-compatible source recipe and same-graph reconstruction on a
+substitution miss. Clauses 2, 4–8, publication as an optimization, and the
+product provenance/digest contract are unchanged.

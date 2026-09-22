@@ -142,6 +142,13 @@ Confirmed by Johannes (q29). Applied in the accepting change:
 
 Until acceptance, all existing requirements and accepted decisions remain in force.
 
-## Amendment 1 (2026-09-19)
+## Amendment 1 (2026-09-19; acquisition mechanism updated 2026-09-22)
 
-Decision [0037](./0037-nix-substitution-is-the-distribution-layer.md) replaces the GitHub-releases durable origin: the origin is a Nix binary cache plus a sandboxed source recipe that invokes the same Buck graph, and a consumer pins by Nix substitution or by a pinned-artifact URL plus SHA-512. Every other clause of this decision stands (no registry, no source mounts, artifact-granular reuse, ledger accounting).
+Decision [0037](./0037-nix-substitution-is-the-distribution-layer.md) replaces
+the GitHub-releases durable origin: the origin is a Nix binary cache plus a
+sandboxed source recipe that invokes the pinned Buck graph against per-digest
+archive inputs, and a consumer pins by Nix substitution or by a pinned-artifact
+URL plus SHA-512. Decision
+[0038](./0038-digest-origins-for-acquisition.md) owns the archive acquisition
+and seeding mechanism. Every other clause of this decision stands (no registry,
+no source mounts, artifact-granular reuse, ledger accounting).

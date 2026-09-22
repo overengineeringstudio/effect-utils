@@ -75,15 +75,18 @@ invariants named in its own document:
   across worktrees and machines of one repository. Cross-repository identity is
   the product digest a consumer pins, not a shared action key
   ([decision 0034](./.decisions/0034-artifact-default-composition-no-registry.md)).
-- **BUCK-R06 Shared reuse:** Admitted actions read and write the remote action
-  cache of their trust tier (decision 0033). A second same-platform standalone
-  checkout of the same repository at an identical revision re-executes zero
-  actions for unchanged admitted targets; a violation is a key-stability
-  regression ([04-reuse](./04-reuse/requirements.md),
+- **BUCK-R06 Shared reuse:** Admitted command actions read and write the remote
+  action cache of their trust tier; immutable third-party inputs are acquired
+  from that tier's CAS by reviewed digest and byte size (decisions 0033 and
+  0038). A second same-platform standalone checkout of the same repository at
+  an identical revision re-executes zero command actions for unchanged admitted
+  targets and performs no origin transfer for CAS-present inputs; a violation
+  is a key-stability regression
+  ([04-reuse](./04-reuse/requirements.md),
   [second-context key-stability evidence](./.experiments/2026-09-19-second-context-key-stability.md)).
-  Cross-shape comparison
-  between standalone and paused composed roots is a migration diagnostic, not
-  an enduring action-key portability contract.
+  Untrusted public contexts are read-only. Cross-shape comparison between
+  standalone and paused composed roots is a migration diagnostic, not an
+  enduring action-key portability contract.
 - **BUCK-R07 Wall-clock budgets:** The admitted surface holds a warm no-op
   check at ≤ 5 s and a fresh-context green with warm shared cache at ≤ 3 min.
   Admission widening that breaks a budget is a regression to fix before
@@ -161,10 +164,12 @@ invariants named in its own document:
   wall-clock delta against the pre-admission baseline. A regression against the
   BUCK-R07 budgets or the recorded baseline blocks further widening until it is
   fixed or explicitly accepted in a decision record.
-- **BUCK-R17 Remote execution:** An admitted action can execute on a fleet
-  worker other than the invoking host through the Remote Execution API. The
-  execution platform declares the worker image as the exact Nix closure its
-  tools come from ([02-execution](./02-execution/requirements.md), decision
-  0006); a locally and a remotely executed action produce identical results
-  and identities (BUCK-R05); remote execution never widens the trust boundary
-  of a cache tier (decision 0033).
+- **BUCK-R17 Remote command execution:** Every admitted result-producing command
+  action can execute through REAPI on a compatible fleet worker whose execution
+  platform identifies its exact Nix tool closure
+  ([02-execution](./02-execution/requirements.md), decision 0006). Client-side
+  source acquisition, digest verification, and materialization are not remote
+  command execution; they expose immutable CAS digests so remotely executed
+  consumers receive identical inputs. Local and remote command results and
+  identities are equal (BUCK-R05), and execution never widens a cache trust
+  tier (decision 0033).
