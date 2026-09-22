@@ -224,6 +224,7 @@ const main = async (): Promise<void> => {
       mv: options.mv,
       snapshotRetention: options.snapshotRetention,
       onTiming: reportTiming,
+      parallelEditorRoots: options.command === 'bootstrap',
     },
   })
   const action =
