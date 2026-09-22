@@ -18,12 +18,12 @@ that changes a live system. Contracts pass data in one direction; none of the
 systems becomes a hidden second producer for another.
 
 Reuse is the point, and identity is what makes it work. Action keys follow
-result-affecting inputs and nothing else, so one shared cache serves every
-worktree, machine, and composed repository — provided the composition shape is
-canonical. That is why every build runs from a synthesized composition root:
-mount paths, cell names, platform labels, and the isolation dir all enter
-action identity, and megarepo/genie hold them constant so identical work keys
-identically everywhere.
+result-affecting inputs and nothing else, so one shared cache serves
+same-platform standalone checkouts within a trust tier. The tracked repository
+root is the normative development and single-repository CI shape. Mount paths,
+cell names, platform labels, and the isolation dir enter action identity, so
+the paused composed exception is a distinct migration shape rather than a
+promised source of cross-shape action-key parity.
 
 The reusable part is deliberately smaller than a repository: shared rules and
 schemas carry no private facts, so a second consumer (dotfiles first) can

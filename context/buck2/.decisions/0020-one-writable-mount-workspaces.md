@@ -147,3 +147,12 @@ receipt or explicit runtime admission; fixture proof does not discharge tierA or
 ## Amendment 3 (2026-09-15)
 
 The one-writable-mount workspace is no longer the default development context; it is retained on `main` as the paused composed shape until the last consumer edge leaves it, then deleted with its ledger rows. See [decision 0034](./0034-artifact-default-composition-no-registry.md).
+
+## Amendment 4 (2026-09-22)
+
+The one-writable-mount workspace applies only to explicitly requested
+cross-repository compositions during the paused retirement window. It does not
+govern standalone development or single-repository CI. Effect-utils CI runs
+from its tracked standalone checkout and does not synthesize or clean a
+composed workspace. The composed shape retains its fail-closed mount,
+ownership, and publication guards until its deletion at L3 cut 2.
