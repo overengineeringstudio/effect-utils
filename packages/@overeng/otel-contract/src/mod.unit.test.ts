@@ -521,49 +521,47 @@ describe('OtelAttrs', () => {
       ),
     )
 
-    expect(attrs.fields).toMatchInlineSnapshot(`
-      [
-        {
-          "astTag": "String",
-          "attrKey": "span.label",
-          "encodePolicy": "auto",
-          "optional": false,
-          "role": "span.label",
-          "sourceKey": "label",
-        },
-        {
-          "astTag": "Union",
-          "attrKey": "op.outcome",
-          "cardinality": "bounded",
-          "encodePolicy": "auto",
-          "optional": false,
-          "sourceKey": "outcome",
-        },
-        {
-          "astTag": "Boolean",
-          "attrKey": "op.cache_hit",
-          "cardinality": "low",
-          "encodePolicy": "auto",
-          "optional": false,
-          "sourceKey": "cacheHit",
-        },
-        {
-          "astTag": "String",
-          "attrKey": "request.id",
-          "cardinality": "high",
-          "encodePolicy": "auto",
-          "optional": false,
-          "sourceKey": "requestId",
-        },
-        {
-          "astTag": "Objects",
-          "attrKey": "op.payload",
-          "encodePolicy": "json",
-          "optional": false,
-          "sourceKey": "payload",
-        },
-      ]
-    `)
+    expect(attrs.fields).toStrictEqual([
+      {
+        astTag: 'String',
+        attrKey: 'span.label',
+        encodePolicy: 'auto',
+        optional: false,
+        role: 'span.label',
+        sourceKey: 'label',
+      },
+      {
+        astTag: 'Union',
+        attrKey: 'op.outcome',
+        cardinality: 'bounded',
+        encodePolicy: 'auto',
+        optional: false,
+        sourceKey: 'outcome',
+      },
+      {
+        astTag: 'Boolean',
+        attrKey: 'op.cache_hit',
+        cardinality: 'low',
+        encodePolicy: 'auto',
+        optional: false,
+        sourceKey: 'cacheHit',
+      },
+      {
+        astTag: 'String',
+        attrKey: 'request.id',
+        cardinality: 'high',
+        encodePolicy: 'auto',
+        optional: false,
+        sourceKey: 'requestId',
+      },
+      {
+        astTag: 'Objects',
+        attrKey: 'op.payload',
+        encodePolicy: 'json',
+        optional: false,
+        sourceKey: 'payload',
+      },
+    ])
   })
 })
 
@@ -817,55 +815,48 @@ describe('OtelMetric', () => {
       'restate.cache_hit': true,
     })
 
-    expect(Invocations.metadata).toMatchInlineSnapshot(`
-      {
-        "description": "Restate invocations by service, handler, and outcome.",
-        "instrument": "counter",
-        "kind": "metric",
-        "labelKeys": [
-          "restate.service",
-          "restate.handler",
-          "restate.outcome",
-          "restate.cache_hit",
-        ],
-        "labels": [
-          {
-            "astTag": "String",
-            "attrKey": "restate.service",
-            "cardinality": "bounded",
-            "encodePolicy": "auto",
-            "optional": false,
-            "sourceKey": "service",
-          },
-          {
-            "astTag": "String",
-            "attrKey": "restate.handler",
-            "cardinality": "bounded",
-            "encodePolicy": "auto",
-            "optional": false,
-            "sourceKey": "handler",
-          },
-          {
-            "astTag": "Union",
-            "attrKey": "restate.outcome",
-            "cardinality": "bounded",
-            "encodePolicy": "auto",
-            "optional": false,
-            "sourceKey": "outcome",
-          },
-          {
-            "astTag": "Boolean",
-            "attrKey": "restate.cache_hit",
-            "cardinality": "low",
-            "encodePolicy": "auto",
-            "optional": false,
-            "sourceKey": "cacheHit",
-          },
-        ],
-        "name": "restate_invocations_total",
-        "unit": "1",
-      }
-    `)
+    expect(Invocations.metadata).toStrictEqual({
+      description: 'Restate invocations by service, handler, and outcome.',
+      instrument: 'counter',
+      kind: 'metric',
+      labelKeys: ['restate.service', 'restate.handler', 'restate.outcome', 'restate.cache_hit'],
+      labels: [
+        {
+          astTag: 'String',
+          attrKey: 'restate.service',
+          cardinality: 'bounded',
+          encodePolicy: 'auto',
+          optional: false,
+          sourceKey: 'service',
+        },
+        {
+          astTag: 'String',
+          attrKey: 'restate.handler',
+          cardinality: 'bounded',
+          encodePolicy: 'auto',
+          optional: false,
+          sourceKey: 'handler',
+        },
+        {
+          astTag: 'Union',
+          attrKey: 'restate.outcome',
+          cardinality: 'bounded',
+          encodePolicy: 'auto',
+          optional: false,
+          sourceKey: 'outcome',
+        },
+        {
+          astTag: 'Boolean',
+          attrKey: 'restate.cache_hit',
+          cardinality: 'low',
+          encodePolicy: 'auto',
+          optional: false,
+          sourceKey: 'cacheHit',
+        },
+      ],
+      name: 'restate_invocations_total',
+      unit: '1',
+    })
 
     await expect(
       Effect.runPromise(
