@@ -44,9 +44,8 @@ export const storyGateReporterOutput = (testModules: TestModules): StoryGateRepo
         title: test.name,
         status: result.state,
         failureMessages:
-          result.errors?.map(
-            (error) => error.stack ?? error.message ?? JSON.stringify(error),
-          ) ?? [],
+          result.errors?.map((error) => error.stack ?? error.message ?? JSON.stringify(error)) ??
+          [],
       }
     }),
   })),
