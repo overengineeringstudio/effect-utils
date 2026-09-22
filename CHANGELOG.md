@@ -224,6 +224,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils**: route Vitest's copied visual-diff attachments to the
+  Storybook gate's external diagnostics sidecar. Failed comparisons preserve
+  their original error without writing `.vitest-attachments` into consumer
+  source, and refresh/compare cleanup owns the copied artifacts.
+
 - **@overeng/utils**: make persisted Storybook derived-tree dependency reuse
   idempotent. Package discovery no longer follows `node_modules` or symlinks
   back through the gate cache, and existing links or real installs are left
