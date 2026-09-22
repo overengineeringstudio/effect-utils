@@ -1,3 +1,6 @@
+# Generated file - DO NOT EDIT
+# Source: ci.yml.genie.ts
+
 name: CI
 
 permissions:
@@ -437,6 +440,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -589,6 +600,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-typecheck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -605,6 +657,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -740,6 +800,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-lint"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -759,6 +860,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -894,6 +1003,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-${{ strategy.job-index }}"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -910,6 +1060,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1045,6 +1203,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-utils"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1061,6 +1260,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1196,6 +1403,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-playwright-tui-react"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1212,6 +1460,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1347,6 +1603,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-megarepo-cold-gc"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1363,6 +1660,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1549,6 +1854,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-builder-contract"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1565,6 +1911,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1702,6 +2056,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-regression"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1718,6 +2113,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1853,6 +2256,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-bundle-smoke"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -1869,6 +2313,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -2004,6 +2456,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-cargo"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -2020,6 +2513,14 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Prepare CI OpenTelemetry capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          spool_dir="${{ runner.temp }}/composition-state/otel-spans"
+          mkdir -p "$spool_dir"
+          printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
+          printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -2162,6 +2663,47 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+      - name: Summarize CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          span_files=("$OTEL_SPAN_SPOOL_DIR"/*.jsonl)
+          if [ "${#span_files[@]}" -eq 0 ]; then
+            echo "::notice::No CI OpenTelemetry task spans were emitted"
+            exit 0
+          fi
+          {
+            echo "## Slowest devenv tasks"
+            echo ""
+            echo "| Task | Duration | Status |"
+            echo "| --- | ---: | --- |"
+            while IFS=$'\t' read -r duration task status; do
+              printf '| `%s` | %.2fs | %s |\n' "$task" "$duration" "$status"
+            done < <(
+              jq -s -r '
+                [.[].resourceSpans[].scopeSpans[].spans[]
+                  | select(.name == "devenv.task.exec")
+                  | (.attributes | map({ key, value: (.value.stringValue // .value.intValue // .value.boolValue) }) | from_entries) as $attrs
+                  | [
+                      (((.endTimeUnixNano | tonumber) - (.startTimeUnixNano | tonumber)) / 1000000000),
+                      ($attrs["task.name"] // $attrs["span.label"] // .name),
+                      (if (.status.code // 0) == 2 then "error" else "ok" end)
+                    ]
+                  | @tsv
+                ] | .[]
+              ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
+            )
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload CI OpenTelemetry spans
+        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-weaver"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}

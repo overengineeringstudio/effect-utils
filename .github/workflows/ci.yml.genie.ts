@@ -5,7 +5,6 @@ import {
   cachixCliBuildStep,
   cachixStep,
   checkoutStep,
-  cleanupEffectUtilsCompositionStep,
   ciOtelSpansArtifactStep,
   ciOtelSpansSummaryStep,
   prepareCiScriptsStep,
@@ -1367,27 +1366,27 @@ const deployJobs: Record<string, any> = {
   },
 } as const
 
-const withEffectUtilsCompositionCleanup = (jobMap: Record<string, any>) =>
+const withCiOtelCapture = (jobMap: Record<string, any>) =>
   Object.fromEntries(
     Object.entries(jobMap).map(([name, ciJob]) => {
       const steps = ciJob.steps as readonly any[] | undefined
       return [
         name,
-        steps?.some((step) => step.name === prepareEffectUtilsCompositionStep.name) === true
-          ? {
+        steps === undefined
+          ? ciJob
+          : {
               ...ciJob,
               steps: [
                 prepareCiOtelSpoolStep,
                 ...steps,
                 ciOtelSpansSummaryStep,
                 ciOtelSpansArtifactStep,
-                cleanupEffectUtilsCompositionStep,
               ],
-            }
-          : ciJob,
+            },
       ]
     }),
   )
+
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
@@ -1421,7 +1420,7 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read' },
-  jobs: withEffectUtilsCompositionCleanup({
+  jobs: {
     // Keep default-ref/source-policy separate from product checks: downstream
     // validation branches should fail one authority job, not obscure
     // lint/typecheck/test signal.
@@ -1440,7 +1439,7 @@ export default ciWorkflow({
         defaultRefs: { 'livestorejs/livestore': 'dev' },
       }),
     },
-    ...jobs,
+    ...withCiOtelCapture(jobs),
     ...extraJobs,
     ...deployJobs,
     'notify-alignment': {
@@ -1453,5 +1452,5 @@ export default ciWorkflow({
         ],
       }),
     },
-  }),
+  },
 } satisfies CiWorkflowArgs)
