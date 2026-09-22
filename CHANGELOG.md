@@ -224,6 +224,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/utils**: make persisted Storybook derived-tree dependency reuse
+  idempotent. Package discovery no longer follows `node_modules` or symlinks
+  back through the gate cache, and existing links or real installs are left
+  untouched.
+
 - **@overeng/utils**: validate Storybook baseline coverage with the screenshot
   matcher's resolved paths instead of reconstructing paths from lifecycle IDs.
   Nested story files, themed projects, and Vitest's filename sanitization now

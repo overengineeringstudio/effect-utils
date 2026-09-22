@@ -25,6 +25,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -685,23 +686,51 @@ export const classifyStability = ({
  * Every package that has its own `node_modules` in the working tree, so the
  * derived worktree can borrow them instead of installing again. Only sound when
  * the lockfile has not moved between the two refs, which the caller checks.
+ *
+ * Existing targets are never removed or replaced: they may be real installs or
+ * links owned by somebody else. Traversal skips every `node_modules` entry and
+ * every symlink, so a persisted borrowed root link cannot lead back through the
+ * gate cache into this derived worktree.
  */
-const linkNodeModules = ({
+export const linkNodeModules = ({
   repoRoot,
   worktreeDir,
 }: {
   repoRoot: string
   worktreeDir: string
 }): void => {
-  const packageDirs = readdirSync(worktreeDir, { withFileTypes: true, recursive: true })
-    .filter((entry) => entry.isFile() && entry.name === 'package.json')
-    .map((entry) => relative(worktreeDir, entry.parentPath))
+  const packageDirs = new Set([''])
+  const pendingDirs = ['']
 
-  for (const packageDir of ['', ...packageDirs]) {
+  while (pendingDirs.length > 0) {
+    const packageDir = pendingDirs.pop()
+    if (packageDir === undefined) break
+    for (const entry of readdirSync(join(worktreeDir, packageDir), { withFileTypes: true })) {
+      if (entry.name === 'node_modules') continue
+      if (entry.isFile() === true && entry.name === 'package.json') {
+        packageDirs.add(packageDir)
+      } else if (entry.isDirectory() === true) {
+        pendingDirs.push(join(packageDir, entry.name))
+      }
+    }
+  }
+
+  for (const packageDir of packageDirs) {
     const source = join(repoRoot, packageDir, 'node_modules')
     const target = join(worktreeDir, packageDir, 'node_modules')
-    if (existsSync(source) === false || existsSync(target) === true) continue
-    symlinkSync(source, target, 'dir')
+    if (existsSync(source) === false) continue
+    try {
+      // lstat observes even a broken symlink. Ownership is fail-closed: any
+      // existing entry belongs to the derived tree and is left untouched.
+      lstatSync(target)
+      continue
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        symlinkSync(source, target, 'dir')
+        continue
+      }
+      throw error
+    }
   }
 }
 
