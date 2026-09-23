@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Buck2 native products**: Patch imported dynamic ELF entrypoints to the Nix
+  glibc loader and explicit `libgcc` runtime closure after verifying their
+  published runtime contract, so they execute inside pure Nix sandboxes.
 - **Megarepo tasks**: Remove `after` and `before` edges to tasks omitted through
   `disabledTasks`, including the optional bootstrap-to-Genie edge, so partial
   task cuts always leave a closed devenv graph.

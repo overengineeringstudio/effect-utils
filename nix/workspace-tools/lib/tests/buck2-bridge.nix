@@ -37,10 +37,14 @@ let
         printf '%s\n' 'LOCAL_DEFINITION { global: main; };' > executable.map
         cc -Wl,--version-script=executable.map -o payload/bin/fixture-tool \
           fixture.c './libfixture[bracket].so'
+        patchelf --set-rpath /unused 'libfixture[bracket].so'
+        patchelf --remove-rpath 'libfixture[bracket].so'
+        install -Dm0444 'libfixture[bracket].so' 'payload/lib/libfixture[bracket].so'
         # ELF string-table names may contain whitespace even though the linker
         # version-script grammar cannot spell it. Preserve the byte width while
         # making the observed version need distinguishable from field splitting.
-        sed -i 's/F123456789O/F  Flags: O/g' payload/bin/fixture-tool
+        sed -i 's/F123456789O/F  Flags: O/g' \
+          payload/bin/fixture-tool 'payload/lib/libfixture[bracket].so'
         # Replacing the wrapper-injected store RPATH before removing it ensures
         # those bytes are absent rather than merely unreachable dynamic data.
         patchelf --set-interpreter ${hostInterpreter} --set-rpath /unused payload/bin/fixture-tool

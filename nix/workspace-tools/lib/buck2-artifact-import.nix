@@ -47,6 +47,12 @@ let
   descriptorFile = pkgs.writeText "${checkedDescriptor.name}-buck-build-product.json" (
     contract.canonicalDescriptorJson checkedDescriptor
   );
+  # The descriptor proves the published FHS-linked artifact. After inspection,
+  # adapt that artifact to the explicit Nix runtime closure admitted here.
+  dynamicElfRuntimeInputs = lib.optionals (runtimeKind == "elf-dynamic") [
+    pkgs.glibc
+    pkgs.libgcc
+  ];
 in
 assert lib.assertMsg (builtins.isAttrs expectedPlatform)
   "buck2-artifact-import: expectedPlatform must be an exact platform attribute set";
@@ -72,8 +78,14 @@ else if runtimeKind == "mach-o-dynamic" && inspectMachODynamic == null then
 else
   pkgs.runCommand "${checkedDescriptor.name}-buck2-import"
     {
-      nativeBuildInputs = [ pkgs.openssl ];
-      allowedReferences = [ ];
+      nativeBuildInputs = [
+        pkgs.openssl
+      ]
+      ++ lib.optional (runtimeKind == "elf-dynamic") pkgs.autoPatchelfHook;
+      buildInputs = dynamicElfRuntimeInputs;
+      allowedReferences = lib.optionals (runtimeKind == "elf-dynamic") (
+        [ "out" ] ++ dynamicElfRuntimeInputs
+      );
       passthru = {
         descriptorDigest = expectedDescriptorDigest;
         inherit checkedDescriptor;
@@ -107,6 +119,10 @@ else
         else
           inspectMachODynamic
       } ${descriptorFile} "$out"
+      ${lib.optionalString (runtimeKind == "elf-dynamic") ''
+        ${pkgs.findutils}/bin/find "$out" -type f -exec chmod u+w {} +
+        autoPatchelf "$out"
+      ''}
 
       ${pkgs.findutils}/bin/find "$out" -type d -exec chmod 0555 {} +
       while IFS= read -r -d "" file; do

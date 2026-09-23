@@ -45,6 +45,10 @@ build_expr() {
   nix build --impure --no-link --print-out-paths --expr "$1"
 }
 
+eval_expr() {
+  nix eval --raw --impure --expr "$1"
+}
+
 expect_build_failure() {
   local label="$1"
   local expected="$2"
@@ -156,12 +160,27 @@ dynamic_import="$(build_expr "$dynamic_import_expr")"
   echo "buck2-bridge-test: admitted dynamic entrypoint is missing" >&2
   exit 1
 }
+"$dynamic_import/bin/fixture-tool"
 
 inspector_expr="let
   $common_let
 in import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-dynamic.nix\") { inherit pkgs; }"
 inspector_out="$(build_expr "$inspector_expr")"
 patchelf_out="$(build_expr "let $common_let in pkgs.patchelf")"
+expected_dynamic_interpreter="$(eval_expr "let $common_let in pkgs.stdenv.cc.bintools.dynamicLinker")"
+actual_dynamic_interpreter="$("$patchelf_out/bin/patchelf" --print-interpreter "$dynamic_import/bin/fixture-tool")"
+[ "$actual_dynamic_interpreter" = "$expected_dynamic_interpreter" ] || {
+  echo "buck2-bridge-test: imported dynamic ELF interpreter mismatch: expected $expected_dynamic_interpreter, got $actual_dynamic_interpreter" >&2
+  exit 1
+}
+dynamic_glibc="$(eval_expr "let $common_let in pkgs.glibc.outPath")"
+dynamic_references="$(nix-store --query --references "$dynamic_import")"
+for expected_reference in "$dynamic_glibc" "$dynamic_import"; do
+  printf '%s\n' "$dynamic_references" | grep -Fx "$expected_reference" >/dev/null || {
+    echo "buck2-bridge-test: imported dynamic ELF is missing runtime closure reference: $expected_reference" >&2
+    exit 1
+  }
+done
 rpath_root="$(mktemp -d)"
 tar --extract --file "$dynamic_export/artifact.tar" --directory "$rpath_root"
 chmod u+w "$rpath_root/bin/fixture-tool"
