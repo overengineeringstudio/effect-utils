@@ -43,4 +43,6 @@ source="$(jq -r .source <<<"$contract")"
 [[ -f "$source/.buckconfig" ]]
 [[ -f "$source/buck2/dependencies/BUCK" ]]
 
+nix build "$repo_root#buck-product-megarepo-from-source" --no-link
+
 printf 'buck2 from-source contracts passed\n'
