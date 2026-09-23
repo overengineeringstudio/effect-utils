@@ -42,7 +42,7 @@ grep -F 'P1 cache publisher (decision 0037)' "$publisher" >/dev/null
 grep -F 'publish-products:' "$workflow" >/dev/null
 grep -F 'CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}' "$workflow" >/dev/null
 grep -F 'pull-requests: write' "$workflow" >/dev/null
-grep -F 'nix/buck2-products/publish.sh --proposal "$proposal" --product megarepo --product @overeng/restate-effect --product @overeng/notion-react' "$workflow" >/dev/null
+grep -F 'nix/buck2-products/publish.sh --proposal "$proposal" --product megarepo --product @overeng/restate-effect --product @overeng/notion-react --product genie' "$workflow" >/dev/null
 if grep -F 'product_refs' "$workflow" >/dev/null; then
   echo "buck2-cache-products-test: publication workflow still prebuilds the complete inventory" >&2
   exit 1
