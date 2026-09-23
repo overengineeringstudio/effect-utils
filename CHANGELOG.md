@@ -10,6 +10,14 @@ All notable changes to this project will be documented in this file.
   commit rebuilds byte-identical product bytes, after verifying the published
   provenance binds the same artifact, instead of failing because the rebuilt
   store path differs only in its producing commit.
+- **Nix (pnpm)**: `align-aggregate-manifest-specifiers` reads importers from the
+  project graph document, the last lockfile document that declares importers,
+  instead of merging importers across every document. pnpm 12's
+  self-managed-package-manager lockfiles carry a package-manager/env document
+  first whose `.` importer holds only `packageManagerDependencies`/
+  `configDependencies`, so the previous duplicate-importer guard rejected
+  legitimate locks at the root importer; an earlier document claiming an
+  importer that declares project dependencies is still rejected.
 - **Scoped Buck2 product publication**: Merge refreshed cache products by product
   identity while retaining unrelated release-backed products, so publishing
   Megarepo no longer removes the bootstrap tools required by repository checks.

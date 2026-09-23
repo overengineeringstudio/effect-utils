@@ -17,24 +17,52 @@ let
 
     const parsedLockfile = Bun.YAML.parse(fs.readFileSync(lockfilePath, "utf8"));
     const documents = Array.isArray(parsedLockfile) ? parsedLockfile : [parsedLockfile];
-    const importers = new Map();
-    for (const document of documents) {
-      if (document === null || typeof document !== "object" || Array.isArray(document)) continue;
-      const documentImporters = document.importers;
-      if (
-        documentImporters === null ||
-        typeof documentImporters !== "object" ||
-        Array.isArray(documentImporters)
-      ) continue;
-      for (const [importerPath, importer] of Object.entries(documentImporters)) {
-        if (importers.has(importerPath)) {
-          throw new Error(`duplicate lockfile importer across YAML documents: ''${importerPath}`);
-        }
-        importers.set(importerPath, importer);
-      }
-    }
     const workspaceRoot = process.cwd();
     const dependencySections = ["dependencies", "devDependencies", "optionalDependencies"];
+
+    // pnpm writes a multi-document lockfile when the package manager is
+    // self-managed: env/package-manager document(s) first, whose importers
+    // carry only packageManagerDependencies/configDependencies, sections
+    // this script never reads, and the project graph document last. The
+    // importers whose dependencies get aligned therefore come from the last
+    // document that declares importers.
+    const declaresImporters = (document) =>
+      document !== null &&
+      typeof document === "object" &&
+      !Array.isArray(document) &&
+      document.importers !== null &&
+      typeof document.importers === "object" &&
+      !Array.isArray(document.importers);
+
+    let projectGraphIndex = -1;
+    for (let index = documents.length - 1; index >= 0; index -= 1) {
+      if (declaresImporters(documents[index])) {
+        projectGraphIndex = index;
+        break;
+      }
+    }
+    const importers =
+      projectGraphIndex === -1 ? [] : Object.entries(documents[projectGraphIndex].importers);
+
+    // A project importer, one that declares dependencies this script aligns,
+    // belongs to the project graph document alone: an earlier document
+    // claiming the same importer would leave it ambiguous which specifier
+    // applies. Env-only importers never trip this guard.
+    const projectImporterPaths = new Set(importers.map(([importerPath]) => importerPath));
+    for (let index = 0; index < projectGraphIndex; index += 1) {
+      const document = documents[index];
+      if (!declaresImporters(document)) continue;
+      for (const [importerPath, importer] of Object.entries(document.importers)) {
+        const declaresProjectDependencies =
+          importer !== null &&
+          typeof importer === "object" &&
+          !Array.isArray(importer) &&
+          dependencySections.some((section) => Object.hasOwn(importer, section));
+        if (declaresProjectDependencies && projectImporterPaths.has(importerPath)) {
+          throw new Error(`duplicate lockfile importer across YAML documents: ''${importerPath}`);
+        }
+      }
+    }
 
     for (const [importerPath, importer] of importers) {
       const manifestPath = path.resolve(
