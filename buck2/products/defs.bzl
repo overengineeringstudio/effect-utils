@@ -102,7 +102,7 @@ def javascript_product(
         module = module,
         product_name = product_name,
         product_kind = product_kind,
-        default_target_platform = "//buck2/platforms:javascript_portable",
+        default_target_platform = "@rules//buck2/platforms:javascript_portable",
         **kwargs
     )
 

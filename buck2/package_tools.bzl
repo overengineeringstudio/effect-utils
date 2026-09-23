@@ -312,7 +312,7 @@ _package_bin_artifact = rule(
 def package_bin_artifact(name, **kwargs):
     _package_bin_artifact(
         name = name,
-        default_target_platform = "//buck2/platforms:javascript_portable",
+        default_target_platform = "@rules//buck2/platforms:javascript_portable",
         **kwargs
     )
 
