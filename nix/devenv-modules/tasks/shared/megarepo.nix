@@ -19,6 +19,7 @@
 # - bootstrapMembers: Minimal members that must exist before tooling like genie
 #   can evaluate. Uses lock-based `mr apply --only ...` and never fetches remote
 #   refs. Default: [ ] (task becomes a no-op)
+# - disabledTasks: Task names omitted from this module instance. Default: [ ].
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add dependencies in their devenv.nix:
@@ -27,6 +28,7 @@
 {
   syncAll ? true,
   bootstrapMembers ? [ ],
+  disabledTasks ? [ ],
   # Real derivation/path backing the `mr` guard. When set, the guard owns
   # `bin/mr` and exec's this by absolute path under passthrough (see
   # cli-guard.nix). Required for source-mode `mr` (no node_modules/.bin
@@ -155,7 +157,7 @@ let
       >/dev/null 2>&1
   '';
 
-  tasks = {
+  allTasks = {
     "mr:bootstrap" = {
       guard = "mr";
       description = "Materialize bootstrap members from megarepo.lock";
@@ -391,6 +393,19 @@ let
       '';
     };
   };
+  taskIsEnabled = taskName: builtins.elem taskName disabledTasks == false;
+  removeDisabledDependencies =
+    task:
+    task
+    // lib.optionalAttrs (task ? after) {
+      after = builtins.filter taskIsEnabled task.after;
+    }
+    // lib.optionalAttrs (task ? before) {
+      before = builtins.filter taskIsEnabled task.before;
+    };
+  tasks = lib.mapAttrs (
+    _: task: removeDisabledDependencies task
+  ) (builtins.removeAttrs allTasks disabledTasks);
 in
 {
   # mr shells out to git for clone/fetch/worktree operations
@@ -405,7 +420,7 @@ in
 
   tasks =
     cliGuard.stripGuards tasks
-    // lib.optionalAttrs (bootstrapMembers != [ ]) {
+    // lib.optionalAttrs (bootstrapMembers != [ ] && taskIsEnabled "mr:bootstrap") {
       # Repos that source-import genie helpers from bootstrap members should ensure
       # those members exist before any genie-backed task runs.
       "genie:prepare".after = lib.mkAfter [ "mr:bootstrap" ];

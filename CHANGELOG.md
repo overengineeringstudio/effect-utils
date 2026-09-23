@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Megarepo tasks**: Remove `after` and `before` edges to tasks omitted through
+  `disabledTasks`, including the optional bootstrap-to-Genie edge, so partial
+  task cuts always leave a closed devenv graph.
 - **Buck2 rules distribution**: Give the standalone rules artifact its own
   minimal root package for package runtimes and the TypeScript action runner,
   so consumer roots can resolve the configured TypeScript toolchain without
@@ -232,6 +235,10 @@ All notable changes to this project will be documented in this file.
   names the unavailable script together with the file that asks for it.
 
 ### Removed
+
+- **Buck2 checks**: remove megarepo setup, apply, and validation gates from the
+  repository `check:quick` and `check:all` dependency graphs. Repository
+  composition remains available through explicit mr operations.
 
 - **nix**: the repository-local pnpm source builders for the ci-tools, Genie,
   Genie bootstrap-closure-check, megarepo, notion-cli, notion-md, npm-release,

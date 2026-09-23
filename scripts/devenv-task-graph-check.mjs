@@ -94,6 +94,7 @@ ok({
   name: 'every task dependency resolves to an evaluated task',
   detail: missingDependencies.join(', '),
 })
+if (process.env.DEVENV_TASK_GRAPH_DEPENDENCIES_ONLY === '1') process.exit(0)
 const requireTask = (name) => {
   const task = tasks.get(name)
   ok({ condition: task !== undefined, name: `evaluated graph contains ${name}` })
@@ -150,6 +151,12 @@ for (const name of [
     name: `${name} is absent after its Buck authority cutover`,
   })
 }
+for (const name of ['mr:setup', 'mr:check', 'mr:lock-sync-check', 'mr:source-policy-check']) {
+  ok({
+    condition: tasks.has(name) === false,
+    name: `${name} is absent after the standalone check-surface cut`,
+  })
+}
 for (const name of ['nix:build', 'nix:check']) {
   ok({
     condition: tasks.has(name) === false,
@@ -196,6 +203,12 @@ ok({
   condition: reaches({ start: 'check:all', target: 'nix:flake:check' }),
   name: 'check:all retains repository-wide Nix flake validation',
 })
+for (const checkTask of ['check:quick', 'check:all']) {
+  ok({
+    condition: reaches({ start: checkTask, target: 'mr:apply' }) === false,
+    name: `${checkTask} does not reach mr:apply`,
+  })
+}
 // `test:run` must schedule the one Buck aggregate and the source-side batches which own
 // packages absent from the authority plus admitted lanes' exact unbounded complements. Either
 // edge going missing would silently omit a disjoint side of the test partition.
@@ -208,10 +221,8 @@ ok({
   condition: testRunDependencies.some((name) => name.startsWith('test:run:batch:') === true),
   name: 'test:run executes the source-owned complement partition',
 })
-// `genie:check` is the source-side stage-zero guard against a graph proving its own stale
-// projection. `mr apply` runs only after that proof, then reconciles the workspace and
-// installs the `.buck2/capabilities` projection Buck analysis reads. Together they are the
-// ordering barriers for every public task that invokes Buck.
+// `genie:check` prevents a stale graph from proving itself. It is the freshness barrier for
+// repository-root Buck tasks. `mr:apply` remains an explicit composition operation.
 const buck2TestAuthority = JSON.parse(readFileSync(`${root}/buck2-test-authority.json`, 'utf8'))
 if (buck2TestAuthority.schemaVersion !== 2 || Array.isArray(buck2TestAuthority.lanes) === false) {
   throw new Error('buck2-test-authority.json does not match schemaVersion 2')
@@ -239,7 +250,7 @@ for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames])
     name: `${name} exists as a source-side test owner`,
   })
 }
-for (const name of [
+const standaloneBuckTaskNames = [
   'buck2:editor:authority',
   'buck2:editor:publish',
   'buck2:editor:check',
@@ -254,7 +265,9 @@ for (const name of [
   'workspace:check',
   'test:buck2:unit',
   ...buck2TestLaneTaskNames,
-]) {
+  ...buck2ExternalOwnerTaskNames,
+]
+for (const name of standaloneBuckTaskNames) {
   ok({
     condition: reaches({ start: name, target: 'mr:apply' }) === false,
     name: `${name} remains standalone`,
@@ -264,7 +277,13 @@ for (const name of [
     name: `${name} waits for source-side generation freshness`,
   })
 }
-for (const name of ['buck2:check', 'buck2:quick', 'buck2:all', 'buck2:nix-bridge:check']) {
+for (const name of [
+  'buck2:check',
+  'buck2:quick',
+  'buck2:all',
+  'buck2:nix-bridge:check',
+  'buck2:editor:bootstrap',
+]) {
   ok({
     condition: reaches({ start: name, target: 'mr:apply' }) === false,
     name: `${name} remains standalone`,

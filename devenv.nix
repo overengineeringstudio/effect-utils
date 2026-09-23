@@ -680,9 +680,6 @@ in
           "check:devenv-eval-inputs"
           "lint:check"
           "lint:nix"
-          "mr:check"
-          "mr:lock-sync-check"
-          "mr:source-policy-check"
           "nix:flake:check"
           "buck2:editor:publish"
           "test:run"
@@ -698,12 +695,21 @@ in
     inputs.playwright.devenvModules.default
     # Shared task modules
     taskModules.genie
-    (taskModules.megarepo { mrPkg = mrCli; })
+    (taskModules.megarepo {
+      mrPkg = mrCli;
+      disabledTasks = [
+        "mr:setup"
+        "mr:check"
+        "mr:lock-sync-check"
+        "mr:source-policy-check"
+      ];
+    })
     (taskModules.lint-nix { })
     # No repository JavaScript package is source-built by Nix anymore. Import
     # the empty module contract to retain repository-wide flake validation.
     (taskModules.nix-cli { cliPackages = [ ]; })
     (taskModules.check {
+      hasMegarepoCheck = false;
       extraChecks = [
         "devenv:trace-audit"
         "workspace:check"
@@ -980,13 +986,9 @@ in
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
   env.RESTATE_SERVER_BIN = "${restate}/bin/restate-server";
 
-  # Composed development workspaces remain available until L3 cut 2, but no CI
-  # or repository Buck task depends on their mutators.
-  tasks."mr:setup".after = [ "mr:bootstrap" ];
-  tasks."mr:apply".after = [
-    "genie:check"
-    "mr:setup"
-  ];
+  # Repository composition remains an explicit mr operation. Generated-source freshness
+  # is its only repository-local prerequisite; the check aggregates do not invoke it.
+  tasks."mr:apply".after = [ "genie:check" ];
 
   # buck2-tools executes inside pinned Bun actions and exercises Bun.YAML/Bun.which.
   # Keep its package gate on that runtime rather than Vitest's Node process.
