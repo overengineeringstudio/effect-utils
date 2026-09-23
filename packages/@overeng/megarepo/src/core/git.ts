@@ -261,7 +261,11 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
     }).pipe(
       Effect.scoped,
       withGitCommandTimeout({ args, timeoutMillis }),
-      Observability.withGitCmdSpan({ args, streamed: false, timeoutMs: timeoutMillis }),
+      Observability.withGitCmdSpan({
+        args,
+        streamed: false,
+        ...(timeoutMillis === undefined ? {} : { timeoutMs: timeoutMillis }),
+      }),
     )
   })()
 
@@ -336,7 +340,11 @@ const streamGitCommandLines = <A>({
     }).pipe(
       Effect.scoped,
       withGitCommandTimeout({ args, timeoutMillis }),
-      Observability.withGitCmdSpan({ args, streamed: true, timeoutMs: timeoutMillis }),
+      Observability.withGitCmdSpan({
+        args,
+        streamed: true,
+        ...(timeoutMillis === undefined ? {} : { timeoutMs: timeoutMillis }),
+      }),
     )
   })()
 
