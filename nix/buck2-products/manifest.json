@@ -117,6 +117,49 @@
       }
     },
     {
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/pzv60w962ak2qkrblw0fdza0g463a4k4/gh-ci-utils.js",
+      "descriptor": {
+        "externalCapabilities": [
+          "gh",
+          "git",
+          "node"
+        ],
+        "externalModules": [],
+        "integrity": "sha256-l+32hgHszF6PEyP6FO7LKSKvsNeGmrV1LlhQKT7ipTs=",
+        "modulePath": "gh-ci-utils.js",
+        "platform": {
+          "abi": "any",
+          "architecture": "any",
+          "os": "any"
+        },
+        "productKind": "cli",
+        "productName": "gh-ci-utils",
+        "provenance": {
+          "configuredTarget": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "dependencyClosureIdentity": "runtime=bun;package_tree=effect_utils//packages/@overeng/gh-ci-utils:package_tree (effect_utils//buck2/platforms:javascript_portable#069f7ef75d9e5edc)",
+          "module": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate-module"
+        },
+        "runtimeContract": "javascript-esm",
+        "runtimeContractVersion": "v1",
+        "runtimeKind": "bun",
+        "schema": "effect-utils/javascript-product/v2",
+        "sizeBytes": 1880049,
+        "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
+      },
+      "descriptorSha256": "50a7f6de040cdd5ac83e619b041a45d19e0cb70d79dd6bdb3660c6e796e4f63e",
+      "name": "gh-ci-utils",
+      "provenance": {
+        "producerCommit": "1e3e255a81bfad5560ed9d05a6ccbb12229bbf77",
+        "productDigest": "97edf68601eccc5e8f1323fa14eecb2922afb0d7869ab5752e5850293ee2a53b",
+        "schema": "effect-utils/buck-product-provenance/v1",
+        "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
+      },
+      "sha256": "97edf68601eccc5e8f1323fa14eecb2922afb0d7869ab5752e5850293ee2a53b",
+      "size": 1880049,
+      "storePath": "/nix/store/pzv60w962ak2qkrblw0fdza0g463a4k4-gh-ci-utils-buck2-from-source-0.0.0",
+      "version": "0.0.0"
+    },
+    {
       "descriptor": {
         "externalCapabilities": [
           "buck2",
@@ -400,5 +443,5 @@
       }
     }
   ],
-  "schema": "effect-utils/buck2-release-products/v1"
+  "schema": "effect-utils/buck-cache-products/v3"
 }

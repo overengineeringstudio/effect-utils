@@ -34,6 +34,7 @@ let
   # The flake wires the source recipes that cache-native manifest rows require;
   # re-importing the loader here without them fails on every cache-native product.
   trackedBuck2Products = repoFlake.buckProducts.${currentSystem};
+  pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { pkgs = flakePkgs; };
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
   restatePkgs = import repoFlake.inputs.nixpkgs {
@@ -46,6 +47,7 @@ let
   oxlintNpm = import ./nix/oxlint-npm.nix {
     pkgs = flakePkgs;
     bun = flakePkgs.bun;
+    inherit pnpmArchives;
     products = trackedBuck2Products.products;
   };
   oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
@@ -81,7 +83,6 @@ let
     netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
     workflow-report = import ./nix/devenv-modules/tasks/shared/workflow-report.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
-    nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
@@ -112,24 +113,6 @@ let
   ghCiUtilsCli = repoPackages.gh-ci-utils;
   buck2Machine = import ./nix/buck2.nix { pkgs = flakePkgs; };
   buck2Stage0Definition = import ./nix/buck2-stage0-tools.nix { inherit pkgs; };
-  # The only Nix-managed pnpm dependency hash left: the oxlint plugin bundle is
-  # an npm-plugin artifact, so no JavaScript product import replaces it.
-  nixCliPackages = [
-    {
-      name = "gh-ci-utils";
-      flakeRef = ".#gh-ci-utils";
-      hashSource = "packages/@overeng/gh-ci-utils/nix/build.nix";
-      lockfile = "pnpm-lock.yaml";
-      packageJson = "packages/@overeng/gh-ci-utils/package.json";
-    }
-    {
-      name = "oxlint-npm";
-      flakeRef = ".#oxlint-npm";
-      hashSource = "nix/oxc-config-plugin.nix";
-      lockfile = "pnpm-lock.yaml";
-      packageJson = "packages/@overeng/oxc-config/package.json";
-    }
-  ];
 
   # The generated root package manifest is the workspace package authority.
   # Consuming it here removes the former hand-maintained Nix package list and

@@ -46,6 +46,13 @@ let
       }
     ) sidecar.packages
   );
+  archivesByIdentity = lib.mapAttrs (_: archive: archivesByDigest.${archive.sha256}) sidecar.packages;
+  archiveRoot = pkgs.linkFarm "buck2-pnpm-archives-${builtins.substring 7 12 sidecar.fingerprint}" (
+    lib.mapAttrsToList (sha256: path: {
+      name = "${sha256}.tgz";
+      inherit path;
+    }) archivesByDigest
+  );
 in
 assert lib.assertMsg (
   builtins.attrNames sidecar == [
@@ -61,9 +68,8 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   sidecar.schema == "effect-utils/buck2-pnpm-sha256/v2"
 ) "buck2-pnpm-archives: unsupported sidecar schema";
-pkgs.linkFarm "buck2-pnpm-archives-${builtins.substring 7 12 sidecar.fingerprint}" (
-  lib.mapAttrsToList (sha256: path: {
-    name = "${sha256}.tgz";
-    inherit path;
-  }) archivesByDigest
-)
+archiveRoot.overrideAttrs (old: {
+  passthru = (old.passthru or { }) // {
+    inherit archivesByDigest archivesByIdentity;
+  };
+})
