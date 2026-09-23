@@ -58,7 +58,7 @@ assert lib.assertMsg (
 pkgs.stdenv.mkDerivation {
   pname = "${safeName}-buck2-from-source";
   version = product.version or "0.0.0";
-  src = if standaloneRoot == null then source else standaloneRoot;
+  src = source;
 
   nativeBuildInputs = [
     buck2
@@ -118,7 +118,6 @@ pkgs.stdenv.mkDerivation {
       producerCommit
       repositorySource
       source
-      standaloneRoot
       target
       ;
     artifactName = outputName;

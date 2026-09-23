@@ -25,7 +25,6 @@ builtins.listToAttrs (
         producerCommit
         repositoryRoot
         ;
-      preparedDeps = preparedDepsByProduct.${product.name} or preparedDeps;
     };
   }) inventory.products
 )
