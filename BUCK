@@ -90,15 +90,15 @@ static_source_set(
     srcs = glob(
         [
             root + "/" + pattern
-            for root in ["context", "packages", "scripts"]
+            for root in [".github", "buck2", "context", "genie", "nix", "packages", "rust", "scripts"]
             for pattern in STATIC_SOURCE_GLOBS
         ],
         exclude = [
             root + "/" + pattern
-            for root in ["context", "packages", "scripts"]
+            for root in [".github", "buck2", "context", "genie", "nix", "packages", "rust", "scripts"]
             for pattern in STATIC_SOURCE_EXCLUDES
         ],
-    ) + [
+    ) + glob(["*.ts"]) + [
         ".oxfmtrc.json",
         ".oxlintrc.json",
         "devenv.lock",
@@ -107,7 +107,6 @@ static_source_set(
         "flake.nix",
         "megarepo.kdl",
         "megarepo.lock",
-        "tsconfig.lint.json",
     ],
     visibility = ["PUBLIC"],
 )
