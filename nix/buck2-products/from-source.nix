@@ -24,6 +24,8 @@ let
           (repositoryRoot + "/.buckroot")
           (repositoryRoot + "/BUCK")
           (repositoryRoot + "/package.json")
+          (repositoryRoot + "/pnpm-workspace.yaml")
+          (repositoryRoot + "/rust-toolchain.toml")
           (repositoryRoot + "/.oxfmtrc.json")
           (repositoryRoot + "/.oxlintrc.json")
           (repositoryRoot + "/buck2-member.json")
