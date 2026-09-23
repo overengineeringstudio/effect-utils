@@ -403,9 +403,9 @@ let
     // lib.optionalAttrs (task ? before) {
       before = builtins.filter taskIsEnabled task.before;
     };
-  tasks = lib.mapAttrs (
-    _: task: removeDisabledDependencies task
-  ) (builtins.removeAttrs allTasks disabledTasks);
+  tasks = lib.mapAttrs (_: task: removeDisabledDependencies task) (
+    builtins.removeAttrs allTasks disabledTasks
+  );
 in
 {
   # mr shells out to git for clone/fetch/worktree operations

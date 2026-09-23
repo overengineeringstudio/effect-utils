@@ -24,10 +24,6 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     tsgo.url = "github:Effect-TS/tsgo";
-    weaver-flake = {
-      url = "path:./nix/weaver-flake";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
   outputs =
@@ -36,7 +32,6 @@
       nixpkgs,
       flake-utils,
       tsgo,
-      weaver-flake,
       ...
     }:
     let
@@ -50,6 +45,8 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        weaverPackages =
+          ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
         rootPath = self.outPath;
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
@@ -139,8 +136,8 @@
           bun = pkgs.bun;
           products = trackedBuck2Products.products;
         };
-        weaver = weaver-flake.packages.${system}.weaver;
-        semconv-model = weaver-flake.packages.${system}.semconv-model;
+        weaver = weaverPackages.weaver;
+        semconv-model = weaverPackages.semconv-model;
         semconv-model-capability = pkgs.runCommand "buck2-semconv-model-capability" { } ''
           mkdir -p "$out/bin" "$out/share"
           ln -s ${semconv-model} "$out/share/semconv-model"
